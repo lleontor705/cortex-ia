@@ -94,6 +94,13 @@ func injectOrchestratorPrompt(homeDir string, adapter agents.Adapter) (Injection
 		return InjectionResult{}, err
 	}
 
+	// Template in the absolute skills directory so sub-agents know where to
+	// find SKILL.md files. Use forward slashes for cross-platform consistency.
+	if skillsDir := adapter.SkillsDir(homeDir); skillsDir != "" {
+		normalised := filepath.ToSlash(skillsDir)
+		content = strings.ReplaceAll(content, "{{SKILLS_DIR}}", normalised)
+	}
+
 	promptFile := adapter.SystemPromptFile(homeDir)
 	if promptFile == "" {
 		return InjectionResult{}, nil
@@ -140,23 +147,34 @@ func injectOrchestratorPrompt(homeDir string, adapter agents.Adapter) (Injection
 	}
 }
 
-// injectSkillFiles writes SDD skill files and shared conventions to the skills directory.
+// injectSkillFiles writes SDD skill files to the skills directory.
+// Convention content is inlined into each SKILL.md so sub-agents never need to
+// resolve external file paths (which fail because the agent's CWD is the
+// project root, not the skills directory).
 func injectSkillFiles(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 	skillsDir := adapter.SkillsDir(homeDir)
 	if skillsDir == "" {
 		return InjectionResult{}, nil
 	}
 
+	// Read convention content once — it will be inlined into every skill.
+	conventionContent, conventionErr := assets.Read("skills/_shared/cortex-convention.md")
+
 	files := make([]string, 0)
 	changed := false
 
-	// Write SDD skill files.
+	// Write SDD skill files with convention inlined.
 	for _, skillID := range sddSkillIDs {
 		assetPath := "skills/" + skillID + "/SKILL.md"
 		content, err := assets.Read(assetPath)
 		if err != nil {
 			log.Printf("sdd: skipping skill %q — asset not found: %v", skillID, err)
 			continue
+		}
+
+		// Inline convention content into each SKILL.md, replacing file references.
+		if conventionErr == nil {
+			content = inlineConvention(content, conventionContent)
 		}
 
 		path := filepath.Join(skillsDir, skillID, "SKILL.md")
@@ -168,19 +186,68 @@ func injectSkillFiles(homeDir string, adapter agents.Adapter) (InjectionResult, 
 		files = append(files, path)
 	}
 
-	// Write shared convention file.
-	conventionContent, err := assets.Read("skills/_shared/cortex-convention.md")
-	if err == nil {
-		path := filepath.Join(skillsDir, "_shared", "cortex-convention.md")
-		wr, err := filemerge.WriteFileAtomic(path, []byte(conventionContent), 0o644)
-		if err != nil {
-			return InjectionResult{}, fmt.Errorf("write convention: %w", err)
+	return InjectionResult{Changed: changed, Files: files}, nil
+}
+
+// inlineConvention replaces references to the external convention file with its
+// actual content so sub-agents never need to read a separate file.
+//
+// Two reference patterns exist in SKILL.md files:
+//  1. Persistence section: "Follow the shared Cortex convention in `../_shared/cortex-convention.md` ..."
+//     → replaced with a brief note + full convention content
+//  2. Step instructions: "Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`:"
+//     → replaced with the Skill Loading Protocol excerpt inlined
+func inlineConvention(skillContent, conventionContent string) string {
+	lines := strings.Split(skillContent, "\n")
+	protocol := extractSection(conventionContent, "## Skill Loading Protocol")
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Pattern 1: persistence reference — replace with full convention.
+		if strings.HasPrefix(trimmed, "Follow the shared Cortex convention in `../_shared/cortex-convention.md`") {
+			lines[i] = "## Cortex Convention (inlined)\n\n" + conventionContent
+			continue
 		}
-		changed = changed || wr.Changed
-		files = append(files, path)
+
+		// Pattern 2: step reference with colon — replace with Skill Loading Protocol section.
+		if strings.HasPrefix(trimmed, "Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`") {
+			if protocol != "" {
+				lines[i] = protocol
+			}
+			continue
+		}
+
+		// Pattern 3: short reference — replace with Skill Loading Protocol section.
+		if strings.Contains(trimmed, "../_shared/cortex-convention.md") {
+			if protocol != "" {
+				lines[i] = protocol
+			} else {
+				lines[i] = "Load skill registry from Cortex: mem_search(query: \"skill-registry\"). Fallback: read .sdd/skill-registry.md from project root."
+			}
+			continue
+		}
 	}
 
-	return InjectionResult{Changed: changed, Files: files}, nil
+	return strings.Join(lines, "\n")
+}
+
+// extractSection extracts a markdown section (from heading to next same-level heading or EOF).
+func extractSection(content, heading string) string {
+	idx := strings.Index(content, heading)
+	if idx < 0 {
+		return ""
+	}
+	section := content[idx:]
+
+	// Find the next heading at the same level (## for ##).
+	prefix := heading[:strings.Index(heading, " ")+1] // e.g. "## "
+	rest := section[len(heading):]
+	end := strings.Index(rest, "\n"+prefix)
+	if end >= 0 {
+		return strings.TrimSpace(section[:len(heading)+end])
+	}
+	return strings.TrimSpace(section)
 }
 
 // injectCommands writes slash command files for agents that support them (OpenCode).
@@ -222,19 +289,23 @@ func injectCommands(homeDir string, adapter agents.Adapter) (InjectionResult, er
 }
 
 // injectSubAgents writes sub-agent definition files for agents that support them.
+// For OpenCode, it also merges hidden:true into opencode.json so sub-agents
+// don't appear in the UI — only the orchestrator is visible.
 func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 	subAgentsDir := adapter.SubAgentsDir(homeDir)
 	if subAgentsDir == "" {
 		return InjectionResult{}, nil
 	}
 
-	// For now, generate basic sub-agent stubs from skill names.
-	// Full implementation will come with agent-specific overlays.
+	// Generate sub-agent stubs with absolute skill paths so agents can find
+	// their SKILL.md regardless of working directory.
+	skillsDir := filepath.ToSlash(adapter.SkillsDir(homeDir))
 	files := make([]string, 0)
 	changed := false
 
 	for _, skillID := range sddSkillIDs {
-		content := fmt.Sprintf("# SDD Agent: %s\n\nLoad skill from skills/%s/SKILL.md and follow its instructions.\n", skillID, skillID)
+		skillPath := skillsDir + "/" + skillID + "/SKILL.md"
+		content := fmt.Sprintf("# SDD Agent: %s\n\nRead and follow the skill instructions from: %s\n", skillID, skillPath)
 		path := filepath.Join(subAgentsDir, skillID+".md")
 		wr, err := filemerge.WriteFileAtomic(path, []byte(content), 0o644)
 		if err != nil {
@@ -244,7 +315,42 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 		files = append(files, path)
 	}
 
+	// For OpenCode: merge hidden:true into settings so sub-agents are not
+	// visible in the UI. Only the orchestrator remains selectable.
+	if adapter.Agent() == model.AgentOpenCode {
+		settingsPath := adapter.SettingsPath(homeDir)
+		if settingsPath != "" {
+			overlay := buildAgentHiddenOverlay(sddSkillIDs)
+			baseJSON, _ := os.ReadFile(settingsPath)
+			merged, err := filemerge.MergeJSONObjects(baseJSON, overlay)
+			if err != nil {
+				return InjectionResult{}, fmt.Errorf("merge agent hidden flags: %w", err)
+			}
+			wr, err := filemerge.WriteFileAtomic(settingsPath, merged, 0o644)
+			if err != nil {
+				return InjectionResult{}, fmt.Errorf("write agent hidden flags: %w", err)
+			}
+			changed = changed || wr.Changed
+			files = append(files, settingsPath)
+		}
+	}
+
 	return InjectionResult{Changed: changed, Files: files}, nil
+}
+
+// buildAgentHiddenOverlay builds a JSON overlay that sets hidden:true and
+// mode:subagent for all SDD skill agents.
+func buildAgentHiddenOverlay(skillIDs []string) []byte {
+	var b strings.Builder
+	b.WriteString(`{"agent":{`)
+	for i, id := range skillIDs {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, `%q:{"mode":"subagent","hidden":true}`, id)
+	}
+	b.WriteString(`}}`)
+	return []byte(b.String())
 }
 
 // FilesToBackup returns all file paths that SDD injection would modify for the given agent.
@@ -263,7 +369,6 @@ func FilesToBackup(homeDir string, adapter agents.Adapter) []string {
 		for _, id := range sddSkillIDs {
 			paths = append(paths, filepath.Join(skillsDir, id, "SKILL.md"))
 		}
-		paths = append(paths, filepath.Join(skillsDir, "_shared", "cortex-convention.md"))
 	}
 
 	if adapter.SupportsSlashCommands() {
