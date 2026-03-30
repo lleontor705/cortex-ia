@@ -38,4 +38,7 @@ func TestInjectOrchestrator_ClaudeCode(t *testing.T) {
 	if len(args) != 2 || args[1] != "cli-orchestrator-mcp" {
 		t.Errorf("args = %v", args)
 	}
+	if m["timeout"] != 300.0 {
+		t.Errorf("timeout = %v, want 300", m["timeout"])
+	}
 }
