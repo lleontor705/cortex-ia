@@ -19,7 +19,7 @@ func AllComponents() []ComponentInfo {
 		{ID: model.ComponentForgeSpec, Name: "ForgeSpec", Description: "SDD contract validation, task board, file reservation (15 MCP tools)", Deps: nil},
 		{ID: model.ComponentContext7, Name: "Context7", Description: "Live framework and library documentation via MCP", Deps: nil},
 		{ID: model.ComponentConventions, Name: "Conventions", Description: "Shared cortex conventions and memory protocol", Deps: []model.ComponentID{model.ComponentCortex}},
-		{ID: model.ComponentSDD, Name: "SDD Workflow", Description: "Full 9-phase Spec-Driven Development with orchestrator + 19 skills", Deps: []model.ComponentID{model.ComponentCortex, model.ComponentForgeSpec, model.ComponentMailbox}},
+		{ID: model.ComponentSDD, Name: "SDD Workflow", Description: "Full 9-phase Spec-Driven Development with orchestrator + 19 skills", Deps: []model.ComponentID{model.ComponentCortex, model.ComponentForgeSpec, model.ComponentMailbox, model.ComponentConventions}},
 		{ID: model.ComponentSkills, Name: "Extra Skills", Description: "Additional utility skills (non-SDD)", Deps: nil},
 	}
 }

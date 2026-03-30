@@ -45,12 +45,6 @@ func TestInjectSDD_ClaudeCode(t *testing.T) {
 	if _, err := os.Stat(implementSkill); os.IsNotExist(err) {
 		t.Error("expected implement skill to be written")
 	}
-
-	// Verify convention was written.
-	convention := filepath.Join(tmpDir, ".claude", "skills", "_shared", "cortex-convention.md")
-	if _, err := os.Stat(convention); os.IsNotExist(err) {
-		t.Error("expected cortex-convention.md to be written")
-	}
 }
 
 func TestInjectSDD_SkillCount(t *testing.T) {
