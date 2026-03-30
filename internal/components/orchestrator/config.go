@@ -12,8 +12,7 @@ func Templates() mcpinject.ServerTemplates {
   "args": [
     "-y",
     "cli-orchestrator-mcp"
-  ],
-  "timeout": 300
+  ]
 }
 `),
 
@@ -24,8 +23,7 @@ func Templates() mcpinject.ServerTemplates {
       "args": [
         "-y",
         "cli-orchestrator-mcp"
-      ],
-      "timeout": 300
+      ]
     }
   }
 }
@@ -40,8 +38,7 @@ func Templates() mcpinject.ServerTemplates {
         "-y",
         "cli-orchestrator-mcp"
       ],
-      "enabled": true,
-      "timeout": 300
+      "enabled": true
     }
   }
 }
@@ -55,8 +52,7 @@ func Templates() mcpinject.ServerTemplates {
       "args": [
         "-y",
         "cli-orchestrator-mcp"
-      ],
-      "timeout": 300
+      ]
     }
   }
 }
