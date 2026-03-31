@@ -137,12 +137,19 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 			t.Errorf("sub-agent %q: %v", id, err)
 			continue
 		}
-		if !strings.Contains(string(data), ".cortex-ia/skills/"+id+"/SKILL.md") {
+		content := string(data)
+		if !strings.Contains(content, ".cortex-ia/skills/"+id+"/SKILL.md") {
 			t.Errorf("sub-agent %q should reference shared skills dir", id)
+		}
+		if !strings.Contains(content, "mode: subagent") {
+			t.Errorf("sub-agent %q should have mode: subagent in frontmatter", id)
+		}
+		if !strings.Contains(content, "description:") {
+			t.Errorf("sub-agent %q should have description in frontmatter", id)
 		}
 	}
 
-	// Verify settings merged with hidden:true.
+	// Verify settings merged with hidden:true and tools.task.
 	settingsData, err := os.ReadFile(adapter.SettingsPath(tmpDir))
 	if err != nil {
 		t.Fatalf("read settings: %v", err)
@@ -163,6 +170,21 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 		}
 		if hidden, _ := entry["hidden"].(bool); !hidden {
 			t.Errorf("expected %q to be hidden", id)
+		}
+		tools, ok := entry["tools"].(map[string]any)
+		if !ok {
+			t.Errorf("expected %q to have tools section", id)
+			continue
+		}
+		taskEnabled, _ := tools["task"].(bool)
+		if isCoordinator(id) {
+			if !taskEnabled {
+				t.Errorf("coordinator %q should have tools.task = true", id)
+			}
+		} else {
+			if taskEnabled {
+				t.Errorf("leaf agent %q should have tools.task = false", id)
+			}
 		}
 	}
 }
@@ -379,6 +401,18 @@ func TestBuildAgentHiddenOverlay_ValidJSON(t *testing.T) {
 	if len(agents) != 3 {
 		t.Errorf("expected 3 agents, got %d", len(agents))
 	}
+	// Every agent must have tools.task set.
+	for id, v := range agents {
+		entry, _ := v.(map[string]any)
+		tools, ok := entry["tools"].(map[string]any)
+		if !ok {
+			t.Errorf("agent %q missing tools", id)
+			continue
+		}
+		if tools["task"] == nil {
+			t.Errorf("agent %q missing tools.task", id)
+		}
+	}
 }
 
 func TestBuildAgentHiddenOverlay_Empty(t *testing.T) {
@@ -386,6 +420,25 @@ func TestBuildAgentHiddenOverlay_Empty(t *testing.T) {
 	var parsed map[string]any
 	if err := json.Unmarshal(overlay, &parsed); err != nil {
 		t.Fatalf("invalid JSON for empty input: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// taskPermissionForSkill
+// ---------------------------------------------------------------------------
+
+func TestCoordinatorSkills(t *testing.T) {
+	// Only 3 agents are coordinators.
+	for _, id := range []string{"team-lead", "debate", "parallel-dispatch"} {
+		if !isCoordinator(id) {
+			t.Errorf("%q should be a coordinator", id)
+		}
+	}
+	// Leaf agents are NOT coordinators.
+	for _, leaf := range []string{"implement", "validate", "bootstrap", "investigate", "architect"} {
+		if isCoordinator(leaf) {
+			t.Errorf("leaf agent %q should not be a coordinator", leaf)
+		}
 	}
 }
 

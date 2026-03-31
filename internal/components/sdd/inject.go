@@ -1,6 +1,7 @@
 package sdd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -27,6 +28,43 @@ var sddSkillIDs = []string{
 	"architect", "decompose", "team-lead", "implement", "validate", "finalize",
 	"debate", "debug", "execute-plan", "ideate", "monitor",
 	"open-pr", "file-issue", "parallel-dispatch", "scan-registry",
+}
+
+// sddSkillDescriptions maps each SDD skill ID to a short description used in
+// sub-agent frontmatter so that OpenCode recognises the agent type.
+var sddSkillDescriptions = map[string]string{
+	"bootstrap":         "Detects tech stack, conventions, and initialises SDD context",
+	"investigate":       "Explores codebase, diagnoses bugs, and compares approaches",
+	"draft-proposal":    "Creates change proposals with intent, scope, and rollback plan",
+	"write-specs":       "Transforms proposals into Given/When/Then specifications",
+	"architect":         "Designs technical architecture and data flows for a change",
+	"decompose":         "Breaks designs into phased, dependency-ordered implementation tasks",
+	"team-lead":         "Coordinates the apply phase, launching implement agents in parallel",
+	"implement":         "Executes implementation tasks, writing production code",
+	"validate":          "Verifies implementation satisfies specs with execution evidence",
+	"finalize":          "Merges delta specs, archives changes, and generates retrospective",
+	"debate":            "Moderates adversarial debates between competing approaches",
+	"debug":             "Systematic root-cause debugging before proposing fixes",
+	"execute-plan":      "Executes written implementation plans with review checkpoints",
+	"ideate":            "Collaborative brainstorming to explore intent and requirements",
+	"monitor":           "Generates dashboard visualising SDD pipeline state and tasks",
+	"open-pr":           "Creates pull requests following issue-first enforcement",
+	"file-issue":        "Creates GitHub issues using required templates",
+	"parallel-dispatch": "Dispatches independent tasks to parallel sub-agents",
+	"scan-registry":     "Scans skill directories and builds unified skill registry",
+}
+
+// coordinatorSkills lists skills that are allowed to delegate to sub-agents
+// via the task tool. All other skills are leaf agents with task disabled.
+var coordinatorSkills = map[string]bool{
+	"team-lead":         true,
+	"debate":            true,
+	"parallel-dispatch": true,
+}
+
+// isCoordinator reports whether a skill is allowed to delegate to sub-agents.
+func isCoordinator(skillID string) bool {
+	return coordinatorSkills[skillID]
 }
 
 // Inject injects the full SDD workflow into the given agent:
@@ -294,7 +332,11 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 
 	for _, skillID := range sddSkillIDs {
 		skillPath := skillsDir + "/" + skillID + "/SKILL.md"
-		content := fmt.Sprintf("# SDD Agent: %s\n\nRead and follow the skill instructions from: %s\n", skillID, skillPath)
+		desc := sddSkillDescriptions[skillID]
+		if desc == "" {
+			desc = "SDD sub-agent: " + skillID
+		}
+		content := fmt.Sprintf("---\ndescription: %s\nmode: subagent\n---\n\nRead and follow the skill instructions from: %s\n", desc, skillPath)
 		path := filepath.Join(subAgentsDir, skillID+".md")
 		wr, err := filemerge.WriteFileAtomic(path, []byte(content), 0o644)
 		if err != nil {
@@ -330,19 +372,23 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 	return InjectionResult{Changed: changed, Files: files}, nil
 }
 
-// buildAgentHiddenOverlay builds a JSON overlay that sets hidden:true and
-// mode:subagent for all SDD skill agents.
+// buildAgentHiddenOverlay builds a JSON overlay that sets hidden:true,
+// mode:subagent, and tools.task for all SDD skill agents.
+// Coordinators (team-lead, debate, parallel-dispatch) get task:true;
+// all other leaf agents get task:false to prevent unauthorised delegation.
 func buildAgentHiddenOverlay(skillIDs []string) []byte {
-	var b strings.Builder
-	b.WriteString(`{"agent":{`)
-	for i, id := range skillIDs {
-		if i > 0 {
-			b.WriteString(",")
+	agents := make(map[string]any, len(skillIDs))
+	for _, id := range skillIDs {
+		agents[id] = map[string]any{
+			"mode":   "subagent",
+			"hidden": true,
+			"tools": map[string]any{
+				"task": isCoordinator(id),
+			},
 		}
-		fmt.Fprintf(&b, `%q:{"mode":"subagent","hidden":true}`, id)
 	}
-	b.WriteString(`}}`)
-	return []byte(b.String())
+	data, _ := json.Marshal(map[string]any{"agent": agents})
+	return data
 }
 
 // FilesToBackup returns all file paths that SDD injection would modify for the given agent.
