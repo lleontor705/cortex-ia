@@ -44,7 +44,7 @@ func Check(currentVersion string) CheckResult {
 		result.Error = fmt.Errorf("check update: %w", err)
 		return result
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		result.Error = fmt.Errorf("GitHub API returned %d", resp.StatusCode)

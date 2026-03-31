@@ -9,7 +9,6 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/model"
-	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
 // backupStep creates a config snapshot before installation.
@@ -88,45 +87,6 @@ func (s *componentStep) Run() error {
 	return nil
 }
 
-// saveStateStep persists state.json and cortex-ia.lock after successful installation.
-type saveStateStep struct {
-	homeDir      string
-	selection    model.Selection
-	version      string
-	backupID     *string   // pointer to backupStep.BackupID
-	filesChanged *[]string // pointer to accumulated files
-	resolved     []model.ComponentID
-}
-
-func (s *saveStateStep) Name() string { return "save-state" }
-
-func (s *saveStateStep) Run() error {
-	st := state.State{
-		InstalledAgents: s.selection.Agents,
-		Preset:          s.selection.Preset,
-		Components:      s.resolved,
-		LastInstall:     time.Now(),
-		LastBackupID:    *s.backupID,
-		Version:         s.version,
-	}
-	if err := state.Save(s.homeDir, st); err != nil {
-		return fmt.Errorf("save state: %w", err)
-	}
-
-	lock := state.Lockfile{
-		InstalledAgents: s.selection.Agents,
-		Preset:          s.selection.Preset,
-		Components:      s.resolved,
-		Files:           dedupeStrings(*s.filesChanged),
-		GeneratedAt:     time.Now(),
-		LastBackupID:    *s.backupID,
-		Version:         s.version,
-	}
-	if err := state.SaveLock(s.homeDir, lock); err != nil {
-		return fmt.Errorf("save lock: %w", err)
-	}
-	return nil
-}
 
 
 // Ensure backupStep output dir can be cleaned up on rollback.
