@@ -34,15 +34,18 @@ Load skill registry following the protocol in `../_shared/cortex-convention.md`.
 
 </persistence>
 
+<delegation>none — you are a LEAF agent. Do NOT use the task() tool. Do NOT launch sub-agents. Do all work directly.</delegation>
+
 <rules>
-1. Source every data point from an actual tool call — real data only, zero hardcoded samples
-2. Produce a fully self-contained HTML file: inline CSS, inline JS, zero external dependencies
-3. Use a dark theme with CSS custom properties for consistent theming
-4. Make the layout responsive for both desktop and mobile viewports
-5. Color-code task statuses consistently: pending=gray, in_progress=blue, completed=green, failed=red, blocked=orange
-6. Show "Data unavailable" in a section when its data source fails — graceful degradation over crashes
-7. Write the file to `.sdd-dashboard.html` in the project root directory
-8. Produce valid HTML5 that passes basic validation
+1. Do NOT use the task() tool or launch sub-agents under any circumstance — you are a leaf agent
+2. Source every data point from an actual tool call — real data only, zero hardcoded samples
+3. Produce a fully self-contained HTML file: inline CSS, inline JS, zero external dependencies
+4. Use a dark theme with CSS custom properties for consistent theming
+5. Make the layout responsive for both desktop and mobile viewports
+6. Color-code task statuses consistently: pending=gray, in_progress=blue, completed=green, failed=red, blocked=orange
+7. Show "Data unavailable" in a section when its data source fails — graceful degradation over crashes
+8. Write the file to `.sdd-dashboard.html` in the project root directory
+9. Produce valid HTML5 that passes basic validation
 </rules>
 
 <steps>

@@ -93,6 +93,25 @@ Supported relations:
 - `supersedes` — new version replaces old
 - `contradicts` — conflicting information (flag for review)
 
+## Delegation Boundary (CRITICAL)
+
+By default, SDD agents MUST NOT launch sub-agents or use the `task()` tool. Only skills with an explicit `<delegation>` section listing permitted targets may delegate.
+
+**If your SKILL.md does NOT contain a `<delegation>` section: you are a LEAF agent.**
+
+Leaf agent rules:
+1. Do NOT call `task()` to launch sub-agents — ever
+2. Do NOT spawn yourself recursively
+3. Do all work directly using your own tools (read, write, edit, bash, grep, glob, MCP tools)
+4. Return your results to the caller — the orchestrator or team-lead handles coordination
+
+**Only these skills may delegate:**
+- `team-lead` → launches `@implement` sub-agents
+- `debate` → launches `@investigate` defender agents
+- `parallel-dispatch` → launches domain-specific agents
+
+If you are not one of these three skills and you use `task()`, you are violating the delegation boundary.
+
 ## Skill Loading Protocol (Canonical Version)
 
 Every SDD agent MUST follow this exact protocol at startup. Do NOT deviate.

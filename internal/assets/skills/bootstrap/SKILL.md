@@ -36,14 +36,17 @@ OpenSpec write path: `openspec/config.yaml` (when mode is openspec or hybrid)
 The skill registry catalogs all available skills (user-level and project-level) so that downstream SDD agents can load relevant coding conventions, testing patterns, and domain knowledge before starting work. It is infrastructure, not an SDD artifact — it exists regardless of persistence mode.
 </context>
 
+<delegation>none — you are a LEAF agent. Do NOT use the task() tool. Do NOT launch sub-agents. Do all work directly.</delegation>
+
 <rules>
-1. Read real files to detect stack — always verify by reading source files, not directory names alone — directory names alone are unreliable
-2. If `openspec/` already exists, report its contents and ask the orchestrator whether to overwrite — prevents accidental loss of existing configuration
-3. Keep `openspec/config.yaml` context section to 10 lines maximum — conciseness preserves agent context budget
-4. Deduplicate skills by name — project-level wins over user-level
-5. Always write `.sdd/skill-registry.md` regardless of persistence mode — the registry is infrastructure, not an SDD artifact
-6. Use `topic_key` on all `mem_save` calls to enable idempotent upserts — without topic_key, repeated saves create duplicates
-7. Return the contract JSON as the final output block — enables automated validation by the orchestrator
+1. Do NOT use the task() tool or launch sub-agents under any circumstance — you are a leaf agent
+2. Read real files to detect stack — always verify by reading source files, not directory names alone — directory names alone are unreliable
+3. If `openspec/` already exists, report its contents and ask the orchestrator whether to overwrite — prevents accidental loss of existing configuration
+4. Keep `openspec/config.yaml` context section to 10 lines maximum — conciseness preserves agent context budget
+5. Deduplicate skills by name — project-level wins over user-level
+6. Always write `.sdd/skill-registry.md` regardless of persistence mode — the registry is infrastructure, not an SDD artifact
+7. Use `topic_key` on all `mem_save` calls to enable idempotent upserts — without topic_key, repeated saves create duplicates
+8. Return the contract JSON as the final output block — enables automated validation by the orchestrator
 </rules>
 
 <steps>

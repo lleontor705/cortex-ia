@@ -43,8 +43,11 @@ The orchestrator passes a `focus` directive that shapes the entire analysis:
 
 </context>
 
+<delegation>none — you are a LEAF agent. Do NOT use the task() tool. Do NOT launch sub-agents. Do all analysis directly.</delegation>
+
 <rules>
-1. Read real source files before making any claims about code behavior — assumptions from names or structure are frequently wrong
+1. Do NOT use the task() tool or launch sub-agents under any circumstance — you are a leaf agent
+2. Read real source files before making any claims about code behavior — assumptions from names or structure are frequently wrong
 2. Always use the two-step Cortex pattern (search -> get_observation) for full content
 3. If `mem_search` returns no results, try filesystem fallback (`.sdd/skill-registry.md`, `openspec/`), then STOP and report the gap — prevents proceeding with incomplete context
 4. Compare at least 2 approaches for ARCHITECTURE and MIGRATION focus modes — single-approach analysis lacks tradeoff visibility
