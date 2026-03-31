@@ -519,7 +519,9 @@ func runSkill(action string, args []string) error {
 		}
 		skillName := filepath.Base(srcDir)
 		dstDir := filepath.Join(communityDir, skillName)
-		os.MkdirAll(dstDir, 0o755)
+		if err := os.MkdirAll(dstDir, 0o755); err != nil {
+			return err
+		}
 
 		data, err := os.ReadFile(srcSkill)
 		if err != nil {
