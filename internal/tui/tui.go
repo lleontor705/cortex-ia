@@ -12,6 +12,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/catalog"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/internal/system"
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
 
@@ -20,8 +21,10 @@ type screen int
 
 const (
 	screenWelcome screen = iota
+	screenDetection
 	screenAgents
 	screenPreset
+	screenPersona
 	screenReview
 	screenInstalling
 	screenComplete
@@ -43,18 +46,28 @@ type installDoneMsg struct {
 
 // Model is the root Bubbletea model.
 type Model struct {
-	screen    screen
-	registry  *agents.Registry
-	homeDir   string
-	version   string
-	cursor    int
-	agents    []agentItem
-	preset    model.PresetID
-	presets   []model.PresetID
-	resolved  []model.ComponentID
-	result    pipeline.InstallResult
+	screen     screen
+	registry   *agents.Registry
+	homeDir    string
+	version    string
+	cursor     int
+	agents     []agentItem
+	preset     model.PresetID
+	presets    []model.PresetID
+	personas   []model.PersonaID
+	persona    model.PersonaID
+	resolved   []model.ComponentID
+	sysInfo    *sysInfoCache
+	result     pipeline.InstallResult
 	installErr error
-	quitting  bool
+	quitting   bool
+}
+
+type sysInfoCache struct {
+	os, arch, pkgMgr, shell    string
+	nodeVer, gitVer, goVer     string
+	npx, cortex                bool
+	detectedAgents             int
 }
 
 // New creates a new TUI model.
@@ -65,6 +78,8 @@ func New(registry *agents.Registry, homeDir, version string) Model {
 		homeDir:  homeDir,
 		version:  version,
 		presets:  []model.PresetID{model.PresetFull, model.PresetMinimal},
+		personas: []model.PersonaID{model.PersonaProfessional, model.PersonaMentor, model.PersonaMinimal},
+		persona:  model.PersonaProfessional,
 	}
 }
 
@@ -92,10 +107,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case screenWelcome:
 		return m.updateWelcome(msg)
+	case screenDetection:
+		return m.updateDetection(msg)
 	case screenAgents:
 		return m.updateAgents(msg)
 	case screenPreset:
 		return m.updatePreset(msg)
+	case screenPersona:
+		return m.updatePersona(msg)
 	case screenReview:
 		return m.updateReview(msg)
 	case screenInstalling:
@@ -113,10 +132,14 @@ func (m Model) View() string {
 	switch m.screen {
 	case screenWelcome:
 		return m.viewWelcome()
+	case screenDetection:
+		return m.viewDetection()
 	case screenAgents:
 		return m.viewAgents()
 	case screenPreset:
 		return m.viewPreset()
+	case screenPersona:
+		return m.viewPersona()
 	case screenReview:
 		return m.viewReview()
 	case screenInstalling:
@@ -132,12 +155,23 @@ func (m Model) View() string {
 func (m Model) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		if key.String() == "enter" {
-			m.detectAgents()
-			m.screen = screenAgents
-			m.cursor = 0
+			m.runDetection()
+			m.screen = screenDetection
 		}
 	}
 	return m, nil
+}
+
+func (m *Model) runDetection() {
+	info := system.Detect()
+	m.detectAgents()
+	m.sysInfo = &sysInfoCache{
+		os: info.OS, arch: info.Arch,
+		pkgMgr: info.Profile.PackageManager, shell: info.Tools.Shell,
+		nodeVer: info.Tools.NodeVersion, gitVer: info.Tools.GitVersion,
+		goVer: info.Tools.GoVersion, npx: info.Tools.NpxAvailable,
+		cortex: info.Tools.CortexFound, detectedAgents: len(m.agents),
+	}
 }
 
 func (m Model) viewWelcome() string {
@@ -155,6 +189,60 @@ func (m Model) viewWelcome() string {
 	sb.WriteString(styles.StatusOK.Render("  ● SDD") + "          — 9-phase development workflow\n")
 	sb.WriteString("\n")
 	sb.WriteString(styles.Help.Render("Press Enter to start • q to quit"))
+	return sb.String()
+}
+
+// --- Detection ---
+
+func (m Model) updateDetection(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		if key.String() == "enter" {
+			m.screen = screenAgents
+			m.cursor = 0
+		}
+	}
+	return m, nil
+}
+
+func (m Model) viewDetection() string {
+	var sb strings.Builder
+	sb.WriteString(styles.Title.Render("System Detection"))
+	sb.WriteString("\n\n")
+
+	si := m.sysInfo
+	sb.WriteString(styles.Subtitle.Render("Platform"))
+	sb.WriteString("\n")
+	fmt.Fprintf(&sb, "  OS:       %s/%s\n", si.os, si.arch)
+	fmt.Fprintf(&sb, "  Pkg Mgr:  %s\n", si.pkgMgr)
+	fmt.Fprintf(&sb, "  Shell:    %s\n", si.shell)
+	sb.WriteString("\n")
+
+	sb.WriteString(styles.Subtitle.Render("Tools"))
+	sb.WriteString("\n")
+	toolLine := func(name, ver string) {
+		if ver != "" {
+			fmt.Fprintf(&sb, "  %s %-10s %s\n", styles.StatusOK.Render("●"), name, ver)
+		} else {
+			fmt.Fprintf(&sb, "  %s %-10s %s\n", styles.StatusFail.Render("○"), name, styles.Description.Render("not found"))
+		}
+	}
+	toolLine("Node.js", si.nodeVer)
+	boolStr := func(b bool) string {
+		if b {
+			return "available"
+		}
+		return ""
+	}
+	toolLine("npx", boolStr(si.npx))
+	toolLine("Git", si.gitVer)
+	toolLine("Go", si.goVer)
+	toolLine("Cortex", boolStr(si.cortex))
+	sb.WriteString("\n")
+
+	fmt.Fprintf(&sb, "%s %d agent(s) detected\n",
+		styles.StatusOK.Render("●"), si.detectedAgents)
+
+	sb.WriteString(styles.Help.Render("\nPress Enter to continue • q to quit"))
 	return sb.String()
 }
 
@@ -266,7 +354,8 @@ func (m Model) updatePreset(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.preset = m.presets[m.cursor]
 			components := catalog.ComponentsForPreset(m.preset)
 			m.resolved = catalog.ResolveDeps(components)
-			m.screen = screenReview
+			m.screen = screenPersona
+			m.cursor = 0
 		case "esc":
 			m.screen = screenAgents
 			m.cursor = 0
@@ -300,6 +389,56 @@ func (m Model) viewPreset() string {
 	return sb.String()
 }
 
+// --- Persona ---
+
+func (m Model) updatePersona(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.personas)-1 {
+				m.cursor++
+			}
+		case "enter":
+			m.persona = m.personas[m.cursor]
+			m.screen = screenReview
+		case "esc":
+			m.screen = screenPreset
+			m.cursor = 0
+		}
+	}
+	return m, nil
+}
+
+func (m Model) viewPersona() string {
+	var sb strings.Builder
+	sb.WriteString(styles.Title.Render("Select Persona"))
+	sb.WriteString("\n\n")
+
+	descs := map[model.PersonaID]string{
+		model.PersonaProfessional: "Direct, concise, technical terminology",
+		model.PersonaMentor:       "Teaching-oriented, explains trade-offs and patterns",
+		model.PersonaMinimal:      "Code only, no explanations unless asked",
+	}
+
+	for i, p := range m.personas {
+		cursor := "  "
+		if i == m.cursor {
+			cursor = styles.Cursor.Render("> ")
+		}
+
+		name := styles.Subtitle.Render(string(p))
+		desc := styles.Description.Render(" — " + descs[p])
+		fmt.Fprintf(&sb, "%s%s%s\n", cursor, name, desc)
+	}
+
+	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Enter select • Esc back"))
+	return sb.String()
+}
+
 // --- Review ---
 
 func (m Model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -309,7 +448,7 @@ func (m Model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = screenInstalling
 			return m, m.runInstall()
 		case "esc", "n":
-			m.screen = screenPreset
+			m.screen = screenPersona
 			m.cursor = 0
 		}
 	}
@@ -331,6 +470,8 @@ func (m Model) viewReview() string {
 
 	sb.WriteString("\n")
 	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("Preset: %s", m.preset)))
+	sb.WriteString("  ")
+	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("Persona: %s", m.persona)))
 	sb.WriteString("\n\n")
 
 	sb.WriteString(styles.Subtitle.Render("Components (with dependencies):"))
@@ -363,6 +504,7 @@ func (m Model) runInstall() tea.Cmd {
 		selection := model.Selection{
 			Agents:     agentIDs,
 			Preset:     m.preset,
+			Persona:    m.persona,
 			Components: m.resolved,
 		}
 

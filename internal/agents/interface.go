@@ -1,6 +1,9 @@
 package agents
 
-import "github.com/lleontor705/cortex-ia/internal/model"
+import (
+	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/system"
+)
 
 // Adapter is the core abstraction for AI agent integration. Components use
 // adapter methods instead of switch statements on AgentID, making it trivial
@@ -39,4 +42,8 @@ type Adapter interface {
 	SupportsTaskDelegation() bool
 	SupportsSubAgents() bool
 	SubAgentsDir(homeDir string) string
+
+	// Auto-install — agents that can be installed via package managers.
+	SupportsAutoInstall() bool
+	InstallCommands(profile system.PlatformProfile) [][]string
 }

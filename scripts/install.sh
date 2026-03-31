@@ -23,6 +23,22 @@ info()    { printf "${CYAN}[INFO]${NC}  %s\n" "$1"; }
 success() { printf "${GREEN}[OK]${NC}    %s\n" "$1"; }
 error()   { printf "${RED}[ERROR]${NC} %s\n" "$1" >&2; exit 1; }
 
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || error "Required command not found: $1"
+}
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+    return
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+    return
+  fi
+  error "No SHA-256 tool found (need sha256sum or shasum)"
+}
+
 printf "\n${BOLD}${CYAN}"
 echo "  ╔═══════════════════════════════════════════════════════════╗"
 echo "  ║              cortex-ia Installer                          ║"
@@ -46,6 +62,8 @@ case "$ARCH" in
 esac
 
 info "Detected platform: ${OS}/${ARCH}"
+require_command curl
+require_command tar
 
 if [ "$VERSION" = "latest" ]; then
   VERSION=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
@@ -58,14 +76,31 @@ info "Installing cortex-ia ${VERSION}"
 
 ARCHIVE="cortex-ia_${VERSION#v}_${OS}_${ARCH}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
+CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
 
 TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR" EXIT
+trap 'rm -rf "$TMPDIR"' EXIT
 
 info "Downloading ${URL}..."
 if ! curl -sSfL "$URL" -o "${TMPDIR}/${ARCHIVE}"; then
   error "Download failed. Check https://github.com/${REPO}/releases"
 fi
+
+info "Downloading release checksums..."
+if ! curl -sSfL "$CHECKSUMS_URL" -o "${TMPDIR}/checksums.txt"; then
+  error "Checksum download failed. Refusing to install without checksum verification."
+fi
+
+info "Verifying archive checksum..."
+EXPECTED_SUM="$(grep -F "  ${ARCHIVE}" "${TMPDIR}/checksums.txt" | awk '{print $1}')"
+if [ -z "${EXPECTED_SUM}" ]; then
+  error "Could not find checksum entry for ${ARCHIVE}"
+fi
+ACTUAL_SUM="$(sha256_file "${TMPDIR}/${ARCHIVE}")"
+if [ "${EXPECTED_SUM}" != "${ACTUAL_SUM}" ]; then
+  error "Checksum verification failed for ${ARCHIVE}"
+fi
+success "Checksum verified"
 
 info "Extracting..."
 tar -xzf "${TMPDIR}/${ARCHIVE}" -C "$TMPDIR"
@@ -77,10 +112,13 @@ fi
 chmod +x "${TMPDIR}/cortex-ia"
 
 info "Installing to ${INSTALL_DIR}/cortex-ia..."
+if [ ! -d "$INSTALL_DIR" ]; then
+  mkdir -p "$INSTALL_DIR" 2>/dev/null || sudo mkdir -p "$INSTALL_DIR"
+fi
 if [ -w "$INSTALL_DIR" ]; then
   mv "${TMPDIR}/cortex-ia" "${INSTALL_DIR}/cortex-ia"
 else
-  sudo mv "${TMPDIR}/cortex-ia" "${INSTALL_DIR}/cortex-ia"
+  sudo /bin/mv "${TMPDIR}/cortex-ia" "${INSTALL_DIR}/cortex-ia"
 fi
 
 if command -v cortex-ia &> /dev/null; then

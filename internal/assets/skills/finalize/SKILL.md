@@ -25,7 +25,7 @@ This skill is DONE when:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `skills/_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: all artifacts | Writes: `sdd/{change-name}/archive-report` + `sdd/{change-name}/retrospective`
 OpenSpec: moves `openspec/changes/{change-name}/` → `openspec/changes/archive/YYYY-MM-DD-{change-name}/`
@@ -54,7 +54,7 @@ Think step by step: Before merging each delta section, classify it as ADDED, MOD
 
 ## Step 1: Load Skill Registry
 
-Follow the Skill Loading Protocol in `skills/_shared/cortex-convention.md`:
+Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`:
 1. Load skill registry from Cortex (fallback: `.sdd/skill-registry.md`)
 2. Load project context from `bootstrap/{project}` if available
 

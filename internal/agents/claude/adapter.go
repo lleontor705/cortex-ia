@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/system"
 )
 
 // Adapter implements the agents.Adapter interface for Claude Code.
@@ -95,3 +96,10 @@ func (a *Adapter) CommandsDir(_ string) string  { return "" }
 func (a *Adapter) SupportsTaskDelegation() bool { return true }
 func (a *Adapter) SupportsSubAgents() bool      { return false }
 func (a *Adapter) SubAgentsDir(_ string) string { return "" }
+
+// --- Auto-install ---
+
+func (a *Adapter) SupportsAutoInstall() bool { return true }
+func (a *Adapter) InstallCommands(_ system.PlatformProfile) [][]string {
+	return [][]string{{"npm", "install", "-g", "@anthropic-ai/claude-code"}}
+}

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/system"
 )
 
 type Adapter struct{}
@@ -68,3 +69,8 @@ func (a *Adapter) SupportsSubAgents() bool      { return true }
 func (a *Adapter) SubAgentsDir(homeDir string) string {
 	return filepath.Join(homeDir, ".cursor", "agents")
 }
+
+// --- Auto-install ---
+
+func (a *Adapter) SupportsAutoInstall() bool                          { return false }
+func (a *Adapter) InstallCommands(_ system.PlatformProfile) [][]string { return nil }

@@ -1,0 +1,146 @@
+# cortex-ia
+
+> AI Agent Ecosystem Configurator — configures 8 AI coding agents with 5 MCP servers (68 tools), 19 SDD skills, and orchestrator prompts. One Go binary, interactive TUI, full backup/restore.
+
+## What It Does
+
+cortex-ia detects installed AI coding agents and configures them with a complete development ecosystem: persistent memory (Cortex, 31 tools), SDD contract validation (ForgeSpec, 19 tools), inter-agent messaging (Agent Mailbox, 14 tools), multi-CLI orchestration (CLI Orchestrator, 4 tools), and live documentation (Context7).
+
+## Supported Agents (8)
+
+- Claude Code — markdown sections, separate MCP JSON, task delegation
+- OpenCode — file replace, merge into settings, sub-agents, slash commands
+- Gemini CLI — file replace, merge into settings
+- Cursor — file replace, MCP config file, native subagents
+- VS Code Copilot — file replace, MCP config file, task delegation
+- Codex — file replace, TOML config
+- Windsurf — append to file, MCP config file
+- Antigravity — append to file, MCP config file
+
+## MCP Servers (5, 68 tools total)
+
+### Cortex Memory (31 tools)
+Core: mem_save, mem_search, mem_get_observation, mem_context, mem_session_summary, mem_update, mem_capture_passive, mem_save_prompt, mem_suggest_topic_key
+Session: mem_session_start, mem_session_end, mem_stats, mem_delete
+Knowledge graph: mem_relate, mem_graph, mem_score, mem_search_hybrid, mem_archive, mem_timeline, mem_revision_history, mem_merge_projects
+Temporal (experimental): temporal_create_edge, temporal_get_edges, temporal_get_relevant, temporal_create_snapshot, temporal_record_operation, temporal_evaluate_quality, temporal_system_metrics, temporal_health_check, temporal_evolution_path, temporal_fact_state
+
+### ForgeSpec (19 tools)
+Contracts: sdd_validate, sdd_save, sdd_get, sdd_list, sdd_history, sdd_phases
+Task board: tb_create_board, tb_add_task, tb_status, tb_claim, tb_update, tb_unblocked, tb_get, tb_delete_task, tb_add_notes, tb_list
+File reservation: file_reserve, file_check, file_release
+
+### Agent Mailbox (14 tools)
+Messaging: msg_send, msg_read_inbox, msg_acknowledge, msg_broadcast, msg_search, msg_request, msg_list_threads, msg_get, msg_delete, msg_count, msg_update_status
+Registry: agent_register, msg_list_agents, msg_activity_feed
+
+### CLI Orchestrator (4 tools)
+cli_execute, cli_route, cli_stats, cli_list
+
+## SDD Pipeline (9 phases, 19 skills)
+
+```
+init → explore → propose → spec → design → tasks → apply → verify → archive
+```
+
+Pipeline skills: bootstrap, investigate, draft-proposal, write-specs, architect, decompose, team-lead, implement, validate, finalize
+Utility skills: debug, ideate, debate, monitor, execute-plan, open-pr, file-issue, parallel-dispatch, scan-registry
+
+### Multi Team-Lead Pattern
+The orchestrator can launch multiple team-leads in parallel for independent task groups. Dependent team-leads wait via P2P messaging (msg_broadcast/msg_read_inbox) before executing. Each team-lead launches N @implement sub-agents in parallel within its group.
+
+### Adaptive Pipeline
+Escalation: confidence < 0.6 → add validate+finalize; 3+ spec violations → redesign cycle; 30% task failures → halt
+De-escalation: all confidence > 0.9 → skip finalize retrospective
+Checkpoint: every 4 tasks, save incremental progress for compaction recovery
+
+## CLI Commands (17)
+
+```
+cortex-ia                    Interactive TUI
+cortex-ia install            Install ecosystem (auto-detect agents)
+cortex-ia install --agent claude-code --preset full
+cortex-ia install --model-preset balanced|performance|economy
+cortex-ia install --persona professional|mentor|minimal
+cortex-ia install --local    Use project .cortex-ia.yaml config
+cortex-ia install --dry-run
+cortex-ia init               Create .cortex-ia.yaml in current dir
+cortex-ia sync               Refresh managed files from current state
+cortex-ia detect             Detect agents + runtime dependencies
+cortex-ia config             Show current configuration
+cortex-ia list agents|components|backups
+cortex-ia skill add|list|remove  Manage community skills
+cortex-ia auto-install       Install missing agents via package managers
+cortex-ia doctor             Health checks (6 checks)
+cortex-ia repair             Re-apply from lockfile/state
+cortex-ia rollback           Restore from backup
+cortex-ia update             Check for available updates
+```
+
+## Presets
+
+- full: All 8 components (default)
+- minimal: Cortex + ForgeSpec + Context7 + SDD (auto-pulls Mailbox)
+- custom: User-selected via TUI
+
+## Per-Phase Model Routing
+
+3 presets: balanced (default), performance, economy
+Maps SDD phases to Claude model tiers (opus/sonnet/haiku) for cost optimization.
+
+## Persona System
+
+- professional: Direct, concise, technical terminology (default)
+- mentor: Teaching-oriented, explains trade-offs and patterns
+- minimal: Code only, no explanations unless asked
+
+## Architecture
+
+- Go 1.22+ binary, Bubbletea TUI, embedded assets via go:embed
+- Adapter pattern: each agent implements interface, components use adapters for paths/strategies
+- 2-stage pipeline: Prepare (validate+backup) → Apply (components), with FailurePolicy
+- Parallel execution: agents run concurrently via RunParallelChains
+- Topological sort: Kahn's algorithm with ParallelGroups for dependency ordering
+- Marker-based injection: <!-- cortex-ia:ID --> markers for idempotent section injection
+- Atomic writes: temp file + rename pattern prevents partial writes
+- Backup/restore: automatic snapshot before every install
+
+## Project Config (.cortex-ia.yaml)
+
+```yaml
+preset: full
+persona: professional
+model-preset: balanced
+agents:
+  - claude-code
+  - opencode
+disabled-components:
+  - mailbox
+custom-skills:
+  - path: ./skills/domain-validator
+```
+
+## Testing
+
+- 175 test functions across 23 packages
+- Pipeline coverage 98.9%, SDD coverage 93.8%
+- E2E Docker tests: Ubuntu + Fedora (29 assertions)
+- Health checks: files-exist, cortex-binary, node-npx, skills-present, convention-present, state-lock-consistent
+
+## Prerequisites
+
+- Go 1.22+ (building)
+- Node.js 18+ with npx (MCP servers)
+- Cortex binary (persistent memory)
+- At least one supported agent installed
+
+## Related Projects
+
+- cortex: https://github.com/lleontor705/cortex (memory MCP, 31 tools)
+- forgespec-mcp: https://github.com/lleontor705/forgespec-mcp (contracts + task board, 19 tools)
+- agent-mailbox-mcp: https://github.com/lleontor705/agent-mailbox-mcp (messaging, 14 tools)
+- cli-orchestrator-mcp: https://github.com/lleontor705/cli-orchestrator-mcp (multi-CLI routing, 4 tools)
+
+## License
+
+MIT

@@ -49,3 +49,33 @@ func TestLoadNonExistent(t *testing.T) {
 		t.Error("expected empty state for non-existent file")
 	}
 }
+
+func TestSaveAndLoadLock(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	lock := Lockfile{
+		InstalledAgents: []model.AgentID{model.AgentCodex},
+		Preset:          model.PresetMinimal,
+		Components:      []model.ComponentID{model.ComponentCortex, model.ComponentSDD},
+		Files:           []string{"C:/Users/test/.codex/agents.md", "C:/Users/test/.codex/config.toml"},
+		GeneratedAt:     time.Now(),
+		LastBackupID:    "backup-123",
+		Version:         "v0.1.0",
+	}
+
+	if err := SaveLock(tmpDir, lock); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := LoadLock(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(loaded.Files) != 2 {
+		t.Errorf("expected 2 files, got %d", len(loaded.Files))
+	}
+	if loaded.LastBackupID != "backup-123" {
+		t.Errorf("backup ID = %s", loaded.LastBackupID)
+	}
+}

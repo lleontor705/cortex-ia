@@ -26,11 +26,11 @@ This skill is DONE when:
 
 <persistence>
 
-Follow the shared Cortex convention in `skills/_shared/cortex-convention.md` for persistence modes and two-step retrieval.
+Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes and two-step retrieval.
 
 **Skill-specific:** This skill reads from Cortex and filesystem but writes only to the filesystem (`.sdd-dashboard.html`).
 
-Load skill registry following the protocol in `skills/_shared/cortex-convention.md`.
+Load skill registry following the protocol in `../_shared/cortex-convention.md`.
 
 </persistence>
 
@@ -49,7 +49,7 @@ Load skill registry following the protocol in `skills/_shared/cortex-convention.
 
 ## Step 1: Load Skill Registry
 
-Load skill registry following the protocol in `skills/_shared/cortex-convention.md`.
+Load skill registry following the protocol in `../_shared/cortex-convention.md`.
 
 ## Step 2: Gather Data from All Sources
 
@@ -57,22 +57,33 @@ Execute each of these tool calls. If any call fails, capture the error and conti
 
 ### 2a: Task Board State
 ```
-tb_status() → returns task list with: id, title, status, agent, parallel_group, dependencies
+tb_list(project: "{project}") → list all boards
+For each board: tb_status(board_id) → task list with: id, title, status, agent, dependencies
 ```
-Parse into structured data: group tasks by parallel_group, count by status.
+Parse into structured data: group tasks by status, count totals.
 
 ### 2b: Agent Messages
 ```
-msg_list_threads() → recent conversation threads between agents
+msg_list_agents() → all registered agents with roles and last activity
+msg_list_threads(agent: "orchestrator") → recent conversation threads
+msg_count(agent: "orchestrator") → inbox size (pending, delivered, acked)
 msg_search("sdd") → messages tagged with SDD context
 ```
 Extract the last 20 messages with: timestamp, sender, recipient, content preview, priority.
 
 ### 2c: CLI Usage Metrics
 ```
-cli_stats() → usage counts for Claude CLI, Gemini CLI, Codex CLI
+cli_stats() → per-provider: installed, circuit_breaker state (closed|open|half_open), total_executions, total_failures, strengths
+cli_list() → installed providers with paths
 ```
-Extract: total calls per CLI, average response time, success/failure counts.
+Extract: install status, circuit breaker health, execution counts, failure rates.
+
+### 2d: SDD Contract History
+```
+sdd_history(project: "{project}") → phase transitions with confidence scores and timestamps
+sdd_list(project: "{project}") → all contracts with filters
+```
+Extract: latest phase per change, confidence trend, blocked/failed contracts.
 
 ### 2d: Recent SDD Artifacts from Memory
 ```

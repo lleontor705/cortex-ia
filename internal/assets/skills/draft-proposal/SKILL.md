@@ -26,7 +26,7 @@ A successful proposal meets ALL of the following:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `skills/_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: `sdd/{change-name}/explore` | Writes: `sdd/{change-name}/proposal`
 OpenSpec read: `openspec/changes/{change-name}/exploration.md`
@@ -84,7 +84,7 @@ Before writing the full proposal, produce a skeleton first:
 
 ### Step 1: Load Context
 
-Follow the Skill Loading Protocol in `skills/_shared/cortex-convention.md`:
+Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`:
 1. Load skill registry from Cortex (fallback: `.sdd/skill-registry.md`)
 2. Load project context from `bootstrap/{project}` if available
 
@@ -262,4 +262,13 @@ Before returning your contract, confirm each item:
 - [ ] `has_rollback_plan` is `true` in the contract
 - [ ] Artifact was persisted to the correct backend (Cortex/filesystem/both)
 - [ ] Contract JSON has all required fields and correct types
+- [ ] Contract validated and saved to ForgeSpec history
 </verification>
+
+<mcp_integration>
+## Contract Persistence (ForgeSpec)
+After generating your proposal:
+1. `sdd_validate(phase: "propose", contract: {json})` → verify contract validity
+2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+3. To review prior proposals: `sdd_get(contract_id)` or `sdd_list(project: "{project}", phase: "propose")`
+</mcp_integration>

@@ -23,7 +23,7 @@ A successful spec output meets ALL of the following:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `skills/_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: `sdd/{change-name}/proposal` | Writes: `sdd/{change-name}/spec`
 OpenSpec read: `openspec/changes/{change-name}/proposal.md`
@@ -71,7 +71,7 @@ Before writing full specifications, produce a skeleton:
 
 ### Step 1: Load Context
 
-Follow the Skill Loading Protocol in `skills/_shared/cortex-convention.md`:
+Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`:
 1. Load skill registry from Cortex (fallback: `.sdd/skill-registry.md`)
 2. Load project context from `bootstrap/{project}` if available
 
@@ -263,4 +263,12 @@ Before returning, confirm every item:
 - [ ] Concatenated spec is persisted via `mem_save` with topic_key `sdd/{change-name}/spec`.
 - [ ] Contract JSON matches the schema exactly.
 - [ ] If test stubs were generated, paths are listed in the contract.
+- [ ] Contract validated and saved to ForgeSpec history
 </verification>
+
+<mcp_integration>
+## Contract Persistence (ForgeSpec)
+After generating your specifications:
+1. `sdd_validate(phase: "spec", contract: {json})` → verify contract validity
+2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+</mcp_integration>

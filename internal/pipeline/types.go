@@ -18,3 +18,28 @@ type StageResult struct {
 	Failed    string
 	Error     error
 }
+
+// FailurePolicy controls behavior when an apply step fails.
+type FailurePolicy int
+
+const (
+	// StopOnError halts execution and rolls back on the first failure.
+	StopOnError FailurePolicy = iota
+	// ContinueOnError collects errors and continues with remaining steps.
+	ContinueOnError
+)
+
+// Orchestrator runs a two-stage pipeline: prepare (validation, backup) then
+// apply (component injection). Prepare always stops on error. Apply uses the
+// configured FailurePolicy.
+type Orchestrator struct {
+	Prepare []Step
+	Apply   []Step
+	Policy  FailurePolicy
+}
+
+// OrchestratorResult captures the outcome of both stages.
+type OrchestratorResult struct {
+	PrepareResult StageResult
+	ApplyResult   StageResult
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
@@ -20,6 +21,9 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
+// validBackupID matches safe backup IDs (alphanumeric, hyphens, underscores).
+var validBackupID = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
+
 // InstallResult describes the outcome of a full installation.
 type InstallResult struct {
 	BackupID       string
@@ -28,7 +32,64 @@ type InstallResult struct {
 	Errors         []string
 }
 
-// Install runs the full installation pipeline for the given selection.
+// Repair reapplies the previously installed configuration from lock/state metadata.
+func Repair(homeDir string, registry *agents.Registry, version string, dryRun bool) (InstallResult, error) {
+	s, err := state.Load(homeDir)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	lock, err := state.LoadLock(homeDir)
+	if err != nil {
+		return InstallResult{}, err
+	}
+
+	selection, err := selectionFromMetadata(s, lock)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	selection.DryRun = dryRun
+
+	return Install(homeDir, registry, selection, version, dryRun)
+}
+
+// Rollback restores managed files from a previous backup manifest.
+func Rollback(homeDir, backupID string) (backup.Manifest, error) {
+	if backupID == "" {
+		s, err := state.Load(homeDir)
+		if err != nil {
+			return backup.Manifest{}, err
+		}
+		lock, err := state.LoadLock(homeDir)
+		if err != nil {
+			return backup.Manifest{}, err
+		}
+		backupID = firstNonEmptyString(lock.LastBackupID, s.LastBackupID)
+	}
+
+	if backupID == "" {
+		return backup.Manifest{}, fmt.Errorf("no backup available for rollback")
+	}
+	if !validBackupID.MatchString(backupID) {
+		return backup.Manifest{}, fmt.Errorf("invalid backup ID format: %q", backupID)
+	}
+
+	manifestPath := filepath.Join(homeDir, ".cortex-ia", "backups", backupID, backup.ManifestFilename)
+	manifest, err := backup.ReadManifest(manifestPath)
+	if err != nil {
+		return backup.Manifest{}, err
+	}
+
+	restore := backup.RestoreService{}
+	if err := restore.Restore(manifest); err != nil {
+		return backup.Manifest{}, err
+	}
+
+	return manifest, nil
+}
+
+// Install runs the full installation pipeline using a 2-stage orchestrator:
+// Stage 1 (Prepare): validate agents + create backup (stops on error, rolls back)
+// Stage 2 (Apply): inject components per agent + save state (continues on error)
 func Install(homeDir string, registry *agents.Registry, selection model.Selection, version string, dryRun bool) (InstallResult, error) {
 	result := InstallResult{}
 
@@ -49,43 +110,78 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		return result, nil
 	}
 
-	// 2. Create backup.
-	backupDir := filepath.Join(homeDir, ".cortex-ia", "backups", time.Now().Format("20060102-150405"))
-	snap := backup.NewSnapshotter()
-
-	backupPaths := collectBackupPaths(homeDir, registry, selection.Agents, resolved)
-	manifest, err := snap.Create(backupDir, backupPaths)
-	if err != nil {
-		return result, fmt.Errorf("backup: %w", err)
+	// 2. Build prepare steps.
+	bkStep := &backupStep{
+		homeDir: homeDir, registry: registry,
+		agentIDs: selection.Agents, resolved: resolved, version: version,
 	}
-	manifest.Source = backup.BackupSourceInstall
-	manifest.CreatedByVersion = version
-	_ = backup.WriteManifest(filepath.Join(backupDir, backup.ManifestFilename), manifest)
-	result.BackupID = manifest.ID
-	fmt.Printf("Backup created: %s (%d files)\n", manifest.ID, manifest.FileCount)
+	prepareSteps := []Step{
+		&validateStep{registry: registry, agentIDs: selection.Agents},
+		bkStep,
+	}
 
-	// 3. Apply components per agent.
+	// 3. Build apply steps: one sequential chain per agent, agents run in parallel.
 	componentSet := make(map[model.ComponentID]bool)
 	for _, c := range resolved {
 		componentSet[c] = true
 	}
 
+	var allComponentSteps []*componentStep
+
+	// Build one sequential step chain per agent. Each chain applies
+	// components in dependency order for that agent.
+	var agentChains [][]Step
 	for _, agentID := range selection.Agents {
 		adapter, err := registry.Get(agentID)
 		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", agentID, err))
-			continue
+			continue // validateStep already catches this
 		}
 
 		fmt.Printf("\nConfiguring %s...\n", agentID)
-		files, errs := applyComponents(homeDir, adapter, componentSet)
-		result.FilesChanged = append(result.FilesChanged, files...)
-		result.Errors = append(result.Errors, errs...)
+		var chain []Step
+		for _, inj := range buildInjectors(homeDir, adapter, selection) {
+			if !componentSet[inj.id] {
+				continue
+			}
+			cs := &componentStep{
+				homeDir: homeDir, adapter: adapter,
+				componentID: inj.id, injectorFn: inj.fn,
+			}
+			chain = append(chain, cs)
+			allComponentSteps = append(allComponentSteps, cs)
+		}
+		if len(chain) > 0 {
+			agentChains = append(agentChains, chain)
+		}
 	}
 
-	result.ComponentsDone = resolved
+	// 4. Run 2-stage: prepare sequentially, then agents in parallel.
+	// Within each agent, components run sequentially (same config files).
+	// Different agents run in parallel (different config dirs).
+	prepResult := RunStage(prepareSteps)
+	if prepResult.Error != nil {
+		result.BackupID = bkStep.BackupID
+		result.ComponentsDone = resolved
+		return result, prepResult.Error
+	}
 
-	// 4. Save state.
+	applyResult := RunParallelChains(agentChains)
+
+	// 5. Translate results.
+	result.BackupID = bkStep.BackupID
+	result.ComponentsDone = resolved
+	for _, cs := range allComponentSteps {
+		result.FilesChanged = append(result.FilesChanged, cs.Files...)
+	}
+
+	if applyResult.Error != nil {
+		if applyResult.Failed != "" {
+			result.Errors = append(result.Errors, applyResult.Failed)
+		}
+		return result, fmt.Errorf("installation completed with errors")
+	}
+
+	// 6. Save state (after successful apply).
 	s := state.State{
 		InstalledAgents: selection.Agents,
 		Preset:          selection.Preset,
@@ -98,19 +194,34 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		result.Errors = append(result.Errors, fmt.Sprintf("save state: %v", err))
 	}
 
+	lock := state.Lockfile{
+		InstalledAgents: selection.Agents,
+		Preset:          selection.Preset,
+		Components:      resolved,
+		Files:           dedupeStrings(result.FilesChanged),
+		GeneratedAt:     time.Now(),
+		LastBackupID:    result.BackupID,
+		Version:         version,
+	}
+	if err := state.SaveLock(homeDir, lock); err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("save lock: %v", err))
+	}
+
+	if len(result.Errors) > 0 {
+		return result, fmt.Errorf("installation completed with %d warning(s)", len(result.Errors))
+	}
+
 	return result, nil
 }
 
-func applyComponents(homeDir string, adapter agents.Adapter, components map[model.ComponentID]bool) ([]string, []string) {
-	var files []string
-	var errs []string
+type injectorEntry struct {
+	id model.ComponentID
+	fn func() ([]string, error)
+}
 
-	type injector struct {
-		id model.ComponentID
-		fn func() ([]string, error)
-	}
-
-	injectors := []injector{
+// buildInjectors returns the ordered list of component injectors for an agent.
+func buildInjectors(homeDir string, adapter agents.Adapter, selection model.Selection) []injectorEntry {
+	return []injectorEntry{
 		{model.ComponentCortex, func() ([]string, error) {
 			r, err := cortexcomp.Inject(homeDir, adapter)
 			return r.Files, err
@@ -136,25 +247,10 @@ func applyComponents(homeDir string, adapter agents.Adapter, components map[mode
 			return r.Files, err
 		}},
 		{model.ComponentSDD, func() ([]string, error) {
-			r, err := sdd.Inject(homeDir, adapter)
+			r, err := sdd.Inject(homeDir, adapter, selection.ModelAssignments)
 			return r.Files, err
 		}},
 	}
-
-	for _, inj := range injectors {
-		if !components[inj.id] {
-			continue
-		}
-		f, err := inj.fn()
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("  %s/%s: %v", adapter.Agent(), inj.id, err))
-			continue
-		}
-		files = append(files, f...)
-		fmt.Printf("  [+] %s\n", inj.id)
-	}
-
-	return files, errs
 }
 
 func collectBackupPaths(homeDir string, registry *agents.Registry, agentIDs []model.AgentID, components []model.ComponentID) []string {
@@ -193,4 +289,96 @@ func collectBackupPaths(homeDir string, registry *agents.Registry, agentIDs []mo
 	}
 
 	return paths
+}
+
+func dedupeStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+// SelectionFromState reconstructs a Selection from persisted state/lock metadata.
+func SelectionFromState(s state.State, lock state.Lockfile) (model.Selection, error) {
+	return selectionFromMetadata(s, lock)
+}
+
+func selectionFromMetadata(s state.State, lock state.Lockfile) (model.Selection, error) {
+	selection := model.Selection{
+		Agents:     dedupeAgents(lock.InstalledAgents, s.InstalledAgents),
+		Preset:     firstNonEmptyPreset(lock.Preset, s.Preset, model.PresetFull),
+		Components: dedupeComponents(lock.Components, s.Components),
+	}
+
+	if len(selection.Agents) == 0 {
+		return model.Selection{}, fmt.Errorf("no cortex-ia installation metadata found")
+	}
+
+	return selection, nil
+}
+
+func dedupeAgents(groups ...[]model.AgentID) []model.AgentID {
+	seen := make(map[model.AgentID]struct{})
+	result := make([]model.AgentID, 0)
+	for _, group := range groups {
+		for _, value := range group {
+			if value == "" {
+				continue
+			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func dedupeComponents(groups ...[]model.ComponentID) []model.ComponentID {
+	seen := make(map[model.ComponentID]struct{})
+	result := make([]model.ComponentID, 0)
+	for _, group := range groups {
+		for _, value := range group {
+			if value == "" {
+				continue
+			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func firstNonEmptyPreset(values ...model.PresetID) model.PresetID {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return model.PresetFull
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

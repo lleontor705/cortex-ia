@@ -1,0 +1,16 @@
+FROM golang:1.24-bookworm
+
+RUN apt-get update && apt-get install -y \
+    git curl nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+RUN go build -o /usr/local/bin/cortex-ia ./cmd/cortex-ia
+
+# Create fake home dir for tests
+RUN useradd -m testuser
+USER testuser
+ENV HOME=/home/testuser
+
+ENTRYPOINT ["/bin/bash"]

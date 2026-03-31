@@ -94,3 +94,33 @@ const (
 	PresetMinimal PresetID = "minimal"
 	PresetCustom  PresetID = "custom"
 )
+
+// PersonaID identifies a communication style persona.
+type PersonaID string
+
+const (
+	PersonaProfessional PersonaID = "professional"
+	PersonaMentor       PersonaID = "mentor"
+	PersonaMinimal      PersonaID = "minimal"
+)
+
+// ClaudeModelAlias identifies a Claude model tier for per-phase routing.
+type ClaudeModelAlias string
+
+const (
+	ModelOpus   ClaudeModelAlias = "opus"
+	ModelSonnet ClaudeModelAlias = "sonnet"
+	ModelHaiku  ClaudeModelAlias = "haiku"
+)
+
+// ModelPreset identifies a predefined model assignment strategy.
+type ModelPreset string
+
+const (
+	ModelPresetBalanced    ModelPreset = "balanced"
+	ModelPresetPerformance ModelPreset = "performance"
+	ModelPresetEconomy     ModelPreset = "economy"
+)
+
+// ModelAssignments maps SDD skill names to Claude model aliases.
+type ModelAssignments map[string]ClaudeModelAlias

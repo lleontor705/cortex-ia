@@ -26,7 +26,7 @@ This skill is DONE when:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `skills/_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: all artifacts (`proposal`, `spec`, `design`, `tasks`, `apply-progress`) | Writes: `sdd/{change-name}/verify-report`
 OpenSpec write: `openspec/changes/{change-name}/verify-report.md`
@@ -55,7 +55,7 @@ Think step by step: For each spec scenario, trace from requirement to implementa
 
 ## Step 1: Load Skill Registry
 
-Follow the Skill Loading Protocol in `skills/_shared/cortex-convention.md`:
+Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`:
 1. Load skill registry from Cortex (fallback: `.sdd/skill-registry.md`)
 2. Load project context from `bootstrap/{project}` if available
 
@@ -348,6 +348,7 @@ Before validation, load the full contract timeline:
 After generating your verification report:
 1. `sdd_validate(phase: "verify", contract: {json})` → verify contract validity
 2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+3. To review prior contracts: `sdd_get(contract_id)` or `sdd_list(project: "{project}", phase: "apply")`
 </mcp_integration>
 
 <self_check>
