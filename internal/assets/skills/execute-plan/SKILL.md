@@ -15,7 +15,7 @@ You are a disciplined implementation executor who follows written plans precisel
 
 <success_criteria>
 - Every task in the plan is executed in order with verifications passing.
-- Progress is tracked via TodoWrite throughout execution.
+- Progress is tracked via ForgeSpec task board (tb_* tools) throughout execution for cross-session persistence.
 - Checkpoint reviews occur between major sections.
 - Blockers are surfaced immediately rather than guessed around.
 - A completion report documents what was done, any deviations, and issues found.
@@ -36,7 +36,7 @@ This skill takes a written implementation plan (produced by a planning skill or 
 
 ## Skill Loading Protocol
 
-Load skill registry following the protocol in `skills/_shared/cortex-convention.md`.
+Load skill registry following the protocol in `../_shared/cortex-convention.md`.
 
 ## Stop on Blockers
 
@@ -45,7 +45,7 @@ Load skill registry following the protocol in `skills/_shared/cortex-convention.
 
 ## Track Progress
 
-7. Use TodoWrite to create a task list from the plan at the start.
+7. Use ForgeSpec task board (`tb_create_board` → `tb_add_task`) to create a persistent task list from the plan at the start.
 8. Mark exactly one task as in_progress at a time.
 9. Mark tasks as completed only when their verifications pass.
 10. Keep the task list updated in real-time as you work.
@@ -86,18 +86,20 @@ If concerns exist:
 
 If the plan is sound:
 1. Confirm with the user: "Plan reviewed. I found no concerns. Starting execution."
-2. Create the TodoWrite task list from the plan.
+2. Create the ForgeSpec task board:
+   - `tb_create_board(project: "{project}", name: "{plan-name}")`
+   - For each plan item: `tb_add_task(board_id, title: "{item}", description: "{details}", priority: "p1")`
 
 ## Step 3: Execute Tasks Sequentially
 
 For each task in the plan:
 
-1. **Mark in_progress** via TodoWrite.
+1. **Claim task**: `tb_claim(task_id: "{id}", agent: "executor")` → marks in_progress.
 2. **Read the task steps** carefully before acting.
 3. **Execute each step** as specified.
 4. **Run verifications** as the plan dictates (tests, linting, build checks, manual inspection).
-5. **Mark completed** only after verifications pass.
-6. **Log deviations**: If you had to do something differently from what the plan said, note it. Include what you did and why.
+5. **Mark completed**: `tb_update(task_id: "{id}", status: "done")` only after verifications pass.
+6. **Log deviations**: If you had to do something differently, add notes: `tb_add_notes(task_id: "{id}", notes: "Deviation: {what and why}")`.
 
 ## Step 4: Checkpoint Reviews
 
@@ -123,7 +125,7 @@ When a task fails:
    - A fixable issue (typo, missing import, config error) -- fix it and retry.
    - A blocker requiring user input (ambiguous requirement, missing access) -- ask the user.
    - A plan defect (incorrect assumption, wrong ordering) -- report it and wait for guidance.
-4. **Update TodoWrite** to reflect the blocked state.
+4. **Update task board**: `tb_update(task_id: "{id}", status: "blocked")` and `tb_add_notes(task_id: "{id}", notes: "Blocked: {reason}")`.
 5. **Create a new task** describing what needs to be resolved if appropriate.
 
 ## Step 6: Report Completion
@@ -246,7 +248,7 @@ Before marking this skill as complete, confirm:
 
 - [ ] The plan was read and reviewed critically before execution began.
 - [ ] Concerns (if any) were raised with the user before starting.
-- [ ] TodoWrite was used to track all tasks throughout execution.
+- [ ] ForgeSpec task board (tb_*) was used to track all tasks throughout execution.
 - [ ] Tasks were executed in the order specified by the plan.
 - [ ] Verifications were run as specified by the plan, not skipped.
 - [ ] Checkpoint reviews occurred between major sections.

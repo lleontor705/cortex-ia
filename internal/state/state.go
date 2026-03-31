@@ -12,6 +12,17 @@ import (
 
 const stateDir = ".cortex-ia"
 const stateFile = "state.json"
+const lockFile = "cortex-ia.lock"
+
+// SharedSkillsDir returns the shared skills directory for all agents (~/.cortex-ia/skills/).
+func SharedSkillsDir(homeDir string) string {
+	return filepath.Join(homeDir, stateDir, "skills")
+}
+
+// SharedPromptsDir returns the shared prompts directory (~/.cortex-ia/prompts/).
+func SharedPromptsDir(homeDir string) string {
+	return filepath.Join(homeDir, stateDir, "prompts")
+}
 
 // State tracks what cortex-ia has installed.
 type State struct {
@@ -23,9 +34,25 @@ type State struct {
 	Version         string              `json:"version,omitempty"`
 }
 
+// Lockfile captures the concrete installed artifact set for verification and repair.
+type Lockfile struct {
+	InstalledAgents []model.AgentID     `json:"installed_agents"`
+	Preset          model.PresetID      `json:"preset,omitempty"`
+	Components      []model.ComponentID `json:"components,omitempty"`
+	Files           []string            `json:"files,omitempty"`
+	GeneratedAt     time.Time           `json:"generated_at"`
+	LastBackupID    string              `json:"last_backup_id,omitempty"`
+	Version         string              `json:"version,omitempty"`
+}
+
 // StatePath returns the path to the state file.
 func StatePath(homeDir string) string {
 	return filepath.Join(homeDir, stateDir, stateFile)
+}
+
+// LockPath returns the path to the lock file.
+func LockPath(homeDir string) string {
+	return filepath.Join(homeDir, stateDir, lockFile)
 }
 
 // Load reads the state file. Returns empty state if not found.
@@ -63,6 +90,45 @@ func Save(homeDir string, s State) error {
 
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write state: %w", err)
+	}
+	return nil
+}
+
+// LoadLock reads the lock file. Returns empty lock if not found.
+func LoadLock(homeDir string) (Lockfile, error) {
+	path := LockPath(homeDir)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Lockfile{}, nil
+		}
+		return Lockfile{}, fmt.Errorf("read lock: %w", err)
+	}
+
+	var lock Lockfile
+	if err := json.Unmarshal(data, &lock); err != nil {
+		return Lockfile{}, fmt.Errorf("parse lock: %w", err)
+	}
+	return lock, nil
+}
+
+// SaveLock writes the lock file.
+func SaveLock(homeDir string, lock Lockfile) error {
+	path := LockPath(homeDir)
+	dir := filepath.Dir(path)
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create lock directory: %w", err)
+	}
+
+	data, err := json.MarshalIndent(lock, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal lock: %w", err)
+	}
+	data = append(data, '\n')
+
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write lock: %w", err)
 	}
 	return nil
 }

@@ -24,7 +24,7 @@ A successful investigation produces ALL of the following:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `skills/_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: `bootstrap/{project}` | Writes: `sdd/{change-name}/explore`
 OpenSpec write path: `openspec/changes/{change-name}/exploration.md`
@@ -57,7 +57,7 @@ The orchestrator passes a `focus` directive that shapes the entire analysis:
 
 ### Step 1: Load Context
 
-Follow the Skill Loading Protocol in `skills/_shared/cortex-convention.md`:
+Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`:
 1. Load skill registry from Cortex (fallback: `.sdd/skill-registry.md`)
 2. Load project context from `bootstrap/{project}` if available
 

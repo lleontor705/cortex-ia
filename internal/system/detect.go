@@ -12,6 +12,17 @@ type SystemInfo struct {
 	OS      string
 	Arch    string
 	Profile PlatformProfile
+	Tools   ToolsInfo
+}
+
+// ToolsInfo holds detected tool versions and availability.
+type ToolsInfo struct {
+	NodeVersion   string // e.g. "v20.11.0" or "" if not found
+	NpxAvailable  bool
+	GitVersion    string // e.g. "2.43.0" or ""
+	GoVersion     string // e.g. "go1.26.1" or ""
+	CortexFound   bool
+	Shell         string // "bash", "zsh", "powershell", etc.
 }
 
 // PlatformProfile describes the platform for install command resolution.
@@ -36,12 +47,57 @@ func Detect() SystemInfo {
 	goarch := runtime.GOARCH
 
 	profile := resolvePlatformProfile(goos)
+	tools := detectTools()
 
 	return SystemInfo{
 		OS:      goos,
 		Arch:    goarch,
 		Profile: profile,
+		Tools:   tools,
 	}
+}
+
+// detectTools checks availability and versions of runtime dependencies.
+func detectTools() ToolsInfo {
+	var t ToolsInfo
+
+	if out, err := exec.Command("node", "--version").Output(); err == nil {
+		t.NodeVersion = strings.TrimSpace(string(out))
+	}
+	_, t.NpxAvailable = ToolExists("npx")
+	_, t.CortexFound = ToolExists("cortex")
+
+	if out, err := exec.Command("git", "--version").Output(); err == nil {
+		// "git version 2.43.0" → "2.43.0"
+		parts := strings.Fields(strings.TrimSpace(string(out)))
+		if len(parts) >= 3 {
+			t.GitVersion = parts[2]
+		}
+	}
+	if out, err := exec.Command("go", "version").Output(); err == nil {
+		// "go version go1.26.1 ..." → "go1.26.1"
+		parts := strings.Fields(strings.TrimSpace(string(out)))
+		if len(parts) >= 3 {
+			t.GoVersion = parts[2]
+		}
+	}
+
+	t.Shell = detectShell()
+	return t
+}
+
+func detectShell() string {
+	if shell := os.Getenv("SHELL"); shell != "" {
+		parts := strings.Split(shell, "/")
+		return parts[len(parts)-1]
+	}
+	if _, ok := ToolExists("powershell"); ok {
+		return "powershell"
+	}
+	if _, ok := ToolExists("bash"); ok {
+		return "bash"
+	}
+	return "unknown"
 }
 
 // ToolExists checks if a command-line tool is available on PATH.

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/system"
 )
 
 // testAdapter is a minimal adapter for testing MCP injection strategies.
@@ -39,7 +40,9 @@ func (a *testAdapter) SupportsSlashCommands() bool  { return false }
 func (a *testAdapter) CommandsDir(_ string) string  { return "" }
 func (a *testAdapter) SupportsTaskDelegation() bool { return false }
 func (a *testAdapter) SupportsSubAgents() bool      { return false }
-func (a *testAdapter) SubAgentsDir(_ string) string { return "" }
+func (a *testAdapter) SubAgentsDir(_ string) string                         { return "" }
+func (a *testAdapter) SupportsAutoInstall() bool                            { return false }
+func (a *testAdapter) InstallCommands(_ system.PlatformProfile) [][]string  { return nil }
 
 func testTemplates() ServerTemplates {
 	return ServerTemplates{

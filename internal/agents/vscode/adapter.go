@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/system"
 )
 
 type Adapter struct{}
@@ -67,6 +68,11 @@ func (a *Adapter) CommandsDir(_ string) string  { return "" }
 func (a *Adapter) SupportsTaskDelegation() bool { return true }
 func (a *Adapter) SupportsSubAgents() bool      { return false }
 func (a *Adapter) SubAgentsDir(_ string) string { return "" }
+
+// --- Auto-install ---
+
+func (a *Adapter) SupportsAutoInstall() bool                          { return false }
+func (a *Adapter) InstallCommands(_ system.PlatformProfile) [][]string { return nil }
 
 // vscodeUserDir returns the platform-specific VS Code User directory.
 func vscodeUserDir(homeDir string) string {

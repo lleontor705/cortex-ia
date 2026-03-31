@@ -23,7 +23,7 @@ A successful decomposition meets ALL of the following:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `skills/_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: `sdd/{change-name}/proposal` + `spec` + `design` | Writes: `sdd/{change-name}/tasks`
 OpenSpec write: `openspec/changes/{change-name}/tasks.md`
@@ -63,7 +63,7 @@ Before breaking down tasks, reason through the decomposition strategy:
 
 ### Step 1: Load Context
 
-Follow the Skill Loading Protocol in `skills/_shared/cortex-convention.md`:
+Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`:
 1. Load skill registry from Cortex (fallback: `.sdd/skill-registry.md`)
 2. Load project context from `bootstrap/{project}` if available
 
@@ -162,7 +162,7 @@ If TDD is enabled for the project:
 
 ### Step 8: Generate JSON Task Board Array
 
-Build the JSON array for `tb_create_board`. Each entry:
+Build the JSON array for `tb_create_board`. Each entry maps to `tb_add_task` parameters:
 
 ```json
 {
@@ -173,16 +173,16 @@ Build the JSON array for `tb_create_board`. Each entry:
   "phase_name": "Foundation",
   "task_type": "IMPLEMENTATION",
   "size": "S",
+  "priority": "p1",
   "dependencies": [],
   "parallel_group": 1,
-  "acceptance_criteria": [
-    "RefreshTokenRequest interface exists with refreshToken: string",
-    "RefreshTokenResponse interface exists with accessToken: string and expiresIn: number",
-    "Types are exported and importable from src/auth/types.ts"
-  ],
+  "spec_ref": "sdd/{change-name}/spec",
+  "acceptance_criteria": "RefreshTokenRequest interface exists with refreshToken: string; RefreshTokenResponse interface exists with accessToken: string and expiresIn: number; Types are exported from src/auth/types.ts",
   "status": "pending"
 }
 ```
+
+Note: `tb_add_task` accepts `priority` (p0|p1|p2|p3), `spec_ref` (link to spec document), and `acceptance_criteria` (string) — include all three for traceability.
 
 Include every task. This array is the primary machine-readable output.
 
@@ -357,4 +357,12 @@ Before returning, confirm every item:
 - [ ] Task breakdown is persisted via `mem_save` with topic_key `sdd/{change-name}/tasks`.
 - [ ] Contract JSON matches the schema exactly.
 - [ ] `task_board_json_included` is `true`.
+- [ ] Contract validated and saved to ForgeSpec history
 </verification>
+
+<mcp_integration>
+## Contract Persistence (ForgeSpec)
+After generating your task breakdown:
+1. `sdd_validate(phase: "tasks", contract: {json})` → verify contract validity
+2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+</mcp_integration>

@@ -187,5 +187,13 @@ Before producing your final output, verify:
 - [ ] Synthesis identifies surviving arguments and debunked claims
 - [ ] Dissenting points are preserved in the output
 - [ ] Debate results persisted to Cortex
+- [ ] Contract validated and saved to ForgeSpec history
 - [ ] Contract JSON is valid and complete
 </verification>
+
+<mcp_integration>
+## Contract Persistence (ForgeSpec)
+After persisting debate results:
+1. `sdd_validate(phase: "explore", contract: {json})` → validate debate contract
+2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+</mcp_integration>

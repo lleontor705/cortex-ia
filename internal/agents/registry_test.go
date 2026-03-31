@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/system"
 )
 
 type mockAdapter struct {
@@ -29,6 +30,8 @@ func (m *mockAdapter) CommandsDir(_ string) string                         { ret
 func (m *mockAdapter) SupportsTaskDelegation() bool                        { return false }
 func (m *mockAdapter) SupportsSubAgents() bool                             { return false }
 func (m *mockAdapter) SubAgentsDir(_ string) string                        { return "" }
+func (m *mockAdapter) SupportsAutoInstall() bool                           { return false }
+func (m *mockAdapter) InstallCommands(_ system.PlatformProfile) [][]string { return nil }
 
 func TestRegistryRegisterAndGet(t *testing.T) {
 	r := NewRegistry()

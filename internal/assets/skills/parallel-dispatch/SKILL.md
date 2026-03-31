@@ -78,7 +78,7 @@ Rule: No file appears in more than one agent's ownership set. If two agents need
 
 If a dispatched agent may need project skills, include the skill-loading protocol in its prompt:
 
-Load skill registry following the protocol in `skills/_shared/cortex-convention.md`.
+Load skill registry following the protocol in `../_shared/cortex-convention.md`.
 
 ### Prompt Structure
 

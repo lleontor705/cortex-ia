@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/system"
 )
 
 type Adapter struct {
@@ -78,4 +79,14 @@ func (a *Adapter) SupportsTaskDelegation() bool { return true }
 func (a *Adapter) SupportsSubAgents() bool      { return true }
 func (a *Adapter) SubAgentsDir(homeDir string) string {
 	return filepath.Join(homeDir, ".config", "opencode", "agents")
+}
+
+// --- Auto-install ---
+
+func (a *Adapter) SupportsAutoInstall() bool { return true }
+func (a *Adapter) InstallCommands(profile system.PlatformProfile) [][]string {
+	if profile.PackageManager == "brew" {
+		return [][]string{{"brew", "install", "opencode-ai/tap/opencode"}}
+	}
+	return [][]string{{"npm", "install", "-g", "opencode-ai"}}
 }

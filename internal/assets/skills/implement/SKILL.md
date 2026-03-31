@@ -24,7 +24,7 @@ This skill is DONE when:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `skills/_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: `sdd/{change-name}/spec` + `design` + `tasks` | Writes: `sdd/{change-name}/apply-progress`
 Updates: `sdd/{change-name}/tasks` (marks completed with [x] via mem_update)
@@ -54,7 +54,7 @@ Think step by step: Before each task, review the spec scenario, the design const
 
 ## Step 1: Load Skill Registry
 
-Follow the Skill Loading Protocol in `skills/_shared/cortex-convention.md`:
+Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`:
 1. Load skill registry from Cortex (fallback: `.sdd/skill-registry.md`)
 2. Load project context from `bootstrap/{project}` if available
 

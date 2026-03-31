@@ -21,8 +21,8 @@ func TestInjectConventions_ClaudeCode(t *testing.T) {
 		t.Error("expected Changed=true")
 	}
 
-	// Verify cortex-convention.md was written to skills/_shared/.
-	convention := filepath.Join(tmpDir, ".claude", "skills", "_shared", "cortex-convention.md")
+	// Verify cortex-convention.md was written to shared dir (~/.cortex-ia/skills/_shared/).
+	convention := filepath.Join(tmpDir, ".cortex-ia", "skills", "_shared", "cortex-convention.md")
 	content, err := os.ReadFile(convention)
 	if err != nil {
 		t.Fatal(err)
