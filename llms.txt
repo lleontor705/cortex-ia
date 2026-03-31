@@ -1,0 +1,27 @@
+# cortex-ia
+
+> AI Agent Ecosystem Configurator — configures 8 AI coding agents with 5 MCP servers, 19 SDD skills, and orchestrator prompts via a single Go binary. Supports Claude Code, OpenCode, Gemini CLI, Cursor, VS Code Copilot, Codex, Windsurf, and Antigravity.
+
+## Docs
+
+- [README](https://github.com/lleontor705/cortex-ia/blob/main/README.md): Project overview, quick start, architecture
+- [Installation](https://github.com/lleontor705/cortex-ia/blob/main/docs/installation.md): Install methods, prerequisites, platform notes
+- [Agents](https://github.com/lleontor705/cortex-ia/blob/main/docs/agents.md): Per-agent configuration, paths, strategies
+- [Components](https://github.com/lleontor705/cortex-ia/blob/main/docs/components.md): 5 MCP servers + 3 content components
+- [SDD Workflow](https://github.com/lleontor705/cortex-ia/blob/main/docs/sdd-workflow.md): 9-phase pipeline, 19 skills, contract validation
+- [Architecture](https://github.com/lleontor705/cortex-ia/blob/main/docs/architecture.md): Codebase structure, adapter pattern, testing
+- [Configuration](https://github.com/lleontor705/cortex-ia/blob/main/docs/configuration.md): Presets, CLI flags, model routing, personas
+- [CLAUDE.md](https://github.com/lleontor705/cortex-ia/blob/main/CLAUDE.md): Codebase guidance for AI agents working on this repo
+
+## API
+
+- [Cortex MCP](https://github.com/lleontor705/cortex): 31 memory tools (knowledge graph, FTS5, temporal)
+- [ForgeSpec MCP](https://github.com/lleontor705/forgespec-mcp): 19 tools (contracts, task board, file reservation)
+- [Agent Mailbox MCP](https://github.com/lleontor705/agent-mailbox-mcp): 14 tools (messaging, threads, registry)
+- [CLI Orchestrator MCP](https://github.com/lleontor705/cli-orchestrator-mcp): 4 tools (multi-CLI routing, circuit breaker)
+
+## Optional
+
+- [Comparativa](https://github.com/lleontor705/cortex-ia/blob/main/COMPARATIVA.md): cortex-ia vs gentle-ai side-by-side analysis
+- [Changelog](https://github.com/lleontor705/cortex-ia/blob/main/CHANGELOG.md): Version history
+- [MCP Audit](https://github.com/lleontor705/cortex-ia/blob/main/AUDIT-MCP-TOOLS.md): 68-tool coverage audit across all skills

@@ -39,10 +39,20 @@ cortex-ia install
 # CLI: specific agent + minimal preset
 cortex-ia install --agent claude-code --preset minimal
 
+# Cost-optimize with model routing
+cortex-ia install --model-preset economy
+
+# Set persona (professional/mentor/minimal)
+cortex-ia install --persona mentor
+
+# Use project-level config
+cortex-ia init                        # Create .cortex-ia.yaml
+cortex-ia install --local             # Apply project config
+
 # Preview without changes
 cortex-ia install --dry-run
 
-# Show detected agents
+# Show detected agents + runtime deps
 cortex-ia detect
 ```
 
@@ -52,10 +62,10 @@ cortex-ia injects **5 MCP servers** + **19 SDD skills** + **orchestrator prompts
 
 | Component | MCP Tools | What It Does |
 |-----------|:---------:|-------------|
-| [**Cortex**](https://github.com/lleontor705/cortex) | 19 | Persistent cross-session memory with knowledge graph, FTS5 search, importance scoring |
-| [**ForgeSpec**](https://github.com/lleontor705/forgespec-mcp) | 15 | SDD contract validation (Zod), task board with dependencies, file reservation |
-| [**Agent Mailbox**](https://github.com/lleontor705/agent-mailbox-mcp) | 9 | Inter-agent messaging, threads, broadcast, request/reply, deduplication |
-| [**CLI Orchestrator**](https://github.com/lleontor705/cli-orchestrator-mcp) | 4 | Multi-CLI routing (Claude/Gemini/Codex) with circuit breaker, retry, fallback |
+| [**Cortex**](https://github.com/lleontor705/cortex) | 31 | Persistent memory with knowledge graph, FTS5, revision history, temporal tracking |
+| [**ForgeSpec**](https://npmjs.com/package/forgespec-mcp) | 19 | SDD contract validation (Zod), task board with dependencies, file reservation |
+| [**Agent Mailbox**](https://npmjs.com/package/agent-mailbox-mcp) | 14 | Inter-agent messaging, threads, broadcast, request/reply, deduplication, registry |
+| [**CLI Orchestrator**](https://npmjs.com/package/cli-orchestrator-mcp) | 4 | Multi-CLI routing (Claude/Gemini/Codex) with circuit breaker, retry, fallback |
 | [**Context7**](https://github.com/upstash/context7) | 2 | Live framework and library documentation via MCP |
 
 Plus **3 content components**:
@@ -66,7 +76,7 @@ Plus **3 content components**:
 | **Conventions** | Shared cortex memory protocol + naming conventions for all agents |
 | **Extra Skills** | Non-SDD utility skills (injected separately from SDD) |
 
-**Total: 49 MCP tools, 91% referenced across skills** (4 admin-only tools correctly excluded).
+**Total: 68 MCP tools across 4 MCPs + Context7**, all documented in skills and orchestrator prompts.
 
 ## Supported Agents
 
@@ -136,6 +146,61 @@ Skills incorporate research-backed techniques for better AI performance:
 | **Step-Back Prompting** | architect | Abstract principles before specific design |
 | **Inline WHY** | orchestrator, all rules | Motivation on every rule improves compliance |
 
+## Per-Phase Model Routing
+
+Assign different Claude model tiers to SDD phases for cost/quality optimization:
+
+```bash
+cortex-ia install --model-preset economy    # Sonnet everywhere, Haiku for archive
+cortex-ia install --model-preset balanced   # Opus for design+validate, Sonnet for apply
+cortex-ia install --model-preset performance # Opus for critical phases, Sonnet for rest
+```
+
+| Preset | Orchestrator | Investigate | Architect | Implement | Validate | Finalize |
+|--------|:-:|:-:|:-:|:-:|:-:|:-:|
+| **balanced** | opus | sonnet | opus | sonnet | opus | haiku |
+| **performance** | opus | sonnet | opus | sonnet | opus | haiku |
+| **economy** | sonnet | sonnet | sonnet | sonnet | sonnet | haiku |
+
+## Persona System
+
+Choose the communication style for all configured agents:
+
+| Persona | Style |
+|---------|-------|
+| `professional` | Direct, concise, technical terminology (default) |
+| `mentor` | Teaching-oriented, explains trade-offs and patterns |
+| `minimal` | Code only, no explanations unless asked |
+
+```bash
+cortex-ia install --persona mentor
+cortex-ia sync --persona minimal    # Change persona without reinstalling
+```
+
+## Project Configuration
+
+Create a `.cortex-ia.yaml` in your repo root to standardize settings across your team:
+
+```bash
+cortex-ia init    # Creates .cortex-ia.yaml with defaults
+```
+
+```yaml
+# .cortex-ia.yaml
+preset: full
+persona: professional
+model-preset: balanced
+agents:
+  - claude-code
+  - opencode
+custom-skills:
+  - path: ./skills/domain-validator
+```
+
+```bash
+cortex-ia install --local    # Applies project config
+```
+
 ## How It Works
 
 ### Installation Flow
@@ -143,19 +208,23 @@ Skills incorporate research-backed techniques for better AI performance:
 ```
 cortex-ia install
     │
-    ├─ Detect system (OS, arch, package manager)
-    ├─ Detect installed agents (scan PATH + config dirs)
-    ├─ Select preset (full / minimal / custom)
-    ├─ Resolve dependencies (SDD → cortex + forgespec + mailbox)
-    ├─ Create backup snapshot (~/.cortex-ia/backups/)
-    ├─ Apply per agent:
-    │   ├─ Inject MCP configs (strategy-specific: JSON / merge / TOML)
-    │   ├─ Inject orchestrator prompt (markdown sections / file replace / append)
-    │   ├─ Write SDD skill files to skills directory
-    │   ├─ Write shared conventions to _shared/
-    │   ├─ Write slash commands (OpenCode only)
-    │   └─ Write sub-agent definitions (OpenCode, Cursor)
-    └─ Save state (~/.cortex-ia/state.json)
+    ├─ Stage 1: PREPARE (stops on error, rolls back)
+    │   ├─ Validate agents exist in registry
+    │   └─ Create backup snapshot (~/.cortex-ia/backups/)
+    │
+    ├─ Stage 2: APPLY (continues on error, agents in parallel)
+    │   ├─ For each agent (concurrent via RunParallelChains):
+    │   │   ├─ Inject MCP configs (strategy-specific: JSON / merge / TOML)
+    │   │   ├─ Inject orchestrator prompt (markdown sections / file replace / append)
+    │   │   ├─ Inject permissions & security guardrails
+    │   │   ├─ Inject persona (professional / mentor / minimal)
+    │   │   ├─ Inject theme overlay
+    │   │   └─ Write sub-agent definitions (OpenCode, Cursor)
+    │   ├─ Write SDD skills to shared dir (~/.cortex-ia/skills/)
+    │   ├─ Write convention + orchestrator prompt to shared dir
+    │   └─ Load community skills (~/.cortex-ia/skills-community/)
+    │
+    └─ Save state + lock (~/.cortex-ia/)
 ```
 
 ### Key Design Principles
@@ -166,6 +235,28 @@ cortex-ia install
 - **Adapter pattern**: Each agent implements an interface. Adding a new agent requires zero changes to components.
 - **Strategy dispatch**: MCP injection is template-based — adding a new MCP server is one file.
 
+## CLI Commands
+
+```
+cortex-ia                    Interactive TUI
+cortex-ia install            Install ecosystem (auto-detect agents)
+cortex-ia sync               Refresh managed files from current state
+cortex-ia detect             Detect agents + runtime dependencies (Node, npx, Git, Go, Cortex)
+cortex-ia config             Show current configuration
+cortex-ia list agents        List detected agents with status
+cortex-ia list components    List installed components
+cortex-ia list backups       List available backups
+cortex-ia init               Create .cortex-ia.yaml in current dir
+cortex-ia skill add <path>   Add community skill from directory
+cortex-ia skill list         List installed community skills
+cortex-ia skill remove <id>  Remove community skill
+cortex-ia auto-install       Install missing agents via package managers
+cortex-ia doctor             Run 6 health checks against installation
+cortex-ia repair             Re-apply from lockfile/state
+cortex-ia rollback           Restore from backup
+cortex-ia update             Check for available updates
+```
+
 ## Documentation
 
 | Doc | Description |
@@ -175,7 +266,9 @@ cortex-ia install
 | [Components](docs/components.md) | Component catalog, dependencies, what each injects |
 | [SDD Workflow](docs/sdd-workflow.md) | 9-phase pipeline, commands, contract validation, prompting techniques |
 | [Architecture](docs/architecture.md) | Codebase structure, patterns, testing, contributing |
-| [Configuration](docs/configuration.md) | Presets, CLI flags, state management, backup/restore |
+| [Configuration](docs/configuration.md) | Presets, CLI flags, model routing, personas, project config |
+| [Changelog](CHANGELOG.md) | Version history (v0.1.0 → v0.2.0) |
+| [llms.txt](llms.txt) | LLM-readable project index |
 
 ## Prerequisites
 
