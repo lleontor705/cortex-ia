@@ -87,8 +87,6 @@ func (s *componentStep) Run() error {
 	return nil
 }
 
-
-
 // Ensure backupStep output dir can be cleaned up on rollback.
 func (s *backupStep) Rollback() error {
 	if s.BackupDir != "" {
