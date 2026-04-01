@@ -466,57 +466,59 @@ func injectCommands(homeDir string, adapter agents.Adapter) (InjectionResult, er
 	return InjectionResult{Changed: changed, Files: files}, nil
 }
 
-// injectSubAgents writes sub-agent definition files for agents that support them.
-// For OpenCode, it also merges hidden:true into opencode.json so sub-agents
-// don't appear in the UI — only the orchestrator is visible.
+// injectSubAgents registers SDD sub-agents with the host agent.
+//
+// For OpenCode: all sub-agents are defined in the "agent" section of opencode.json
+// (no separate .md stubs). The orchestrator is NOT included — it is managed by the
+// user or injected separately as a primary agent.
+//
+// For Cursor and other agents: sub-agent .md stubs are written to the SubAgentsDir.
 func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
-	subAgentsDir := adapter.SubAgentsDir(homeDir)
-	if subAgentsDir == "" {
-		return InjectionResult{}, nil
-	}
-
-	// Generate sub-agent stubs with absolute skill paths pointing to the
-	// shared directory (~/.cortex-ia/skills/).
 	skillsDir := filepath.ToSlash(state.SharedSkillsDir(homeDir))
 	files := make([]string, 0)
 	changed := false
 
-	for _, skillID := range sddSkillIDs {
-		skillPath := skillsDir + "/" + skillID + "/SKILL.md"
-		desc := sddSkillDescriptions[skillID]
-		if desc == "" {
-			desc = "SDD sub-agent: " + skillID
+	if adapter.Agent() == model.AgentOpenCode {
+		// OpenCode: merge full agent configs into opencode.json. No .md stubs.
+		settingsPath := adapter.SettingsPath(homeDir)
+		if settingsPath == "" {
+			return InjectionResult{}, nil
 		}
-		content := fmt.Sprintf("---\ndescription: %s\nmode: subagent\n---\n\nRead and follow the skill instructions from: %s\n", desc, skillPath)
-		path := filepath.Join(subAgentsDir, skillID+".md")
-		wr, err := filemerge.WriteFileAtomic(path, []byte(content), 0o644)
+		overlay := buildAgentOverlay(sddSkillIDs, skillsDir)
+		baseJSON, err := os.ReadFile(settingsPath)
+		if err != nil && !os.IsNotExist(err) {
+			return InjectionResult{}, fmt.Errorf("read agent settings: %w", err)
+		}
+		merged, err := filemerge.MergeJSONObjects(baseJSON, overlay)
 		if err != nil {
-			return InjectionResult{}, fmt.Errorf("write sub-agent %q: %w", skillID, err)
+			return InjectionResult{}, fmt.Errorf("merge agent configs: %w", err)
+		}
+		wr, err := filemerge.WriteFileAtomic(settingsPath, merged, 0o644)
+		if err != nil {
+			return InjectionResult{}, fmt.Errorf("write agent configs: %w", err)
 		}
 		changed = changed || wr.Changed
-		files = append(files, path)
-	}
-
-	// For OpenCode: merge hidden:true into settings so sub-agents are not
-	// visible in the UI. Only the orchestrator remains selectable.
-	if adapter.Agent() == model.AgentOpenCode {
-		settingsPath := adapter.SettingsPath(homeDir)
-		if settingsPath != "" {
-			overlay := buildAgentOverlay(sddSkillIDs, skillsDir)
-			baseJSON, err := os.ReadFile(settingsPath)
-			if err != nil && !os.IsNotExist(err) {
-				return InjectionResult{}, fmt.Errorf("read agent settings: %w", err)
+		files = append(files, settingsPath)
+	} else {
+		// Cursor and others: write .md stubs to SubAgentsDir.
+		subAgentsDir := adapter.SubAgentsDir(homeDir)
+		if subAgentsDir == "" {
+			return InjectionResult{}, nil
+		}
+		for _, skillID := range sddSkillIDs {
+			skillPath := skillsDir + "/" + skillID + "/SKILL.md"
+			desc := sddSkillDescriptions[skillID]
+			if desc == "" {
+				desc = "SDD sub-agent: " + skillID
 			}
-			merged, err := filemerge.MergeJSONObjects(baseJSON, overlay)
+			content := fmt.Sprintf("---\ndescription: %s\nmode: subagent\n---\n\nRead and follow the skill instructions from: %s\n", desc, skillPath)
+			path := filepath.Join(subAgentsDir, skillID+".md")
+			wr, err := filemerge.WriteFileAtomic(path, []byte(content), 0o644)
 			if err != nil {
-				return InjectionResult{}, fmt.Errorf("merge agent hidden flags: %w", err)
-			}
-			wr, err := filemerge.WriteFileAtomic(settingsPath, merged, 0o644)
-			if err != nil {
-				return InjectionResult{}, fmt.Errorf("write agent hidden flags: %w", err)
+				return InjectionResult{}, fmt.Errorf("write sub-agent %q: %w", skillID, err)
 			}
 			changed = changed || wr.Changed
-			files = append(files, settingsPath)
+			files = append(files, path)
 		}
 	}
 
