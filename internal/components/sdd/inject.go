@@ -247,7 +247,18 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 		files = append(files, result.Files...)
 	}
 
-	// 3. Write slash commands (OpenCode only).
+	// 3. Copy skills to the agent-local skills directory (e.g. ~/.claude/skills/).
+	// Each agent reads skills from its own SkillsDir, not from the shared dir.
+	if adapter.SupportsSkills() {
+		result, err := copySkillsToAgent(homeDir, adapter)
+		if err != nil {
+			return InjectionResult{}, fmt.Errorf("sdd agent skills: %w", err)
+		}
+		changed = changed || result.Changed
+		files = append(files, result.Files...)
+	}
+
+	// 4. Write slash commands (OpenCode only).
 	if adapter.SupportsSlashCommands() {
 		result, err := injectCommands(homeDir, adapter)
 		if err != nil {
@@ -257,7 +268,7 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 		files = append(files, result.Files...)
 	}
 
-	// 4. Write sub-agent files if supported.
+	// 5. Write sub-agent files if supported.
 	if adapter.SupportsSubAgents() {
 		result, err := injectSubAgents(homeDir, adapter)
 		if err != nil {
@@ -428,6 +439,51 @@ func fixConventionRefs(content, absolutePath string) string {
 	return content
 }
 
+// copySkillsToAgent copies SDD skill files and the convention from the shared
+// directory (~/.cortex-ia/skills/) to the agent-local skills directory
+// (e.g. ~/.claude/skills/, ~/.gemini/skills/). This ensures each agent can
+// find skills in its own SkillsDir without relying on the shared path.
+func copySkillsToAgent(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
+	agentSkillsDir := adapter.SkillsDir(homeDir)
+	if agentSkillsDir == "" {
+		return InjectionResult{}, nil
+	}
+
+	sharedSkillsDir := state.SharedSkillsDir(homeDir)
+	files := make([]string, 0)
+	changed := false
+
+	// Copy convention.
+	conventionSrc := filepath.Join(sharedSkillsDir, "_shared", "cortex-convention.md")
+	conventionDst := filepath.Join(agentSkillsDir, "_shared", "cortex-convention.md")
+	if data, err := os.ReadFile(conventionSrc); err == nil {
+		wr, err := filemerge.WriteFileAtomic(conventionDst, data, 0o644)
+		if err != nil {
+			return InjectionResult{}, fmt.Errorf("copy convention to agent: %w", err)
+		}
+		changed = changed || wr.Changed
+		files = append(files, conventionDst)
+	}
+
+	// Copy each skill.
+	for _, skillID := range sddSkillIDs {
+		src := filepath.Join(sharedSkillsDir, skillID, "SKILL.md")
+		data, err := os.ReadFile(src)
+		if err != nil {
+			continue // skill not found in shared dir — skip
+		}
+		dst := filepath.Join(agentSkillsDir, skillID, "SKILL.md")
+		wr, err := filemerge.WriteFileAtomic(dst, data, 0o644)
+		if err != nil {
+			return InjectionResult{}, fmt.Errorf("copy skill %q to agent: %w", skillID, err)
+		}
+		changed = changed || wr.Changed
+		files = append(files, dst)
+	}
+
+	return InjectionResult{Changed: changed, Files: files}, nil
+}
+
 // injectCommands writes slash command files for agents that support them (OpenCode).
 func injectCommands(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 	commandsDir := adapter.CommandsDir(homeDir)
@@ -570,6 +626,17 @@ func FilesToBackup(homeDir string, adapter agents.Adapter) []string {
 	paths = append(paths, filepath.Join(sharedSkillsDir, "_shared", "cortex-convention.md"))
 	for _, id := range sddSkillIDs {
 		paths = append(paths, filepath.Join(sharedSkillsDir, id, "SKILL.md"))
+	}
+
+	// Agent-local skills directory (e.g. ~/.claude/skills/).
+	if adapter.SupportsSkills() {
+		agentSkillsDir := adapter.SkillsDir(homeDir)
+		if agentSkillsDir != "" {
+			paths = append(paths, filepath.Join(agentSkillsDir, "_shared", "cortex-convention.md"))
+			for _, id := range sddSkillIDs {
+				paths = append(paths, filepath.Join(agentSkillsDir, id, "SKILL.md"))
+			}
+		}
 	}
 
 	// Shared orchestrator prompt.
