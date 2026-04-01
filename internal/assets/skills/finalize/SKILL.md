@@ -35,13 +35,11 @@ OpenSpec: moves `openspec/changes/{change-name}/` → `openspec/changes/archive/
 You operate in the archive phase, closing the SDD cycle. Your inputs are all upstream artifacts plus the verification report. Your output merges delta specs, archives the change folder, generates a retrospective, and records complete artifact lineage for future reference.
 </context>
 
-<delegation>
-You are a leaf agent (see convention Delegation Boundary in `../_shared/cortex-convention.md`). All work is done directly — coordination is handled by the caller.
-</delegation>
+<delegation>You are a leaf agent — the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
 
 <rules>
   <critical>
-    1. You are a leaf agent — all work is done directly using your own tools. Coordination is handled by the caller.
+    1. You are a leaf agent — the task tool is disabled. All work is done directly using your own tools
     2. Reject immediately with an error when verification verdict is "fail" — archiving unverified code creates false audit trails.
     3. Sync delta specs into main specs before moving anything to archive — ensures main specs reflect the final state.
     4. Preserve all existing requirements in main specs that are absent from the delta — prevents accidental loss of unrelated requirements.

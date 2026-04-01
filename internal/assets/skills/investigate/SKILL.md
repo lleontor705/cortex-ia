@@ -43,11 +43,11 @@ The orchestrator passes a `focus` directive that shapes the entire analysis:
 
 </context>
 
-<delegation>You are a leaf agent (see convention Delegation Boundary). All analysis is done directly — coordination is handled by the caller.</delegation>
+<delegation>You are a leaf agent — the `task` tool is not available to you. All analysis is done directly using your own tools (read, grep, glob, bash). You cannot launch sub-agents, spawn other investigators, or delegate work. Return your results to the caller.</delegation>
 
 <rules>
   <critical>
-    1. You are a leaf agent (see convention Delegation Boundary) — all analysis is done directly using your own tools
+    1. You are a leaf agent — the `task` tool is disabled. All analysis is done directly using your own tools (read, grep, glob, bash)
     2. Read real source files before making any claims about code behavior — assumptions from names or structure are frequently wrong
     3. Always use the Two-Step Retrieval Protocol from the shared convention for full content
     4. If `mem_search` returns no results, try filesystem fallback (`.sdd/skill-registry.md`, `openspec/`), then stop and report the gap — prevents proceeding with incomplete context
@@ -123,7 +123,9 @@ For each viable approach:
 
 ### Step 6: Consult External LLMs (Optional)
 
-Only if the orchestrator has enabled CLI tools in the input context. Use Claude CLI for hypothesis validation, Gemini CLI (with `-e none`) for current best practices and CVE checks, Codex CLI for rapid prototyping. Ask focused questions with summarized context -- never dump entire files. If no CLIs were specified, skip this step.
+Check the `ENABLED CLIs` line in your task prompt (set by the orchestrator). If CLIs are listed, use them for cross-validation. If the line says `none` or is absent, skip this step entirely.
+
+When CLIs are available: use Claude CLI for hypothesis validation, Gemini CLI for best practices and CVE checks, Codex CLI for rapid prototyping. Ask focused questions with summarized context — never dump entire files.
 
 ### Step 7: Persist Artifact
 

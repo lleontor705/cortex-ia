@@ -34,7 +34,7 @@ Follow the Skill Loading Protocol from the shared convention.
 
 </persistence>
 
-<delegation>none — you are a leaf agent (see convention Delegation Boundary in `../_shared/cortex-convention.md`). All work is done directly — coordination is handled by the caller.</delegation>
+<delegation>You are a leaf agent — the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
 
 <rules>
 <critical>

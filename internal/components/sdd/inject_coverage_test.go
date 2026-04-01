@@ -129,27 +129,16 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 		t.Errorf("expected >=10 command files, got %d", len(entries))
 	}
 
-	// Verify sub-agent files written and point to shared dir.
+	// OpenCode: no .md stubs in agents/ — everything is in opencode.json.
 	subAgentsDir := adapter.SubAgentsDir(tmpDir)
-	for _, id := range sddSkillIDs {
-		data, err := os.ReadFile(filepath.Join(subAgentsDir, id+".md"))
-		if err != nil {
-			t.Errorf("sub-agent %q: %v", id, err)
-			continue
-		}
-		content := string(data)
-		if !strings.Contains(content, ".cortex-ia/skills/"+id+"/SKILL.md") {
-			t.Errorf("sub-agent %q should reference shared skills dir", id)
-		}
-		if !strings.Contains(content, "mode: subagent") {
-			t.Errorf("sub-agent %q should have mode: subagent in frontmatter", id)
-		}
-		if !strings.Contains(content, "description:") {
-			t.Errorf("sub-agent %q should have description in frontmatter", id)
+	agentEntries, _ := os.ReadDir(subAgentsDir)
+	for _, e := range agentEntries {
+		if strings.HasSuffix(e.Name(), ".md") {
+			t.Errorf("OpenCode should not have .md stubs in agents/, found %s", e.Name())
 		}
 	}
 
-	// Verify settings merged with hidden:true and tools.task.
+	// Verify settings merged with full agent configs.
 	settingsData, err := os.ReadFile(adapter.SettingsPath(tmpDir))
 	if err != nil {
 		t.Fatalf("read settings: %v", err)
