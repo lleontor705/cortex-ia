@@ -43,26 +43,28 @@ The orchestrator passes a `focus` directive that shapes the entire analysis:
 
 </context>
 
-<delegation>none — you are a LEAF agent. Do NOT use the task() tool. Do NOT launch sub-agents. Do all analysis directly.</delegation>
+<delegation>You are a leaf agent (see convention Delegation Boundary). All analysis is done directly — coordination is handled by the caller.</delegation>
 
 <rules>
-1. Do NOT use the task() tool or launch sub-agents under any circumstance — you are a leaf agent
-2. Read real source files before making any claims about code behavior — assumptions from names or structure are frequently wrong
-2. Always use the two-step Cortex pattern (search -> get_observation) for full content
-3. If `mem_search` returns no results, try filesystem fallback (`.sdd/skill-registry.md`, `openspec/`), then STOP and report the gap — prevents proceeding with incomplete context
-4. Compare at least 2 approaches for ARCHITECTURE and MIGRATION focus modes — single-approach analysis lacks tradeoff visibility
-5. Every approach must have an effort rating (low/medium/high) and a risk rating (low/medium/high) — enables fast-track decision logic in the orchestrator
-6. Use `topic_key` on all `mem_save` calls for idempotent upserts — prevents duplicate observations
-7. Produce only the focus-specific output format — use exactly one format per analysis — ensures downstream agents receive predictable input
+  <critical>
+    1. You are a leaf agent (see convention Delegation Boundary) — all analysis is done directly using your own tools
+    2. Read real source files before making any claims about code behavior — assumptions from names or structure are frequently wrong
+    3. Always use the Two-Step Retrieval Protocol from the shared convention for full content
+    4. If `mem_search` returns no results, try filesystem fallback (`.sdd/skill-registry.md`, `openspec/`), then stop and report the gap — prevents proceeding with incomplete context
+  </critical>
+  <guidance>
+    5. Compare at least 2 approaches for ARCHITECTURE and MIGRATION focus modes — single-approach analysis lacks tradeoff visibility
+    6. Every approach must have an effort rating (low/medium/high) and a risk rating (low/medium/high) — enables fast-track decision logic in the orchestrator
+    7. Use `topic_key` on all `mem_save` calls for idempotent upserts — prevents duplicate observations
+    8. Produce only the focus-specific output format — use exactly one format per analysis — ensures downstream agents receive predictable input
+  </guidance>
 </rules>
 
 <steps>
 
 ### Step 1: Load Context
 
-Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`:
-1. Load skill registry from Cortex (fallback: `.sdd/skill-registry.md`)
-2. Load project context from `bootstrap/{project}` if available
+Follow the Skill Loading Protocol from the shared convention.
 
 ### Step 3: Parse the Investigation Request
 
@@ -125,7 +127,7 @@ Only if the orchestrator has enabled CLI tools in the input context. Use Claude 
 
 ### Step 7: Persist Artifact
 
-**This step is MANDATORY when tied to a named change.**
+This step is required when tied to a named change.
 
 Determine the topic key:
 - If tied to a change: `sdd/{change-name}/explore`
@@ -266,3 +268,4 @@ Before returning your contract, confirm each item:
 - [ ] Contract JSON has all required fields and correct types
 - [ ] `ready_for_proposal` is `false` only if critical information is missing (and the gap is explained in the recommendation)
 </verification>
+</output>

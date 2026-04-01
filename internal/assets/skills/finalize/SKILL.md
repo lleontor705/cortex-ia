@@ -16,11 +16,11 @@ You receive from the orchestrator: `change-name`, `project`, `artifact_store_mod
 </role>
 
 <success_criteria>
-This skill is DONE when:
+This skill is done when:
 1. Delta specs are merged into main specs (openspec/hybrid) or lineage is recorded (cortex)
 2. The change folder is moved to `openspec/changes/archive/YYYY-MM-DD-{change-name}/`
 3. A retrospective is saved to Cortex with topic_key "sdd/{change-name}/retrospective"
-4. An archive report with ALL observation IDs is persisted to Cortex
+4. An archive report with all observation IDs is persisted to Cortex
 5. The contract JSON is returned with verification_verdict that is never "fail"
 </success_criteria>
 
@@ -35,60 +35,52 @@ OpenSpec: moves `openspec/changes/{change-name}/` → `openspec/changes/archive/
 You operate in the archive phase, closing the SDD cycle. Your inputs are all upstream artifacts plus the verification report. Your output merges delta specs, archives the change folder, generates a retrospective, and records complete artifact lineage for future reference.
 </context>
 
-<delegation>none — you are a LEAF agent. Do NOT use the task() tool. Do NOT launch sub-agents. Do all work directly.</delegation>
+<delegation>
+You are a leaf agent (see convention Delegation Boundary in `../_shared/cortex-convention.md`). All work is done directly — coordination is handled by the caller.
+</delegation>
 
 <rules>
-1. Do NOT use the task() tool or launch sub-agents under any circumstance — you are a leaf agent
-2. Reject immediately with an error when verification verdict is FAIL — archiving unverified code creates false audit trails
-3. Sync delta specs into main specs BEFORE moving anything to archive — ensures main specs reflect the final state
-4. Preserve all existing requirements in main specs that are absent from the delta — prevents accidental loss of unrelated requirements
-5. Use ISO date format YYYY-MM-DD for archive folder prefixes — enables chronological sorting of archives
-6. Treat the archive as an immutable audit trail — only create, never modify after creation — mutating archives destroys forensic traceability
-7. Warn the orchestrator before executing destructive delta merges (REMOVED sections affecting 3+ requirements) — large deletions warrant human review
-8. Record every observation ID in the archive report for full lineage tracing — complete lineage enables future audits
-9. Write specific, actionable retrospectives — name files, decisions, and concrete patterns — vague retrospectives provide no learning value
-10. Create `openspec/changes/archive/` directory if it does not exist — prevents filesystem errors during move
-11. Use Cortex as the sole audit trail in cortex-only mode, skipping filesystem operations — filesystem does not exist in this mode
+  <critical>
+    1. You are a leaf agent — all work is done directly using your own tools. Coordination is handled by the caller.
+    2. Reject immediately with an error when verification verdict is "fail" — archiving unverified code creates false audit trails.
+    3. Sync delta specs into main specs before moving anything to archive — ensures main specs reflect the final state.
+    4. Preserve all existing requirements in main specs that are absent from the delta — prevents accidental loss of unrelated requirements.
+    5. Record every observation ID in the archive report for full lineage tracing — complete lineage enables future audits.
+  </critical>
+  <guidance>
+    6. Use ISO date format YYYY-MM-DD for archive folder prefixes — enables chronological sorting of archives.
+    7. Treat the archive as an immutable audit trail — only create, never modify after creation — mutating archives destroys forensic traceability.
+    8. Warn the orchestrator before executing destructive delta merges (REMOVED sections affecting 3+ requirements) — large deletions warrant human review.
+    9. Write specific, actionable retrospectives — name files, decisions, and concrete patterns — vague retrospectives provide no learning value.
+    10. Create `openspec/changes/archive/` directory if it does not exist — prevents filesystem errors during move.
+    11. Use Cortex as the sole audit trail in cortex-only mode, skipping filesystem operations — filesystem does not exist in this mode.
+  </guidance>
+</rules>
 
 Think step by step: Before merging each delta section, classify it as ADDED, MODIFIED, or REMOVED — then apply the correct merge operation.
-</rules>
 
 <steps>
 
 ## Step 1: Load Skill Registry
 
-Follow the Skill Loading Protocol in `../_shared/cortex-convention.md`:
-1. Load skill registry from Cortex (fallback: `.sdd/skill-registry.md`)
-2. Load project context from `bootstrap/{project}` if available
+Follow the Skill Loading Protocol from the shared convention.
 
-## Step 2: Gate Check — Reject FAIL Verdicts
+## Step 2: Gate Check — Reject "fail" Verdicts
 
 If the orchestrator-provided `verification_verdict` is "fail", stop immediately:
 - Return an error contract with status "rejected"
-- Message: "Archiving requires a PASS or PASS_WITH_WARNINGS verdict. Fix issues and re-verify first."
-- Do not proceed to any further steps
+- Message: "Archiving requires a pass or pass_with_warnings verdict. Fix issues and re-verify first."
+- Proceed no further.
 
-## Step 3: Retrieve All Artifacts (Two-Step Cortex Pattern)
+## Step 3: Retrieve All Artifacts
 
-SEARCH phase — collect every observation ID for this change:
+Follow the Two-Step Retrieval Protocol from the shared convention for each artifact:
 
-```
-mem_search(query: "sdd/{change-name}/proposal", project: "{project}") → proposal_id
-mem_search(query: "sdd/{change-name}/spec", project: "{project}") → spec_id
-mem_search(query: "sdd/{change-name}/design", project: "{project}") → design_id
-mem_search(query: "sdd/{change-name}/tasks", project: "{project}") → tasks_id
-mem_search(query: "sdd/{change-name}/verify-report", project: "{project}") → verify_id
-```
-
-RETRIEVE phase — get full content for lineage and merge operations:
-
-```
-mem_get_observation(id: {proposal_id}) → full proposal
-mem_get_observation(id: {spec_id}) → full spec with delta annotations
-mem_get_observation(id: {design_id}) → full design
-mem_get_observation(id: {tasks_id}) → full task list (confirm all [x])
-mem_get_observation(id: {verify_id}) → full verification report
-```
+1. Retrieve `sdd/{change-name}/proposal` — save the ID and full content.
+2. Retrieve `sdd/{change-name}/spec` — save the ID and full content (with delta annotations).
+3. Retrieve `sdd/{change-name}/design` — save the ID and full content.
+4. Retrieve `sdd/{change-name}/tasks` — save the ID and full content (confirm all [x]).
+5. Retrieve `sdd/{change-name}/verify-report` — save the ID and full content.
 
 Store all observation IDs in a lineage record:
 ```
@@ -346,9 +338,9 @@ After generating your archive report:
 
 <self_check>
 Before producing your final output, verify:
-1. Verification verdict is PASS or PASS_WITH_WARNINGS?
+1. Verification verdict is "pass" or "pass_with_warnings"?
 2. All tasks marked [x]?
-3. Archive report includes ALL observation IDs?
+3. Archive report includes all observation IDs?
 </self_check>
 
 <verification>
@@ -361,7 +353,8 @@ Before returning your contract, confirm:
 - [ ] Archive directory contains all original artifacts
 - [ ] Active changes directory no longer contains this change
 - [ ] Retrospective was saved with specific, actionable learnings (not vague platitudes)
-- [ ] Archive report includes ALL observation IDs for lineage
+- [ ] Archive report includes all observation IDs for lineage
 - [ ] mem_save was called for both retrospective and archive-report with correct topic_keys
 - [ ] Contract JSON has all required fields and verification_verdict is never "fail"
 </verification>
+</output>

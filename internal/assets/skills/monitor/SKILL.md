@@ -16,7 +16,7 @@ You receive from the orchestrator or user: `project` (name for Cortex scoping) a
 </role>
 
 <success_criteria>
-This skill is DONE when:
+This skill is done when:
 1. All data sources have been queried with actual tool calls (no placeholder data)
 2. A complete HTML file is written to `.sdd-dashboard.html` in the project root
 3. The HTML renders correctly when opened directly in a browser
@@ -30,29 +30,32 @@ Follow the shared Cortex convention in `../_shared/cortex-convention.md` for per
 
 **Skill-specific:** This skill reads from Cortex and filesystem but writes only to the filesystem (`.sdd-dashboard.html`).
 
-Load skill registry following the protocol in `../_shared/cortex-convention.md`.
+Follow the Skill Loading Protocol from the shared convention.
 
 </persistence>
 
-<delegation>none — you are a LEAF agent. Do NOT use the task() tool. Do NOT launch sub-agents. Do all work directly.</delegation>
+<delegation>none — you are a leaf agent (see convention Delegation Boundary in `../_shared/cortex-convention.md`). All work is done directly — coordination is handled by the caller.</delegation>
 
 <rules>
-1. Do NOT use the task() tool or launch sub-agents under any circumstance — you are a leaf agent
-2. Source every data point from an actual tool call — real data only, zero hardcoded samples
-3. Produce a fully self-contained HTML file: inline CSS, inline JS, zero external dependencies
-4. Use a dark theme with CSS custom properties for consistent theming
-5. Make the layout responsive for both desktop and mobile viewports
-6. Color-code task statuses consistently: pending=gray, in_progress=blue, completed=green, failed=red, blocked=orange
-7. Show "Data unavailable" in a section when its data source fails — graceful degradation over crashes
-8. Write the file to `.sdd-dashboard.html` in the project root directory
-9. Produce valid HTML5 that passes basic validation
+<critical>
+1. Source every data point from an actual tool call — real data only, zero hardcoded samples
+2. Produce a fully self-contained HTML file: inline CSS, inline JS, zero external dependencies
+3. Write the file to `.sdd-dashboard.html` in the project root directory
+4. Produce valid HTML5 that passes basic validation
+</critical>
+<guidance>
+5. Use a dark theme with CSS custom properties for consistent theming
+6. Make the layout responsive for both desktop and mobile viewports
+7. Color-code task statuses consistently: pending=gray, in_progress=blue, completed=green, failed=red, blocked=orange
+8. Show "Data unavailable" in a section when its data source fails — graceful degradation over crashes
+</guidance>
 </rules>
 
 <steps>
 
 ## Step 1: Load Skill Registry
 
-Load skill registry following the protocol in `../_shared/cortex-convention.md`.
+Follow the Skill Loading Protocol from the shared convention.
 
 ## Step 2: Gather Data from All Sources
 
@@ -88,19 +91,19 @@ sdd_list(project: "{project}") → all contracts with filters
 ```
 Extract: latest phase per change, confidence trend, blocked/failed contracts.
 
-### 2d: Recent SDD Artifacts from Memory
+### 2e: Recent SDD Artifacts from Memory
 ```
 mem_search(query: "sdd", project: "{project}", limit: 10) → recent SDD observations
 ```
 For each result, extract: title, type, timestamp, topic_key.
 
-### 2e: Git History
+### 2f: Git History
 ```bash
 git log --oneline -20
 ```
 Parse into: SHA (short), commit message, for the 20 most recent commits.
 
-### 2f: Agent Activity Feed
+### 2g: Agent Activity Feed
 ```
 msg_activity_feed(limit: 30, minutes: 60)
 ```
@@ -232,7 +235,7 @@ Populate every section with data from Step 2. For each section:
 - Task completion rate as a percentage
 
 ### Agent Communication Section
-- Render as a full-width panel showing the inter-agent message timeline from Step 2f
+- Render as a full-width panel showing the inter-agent message timeline from Step 2g
 - Each entry: timestamp, sender → recipient, subject line
 - Group messages by thread ID to show conversation flows
 - Color-code agent names using their configured colors from opencode.json (fall back to --accent if no color configured)
@@ -316,7 +319,7 @@ Include Cortex health metrics in the dashboard:
 Include task board status:
 - `tb_list(project: "{project}")` → list all boards
 - For each active board: `tb_status(board_id: "{id}")` → task counts by status
-(Why: the dashboard should show both artifact state AND task execution state)
+(Why: the dashboard should show both artifact state and task execution state)
 
 ## SDD Pipeline History (ForgeSpec)
 Include phase completion timeline:
@@ -348,3 +351,4 @@ Before returning your report, confirm:
 - [ ] The file was written to .sdd-dashboard.html in the project root
 - [ ] The absolute file path was reported to the user
 </verification>
+</output>
