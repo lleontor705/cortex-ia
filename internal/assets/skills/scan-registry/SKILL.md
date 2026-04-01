@@ -20,9 +20,10 @@ You are a skill catalog builder who scans all known skill locations, assembles a
 - A summary is returned listing all skills and conventions found.
 </success_criteria>
 
-<delegation>none — you are a LEAF agent. Do NOT use the task() tool. Do NOT launch sub-agents. Do all work directly.</delegation>
+<delegation>none — you are a leaf agent (see convention Delegation Boundary in `../_shared/cortex-convention.md`). All work is done directly — coordination is handled by the caller.</delegation>
 
 <rules>
+<critical>
 
 Announce at start: "I'm using the scan-registry skill to build the skill catalog."
 
@@ -30,32 +31,33 @@ The skill registry is a catalog that sub-agents read before starting any task. R
 
 ## Scanning Rules
 
-1. Do NOT use the task() tool or launch sub-agents under any circumstance — you are a leaf agent
-2. Scan ALL known skill directories listed in Step 1 -- always check every path, even after finding matches.
-3. Read only the frontmatter (first 10 lines) of each SKILL.md -- always limit reads to frontmatter only.
-4. Skip directories named `old`, `_shared`, and `scan-registry` (this skill).
-5. Deduplicate by skill name: if the same name appears at both user-level and project-level, keep the project-level version (more specific wins).
-6. If the same name appears in two user-level locations, keep the first one found.
+1. Scan all known skill directories listed in Step 1 -- always check every path, even after finding matches.
+2. Read only the frontmatter (first 10 lines) of each SKILL.md -- always limit reads to frontmatter only.
+3. Skip directories named `old`, `_shared`, and `scan-registry` (this skill).
+4. Deduplicate by skill name: if the same name appears at both user-level and project-level, keep the project-level version (more specific wins).
+5. If the same name appears in two user-level locations, keep the first one found.
+</critical>
+<guidance>
 
 ## Persistence Rules
 
-7. Write the registry file to `.sdd/skill-registry.md` regardless of other persistence options.
-8. Save to Cortex if the `mem_save` tool is available. Use `topic_key: "skill-registry"` for upsert behavior.
-9. Add `.sdd/` to the project's `.gitignore` if `.gitignore` exists and `.sdd` is not already listed.
+6. Always write the registry file to `.sdd/skill-registry.md` regardless of other persistence options.
+7. Save to Cortex if the `mem_save` tool is available. Use `topic_key: "skill-registry"` for upsert behavior.
+8. Add `.sdd/` to the project's `.gitignore` if `.gitignore` exists and `.sdd` is not already listed.
 
 ## Output Rules
 
-10. Include every skill found, even if its frontmatter is incomplete (mark description as "No description" if missing).
-11. Include every convention file found, with paths expanded from index files.
-12. Always write an empty registry when no skills or conventions are found, so sub-agents know to stop searching.
-
+9. Include every skill found, even if its frontmatter is incomplete (mark description as "No description" if missing).
+10. Include every convention file found, with paths expanded from index files.
+11. Always write an empty registry when no skills or conventions are found, so sub-agents know to stop searching.
+</guidance>
 </rules>
 
 <steps>
 
 ## Step 1: Scan Skill Directories
 
-Glob for `*/SKILL.md` files across ALL of the following paths. Check every path that exists on the system:
+Glob for `*/SKILL.md` files across all of the following paths. Check every path that exists on the system:
 
 **User-level (global skills):**
 - `~/.claude/skills/`
@@ -103,7 +105,7 @@ Assemble the registry in this format:
 ```markdown
 # Skill Registry
 
-As your FIRST step before starting any work, identify and load skills relevant to your task from this registry.
+As your first step before starting any work, identify and load skills relevant to your task from this registry.
 
 ## Skills
 

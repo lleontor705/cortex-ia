@@ -67,7 +67,7 @@ mem_save(
 - `type` is always `"architecture"` for SDD artifacts (except skill-registry which uses `"config"`).
 - `scope` is always `"project"`.
 
-## Two-Step Read Pattern (CRITICAL)
+## Two-Step Retrieval Protocol
 
 `mem_search` returns 300-character previews only. Always follow this pattern:
 
@@ -93,24 +93,21 @@ Supported relations:
 - `supersedes` — new version replaces old
 - `contradicts` — conflicting information (flag for review)
 
-## Delegation Boundary (CRITICAL)
+## Delegation Boundary
 
-By default, SDD agents MUST NOT launch sub-agents or use the `task()` tool. Only skills with an explicit `<delegation>` section listing permitted targets may delegate.
+All SDD agents work directly with their own tools. Only three coordinator skills (team-lead, debate, parallel-dispatch) may delegate.
 
 **If your SKILL.md does NOT contain a `<delegation>` section: you are a LEAF agent.**
 
 Leaf agent rules:
-1. Do NOT call `task()` to launch sub-agents — ever
-2. Do NOT spawn yourself recursively
-3. Do all work directly using your own tools (read, write, edit, bash, grep, glob, MCP tools)
-4. Return your results to the caller — the orchestrator or team-lead handles coordination
+1. Do all work directly using your own tools (read, write, edit, bash, grep, glob, MCP tools)
+2. Return results to the caller — orchestrator or team-lead handles coordination
+3. Each agent runs once per delegation
 
 **Only these skills may delegate:**
 - `team-lead` → launches `@implement` sub-agents
 - `debate` → launches `@investigate` defender agents
 - `parallel-dispatch` → launches domain-specific agents
-
-If you are not one of these three skills and you use `task()`, you are violating the delegation boundary.
 
 ## Skill Loading Protocol (Canonical Version)
 
@@ -236,3 +233,13 @@ Use `mem_update` when you have the exact observation ID and want to modify speci
 2. Use `mem_update` only when you already hold the observation ID from a prior `mem_get_observation` call
 3. Never call `mem_update` with a guessed ID — always retrieve it via `mem_search` first
 4. After `mem_update`, the observation retains its original ID but content changes — downstream agents using `mem_search` will find the updated version
+
+## Memory Quick Reference
+
+| Operation | Tool | When |
+|-----------|------|------|
+| Save artifact | `mem_save(title, topic_key, type: "architecture", scope: "project", project, content)` | After completing phase work |
+| Load artifact | `mem_search(query, project)` → ID, then `mem_get_observation(id)` → full content | Before starting phase work |
+| Connect artifacts | `mem_relate(from, to, relation: "references")` | After saving new artifact |
+| Update by ID | `mem_update(id, content)` | When you already hold the observation ID |
+| Explore graph | `mem_graph(id, depth: 2)` | Recovering context or tracing lineage |
