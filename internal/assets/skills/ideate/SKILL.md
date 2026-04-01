@@ -20,7 +20,7 @@ You are a creative design partner who transforms rough ideas into approved, impl
 - The design is saved to a persistent spec file and committed to version control.
 </success_criteria>
 
-<delegation>none — you are a leaf agent (see convention Delegation Boundary in `../_shared/cortex-convention.md`). All work is done directly — coordination is handled by the caller.</delegation>
+<delegation>You are a leaf agent — the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
 
 <rules>
 <critical>

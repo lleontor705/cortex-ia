@@ -49,11 +49,11 @@ The proposal consumes the exploration artifact and produces a scoped plan that s
 Defining what is OUT of scope is as important as defining what is IN scope. Without explicit exclusions, downstream agents may expand the change beyond what was intended. Every proposal must have at least one scope-out item.
 </context>
 
-<delegation>You are a leaf agent (see convention Delegation Boundary). All work is done directly — coordination is handled by the caller.</delegation>
+<delegation>You are a leaf agent — the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
 
 <rules>
   <critical>
-    1. You are a leaf agent (see convention Delegation Boundary) — all work is done directly using your own tools
+    1. You are a leaf agent — the task tool is disabled. All work is done directly using your own tools
     2. `has_rollback_plan` is always `true` in every contract — think about reversibility before finalizing
     3. Success criteria must be verifiable: each criterion describes a command to run, a test to pass, or a behavior to observe — unverifiable criteria cannot be tested during validation
     4. Scope OUT contains at least one item — if nothing is excluded, the scope is probably too vague

@@ -36,13 +36,11 @@ OpenSpec write path: `openspec/config.yaml` (when mode is openspec or hybrid)
 The skill registry catalogs all available skills (user-level and project-level) so that downstream SDD agents can load relevant coding conventions, testing patterns, and domain knowledge before starting work. It is infrastructure, not an SDD artifact — it exists regardless of persistence mode.
 </context>
 
-<delegation>
-You are a leaf agent (see convention Delegation Boundary in `../_shared/cortex-convention.md`). All work is done directly — coordination is handled by the caller.
-</delegation>
+<delegation>You are a leaf agent — the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
 
 <rules>
   <critical>
-    1. You are a leaf agent — all work is done directly using your own tools. Coordination is handled by the caller.
+    1. You are a leaf agent — the task tool is disabled. All work is done directly using your own tools
     2. Always verify tech stack by reading source files — directory names alone are unreliable.
     3. Always write `.sdd/skill-registry.md` regardless of persistence mode — the registry is infrastructure, not an SDD artifact.
     4. Return the contract JSON as the final output block — enables automated validation by the orchestrator.
