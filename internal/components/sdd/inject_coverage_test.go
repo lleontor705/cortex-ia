@@ -171,6 +171,12 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 		if hidden, _ := entry["hidden"].(bool); !hidden {
 			t.Errorf("expected %q to be hidden", id)
 		}
+		// Full config fields must be present.
+		for _, field := range []string{"color", "prompt", "description", "steps", "temperature"} {
+			if entry[field] == nil {
+				t.Errorf("expected %q to have %s", id, field)
+			}
+		}
 		tools, ok := entry["tools"].(map[string]any)
 		if !ok {
 			t.Errorf("expected %q to have tools section", id)
@@ -184,6 +190,24 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 		} else {
 			if taskEnabled {
 				t.Errorf("leaf agent %q should have tools.task = false", id)
+			}
+		}
+		// Writers must have edit+write; readers must not.
+		role := agentRoles[id]
+		editEnabled, _ := tools["edit"].(bool)
+		writeEnabled, _ := tools["write"].(bool)
+		switch role {
+		case roleLeafWriter, roleLeafOps:
+			if !editEnabled || !writeEnabled {
+				t.Errorf("writer %q should have edit+write enabled", id)
+			}
+		case roleLeafReader, roleLeafPlanner, roleLeafVerify:
+			if editEnabled || writeEnabled {
+				t.Errorf("reader/planner/verifier %q should not have edit+write", id)
+			}
+		case roleCoordinator:
+			if editEnabled || writeEnabled {
+				t.Errorf("coordinator %q should not have edit+write", id)
 			}
 		}
 	}
@@ -384,11 +408,11 @@ func TestFixConventionRefs(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// buildAgentHiddenOverlay
+// buildAgentOverlay
 // ---------------------------------------------------------------------------
 
-func TestBuildAgentHiddenOverlay_ValidJSON(t *testing.T) {
-	overlay := buildAgentHiddenOverlay([]string{"bootstrap", "investigate", "implement"})
+func TestBuildAgentOverlay_ValidJSON(t *testing.T) {
+	overlay := buildAgentOverlay([]string{"bootstrap", "investigate", "implement", "team-lead"}, "/test/skills")
 
 	var parsed map[string]any
 	if err := json.Unmarshal(overlay, &parsed); err != nil {
@@ -398,25 +422,31 @@ func TestBuildAgentHiddenOverlay_ValidJSON(t *testing.T) {
 	if !ok {
 		t.Fatal("expected 'agent' key")
 	}
-	if len(agents) != 3 {
-		t.Errorf("expected 3 agents, got %d", len(agents))
+	if len(agents) != 4 {
+		t.Errorf("expected 4 agents, got %d", len(agents))
 	}
-	// Every agent must have tools.task set.
+	// Every agent must have full config.
 	for id, v := range agents {
 		entry, _ := v.(map[string]any)
-		tools, ok := entry["tools"].(map[string]any)
-		if !ok {
-			t.Errorf("agent %q missing tools", id)
-			continue
+		for _, field := range []string{"color", "prompt", "description", "steps", "temperature", "tools", "mode", "hidden"} {
+			if entry[field] == nil {
+				t.Errorf("agent %q missing %s", id, field)
+			}
 		}
+		tools, _ := entry["tools"].(map[string]any)
 		if tools["task"] == nil {
 			t.Errorf("agent %q missing tools.task", id)
+		}
+		// Prompt must reference skill path.
+		prompt, _ := entry["prompt"].(string)
+		if !strings.Contains(prompt, "/test/skills/"+id+"/SKILL.md") {
+			t.Errorf("agent %q prompt should reference skill path", id)
 		}
 	}
 }
 
-func TestBuildAgentHiddenOverlay_Empty(t *testing.T) {
-	overlay := buildAgentHiddenOverlay(nil)
+func TestBuildAgentOverlay_Empty(t *testing.T) {
+	overlay := buildAgentOverlay(nil, "/test/skills")
 	var parsed map[string]any
 	if err := json.Unmarshal(overlay, &parsed); err != nil {
 		t.Fatalf("invalid JSON for empty input: %v", err)
@@ -424,7 +454,7 @@ func TestBuildAgentHiddenOverlay_Empty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// taskPermissionForSkill
+// coordinatorSkills
 // ---------------------------------------------------------------------------
 
 func TestCoordinatorSkills(t *testing.T) {

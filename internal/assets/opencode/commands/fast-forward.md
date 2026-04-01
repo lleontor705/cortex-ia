@@ -6,10 +6,15 @@ subtask: false
 
 Follow the SDD orchestrator workflow to fast-forward all planning phases for change "$ARGUMENTS".
 
-WORKFLOW:
+PRE-FLIGHT CHECK:
+If the change was already evaluated as TRIVIAL or SIMPLE by /new-change, skip this command entirely:
+- **Trivial**: Tell the user "This change was evaluated as trivial — no planning phases needed. Use /implement directly."
+- **Simple**: Tell the user "This change was evaluated as simple — only a proposal is needed (already created by /new-change). Use /implement directly."
+
+WORKFLOW (Normal/Complex track only):
 Run sub-agents respecting the dependency graph — parallelize where possible:
 
-1. draft-proposal — create the proposal
+1. draft-proposal — create the proposal (skip if proposal already exists in Cortex)
 2. write-specs AND architect — launch BOTH simultaneously (both read the proposal output, neither depends on the other). Wait for both to complete before proceeding.
 3. decompose — break down into implementation tasks (depends on specs + design). After decompose completes, use tb_create_board to initialize the task board from the decomposed tasks for parallel execution tracking.
 

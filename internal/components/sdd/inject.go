@@ -67,6 +67,157 @@ func isCoordinator(skillID string) bool {
 	return coordinatorSkills[skillID]
 }
 
+// agentRole classifies each SDD skill for tool matrix generation.
+type agentRole int
+
+const (
+	roleLeafReader  agentRole = iota // read-only exploration (investigate, ideate)
+	roleLeafPlanner                  // read-only planning (draft-proposal, write-specs, architect, decompose)
+	roleLeafWriter                   // code-writing leaf (implement, bootstrap, finalize, debug, execute-plan)
+	roleLeafOps                      // git/CI operations (open-pr, file-issue, scan-registry, monitor)
+	roleLeafVerify                   // verification with execution (validate)
+	roleCoordinator                  // can delegate via task() (team-lead, debate, parallel-dispatch)
+)
+
+// agentRoles maps each SDD skill to its role.
+var agentRoles = map[string]agentRole{
+	"bootstrap":         roleLeafWriter,
+	"investigate":       roleLeafReader,
+	"draft-proposal":    roleLeafPlanner,
+	"write-specs":       roleLeafPlanner,
+	"architect":         roleLeafPlanner,
+	"decompose":         roleLeafPlanner,
+	"team-lead":         roleCoordinator,
+	"implement":         roleLeafWriter,
+	"validate":          roleLeafVerify,
+	"finalize":          roleLeafWriter,
+	"debate":            roleCoordinator,
+	"debug":             roleLeafWriter,
+	"execute-plan":      roleLeafWriter,
+	"ideate":            roleLeafReader,
+	"monitor":           roleLeafOps,
+	"open-pr":           roleLeafOps,
+	"file-issue":        roleLeafOps,
+	"parallel-dispatch": roleCoordinator,
+	"scan-registry":     roleLeafOps,
+}
+
+// agentColors assigns a hex color per skill for the OpenCode UI.
+var agentColors = map[string]string{
+	"bootstrap":         "#607D8B",
+	"investigate":       "#78909C",
+	"draft-proposal":    "#90A4AE",
+	"write-specs":       "#B0BEC5",
+	"architect":         "#546E7A",
+	"decompose":         "#455A64",
+	"team-lead":         "#FF8F00",
+	"implement":         "#2E7D32",
+	"validate":          "#F57F17",
+	"finalize":          "#37474F",
+	"debate":            "#6A1B9A",
+	"debug":             "#C62828",
+	"execute-plan":      "#1565C0",
+	"ideate":            "#00838F",
+	"monitor":           "#4527A0",
+	"open-pr":           "#2E7D32",
+	"file-issue":        "#EF6C00",
+	"parallel-dispatch": "#00695C",
+	"scan-registry":     "#795548",
+}
+
+// agentSteps returns the max agentic iterations for a skill.
+func agentSteps(skillID string) int {
+	switch agentRoles[skillID] {
+	case roleCoordinator:
+		return 50
+	case roleLeafWriter:
+		return 60
+	case roleLeafVerify:
+		return 40
+	case roleLeafReader:
+		return 40
+	default:
+		return 30
+	}
+}
+
+// agentTemperature returns the LLM temperature for a skill.
+func agentTemperature(skillID string) float64 {
+	switch skillID {
+	case "validate":
+		return 0.1
+	case "investigate", "draft-proposal", "ideate":
+		return 0.3
+	default:
+		return 0.2
+	}
+}
+
+// toolsForRole returns the full OpenCode tools matrix for a given role.
+func toolsForRole(role agentRole) map[string]any {
+	// Base tools shared by all sub-agents.
+	base := map[string]any{
+		"bash": true, "read": true, "glob": true, "grep": true, "list": true,
+		"question": true, "cortex_*": true, "sdd_*": true, "msg_*": true, "tb_*": true,
+		"cli_*": true,
+		// Disabled by default for sub-agents.
+		"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
+	}
+	switch role {
+	case roleLeafReader:
+		base["edit"] = false
+		base["write"] = false
+		base["patch"] = false
+		base["task"] = false
+		base["lsp"] = true
+		base["webfetch"] = true
+		base["websearch"] = true
+	case roleLeafPlanner:
+		base["edit"] = false
+		base["write"] = false
+		base["patch"] = false
+		base["task"] = false
+		base["lsp"] = false
+		base["webfetch"] = false
+		base["websearch"] = false
+	case roleLeafWriter:
+		base["edit"] = true
+		base["write"] = true
+		base["patch"] = true
+		base["task"] = false
+		base["lsp"] = true
+		base["file_*"] = true
+		base["webfetch"] = true
+		base["websearch"] = false
+	case roleLeafOps:
+		base["edit"] = true
+		base["write"] = true
+		base["patch"] = false
+		base["task"] = false
+		base["lsp"] = false
+		base["webfetch"] = false
+		base["websearch"] = false
+	case roleLeafVerify:
+		base["edit"] = false
+		base["write"] = false
+		base["patch"] = false
+		base["task"] = false
+		base["lsp"] = false
+		base["webfetch"] = true
+		base["websearch"] = true
+	case roleCoordinator:
+		base["edit"] = false
+		base["write"] = false
+		base["patch"] = false
+		base["task"] = true
+		base["lsp"] = false
+		base["file_*"] = true
+		base["webfetch"] = false
+		base["websearch"] = false
+	}
+	return base
+}
+
 // Inject injects the full SDD workflow into the given agent:
 // 1. Orchestrator prompt into system prompt (+ copy to shared dir)
 // 2. SDD skill files into shared ~/.cortex-ia/skills/ directory
@@ -351,7 +502,7 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 	if adapter.Agent() == model.AgentOpenCode {
 		settingsPath := adapter.SettingsPath(homeDir)
 		if settingsPath != "" {
-			overlay := buildAgentHiddenOverlay(sddSkillIDs)
+			overlay := buildAgentOverlay(sddSkillIDs, skillsDir)
 			baseJSON, err := os.ReadFile(settingsPath)
 			if err != nil && !os.IsNotExist(err) {
 				return InjectionResult{}, fmt.Errorf("read agent settings: %w", err)
@@ -372,19 +523,28 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 	return InjectionResult{Changed: changed, Files: files}, nil
 }
 
-// buildAgentHiddenOverlay builds a JSON overlay that sets hidden:true,
-// mode:subagent, and tools.task for all SDD skill agents.
-// Coordinators (team-lead, debate, parallel-dispatch) get task:true;
-// all other leaf agents get task:false to prevent unauthorised delegation.
-func buildAgentHiddenOverlay(skillIDs []string) []byte {
+// buildAgentOverlay builds a full JSON overlay for all SDD skill agents,
+// including mode, hidden, color, description, prompt, steps, temperature,
+// and the complete tools matrix based on each agent's role.
+func buildAgentOverlay(skillIDs []string, skillsDir string) []byte {
 	agents := make(map[string]any, len(skillIDs))
 	for _, id := range skillIDs {
+		role := agentRoles[id]
+		skillPath := skillsDir + "/" + id + "/SKILL.md"
+		prompt := fmt.Sprintf(
+			"You are the **%s** agent. Read your skill file at %s and follow its instructions exactly. "+
+				"When ENABLED CLIs are specified in your task prompt, you MUST use them for validation, "+
+				"cross-checking, or code generation. Run at least ONE CLI consultation per task unless CLIs are set to 'none'.",
+			id, skillPath)
 		agents[id] = map[string]any{
-			"mode":   "subagent",
-			"hidden": true,
-			"tools": map[string]any{
-				"task": isCoordinator(id),
-			},
+			"mode":        "subagent",
+			"hidden":      true,
+			"color":       agentColors[id],
+			"description": sddSkillDescriptions[id],
+			"prompt":      prompt,
+			"steps":       agentSteps(id),
+			"temperature": agentTemperature(id),
+			"tools":       toolsForRole(role),
 		}
 	}
 	data, _ := json.Marshal(map[string]any{"agent": agents})

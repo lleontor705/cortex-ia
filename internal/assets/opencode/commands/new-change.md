@@ -1,5 +1,5 @@
 ---
-description: Start a new SDD change — runs exploration then creates a proposal
+description: Start a new SDD change — runs exploration then selects pipeline depth
 agent: orchestrator
 subtask: false
 ---
@@ -22,8 +22,30 @@ WORKFLOW:
 Tell the user which track was selected and why. User can override with "use full pipeline".
 If any phase fails or returns low confidence, escalate to the next deeper track.
 
-3. Launch draft-proposal sub-agent to create a proposal based on the exploration
-4. Present the proposal summary and ask the user if they want to continue with specs and design
+**TRIVIAL fast-track** (confidence >= 0.9, affected_files <= 2):
+- Skip ALL planning phases (propose, spec, design, tasks, decompose)
+- Delegate directly to @implement with the investigation output as context:
+  ```
+  task(@implement, "
+    Implement this change directly.
+    Change: $ARGUMENTS | Project: {project}
+    INVESTIGATION SUMMARY: {paste the full investigation output}
+    AFFECTED FILES: {list from investigation}
+    APPROACH: {recommended approach from investigation}
+    artifact_store.mode: {mode} | ENABLED CLIs: {list}
+  ")
+  ```
+- After @implement completes, delegate to @validate
+- If @implement returns confidence < 0.8 → escalate to Simple track (run propose first, then re-implement)
+
+**SIMPLE fast-track** (confidence >= 0.8, affected_files <= 5):
+3. Launch draft-proposal sub-agent
+4. Skip spec/design/tasks — delegate directly to @implement with the proposal as context
+5. After @implement completes, delegate to @validate
+
+**NORMAL / COMPLEX track**:
+3. Launch draft-proposal sub-agent
+4. Present the proposal summary and ask the user if they want to continue with /fast-forward
 
 CONTEXT:
 - Working directory: !`echo -n "$(pwd)"`

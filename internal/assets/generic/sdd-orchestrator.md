@@ -170,16 +170,31 @@ After receiving the investigate output, evaluate complexity to choose the right 
 
 | Complexity | Criteria | Pipeline |
 |-----------|----------|----------|
-| **Trivial** | confidence >= 0.9, affected_files <= 2, single approach, no migration | implement → validate |
-| **Simple** | confidence >= 0.8, affected_files <= 5, clear recommendation | propose → implement → validate |
-| **Normal** | confidence >= 0.6, multiple approaches or domains | propose → spec → design → tasks → implement → validate |
-| **Complex** | confidence < 0.6, high risk, migration required, 3+ domains | Full pipeline: propose → spec → design → tasks → implement → validate → finalize |
+| **Trivial** | confidence >= 0.9, affected_files <= 2, single approach, no migration | investigate → implement → validate |
+| **Simple** | confidence >= 0.8, affected_files <= 5, clear recommendation | investigate → propose → implement → validate |
+| **Normal** | confidence >= 0.6, multiple approaches or domains | investigate → propose → spec → design → tasks → implement → validate |
+| **Complex** | confidence < 0.6, high risk, migration required, 3+ domains | Full pipeline: investigate → propose → spec → design → tasks → implement → validate → finalize |
 
 Rules:
 - ALWAYS run investigate first — fast-track decisions are based on its output
 - Tell the user which track was selected and why: "This is a trivial change (2 files, high confidence). Using fast-track: implement → validate."
 - User can override: "use full pipeline" forces Normal track
 - If any phase fails or returns low confidence, escalate to the next deeper track
+
+TRIVIAL ENFORCEMENT (CRITICAL):
+When investigate returns confidence >= 0.9 AND affected_files <= 2 AND single approach:
+1. Do NOT launch @draft-proposal, @write-specs, @architect, or @decompose
+2. Do NOT run /fast-forward — it is unnecessary for trivial changes
+3. Delegate DIRECTLY to @implement with the investigation output as context
+4. After @implement completes, delegate to @validate
+5. If @implement returns confidence < 0.8 → escalate to Simple (run propose, then re-implement)
+
+SIMPLE ENFORCEMENT:
+When investigate returns confidence >= 0.8 AND affected_files <= 5:
+1. Launch ONLY @draft-proposal (skip spec, design, tasks)
+2. Delegate directly to @implement with the proposal as context
+3. After @implement completes, delegate to @validate
+4. If @implement returns confidence < 0.6 → escalate to Normal (run full /fast-forward)
 
 ---
 ## Adaptive Pipeline
