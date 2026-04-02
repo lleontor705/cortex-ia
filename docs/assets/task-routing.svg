@@ -1,174 +1,129 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 480" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
-  <defs>
-    <linearGradient id="bgR" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0f1117"/>
-      <stop offset="100%" stop-color="#1a1d2e"/>
-    </linearGradient>
-    <filter id="shadowR">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.4"/>
-    </filter>
-    <marker id="arrowR" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="7" markerHeight="5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#4A90D9" opacity="0.7"/>
-    </marker>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" font-family="'Segoe UI',system-ui,sans-serif">
+  <rect width="880" height="420" rx="12" fill="#0f1117"/>
 
-  <rect width="900" height="480" rx="12" fill="url(#bgR)"/>
+  <text x="440" y="32" text-anchor="middle" fill="#c0caf5" font-size="17" font-weight="700">Task Routing</text>
+  <text x="440" y="50" text-anchor="middle" fill="#565f89" font-size="10">How user requests map to SDD workflows</text>
 
-  <!-- Title -->
-  <text x="450" y="36" text-anchor="middle" fill="#c0caf5" font-size="18" font-weight="700">Task Routing</text>
-  <text x="450" y="54" text-anchor="middle" fill="#565f89" font-size="11">How user requests map to SDD workflows</text>
+  <!-- Column headers -->
+  <text x="100" y="74" text-anchor="middle" fill="#7aa2f7" font-size="10" font-weight="600" letter-spacing="0.5">USER REQUEST</text>
+  <text x="320" y="74" text-anchor="middle" fill="#9ece6a" font-size="10" font-weight="600" letter-spacing="0.5">COMMAND</text>
+  <text x="640" y="74" text-anchor="middle" fill="#e0af68" font-size="10" font-weight="600" letter-spacing="0.5">PIPELINE</text>
 
-  <!-- === USER REQUEST column === -->
-  <text x="115" y="82" text-anchor="middle" fill="#7aa2f7" font-size="11" font-weight="600" letter-spacing="1">USER REQUEST</text>
+  <!-- Row 1: New feature -->
+  <rect x="15" y="86" width="170" height="28" rx="5" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
+  <text x="100" y="105" text-anchor="middle" fill="#c0caf5" font-size="10">New feature</text>
+  <rect x="230" y="86" width="180" height="28" rx="5" fill="#1e2030" stroke="#9ece6a" stroke-width="1"/>
+  <text x="320" y="105" text-anchor="middle" fill="#9ece6a" font-size="10">/new-change</text>
+  <rect x="450" y="86" width="390" height="28" rx="5" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
+  <text x="645" y="105" text-anchor="middle" fill="#c0caf5" font-size="9">/fast-forward → /implement → /validate</text>
 
-  <g filter="url(#shadowR)">
-    <rect x="30" y="96" width="170" height="32" rx="6" fill="#1e2030" stroke="#7aa2f7" stroke-width="1.2"/>
-    <text x="115" y="117" text-anchor="middle" fill="#c0caf5" font-size="11">New feature</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="30" y="136" width="170" height="32" rx="6" fill="#1e2030" stroke="#f7768e" stroke-width="1.2"/>
-    <text x="115" y="157" text-anchor="middle" fill="#c0caf5" font-size="11">Bug fix</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="30" y="176" width="170" height="32" rx="6" fill="#1e2030" stroke="#e0af68" stroke-width="1.2"/>
-    <text x="115" y="197" text-anchor="middle" fill="#c0caf5" font-size="11">Refactoring</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="30" y="216" width="170" height="32" rx="6" fill="#1e2030" stroke="#bb9af7" stroke-width="1.2"/>
-    <text x="115" y="237" text-anchor="middle" fill="#c0caf5" font-size="11">Migration</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="30" y="256" width="170" height="32" rx="6" fill="#1e2030" stroke="#9ece6a" stroke-width="1.2"/>
-    <text x="115" y="277" text-anchor="middle" fill="#c0caf5" font-size="11">Documentation</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="30" y="296" width="170" height="32" rx="6" fill="#1e2030" stroke="#7dcfff" stroke-width="1.2"/>
-    <text x="115" y="317" text-anchor="middle" fill="#c0caf5" font-size="11">Infrastructure</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="30" y="336" width="170" height="32" rx="6" fill="#1e2030" stroke="#ff9e64" stroke-width="1.2"/>
-    <text x="115" y="357" text-anchor="middle" fill="#c0caf5" font-size="11">Architecture decision</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="30" y="376" width="170" height="32" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1.2"/>
-    <text x="115" y="397" text-anchor="middle" fill="#c0caf5" font-size="11">Git operations</text>
-  </g>
+  <!-- Row 2: Bug fix -->
+  <rect x="15" y="122" width="170" height="28" rx="5" fill="#1e2030" stroke="#f7768e" stroke-width="1"/>
+  <text x="100" y="141" text-anchor="middle" fill="#c0caf5" font-size="10">Bug fix</text>
+  <rect x="230" y="122" width="180" height="28" rx="5" fill="#1e2030" stroke="#9ece6a" stroke-width="1"/>
+  <text x="320" y="137" text-anchor="middle" fill="#9ece6a" font-size="9">/new-change</text>
+  <text x="320" y="148" text-anchor="middle" fill="#565f89" font-size="7">FOCUS: INVESTIGATION</text>
+  <rect x="450" y="122" width="390" height="28" rx="5" fill="#1e2030" stroke="#f7768e" stroke-width="1"/>
+  <text x="645" y="141" text-anchor="middle" fill="#c0caf5" font-size="9">/fast-forward → /implement → /validate</text>
 
-  <!-- === COMMAND column === -->
-  <text x="340" y="82" text-anchor="middle" fill="#9ece6a" font-size="11" font-weight="600" letter-spacing="1">COMMAND</text>
+  <!-- Row 3: Refactoring -->
+  <rect x="15" y="158" width="170" height="28" rx="5" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
+  <text x="100" y="177" text-anchor="middle" fill="#c0caf5" font-size="10">Refactoring</text>
+  <rect x="230" y="158" width="180" height="28" rx="5" fill="#1e2030" stroke="#9ece6a" stroke-width="1"/>
+  <text x="320" y="173" text-anchor="middle" fill="#9ece6a" font-size="9">/new-change</text>
+  <text x="320" y="184" text-anchor="middle" fill="#565f89" font-size="7">TASK-TYPE: REFACTOR</text>
+  <rect x="450" y="158" width="390" height="28" rx="5" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
+  <text x="645" y="177" text-anchor="middle" fill="#c0caf5" font-size="9">/fast-forward → /implement → /validate</text>
 
-  <g filter="url(#shadowR)">
-    <rect x="260" y="96" width="160" height="32" rx="6" fill="#1e2030" stroke="#9ece6a" stroke-width="1.2"/>
-    <text x="340" y="117" text-anchor="middle" fill="#9ece6a" font-size="11" font-weight="500">/new-change</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="260" y="136" width="160" height="32" rx="6" fill="#1e2030" stroke="#9ece6a" stroke-width="1.2"/>
-    <text x="340" y="153" text-anchor="middle" fill="#9ece6a" font-size="10" font-weight="500">/new-change</text>
-    <text x="340" y="164" text-anchor="middle" fill="#565f89" font-size="8">FOCUS: INVESTIGATION</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="260" y="176" width="160" height="32" rx="6" fill="#1e2030" stroke="#9ece6a" stroke-width="1.2"/>
-    <text x="340" y="193" text-anchor="middle" fill="#9ece6a" font-size="10" font-weight="500">/new-change</text>
-    <text x="340" y="204" text-anchor="middle" fill="#565f89" font-size="8">TASK-TYPE: REFACTOR</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="260" y="216" width="160" height="32" rx="6" fill="#1e2030" stroke="#bb9af7" stroke-width="1.2"/>
-    <text x="340" y="233" text-anchor="middle" fill="#bb9af7" font-size="10" font-weight="500">/new-change</text>
-    <text x="340" y="244" text-anchor="middle" fill="#565f89" font-size="8">FOCUS: MIGRATION</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="260" y="256" width="160" height="32" rx="6" fill="#1e2030" stroke="#9ece6a" stroke-width="1.2"/>
-    <text x="340" y="273" text-anchor="middle" fill="#9ece6a" font-size="10" font-weight="500">/new-change</text>
-    <text x="340" y="284" text-anchor="middle" fill="#565f89" font-size="8">TASK-TYPE: DOCS</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="260" y="296" width="160" height="32" rx="6" fill="#1e2030" stroke="#9ece6a" stroke-width="1.2"/>
-    <text x="340" y="313" text-anchor="middle" fill="#9ece6a" font-size="10" font-weight="500">/new-change</text>
-    <text x="340" y="324" text-anchor="middle" fill="#565f89" font-size="8">TASK-TYPE: INFRA</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="260" y="336" width="160" height="32" rx="6" fill="#1e2030" stroke="#ff9e64" stroke-width="1.2"/>
-    <text x="340" y="357" text-anchor="middle" fill="#ff9e64" font-size="11" font-weight="500">/debate</text>
-  </g>
-  <g filter="url(#shadowR)">
-    <rect x="260" y="376" width="160" height="32" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1.2"/>
-    <text x="340" y="397" text-anchor="middle" fill="#c0caf5" font-size="11" font-weight="500">open-pr / file-issue</text>
-  </g>
+  <!-- Row 4: Migration -->
+  <rect x="15" y="194" width="170" height="28" rx="5" fill="#1e2030" stroke="#bb9af7" stroke-width="1"/>
+  <text x="100" y="213" text-anchor="middle" fill="#c0caf5" font-size="10">Migration</text>
+  <rect x="230" y="194" width="180" height="28" rx="5" fill="#1e2030" stroke="#bb9af7" stroke-width="1"/>
+  <text x="320" y="209" text-anchor="middle" fill="#bb9af7" font-size="9">/new-change</text>
+  <text x="320" y="220" text-anchor="middle" fill="#565f89" font-size="7">FOCUS: MIGRATION</text>
+  <rect x="450" y="194" width="390" height="28" rx="5" fill="#1e2030" stroke="#bb9af7" stroke-width="1"/>
+  <text x="645" y="213" text-anchor="middle" fill="#bb9af7" font-size="9">full pipeline (all 9 phases)</text>
 
-  <!-- Arrows: request → command -->
-  <line x1="200" y1="112" x2="258" y2="112" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="200" y1="152" x2="258" y2="152" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="200" y1="192" x2="258" y2="192" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="200" y1="232" x2="258" y2="232" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="200" y1="272" x2="258" y2="272" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="200" y1="312" x2="258" y2="312" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="200" y1="352" x2="258" y2="352" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="200" y1="392" x2="258" y2="392" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
+  <!-- Row 5: Documentation -->
+  <rect x="15" y="230" width="170" height="28" rx="5" fill="#1e2030" stroke="#9ece6a" stroke-width="1"/>
+  <text x="100" y="249" text-anchor="middle" fill="#c0caf5" font-size="10">Documentation</text>
+  <rect x="230" y="230" width="180" height="28" rx="5" fill="#1e2030" stroke="#9ece6a" stroke-width="1"/>
+  <text x="320" y="245" text-anchor="middle" fill="#9ece6a" font-size="9">/new-change</text>
+  <text x="320" y="256" text-anchor="middle" fill="#565f89" font-size="7">TASK-TYPE: DOCS</text>
+  <rect x="450" y="230" width="390" height="28" rx="5" fill="#1e2030" stroke="#9ece6a" stroke-width="1"/>
+  <text x="645" y="249" text-anchor="middle" fill="#c0caf5" font-size="9">/implement (direct)</text>
 
-  <!-- === PIPELINE column === -->
-  <text x="640" y="82" text-anchor="middle" fill="#e0af68" font-size="11" font-weight="600" letter-spacing="1">PIPELINE</text>
+  <!-- Row 6: Infrastructure -->
+  <rect x="15" y="266" width="170" height="28" rx="5" fill="#1e2030" stroke="#7dcfff" stroke-width="1"/>
+  <text x="100" y="285" text-anchor="middle" fill="#c0caf5" font-size="10">Infrastructure</text>
+  <rect x="230" y="266" width="180" height="28" rx="5" fill="#1e2030" stroke="#9ece6a" stroke-width="1"/>
+  <text x="320" y="281" text-anchor="middle" fill="#9ece6a" font-size="9">/new-change</text>
+  <text x="320" y="292" text-anchor="middle" fill="#565f89" font-size="7">TASK-TYPE: INFRA</text>
+  <rect x="450" y="266" width="390" height="28" rx="5" fill="#1e2030" stroke="#7dcfff" stroke-width="1"/>
+  <text x="645" y="285" text-anchor="middle" fill="#c0caf5" font-size="9">/fast-forward → /implement</text>
 
-  <!-- Standard pipeline -->
-  <g filter="url(#shadowR)">
-    <rect x="460" y="96" width="360" height="32" rx="6" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
-    <text x="640" y="117" text-anchor="middle" fill="#c0caf5" font-size="10">/fast-forward &#8594; /implement &#8594; /validate</text>
-  </g>
-  <!-- Bug fix pipeline -->
-  <g filter="url(#shadowR)">
-    <rect x="460" y="136" width="360" height="32" rx="6" fill="#1e2030" stroke="#f7768e" stroke-width="1"/>
-    <text x="640" y="157" text-anchor="middle" fill="#c0caf5" font-size="10">/fast-forward &#8594; /implement &#8594; /validate</text>
-  </g>
-  <!-- Refactor pipeline -->
-  <g filter="url(#shadowR)">
-    <rect x="460" y="176" width="360" height="32" rx="6" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
-    <text x="640" y="197" text-anchor="middle" fill="#c0caf5" font-size="10">/fast-forward &#8594; /implement &#8594; /validate</text>
-  </g>
-  <!-- Migration (full) -->
-  <g filter="url(#shadowR)">
-    <rect x="460" y="216" width="360" height="32" rx="6" fill="#1e2030" stroke="#bb9af7" stroke-width="1"/>
-    <text x="640" y="237" text-anchor="middle" fill="#bb9af7" font-size="10">full pipeline (all 9 phases)</text>
-  </g>
-  <!-- Docs -->
-  <g filter="url(#shadowR)">
-    <rect x="460" y="256" width="360" height="32" rx="6" fill="#1e2030" stroke="#9ece6a" stroke-width="1"/>
-    <text x="640" y="277" text-anchor="middle" fill="#c0caf5" font-size="10">/implement (direct)</text>
-  </g>
-  <!-- Infra -->
-  <g filter="url(#shadowR)">
-    <rect x="460" y="296" width="360" height="32" rx="6" fill="#1e2030" stroke="#7dcfff" stroke-width="1"/>
-    <text x="640" y="317" text-anchor="middle" fill="#c0caf5" font-size="10">/fast-forward &#8594; /implement</text>
-  </g>
-  <!-- Debate -->
-  <g filter="url(#shadowR)">
-    <rect x="460" y="336" width="360" height="32" rx="6" fill="#1e2030" stroke="#ff9e64" stroke-width="1"/>
-    <text x="640" y="357" text-anchor="middle" fill="#c0caf5" font-size="10">adversarial @investigate agents &#8594; synthesis</text>
-  </g>
-  <!-- Git ops -->
-  <g filter="url(#shadowR)">
-    <rect x="460" y="376" width="360" height="32" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
-    <text x="640" y="397" text-anchor="middle" fill="#c0caf5" font-size="10">direct skill execution (no SDD pipeline)</text>
-  </g>
+  <!-- Row 7: Architecture decision -->
+  <rect x="15" y="302" width="170" height="28" rx="5" fill="#1e2030" stroke="#ff9e64" stroke-width="1"/>
+  <text x="100" y="321" text-anchor="middle" fill="#c0caf5" font-size="10">Architecture decision</text>
+  <rect x="230" y="302" width="180" height="28" rx="5" fill="#1e2030" stroke="#ff9e64" stroke-width="1"/>
+  <text x="320" y="321" text-anchor="middle" fill="#ff9e64" font-size="10">/debate</text>
+  <rect x="450" y="302" width="390" height="28" rx="5" fill="#1e2030" stroke="#ff9e64" stroke-width="1"/>
+  <text x="645" y="321" text-anchor="middle" fill="#c0caf5" font-size="9">adversarial @investigate agents → synthesis</text>
 
-  <!-- Arrows: command → pipeline -->
-  <line x1="420" y1="112" x2="458" y2="112" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="420" y1="152" x2="458" y2="152" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="420" y1="192" x2="458" y2="192" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="420" y1="232" x2="458" y2="232" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="420" y1="272" x2="458" y2="272" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="420" y1="312" x2="458" y2="312" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="420" y1="352" x2="458" y2="352" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
-  <line x1="420" y1="392" x2="458" y2="392" stroke="#4A90D9" stroke-width="1.2" marker-end="url(#arrowR)" opacity="0.5"/>
+  <!-- Row 8: Git operations -->
+  <rect x="15" y="338" width="170" height="28" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+  <text x="100" y="357" text-anchor="middle" fill="#c0caf5" font-size="10">Git operations</text>
+  <rect x="230" y="338" width="180" height="28" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+  <text x="320" y="357" text-anchor="middle" fill="#c0caf5" font-size="10">open-pr / file-issue</text>
+  <rect x="450" y="338" width="390" height="28" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+  <text x="645" y="357" text-anchor="middle" fill="#c0caf5" font-size="9">direct skill execution (no SDD pipeline)</text>
+
+  <!-- Arrows col1→col2 -->
+  <line x1="185" y1="100" x2="228" y2="100" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="226,97 232,100 226,103" fill="#4A90D9"/>
+  <line x1="185" y1="136" x2="228" y2="136" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="226,133 232,136 226,139" fill="#4A90D9"/>
+  <line x1="185" y1="172" x2="228" y2="172" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="226,169 232,172 226,175" fill="#4A90D9"/>
+  <line x1="185" y1="208" x2="228" y2="208" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="226,205 232,208 226,211" fill="#4A90D9"/>
+  <line x1="185" y1="244" x2="228" y2="244" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="226,241 232,244 226,247" fill="#4A90D9"/>
+  <line x1="185" y1="280" x2="228" y2="280" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="226,277 232,280 226,283" fill="#4A90D9"/>
+  <line x1="185" y1="316" x2="228" y2="316" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="226,313 232,316 226,319" fill="#4A90D9"/>
+  <line x1="185" y1="352" x2="228" y2="352" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="226,349 232,352 226,355" fill="#4A90D9"/>
+
+  <!-- Arrows col2→col3 -->
+  <line x1="410" y1="100" x2="448" y2="100" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="446,97 452,100 446,103" fill="#4A90D9"/>
+  <line x1="410" y1="136" x2="448" y2="136" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="446,133 452,136 446,139" fill="#4A90D9"/>
+  <line x1="410" y1="172" x2="448" y2="172" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="446,169 452,172 446,175" fill="#4A90D9"/>
+  <line x1="410" y1="208" x2="448" y2="208" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="446,205 452,208 446,211" fill="#4A90D9"/>
+  <line x1="410" y1="244" x2="448" y2="244" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="446,241 452,244 446,247" fill="#4A90D9"/>
+  <line x1="410" y1="280" x2="448" y2="280" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="446,277 452,280 446,283" fill="#4A90D9"/>
+  <line x1="410" y1="316" x2="448" y2="316" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="446,313 452,316 446,319" fill="#4A90D9"/>
+  <line x1="410" y1="352" x2="448" y2="352" stroke="#4A90D9" stroke-width="1"/>
+  <polygon points="446,349 452,352 446,355" fill="#4A90D9"/>
 
   <!-- Legend -->
-  <g transform="translate(280,435)">
-    <rect x="0" y="0" width="340" height="32" rx="6" fill="#1e2030" opacity="0.6"/>
-    <circle cx="20" cy="16" r="5" fill="#9ece6a"/>
-    <text x="32" y="20" fill="#565f89" font-size="9">SDD pipeline</text>
-    <circle cx="120" cy="16" r="5" fill="#bb9af7"/>
-    <text x="132" y="20" fill="#565f89" font-size="9">Full pipeline</text>
-    <circle cx="210" cy="16" r="5" fill="#ff9e64"/>
-    <text x="222" y="20" fill="#565f89" font-size="9">Adversarial</text>
-    <circle cx="290" cy="16" r="5" fill="#565f89"/>
-    <text x="302" y="20" fill="#565f89" font-size="9">Direct</text>
-  </g>
+  <rect x="240" y="385" width="400" height="24" rx="5" fill="#1e2030" opacity="0.5"/>
+  <circle cx="265" cy="397" r="4" fill="#9ece6a"/>
+  <text x="275" y="401" fill="#565f89" font-size="8">SDD</text>
+  <circle cx="315" cy="397" r="4" fill="#bb9af7"/>
+  <text x="325" y="401" fill="#565f89" font-size="8">Full pipeline</text>
+  <circle cx="395" cy="397" r="4" fill="#ff9e64"/>
+  <text x="405" y="401" fill="#565f89" font-size="8">Adversarial</text>
+  <circle cx="470" cy="397" r="4" fill="#565f89"/>
+  <text x="480" y="401" fill="#565f89" font-size="8">Direct</text>
+  <circle cx="530" cy="397" r="4" fill="#f7768e"/>
+  <text x="540" y="401" fill="#565f89" font-size="8">Investigation</text>
 </svg>
