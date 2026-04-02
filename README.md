@@ -105,15 +105,9 @@ Agents with **Task Delegation** get a multi-agent orchestrator that delegates wo
 
 Spec-Driven Development structures substantial changes through 9 phases:
 
-```
-init → explore → propose → spec → design → tasks → apply → verify → archive
-```
-
-```
-proposal → spec ──┐
-         ↘        ├→ tasks → apply → verify → archive
-         design ──┘
-```
+<p align="center">
+  <img src="docs/assets/sdd-pipeline.svg" alt="SDD Pipeline" width="100%" />
+</p>
 
 ### 19 Specialized Skills
 
