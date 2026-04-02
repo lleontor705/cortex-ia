@@ -55,6 +55,7 @@ func (s *stubAdapter) InstallCommands(_ system.PlatformProfile) [][]string { ret
 // ---------------------------------------------------------------------------
 
 func TestInjectSDD_OpenCode(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	adapter := opencode.NewAdapter()
 
@@ -221,6 +222,7 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 }
 
 func TestInjectSDD_OpenCode_Idempotent(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	adapter := opencode.NewAdapter()
 
@@ -241,29 +243,32 @@ func TestInjectSDD_OpenCode_Idempotent(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestInject_NoFeatures(t *testing.T) {
+	ResetSharedWrite()
 	result, err := Inject(t.TempDir(), &stubAdapter{agentID: "test-agent"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Skills always written to shared dir, so files should be non-empty.
-	if !result.Changed {
-		t.Error("expected Changed=true (skills always written to shared dir)")
+	// Shared files (skills + prompt) always written, so file list should be non-empty.
+	if len(result.Files) == 0 {
+		t.Error("expected files to be non-empty (shared skills always written)")
 	}
 }
 
-func TestInjectOrchestratorPrompt_EmptyPromptFile(t *testing.T) {
+func TestInjectAgentPrompt_EmptyPromptFile(t *testing.T) {
+	ResetSharedWrite()
 	adapter := &stubAdapter{agentID: "test", supportsPrompt: true, promptFileVal: ""}
-	result, err := injectOrchestratorPrompt(t.TempDir(), adapter, nil)
+	result, err := injectAgentPrompt(t.TempDir(), adapter, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Should still write shared prompt even if agent has no prompt file.
-	if !result.Changed {
-		t.Error("expected change from shared prompt write")
+	// No prompt file → no agent-level write.
+	if result.Changed {
+		t.Error("expected no change when prompt file is empty")
 	}
 }
 
-func TestInjectOrchestratorPrompt_ReadError(t *testing.T) {
+func TestInjectAgentPrompt_ReadError(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	adapter := codex.NewAdapter()
 
@@ -271,7 +276,7 @@ func TestInjectOrchestratorPrompt_ReadError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := injectOrchestratorPrompt(tmpDir, adapter, nil)
+	_, err := injectAgentPrompt(tmpDir, adapter, nil)
 	if err == nil {
 		t.Fatal("expected error when prompt file is a directory")
 	}
@@ -282,8 +287,7 @@ func TestInjectOrchestratorPrompt_ReadError(t *testing.T) {
 
 func TestInjectSkillFiles_WritesConvention(t *testing.T) {
 	tmpDir := t.TempDir()
-	adapter := &stubAdapter{agentID: "test"}
-	result, err := injectSkillFiles(tmpDir, adapter)
+	result, err := injectSkillFiles(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,8 +312,7 @@ func TestInjectSkillFiles_WriteError(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, ".cortex-ia"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, ".cortex-ia", "skills"), []byte("block"), 0o644)
 
-	adapter := &stubAdapter{agentID: "test"}
-	_, err := injectSkillFiles(tmpDir, adapter)
+	_, err := injectSkillFiles(tmpDir)
 	if err == nil {
 		t.Fatal("expected error when skills dir is blocked")
 	}
@@ -359,6 +362,7 @@ func TestInjectSubAgents_SettingsReadError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestInject_OrchestratorError(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	promptFile := filepath.Join(tmpDir, "prompt")
 	os.MkdirAll(promptFile, 0o755)
@@ -371,6 +375,7 @@ func TestInject_OrchestratorError(t *testing.T) {
 }
 
 func TestInject_CommandsError(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	commandsDir := filepath.Join(tmpDir, "commands")
 	os.WriteFile(commandsDir, []byte("block"), 0o644)
@@ -383,6 +388,7 @@ func TestInject_CommandsError(t *testing.T) {
 }
 
 func TestInject_SubAgentsError(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	subAgentsDir := filepath.Join(tmpDir, "agents")
 	os.WriteFile(subAgentsDir, []byte("block"), 0o644)
@@ -556,8 +562,8 @@ func TestFilesToBackup_WithCommands(t *testing.T) {
 func TestFilesToBackup_NoPromptNoCommands(t *testing.T) {
 	adapter := &stubAdapter{agentID: "test"}
 	paths := FilesToBackup("/tmp/test", adapter)
-	// Should still have shared skills + convention + orchestrator prompt.
-	if len(paths) < 20 {
-		t.Errorf("expected at least 20 paths (19 skills + convention + prompt), got %d", len(paths))
+	// Should still have shared sub-agent skills (11) + convention + orchestrator prompt = 13.
+	if len(paths) < 13 {
+		t.Errorf("expected at least 13 paths (11 skills + convention + prompt), got %d", len(paths))
 	}
 }
