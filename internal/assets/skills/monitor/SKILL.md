@@ -26,19 +26,23 @@ This skill is done when:
 
 <persistence>
 
-Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes and two-step retrieval.
+Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes and two-step retrieval.
 
-**Skill-specific:** This skill reads from Cortex and filesystem but writes only to the filesystem (`.sdd-dashboard.html`).
+**Skill-specific:** This skill reads from Cortex and renders to filesystem (`.sdd-dashboard.html`). The HTML is rendered output, not persistent state -- filesystem write is correct here.
 
 Follow the Skill Loading Protocol from the shared convention.
 
 </persistence>
 
-<delegation>You are a leaf agent — the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
+<context>
+This is a utility skill providing visual pipeline observability. It aggregates data from multiple MCP sources (task boards, agent messages, CLI stats, Cortex memory, ForgeSpec contracts, git history) and renders a single self-contained HTML dashboard. The HTML file is rendered output (not state), so filesystem write is acceptable -- it can be regenerated at any time from the live data sources.
+</context>
+
+<delegation>You are a leaf agent -- the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
 
 <rules>
 <critical>
-1. Source every data point from an actual tool call — real data only, zero hardcoded samples
+1. Source every data point from an actual tool call -- real data only, zero hardcoded samples
 2. Produce a fully self-contained HTML file: inline CSS, inline JS, zero external dependencies
 3. Write the file to `.sdd-dashboard.html` in the project root directory
 4. Produce valid HTML5 that passes basic validation
@@ -47,7 +51,7 @@ Follow the Skill Loading Protocol from the shared convention.
 5. Use a dark theme with CSS custom properties for consistent theming
 6. Make the layout responsive for both desktop and mobile viewports
 7. Color-code task statuses consistently: pending=gray, in_progress=blue, completed=green, failed=red, blocked=orange
-8. Show "Data unavailable" in a section when its data source fails — graceful degradation over crashes
+8. Show "Data unavailable" in a section when its data source fails -- graceful degradation over crashes
 </guidance>
 </rules>
 
@@ -63,37 +67,37 @@ Execute each of these tool calls. If any call fails, capture the error and conti
 
 ### 2a: Task Board State
 ```
-tb_list(project: "{project}") → list all boards
-For each board: tb_status(board_id) → task list with: id, title, status, agent, dependencies
+tb_list(project: "{project}") -> list all boards
+For each board: tb_status(board_id) -> task list with: id, title, status, agent, dependencies
 ```
 Parse into structured data: group tasks by status, count totals.
 
 ### 2b: Agent Messages
 ```
-msg_list_agents() → all registered agents with roles and last activity
-msg_list_threads(agent: "orchestrator") → recent conversation threads
-msg_count(agent: "orchestrator") → inbox size (pending, delivered, acked)
-msg_search("sdd") → messages tagged with SDD context
+msg_list_agents() -> all registered agents with roles and last activity
+msg_list_threads(agent: "orchestrator") -> recent conversation threads
+msg_count(agent: "orchestrator") -> inbox size (pending, delivered, acked)
+msg_search("sdd") -> messages tagged with SDD context
 ```
 Extract the last 20 messages with: timestamp, sender, recipient, content preview, priority.
 
 ### 2c: CLI Usage Metrics
 ```
-cli_stats() → per-provider: installed, circuit_breaker state (closed|open|half_open), total_executions, total_failures, strengths
-cli_list() → installed providers with paths
+cli_stats() -> per-provider: installed, circuit_breaker state (closed|open|half_open), total_executions, total_failures, strengths
+cli_list() -> installed providers with paths
 ```
 Extract: install status, circuit breaker health, execution counts, failure rates.
 
 ### 2d: SDD Contract History
 ```
-sdd_history(project: "{project}") → phase transitions with confidence scores and timestamps
-sdd_list(project: "{project}") → all contracts with filters
+sdd_history(project: "{project}") -> phase transitions with confidence scores and timestamps
+sdd_list(project: "{project}") -> all contracts with filters
 ```
 Extract: latest phase per change, confidence trend, blocked/failed contracts.
 
 ### 2e: Recent SDD Artifacts from Memory
 ```
-mem_search(query: "sdd", project: "{project}", limit: 10) → recent SDD observations
+mem_search(query: "sdd", project: "{project}", limit: 10) -> recent SDD observations
 ```
 For each result, extract: title, type, timestamp, topic_key.
 
@@ -109,7 +113,7 @@ msg_activity_feed(limit: 30, minutes: 60)
 ```
 Extract inter-agent communication from the last 60 minutes. Parse into: timestamp, sender agent, recipient agent, subject, thread ID.
 Include in the dashboard HTML as a new section "Agent Communication" showing:
-- Timeline of messages between agents (from → to, subject, timestamp)
+- Timeline of messages between agents (from -> to, subject, timestamp)
 - Thread groupings for ongoing conversations
 - Color-code by agent using their configured colors from opencode.json
 
@@ -154,40 +158,9 @@ Write the complete HTML to `.sdd-dashboard.html`. The file must follow this stru
       --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
       --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
-    /* Reset and base */
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: var(--font-sans); background: var(--bg); color: var(--text); padding: 1.5rem; min-height: 100vh; }
-    /* Grid layout */
-    .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; max-width: 1400px; margin: 0 auto; }
-    .full-width { grid-column: 1 / -1; }
-    /* Card component */
-    .card { background: var(--surface); border-radius: var(--radius); padding: 1.25rem; }
-    .card h2 { font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 1rem; }
-    /* Progress bar */
-    .progress-bar { height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin: 0.75rem 0; }
-    .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
-    /* Task list */
-    .task-item { padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 0.25rem; display: flex; justify-content: space-between; align-items: center; }
-    .task-item:hover { background: var(--surface-hover); }
-    .status-badge { font-size: 0.75rem; padding: 0.125rem 0.5rem; border-radius: 12px; font-weight: 600; }
-    /* Feed item */
-    .feed-item { padding: 0.5rem 0; border-bottom: 1px solid #2a2e42; font-size: 0.875rem; }
-    .feed-item:last-child { border-bottom: none; }
-    .feed-time { color: var(--text-muted); font-size: 0.75rem; }
-    /* Metric */
-    .metric { text-align: center; padding: 1rem; }
-    .metric-value { font-size: 2rem; font-weight: 700; font-family: var(--font-mono); }
-    .metric-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
-    /* Table */
-    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-    th { text-align: left; padding: 0.5rem; color: var(--text-muted); border-bottom: 1px solid #2a2e42; }
-    td { padding: 0.5rem; border-bottom: 1px solid #1e2030; font-family: var(--font-mono); font-size: 0.8rem; }
-    /* Header */
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-    .header h1 { font-size: 1.5rem; color: var(--accent); }
-    .header .phase { font-size: 0.875rem; color: var(--info); }
-    /* Responsive */
-    @media (max-width: 768px) { .dashboard-grid { grid-template-columns: 1fr; } }
+    /* Generate complete CSS class definitions from the section descriptions and color variables above.
+       Include responsive layout with grid, card components, status badges, progress bars,
+       feed items, and metric displays. */
   </style>
 </head>
 <body>
@@ -236,7 +209,7 @@ Populate every section with data from Step 2. For each section:
 
 ### Agent Communication Section
 - Render as a full-width panel showing the inter-agent message timeline from Step 2g
-- Each entry: timestamp, sender → recipient, subject line
+- Each entry: timestamp, sender -> recipient, subject line
 - Group messages by thread ID to show conversation flows
 - Color-code agent names using their configured colors from opencode.json (fall back to --accent if no color configured)
 - Show a "No recent agent activity" message if msg_activity_feed returned empty results
@@ -252,6 +225,13 @@ Populate every section with data from Step 2. For each section:
 1. Write the complete HTML to `.sdd-dashboard.html` in the project root
 2. Report the absolute file path to the user
 3. Suggest opening the file in a browser
+
+## Step 6: Validate and Return Contract
+
+1. Build the SDD-CONTRACT JSON (see `<output>` for schema).
+2. Validate: `sdd_validate(phase: "verify", contract: {json})`
+3. Persist: `sdd_save(contract: {validated_json}, project: "{project}")`
+4. Return the contract and the dashboard report to the caller.
 
 </steps>
 
@@ -283,6 +263,30 @@ After generating the dashboard, return:
 Open `.sdd-dashboard.html` in your browser to view the dashboard.
 ```
 
+### SDD-CONTRACT
+
+```json
+{
+  "schema_version": "1.0",
+  "phase": "verify",
+  "change_name": "monitor",
+  "project": "{project}",
+  "status": "success",
+  "confidence": 1.0,
+  "executive_summary": "Dashboard generated with {N} tasks, {M} messages, {K} artifacts.",
+  "data": {
+    "data_sources": {"task_board": "ok|unavailable", "agent_messages": "ok|unavailable", "cli_stats": "ok|unavailable", "cortex": "ok|unavailable", "git": "ok|unavailable"},
+    "active_change": "{change-name or none}",
+    "current_phase": "{phase}",
+    "progress_pct": 58,
+    "dashboard_path": ".sdd-dashboard.html"
+  },
+  "artifacts_saved": [],
+  "next_recommended": [],
+  "risks": []
+}
+```
+
 </output>
 
 <examples>
@@ -308,23 +312,37 @@ File written to `{project-root}/.sdd-dashboard.html`.
 
 </examples>
 
+<collaboration>
+
+## P2P Messaging Patterns
+
+After dashboard generation:
+- Broadcast: `msg_broadcast(subject: "Dashboard generated", body: "Dashboard written to {path}. Open in browser to view pipeline state.")`
+
+</collaboration>
+
 <mcp_integration>
 ## Memory Statistics (Cortex)
 Include Cortex health metrics in the dashboard:
-- `mem_stats()` → total observations, sessions, top projects
-- For key observations: `mem_timeline(observation_id: {id})` → chronological context
+- `mem_stats()` -> total observations, sessions, top projects
+- For key observations: `mem_timeline(observation_id: {id})` -> chronological context
 (Why: provides visibility into the memory layer that backs all SDD artifacts)
 
 ## Task Board Overview (ForgeSpec)
 Include task board status:
-- `tb_list(project: "{project}")` → list all boards
-- For each active board: `tb_status(board_id: "{id}")` → task counts by status
+- `tb_list(project: "{project}")` -> list all boards
+- For each active board: `tb_status(board_id: "{id}")` -> task counts by status
 (Why: the dashboard should show both artifact state and task execution state)
 
 ## SDD Pipeline History (ForgeSpec)
 Include phase completion timeline:
-- `sdd_history(project: "{project}")` → all contracts with timestamps and confidence scores
-(Why: shows pipeline health — incomplete phases, low-confidence contracts, retries)
+- `sdd_history(project: "{project}")` -> all contracts with timestamps and confidence scores
+(Why: shows pipeline health -- incomplete phases, low-confidence contracts, retries)
+
+## Contract Persistence (ForgeSpec)
+After generating the dashboard:
+1. `sdd_validate(phase: "verify", contract: {json})` -> validate contract
+2. `sdd_save(contract: {validated_json}, project: "{project}")` -> persist to ForgeSpec history
 </mcp_integration>
 
 <self_check>
@@ -350,5 +368,7 @@ Before returning your report, confirm:
 - [ ] The file renders correctly at both desktop and mobile widths
 - [ ] The file was written to .sdd-dashboard.html in the project root
 - [ ] The absolute file path was reported to the user
+- [ ] SDD-CONTRACT JSON includes all required fields.
+- [ ] `sdd_validate()` was called and passed.
+- [ ] `sdd_save()` persisted the contract to ForgeSpec history.
 </verification>
-</output>

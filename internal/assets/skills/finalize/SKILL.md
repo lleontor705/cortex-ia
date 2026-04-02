@@ -25,7 +25,7 @@ This skill is done when:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: all artifacts | Writes: `sdd/{change-name}/archive-report` + `sdd/{change-name}/retrospective`
 OpenSpec: moves `openspec/changes/{change-name}/` → `openspec/changes/archive/YYYY-MM-DD-{change-name}/`

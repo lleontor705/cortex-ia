@@ -33,16 +33,16 @@ var sddSkillIDs = []string{
 // sddSkillDescriptions maps each SDD skill ID to a short description used in
 // sub-agent frontmatter so that OpenCode recognises the agent type.
 var sddSkillDescriptions = map[string]string{
-	"bootstrap":         "Detects tech stack, conventions, and initialises SDD context",
-	"investigate":       "Explores codebase, diagnoses bugs, and compares approaches",
-	"draft-proposal":    "Creates change proposals with intent, scope, and rollback plan",
-	"write-specs":       "Transforms proposals into Given/When/Then specifications",
-	"architect":         "Designs technical architecture and data flows for a change",
-	"decompose":         "Breaks designs into phased, dependency-ordered implementation tasks",
-	"team-lead":         "Coordinates the apply phase, launching implement agents in parallel",
-	"implement":         "Executes implementation tasks, writing production code",
-	"validate":          "Verifies implementation satisfies specs with execution evidence",
-	"finalize":          "Merges delta specs, archives changes, and generates retrospective",
+	"bootstrap":         "Bootstrap SDD context — detects project stack, conventions, and persistence backend",
+	"investigate":       "Investigate codebase, analyze bugs, assess migrations, compare approaches. Supports FOCUS modes: ARCHITECTURE, INVESTIGATION, MIGRATION, GENERAL.",
+	"draft-proposal":    "Create a change proposal from exploration results",
+	"write-specs":       "Write delta specifications from an approved proposal",
+	"architect":         "Create technical design decisions from an approved proposal",
+	"decompose":         "Break specs and design into ordered implementation tasks",
+	"team-lead":         "Owns the entire apply phase — executes task board groups sequentially, launches @implement sub-agents in parallel within each group, manages file reservations and retries.",
+	"implement":         "Implement code changes following SDD specs, design, and task definitions. Supports TASK-TYPE modes: IMPLEMENTATION, REFACTOR, DATABASE, INFRASTRUCTURE, DOCUMENTATION.",
+	"validate":          "Validate implementation against specs — runs tests, generates compliance matrix, and applies quality/security/performance review lenses.",
+	"finalize":          "Archive completed SDD change — merges delta specs and closes the cycle",
 	"debate":            "Moderates adversarial debates between competing approaches",
 	"debug":             "Systematic root-cause debugging before proposing fixes",
 	"execute-plan":      "Executes written implementation plans with review checkpoints",
@@ -110,7 +110,7 @@ var agentColors = map[string]string{
 	"write-specs":       "#B0BEC5",
 	"architect":         "#546E7A",
 	"decompose":         "#455A64",
-	"team-lead":         "#FF8F00",
+	"team-lead":         "#1565C0",
 	"implement":         "#2E7D32",
 	"validate":          "#F57F17",
 	"finalize":          "#37474F",
@@ -123,18 +123,19 @@ var agentColors = map[string]string{
 	"file-issue":        "#EF6C00",
 	"parallel-dispatch": "#00695C",
 	"scan-registry":     "#795548",
+	"orchestrator":      "#4A90D9",
 }
 
 // agentSteps returns the max agentic iterations for a skill.
 func agentSteps(skillID string) int {
-	switch agentRoles[skillID] {
-	case roleCoordinator:
-		return 50
-	case roleLeafWriter:
+	switch skillID {
+	case "team-lead":
+		return 80
+	case "implement":
 		return 60
-	case roleLeafVerify:
-		return 40
-	case roleLeafReader:
+	case "orchestrator":
+		return 50
+	case "investigate", "validate":
 		return 40
 	default:
 		return 30
@@ -155,67 +156,71 @@ func agentTemperature(skillID string) float64 {
 
 // toolsForRole returns the full OpenCode tools matrix for a given role.
 func toolsForRole(role agentRole) map[string]any {
-	// Base tools shared by all sub-agents.
-	base := map[string]any{
-		"bash": true, "read": true, "glob": true, "grep": true, "list": true,
-		"question": true, "cortex_*": true, "sdd_*": true, "msg_*": true, "tb_*": true,
-		"cli_*": true,
-		// Disabled by default for sub-agents.
-		"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
-	}
 	switch role {
 	case roleLeafReader:
-		base["edit"] = false
-		base["write"] = false
-		base["patch"] = false
-		base["task"] = false
-		base["lsp"] = true
-		base["webfetch"] = true
-		base["websearch"] = true
+		return map[string]any{
+			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
+			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
+			"tb_*": true, "cli_*": true,
+			"edit": false, "write": false, "patch": false, "task": false,
+			"lsp": true, "webfetch": true, "websearch": true,
+			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
+		}
 	case roleLeafPlanner:
-		base["edit"] = false
-		base["write"] = false
-		base["patch"] = false
-		base["task"] = false
-		base["lsp"] = false
-		base["webfetch"] = false
-		base["websearch"] = false
+		return map[string]any{
+			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
+			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
+			"tb_*": true, "cli_*": true,
+			"edit": false, "write": false, "patch": false, "task": false,
+			"lsp": false, "webfetch": false, "websearch": false,
+			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
+		}
 	case roleLeafWriter:
-		base["edit"] = true
-		base["write"] = true
-		base["patch"] = true
-		base["task"] = false
-		base["lsp"] = true
-		base["file_*"] = true
-		base["webfetch"] = true
-		base["websearch"] = false
+		return map[string]any{
+			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
+			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
+			"tb_*": true, "cli_*": true, "file_*": true,
+			"edit": true, "write": true, "patch": true, "task": false,
+			"lsp": true, "webfetch": true, "websearch": false,
+			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
+		}
 	case roleLeafOps:
-		base["edit"] = true
-		base["write"] = true
-		base["patch"] = false
-		base["task"] = false
-		base["lsp"] = false
-		base["webfetch"] = false
-		base["websearch"] = false
+		return map[string]any{
+			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
+			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
+			"tb_*": true, "cli_*": true,
+			"edit": true, "write": true, "patch": false, "task": false,
+			"lsp": false, "webfetch": false, "websearch": false,
+			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
+		}
 	case roleLeafVerify:
-		base["edit"] = false
-		base["write"] = false
-		base["patch"] = false
-		base["task"] = false
-		base["lsp"] = false
-		base["webfetch"] = true
-		base["websearch"] = true
+		return map[string]any{
+			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
+			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
+			"tb_*": true, "cli_*": true,
+			"edit": false, "write": false, "patch": false, "task": true,
+			"lsp": false, "webfetch": true, "websearch": true,
+			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
+		}
 	case roleCoordinator:
-		base["edit"] = false
-		base["write"] = false
-		base["patch"] = false
-		base["task"] = true
-		base["lsp"] = false
-		base["file_*"] = true
-		base["webfetch"] = false
-		base["websearch"] = false
+		return map[string]any{
+			"bash": false, "read": false, "glob": false, "grep": false, "list": false,
+			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
+			"tb_*": true, "cli_*": true, "file_*": true,
+			"edit": false, "write": false, "patch": false, "task": true,
+			"lsp": false, "webfetch": false, "websearch": false,
+			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
+		}
+	default:
+		return map[string]any{
+			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
+			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
+			"tb_*": true, "cli_*": true,
+			"edit": false, "write": false, "patch": false, "task": false,
+			"lsp": false, "webfetch": false, "websearch": false,
+			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
+		}
 	}
-	return base
 }
 
 // Inject injects the full SDD workflow into the given agent:
@@ -238,8 +243,10 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 	}
 
 	// 2. Write SDD skill files to shared directory (~/.cortex-ia/skills/).
+	// For OpenCode: only sub-agent skills go to shared; utility skills go to local.
+	// For other agents: all 19 skills go to shared.
 	{
-		result, err := injectSkillFiles(homeDir)
+		result, err := injectSkillFiles(homeDir, adapter)
 		if err != nil {
 			return InjectionResult{}, fmt.Errorf("sdd skills: %w", err)
 		}
@@ -247,8 +254,9 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 		files = append(files, result.Files...)
 	}
 
-	// 3. Copy skills to the agent-local skills directory (e.g. ~/.claude/skills/).
-	// Each agent reads skills from its own SkillsDir, not from the shared dir.
+	// 3. Copy/write skills to the agent-local skills directory.
+	// For OpenCode: writes utility skills (not sub-agents) to ~/.config/opencode/skills/.
+	// For other agents: copies all 19 skills from shared to agent-local.
 	if adapter.SupportsSkills() {
 		result, err := copySkillsToAgent(homeDir, adapter)
 		if err != nil {
@@ -317,6 +325,18 @@ func injectOrchestratorPrompt(homeDir string, adapter agents.Adapter, assignment
 	changed = changed || wr.Changed
 	files = append(files, sharedPromptPath)
 
+	// For OpenCode: also write to the agent-local prompts directory so the
+	// orchestrator agent can reference it via {file:./prompts/orchestrator.md}.
+	if adapter.Agent() == model.AgentOpenCode {
+		agentPromptPath := filepath.Join(adapter.GlobalConfigDir(homeDir), "prompts", "orchestrator.md")
+		wr, err := filemerge.WriteFileAtomic(agentPromptPath, []byte(content), 0o644)
+		if err != nil {
+			return InjectionResult{}, fmt.Errorf("write agent orchestrator prompt: %w", err)
+		}
+		changed = changed || wr.Changed
+		files = append(files, agentPromptPath)
+	}
+
 	// Inject into agent's system prompt file.
 	promptFile := adapter.SystemPromptFile(homeDir)
 	if promptFile == "" {
@@ -342,7 +362,11 @@ func injectOrchestratorPrompt(homeDir string, adapter agents.Adapter, assignment
 // canonical shared directory (~/.cortex-ia/skills/). Convention references in
 // each SKILL.md are replaced with the absolute path so sub-agents can read
 // the convention regardless of their working directory.
-func injectSkillFiles(homeDir string) (InjectionResult, error) {
+//
+// For OpenCode: only sub-agent skills (openCodeSubAgents) are written here.
+// Utility skills are written to the agent-local directory by copySkillsToAgent.
+// For other agents: all 19 skills are written.
+func injectSkillFiles(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 	sharedSkillsDir := state.SharedSkillsDir(homeDir)
 
 	files := make([]string, 0)
@@ -365,7 +389,12 @@ func injectSkillFiles(homeDir string) (InjectionResult, error) {
 	conventionAbsPath := filepath.ToSlash(conventionPath)
 
 	// 2. Write embedded skills with convention references replaced by absolute path.
-	for _, skillID := range sddSkillIDs {
+	// For OpenCode: only sub-agent skills go to the shared directory.
+	skillsToWrite := sddSkillIDs
+	if adapter.Agent() == model.AgentOpenCode {
+		skillsToWrite = openCodeSubAgents
+	}
+	for _, skillID := range skillsToWrite {
 		assetPath := "skills/" + skillID + "/SKILL.md"
 		content, err := assets.Read(assetPath)
 		if err != nil {
@@ -436,22 +465,56 @@ func loadExternalSkills(sourceDir, targetDir, conventionAbsPath string) ([]strin
 func fixConventionRefs(content, absolutePath string) string {
 	content = strings.ReplaceAll(content, "../_shared/cortex-convention.md", absolutePath)
 	content = strings.ReplaceAll(content, "skills/_shared/cortex-convention.md", absolutePath)
+	// Also replace absolute-looking references that skills may use.
+	content = strings.ReplaceAll(content, "~/.cortex-ia/skills/_shared/cortex-convention.md", absolutePath)
+	content = strings.ReplaceAll(content, "~/.cortex-ia/_shared/cortex-convention.md", absolutePath)
+	content = strings.ReplaceAll(content, "~/.cortex-ia/cortex-convention.md", absolutePath)
 	return content
 }
 
-// copySkillsToAgent copies SDD skill files and the convention from the shared
-// directory (~/.cortex-ia/skills/) to the agent-local skills directory
-// (e.g. ~/.claude/skills/, ~/.gemini/skills/). This ensures each agent can
-// find skills in its own SkillsDir without relying on the shared path.
+// copySkillsToAgent writes skills to the agent-local skills directory.
+//
+// For OpenCode: writes only utility skills (openCodeLocalSkills) directly from
+// embedded assets to ~/.config/opencode/skills/. Sub-agent skills live in the
+// global shared directory and are referenced from opencode.json.
+//
+// For other agents: copies all 19 skills from the shared directory
+// (~/.cortex-ia/skills/) to the agent-local directory (e.g. ~/.claude/skills/).
 func copySkillsToAgent(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 	agentSkillsDir := adapter.SkillsDir(homeDir)
 	if agentSkillsDir == "" {
 		return InjectionResult{}, nil
 	}
 
-	sharedSkillsDir := state.SharedSkillsDir(homeDir)
 	files := make([]string, 0)
 	changed := false
+
+	if adapter.Agent() == model.AgentOpenCode {
+		// OpenCode: write utility skills from embedded assets to local dir.
+		// Convention reference uses absolute path from shared dir.
+		sharedConventionPath := filepath.ToSlash(filepath.Join(
+			state.SharedSkillsDir(homeDir), "_shared", "cortex-convention.md"))
+
+		for _, skillID := range openCodeLocalSkills {
+			assetPath := "skills/" + skillID + "/SKILL.md"
+			content, err := assets.Read(assetPath)
+			if err != nil {
+				continue
+			}
+			content = fixConventionRefs(content, sharedConventionPath)
+			dst := filepath.Join(agentSkillsDir, skillID, "SKILL.md")
+			wr, err := filemerge.WriteFileAtomic(dst, []byte(content), 0o644)
+			if err != nil {
+				return InjectionResult{}, fmt.Errorf("write local skill %q: %w", skillID, err)
+			}
+			changed = changed || wr.Changed
+			files = append(files, dst)
+		}
+		return InjectionResult{Changed: changed, Files: files}, nil
+	}
+
+	// Other agents: copy all skills + convention from shared dir.
+	sharedSkillsDir := state.SharedSkillsDir(homeDir)
 
 	// Copy convention.
 	conventionSrc := filepath.Join(sharedSkillsDir, "_shared", "cortex-convention.md")
@@ -522,15 +585,30 @@ func injectCommands(homeDir string, adapter agents.Adapter) (InjectionResult, er
 	return InjectionResult{Changed: changed, Files: files}, nil
 }
 
+// openCodeSubAgents lists the SDD skills that become sub-agents in opencode.json.
+// These are written to the global shared directory (~/.cortex-ia/skills/).
+var openCodeSubAgents = []string{
+	"bootstrap", "investigate", "draft-proposal", "write-specs",
+	"architect", "decompose", "team-lead", "implement", "validate", "finalize",
+	"parallel-dispatch",
+}
+
+// openCodeLocalSkills lists utility skills that are written to the agent-local
+// skills directory (~/.config/opencode/skills/) instead of the shared directory.
+// These are NOT sub-agents — they are invoked via slash commands or by the orchestrator.
+var openCodeLocalSkills = []string{
+	"debate", "debug", "execute-plan", "file-issue",
+	"ideate", "monitor", "open-pr", "scan-registry",
+}
+
 // injectSubAgents registers SDD sub-agents with the host agent.
 //
-// For OpenCode: all sub-agents are defined in the "agent" section of opencode.json
-// (no separate .md stubs). The orchestrator is NOT included — it is managed by the
-// user or injected separately as a primary agent.
+// For OpenCode: all sub-agents are defined in the "agent" section of opencode.json,
+// including the orchestrator (primary), disabled built-in agents, and SDD sub-agents.
+// Skills are referenced from the agent-local skills directory.
 //
 // For Cursor and other agents: sub-agent .md stubs are written to the SubAgentsDir.
 func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
-	skillsDir := filepath.ToSlash(state.SharedSkillsDir(homeDir))
 	files := make([]string, 0)
 	changed := false
 
@@ -540,7 +618,9 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 		if settingsPath == "" {
 			return InjectionResult{}, nil
 		}
-		overlay := buildAgentOverlay(sddSkillIDs, skillsDir)
+		skillsDir := filepath.ToSlash(state.SharedSkillsDir(homeDir))
+		promptsDir := filepath.ToSlash(filepath.Join(adapter.GlobalConfigDir(homeDir), "prompts"))
+		overlay := buildAgentOverlay(openCodeSubAgents, skillsDir, promptsDir)
 		baseJSON, err := os.ReadFile(settingsPath)
 		if err != nil && !os.IsNotExist(err) {
 			return InjectionResult{}, fmt.Errorf("read agent settings: %w", err)
@@ -557,6 +637,7 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 		files = append(files, settingsPath)
 	} else {
 		// Cursor and others: write .md stubs to SubAgentsDir.
+		skillsDir := filepath.ToSlash(state.SharedSkillsDir(homeDir))
 		subAgentsDir := adapter.SubAgentsDir(homeDir)
 		if subAgentsDir == "" {
 			return InjectionResult{}, nil
@@ -581,31 +662,75 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 	return InjectionResult{Changed: changed, Files: files}, nil
 }
 
-// buildAgentOverlay builds a full JSON overlay for all SDD skill agents,
-// including mode, hidden, color, description, prompt, steps, temperature,
-// and the complete tools matrix based on each agent's role.
-func buildAgentOverlay(skillIDs []string, skillsDir string) []byte {
-	agents := make(map[string]any, len(skillIDs))
+// buildAgentOverlay builds a full JSON overlay for all SDD agents in opencode.json,
+// including:
+//   - orchestrator (primary agent referencing prompts/orchestrator.md)
+//   - disabled built-in agents (build, plan)
+//   - SDD sub-agents with per-agent tools, steps, temperature, and prompts
+func buildAgentOverlay(skillIDs []string, skillsDir, promptsDir string) []byte {
+	agentMap := make(map[string]any, len(skillIDs)+3)
+
+	// Orchestrator: primary agent, delegates all work.
+	agentMap["orchestrator"] = map[string]any{
+		"mode":        "primary",
+		"color":       agentColors["orchestrator"],
+		"description": "Pure coordinator that delegates ALL work to sub-agents. NEVER reads code or files directly — only receives sub-agent outputs.",
+		"prompt":      "{file:" + promptsDir + "/orchestrator.md}",
+		"steps":       agentSteps("orchestrator"),
+		"temperature": agentTemperature("orchestrator"),
+		"permission": map[string]any{
+			"task": map[string]any{"*": "allow"},
+		},
+		"tools": map[string]any{
+			"bash": false, "read": false, "glob": false, "grep": false, "list": false,
+			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
+			"tb_*": true, "skill": true, "task": true,
+			"todoread": true, "todowrite": true,
+			"edit": false, "write": false, "patch": false, "lsp": false,
+			"webfetch": false, "websearch": false, "playwright_*": false,
+		},
+	}
+
+	// Disable built-in agents that conflict with the SDD workflow.
+	agentMap["build"] = map[string]any{"disable": true}
+	agentMap["plan"] = map[string]any{"disable": true}
+
+	// SDD sub-agents.
 	for _, id := range skillIDs {
 		role := agentRoles[id]
 		skillPath := skillsDir + "/" + id + "/SKILL.md"
-		prompt := fmt.Sprintf(
-			"You are the **%s** agent. Read your skill file at %s and follow its instructions exactly. "+
-				"When ENABLED CLIs are specified in your task prompt, you MUST use them for validation, "+
-				"cross-checking, or code generation. Run at least ONE CLI consultation per task unless CLIs are set to 'none'.",
-			id, skillPath)
-		agents[id] = map[string]any{
+
+		agent := map[string]any{
 			"mode":        "subagent",
-			"hidden":      true,
 			"color":       agentColors[id],
 			"description": sddSkillDescriptions[id],
-			"prompt":      prompt,
 			"steps":       agentSteps(id),
 			"temperature": agentTemperature(id),
 			"tools":       toolsForRole(role),
 		}
+
+		// team-lead has a specialized prompt and task permission.
+		if id == "team-lead" {
+			agent["prompt"] = fmt.Sprintf(
+				"You are the **team-lead** agent. Read your skill file at %s and follow its instructions exactly. "+
+					"You are a COORDINATOR — you NEVER write code. You own the task board and execute all groups, "+
+					"launching @implement sub-agents via the task tool for each task.",
+				skillPath)
+			agent["permission"] = map[string]any{
+				"task": map[string]any{"*": "allow"},
+			}
+		} else {
+			agent["prompt"] = fmt.Sprintf(
+				"You are the **%s** agent. Read your skill file at %s and follow its instructions exactly. "+
+					"When ENABLED CLIs are specified in your task prompt, you MUST use them for validation, "+
+					"cross-checking, or code generation. Run at least ONE CLI consultation per task unless CLIs are set to 'none'.",
+				id, skillPath)
+		}
+
+		agentMap[id] = agent
 	}
-	data, _ := json.Marshal(map[string]any{"agent": agents})
+
+	data, _ := json.Marshal(map[string]any{"agent": agentMap})
 	return data
 }
 
@@ -624,17 +749,29 @@ func FilesToBackup(homeDir string, adapter agents.Adapter) []string {
 	// Shared skills directory (~/.cortex-ia/skills/).
 	sharedSkillsDir := state.SharedSkillsDir(homeDir)
 	paths = append(paths, filepath.Join(sharedSkillsDir, "_shared", "cortex-convention.md"))
-	for _, id := range sddSkillIDs {
+	sharedSkills := sddSkillIDs
+	if adapter.Agent() == model.AgentOpenCode {
+		sharedSkills = openCodeSubAgents
+	}
+	for _, id := range sharedSkills {
 		paths = append(paths, filepath.Join(sharedSkillsDir, id, "SKILL.md"))
 	}
 
-	// Agent-local skills directory (e.g. ~/.claude/skills/).
+	// Agent-local skills directory.
 	if adapter.SupportsSkills() {
 		agentSkillsDir := adapter.SkillsDir(homeDir)
 		if agentSkillsDir != "" {
-			paths = append(paths, filepath.Join(agentSkillsDir, "_shared", "cortex-convention.md"))
-			for _, id := range sddSkillIDs {
-				paths = append(paths, filepath.Join(agentSkillsDir, id, "SKILL.md"))
+			if adapter.Agent() == model.AgentOpenCode {
+				// OpenCode: only utility skills in local dir.
+				for _, id := range openCodeLocalSkills {
+					paths = append(paths, filepath.Join(agentSkillsDir, id, "SKILL.md"))
+				}
+			} else {
+				// Other agents: all skills + convention copied to local.
+				paths = append(paths, filepath.Join(agentSkillsDir, "_shared", "cortex-convention.md"))
+				for _, id := range sddSkillIDs {
+					paths = append(paths, filepath.Join(agentSkillsDir, id, "SKILL.md"))
+				}
 			}
 		}
 	}

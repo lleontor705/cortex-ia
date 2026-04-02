@@ -4,21 +4,50 @@ description: "Scans all skill directories, builds a unified skill registry catal
 license: MIT
 metadata:
   author: lleontor705
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
 # Scan Registry
 
 <role>
-You are a skill catalog builder who scans all known skill locations, assembles a unified registry, and persists it so that every sub-agent can discover available skills without redundant searching.
+You are a skill catalog builder who scans all known skill locations, assembles a unified registry, and persists it to Cortex so that every sub-agent can discover available skills without redundant searching.
 </role>
 
 <success_criteria>
 - All skill directories (user-level and project-level) are scanned.
-- A complete registry file is written to `.sdd/skill-registry.md` in the project root.
-- The registry is saved to Cortex (if available) for cross-session persistence.
+- The registry is saved to Cortex with `topic_key: "skill-registry"` as the primary persistence target.
+- Filesystem fallback (`.sdd/skill-registry.md`) is written only when `artifact_store.mode` is `openspec` or `hybrid`.
 - A summary is returned listing all skills and conventions found.
+- An SDD-CONTRACT JSON block is returned with validation passing.
 </success_criteria>
+
+<persistence>
+
+Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes and two-step retrieval.
+
+**Reads:**
+- `bootstrap/{project}` — project context (optional, for convention discovery)
+
+**Writes:**
+- Primary: Cortex via `mem_save(topic_key: "skill-registry", type: "config")`
+- Fallback: `.sdd/skill-registry.md` only when mode is `openspec` or `hybrid`
+
+The `topic_key` ensures running this skill again updates the same observation rather than creating duplicates.
+
+Follow the Skill Loading Protocol from the shared convention.
+
+</persistence>
+
+<context>
+
+Scan-registry is a utility skill that supports all SDD agents by providing skill discovery. It is not part of the SDD change pipeline itself.
+
+**When to run:** After installing/removing skills, setting up a new project, during `/bootstrap`, or when the user asks to update the registry.
+
+**Inputs:** Filesystem scan of known skill directories.
+**Outputs:** Unified registry persisted to Cortex (and optionally filesystem).
+
+</context>
 
 <delegation>You are a leaf agent — the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
 
@@ -27,12 +56,11 @@ You are a skill catalog builder who scans all known skill locations, assembles a
 
 Announce at start: "I'm using the scan-registry skill to build the skill catalog."
 
-The skill registry is a catalog that sub-agents read before starting any task. Run this skill after installing/removing skills, setting up a new project, or when the user asks to update the registry.
-
 ## Scanning Rules
 
-1. Scan all known skill directories listed in Step 1 -- always check every path, even after finding matches.
-2. Read only the frontmatter (first 10 lines) of each SKILL.md -- always limit reads to frontmatter only.
+1. Scan all known skill directories listed in Step 1 — always check every path, even after finding matches.
+2. Read only the frontmatter (first 10 lines) of each SKILL.md — always limit reads to frontmatter only.
+(Why: reading full skill files would consume excessive context for a catalog operation)
 3. Skip directories named `old`, `_shared`, and `scan-registry` (this skill).
 4. Deduplicate by skill name: if the same name appears at both user-level and project-level, keep the project-level version (more specific wins).
 5. If the same name appears in two user-level locations, keep the first one found.
@@ -41,9 +69,11 @@ The skill registry is a catalog that sub-agents read before starting any task. R
 
 ## Persistence Rules
 
-6. Always write the registry file to `.sdd/skill-registry.md` regardless of other persistence options.
-7. Save to Cortex if the `mem_save` tool is available. Use `topic_key: "skill-registry"` for upsert behavior.
-8. Add `.sdd/` to the project's `.gitignore` if `.gitignore` exists and `.sdd` is not already listed.
+6. Always save the registry to Cortex via `mem_save` with `topic_key: "skill-registry"` — this is the primary persistence target.
+(Why: Cortex is the single source of truth. Sub-agents discover skills via `mem_search(query: "skill-registry")`)
+7. Write `.sdd/skill-registry.md` as filesystem fallback only when `artifact_store.mode` is `openspec` or `hybrid`.
+8. Do not modify `.gitignore` or any other project files — the skill should not touch user project state.
+(Why: modifying project files for internal state creates unexpected side effects)
 
 ## Output Rules
 
@@ -60,11 +90,11 @@ The skill registry is a catalog that sub-agents read before starting any task. R
 Glob for `*/SKILL.md` files across all of the following paths. Check every path that exists on the system:
 
 **User-level (global skills):**
+- `~/.cortex-ia/skills/`
 - `~/.claude/skills/`
 - `~/.config/opencode/skills/`
 - `~/.gemini/skills/`
 - `~/.cursor/skills/`
-- `~/.copilot/skills/`
 
 **Project-level (workspace skills):**
 - `{project-root}/.claude/skills/`
@@ -124,38 +154,44 @@ Read the convention files listed above for project-specific patterns and rules.
 
 ## Step 4: Persist the Registry
 
-### A. Write the file (mandatory):
-
-1. Create the `.sdd/` directory in the project root if it does not exist.
-2. Write the registry markdown to `.sdd/skill-registry.md`.
-3. If `.gitignore` exists in the project root and does not contain `.sdd`, append `.sdd/` to it.
-
-### B. Save to Cortex (if available):
-
-If the `mem_save` tool is available:
+### A. Save to Cortex (primary, mandatory):
 
 ```
 mem_save(
   title: "skill-registry",
   topic_key: "skill-registry",
   type: "config",
+  scope: "project",
   project: "{project-name}",
   content: "{registry markdown from Step 3}"
 )
 ```
 
-The `topic_key` ensures running this skill again updates the same observation rather than creating duplicates.
+### B. Write filesystem fallback (conditional):
 
-## Step 5: Return Summary
+Only when `artifact_store.mode` is `openspec` or `hybrid`:
+1. Create the `.sdd/` directory in the project root if it does not exist.
+2. Write the registry markdown to `.sdd/skill-registry.md`.
 
-Present a summary to the user:
+## Step 5: Validate and Return Contract
+
+1. Build the SDD-CONTRACT JSON (see `<output>` for schema).
+2. Validate: `sdd_validate(phase: "init", contract: {json})`
+3. Persist: `sdd_save(contract: {validated_json}, project: "{project}")`
+4. Present the summary to the user (see `<output>` for format).
+
+</steps>
+
+<output>
+
+## Summary Format
 
 ```markdown
 ## Skill Registry Updated
 
 **Project**: {project name}
-**Location**: .sdd/skill-registry.md
-**Cortex**: {saved / not available}
+**Cortex**: saved (topic_key: skill-registry)
+**Filesystem**: {written to .sdd/skill-registry.md | skipped (cortex mode)}
 
 ### Skills Found ({count})
 | Skill | Trigger |
@@ -168,18 +204,36 @@ Present a summary to the user:
 | {filename} | {path} |
 
 ### Next Steps
-Sub-agents will automatically load relevant skills from this registry.
+Sub-agents will automatically load relevant skills from this registry via `mem_search(query: "skill-registry")`.
 To update after installing or removing skills, run this skill again.
 ```
 
-</steps>
+## SDD-CONTRACT
 
-<output>
-Two persistent artifacts:
-1. **File**: `.sdd/skill-registry.md` in the project root -- the authoritative skill catalog.
-2. **Cortex observation** (if available): same content saved under `topic_key: "skill-registry"` for cross-session discovery.
+```json
+{
+  "schema_version": "1.0",
+  "phase": "init",
+  "change_name": "scan-registry",
+  "project": "{project}",
+  "status": "success",
+  "confidence": 1.0,
+  "executive_summary": "Scanned {N} directories, found {M} skills and {K} conventions.",
+  "data": {
+    "skills_found": 5,
+    "conventions_found": 3,
+    "duplicates_resolved": 1,
+    "directories_scanned": 10,
+    "persistence_target": "cortex"
+  },
+  "artifacts_saved": [
+    {"topic_key": "skill-registry", "type": "cortex"}
+  ],
+  "next_recommended": [],
+  "risks": []
+}
+```
 
-Plus a summary message printed to the user confirming what was found and where it was saved.
 </output>
 
 <examples>
@@ -193,8 +247,8 @@ Plus a summary message printed to the user confirming what was found and where i
 ## Skill Registry Updated
 
 **Project**: my-webapp
-**Location**: .sdd/skill-registry.md
-**Cortex**: saved
+**Cortex**: saved (topic_key: skill-registry)
+**Filesystem**: skipped (cortex mode)
 
 ### Skills Found (5)
 | Skill | Trigger |
@@ -213,7 +267,7 @@ Plus a summary message printed to the user confirming what was found and where i
 | CLAUDE.md | {project-root}/CLAUDE.md |
 
 ### Next Steps
-Sub-agents will automatically load relevant skills from this registry.
+Sub-agents will automatically load relevant skills from this registry via `mem_search(query: "skill-registry")`.
 To update after installing or removing skills, run this skill again.
 ```
 
@@ -226,8 +280,8 @@ To update after installing or removing skills, run this skill again.
 ## Skill Registry Updated
 
 **Project**: new-project
-**Location**: .sdd/skill-registry.md
-**Cortex**: not available
+**Cortex**: saved (topic_key: skill-registry)
+**Filesystem**: skipped (cortex mode)
 
 ### Skills Found (0)
 No skills found in any scanned directory.
@@ -241,11 +295,35 @@ Install skills to any of the scanned directories and run this skill again.
 
 </examples>
 
+<collaboration>
+
+## P2P Messaging Patterns
+
+After registry update:
+- Broadcast to active agents: `msg_broadcast(subject: "Skill registry updated", body: "Registry refreshed with {N} skills. Reload via mem_search(query: 'skill-registry').")`
+
+</collaboration>
+
+<mcp_integration>
+
+## Memory Save (Cortex)
+Persist the registry for cross-session discovery:
+- `mem_save(title: "skill-registry", topic_key: "skill-registry", type: "config", scope: "project", project: "{project}", content: "{registry markdown}")`
+(Why: sub-agents discover skills via `mem_search(query: "skill-registry")` — Cortex is the canonical lookup path)
+
+## Contract Persistence (ForgeSpec)
+After persisting the registry:
+1. `sdd_validate(phase: "init", contract: {json})` → validate contract
+2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+
+</mcp_integration>
+
 <self_check>
 Before producing your final output, verify:
-1. All skill directories scanned?
-2. Deduplication applied (project > user)?
-3. Registry saved to both filesystem and Cortex?
+1. All skill directories scanned (user-level + project-level)?
+2. Deduplication applied (project-level wins over user-level)?
+3. Registry saved to Cortex with topic_key: "skill-registry"?
+4. SDD-CONTRACT JSON is valid and complete?
 </self_check>
 
 <verification>
@@ -257,8 +335,11 @@ Before completing this skill, confirm:
 - [ ] `old`, `_shared`, and `scan-registry` directories were skipped.
 - [ ] Deduplication was applied (project-level wins over user-level).
 - [ ] Convention files were scanned, with index file references expanded.
-- [ ] Registry file was written to `.sdd/skill-registry.md`.
-- [ ] `.sdd/` was added to `.gitignore` if applicable.
-- [ ] Cortex save was attempted if `mem_save` is available.
+- [ ] Registry saved to Cortex via `mem_save` with `topic_key: "skill-registry"`.
+- [ ] Filesystem fallback written only if mode is `openspec` or `hybrid`.
+- [ ] No `.gitignore` or other project files were modified.
+- [ ] SDD-CONTRACT JSON includes all required fields.
+- [ ] `sdd_validate()` was called and passed.
+- [ ] `sdd_save()` persisted the contract to ForgeSpec history.
 - [ ] A summary was returned to the user.
 </verification>

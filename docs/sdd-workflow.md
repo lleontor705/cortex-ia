@@ -4,9 +4,9 @@ Spec-Driven Development (SDD) is a structured 9-phase pipeline for substantial s
 
 ## Pipeline
 
-```
-init → explore → propose → spec → design → tasks → apply → verify → archive
-```
+<p align="center">
+  <img src="assets/sdd-pipeline.svg" alt="SDD Pipeline" width="100%" />
+</p>
 
 ### Dependency Graph
 
@@ -64,6 +64,12 @@ Validates implementation against specs. Runs tests, generates compliance matrix.
 **Agent**: finalize | **Confidence threshold**: 0.9
 
 Merges delta specs, closes change cycle, generates retrospective. Cleans up obsolete Cortex observations via `mem_archive`.
+
+## Task Routing
+
+<p align="center">
+  <img src="assets/task-routing.svg" alt="Task Routing" width="100%" />
+</p>
 
 ## Commands
 
@@ -130,6 +136,10 @@ sdd/{change-name}/{artifact-type}
 ```
 
 ## Orchestrator Variants
+
+<p align="center">
+  <img src="assets/multi-agent-orchestration.svg" alt="Multi-Agent Orchestration" width="100%" />
+</p>
 
 ### Multi-Agent (Claude Code, OpenCode)
 The orchestrator is a pure coordinator — delegates ALL work to sub-agents via Task tool. Uses:

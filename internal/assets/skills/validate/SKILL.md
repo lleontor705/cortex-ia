@@ -26,7 +26,7 @@ This skill is DONE when:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: all artifacts (`proposal`, `spec`, `design`, `tasks`, `apply-progress`) | Writes: `sdd/{change-name}/verify-report`
 OpenSpec write: `openspec/changes/{change-name}/verify-report.md`

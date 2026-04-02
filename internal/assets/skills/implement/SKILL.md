@@ -24,7 +24,7 @@ This skill is DONE when:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: `sdd/{change-name}/spec` + `design` + `tasks` | Writes: `sdd/{change-name}/apply-progress`
 Updates: `sdd/{change-name}/tasks` (marks completed with [x] via mem_update)

@@ -76,7 +76,7 @@ Plus **3 content components**:
 | **Conventions** | Shared cortex memory protocol + naming conventions for all agents |
 | **Extra Skills** | Non-SDD utility skills (injected separately from SDD) |
 
-**Total: 68 MCP tools across 4 MCPs + Context7**, all documented in skills and orchestrator prompts.
+**Total: 70 MCP tools across 4 MCPs + Context7**, all documented in skills and orchestrator prompts.
 
 ## Supported Agents
 

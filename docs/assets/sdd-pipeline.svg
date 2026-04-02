@@ -1,0 +1,236 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 520" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f1117"/>
+      <stop offset="100%" stop-color="#1a1d2e"/>
+    </linearGradient>
+    <linearGradient id="initG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#607D8B"/>
+      <stop offset="100%" stop-color="#455A64"/>
+    </linearGradient>
+    <linearGradient id="exploreG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#78909C"/>
+      <stop offset="100%" stop-color="#546E7A"/>
+    </linearGradient>
+    <linearGradient id="proposeG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#90A4AE"/>
+      <stop offset="100%" stop-color="#78909C"/>
+    </linearGradient>
+    <linearGradient id="specG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#B0BEC5"/>
+      <stop offset="100%" stop-color="#90A4AE"/>
+    </linearGradient>
+    <linearGradient id="designG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#546E7A"/>
+      <stop offset="100%" stop-color="#37474F"/>
+    </linearGradient>
+    <linearGradient id="tasksG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#455A64"/>
+      <stop offset="100%" stop-color="#263238"/>
+    </linearGradient>
+    <linearGradient id="applyG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2E7D32"/>
+      <stop offset="100%" stop-color="#1B5E20"/>
+    </linearGradient>
+    <linearGradient id="verifyG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F57F17"/>
+      <stop offset="100%" stop-color="#E65100"/>
+    </linearGradient>
+    <linearGradient id="archiveG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#37474F"/>
+      <stop offset="100%" stop-color="#1a1d2e"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4A90D9" opacity="0.8"/>
+    </marker>
+    <marker id="arrowFork" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#7aa2f7" opacity="0.8"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="520" rx="12" fill="url(#bg)"/>
+
+  <!-- Title -->
+  <text x="550" y="38" text-anchor="middle" fill="#c0caf5" font-size="18" font-weight="700" letter-spacing="0.5">SDD Pipeline  —  Spec-Driven Development</text>
+  <text x="550" y="58" text-anchor="middle" fill="#565f89" font-size="11">9 phases  ·  typed contracts  ·  confidence thresholds  ·  artifact persistence</text>
+
+  <!-- === MAIN FLOW (top row) === -->
+  <!-- Phase boxes: init, explore, propose -->
+  <g filter="url(#shadow)">
+    <rect x="30" y="100" width="100" height="56" rx="8" fill="url(#initG)"/>
+    <text x="80" y="125" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">init</text>
+    <text x="80" y="143" text-anchor="middle" fill="#cfd8dc" font-size="9">bootstrap</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="170" y="100" width="100" height="56" rx="8" fill="url(#exploreG)"/>
+    <text x="220" y="125" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">explore</text>
+    <text x="220" y="143" text-anchor="middle" fill="#cfd8dc" font-size="9">investigate</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="310" y="100" width="100" height="56" rx="8" fill="url(#proposeG)"/>
+    <text x="360" y="125" text-anchor="middle" fill="#263238" font-size="13" font-weight="600">propose</text>
+    <text x="360" y="143" text-anchor="middle" fill="#37474F" font-size="9">draft-proposal</text>
+  </g>
+
+  <!-- Arrows: init → explore → propose -->
+  <line x1="130" y1="128" x2="168" y2="128" stroke="#4A90D9" stroke-width="2" marker-end="url(#arrow)" opacity="0.7"/>
+  <line x1="270" y1="128" x2="308" y2="128" stroke="#4A90D9" stroke-width="2" marker-end="url(#arrow)" opacity="0.7"/>
+
+  <!-- === FORK: propose splits to spec (top) and design (bottom) === -->
+  <!-- Spec branch -->
+  <g filter="url(#shadow)">
+    <rect x="470" y="80" width="100" height="56" rx="8" fill="url(#specG)"/>
+    <text x="520" y="105" text-anchor="middle" fill="#263238" font-size="13" font-weight="600">spec</text>
+    <text x="520" y="123" text-anchor="middle" fill="#37474F" font-size="9">write-specs</text>
+  </g>
+  <!-- Design branch -->
+  <g filter="url(#shadow)">
+    <rect x="470" y="155" width="100" height="56" rx="8" fill="url(#designG)"/>
+    <text x="520" y="180" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">design</text>
+    <text x="520" y="198" text-anchor="middle" fill="#cfd8dc" font-size="9">architect</text>
+  </g>
+
+  <!-- Fork arrows: propose → spec, propose → design -->
+  <path d="M410,118 C430,118 445,108 468,108" fill="none" stroke="#7aa2f7" stroke-width="2" marker-end="url(#arrowFork)" opacity="0.7"/>
+  <path d="M410,138 C430,138 445,183 468,183" fill="none" stroke="#7aa2f7" stroke-width="2" marker-end="url(#arrowFork)" opacity="0.7"/>
+
+  <!-- Parallel indicator -->
+  <text x="445" y="146" text-anchor="middle" fill="#7aa2f7" font-size="9" font-style="italic">parallel</text>
+
+  <!-- === MERGE: spec + design → tasks === -->
+  <g filter="url(#shadow)">
+    <rect x="620" y="100" width="100" height="56" rx="8" fill="url(#tasksG)"/>
+    <text x="670" y="125" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">tasks</text>
+    <text x="670" y="143" text-anchor="middle" fill="#cfd8dc" font-size="9">decompose</text>
+  </g>
+
+  <!-- Merge arrows: spec → tasks, design → tasks -->
+  <path d="M570,108 C590,108 605,128 618,128" fill="none" stroke="#7aa2f7" stroke-width="2" marker-end="url(#arrowFork)" opacity="0.7"/>
+  <path d="M570,183 C590,183 605,128 618,128" fill="none" stroke="#7aa2f7" stroke-width="2" opacity="0.7"/>
+
+  <!-- === CONTINUE: tasks → apply → verify → archive === -->
+  <g filter="url(#shadow)">
+    <rect x="760" y="100" width="100" height="56" rx="8" fill="url(#applyG)"/>
+    <text x="810" y="125" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">apply</text>
+    <text x="810" y="143" text-anchor="middle" fill="#c8e6c9" font-size="9">team-lead</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="900" y="100" width="100" height="56" rx="8" fill="url(#verifyG)"/>
+    <text x="950" y="125" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">verify</text>
+    <text x="950" y="143" text-anchor="middle" fill="#fff3e0" font-size="9">validate</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="1040" y="100" width="100" height="56" rx="8" fill="url(#archiveG)" stroke="#565f89" stroke-width="1" opacity="0.9"/>
+    <text x="1080" y="125" text-anchor="middle" fill="#c0caf5" font-size="12" font-weight="600">archive</text>
+    <text x="1080" y="143" text-anchor="middle" fill="#7f849c" font-size="9">finalize</text>
+  </g>
+
+  <!-- Arrows: tasks → apply → verify → archive -->
+  <line x1="720" y1="128" x2="758" y2="128" stroke="#4A90D9" stroke-width="2" marker-end="url(#arrow)" opacity="0.7"/>
+  <line x1="860" y1="128" x2="898" y2="128" stroke="#4A90D9" stroke-width="2" marker-end="url(#arrow)" opacity="0.7"/>
+  <line x1="1000" y1="128" x2="1038" y2="128" stroke="#4A90D9" stroke-width="2" marker-end="url(#arrow)" opacity="0.7"/>
+
+  <!-- === CONFIDENCE THRESHOLDS === -->
+  <text x="550" y="260" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="600">Confidence Thresholds</text>
+
+  <!-- Threshold bars -->
+  <g transform="translate(60,275)">
+    <!-- init 0.5 -->
+    <rect x="0" y="0" width="100" height="22" rx="4" fill="#1e2030"/>
+    <rect x="0" y="0" width="50" height="22" rx="4" fill="url(#initG)" opacity="0.8"/>
+    <text x="50" y="15" text-anchor="middle" fill="#fff" font-size="10" font-weight="500">init 0.5</text>
+  </g>
+  <g transform="translate(170,275)">
+    <rect x="0" y="0" width="100" height="22" rx="4" fill="#1e2030"/>
+    <rect x="0" y="0" width="50" height="22" rx="4" fill="url(#exploreG)" opacity="0.8"/>
+    <text x="50" y="15" text-anchor="middle" fill="#fff" font-size="10" font-weight="500">explore 0.5</text>
+  </g>
+  <g transform="translate(280,275)">
+    <rect x="0" y="0" width="100" height="22" rx="4" fill="#1e2030"/>
+    <rect x="0" y="0" width="70" height="22" rx="4" fill="url(#proposeG)" opacity="0.8"/>
+    <text x="50" y="15" text-anchor="middle" fill="#263238" font-size="10" font-weight="500">propose 0.7</text>
+  </g>
+  <g transform="translate(390,275)">
+    <rect x="0" y="0" width="100" height="22" rx="4" fill="#1e2030"/>
+    <rect x="0" y="0" width="80" height="22" rx="4" fill="url(#specG)" opacity="0.8"/>
+    <text x="50" y="15" text-anchor="middle" fill="#263238" font-size="10" font-weight="500">spec 0.8</text>
+  </g>
+  <g transform="translate(500,275)">
+    <rect x="0" y="0" width="100" height="22" rx="4" fill="#1e2030"/>
+    <rect x="0" y="0" width="70" height="22" rx="4" fill="url(#designG)" opacity="0.8"/>
+    <text x="50" y="15" text-anchor="middle" fill="#fff" font-size="10" font-weight="500">design 0.7</text>
+  </g>
+  <g transform="translate(610,275)">
+    <rect x="0" y="0" width="100" height="22" rx="4" fill="#1e2030"/>
+    <rect x="0" y="0" width="80" height="22" rx="4" fill="url(#tasksG)" opacity="0.8"/>
+    <text x="50" y="15" text-anchor="middle" fill="#fff" font-size="10" font-weight="500">tasks 0.8</text>
+  </g>
+  <g transform="translate(720,275)">
+    <rect x="0" y="0" width="100" height="22" rx="4" fill="#1e2030"/>
+    <rect x="0" y="0" width="60" height="22" rx="4" fill="url(#applyG)" opacity="0.8"/>
+    <text x="50" y="15" text-anchor="middle" fill="#fff" font-size="10" font-weight="500">apply 0.6</text>
+  </g>
+  <g transform="translate(830,275)">
+    <rect x="0" y="0" width="100" height="22" rx="4" fill="#1e2030"/>
+    <rect x="0" y="0" width="90" height="22" rx="4" fill="url(#verifyG)" opacity="0.8"/>
+    <text x="50" y="15" text-anchor="middle" fill="#fff" font-size="10" font-weight="500">verify 0.9</text>
+  </g>
+  <g transform="translate(940,275)">
+    <rect x="0" y="0" width="100" height="22" rx="4" fill="#1e2030"/>
+    <rect x="0" y="0" width="90" height="22" rx="4" fill="#37474F" opacity="0.8"/>
+    <text x="50" y="15" text-anchor="middle" fill="#c0caf5" font-size="10" font-weight="500">archive 0.9</text>
+  </g>
+
+  <!-- === FAST-TRACK DECISION === -->
+  <text x="550" y="340" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="600">Fast-Track Decision Logic</text>
+
+  <!-- Track cards -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="355" width="230" height="65" rx="8" fill="#1e2030" stroke="#2E7D32" stroke-width="1.5"/>
+    <text x="155" y="378" text-anchor="middle" fill="#9ece6a" font-size="12" font-weight="600">Trivial</text>
+    <text x="155" y="395" text-anchor="middle" fill="#7f849c" font-size="10">confidence &gt;= 0.9  ·  &lt;= 2 files</text>
+    <text x="155" y="410" text-anchor="middle" fill="#565f89" font-size="9">implement &rarr; validate</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="290" y="355" width="230" height="65" rx="8" fill="#1e2030" stroke="#7aa2f7" stroke-width="1.5"/>
+    <text x="405" y="378" text-anchor="middle" fill="#7aa2f7" font-size="12" font-weight="600">Simple</text>
+    <text x="405" y="395" text-anchor="middle" fill="#7f849c" font-size="10">confidence &gt;= 0.8  ·  &lt;= 5 files</text>
+    <text x="405" y="410" text-anchor="middle" fill="#565f89" font-size="9">propose &rarr; implement &rarr; validate</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="540" y="355" width="230" height="65" rx="8" fill="#1e2030" stroke="#e0af68" stroke-width="1.5"/>
+    <text x="655" y="378" text-anchor="middle" fill="#e0af68" font-size="12" font-weight="600">Normal</text>
+    <text x="655" y="395" text-anchor="middle" fill="#7f849c" font-size="10">confidence &gt;= 0.6  ·  multi-approach</text>
+    <text x="655" y="410" text-anchor="middle" fill="#565f89" font-size="9">full pipeline (no archive)</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="790" y="355" width="250" height="65" rx="8" fill="#1e2030" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="915" y="378" text-anchor="middle" fill="#f7768e" font-size="12" font-weight="600">Complex</text>
+    <text x="915" y="395" text-anchor="middle" fill="#7f849c" font-size="10">confidence &lt; 0.6  ·  high risk  ·  migration</text>
+    <text x="915" y="410" text-anchor="middle" fill="#565f89" font-size="9">full pipeline + archive</text>
+  </g>
+
+  <!-- === MCP TOOLS FOOTER === -->
+  <text x="550" y="460" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="600">Powered by 3 MCP Servers</text>
+
+  <g transform="translate(120,470)">
+    <rect x="0" y="0" width="200" height="28" rx="6" fill="#1e2030" stroke="#4A90D9" stroke-width="1"/>
+    <text x="100" y="18" text-anchor="middle" fill="#7dcfff" font-size="11">Cortex  ·  31 tools  ·  memory</text>
+  </g>
+  <g transform="translate(370,470)">
+    <rect x="0" y="0" width="230" height="28" rx="6" fill="#1e2030" stroke="#2E7D32" stroke-width="1"/>
+    <text x="115" y="18" text-anchor="middle" fill="#9ece6a" font-size="11">ForgeSpec  ·  19 tools  ·  contracts</text>
+  </g>
+  <g transform="translate(650,470)">
+    <rect x="0" y="0" width="240" height="28" rx="6" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
+    <text x="120" y="18" text-anchor="middle" fill="#e0af68" font-size="11">Mailbox  ·  14 tools  ·  messaging</text>
+  </g>
+</svg>

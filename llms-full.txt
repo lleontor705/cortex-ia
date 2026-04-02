@@ -1,6 +1,6 @@
 # cortex-ia
 
-> AI Agent Ecosystem Configurator — configures 8 AI coding agents with 5 MCP servers (68 tools), 19 SDD skills, and orchestrator prompts. One Go binary, interactive TUI, full backup/restore.
+> AI Agent Ecosystem Configurator — configures 8 AI coding agents with 5 MCP servers (70 tools), 19 SDD skills, and orchestrator prompts. One Go binary, interactive TUI, full backup/restore.
 
 ## What It Does
 
@@ -17,7 +17,7 @@ cortex-ia detects installed AI coding agents and configures them with a complete
 - Windsurf — append to file, MCP config file
 - Antigravity — append to file, MCP config file
 
-## MCP Servers (5, 68 tools total)
+## MCP Servers (5, 70 tools total)
 
 ### Cortex Memory (31 tools)
 Core: mem_save, mem_search, mem_get_observation, mem_context, mem_session_summary, mem_update, mem_capture_passive, mem_save_prompt, mem_suggest_topic_key

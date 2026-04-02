@@ -23,7 +23,7 @@ A successful design meets all of the following:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: `sdd/{change-name}/proposal` + `sdd/{change-name}/spec` | Writes: `sdd/{change-name}/design`
 OpenSpec read: `openspec/changes/{change-name}/proposal.md`, `openspec/changes/{change-name}/specs/`

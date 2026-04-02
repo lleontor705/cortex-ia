@@ -19,6 +19,33 @@ You are a debate moderator that orchestrates adversarial analysis between compet
 - Dissenting points are preserved — the minority report matters
 </success_criteria>
 
+<persistence>
+
+Follow the shared Cortex convention in `~/.cortex-ia/_shared/cortex-convention.md` for persistence modes and two-step retrieval.
+
+**Reads:**
+- `bootstrap/{project}` — project context
+- Upstream artifacts if debate is part of an SDD change
+
+**Writes:**
+- `sdd/{change-name}/debate` — debate synthesis and recommendation via `mem_save(type: "decision")`
+- Connect to upstream: `mem_relate(from: {debate_id}, to: {explore_id}, relation: "follows")`
+
+Follow the Skill Loading Protocol from the shared convention.
+
+</persistence>
+
+<context>
+
+Debate is an optional enrichment phase that can occur between investigate and draft-proposal when multiple viable approaches need adversarial evaluation.
+
+**Inputs:** Topic with 2-4 competing positions, optionally from investigate output.
+**Outputs:** Winning position with rationale, persisted to Cortex.
+
+This is a **coordinator** skill — it can launch @investigate defender agents via the task tool.
+
+</context>
+
 <delegation>permitted — targets: @investigate only. You may launch @investigate defender agents via the task() tool.</delegation>
 
 <rules>
@@ -128,6 +155,10 @@ mem_save(
   content: "{synthesis report}"
 )
 ```
+
+Validate and persist the contract:
+1. `sdd_validate(phase: "explore", contract: {json})` → validate debate contract
+2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
 </steps>
 
 <output>
@@ -136,7 +167,7 @@ mem_save(
 ```json
 {
   "schema_version": "1.0",
-  "phase": "debate",
+  "phase": "explore",
   "change_name": "{change-name}",
   "project": "{project}",
   "status": "success",
@@ -152,7 +183,14 @@ mem_save(
     "key_arguments_survived": ["..."],
     "dissenting_points": ["..."],
     "recommendation": "Proceed with monolith approach because..."
-  }
+  },
+  "artifacts_saved": [
+    {"topic_key": "sdd/{change-name}/debate", "type": "cortex"}
+  ],
+  "next_recommended": ["draft-proposal"],
+  "risks": [
+    {"description": "Dissenting points may need revisiting if assumptions change", "level": "low"}
+  ]
 }
 ```
 </output>
@@ -185,6 +223,21 @@ Before producing your final output, verify:
 3. Final recommendation includes rationale?
 </self_check>
 
+<collaboration>
+
+## P2P Messaging Patterns
+
+Debate uses extensive P2P messaging between defender agents:
+- **Round 1**: Each defender sends opening argument to all others via `msg_send`
+- **Round 2**: Each defender reads inbox and sends rebuttals via `msg_send`
+- **Round 3**: Each defender broadcasts final defense via `msg_broadcast`
+- **Synthesis**: Moderator reads all threads via `msg_activity_feed(limit: 50)`
+
+After synthesis:
+- Notify orchestrator: `msg_send(to_agent: "orchestrator", subject: "Debate complete: {topic}", body: "Winner: {position}. Confidence: {score}.")`
+
+</collaboration>
+
 <verification>
 - [ ] 2-4 positions were defined with clear labels and theses
 - [ ] Each position had a dedicated defender agent
@@ -195,6 +248,9 @@ Before producing your final output, verify:
 - [ ] Debate results persisted to Cortex
 - [ ] Contract validated and saved to ForgeSpec history
 - [ ] Contract JSON is valid and complete
+- [ ] SDD-CONTRACT JSON includes artifacts_saved, next_recommended, and risks fields
+- [ ] `sdd_validate()` was called and passed
+- [ ] `sdd_save()` persisted the contract to ForgeSpec history
 </verification>
 
 <mcp_integration>
@@ -203,4 +259,3 @@ After persisting debate results:
 1. `sdd_validate(phase: "explore", contract: {json})` → validate debate contract
 2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
 </mcp_integration>
-</output>

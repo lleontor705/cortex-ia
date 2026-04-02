@@ -151,14 +151,36 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 	if !ok {
 		t.Fatal("expected 'agent' section in settings")
 	}
-	for _, id := range sddSkillIDs {
+	// Verify disabled built-in agents.
+	for _, disabled := range []string{"build", "plan"} {
+		entry, ok := agentSection[disabled].(map[string]any)
+		if !ok {
+			t.Errorf("missing disabled agent %q", disabled)
+			continue
+		}
+		if entry["disable"] != true {
+			t.Errorf("expected %q to be disabled", disabled)
+		}
+	}
+
+	// Verify orchestrator is primary mode.
+	orch, ok := agentSection["orchestrator"].(map[string]any)
+	if !ok {
+		t.Fatal("missing orchestrator agent")
+	}
+	if orch["mode"] != "primary" {
+		t.Error("orchestrator should be primary mode")
+	}
+
+	// Verify sub-agents.
+	for _, id := range openCodeSubAgents {
 		entry, ok := agentSection[id].(map[string]any)
 		if !ok {
 			t.Errorf("missing agent entry for %q", id)
 			continue
 		}
-		if hidden, _ := entry["hidden"].(bool); !hidden {
-			t.Errorf("expected %q to be hidden", id)
+		if entry["mode"] != "subagent" {
+			t.Errorf("expected %q to be subagent mode", id)
 		}
 		// Full config fields must be present.
 		for _, field := range []string{"color", "prompt", "description", "steps", "temperature"} {
@@ -170,16 +192,6 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 		if !ok {
 			t.Errorf("expected %q to have tools section", id)
 			continue
-		}
-		taskEnabled, _ := tools["task"].(bool)
-		if isCoordinator(id) {
-			if !taskEnabled {
-				t.Errorf("coordinator %q should have tools.task = true", id)
-			}
-		} else {
-			if taskEnabled {
-				t.Errorf("leaf agent %q should have tools.task = false", id)
-			}
 		}
 		// Writers must have edit+write; readers must not.
 		role := agentRoles[id]
@@ -199,6 +211,12 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 				t.Errorf("coordinator %q should not have edit+write", id)
 			}
 		}
+	}
+
+	// team-lead must have permission block.
+	tl, _ := agentSection["team-lead"].(map[string]any)
+	if tl["permission"] == nil {
+		t.Error("team-lead should have permission block")
 	}
 }
 
@@ -264,7 +282,8 @@ func TestInjectOrchestratorPrompt_ReadError(t *testing.T) {
 
 func TestInjectSkillFiles_WritesConvention(t *testing.T) {
 	tmpDir := t.TempDir()
-	result, err := injectSkillFiles(tmpDir)
+	adapter := &stubAdapter{agentID: "test"}
+	result, err := injectSkillFiles(tmpDir, adapter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +308,8 @@ func TestInjectSkillFiles_WriteError(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, ".cortex-ia"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, ".cortex-ia", "skills"), []byte("block"), 0o644)
 
-	_, err := injectSkillFiles(tmpDir)
+	adapter := &stubAdapter{agentID: "test"}
+	_, err := injectSkillFiles(tmpDir, adapter)
 	if err == nil {
 		t.Fatal("expected error when skills dir is blocked")
 	}
@@ -401,7 +421,7 @@ func TestFixConventionRefs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBuildAgentOverlay_ValidJSON(t *testing.T) {
-	overlay := buildAgentOverlay([]string{"bootstrap", "investigate", "implement", "team-lead"}, "/test/skills")
+	overlay := buildAgentOverlay([]string{"bootstrap", "investigate", "implement", "team-lead"}, "/test/skills", "/test/prompts")
 
 	var parsed map[string]any
 	if err := json.Unmarshal(overlay, &parsed); err != nil {
@@ -411,13 +431,33 @@ func TestBuildAgentOverlay_ValidJSON(t *testing.T) {
 	if !ok {
 		t.Fatal("expected 'agent' key")
 	}
-	if len(agents) != 4 {
-		t.Errorf("expected 4 agents, got %d", len(agents))
+	// 4 sub-agents + orchestrator + build (disabled) + plan (disabled) = 7
+	if len(agents) != 7 {
+		t.Errorf("expected 7 agents, got %d", len(agents))
 	}
-	// Every agent must have full config.
-	for id, v := range agents {
-		entry, _ := v.(map[string]any)
-		for _, field := range []string{"color", "prompt", "description", "steps", "temperature", "tools", "mode", "hidden"} {
+
+	// Verify disabled built-in agents.
+	for _, disabled := range []string{"build", "plan"} {
+		entry, _ := agents[disabled].(map[string]any)
+		if entry["disable"] != true {
+			t.Errorf("agent %q should be disabled", disabled)
+		}
+	}
+
+	// Verify orchestrator is primary mode.
+	orch, _ := agents["orchestrator"].(map[string]any)
+	if orch["mode"] != "primary" {
+		t.Error("orchestrator should be primary mode")
+	}
+	orchPrompt, _ := orch["prompt"].(string)
+	if !strings.Contains(orchPrompt, "/test/prompts/orchestrator.md") {
+		t.Errorf("orchestrator prompt should reference prompts dir, got: %s", orchPrompt)
+	}
+
+	// Every sub-agent must have full config.
+	for _, id := range []string{"bootstrap", "investigate", "implement", "team-lead"} {
+		entry, _ := agents[id].(map[string]any)
+		for _, field := range []string{"color", "prompt", "description", "steps", "temperature", "tools", "mode"} {
 			if entry[field] == nil {
 				t.Errorf("agent %q missing %s", id, field)
 			}
@@ -432,13 +472,24 @@ func TestBuildAgentOverlay_ValidJSON(t *testing.T) {
 			t.Errorf("agent %q prompt should reference skill path", id)
 		}
 	}
+
+	// team-lead should have permission block.
+	tl, _ := agents["team-lead"].(map[string]any)
+	if tl["permission"] == nil {
+		t.Error("team-lead should have permission block")
+	}
 }
 
 func TestBuildAgentOverlay_Empty(t *testing.T) {
-	overlay := buildAgentOverlay(nil, "/test/skills")
+	overlay := buildAgentOverlay(nil, "/test/skills", "/test/prompts")
 	var parsed map[string]any
 	if err := json.Unmarshal(overlay, &parsed); err != nil {
 		t.Fatalf("invalid JSON for empty input: %v", err)
+	}
+	// Should still have orchestrator + build + plan = 3
+	agents, _ := parsed["agent"].(map[string]any)
+	if len(agents) != 3 {
+		t.Errorf("expected 3 agents (orchestrator+disabled), got %d", len(agents))
 	}
 }
 
