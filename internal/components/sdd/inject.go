@@ -247,7 +247,7 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 		for _, utilID := range openCodeLocalSkills {
 			staleDir := filepath.Join(state.SharedSkillsDir(homeDir), utilID)
 			if _, statErr := os.Stat(staleDir); statErr == nil {
-				os.RemoveAll(staleDir)
+				_ = os.RemoveAll(staleDir)
 			}
 		}
 		skillResult, err := injectSkillFiles(homeDir)
@@ -502,12 +502,12 @@ func copySkillsToAgent(homeDir string, adapter agents.Adapter) (InjectionResult,
 		for _, skillID := range openCodeSubAgents {
 			staleDir := filepath.Join(agentSkillsDir, skillID)
 			if _, err := os.Stat(staleDir); err == nil {
-				os.RemoveAll(staleDir)
+				_ = os.RemoveAll(staleDir)
 			}
 		}
 		staleShared := filepath.Join(agentSkillsDir, "_shared")
 		if _, err := os.Stat(staleShared); err == nil {
-			os.RemoveAll(staleShared)
+			_ = os.RemoveAll(staleShared)
 		}
 
 		// Write utility skills from embedded assets to local dir.
@@ -638,7 +638,7 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 		// Clean up .md stubs from prior installations if SubAgentsDir exists.
 		if subAgentsDir := adapter.SubAgentsDir(homeDir); subAgentsDir != "" {
 			if _, err := os.Stat(subAgentsDir); err == nil {
-				os.RemoveAll(subAgentsDir)
+				_ = os.RemoveAll(subAgentsDir)
 			}
 		}
 
