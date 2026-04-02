@@ -562,8 +562,8 @@ func TestFilesToBackup_WithCommands(t *testing.T) {
 func TestFilesToBackup_NoPromptNoCommands(t *testing.T) {
 	adapter := &stubAdapter{agentID: "test"}
 	paths := FilesToBackup("/tmp/test", adapter)
-	// Should still have shared skills + convention + orchestrator prompt.
-	if len(paths) < 20 {
-		t.Errorf("expected at least 20 paths (19 skills + convention + prompt), got %d", len(paths))
+	// Should still have shared sub-agent skills (11) + convention + orchestrator prompt = 13.
+	if len(paths) < 13 {
+		t.Errorf("expected at least 13 paths (11 skills + convention + prompt), got %d", len(paths))
 	}
 }

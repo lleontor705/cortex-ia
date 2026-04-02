@@ -19,19 +19,15 @@ import (
 
 // sharedWriteOnce ensures shared directory writes (orchestrator prompt, skill files)
 // happen only once across parallel agent chains, preventing file lock conflicts on Windows.
-// sharedWriteOnce ensures shared directory writes (orchestrator prompt, skill files)
-// happen only once across parallel agent chains, preventing file lock conflicts on Windows.
 var sharedWriteOnce sync.Once
 var sharedWriteErr error
 var sharedWriteFiles []string
-var sharedWriteChanged bool
 
 // ResetSharedWrite resets the sync.Once for testing. Must be called between test runs.
 func ResetSharedWrite() {
 	sharedWriteOnce = sync.Once{}
 	sharedWriteErr = nil
 	sharedWriteFiles = nil
-	sharedWriteChanged = false
 }
 
 // InjectionResult describes the outcome of SDD injection.
@@ -173,72 +169,51 @@ func agentTemperature(skillID string) float64 {
 }
 
 // toolsForRole returns the full OpenCode tools matrix for a given role.
+// Starts from a base set of tools shared by all sub-agents, then applies
+// role-specific overrides for permissions that differ.
 func toolsForRole(role agentRole) map[string]any {
+	// Base: read-only leaf agent with no write/delegation capabilities.
+	tools := map[string]any{
+		"bash": true, "read": true, "glob": true, "grep": true, "list": true,
+		"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
+		"tb_*": true, "cli_*": true,
+		"edit": false, "write": false, "patch": false, "task": false,
+		"lsp": false, "webfetch": false, "websearch": false,
+		"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
+	}
+
 	switch role {
 	case roleLeafReader:
-		return map[string]any{
-			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
-			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
-			"tb_*": true, "cli_*": true,
-			"edit": false, "write": false, "patch": false, "task": false,
-			"lsp": true, "webfetch": true, "websearch": true,
-			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
-		}
+		tools["lsp"] = true
+		tools["webfetch"] = true
+		tools["websearch"] = true
 	case roleLeafPlanner:
-		return map[string]any{
-			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
-			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
-			"tb_*": true, "cli_*": true,
-			"edit": false, "write": false, "patch": false, "task": false,
-			"lsp": false, "webfetch": false, "websearch": false,
-			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
-		}
+		// Base is already correct for planners.
 	case roleLeafWriter:
-		return map[string]any{
-			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
-			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
-			"tb_*": true, "cli_*": true, "file_*": true,
-			"edit": true, "write": true, "patch": true, "task": false,
-			"lsp": true, "webfetch": true, "websearch": false,
-			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
-		}
+		tools["edit"] = true
+		tools["write"] = true
+		tools["patch"] = true
+		tools["lsp"] = true
+		tools["webfetch"] = true
+		tools["file_*"] = true
 	case roleLeafOps:
-		return map[string]any{
-			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
-			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
-			"tb_*": true, "cli_*": true,
-			"edit": true, "write": true, "patch": false, "task": false,
-			"lsp": false, "webfetch": false, "websearch": false,
-			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
-		}
+		tools["edit"] = true
+		tools["write"] = true
 	case roleLeafVerify:
-		return map[string]any{
-			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
-			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
-			"tb_*": true, "cli_*": true,
-			"edit": false, "write": false, "patch": false, "task": true,
-			"lsp": false, "webfetch": true, "websearch": true,
-			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
-		}
+		tools["task"] = true
+		tools["webfetch"] = true
+		tools["websearch"] = true
 	case roleCoordinator:
-		return map[string]any{
-			"bash": false, "read": false, "glob": false, "grep": false, "list": false,
-			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
-			"tb_*": true, "cli_*": true, "file_*": true,
-			"edit": false, "write": false, "patch": false, "task": true,
-			"lsp": false, "webfetch": false, "websearch": false,
-			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
-		}
-	default:
-		return map[string]any{
-			"bash": true, "read": true, "glob": true, "grep": true, "list": true,
-			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
-			"tb_*": true, "cli_*": true,
-			"edit": false, "write": false, "patch": false, "task": false,
-			"lsp": false, "webfetch": false, "websearch": false,
-			"skill": false, "todoread": false, "todowrite": false, "playwright_*": false,
-		}
+		tools["bash"] = false
+		tools["read"] = false
+		tools["glob"] = false
+		tools["grep"] = false
+		tools["list"] = false
+		tools["task"] = true
+		tools["file_*"] = true
 	}
+
+	return tools
 }
 
 // Inject injects the full SDD workflow into the given agent:
@@ -255,17 +230,15 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 	sharedWriteOnce.Do(func() {
 		// Write shared orchestrator prompt.
 		sharedPromptPath := filepath.Join(state.SharedPromptsDir(homeDir), "orchestrator.md")
-		content, err := buildOrchestratorContent(homeDir, assignments)
+		content, err := buildPromptContent("generic/sdd-orchestrator.md", homeDir, assignments)
 		if err != nil {
 			sharedWriteErr = fmt.Errorf("sdd orchestrator prompt: %w", err)
 			return
 		}
-		wr, err := filemerge.WriteFileAtomic(sharedPromptPath, []byte(content), 0o644)
-		if err != nil {
+		if _, err := filemerge.WriteFileAtomic(sharedPromptPath, []byte(content), 0o644); err != nil {
 			sharedWriteErr = fmt.Errorf("write shared orchestrator prompt: %w", err)
 			return
 		}
-		sharedWriteChanged = sharedWriteChanged || wr.Changed
 		sharedWriteFiles = append(sharedWriteFiles, sharedPromptPath)
 
 		// Write shared skill files (only sub-agent skills, not utility skills).
@@ -282,15 +255,11 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 			sharedWriteErr = fmt.Errorf("sdd skills: %w", err)
 			return
 		}
-		sharedWriteChanged = sharedWriteChanged || skillResult.Changed
 		sharedWriteFiles = append(sharedWriteFiles, skillResult.Files...)
 	})
 	if sharedWriteErr != nil {
 		return InjectionResult{}, sharedWriteErr
 	}
-	// Note: sharedWriteChanged is not propagated to the per-agent result.
-	// The shared write happens once; only the first agent sees Changed=true.
-	// For idempotency, subsequent Inject calls must not inherit prior changed state.
 	files = append(files, sharedWriteFiles...)
 
 	// Inject orchestrator prompt into agent-specific system prompt file.
@@ -338,14 +307,13 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 	return InjectionResult{Changed: changed, Files: files}, nil
 }
 
-// buildOrchestratorContent returns the templated orchestrator prompt content.
-func buildOrchestratorContent(homeDir string, assignments model.ModelAssignments) (string, error) {
-	content, err := assets.Read("generic/sdd-orchestrator.md")
+// buildPromptContent reads an orchestrator asset and applies template substitutions.
+func buildPromptContent(assetPath, homeDir string, assignments model.ModelAssignments) (string, error) {
+	content, err := assets.Read(assetPath)
 	if err != nil {
 		return "", err
 	}
-	sharedSkillsDir := filepath.ToSlash(state.SharedSkillsDir(homeDir))
-	content = strings.ReplaceAll(content, "{{SKILLS_DIR}}", sharedSkillsDir)
+	content = strings.ReplaceAll(content, "{{SKILLS_DIR}}", filepath.ToSlash(state.SharedSkillsDir(homeDir)))
 	if assignments == nil {
 		assignments = model.ModelsForPreset(model.ModelPresetBalanced)
 	}
@@ -362,18 +330,10 @@ func injectAgentPrompt(homeDir string, adapter agents.Adapter, assignments model
 		assetPath = "generic/sdd-orchestrator.md"
 	}
 
-	content, err := assets.Read(assetPath)
+	content, err := buildPromptContent(assetPath, homeDir, assignments)
 	if err != nil {
 		return InjectionResult{}, err
 	}
-
-	sharedSkillsDir := filepath.ToSlash(state.SharedSkillsDir(homeDir))
-	content = strings.ReplaceAll(content, "{{SKILLS_DIR}}", sharedSkillsDir)
-
-	if assignments == nil {
-		assignments = model.ModelsForPreset(model.ModelPresetBalanced)
-	}
-	content = strings.ReplaceAll(content, "{{MODEL_ASSIGNMENTS}}", model.FormatModelAssignments(assignments))
 
 	files := make([]string, 0, 2)
 	changed := false
@@ -545,10 +505,9 @@ func copySkillsToAgent(homeDir string, adapter agents.Adapter) (InjectionResult,
 				os.RemoveAll(staleDir)
 			}
 		}
-		if staleShared := filepath.Join(agentSkillsDir, "_shared"); true {
-			if _, err := os.Stat(staleShared); err == nil {
-				os.RemoveAll(staleShared)
-			}
+		staleShared := filepath.Join(agentSkillsDir, "_shared")
+		if _, err := os.Stat(staleShared); err == nil {
+			os.RemoveAll(staleShared)
 		}
 
 		// Write utility skills from embedded assets to local dir.
@@ -815,14 +774,10 @@ func FilesToBackup(homeDir string, adapter agents.Adapter) []string {
 		}
 	}
 
-	// Shared skills directory (~/.cortex-ia/skills/).
+	// Shared skills directory (~/.cortex-ia/skills/) — only sub-agent skills.
 	sharedSkillsDir := state.SharedSkillsDir(homeDir)
 	paths = append(paths, filepath.Join(sharedSkillsDir, "_shared", "cortex-convention.md"))
-	sharedSkills := sddSkillIDs
-	if adapter.Agent() == model.AgentOpenCode {
-		sharedSkills = openCodeSubAgents
-	}
-	for _, id := range sharedSkills {
+	for _, id := range openCodeSubAgents {
 		paths = append(paths, filepath.Join(sharedSkillsDir, id, "SKILL.md"))
 	}
 
