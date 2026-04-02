@@ -268,8 +268,16 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 		sharedWriteChanged = sharedWriteChanged || wr.Changed
 		sharedWriteFiles = append(sharedWriteFiles, sharedPromptPath)
 
-		// Write shared skill files.
-		skillResult, err := injectSkillFiles(homeDir, adapter)
+		// Write shared skill files (only sub-agent skills, not utility skills).
+		// Utility skills go to agent-local dirs only.
+		// Clean up utility skills from shared dir if left from prior installations.
+		for _, utilID := range openCodeLocalSkills {
+			staleDir := filepath.Join(state.SharedSkillsDir(homeDir), utilID)
+			if _, statErr := os.Stat(staleDir); statErr == nil {
+				os.RemoveAll(staleDir)
+			}
+		}
+		skillResult, err := injectSkillFiles(homeDir)
 		if err != nil {
 			sharedWriteErr = fmt.Errorf("sdd skills: %w", err)
 			return
@@ -407,10 +415,9 @@ func injectAgentPrompt(homeDir string, adapter agents.Adapter, assignments model
 // each SKILL.md are replaced with the absolute path so sub-agents can read
 // the convention regardless of their working directory.
 //
-// For OpenCode: only sub-agent skills (openCodeSubAgents) are written here.
-// Utility skills are written to the agent-local directory by copySkillsToAgent.
-// For other agents: all 19 skills are written.
-func injectSkillFiles(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
+// Only sub-agent skills (openCodeSubAgents) are written to the shared directory.
+// Utility skills are written to agent-local directories by copySkillsToAgent.
+func injectSkillFiles(homeDir string) (InjectionResult, error) {
 	sharedSkillsDir := state.SharedSkillsDir(homeDir)
 
 	files := make([]string, 0)
@@ -432,13 +439,9 @@ func injectSkillFiles(homeDir string, adapter agents.Adapter) (InjectionResult, 
 	// Absolute path for convention (forward slashes for cross-platform).
 	conventionAbsPath := filepath.ToSlash(conventionPath)
 
-	// 2. Write embedded skills with convention references replaced by absolute path.
-	// For OpenCode: only sub-agent skills go to the shared directory.
-	skillsToWrite := sddSkillIDs
-	if adapter.Agent() == model.AgentOpenCode {
-		skillsToWrite = openCodeSubAgents
-	}
-	for _, skillID := range skillsToWrite {
+	// 2. Write sub-agent skills to the shared directory.
+	// Utility skills (debate, debug, etc.) are written to agent-local dirs by copySkillsToAgent.
+	for _, skillID := range openCodeSubAgents {
 		assetPath := "skills/" + skillID + "/SKILL.md"
 		content, err := assets.Read(assetPath)
 		if err != nil {
@@ -534,8 +537,21 @@ func copySkillsToAgent(homeDir string, adapter agents.Adapter) (InjectionResult,
 	changed := false
 
 	if adapter.Agent() == model.AgentOpenCode {
-		// OpenCode: write utility skills from embedded assets to local dir.
-		// Convention reference uses absolute path from shared dir.
+		// OpenCode: only utility skills belong in the local dir.
+		// Remove sub-agent skills and _shared that may remain from prior installations.
+		for _, skillID := range openCodeSubAgents {
+			staleDir := filepath.Join(agentSkillsDir, skillID)
+			if _, err := os.Stat(staleDir); err == nil {
+				os.RemoveAll(staleDir)
+			}
+		}
+		if staleShared := filepath.Join(agentSkillsDir, "_shared"); true {
+			if _, err := os.Stat(staleShared); err == nil {
+				os.RemoveAll(staleShared)
+			}
+		}
+
+		// Write utility skills from embedded assets to local dir.
 		sharedConventionPath := filepath.ToSlash(filepath.Join(
 			state.SharedSkillsDir(homeDir), "_shared", "cortex-convention.md"))
 
@@ -557,32 +573,34 @@ func copySkillsToAgent(homeDir string, adapter agents.Adapter) (InjectionResult,
 		return InjectionResult{Changed: changed, Files: files}, nil
 	}
 
-	// Other agents: copy all skills + convention from shared dir.
-	sharedSkillsDir := state.SharedSkillsDir(homeDir)
+	// Other agents: write all 19 skills + convention from embedded assets.
+	sharedConventionPath := filepath.ToSlash(filepath.Join(
+		state.SharedSkillsDir(homeDir), "_shared", "cortex-convention.md"))
 
-	// Copy convention.
-	conventionSrc := filepath.Join(sharedSkillsDir, "_shared", "cortex-convention.md")
-	conventionDst := filepath.Join(agentSkillsDir, "_shared", "cortex-convention.md")
-	if data, err := os.ReadFile(conventionSrc); err == nil {
-		wr, err := filemerge.WriteFileAtomic(conventionDst, data, 0o644)
+	// Write convention.
+	conventionContent, err := assets.Read("skills/_shared/cortex-convention.md")
+	if err == nil {
+		conventionDst := filepath.Join(agentSkillsDir, "_shared", "cortex-convention.md")
+		wr, err := filemerge.WriteFileAtomic(conventionDst, []byte(conventionContent), 0o644)
 		if err != nil {
-			return InjectionResult{}, fmt.Errorf("copy convention to agent: %w", err)
+			return InjectionResult{}, fmt.Errorf("write convention to agent: %w", err)
 		}
 		changed = changed || wr.Changed
 		files = append(files, conventionDst)
 	}
 
-	// Copy each skill.
+	// Write each skill from embedded assets.
 	for _, skillID := range sddSkillIDs {
-		src := filepath.Join(sharedSkillsDir, skillID, "SKILL.md")
-		data, err := os.ReadFile(src)
+		assetPath := "skills/" + skillID + "/SKILL.md"
+		content, err := assets.Read(assetPath)
 		if err != nil {
-			continue // skill not found in shared dir — skip
+			continue
 		}
+		content = fixConventionRefs(content, sharedConventionPath)
 		dst := filepath.Join(agentSkillsDir, skillID, "SKILL.md")
-		wr, err := filemerge.WriteFileAtomic(dst, data, 0o644)
+		wr, err := filemerge.WriteFileAtomic(dst, []byte(content), 0o644)
 		if err != nil {
-			return InjectionResult{}, fmt.Errorf("copy skill %q to agent: %w", skillID, err)
+			return InjectionResult{}, fmt.Errorf("write skill %q to agent: %w", skillID, err)
 		}
 		changed = changed || wr.Changed
 		files = append(files, dst)
@@ -658,6 +676,13 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 
 	if adapter.Agent() == model.AgentOpenCode {
 		// OpenCode: merge full agent configs into opencode.json. No .md stubs.
+		// Clean up .md stubs from prior installations if SubAgentsDir exists.
+		if subAgentsDir := adapter.SubAgentsDir(homeDir); subAgentsDir != "" {
+			if _, err := os.Stat(subAgentsDir); err == nil {
+				os.RemoveAll(subAgentsDir)
+			}
+		}
+
 		settingsPath := adapter.SettingsPath(homeDir)
 		if settingsPath == "" {
 			return InjectionResult{}, nil

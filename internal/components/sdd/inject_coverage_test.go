@@ -287,8 +287,7 @@ func TestInjectAgentPrompt_ReadError(t *testing.T) {
 
 func TestInjectSkillFiles_WritesConvention(t *testing.T) {
 	tmpDir := t.TempDir()
-	adapter := &stubAdapter{agentID: "test"}
-	result, err := injectSkillFiles(tmpDir, adapter)
+	result, err := injectSkillFiles(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,8 +312,7 @@ func TestInjectSkillFiles_WriteError(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, ".cortex-ia"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, ".cortex-ia", "skills"), []byte("block"), 0o644)
 
-	adapter := &stubAdapter{agentID: "test"}
-	_, err := injectSkillFiles(tmpDir, adapter)
+	_, err := injectSkillFiles(tmpDir)
 	if err == nil {
 		t.Fatal("expected error when skills dir is blocked")
 	}

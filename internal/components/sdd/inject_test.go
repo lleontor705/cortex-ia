@@ -89,15 +89,15 @@ func TestInjectSDD_SkillCount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Count skill files written to shared dir (19 skills + 1 convention = 20+).
-	skillCount := 0
+	// Count skill files written to shared dir (11 sub-agent skills + 1 convention + prompt = 13).
+	sharedCount := 0
 	for _, f := range result.Files {
 		if strings.Contains(f, ".cortex-ia") && strings.HasSuffix(f, ".md") {
-			skillCount++
+			sharedCount++
 		}
 	}
-	if skillCount < 20 {
-		t.Errorf("expected at least 20 shared files (19 skills + convention), got %d", skillCount)
+	if sharedCount < 13 {
+		t.Errorf("expected at least 13 shared files (11 skills + convention + prompt), got %d", sharedCount)
 	}
 }
 
@@ -111,8 +111,9 @@ func TestInlineConvention_AllSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Check sub-agent skills in shared dir (utility skills are NOT in shared).
 	skillsDir := filepath.Join(tmpDir, ".cortex-ia", "skills")
-	for _, id := range sddSkillIDs {
+	for _, id := range openCodeSubAgents {
 		path := filepath.Join(skillsDir, id, "SKILL.md")
 		content, err := os.ReadFile(path)
 		if err != nil {
