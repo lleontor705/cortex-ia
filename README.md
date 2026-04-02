@@ -1,9 +1,7 @@
 <p align="center">
   <br>
-  <code>cortex-ia</code>
-  <br>
-  <strong>AI Agent Ecosystem Configurator</strong>
-  <br>
+  <img src="docs/assets/logo.svg" alt="cortex-ia" width="400" />
+  <br><br>
   <em>One command. Any agent. Full SDD stack.</em>
   <br><br>
   <a href="https://github.com/lleontor705/cortex-ia/actions/workflows/ci.yml"><img src="https://github.com/lleontor705/cortex-ia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -125,6 +123,18 @@ Spec-Driven Development structures substantial changes through 9 phases:
 | archive | `finalize` | Merge specs, close change, generate retrospective |
 
 **Utility Skills**: `debug`, `ideate`, `debate`, `monitor`, `execute-plan`, `open-pr`, `file-issue`, `parallel-dispatch`, `scan-registry`
+
+## Multi-Agent Orchestration
+
+<p align="center">
+  <img src="docs/assets/multi-agent-orchestration.svg" alt="Multi-Agent Orchestration" width="100%" />
+</p>
+
+## Task Routing
+
+<p align="center">
+  <img src="docs/assets/task-routing.svg" alt="Task Routing" width="100%" />
+</p>
 
 ### Modern Prompting Techniques
 
