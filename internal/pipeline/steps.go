@@ -80,6 +80,7 @@ func (s *componentStep) Name() string {
 func (s *componentStep) Run() error {
 	files, err := s.injectorFn()
 	if err != nil {
+		fmt.Printf("  [!] %s/%s: %v\n", s.adapter.Agent(), s.componentID, err)
 		return err
 	}
 	s.Files = files

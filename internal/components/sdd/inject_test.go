@@ -11,6 +11,7 @@ import (
 )
 
 func TestInjectSDD_ClaudeCode(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	adapter := claude.NewAdapter()
 
@@ -79,6 +80,7 @@ func TestInjectSDD_ClaudeCode(t *testing.T) {
 }
 
 func TestInjectSDD_SkillCount(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	adapter := claude.NewAdapter()
 
@@ -100,6 +102,7 @@ func TestInjectSDD_SkillCount(t *testing.T) {
 }
 
 func TestInlineConvention_AllSkills(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	adapter := claude.NewAdapter()
 
@@ -156,6 +159,7 @@ func TestFilesToBackup(t *testing.T) {
 }
 
 func TestInjectSDD_FileReplaceIsIdempotent(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	adapter := codex.NewAdapter()
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/assets"
@@ -15,6 +16,23 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
+
+// sharedWriteOnce ensures shared directory writes (orchestrator prompt, skill files)
+// happen only once across parallel agent chains, preventing file lock conflicts on Windows.
+// sharedWriteOnce ensures shared directory writes (orchestrator prompt, skill files)
+// happen only once across parallel agent chains, preventing file lock conflicts on Windows.
+var sharedWriteOnce sync.Once
+var sharedWriteErr error
+var sharedWriteFiles []string
+var sharedWriteChanged bool
+
+// ResetSharedWrite resets the sync.Once for testing. Must be called between test runs.
+func ResetSharedWrite() {
+	sharedWriteOnce = sync.Once{}
+	sharedWriteErr = nil
+	sharedWriteFiles = nil
+	sharedWriteChanged = false
+}
 
 // InjectionResult describes the outcome of SDD injection.
 type InjectionResult struct {
@@ -232,23 +250,46 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 	files := make([]string, 0)
 	changed := false
 
-	// 1. Inject SDD orchestrator into system prompt.
+	// 1-2. Write shared files (orchestrator prompt + skills) only once across all agents.
+	// This prevents file lock conflicts on Windows when agents run in parallel.
+	sharedWriteOnce.Do(func() {
+		// Write shared orchestrator prompt.
+		sharedPromptPath := filepath.Join(state.SharedPromptsDir(homeDir), "orchestrator.md")
+		content, err := buildOrchestratorContent(homeDir, assignments)
+		if err != nil {
+			sharedWriteErr = fmt.Errorf("sdd orchestrator prompt: %w", err)
+			return
+		}
+		wr, err := filemerge.WriteFileAtomic(sharedPromptPath, []byte(content), 0o644)
+		if err != nil {
+			sharedWriteErr = fmt.Errorf("write shared orchestrator prompt: %w", err)
+			return
+		}
+		sharedWriteChanged = sharedWriteChanged || wr.Changed
+		sharedWriteFiles = append(sharedWriteFiles, sharedPromptPath)
+
+		// Write shared skill files.
+		skillResult, err := injectSkillFiles(homeDir, adapter)
+		if err != nil {
+			sharedWriteErr = fmt.Errorf("sdd skills: %w", err)
+			return
+		}
+		sharedWriteChanged = sharedWriteChanged || skillResult.Changed
+		sharedWriteFiles = append(sharedWriteFiles, skillResult.Files...)
+	})
+	if sharedWriteErr != nil {
+		return InjectionResult{}, sharedWriteErr
+	}
+	// Note: sharedWriteChanged is not propagated to the per-agent result.
+	// The shared write happens once; only the first agent sees Changed=true.
+	// For idempotency, subsequent Inject calls must not inherit prior changed state.
+	files = append(files, sharedWriteFiles...)
+
+	// Inject orchestrator prompt into agent-specific system prompt file.
 	if adapter.SupportsSystemPrompt() {
-		result, err := injectOrchestratorPrompt(homeDir, adapter, assignments)
+		result, err := injectAgentPrompt(homeDir, adapter, assignments)
 		if err != nil {
 			return InjectionResult{}, fmt.Errorf("sdd orchestrator prompt: %w", err)
-		}
-		changed = changed || result.Changed
-		files = append(files, result.Files...)
-	}
-
-	// 2. Write SDD skill files to shared directory (~/.cortex-ia/skills/).
-	// For OpenCode: only sub-agent skills go to shared; utility skills go to local.
-	// For other agents: all 19 skills go to shared.
-	{
-		result, err := injectSkillFiles(homeDir, adapter)
-		if err != nil {
-			return InjectionResult{}, fmt.Errorf("sdd skills: %w", err)
 		}
 		changed = changed || result.Changed
 		files = append(files, result.Files...)
@@ -289,10 +330,25 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 	return InjectionResult{Changed: changed, Files: files}, nil
 }
 
-// injectOrchestratorPrompt injects the SDD orchestrator instructions into the
-// agent's system prompt and writes a copy to the shared prompts directory.
-func injectOrchestratorPrompt(homeDir string, adapter agents.Adapter, assignments model.ModelAssignments) (InjectionResult, error) {
-	// Choose the right orchestrator variant based on task delegation support.
+// buildOrchestratorContent returns the templated orchestrator prompt content.
+func buildOrchestratorContent(homeDir string, assignments model.ModelAssignments) (string, error) {
+	content, err := assets.Read("generic/sdd-orchestrator.md")
+	if err != nil {
+		return "", err
+	}
+	sharedSkillsDir := filepath.ToSlash(state.SharedSkillsDir(homeDir))
+	content = strings.ReplaceAll(content, "{{SKILLS_DIR}}", sharedSkillsDir)
+	if assignments == nil {
+		assignments = model.ModelsForPreset(model.ModelPresetBalanced)
+	}
+	content = strings.ReplaceAll(content, "{{MODEL_ASSIGNMENTS}}", model.FormatModelAssignments(assignments))
+	return content, nil
+}
+
+// injectAgentPrompt writes the orchestrator prompt to the agent-specific system
+// prompt file (and OpenCode local prompts dir). Shared dir writes are handled
+// separately via sync.Once in Inject() to prevent Windows file lock conflicts.
+func injectAgentPrompt(homeDir string, adapter agents.Adapter, assignments model.ModelAssignments) (InjectionResult, error) {
 	assetPath := "generic/sdd-orchestrator-single.md"
 	if adapter.SupportsTaskDelegation() {
 		assetPath = "generic/sdd-orchestrator.md"
@@ -303,11 +359,9 @@ func injectOrchestratorPrompt(homeDir string, adapter agents.Adapter, assignment
 		return InjectionResult{}, err
 	}
 
-	// Template {{SKILLS_DIR}} with the shared skills directory (~/.cortex-ia/skills/).
 	sharedSkillsDir := filepath.ToSlash(state.SharedSkillsDir(homeDir))
 	content = strings.ReplaceAll(content, "{{SKILLS_DIR}}", sharedSkillsDir)
 
-	// Template {{MODEL_ASSIGNMENTS}} with per-phase model routing table.
 	if assignments == nil {
 		assignments = model.ModelsForPreset(model.ModelPresetBalanced)
 	}
@@ -316,17 +370,7 @@ func injectOrchestratorPrompt(homeDir string, adapter agents.Adapter, assignment
 	files := make([]string, 0, 2)
 	changed := false
 
-	// Write orchestrator prompt to shared dir for inspection/reference.
-	sharedPromptPath := filepath.Join(state.SharedPromptsDir(homeDir), "orchestrator.md")
-	wr, err := filemerge.WriteFileAtomic(sharedPromptPath, []byte(content), 0o644)
-	if err != nil {
-		return InjectionResult{}, fmt.Errorf("write shared orchestrator prompt: %w", err)
-	}
-	changed = changed || wr.Changed
-	files = append(files, sharedPromptPath)
-
-	// For OpenCode: also write to the agent-local prompts directory so the
-	// orchestrator agent can reference it via {file:./prompts/orchestrator.md}.
+	// For OpenCode: write to agent-local prompts dir.
 	if adapter.Agent() == model.AgentOpenCode {
 		agentPromptPath := filepath.Join(adapter.GlobalConfigDir(homeDir), "prompts", "orchestrator.md")
 		wr, err := filemerge.WriteFileAtomic(agentPromptPath, []byte(content), 0o644)
@@ -348,7 +392,7 @@ func injectOrchestratorPrompt(homeDir string, adapter agents.Adapter, assignment
 		return InjectionResult{}, fmt.Errorf("read system prompt: %w", err)
 	}
 	updated := filemerge.InjectMarkdownSection(string(existing), "sdd-orchestrator", content)
-	wr, err = filemerge.WriteFileAtomic(promptFile, []byte(updated), 0o644)
+	wr, err := filemerge.WriteFileAtomic(promptFile, []byte(updated), 0o644)
 	if err != nil {
 		return InjectionResult{}, err
 	}
