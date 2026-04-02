@@ -23,7 +23,7 @@ A successful decomposition meets all of the following:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: `sdd/{change-name}/proposal` + `spec` + `design` | Writes: `sdd/{change-name}/tasks`
 OpenSpec write: `openspec/changes/{change-name}/tasks.md`

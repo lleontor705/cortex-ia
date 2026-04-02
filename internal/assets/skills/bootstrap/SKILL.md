@@ -24,7 +24,7 @@ A successful bootstrap produces all of the following:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill writes: `bootstrap/{project-name}` (type: architecture) and `skill-registry` (type: config)
 OpenSpec write path: `openspec/config.yaml` (when mode is openspec or hybrid)

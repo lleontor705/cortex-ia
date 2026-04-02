@@ -24,7 +24,7 @@ A successful investigation produces ALL of the following:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: `bootstrap/{project}` | Writes: `sdd/{change-name}/explore`
 OpenSpec write path: `openspec/changes/{change-name}/exploration.md`

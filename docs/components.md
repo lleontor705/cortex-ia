@@ -4,31 +4,36 @@ cortex-ia configures 8 components. Each is independently selectable (with automa
 
 ## MCP Server Components
 
-### Cortex (19 MCP tools)
+### Cortex (31 MCP tools)
 
 Persistent cross-session memory with knowledge graph.
 
-**Key tools**: `mem_save`, `mem_search`, `mem_get_observation`, `mem_context`, `mem_session_summary`, `mem_relate`, `mem_graph`, `mem_score`, `mem_archive`, `mem_search_hybrid`
+**Core** (9): `mem_save`, `mem_search`, `mem_get_observation`, `mem_context`, `mem_session_summary`, `mem_update`, `mem_capture_passive`, `mem_save_prompt`, `mem_suggest_topic_key`
+**Session** (4): `mem_session_start`, `mem_session_end`, `mem_stats`, `mem_delete`
+**Knowledge graph** (8): `mem_relate`, `mem_graph`, `mem_score`, `mem_search_hybrid`, `mem_archive`, `mem_timeline`, `mem_revision_history`, `mem_merge_projects`
+**Temporal** (10): `temporal_create_edge`, `temporal_get_edges`, `temporal_get_relevant`, `temporal_create_snapshot`, `temporal_record_operation`, `temporal_evaluate_quality`, `temporal_system_metrics`, `temporal_health_check`, `temporal_evolution_path`, `temporal_fact_state`
 
 **What gets injected**: MCP server config pointing to `cortex mcp` binary.
 
 **Dependency**: None (but required by SDD and Conventions).
 
-### ForgeSpec (15 MCP tools)
+### ForgeSpec (19 MCP tools)
 
 SDD contract validation with task board and file reservation.
 
-**Contract tools**: `sdd_validate`, `sdd_save`, `sdd_history`, `sdd_phases`
-**Task board**: `tb_create_board`, `tb_add_task`, `tb_status`, `tb_claim`, `tb_update`, `tb_unblocked`, `tb_get`, `tb_list`
-**File locks**: `file_reserve`, `file_check`, `file_release`
+**Contract tools** (6): `sdd_validate`, `sdd_save`, `sdd_get`, `sdd_list`, `sdd_history`, `sdd_phases`
+**Task board** (10): `tb_create_board`, `tb_add_task`, `tb_status`, `tb_claim`, `tb_update`, `tb_unblocked`, `tb_get`, `tb_list`, `tb_add_notes`, `tb_delete_task`
+**File locks** (3): `file_reserve`, `file_check`, `file_release`
 
 **What gets injected**: MCP server config pointing to `npx -y forgespec-mcp`.
 
-### Agent Mailbox (9 MCP tools)
+### Agent Mailbox (14 MCP tools)
 
 Inter-agent messaging for P2P communication.
 
-**Tools**: `msg_send`, `msg_read_inbox`, `msg_acknowledge`, `msg_broadcast`, `msg_search`, `msg_request`, `msg_list_threads`, `agent_register`, `msg_list_agents`
+**Messaging** (9): `msg_send`, `msg_read_inbox`, `msg_acknowledge`, `msg_broadcast`, `msg_search`, `msg_request`, `msg_get`, `msg_delete`, `msg_count`
+**Threads & agents** (4): `msg_list_threads`, `msg_activity_feed`, `msg_list_agents`, `agent_register`
+**Status** (1): `msg_update_status`
 
 **What gets injected**: MCP server config pointing to `npx -y agent-mailbox-mcp`.
 

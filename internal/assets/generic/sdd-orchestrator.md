@@ -124,7 +124,7 @@ Sub-agents handle their own persistence — they save to Cortex before returning
 
 Every SDD phase produces a JSON contract. After each sub-agent returns:
 
-1. Call `sdd_validate(phase: "{phase}", agent_output: "{full output}")`
+1. Call `sdd_validate(contract: "{contract JSON from agent output}")`
 2. `valid=true` AND confidence >= threshold → present summary, proceed
 3. `valid=false` or missing → retry (max 2), include errors in prompt: "Previous output failed contract validation. Errors: {errors}. Include a valid SDD-CONTRACT JSON block."
 4. `confidence < threshold` → check escalation triggers, warn user

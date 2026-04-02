@@ -45,6 +45,26 @@ type Lockfile struct {
 	Version         string              `json:"version,omitempty"`
 }
 
+// BaseDir returns the path to the cortex-ia home directory (~/.cortex-ia/).
+func BaseDir(homeDir string) string {
+	return filepath.Join(homeDir, stateDir)
+}
+
+// EnsureDir creates the cortex-ia base directory and its core subdirectories
+// (skills, prompts) if they do not already exist.
+func EnsureDir(homeDir string) error {
+	for _, dir := range []string{
+		BaseDir(homeDir),
+		SharedSkillsDir(homeDir),
+		SharedPromptsDir(homeDir),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create directory %q: %w", dir, err)
+		}
+	}
+	return nil
+}
+
 // StatePath returns the path to the state file.
 func StatePath(homeDir string) string {
 	return filepath.Join(homeDir, stateDir, stateFile)

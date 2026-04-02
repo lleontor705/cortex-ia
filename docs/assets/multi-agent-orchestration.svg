@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgM" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f1117"/>
+      <stop offset="100%" stop-color="#1a1d2e"/>
+    </linearGradient>
+    <filter id="shadowM">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <marker id="arrowM" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4A90D9" opacity="0.8"/>
+    </marker>
+    <marker id="arrowG" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9ece6a" opacity="0.8"/>
+    </marker>
+    <marker id="arrowO" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#e0af68" opacity="0.8"/>
+    </marker>
+  </defs>
+
+  <rect width="1000" height="620" rx="12" fill="url(#bgM)"/>
+
+  <!-- Title -->
+  <text x="500" y="36" text-anchor="middle" fill="#c0caf5" font-size="18" font-weight="700">Multi-Agent Orchestration</text>
+  <text x="500" y="54" text-anchor="middle" fill="#565f89" font-size="11">Orchestrator delegates all work to sub-agents  ·  never reads code directly</text>
+
+  <!-- === USER === -->
+  <g filter="url(#shadowM)">
+    <rect x="420" y="72" width="160" height="42" rx="21" fill="#1e2030" stroke="#7aa2f7" stroke-width="2"/>
+    <text x="500" y="98" text-anchor="middle" fill="#7aa2f7" font-size="13" font-weight="600">User</text>
+  </g>
+
+  <!-- Arrow: User → Orchestrator -->
+  <line x1="500" y1="114" x2="500" y2="148" stroke="#4A90D9" stroke-width="2" marker-end="url(#arrowM)"/>
+
+  <!-- === ORCHESTRATOR === -->
+  <g filter="url(#shadowM)">
+    <rect x="350" y="150" width="300" height="60" rx="10" fill="#1e2030" stroke="#4A90D9" stroke-width="2"/>
+    <circle cx="385" cy="180" r="14" fill="#4A90D9" opacity="0.2"/>
+    <text x="385" y="185" text-anchor="middle" fill="#4A90D9" font-size="16">&#9881;</text>
+    <text x="500" y="176" text-anchor="middle" fill="#c0caf5" font-size="14" font-weight="700">Orchestrator</text>
+    <text x="500" y="196" text-anchor="middle" fill="#565f89" font-size="10">coordinates  ·  validates contracts  ·  routes tasks</text>
+  </g>
+
+  <!-- === SDD SUB-AGENTS (left group) === -->
+  <text x="200" y="245" text-anchor="middle" fill="#7aa2f7" font-size="12" font-weight="600" letter-spacing="1">SDD PIPELINE AGENTS</text>
+
+  <!-- investigate -->
+  <g filter="url(#shadowM)">
+    <rect x="30" y="262" width="130" height="40" rx="6" fill="#1e2030" stroke="#78909C" stroke-width="1.5"/>
+    <circle cx="52" cy="282" r="5" fill="#78909C"/>
+    <text x="100" y="287" text-anchor="middle" fill="#c0caf5" font-size="11">investigate</text>
+  </g>
+  <!-- draft-proposal -->
+  <g filter="url(#shadowM)">
+    <rect x="30" y="310" width="130" height="40" rx="6" fill="#1e2030" stroke="#90A4AE" stroke-width="1.5"/>
+    <circle cx="52" cy="330" r="5" fill="#90A4AE"/>
+    <text x="100" y="335" text-anchor="middle" fill="#c0caf5" font-size="11">draft-proposal</text>
+  </g>
+  <!-- write-specs -->
+  <g filter="url(#shadowM)">
+    <rect x="30" y="358" width="130" height="40" rx="6" fill="#1e2030" stroke="#B0BEC5" stroke-width="1.5"/>
+    <circle cx="52" cy="378" r="5" fill="#B0BEC5"/>
+    <text x="100" y="383" text-anchor="middle" fill="#c0caf5" font-size="11">write-specs</text>
+  </g>
+  <!-- architect -->
+  <g filter="url(#shadowM)">
+    <rect x="175" y="262" width="130" height="40" rx="6" fill="#1e2030" stroke="#546E7A" stroke-width="1.5"/>
+    <circle cx="197" cy="282" r="5" fill="#546E7A"/>
+    <text x="245" y="287" text-anchor="middle" fill="#c0caf5" font-size="11">architect</text>
+  </g>
+  <!-- decompose -->
+  <g filter="url(#shadowM)">
+    <rect x="175" y="310" width="130" height="40" rx="6" fill="#1e2030" stroke="#455A64" stroke-width="1.5"/>
+    <circle cx="197" cy="330" r="5" fill="#455A64"/>
+    <text x="245" y="335" text-anchor="middle" fill="#c0caf5" font-size="11">decompose</text>
+  </g>
+  <!-- validate -->
+  <g filter="url(#shadowM)">
+    <rect x="175" y="358" width="130" height="40" rx="6" fill="#1e2030" stroke="#F57F17" stroke-width="1.5"/>
+    <circle cx="197" cy="378" r="5" fill="#F57F17"/>
+    <text x="245" y="383" text-anchor="middle" fill="#c0caf5" font-size="11">validate</text>
+  </g>
+  <!-- finalize -->
+  <g filter="url(#shadowM)">
+    <rect x="100" y="406" width="130" height="40" rx="6" fill="#1e2030" stroke="#37474F" stroke-width="1.5"/>
+    <circle cx="122" cy="426" r="5" fill="#37474F"/>
+    <text x="170" y="431" text-anchor="middle" fill="#c0caf5" font-size="11">finalize</text>
+  </g>
+
+  <!-- Arrows: Orchestrator → SDD agents -->
+  <path d="M400,210 L200,258" stroke="#4A90D9" stroke-width="1.5" marker-end="url(#arrowM)" opacity="0.5"/>
+
+  <!-- === TEAM-LEAD + IMPLEMENT (center) === -->
+  <text x="500" y="245" text-anchor="middle" fill="#2E7D32" font-size="12" font-weight="600" letter-spacing="1">APPLY PHASE</text>
+
+  <g filter="url(#shadowM)">
+    <rect x="400" y="262" width="200" height="48" rx="8" fill="#1e2030" stroke="#1565C0" stroke-width="2"/>
+    <text x="500" y="284" text-anchor="middle" fill="#7dcfff" font-size="13" font-weight="600">team-lead</text>
+    <text x="500" y="300" text-anchor="middle" fill="#565f89" font-size="9">coordinator  ·  owns task board</text>
+  </g>
+
+  <!-- Implement agents (parallel) -->
+  <g filter="url(#shadowM)">
+    <rect x="380" y="330" width="80" height="36" rx="6" fill="#1e2030" stroke="#2E7D32" stroke-width="1.5"/>
+    <text x="420" y="353" text-anchor="middle" fill="#9ece6a" font-size="10">@implement</text>
+  </g>
+  <g filter="url(#shadowM)">
+    <rect x="468" y="330" width="80" height="36" rx="6" fill="#1e2030" stroke="#2E7D32" stroke-width="1.5"/>
+    <text x="508" y="353" text-anchor="middle" fill="#9ece6a" font-size="10">@implement</text>
+  </g>
+  <g filter="url(#shadowM)">
+    <rect x="556" y="330" width="80" height="36" rx="6" fill="#1e2030" stroke="#2E7D32" stroke-width="1.5"/>
+    <text x="596" y="353" text-anchor="middle" fill="#9ece6a" font-size="10">@implement</text>
+  </g>
+
+  <!-- Arrows: team-lead → implement agents -->
+  <line x1="440" y1="310" x2="420" y2="328" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arrowG)" opacity="0.6"/>
+  <line x1="500" y1="310" x2="508" y2="328" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arrowG)" opacity="0.6"/>
+  <line x1="560" y1="310" x2="596" y2="328" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arrowG)" opacity="0.6"/>
+  <text x="500" y="380" text-anchor="middle" fill="#565f89" font-size="9" font-style="italic">parallel execution</text>
+
+  <!-- Arrow: Orchestrator → team-lead -->
+  <line x1="500" y1="210" x2="500" y2="258" stroke="#4A90D9" stroke-width="2" marker-end="url(#arrowM)" opacity="0.7"/>
+
+  <!-- === UTILITY SKILLS (right group) === -->
+  <text x="830" y="245" text-anchor="middle" fill="#e0af68" font-size="12" font-weight="600" letter-spacing="1">UTILITY SKILLS</text>
+
+  <g filter="url(#shadowM)">
+    <rect x="720" y="262" width="110" height="34" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+    <text x="775" y="284" text-anchor="middle" fill="#c0caf5" font-size="10">ideate</text>
+  </g>
+  <g filter="url(#shadowM)">
+    <rect x="840" y="262" width="110" height="34" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+    <text x="895" y="284" text-anchor="middle" fill="#c0caf5" font-size="10">debug</text>
+  </g>
+  <g filter="url(#shadowM)">
+    <rect x="720" y="302" width="110" height="34" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+    <text x="775" y="324" text-anchor="middle" fill="#c0caf5" font-size="10">execute-plan</text>
+  </g>
+  <g filter="url(#shadowM)">
+    <rect x="840" y="302" width="110" height="34" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+    <text x="895" y="324" text-anchor="middle" fill="#c0caf5" font-size="10">debate</text>
+  </g>
+  <g filter="url(#shadowM)">
+    <rect x="720" y="342" width="110" height="34" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+    <text x="775" y="364" text-anchor="middle" fill="#c0caf5" font-size="10">monitor</text>
+  </g>
+  <g filter="url(#shadowM)">
+    <rect x="840" y="342" width="110" height="34" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+    <text x="895" y="364" text-anchor="middle" fill="#c0caf5" font-size="10">scan-registry</text>
+  </g>
+  <g filter="url(#shadowM)">
+    <rect x="720" y="382" width="110" height="34" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+    <text x="775" y="404" text-anchor="middle" fill="#c0caf5" font-size="10">file-issue</text>
+  </g>
+  <g filter="url(#shadowM)">
+    <rect x="840" y="382" width="110" height="34" rx="6" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+    <text x="895" y="404" text-anchor="middle" fill="#c0caf5" font-size="10">open-pr</text>
+  </g>
+
+  <!-- Arrow: Orchestrator → utility -->
+  <path d="M600,210 L830,258" stroke="#e0af68" stroke-width="1.5" marker-end="url(#arrowO)" opacity="0.5"/>
+
+  <!-- === MCP LAYER (bottom) === -->
+  <text x="500" y="470" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="600">MCP Infrastructure</text>
+
+  <!-- Cortex -->
+  <g filter="url(#shadowM)">
+    <rect x="50" y="488" width="260" height="50" rx="8" fill="#1e2030" stroke="#4A90D9" stroke-width="1.5"/>
+    <text x="180" y="510" text-anchor="middle" fill="#7dcfff" font-size="12" font-weight="600">Cortex</text>
+    <text x="180" y="527" text-anchor="middle" fill="#565f89" font-size="10">31 tools  ·  persistent memory  ·  knowledge graph</text>
+  </g>
+  <!-- ForgeSpec -->
+  <g filter="url(#shadowM)">
+    <rect x="330" y="488" width="260" height="50" rx="8" fill="#1e2030" stroke="#2E7D32" stroke-width="1.5"/>
+    <text x="460" y="510" text-anchor="middle" fill="#9ece6a" font-size="12" font-weight="600">ForgeSpec</text>
+    <text x="460" y="527" text-anchor="middle" fill="#565f89" font-size="10">19 tools  ·  contracts  ·  task board  ·  file locks</text>
+  </g>
+  <!-- Mailbox -->
+  <g filter="url(#shadowM)">
+    <rect x="610" y="488" width="200" height="50" rx="8" fill="#1e2030" stroke="#e0af68" stroke-width="1.5"/>
+    <text x="710" y="510" text-anchor="middle" fill="#e0af68" font-size="12" font-weight="600">Mailbox</text>
+    <text x="710" y="527" text-anchor="middle" fill="#565f89" font-size="10">14 tools  ·  P2P messaging</text>
+  </g>
+  <!-- CLI Orch + Context7 -->
+  <g filter="url(#shadowM)">
+    <rect x="830" y="488" width="140" height="50" rx="8" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+    <text x="900" y="510" text-anchor="middle" fill="#c0caf5" font-size="11" font-weight="600">CLI + Context7</text>
+    <text x="900" y="527" text-anchor="middle" fill="#565f89" font-size="10">6 tools  ·  routing + docs</text>
+  </g>
+
+  <!-- Dashed lines: agents → MCP -->
+  <line x1="180" y1="448" x2="180" y2="486" stroke="#4A90D9" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+  <line x1="500" y1="390" x2="460" y2="486" stroke="#2E7D32" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+  <line x1="830" y1="420" x2="710" y2="486" stroke="#e0af68" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+
+  <!-- Footer -->
+  <text x="500" y="575" text-anchor="middle" fill="#565f89" font-size="10">All agents produce SDD-CONTRACT JSON  ·  validated by ForgeSpec  ·  persisted to Cortex  ·  coordinated via Mailbox</text>
+  <text x="500" y="595" text-anchor="middle" fill="#3b3f54" font-size="9">cortex-ia  ·  70 MCP tools across 5 servers</text>
+</svg>

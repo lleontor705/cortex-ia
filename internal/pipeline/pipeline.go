@@ -110,7 +110,12 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		return result, nil
 	}
 
-	// 2. Build prepare steps.
+	// 2. Ensure ~/.cortex-ia/ base directory exists before any component runs.
+	if err := state.EnsureDir(homeDir); err != nil {
+		return result, fmt.Errorf("ensure cortex-ia directory: %w", err)
+	}
+
+	// 3. Build prepare steps.
 	bkStep := &backupStep{
 		homeDir: homeDir, registry: registry,
 		agentIDs: selection.Agents, resolved: resolved, version: version,
@@ -120,7 +125,7 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		bkStep,
 	}
 
-	// 3. Build apply steps: one sequential chain per agent, agents run in parallel.
+	// 4. Build apply steps: one sequential chain per agent, agents run in parallel.
 	componentSet := make(map[model.ComponentID]bool)
 	for _, c := range resolved {
 		componentSet[c] = true
@@ -155,7 +160,7 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		}
 	}
 
-	// 4. Run 2-stage: prepare sequentially, then agents in parallel.
+	// 5. Run 2-stage: prepare sequentially, then agents in parallel.
 	// Within each agent, components run sequentially (same config files).
 	// Different agents run in parallel (different config dirs).
 	prepResult := RunStage(prepareSteps)
@@ -167,7 +172,7 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 
 	applyResult := RunParallelChains(agentChains)
 
-	// 5. Translate results.
+	// 6. Translate results.
 	result.BackupID = bkStep.BackupID
 	result.ComponentsDone = resolved
 	for _, cs := range allComponentSteps {
@@ -181,7 +186,7 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		return result, fmt.Errorf("installation completed with errors")
 	}
 
-	// 6. Save state (after successful apply).
+	// 7. Save state (after successful apply).
 	s := state.State{
 		InstalledAgents: selection.Agents,
 		Preset:          selection.Preset,

@@ -26,7 +26,7 @@ A successful proposal meets ALL of the following:
 </success_criteria>
 
 <persistence>
-Follow the shared Cortex convention in `../_shared/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
+Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
 This skill reads: `sdd/{change-name}/explore` | Writes: `sdd/{change-name}/proposal`
 OpenSpec read: `openspec/changes/{change-name}/exploration.md`
