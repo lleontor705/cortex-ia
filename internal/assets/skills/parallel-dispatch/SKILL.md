@@ -228,7 +228,7 @@ Error output:
 </examples>
 
 <self_check>
-Before producing your final output, verify:
+Standard pre-return checklist (see convention), plus:
 1. Tasks are truly independent?
 2. File conflicts checked before dispatch?
 3. Results collected from all dispatched agents?

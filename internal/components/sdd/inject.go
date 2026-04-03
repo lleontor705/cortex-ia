@@ -241,6 +241,19 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 		}
 		sharedWriteFiles = append(sharedWriteFiles, sharedPromptPath)
 
+		// Write orchestrator reference file (detailed protocols loaded on demand).
+		refPath := filepath.Join(state.SharedPromptsDir(homeDir), "sdd-orchestrator-reference.md")
+		refContent, err := assets.Read("generic/sdd-orchestrator-reference.md")
+		if err != nil {
+			sharedWriteErr = fmt.Errorf("sdd orchestrator reference: %w", err)
+			return
+		}
+		if _, err := filemerge.WriteFileAtomic(refPath, []byte(refContent), 0o644); err != nil {
+			sharedWriteErr = fmt.Errorf("write orchestrator reference: %w", err)
+			return
+		}
+		sharedWriteFiles = append(sharedWriteFiles, refPath)
+
 		// Write shared skill files (only sub-agent skills, not utility skills).
 		// Utility skills go to agent-local dirs only.
 		// Clean up utility skills from shared dir if left from prior installations.
@@ -524,16 +537,19 @@ func copySkillsToAgent(homeDir string, adapter agents.Adapter) (InjectionResult,
 	sharedConventionPath := filepath.ToSlash(filepath.Join(
 		state.SharedSkillsDir(homeDir), "_shared", "cortex-convention.md"))
 
-	// Write convention.
-	conventionContent, err := assets.Read("skills/_shared/cortex-convention.md")
-	if err == nil {
-		conventionDst := filepath.Join(agentSkillsDir, "_shared", "cortex-convention.md")
-		wr, err := filemerge.WriteFileAtomic(conventionDst, []byte(conventionContent), 0o644)
+	// Write convention files.
+	for _, conventionFile := range []string{"cortex-convention.md", "cortex-advanced.md"} {
+		content, err := assets.Read("skills/_shared/" + conventionFile)
 		if err != nil {
-			return InjectionResult{}, fmt.Errorf("write convention to agent: %w", err)
+			continue
+		}
+		dst := filepath.Join(agentSkillsDir, "_shared", conventionFile)
+		wr, err := filemerge.WriteFileAtomic(dst, []byte(content), 0o644)
+		if err != nil {
+			return InjectionResult{}, fmt.Errorf("write %s to agent: %w", conventionFile, err)
 		}
 		changed = changed || wr.Changed
-		files = append(files, conventionDst)
+		files = append(files, dst)
 	}
 
 	// Write each skill from embedded assets.
@@ -736,11 +752,7 @@ func buildAgentOverlay(skillIDs []string, skillsDir, promptsDir string) []byte {
 				"task": map[string]any{"*": "allow"},
 			}
 		} else {
-			agent["prompt"] = fmt.Sprintf(
-				"You are the **%s** agent. Read your skill file at %s and follow its instructions exactly. "+
-					"When ENABLED CLIs are specified in your task prompt, you MUST use them for validation, "+
-					"cross-checking, or code generation. Run at least ONE CLI consultation per task unless CLIs are set to 'none'.",
-				id, skillPath)
+			agent["prompt"] = agentPrompt(id, skillPath)
 		}
 
 		agentMap[id] = agent
@@ -748,6 +760,40 @@ func buildAgentOverlay(skillIDs []string, skillsDir, promptsDir string) []byte {
 
 	data, _ := json.Marshal(map[string]any{"agent": agentMap})
 	return data
+}
+
+// cliTier returns the CLI enforcement tier for a given skill.
+// mandatory: must run CLI cross-validation (code gen, security).
+// recommended: should use CLI when confidence is low.
+// skip: deterministic/mechanical work where CLI adds no value.
+func cliTier(skillID string) string {
+	switch skillID {
+	case "implement", "validate":
+		return "mandatory"
+	case "investigate", "architect":
+		return "recommended"
+	default:
+		return "skip"
+	}
+}
+
+// agentPrompt builds the system prompt for a non-team-lead SDD sub-agent,
+// including CLI directives only for tiers that benefit from cross-validation.
+func agentPrompt(id, skillPath string) string {
+	base := fmt.Sprintf(
+		"You are the **%s** agent. Read your skill file at %s and follow its instructions exactly.",
+		id, skillPath)
+
+	switch cliTier(id) {
+	case "mandatory":
+		return base + " When ENABLED CLIs are specified in your task prompt, you MUST use them for validation, " +
+			"cross-checking, or code generation. Run at least ONE CLI consultation per task unless CLIs are set to 'none'."
+	case "recommended":
+		return base + " When ENABLED CLIs are specified in your task prompt, use them for cross-validation " +
+			"when your confidence is below 0.8 or when reviewing unfamiliar patterns. Skip if CLIs are 'none'."
+	default:
+		return base
+	}
 }
 
 // FilesToBackup returns all file paths that SDD injection would modify for the given agent.
@@ -788,8 +834,9 @@ func FilesToBackup(homeDir string, adapter agents.Adapter) []string {
 		}
 	}
 
-	// Shared orchestrator prompt.
+	// Shared orchestrator prompt and reference file.
 	paths = append(paths, filepath.Join(state.SharedPromptsDir(homeDir), "orchestrator.md"))
+	paths = append(paths, filepath.Join(state.SharedPromptsDir(homeDir), "sdd-orchestrator-reference.md"))
 
 	// Agent-specific slash commands (OpenCode).
 	if adapter.SupportsSlashCommands() {
