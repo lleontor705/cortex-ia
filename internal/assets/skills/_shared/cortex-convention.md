@@ -243,3 +243,28 @@ Use `mem_update` when you have the exact observation ID and want to modify speci
 | Connect artifacts | `mem_relate(from, to, relation: "references")` | After saving new artifact |
 | Update by ID | `mem_update(id, content)` | When you already hold the observation ID |
 | Explore graph | `mem_graph(id, depth: 2)` | Recovering context or tracing lineage |
+
+## A2A Task Delegation
+
+For formal work requests with lifecycle tracking (alternative to msg_send for delegation):
+
+| Tool | Purpose |
+|------|---------|
+| `a2a_submit_task(from_agent, to_agent, message)` | Submit work request |
+| `a2a_get_task(task_id)` | Check status: submitted/working/completed/failed/canceled |
+| `a2a_respond_task(task_id, message, status)` | Return structured result |
+| `a2a_list_tasks(agent)` | Audit trail of delegations |
+| `a2a_cancel_task(task_id)` | Cancel unresponsive task |
+
+**When A2A vs msg_send**: Use `msg_send`/`msg_request` for quick clarifications. Use `a2a_submit_task` when you need status tracking, structured responses, or audit trail.
+
+## Resource Coordination Protocol
+
+| Mechanism | Source | Use For |
+|-----------|--------|---------|
+| `file_reserve` / `file_check` / `file_release` | ForgeSpec | File glob patterns during apply |
+| `resource_acquire` / `resource_release` / `resource_check` / `resource_list` | Agent Mailbox | Deploy, CI, APIs, DB, infrastructure |
+
+**resource_acquire params**: resource_id (string key), agent, lease_type ("exclusive"/"shared"), ttl_seconds (default 300), metadata (optional context).
+
+**Dead-Letter Queue**: `dlq_list()` to find failed deliveries, `dlq_retry(dlq_id)` to replay, `dlq_purge()` to clear. Check after compaction recovery and dependent timeouts.

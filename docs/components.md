@@ -27,13 +27,16 @@ SDD contract validation with task board and file reservation.
 
 **What gets injected**: MCP server config pointing to `npx -y forgespec-mcp`.
 
-### Agent Mailbox (14 MCP tools)
+### Agent Mailbox (26 MCP tools)
 
-Inter-agent messaging for P2P communication.
+Inter-agent messaging, A2A task delegation, resource coordination, and dead-letter queue.
 
 **Messaging** (9): `msg_send`, `msg_read_inbox`, `msg_acknowledge`, `msg_broadcast`, `msg_search`, `msg_request`, `msg_get`, `msg_delete`, `msg_count`
 **Threads & agents** (4): `msg_list_threads`, `msg_activity_feed`, `msg_list_agents`, `agent_register`
 **Status** (1): `msg_update_status`
+**A2A Tasks** (5): `a2a_submit_task`, `a2a_get_task`, `a2a_cancel_task`, `a2a_list_tasks`, `a2a_respond_task`
+**Resources** (4): `resource_acquire`, `resource_release`, `resource_check`, `resource_list`
+**Dead-Letter Queue** (3): `dlq_list`, `dlq_retry`, `dlq_purge`
 
 **What gets injected**: MCP server config pointing to `npx -y agent-mailbox-mcp`.
 

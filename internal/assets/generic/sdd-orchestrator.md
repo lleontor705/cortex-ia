@@ -116,6 +116,8 @@ Every sub-agent prompt must include:
 6. **Context**: change name, project name, artifact store mode, dependency topic keys
 7. **Focus/task-type**: `FOCUS: {ARCHITECTURE|INVESTIGATION|MIGRATION|GENERAL}` or `TASK-TYPE: {IMPLEMENTATION|REFACTOR|DATABASE|INFRASTRUCTURE|DOCUMENTATION}`
 8. **Peer agents**: `You may message other active agents via msg_send or msg_request. Use msg_list_agents() to discover agents.`
+9. **A2A tasks**: `For formal work delegation with lifecycle tracking, use a2a_submit_task. Check status with a2a_get_task. Use a2a_respond_task for structured results.`
+10. **Resource locks**: `Before deploy/CI/external-API tasks, acquire via resource_acquire. Release via resource_release. Do NOT use for file conflicts — use file_reserve.`
 
 Sub-agents handle their own persistence — they save to Cortex before returning.
 
@@ -192,7 +194,12 @@ Dependent team-leads self-coordinate via messaging; you do not sequence them.
 
 **Step 4 — Process reports**: Collect all reports, merge, validate with `sdd_validate(phase: "apply", ...)`. On partial failure, ask user whether to retry failed tasks or proceed. On blocked, report and ask for guidance.
 
-**Step 5 — Recovery after compaction**: `tb_status` for board state, `msg_activity_feed(minutes: 60)` for completion messages, re-launch only incomplete team-leads.
+**Step 4b — DLQ check on failures**: If partial failure reported:
+1. `dlq_list()` — check for messages that failed delivery during apply
+2. If DLQ has entries from current change: `dlq_retry(dlq_id)` to replay lost coordination
+3. If >= 30% tasks failed: present DLQ + tb_status to user before deciding retry vs proceed
+
+**Step 5 — Recovery after compaction**: `tb_status` for board state, `msg_activity_feed(minutes: 60)` for completion messages, `dlq_list()` for failed deliveries during compaction, `dlq_retry(dlq_id)` for recoverable entries, re-launch only incomplete team-leads.
 
 ---
 ## CLI Selection and Enforcement
@@ -219,6 +226,11 @@ Enforcement: include in every delegation prompt:
 | Broadcast discovery to all agents | `msg_broadcast` |
 | Check inbox before reading | `msg_count` |
 | Full delegation of new SDD phase | Task (not P2P) |
+| Formal work delegation with tracking | `a2a_submit_task` + `a2a_respond_task` |
+| Check delegated work status | `a2a_get_task` or `a2a_list_tasks` |
+| Cancel unresponsive delegation | `a2a_cancel_task` |
+| Non-file resource locking | `resource_acquire` / `resource_release` |
+| Failed message recovery | `dlq_list` → `dlq_retry` |
 
 Include in delegation prompts: "Active agents for this change: {list from tb_status}."
 
@@ -235,6 +247,41 @@ Protocol:
 6. Tie-breaker: fewest unaddressed counterarguments > codebase alignment > lower risk
 7. Persist: `mem_save(title: "sdd/{change-name}/debate", topic_key: "sdd/{change-name}/debate", type: "architecture", ...)`
 8. Present summary with winner and rationale
+
+#### A2A-Based Debate (preferred for 3+ positions or audit trail)
+
+1. For each position: `a2a_submit_task(from_agent: "orchestrator", to_agent: "{defender}", message: "ADVERSARIAL ROLE: Defend '{X}'. Context: {evidence}")`
+2. Defenders respond: `a2a_respond_task(task_id, message: "{argument}", status: "completed")`
+3. Track rounds: `a2a_get_task(task_id)` — states: submitted → working → completed
+4. Non-responsive: `a2a_cancel_task(task_id)` after 2 polls (replaces skip heuristic)
+5. Full audit: `a2a_list_tasks(agent: "orchestrator")` — machine-parseable debate history
+6. Tie-breaker and persist: same as P2P protocol (steps 6-8 above)
+
+Use A2A for round lifecycle. Use msg_send for ad-hoc challenges within rounds.
+
+---
+## Resource Coordination
+
+### File Locks vs Resource Locks
+
+| Resource Type | Tool | Example |
+|--------------|------|---------|
+| Source files during apply | `file_reserve` / `file_check` / `file_release` (ForgeSpec) | `patterns: ["src/auth/**"]` |
+| Deploy environments | `resource_acquire` / `resource_release` (Mailbox) | `resource_id: "deploy-staging"` |
+| CI pipeline slots | `resource_acquire` (shared) | `resource_id: "ci-pipeline", lease_type: "shared"` |
+| External API rate limits | `resource_acquire` (shared, short TTL) | `resource_id: "github-api", ttl_seconds: 60` |
+| Database migrations | `resource_acquire` (exclusive) | `resource_id: "db-migration"` |
+
+**Rule**: `file_reserve` for file-pattern conflicts in apply phase. `resource_acquire` for everything else.
+
+### Dead-Letter Queue
+
+| Scenario | Action |
+|----------|--------|
+| Compaction recovery | `dlq_list()` → `dlq_retry(dlq_id)` for current-change messages |
+| Dependent team-lead timeout | Check `dlq_list()` — upstream broadcast may be in DLQ |
+| Persistent task failures | Failures with messaging component land in DLQ automatically |
+| Between changes | `dlq_purge()` to clear stale entries |
 
 ---
 ## Memory Protocol
@@ -309,6 +356,9 @@ Include `MODEL: {assigned-model}` in each delegation prompt.
 - **Validation**: sdd_validate, sdd_save, sdd_get, sdd_list, sdd_history, sdd_phases
 - **Communication**: msg_send, msg_read_inbox, msg_broadcast, msg_acknowledge, msg_search, msg_request, msg_list_threads, msg_get, msg_delete, msg_count, msg_update_status, msg_list_agents, msg_activity_feed, agent_register
 - **File Locks**: file_reserve, file_check, file_release
+- **A2A Tasks**: a2a_submit_task, a2a_get_task, a2a_cancel_task, a2a_list_tasks, a2a_respond_task
+- **Resource Locks**: resource_acquire, resource_release, resource_check, resource_list
+- **Dead-Letter Queue**: dlq_list, dlq_retry, dlq_purge
 - **CLI Routing**: cli_execute, cli_route, cli_stats, cli_list
 - **Memory (core)**: mem_save, mem_search, mem_get_observation, mem_context, mem_session_summary, mem_update, mem_capture_passive, mem_save_prompt, mem_suggest_topic_key
 - **Memory (session)**: mem_session_start, mem_session_end, mem_stats, mem_delete

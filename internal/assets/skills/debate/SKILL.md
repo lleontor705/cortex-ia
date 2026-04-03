@@ -73,6 +73,18 @@ Parse the debate topic and identify 2-4 competing positions. Each position must 
 - A one-sentence thesis
 - The evaluation criteria (performance, maintainability, cost, risk, etc.)
 
+### Protocol Selection
+
+- **P2P messaging** (default): msg_send for challenges. Simple, 2-3 positions.
+- **A2A task-based** (preferred 3+ positions or audit trail): a2a_submit_task per round.
+
+A2A protocol:
+- Spawn: `a2a_submit_task(from_agent: "debate-moderator", to_agent: "{defender}", message: "Round {N}: {action}")`
+- Collect: `a2a_get_task(task_id)` to poll completion
+- Timeout: `a2a_cancel_task(task_id)` after 2 polls (replaces skip)
+- Respond: defender uses `a2a_respond_task(task_id, message: "{argument}", status: "completed")`
+- Audit: `a2a_list_tasks(agent: "debate-moderator")` for full history
+
 ### Step 2: Spawn Defender Agents
 
 For each position, create a task board entry and dispatch an investigate agent with this prompt template:

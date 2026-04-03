@@ -288,6 +288,19 @@ You can message other agents directly for quick coordination:
 
 **When to use P2P**: Quick clarifications that would waste a full phase delegation.
 **When to escalate**: Blockers, scope changes, or work requiring orchestrator coordination.
+
+### A2A Task Requests
+- `a2a_submit_task(from_agent: "implement-{task_id}", to_agent: "architect", message: "{question}")` — formal design clarification with tracking
+- Check response: `a2a_get_task(task_id)` — status changes to "completed" when answered
+- Prefer over `msg_request` when the clarification blocks your task and needs audit trail
+
+### Resource Coordination
+If your task involves deployment, CI, or external services:
+1. `resource_acquire(resource_id: "{resource}", agent: "implement-{task_id}", lease_type: "exclusive", ttl_seconds: 300)`
+2. Perform the work
+3. `resource_release(resource_id: "{resource}", agent: "implement-{task_id}")`
+
+Do NOT use resource_acquire for file locks — use file_reserve from ForgeSpec.
 </collaboration>
 
 <mcp_integration>

@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"func.*Test\" /f/cortex-ia/internal/components/filemerge/*.go)",
+      "Bash(go test:*)",
+      "Bash(git checkout:*)",
+      "Bash(xargs grep:*)",
+      "Bash(go build:*)",
+      "Bash(grep -n \"cortex-convention\" /f/cortex-ia/internal/assets/skills/*/SKILL.md)",
+      "Bash(grep -o '\\\\`[a-z_]*\\\\`')",
+      "Bash(gh api:*)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh pr create --title 'feat: improve OpenCode agent config and align utility skills' --body ':*)",
+      "Bash(gh pr:*)",
+      "Bash(./bin/cortex-ia.exe install:*)",
+      "Bash(grep -v \"^\\\\[+\\\\]\\\\|^$\\\\|^Auto\\\\|^Config\\\\|^Backup\\\\|^Install\\\\|^  Comp\\\\|^  File\\\\|^  Back\\\\|^This\")",
+      "Bash(python3 -c \" import json with open\\('C:/Users/luisl/.config/opencode/opencode.json'\\) as f: data = json.load\\(f\\) for name, agent in data.get\\('agent', {}\\).items\\(\\): if 'prompt' in agent: print\\(f'{name}: {agent[\\\\\"prompt\\\\\"][:100]}'\\) \")",
+      "Bash(python3 -c \" import json with open\\('C:/Users/luisl/.config/opencode/opencode.json'\\) as f: d = json.load\\(f\\) for k,v in sorted\\(d.get\\('agent',{}\\).items\\(\\)\\): mode = v.get\\('mode','?'\\) dis = v.get\\('disable',False\\) if dis: print\\(f' {k}: DISABLED'\\) else: print\\(f' {k}: {mode} | steps={v.get\\(\\\\\"steps\\\\\",\\\\\"?\\\\\"\\)} | temp={v.get\\(\\\\\"temperature\\\\\",\\\\\"?\\\\\"\\)}'\\) \")",
+      "Bash(python3 -c \" import json with open\\('C:/Users/luisl/.config/opencode/opencode.json'\\) as f: d = json.load\\(f\\) for k,v in sorted\\(d.get\\('mcp',{}\\).items\\(\\)\\): print\\(f' {k}: {v.get\\(\\\\\"type\\\\\",\\\\\"?\\\\\"\\)} | enabled={v.get\\(\\\\\"enabled\\\\\",\\\\\"?\\\\\"\\)}'\\) \")",
+      "Bash(python3 -c ':*)",
+      "Bash(make lint:*)",
+      "Bash(golangci-lint run:*)",
+      "Bash(go vet:*)",
+      "Bash(gh run:*)",
+      "Bash(wc -l internal/components/filemerge/*.go)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm view:*)",
+      "Read(//f/tmp/**)",
+      "Bash(npm pack:*)",
+      "Bash(tar xzf:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

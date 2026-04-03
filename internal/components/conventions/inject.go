@@ -4,12 +4,34 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/assets"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
+
+// sharedOnce ensures cortex-convention.md is written only once across all
+// parallel agent goroutines, preventing Windows file-lock race conditions.
+var (
+	sharedOnce    sync.Once
+	sharedOnceErr error
+	sharedResult  struct {
+		changed bool
+		path    string
+	}
+)
+
+// ResetSharedWrite resets the sync.Once for testing. Must be called between test runs.
+func ResetSharedWrite() {
+	sharedOnce = sync.Once{}
+	sharedOnceErr = nil
+	sharedResult = struct {
+		changed bool
+		path    string
+	}{}
+}
 
 // InjectionResult describes the outcome of conventions injection.
 type InjectionResult struct {
@@ -25,19 +47,26 @@ func Inject(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 	changed := false
 
 	// 1. Write cortex-convention.md to shared skills dir (~/.cortex-ia/skills/_shared/).
-	{
+	// Written once across all agents to avoid Windows rename race conditions.
+	sharedOnce.Do(func() {
 		content, err := assets.Read("skills/_shared/cortex-convention.md")
 		if err != nil {
-			return InjectionResult{}, fmt.Errorf("read cortex-convention asset: %w", err)
+			sharedOnceErr = fmt.Errorf("read cortex-convention asset: %w", err)
+			return
 		}
-		path := filepath.Join(state.SharedSkillsDir(homeDir), "_shared", "cortex-convention.md")
-		wr, err := filemerge.WriteFileAtomic(path, []byte(content), 0o644)
+		sharedResult.path = filepath.Join(state.SharedSkillsDir(homeDir), "_shared", "cortex-convention.md")
+		wr, err := filemerge.WriteFileAtomic(sharedResult.path, []byte(content), 0o644)
 		if err != nil {
-			return InjectionResult{}, fmt.Errorf("write cortex-convention: %w", err)
+			sharedOnceErr = fmt.Errorf("write cortex-convention: %w", err)
+			return
 		}
-		changed = changed || wr.Changed
-		files = append(files, path)
+		sharedResult.changed = wr.Changed
+	})
+	if sharedOnceErr != nil {
+		return InjectionResult{}, sharedOnceErr
 	}
+	changed = changed || sharedResult.changed
+	files = append(files, sharedResult.path)
 
 	// 2. Inject cortex-protocol.md into system prompt.
 	if adapter.SupportsSystemPrompt() {

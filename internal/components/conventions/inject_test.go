@@ -10,6 +10,7 @@ import (
 )
 
 func TestInjectConventions_ClaudeCode(t *testing.T) {
+	ResetSharedWrite()
 	tmpDir := t.TempDir()
 	adapter := claude.NewAdapter()
 

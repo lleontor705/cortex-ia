@@ -87,12 +87,6 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 		t.Error("expected bootstrap skill in shared dir")
 	}
 
-	// Verify convention written to shared dir.
-	conventionPath := filepath.Join(sharedSkillsDir, "_shared", "cortex-convention.md")
-	if _, err := os.Stat(conventionPath); os.IsNotExist(err) {
-		t.Error("expected convention in shared dir")
-	}
-
 	// Verify convention refs replaced with absolute path in skills.
 	implSkill, err := os.ReadFile(filepath.Join(sharedSkillsDir, "implement", "SKILL.md"))
 	if err != nil {
@@ -285,7 +279,7 @@ func TestInjectAgentPrompt_ReadError(t *testing.T) {
 	}
 }
 
-func TestInjectSkillFiles_WritesConvention(t *testing.T) {
+func TestInjectSkillFiles_WritesSkills(t *testing.T) {
 	tmpDir := t.TempDir()
 	result, err := injectSkillFiles(tmpDir)
 	if err != nil {
@@ -295,14 +289,11 @@ func TestInjectSkillFiles_WritesConvention(t *testing.T) {
 		t.Error("expected Changed=true")
 	}
 
-	// Convention file should exist.
-	convention := filepath.Join(tmpDir, ".cortex-ia", "skills", "_shared", "cortex-convention.md")
-	data, err := os.ReadFile(convention)
-	if err != nil {
-		t.Fatalf("convention not written: %v", err)
-	}
-	if !strings.Contains(string(data), "Cortex Convention") {
-		t.Error("expected convention content")
+	// Convention file is NOT written by injectSkillFiles (owned by conventions component).
+	// Verify sub-agent skills were written.
+	bootstrapSkill := filepath.Join(tmpDir, ".cortex-ia", "skills", "bootstrap", "SKILL.md")
+	if _, err := os.Stat(bootstrapSkill); os.IsNotExist(err) {
+		t.Error("expected bootstrap skill to be written")
 	}
 }
 
@@ -528,7 +519,6 @@ func TestFilesToBackup_WithCommands(t *testing.T) {
 
 	hasCommand := false
 	hasSharedSkill := false
-	hasConvention := false
 	hasPrompt := false
 	for _, p := range paths {
 		normalized := filepath.ToSlash(p)
@@ -537,9 +527,6 @@ func TestFilesToBackup_WithCommands(t *testing.T) {
 		}
 		if strings.Contains(normalized, ".cortex-ia/skills/bootstrap") {
 			hasSharedSkill = true
-		}
-		if strings.Contains(normalized, "_shared/cortex-convention.md") {
-			hasConvention = true
 		}
 		if strings.Contains(normalized, "prompts/orchestrator.md") {
 			hasPrompt = true
@@ -551,9 +538,6 @@ func TestFilesToBackup_WithCommands(t *testing.T) {
 	if !hasSharedSkill {
 		t.Error("expected shared skill files")
 	}
-	if !hasConvention {
-		t.Error("expected convention file")
-	}
 	if !hasPrompt {
 		t.Error("expected shared orchestrator prompt")
 	}
@@ -562,8 +546,9 @@ func TestFilesToBackup_WithCommands(t *testing.T) {
 func TestFilesToBackup_NoPromptNoCommands(t *testing.T) {
 	adapter := &stubAdapter{agentID: "test"}
 	paths := FilesToBackup("/tmp/test", adapter)
-	// Should still have shared sub-agent skills (11) + convention + orchestrator prompt = 13.
-	if len(paths) < 13 {
-		t.Errorf("expected at least 13 paths (11 skills + convention + prompt), got %d", len(paths))
+	// Should still have shared sub-agent skills (11) + orchestrator prompt = 12.
+	// Convention file is owned by the conventions component.
+	if len(paths) < 12 {
+		t.Errorf("expected at least 12 paths (11 skills + prompt), got %d", len(paths))
 	}
 }

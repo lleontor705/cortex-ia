@@ -135,6 +135,43 @@ sdd/{change-name}/{artifact-type}
 2. mem_get_observation(id: {id}) → full content
 ```
 
+## Apply Phase
+
+<p align="center">
+  <img src="assets/apply-phase-workflow.svg" alt="Apply Phase Workflow" width="100%" />
+</p>
+
+## Agent Coordination Tools
+
+<p align="center">
+  <img src="assets/agent-coordination.svg" alt="Agent Coordination" width="100%" />
+</p>
+
+### Messaging vs A2A Tasks
+
+| Need | Tool | Notes |
+|------|------|-------|
+| Quick message | `msg_send` / `msg_request` | Synchronous or fire-and-forget |
+| Broadcast | `msg_broadcast` | Completion notifications |
+| Formal delegation | `a2a_submit_task` | Status tracking lifecycle |
+| Structured response | `a2a_respond_task` | Machine-parseable results |
+| Audit trail | `a2a_list_tasks` | Full history per agent |
+| Cancel stalled work | `a2a_cancel_task` | Replaces timeout heuristics |
+
+### File Locks vs Resource Locks
+
+| Concern | Tool | Source |
+|---------|------|--------|
+| Concurrent file edits | `file_reserve` / `file_check` / `file_release` | ForgeSpec |
+| Deploy/CI/APIs | `resource_acquire` / `resource_release` | Agent Mailbox |
+
+**Rule**: `file_reserve` for file glob patterns. `resource_acquire` for everything else (deploy, CI, APIs, DB).
+
+### Dead-Letter Queue
+
+Failed deliveries go to DLQ. Check after compaction, timeouts, or unexplained message loss.
+Tools: `dlq_list()`, `dlq_retry(dlq_id)`, `dlq_purge()`
+
 ## Orchestrator Variants
 
 <p align="center">

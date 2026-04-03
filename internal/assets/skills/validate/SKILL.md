@@ -117,6 +117,16 @@ FOR EACH DECISION in design:
 Additionally, verify completeness: every file in the design's File Changes table should exist in the codebase with the correct action applied (Create → file exists, Delete → file removed, Modify → file changed).
 ```
 
+### Step 5b: Acquire Test Environment (if shared)
+
+If validation requires exclusive access to a shared test environment:
+1. `resource_check(resource_id: "test-env-{name}")` — verify availability
+2. `resource_acquire(resource_id: "test-env-{name}", agent: "validate-{change}", lease_type: "exclusive", ttl_seconds: 600)`
+3. Run tests (Step 6 below)
+4. After Step 7 completes: `resource_release(resource_id: "test-env-{name}", agent: "validate-{change}")`
+
+Skip if tests run in isolated environments (containers, ephemeral VMs).
+
 ## Step 6: Run Tests
 
 Detect the test runner in priority order:

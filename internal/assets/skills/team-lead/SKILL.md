@@ -90,8 +90,11 @@ If MODE is `dependent`:
 6. If timeout (10 minutes without all completions):
    - Check `tb_status(board_id)` — maybe upstream tasks are already done in SQLite
    - If upstream tasks show "done" in tb_status → proceed (message may have been lost)
-   - If upstream tasks still in progress → report blocked to orchestrator:
-     `msg_send(sender: "team-lead-{group}", recipient: "orchestrator", subject: "Blocked: waiting for groups {missing}", body: "Timed out waiting for upstream completion", priority: "high")`
+   - If upstream tasks still in progress:
+     - Check DLQ for lost completions: `dlq_list()` — upstream broadcast may have failed delivery
+     - If found in DLQ: `dlq_retry(dlq_id)` then re-check inbox before reporting blocked
+     - If still no completion → report blocked to orchestrator:
+       `msg_send(sender: "team-lead-{group}", recipient: "orchestrator", subject: "Blocked: waiting for groups {missing}", body: "Timed out waiting for upstream completion", priority: "high")`
    - Return contract with `status: "blocked"`
 
 If MODE is `independent`: skip this step entirely.
@@ -166,6 +169,8 @@ task(@implement, prompt: "
   - Call file_release(patterns: [{files}]) after completing
   - If blocked: call tb_update(task_id: '{id}', status: 'failed', failed_reason: '{reason}')
 
+  RESOURCE LOCKS: If task involves deploy/CI/external services, use resource_acquire before work and resource_release after. file_reserve is for file conflicts only.
+
   ENABLED CLIs: {cli_list}
 ")
 ```
@@ -191,6 +196,7 @@ For each returned @implement sub-agent:
 - Call `tb_add_notes(task_id: "{id}", notes: "Attempt 2 failed: {failure_reason}")` to record
 - Call `tb_update(task_id: "{id}", status: "failed", failed_reason: "{reason}")`
 - Do not retry further
+- Persistent failures are captured in DLQ if messaging was involved. The orchestrator can `dlq_list()` to review all escalations.
 - Check if downstream tasks depend on this one — they will remain blocked automatically
 
 **Cleanup (optional):**
@@ -253,6 +259,9 @@ msg_broadcast(
 ```
 
 This unblocks any dependent team-leads waiting for your group.
+
+If the orchestrator submitted your work via `a2a_submit_task`, also respond with structured status:
+`a2a_respond_task(task_id: "{orchestrator_task_id}", message: "Group {N}: completed={ids}, failed={ids}", status: "completed")`
 
 ## Step 6: Return Consolidated Report
 
