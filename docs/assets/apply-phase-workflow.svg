@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 620" font-family="'Segoe UI',system-ui,sans-serif">
+  <rect width="1060" height="620" rx="12" fill="#0f1117"/>
+
+  <text x="530" y="32" text-anchor="middle" fill="#c0caf5" font-size="17" font-weight="700">Apply Phase Workflow</text>
+  <text x="530" y="50" text-anchor="middle" fill="#565f89" font-size="10">Orchestrator launches team-leads in parallel · team-leads coordinate via messaging · implement agents write code</text>
+
+  <!-- Orchestrator -->
+  <rect x="380" y="66" width="300" height="44" rx="8" fill="#1e2030" stroke="#4A90D9" stroke-width="2"/>
+  <text x="530" y="87" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="700">Orchestrator</text>
+  <text x="530" y="101" text-anchor="middle" fill="#565f89" font-size="9">tb_create_board · launches all team-leads in single turn</text>
+
+  <!-- Arrows from orch to 3 team-leads -->
+  <line x1="430" y1="110" x2="170" y2="150" stroke="#4A90D9" stroke-width="2"/>
+  <polygon points="167,147 170,156 176,148" fill="#4A90D9"/>
+  <line x1="530" y1="110" x2="530" y2="150" stroke="#4A90D9" stroke-width="2"/>
+  <polygon points="526,148 530,156 534,148" fill="#4A90D9"/>
+  <line x1="630" y1="110" x2="890" y2="150" stroke="#4A90D9" stroke-width="2"/>
+  <polygon points="884,148 890,156 893,147" fill="#4A90D9"/>
+
+  <!-- Group 1 (independent) -->
+  <rect x="50" y="135" width="14" height="14" rx="3" fill="#2E7D32"/>
+  <text x="57" y="145" text-anchor="middle" fill="#fff" font-size="8" font-weight="700">1</text>
+  <text x="78" y="146" fill="#9ece6a" font-size="10" font-weight="600">Group 1 — independent</text>
+
+  <rect x="50" y="155" width="240" height="40" rx="7" fill="#1e2030" stroke="#1565C0" stroke-width="1.5"/>
+  <text x="170" y="173" text-anchor="middle" fill="#7dcfff" font-size="11" font-weight="600">team-lead-1</text>
+  <text x="170" y="187" text-anchor="middle" fill="#565f89" font-size="8">file_reserve · launch @implement · file_release</text>
+
+  <!-- Implement agents G1 -->
+  <line x1="120" y1="195" x2="100" y2="215" stroke="#9ece6a" stroke-width="1.2"/>
+  <line x1="170" y1="195" x2="170" y2="215" stroke="#9ece6a" stroke-width="1.2"/>
+  <line x1="220" y1="195" x2="240" y2="215" stroke="#9ece6a" stroke-width="1.2"/>
+  <rect x="60" y="217" width="80" height="26" rx="5" fill="#1e2030" stroke="#2E7D32" stroke-width="1"/>
+  <text x="100" y="234" text-anchor="middle" fill="#9ece6a" font-size="9">@impl 1.1</text>
+  <rect x="150" y="217" width="80" height="26" rx="5" fill="#1e2030" stroke="#2E7D32" stroke-width="1"/>
+  <text x="190" y="234" text-anchor="middle" fill="#9ece6a" font-size="9">@impl 1.2</text>
+
+  <!-- Group 2 (independent) -->
+  <rect x="410" y="135" width="14" height="14" rx="3" fill="#2E7D32"/>
+  <text x="417" y="145" text-anchor="middle" fill="#fff" font-size="8" font-weight="700">2</text>
+  <text x="438" y="146" fill="#9ece6a" font-size="10" font-weight="600">Group 2 — independent</text>
+
+  <rect x="410" y="155" width="240" height="40" rx="7" fill="#1e2030" stroke="#1565C0" stroke-width="1.5"/>
+  <text x="530" y="173" text-anchor="middle" fill="#7dcfff" font-size="11" font-weight="600">team-lead-2</text>
+  <text x="530" y="187" text-anchor="middle" fill="#565f89" font-size="8">file_reserve · launch @implement · file_release</text>
+
+  <line x1="480" y1="195" x2="460" y2="215" stroke="#9ece6a" stroke-width="1.2"/>
+  <line x1="530" y1="195" x2="530" y2="215" stroke="#9ece6a" stroke-width="1.2"/>
+  <line x1="580" y1="195" x2="600" y2="215" stroke="#9ece6a" stroke-width="1.2"/>
+  <rect x="420" y="217" width="80" height="26" rx="5" fill="#1e2030" stroke="#2E7D32" stroke-width="1"/>
+  <text x="460" y="234" text-anchor="middle" fill="#9ece6a" font-size="9">@impl 2.1</text>
+  <rect x="510" y="217" width="80" height="26" rx="5" fill="#1e2030" stroke="#2E7D32" stroke-width="1"/>
+  <text x="550" y="234" text-anchor="middle" fill="#9ece6a" font-size="9">@impl 2.2</text>
+
+  <!-- Group 3 (dependent) -->
+  <rect x="770" y="135" width="14" height="14" rx="3" fill="#E65100"/>
+  <text x="777" y="145" text-anchor="middle" fill="#fff" font-size="8" font-weight="700">3</text>
+  <text x="798" y="146" fill="#ff9e64" font-size="10" font-weight="600">Group 3 — waits for 1, 2</text>
+
+  <rect x="770" y="155" width="240" height="40" rx="7" fill="#1e2030" stroke="#E65100" stroke-width="1.5"/>
+  <text x="890" y="173" text-anchor="middle" fill="#ff9e64" font-size="11" font-weight="600">team-lead-3</text>
+  <text x="890" y="187" text-anchor="middle" fill="#565f89" font-size="8">agent_register · msg_read_inbox · poll 30s</text>
+
+  <rect x="810" y="210" width="160" height="34" rx="5" fill="#1a1b26" stroke="#565f89" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="890" y="225" text-anchor="middle" fill="#565f89" font-size="9" font-style="italic">waiting for upstream...</text>
+  <text x="890" y="237" text-anchor="middle" fill="#565f89" font-size="8">dlq_list() on timeout</text>
+
+  <!-- Broadcast arrows G1 → G3, G2 → G3 -->
+  <line x1="260" y1="255" x2="260" y2="290" stroke="#e0af68" stroke-width="1.5"/>
+  <line x1="260" y1="290" x2="810" y2="290" stroke="#e0af68" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="810" y1="290" x2="810" y2="252" stroke="#e0af68" stroke-width="1.5"/>
+  <polygon points="806,256 810,248 814,256" fill="#e0af68"/>
+  <text x="535" y="285" text-anchor="middle" fill="#e0af68" font-size="8">msg_broadcast("Group complete")</text>
+
+  <line x1="590" y1="243" x2="590" y2="300" stroke="#e0af68" stroke-width="1.5"/>
+  <line x1="590" y1="300" x2="850" y2="300" stroke="#e0af68" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="850" y1="300" x2="850" y2="252" stroke="#e0af68" stroke-width="1.5"/>
+  <polygon points="846,256 850,248 854,256" fill="#e0af68"/>
+
+  <!-- Separator -->
+  <line x1="30" y1="320" x2="1030" y2="320" stroke="#1e2030" stroke-width="1"/>
+
+  <!-- Coordination Tools Legend -->
+  <text x="530" y="348" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="600">Coordination Tools</text>
+
+  <!-- File Locks -->
+  <rect x="40" y="370" width="220" height="90" rx="7" fill="#1e2030" stroke="#2E7D32" stroke-width="1.2"/>
+  <text x="150" y="390" text-anchor="middle" fill="#9ece6a" font-size="11" font-weight="600">File Locks (ForgeSpec)</text>
+  <text x="150" y="408" text-anchor="middle" fill="#c0caf5" font-size="9">file_check(patterns)</text>
+  <text x="150" y="422" text-anchor="middle" fill="#c0caf5" font-size="9">file_reserve(patterns, agent)</text>
+  <text x="150" y="436" text-anchor="middle" fill="#c0caf5" font-size="9">file_release(agent)</text>
+  <text x="150" y="452" text-anchor="middle" fill="#565f89" font-size="8">Source files only · glob patterns</text>
+
+  <!-- Messaging -->
+  <rect x="280" y="370" width="220" height="90" rx="7" fill="#1e2030" stroke="#e0af68" stroke-width="1.2"/>
+  <text x="390" y="390" text-anchor="middle" fill="#e0af68" font-size="11" font-weight="600">Messaging (Mailbox)</text>
+  <text x="390" y="408" text-anchor="middle" fill="#c0caf5" font-size="9">msg_broadcast(completion)</text>
+  <text x="390" y="422" text-anchor="middle" fill="#c0caf5" font-size="9">msg_read_inbox(poll deps)</text>
+  <text x="390" y="436" text-anchor="middle" fill="#c0caf5" font-size="9">msg_request(clarifications)</text>
+  <text x="390" y="452" text-anchor="middle" fill="#565f89" font-size="8">P2P · broadcast · threads</text>
+
+  <!-- A2A Tasks -->
+  <rect x="520" y="370" width="220" height="90" rx="7" fill="#1e2030" stroke="#bb9af7" stroke-width="1.2"/>
+  <text x="630" y="390" text-anchor="middle" fill="#bb9af7" font-size="11" font-weight="600">A2A Tasks (Mailbox)</text>
+  <text x="630" y="408" text-anchor="middle" fill="#c0caf5" font-size="9">a2a_submit_task(delegate)</text>
+  <text x="630" y="422" text-anchor="middle" fill="#c0caf5" font-size="9">a2a_respond_task(results)</text>
+  <text x="630" y="436" text-anchor="middle" fill="#c0caf5" font-size="9">a2a_get_task(track status)</text>
+  <text x="630" y="452" text-anchor="middle" fill="#565f89" font-size="8">Lifecycle tracking · audit trail</text>
+
+  <!-- Resources + DLQ -->
+  <rect x="760" y="370" width="260" height="90" rx="7" fill="#1e2030" stroke="#7dcfff" stroke-width="1.2"/>
+  <text x="890" y="390" text-anchor="middle" fill="#7dcfff" font-size="11" font-weight="600">Resources + DLQ (Mailbox)</text>
+  <text x="890" y="408" text-anchor="middle" fill="#c0caf5" font-size="9">resource_acquire(deploy, CI, APIs)</text>
+  <text x="890" y="422" text-anchor="middle" fill="#c0caf5" font-size="9">resource_release(after work)</text>
+  <text x="890" y="436" text-anchor="middle" fill="#c0caf5" font-size="9">dlq_list() + dlq_retry(recovery)</text>
+  <text x="890" y="452" text-anchor="middle" fill="#565f89" font-size="8">Exclusive/shared leases · dead-letter queue</text>
+
+  <!-- Task Board -->
+  <rect x="280" y="480" width="500" height="42" rx="7" fill="#1e2030" stroke="#4A90D9" stroke-width="1.2"/>
+  <text x="530" y="500" text-anchor="middle" fill="#7aa2f7" font-size="11" font-weight="600">Task Board (ForgeSpec)</text>
+  <text x="530" y="514" text-anchor="middle" fill="#565f89" font-size="9">tb_create_board · tb_claim · tb_update · tb_unblocked · tb_status · tb_add_notes</text>
+
+  <!-- Cortex Memory -->
+  <rect x="280" y="534" width="500" height="42" rx="7" fill="#1e2030" stroke="#4A90D9" stroke-width="1.2"/>
+  <text x="530" y="554" text-anchor="middle" fill="#7aa2f7" font-size="11" font-weight="600">Cortex Memory</text>
+  <text x="530" y="568" text-anchor="middle" fill="#565f89" font-size="9">mem_search · mem_get_observation · mem_save · mem_update · mem_relate</text>
+
+  <!-- Footer -->
+  <text x="530" y="600" text-anchor="middle" fill="#3b3f54" font-size="8">cortex-ia · Apply Phase · parallel team-leads with file locks, messaging, A2A tasks, resource coordination, and DLQ recovery</text>
+</svg>

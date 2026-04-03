@@ -383,21 +383,9 @@ func injectSkillFiles(homeDir string) (InjectionResult, error) {
 	files := make([]string, 0)
 	changed := false
 
-	// 1. Write convention to _shared/ alongside skills.
-	conventionContent, err := assets.Read("skills/_shared/cortex-convention.md")
-	if err != nil {
-		return InjectionResult{}, fmt.Errorf("read cortex-convention asset: %w", err)
-	}
-	conventionPath := filepath.Join(sharedSkillsDir, "_shared", "cortex-convention.md")
-	wr, err := filemerge.WriteFileAtomic(conventionPath, []byte(conventionContent), 0o644)
-	if err != nil {
-		return InjectionResult{}, fmt.Errorf("write cortex-convention: %w", err)
-	}
-	changed = changed || wr.Changed
-	files = append(files, conventionPath)
-
-	// Absolute path for convention (forward slashes for cross-platform).
-	conventionAbsPath := filepath.ToSlash(conventionPath)
+	// Convention file is written by the conventions component — compute the
+	// absolute path here so fixConventionRefs can rewrite relative references.
+	conventionAbsPath := filepath.ToSlash(filepath.Join(sharedSkillsDir, "_shared", "cortex-convention.md"))
 
 	// 2. Write sub-agent skills to the shared directory.
 	// Utility skills (debate, debug, etc.) are written to agent-local dirs by copySkillsToAgent.
@@ -775,8 +763,8 @@ func FilesToBackup(homeDir string, adapter agents.Adapter) []string {
 	}
 
 	// Shared skills directory (~/.cortex-ia/skills/) — only sub-agent skills.
+	// Convention file is owned by the conventions component.
 	sharedSkillsDir := state.SharedSkillsDir(homeDir)
-	paths = append(paths, filepath.Join(sharedSkillsDir, "_shared", "cortex-convention.md"))
 	for _, id := range openCodeSubAgents {
 		paths = append(paths, filepath.Join(sharedSkillsDir, id, "SKILL.md"))
 	}

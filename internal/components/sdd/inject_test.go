@@ -68,15 +68,6 @@ func TestInjectSDD_ClaudeCode(t *testing.T) {
 		t.Error("expected absolute convention path in implement skill")
 	}
 
-	// Verify convention file exists in shared dir.
-	conventionPath := filepath.Join(tmpDir, ".cortex-ia", "skills", "_shared", "cortex-convention.md")
-	convData, err := os.ReadFile(conventionPath)
-	if err != nil {
-		t.Fatalf("convention not written: %v", err)
-	}
-	if !strings.Contains(string(convData), "Skill Loading Protocol") {
-		t.Error("expected convention to contain Skill Loading Protocol")
-	}
 }
 
 func TestInjectSDD_SkillCount(t *testing.T) {
@@ -89,15 +80,16 @@ func TestInjectSDD_SkillCount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Count skill files written to shared dir (11 sub-agent skills + 1 convention + prompt = 13).
+	// Count skill files written to shared dir (11 sub-agent skills + prompt = 12).
+	// Convention file is written by the conventions component, not SDD.
 	sharedCount := 0
 	for _, f := range result.Files {
 		if strings.Contains(f, ".cortex-ia") && strings.HasSuffix(f, ".md") {
 			sharedCount++
 		}
 	}
-	if sharedCount < 13 {
-		t.Errorf("expected at least 13 shared files (11 skills + convention + prompt), got %d", sharedCount)
+	if sharedCount < 12 {
+		t.Errorf("expected at least 12 shared files (11 skills + prompt), got %d", sharedCount)
 	}
 }
 
@@ -126,11 +118,6 @@ func TestInlineConvention_AllSkills(t *testing.T) {
 		}
 	}
 
-	// Verify convention file IS written to shared dir.
-	convention := filepath.Join(skillsDir, "_shared", "cortex-convention.md")
-	if _, err := os.Stat(convention); os.IsNotExist(err) {
-		t.Error("convention should be written to shared _shared/ dir")
-	}
 }
 
 func TestFilesToBackup(t *testing.T) {

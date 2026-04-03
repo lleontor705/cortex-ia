@@ -62,7 +62,7 @@ cortex-ia injects **5 MCP servers** + **19 SDD skills** + **orchestrator prompts
 |-----------|:---------:|-------------|
 | [**Cortex**](https://github.com/lleontor705/cortex) | 31 | Persistent memory with knowledge graph, FTS5, revision history, temporal tracking |
 | [**ForgeSpec**](https://npmjs.com/package/forgespec-mcp) | 19 | SDD contract validation (Zod), task board with dependencies, file reservation |
-| [**Agent Mailbox**](https://npmjs.com/package/agent-mailbox-mcp) | 14 | Inter-agent messaging, threads, broadcast, request/reply, deduplication, registry |
+| [**Agent Mailbox**](https://npmjs.com/package/agent-mailbox-mcp) | 26 | Messaging, A2A task delegation, resource locks, dead-letter queue, registry |
 | [**CLI Orchestrator**](https://npmjs.com/package/cli-orchestrator-mcp) | 4 | Multi-CLI routing (Claude/Gemini/Codex) with circuit breaker, retry, fallback |
 | [**Context7**](https://github.com/upstash/context7) | 2 | Live framework and library documentation via MCP |
 
@@ -74,7 +74,7 @@ Plus **3 content components**:
 | **Conventions** | Shared cortex memory protocol + naming conventions for all agents |
 | **Extra Skills** | Non-SDD utility skills (injected separately from SDD) |
 
-**Total: 70 MCP tools across 4 MCPs + Context7**, all documented in skills and orchestrator prompts.
+**Total: 82 MCP tools across 4 MCPs + Context7**, all documented in skills and orchestrator prompts.
 
 ## Supported Agents
 
@@ -135,6 +135,38 @@ Spec-Driven Development structures substantial changes through 9 phases:
 <p align="center">
   <img src="docs/assets/task-routing.svg" alt="Task Routing" width="100%" />
 </p>
+
+## Apply Phase Workflow
+
+The apply phase is the heart of the system — where parallel team-leads coordinate implement agents to write code:
+
+<p align="center">
+  <img src="docs/assets/apply-phase-workflow.svg" alt="Apply Phase Workflow" width="100%" />
+</p>
+
+1. **Orchestrator** creates a task board and launches all team-leads in a single turn
+2. **Independent team-leads** reserve files, launch @implement agents in parallel, release locks on completion
+3. **Dependent team-leads** wait for upstream groups via `msg_read_inbox` polling (with `dlq_list` fallback on timeout)
+4. **Implement agents** write code, acquire resource locks for deploy/CI tasks, report status via `tb_update`
+5. **Completion broadcasts** (`msg_broadcast`) unblock downstream team-leads
+6. **A2A responses** (`a2a_respond_task`) provide structured results back to orchestrator
+
+## Agent Coordination
+
+26 tools across 4 categories for inter-agent communication:
+
+<p align="center">
+  <img src="docs/assets/agent-coordination.svg" alt="Agent Coordination" width="100%" />
+</p>
+
+| Need | Tool | Category |
+|------|------|----------|
+| Quick clarification | `msg_request` | Messaging |
+| Broadcast to all | `msg_broadcast` | Messaging |
+| Formal delegation with tracking | `a2a_submit_task` → `a2a_respond_task` | A2A Tasks |
+| Deploy/CI/API lock | `resource_acquire` → `resource_release` | Resources |
+| File conflict prevention | `file_reserve` → `file_release` | ForgeSpec |
+| Lost message recovery | `dlq_list` → `dlq_retry` | Dead-Letter Queue |
 
 ### Modern Prompting Techniques
 
