@@ -349,7 +349,7 @@ Contract JSON:
 </output>
 
 <self_check>
-Before producing your final output, verify:
+Standard pre-return checklist (see convention), plus:
 1. tb_claim called before dispatching each task?
 2. Failed tasks retried at least once?
 3. All file reservations released?

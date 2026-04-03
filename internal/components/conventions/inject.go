@@ -12,14 +12,15 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
-// sharedOnce ensures cortex-convention.md is written only once across all
-// parallel agent goroutines, preventing Windows file-lock race conditions.
+// sharedOnce ensures cortex-convention.md and cortex-advanced.md are written
+// only once across all parallel agent goroutines, preventing Windows file-lock
+// race conditions.
 var (
 	sharedOnce    sync.Once
 	sharedOnceErr error
 	sharedResult  struct {
 		changed bool
-		path    string
+		paths   []string
 	}
 )
 
@@ -29,7 +30,7 @@ func ResetSharedWrite() {
 	sharedOnceErr = nil
 	sharedResult = struct {
 		changed bool
-		path    string
+		paths   []string
 	}{}
 }
 
@@ -49,24 +50,43 @@ func Inject(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 	// 1. Write cortex-convention.md to shared skills dir (~/.cortex-ia/skills/_shared/).
 	// Written once across all agents to avoid Windows rename race conditions.
 	sharedOnce.Do(func() {
+		sharedDir := filepath.Join(state.SharedSkillsDir(homeDir), "_shared")
+
+		// Write cortex-convention.md (core protocols).
 		content, err := assets.Read("skills/_shared/cortex-convention.md")
 		if err != nil {
 			sharedOnceErr = fmt.Errorf("read cortex-convention asset: %w", err)
 			return
 		}
-		sharedResult.path = filepath.Join(state.SharedSkillsDir(homeDir), "_shared", "cortex-convention.md")
-		wr, err := filemerge.WriteFileAtomic(sharedResult.path, []byte(content), 0o644)
+		conventionPath := filepath.Join(sharedDir, "cortex-convention.md")
+		wr, err := filemerge.WriteFileAtomic(conventionPath, []byte(content), 0o644)
 		if err != nil {
 			sharedOnceErr = fmt.Errorf("write cortex-convention: %w", err)
 			return
 		}
 		sharedResult.changed = wr.Changed
+		sharedResult.paths = append(sharedResult.paths, conventionPath)
+
+		// Write cortex-advanced.md (low-frequency tools reference).
+		advContent, err := assets.Read("skills/_shared/cortex-advanced.md")
+		if err != nil {
+			sharedOnceErr = fmt.Errorf("read cortex-advanced asset: %w", err)
+			return
+		}
+		advPath := filepath.Join(sharedDir, "cortex-advanced.md")
+		advWr, err := filemerge.WriteFileAtomic(advPath, []byte(advContent), 0o644)
+		if err != nil {
+			sharedOnceErr = fmt.Errorf("write cortex-advanced: %w", err)
+			return
+		}
+		sharedResult.changed = sharedResult.changed || advWr.Changed
+		sharedResult.paths = append(sharedResult.paths, advPath)
 	})
 	if sharedOnceErr != nil {
 		return InjectionResult{}, sharedOnceErr
 	}
 	changed = changed || sharedResult.changed
-	files = append(files, sharedResult.path)
+	files = append(files, sharedResult.paths...)
 
 	// 2. Inject cortex-protocol.md into system prompt.
 	if adapter.SupportsSystemPrompt() {

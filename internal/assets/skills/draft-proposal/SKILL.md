@@ -49,11 +49,11 @@ The proposal consumes the exploration artifact and produces a scoped plan that s
 Defining what is OUT of scope is as important as defining what is IN scope. Without explicit exclusions, downstream agents may expand the change beyond what was intended. Every proposal must have at least one scope-out item.
 </context>
 
-<delegation>You are a leaf agent — the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
+<delegation>Leaf agent — see "Leaf Agent Protocol" in cortex-convention.md.</delegation>
 
 <rules>
   <critical>
-    1. You are a leaf agent — the task tool is disabled. All work is done directly using your own tools
+    1. Leaf agent — see Delegation Boundary in convention
     2. `has_rollback_plan` is always `true` in every contract — think about reversibility before finalizing
     3. Success criteria must be verifiable: each criterion describes a command to run, a test to pass, or a behavior to observe — unverifiable criteria cannot be tested during validation
     4. Scope OUT contains at least one item — if nothing is excluded, the scope is probably too vague
@@ -246,7 +246,7 @@ artifact_store.mode: cortex
 </examples>
 
 <self_check>
-Before producing your final output, verify:
+Standard pre-return checklist (see convention), plus:
 1. Exploration artifact loaded via full Cortex retrieval (not preview)?
 2. scope_out has at least one item?
 3. has_rollback_plan is true?
@@ -271,8 +271,5 @@ Before returning your contract, confirm each item:
 
 <mcp_integration>
 ## Contract Persistence (ForgeSpec)
-After generating your proposal:
-1. `sdd_validate(phase: "propose", contract: {json})` → verify contract validity
-2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
-3. To review prior proposals: `sdd_get(contract_id)` or `sdd_list(project: "{project}", phase: "propose")`
+Follow "Contract Persistence Protocol" from cortex-convention.md. Phase: "propose".
 </mcp_integration>

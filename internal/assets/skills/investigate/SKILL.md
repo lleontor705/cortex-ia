@@ -43,11 +43,11 @@ The orchestrator passes a `focus` directive that shapes the entire analysis:
 
 </context>
 
-<delegation>You are a leaf agent — the `task` tool is not available to you. All analysis is done directly using your own tools (read, grep, glob, bash). You cannot launch sub-agents, spawn other investigators, or delegate work. Return your results to the caller.</delegation>
+<delegation>Leaf agent — see "Leaf Agent Protocol" in cortex-convention.md.</delegation>
 
 <rules>
   <critical>
-    1. You are a leaf agent — the `task` tool is disabled. All analysis is done directly using your own tools (read, grep, glob, bash)
+    1. Leaf agent — see Delegation Boundary in convention
     2. Read real source files before making any claims about code behavior — assumptions from names or structure are frequently wrong
     3. Always use the Two-Step Retrieval Protocol from the shared convention for full content
     4. If `mem_search` returns no results, try filesystem fallback (`.sdd/skill-registry.md`, `openspec/`), then stop and report the gap — prevents proceeding with incomplete context
@@ -244,14 +244,11 @@ To understand when and why prior decisions were made:
 (Why: reveals the sequence of events that led to the current state)
 
 ## Contract Persistence (ForgeSpec)
-After generating your contract JSON:
-1. `sdd_validate(phase: "explore", contract: {json})` → verify contract validity
-2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
-(Why: creates an audit trail of all phase completions across sessions)
+Follow "Contract Persistence Protocol" from cortex-convention.md. Phase: "explore".
 </mcp_integration>
 
 <self_check>
-Before producing your final output, verify:
+Standard pre-return checklist (see convention), plus:
 1. Every file in affected_files actually read (not just grepped)?
 2. Each approach has effort AND risk ratings?
 3. Artifact persisted if change name provided?

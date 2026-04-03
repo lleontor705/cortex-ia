@@ -36,11 +36,11 @@ OpenSpec write path: `openspec/config.yaml` (when mode is openspec or hybrid)
 The skill registry catalogs all available skills (user-level and project-level) so that downstream SDD agents can load relevant coding conventions, testing patterns, and domain knowledge before starting work. It is infrastructure, not an SDD artifact — it exists regardless of persistence mode.
 </context>
 
-<delegation>You are a leaf agent — the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
+<delegation>Leaf agent — see "Leaf Agent Protocol" in cortex-convention.md.</delegation>
 
 <rules>
   <critical>
-    1. You are a leaf agent — the task tool is disabled. All work is done directly using your own tools
+    1. Leaf agent — see Delegation Boundary in convention
     2. Always verify tech stack by reading source files — directory names alone are unreliable.
     3. Always write `.sdd/skill-registry.md` regardless of persistence mode — the registry is infrastructure, not an SDD artifact.
     4. Return the contract JSON as the final output block — enables automated validation by the orchestrator.
@@ -221,13 +221,11 @@ When detecting the tech stack, verify framework versions and APIs:
 (Why: ensures the skill registry reflects accurate, current framework capabilities)
 
 ## Contract Persistence (ForgeSpec)
-After generating your contract JSON:
-1. `sdd_validate(phase: "init", contract: {json})` → verify contract validity
-2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+Follow "Contract Persistence Protocol" from cortex-convention.md. Phase: "init".
 </mcp_integration>
 
 <self_check>
-Before producing your final output, verify:
+Standard pre-return checklist (see convention), plus:
 1. Every tech_stack entry verified by reading a real file?
 2. `.sdd/skill-registry.md` written?
 3. Contract JSON has all required fields?
