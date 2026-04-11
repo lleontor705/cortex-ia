@@ -61,8 +61,8 @@ cortex-ia injects **4 MCP servers** + **19 SDD skills** + **orchestrator prompts
 | Component | MCP Tools | What It Does |
 |-----------|:---------:|-------------|
 | [**Cortex**](https://github.com/lleontor705/cortex) | 31 | Persistent memory with knowledge graph, FTS5, revision history, temporal tracking |
-| [**ForgeSpec**](https://npmjs.com/package/forgespec-mcp) | 19 | SDD contract validation (Zod), task board with dependencies, file reservation |
-| [**Agent Mailbox**](https://npmjs.com/package/agent-mailbox-mcp) | 26 | Messaging, A2A task delegation, resource locks, dead-letter queue, registry |
+| [**ForgeSpec**](https://npmjs.com/package/forgespec-mcp) | 15 | SDD contract validation (Zod), task board with inline creation, file reservation |
+| [**Agent Mailbox**](https://npmjs.com/package/agent-mailbox-mcp) | 21 | Messaging, A2A task delegation, resource locks, dead-letter queue, registry |
 | [**Context7**](https://github.com/upstash/context7) | 2 | Live framework and library documentation via MCP |
 
 Plus **3 content components**:
@@ -73,7 +73,7 @@ Plus **3 content components**:
 | **Conventions** | Shared cortex memory protocol + naming conventions for all agents |
 | **Extra Skills** | Non-SDD utility skills (injected separately from SDD) |
 
-**Total: 78 MCP tools across 3 MCPs + Context7**, all documented in skills and orchestrator prompts.
+**Total: 69 MCP tools across 3 MCPs + Context7**, all documented in skills and orchestrator prompts.
 
 ## Supported Agents
 
@@ -143,7 +143,7 @@ The apply phase is the heart of the system — where parallel team-leads coordin
   <img src="docs/assets/apply-phase-workflow.svg" alt="Apply Phase Workflow" width="100%" />
 </p>
 
-1. **Orchestrator** creates a task board and launches all team-leads in a single turn
+1. **Decompose** creates the task board directly via `tb_create_board` with inline tasks; **Orchestrator** reads `board_id` and launches all team-leads in a single turn
 2. **Independent team-leads** reserve files, launch @implement agents in parallel, release locks on completion
 3. **Dependent team-leads** wait for upstream groups via `msg_read_inbox` polling (with `dlq_list` fallback on timeout)
 4. **Implement agents** write code, acquire resource locks for deploy/CI tasks, report status via `tb_update`
@@ -152,7 +152,7 @@ The apply phase is the heart of the system — where parallel team-leads coordin
 
 ## Agent Coordination
 
-26 tools across 4 categories for inter-agent communication:
+21 tools across 4 categories for inter-agent communication:
 
 <p align="center">
   <img src="docs/assets/agent-coordination.svg" alt="Agent Coordination" width="100%" />

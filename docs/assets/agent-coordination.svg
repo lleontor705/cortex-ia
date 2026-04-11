@@ -17,18 +17,14 @@
   <text x="170" y="164" fill="#565f89" font-size="8" text-anchor="end">notify all</text>
   <text x="50" y="180" fill="#c0caf5" font-size="9">msg_request</text>
   <text x="170" y="180" fill="#565f89" font-size="8" text-anchor="end">sync reply</text>
-  <text x="50" y="196" fill="#c0caf5" font-size="9">msg_acknowledge</text>
-  <text x="170" y="196" fill="#565f89" font-size="8" text-anchor="end">ACK + reply</text>
-  <text x="50" y="212" fill="#c0caf5" font-size="9">msg_search</text>
-  <text x="170" y="212" fill="#565f89" font-size="8" text-anchor="end">find msgs</text>
-  <text x="50" y="228" fill="#c0caf5" font-size="9">msg_count</text>
-  <text x="170" y="228" fill="#565f89" font-size="8" text-anchor="end">inbox stats</text>
-  <text x="50" y="244" fill="#c0caf5" font-size="9">msg_list_threads</text>
-  <text x="170" y="244" fill="#565f89" font-size="8" text-anchor="end">conversations</text>
-  <text x="50" y="260" fill="#c0caf5" font-size="9">msg_get / msg_delete</text>
-  <text x="170" y="260" fill="#565f89" font-size="8" text-anchor="end">CRUD</text>
-  <text x="50" y="276" fill="#c0caf5" font-size="9">msg_update_status</text>
-  <text x="170" y="276" fill="#565f89" font-size="8" text-anchor="end">mark read</text>
+  <text x="50" y="196" fill="#c0caf5" font-size="9">msg_search</text>
+  <text x="170" y="196" fill="#565f89" font-size="8" text-anchor="end">find msgs</text>
+  <text x="50" y="212" fill="#c0caf5" font-size="9">msg_count</text>
+  <text x="170" y="212" fill="#565f89" font-size="8" text-anchor="end">inbox stats</text>
+  <text x="50" y="228" fill="#c0caf5" font-size="9">msg_list_threads</text>
+  <text x="170" y="228" fill="#565f89" font-size="8" text-anchor="end">conversations</text>
+  <text x="50" y="244" fill="#c0caf5" font-size="9">msg_activity_feed</text>
+  <text x="170" y="244" fill="#565f89" font-size="8" text-anchor="end">recent activity</text>
   <line x1="50" y1="288" x2="220" y2="288" stroke="#1e2030" stroke-width="1"/>
   <text x="50" y="304" fill="#c0caf5" font-size="9">agent_register</text>
   <text x="170" y="304" fill="#565f89" font-size="8" text-anchor="end">join session</text>
@@ -76,7 +72,7 @@
   <text x="595" y="250" text-anchor="middle" fill="#c0caf5" font-size="10">resource_check</text>
 
   <rect x="508" y="270" width="174" height="32" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
-  <text x="595" y="290" text-anchor="middle" fill="#c0caf5" font-size="10">resource_list</text>
+  <text x="595" y="290" text-anchor="middle" fill="#c0caf5" font-size="10">resource_check</text>
 
   <!-- Use case labels -->
   <text x="595" y="324" text-anchor="middle" fill="#565f89" font-size="9" font-style="italic">Deploy · CI · APIs · DB</text>

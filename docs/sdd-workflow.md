@@ -53,7 +53,7 @@ Breaks specs + design into phased, dependency-ordered tasks. Identifies parallel
 ### 7. Apply (`/sdd-implement`)
 **Agent**: team-lead → implement | **Confidence threshold**: 0.6
 
-Team-lead coordinates parallel @implement agents via task board. Uses `file_check` → `file_reserve` to prevent conflicts. Each implement agent uses Constitutional Self-Critique before submitting.
+Team-lead coordinates parallel @implement agents via task board. Uses `file_reserve(check_only: true)` → `file_reserve()` to prevent conflicts. Each implement agent uses Constitutional Self-Critique before submitting.
 
 ### 8. Verify (`/sdd-validate`)
 **Agent**: validate | **Confidence threshold**: 0.9
@@ -162,7 +162,7 @@ sdd/{change-name}/{artifact-type}
 
 | Concern | Tool | Source |
 |---------|------|--------|
-| Concurrent file edits | `file_reserve` / `file_check` / `file_release` | ForgeSpec |
+| Concurrent file edits | `file_reserve` / `file_release` | ForgeSpec |
 | Deploy/CI/APIs | `resource_acquire` / `resource_release` | Agent Mailbox |
 
 **Rule**: `file_reserve` for file glob patterns. `resource_acquire` for everything else (deploy, CI, APIs, DB).
@@ -182,7 +182,7 @@ Tools: `dlq_list()`, `dlq_retry(dlq_id)`, `dlq_purge()`
 The orchestrator is a pure coordinator — delegates ALL work to sub-agents via Task tool. Uses:
 - `agent_register` for P2P discovery
 - `mem_capture_passive` for automatic learning extraction
-- `tb_list` for board recovery after compaction
+- `tb_list_boards` for board recovery after compaction
 
 ### Single-Agent (Gemini, Codex, Windsurf, Cursor, VS Code, Antigravity)
 The agent executes all 9 phases sequentially itself. Uses the same Cortex, ForgeSpec, and Mailbox tools but without delegation.

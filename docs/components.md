@@ -17,25 +17,24 @@ Persistent cross-session memory with knowledge graph.
 
 **Dependency**: None (but required by SDD and Conventions).
 
-### ForgeSpec (19 MCP tools)
+### ForgeSpec (15 MCP tools)
 
 SDD contract validation with task board and file reservation.
 
-**Contract tools** (6): `sdd_validate`, `sdd_save`, `sdd_get`, `sdd_list`, `sdd_history`, `sdd_phases`
-**Task board** (10): `tb_create_board`, `tb_add_task`, `tb_status`, `tb_claim`, `tb_update`, `tb_unblocked`, `tb_get`, `tb_list`, `tb_add_notes`, `tb_delete_task`
-**File locks** (3): `file_reserve`, `file_check`, `file_release`
+**Contract tools** (5): `sdd_validate`, `sdd_save`, `sdd_get`, `sdd_list`, `sdd_history`
+**Task board** (8): `tb_create_board`, `tb_add_task`, `tb_status`, `tb_claim`, `tb_update`, `tb_unblocked`, `tb_get`, `tb_list_boards`
+**File locks** (2): `file_reserve` (use `check_only: true` to check conflicts), `file_release`
 
 **What gets injected**: MCP server config pointing to `npx -y forgespec-mcp`.
 
-### Agent Mailbox (26 MCP tools)
+### Agent Mailbox (21 MCP tools)
 
 Inter-agent messaging, A2A task delegation, resource coordination, and dead-letter queue.
 
-**Messaging** (9): `msg_send`, `msg_read_inbox`, `msg_acknowledge`, `msg_broadcast`, `msg_search`, `msg_request`, `msg_get`, `msg_delete`, `msg_count`
+**Messaging** (6): `msg_send`, `msg_read_inbox`, `msg_broadcast`, `msg_search`, `msg_request`, `msg_count`
 **Threads & agents** (4): `msg_list_threads`, `msg_activity_feed`, `msg_list_agents`, `agent_register`
-**Status** (1): `msg_update_status`
 **A2A Tasks** (5): `a2a_submit_task`, `a2a_get_task`, `a2a_cancel_task`, `a2a_list_tasks`, `a2a_respond_task`
-**Resources** (4): `resource_acquire`, `resource_release`, `resource_check`, `resource_list`
+**Resources** (3): `resource_acquire`, `resource_release`, `resource_check`
 **Dead-Letter Queue** (3): `dlq_list`, `dlq_retry`, `dlq_purge`
 
 **What gets injected**: MCP server config pointing to `npx -y agent-mailbox-mcp`.

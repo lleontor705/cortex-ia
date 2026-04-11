@@ -67,7 +67,7 @@ Execute each of these tool calls. If any call fails, capture the error and conti
 
 ### 2a: Task Board State
 ```
-tb_list(project: "{project}") -> list all boards
+tb_list_boards(project: "{project}") -> list all boards
 For each board: tb_status(board_id) -> task list with: id, title, status, agent, dependencies
 ```
 Parse into structured data: group tasks by status, count totals.
@@ -320,7 +320,7 @@ Include Cortex health metrics in the dashboard:
 
 ## Task Board Overview (ForgeSpec)
 Include task board status:
-- `tb_list(project: "{project}")` -> list all boards
+- `tb_list_boards(project: "{project}")` -> list all boards
 - For each active board: `tb_status(board_id: "{id}")` -> task counts by status
 (Why: the dashboard should show both artifact state and task execution state)
 

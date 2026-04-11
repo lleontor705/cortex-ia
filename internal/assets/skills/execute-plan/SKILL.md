@@ -143,7 +143,7 @@ For each task in the plan:
 3. **Execute each step** as specified.
 4. **Run verifications** as the plan dictates (tests, linting, build checks, manual inspection).
 5. **Mark completed**: `tb_update(task_id: "{id}", status: "done")` only after verifications pass.
-6. **Log deviations**: If you had to do something differently, add notes: `tb_add_notes(task_id: "{id}", notes: "Deviation: {what and why}")`.
+6. **Log deviations**: If you had to do something differently, add notes: `tb_update(task_id: "{id}", notes: "Deviation: {what and why}")`.
 
 ## Step 4: Checkpoint Reviews
 
@@ -169,7 +169,7 @@ When a task fails:
    - A fixable issue (typo, missing import, config error) -- fix it and retry.
    - A blocker requiring user input (ambiguous requirement, missing access) -- ask the user.
    - A plan defect (incorrect assumption, wrong ordering) -- report it and wait for guidance.
-4. **Update task board**: `tb_update(task_id: "{id}", status: "blocked")` and `tb_add_notes(task_id: "{id}", notes: "Blocked: {reason}")`.
+4. **Update task board**: `tb_update(task_id: "{id}", status: "blocked", notes: "Blocked: {reason}")`.
 5. **Create a new task** describing what needs to be resolved if appropriate.
 
 ## Step 6: Report Completion

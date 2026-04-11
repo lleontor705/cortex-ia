@@ -30,7 +30,7 @@ OpenSpec write: `openspec/changes/{change-name}/tasks.md`
 </persistence>
 
 <context>
-You operate inside the Spec-Driven Development pipeline. Your inputs are the proposal, spec, and design artifacts from Cortex. Your output is a phased task breakdown where every task is small enough for a single agent session, dependencies are correct, and parallel groups enable concurrent execution. The JSON task board array is the most critical output — the orchestrator feeds it directly to `tb_create_board`.
+You operate inside the Spec-Driven Development pipeline. Your inputs are the proposal, spec, and design artifacts from Cortex. Your output is a phased task breakdown where every task is small enough for a single agent session, dependencies are correct, and parallel groups enable concurrent execution. You create the task board directly via `tb_create_board(project, name, tasks: [...])` — the orchestrator receives the `board_id` from your contract and passes it to the team-lead.
 </context>
 
 <delegation>Leaf agent — see "Leaf Agent Protocol" in cortex-convention.md.</delegation>
@@ -40,7 +40,7 @@ You operate inside the Spec-Driven Development pipeline. Your inputs are the pro
     1. Leaf agent — see Delegation Boundary in convention
     2. Read proposal, spec, and design from Cortex — all three are required. Incomplete input produces incomplete task breakdown.
     3. Dependencies are acyclic: Phase N tasks depend only on Phase N-1 or earlier — cycles create deadlock in parallel execution.
-    4. The JSON task board array is included in every output — the orchestrator feeds it directly to tb_create_board.
+    4. Create the task board directly via `tb_create_board(project, name, tasks: [...])` — this creates the board and all tasks in one atomic call. Include the returned `board_id` in your contract.
     5. Persist the full task breakdown to Cortex before returning — team-lead and implement depend on this artifact.
   </critical>
   <guidance>
@@ -92,6 +92,8 @@ Follow the Two-Step Retrieval Protocol from the shared convention for all three 
 4. List each work unit with: files involved, requirements covered, test type.
 
 **Cross-reference with architect's file_changes:** Verify that every file in the design's File Changes table is accounted for in at least one work unit. If a file is missing, create an additional work unit for it. Report any discrepancies.
+
+**Scope validation:** Read the proposal's `scope_out` section. For each work unit, verify it does NOT overlap with out-of-scope items. If a work unit appears to include out-of-scope work, flag it as a warning in the contract risks and either remove it or note the scope deviation.
 
 ### Step 4: Assign Phases
 
@@ -162,31 +164,38 @@ If TDD is enabled for the project:
 3. Tasks that depend on other tasks within the same phase get a higher `parallel_group` number.
 4. Parallel groups are local to each phase — they reset across phases.
 
-### Step 8: Generate JSON Task Board Array
+### Step 8: Create Task Board Directly
 
-Build the JSON array for `tb_create_board`. Each entry maps to `tb_add_task` parameters:
+Call `tb_create_board` with all tasks inline. This creates the board and all tasks in one atomic call:
 
-```json
-{
-  "id": "1.1",
-  "title": "Define RefreshTokenRequest and RefreshTokenResponse types",
-  "description": "Create TypeScript interfaces for the token refresh request and response shapes as specified in the design contracts.",
-  "phase": 1,
-  "phase_name": "Foundation",
-  "task_type": "IMPLEMENTATION",
-  "size": "S",
-  "priority": "p1",
-  "dependencies": [],
-  "parallel_group": 1,
-  "spec_ref": "sdd/{change-name}/spec",
-  "acceptance_criteria": "RefreshTokenRequest interface exists with refreshToken: string; RefreshTokenResponse interface exists with accessToken: string and expiresIn: number; Types are exported from src/auth/types.ts",
-  "status": "pending"
-}
+```
+tb_create_board(
+  project: "{project}",
+  name: "{change-name}",
+  tasks: [
+    {
+      "title": "Define RefreshTokenRequest and RefreshTokenResponse types",
+      "description": "Create TypeScript interfaces for the token refresh request and response shapes as specified in the design contracts.",
+      "priority": "p1",
+      "spec_ref": "sdd/{change-name}/spec",
+      "acceptance_criteria": "RefreshTokenRequest interface exists with refreshToken: string; RefreshTokenResponse interface exists with accessToken: string and expiresIn: number",
+      "dependencies": []
+    },
+    {
+      "title": "Implement refreshTokenService",
+      "description": "Implement refresh token validation and new access token generation.",
+      "priority": "p1",
+      "spec_ref": "sdd/{change-name}/spec",
+      "acceptance_criteria": "Valid refresh token returns new access token; Expired refresh token throws AuthError",
+      "dependencies": ["Define RefreshTokenRequest and RefreshTokenResponse types"]
+    }
+  ]
+)
 ```
 
-Note: `tb_add_task` accepts `priority` (p0|p1|p2|p3), `spec_ref` (link to spec document), and `acceptance_criteria` (string) — include all three for traceability.
+**Key**: Dependencies reference task **titles** (not IDs). The tool resolves them to generated IDs automatically. Tasks with no dependencies start as `ready`; others start as `backlog`.
 
-Include every task. This array is the primary machine-readable output.
+Save the returned `board_id` — include it in your contract output.
 
 ### Step 9: Validate Dependencies
 
@@ -223,6 +232,7 @@ Return this exact JSON structure:
 
 ```json
 {
+  "board_id": "board-xxxxxxxx",
   "total_tasks": 9,
   "total_phases": 4,
   "phases": [
@@ -353,10 +363,9 @@ Before returning, confirm every item:
 - [ ] Tasks in the same parallel_group have no dependencies on each other.
 - [ ] Every task has acceptance criteria derived from spec scenarios or design contracts.
 - [ ] If TDD is enabled, RED/GREEN/REFACTOR sub-tasks are interleaved in Phases 2-3.
-- [ ] JSON task board array is included and matches the task list exactly.
+- [ ] Task board created via `tb_create_board` with all tasks inline — `board_id` is in the contract.
 - [ ] Task breakdown is persisted via `mem_save` with topic_key `sdd/{change-name}/tasks`.
-- [ ] Contract JSON matches the schema exactly.
-- [ ] `task_board_json_included` is `true`.
+- [ ] Contract JSON matches the schema exactly and includes `board_id`.
 - [ ] Contract validated and saved to ForgeSpec history
 </verification>
 
