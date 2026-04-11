@@ -15,7 +15,7 @@ func TestInjectSDD_ClaudeCode(t *testing.T) {
 	tmpDir := t.TempDir()
 	adapter := claude.NewAdapter()
 
-	result, err := Inject(tmpDir, adapter, nil)
+	result, err := Inject(tmpDir, adapter, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestInjectSDD_SkillCount(t *testing.T) {
 	tmpDir := t.TempDir()
 	adapter := claude.NewAdapter()
 
-	result, err := Inject(tmpDir, adapter, nil)
+	result, err := Inject(tmpDir, adapter, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestInlineConvention_AllSkills(t *testing.T) {
 	tmpDir := t.TempDir()
 	adapter := claude.NewAdapter()
 
-	_, err := Inject(tmpDir, adapter, nil)
+	_, err := Inject(tmpDir, adapter, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestInjectSDD_FileReplaceIsIdempotent(t *testing.T) {
 	tmpDir := t.TempDir()
 	adapter := codex.NewAdapter()
 
-	result, err := Inject(tmpDir, adapter, nil)
+	result, err := Inject(tmpDir, adapter, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestInjectSDD_FileReplaceIsIdempotent(t *testing.T) {
 		t.Fatalf("expected exactly one managed SDD open marker after first inject, got %d", strings.Count(firstText, "<!-- cortex-ia:sdd-orchestrator -->"))
 	}
 
-	second, err := Inject(tmpDir, adapter, nil)
+	second, err := Inject(tmpDir, adapter, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

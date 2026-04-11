@@ -4,531 +4,620 @@ package tui
 import (
 	"fmt"
 	"os"
-	"strings"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/lleontor705/cortex-ia/internal/agents"
+	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/catalog"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
-	"github.com/lleontor705/cortex-ia/internal/system"
-	"github.com/lleontor705/cortex-ia/internal/tui/styles"
+	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/internal/tui/screens"
 )
 
-// screen identifies the current TUI screen.
-type screen int
-
-const (
-	screenWelcome screen = iota
-	screenDetection
-	screenAgents
-	screenPreset
-	screenPersona
-	screenReview
-	screenInstalling
-	screenComplete
-)
-
-// agentItem represents a detected agent in the selection list.
-type agentItem struct {
-	id       model.AgentID
-	name     string
-	binary   string
-	selected bool
-}
-
-// installDoneMsg signals that installation finished.
-type installDoneMsg struct {
-	result pipeline.InstallResult
-	err    error
-}
-
-// Model is the root Bubbletea model.
-type Model struct {
-	screen     screen
-	registry   *agents.Registry
-	homeDir    string
-	version    string
-	cursor     int
-	agents     []agentItem
-	preset     model.PresetID
-	presets    []model.PresetID
-	personas   []model.PersonaID
-	persona    model.PersonaID
-	resolved   []model.ComponentID
-	sysInfo    *sysInfoCache
-	result     pipeline.InstallResult
-	installErr error
-	quitting   bool
-}
-
-type sysInfoCache struct {
-	os, arch, pkgMgr, shell    string
-	nodeVer, gitVer, goVer     string
-	npx, cortex                bool
-	detectedAgents             int
-}
-
-// New creates a new TUI model.
-func New(registry *agents.Registry, homeDir, version string) Model {
-	return Model{
-		screen:   screenWelcome,
-		registry: registry,
-		homeDir:  homeDir,
-		version:  version,
-		presets:  []model.PresetID{model.PresetFull, model.PresetMinimal},
-		personas: []model.PersonaID{model.PersonaProfessional, model.PersonaMentor, model.PersonaMinimal},
-		persona:  model.PersonaProfessional,
-	}
-}
-
-func (m Model) Init() tea.Cmd {
-	return nil
-}
-
+// Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.Width = msg.Width
+		m.Height = msg.Height
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
-			if m.screen != screenInstalling {
-				m.quitting = true
+		case "ctrl+c":
+			m.Quitting = true
+			return m, tea.Quit
+		case "q":
+			if m.Screen != ScreenInstalling && !m.PipelineRunning && !m.OperationRunning {
+				m.Quitting = true
 				return m, tea.Quit
 			}
 		}
-	case installDoneMsg:
-		m.result = msg.result
-		m.installErr = msg.err
-		m.screen = screenComplete
+
+	case TickMsg:
+		m.SpinnerFrame++
+		if m.PipelineRunning || m.OperationRunning {
+			return m, tickCmd()
+		}
+		return m, nil
+
+	case StepProgressMsg:
+		if msg.Err != nil {
+			m.Progress.Mark(m.Progress.Current, ProgressStatusFailed)
+			m.Progress.AppendLog("Error: %v", msg.Err)
+		} else {
+			idx := -1
+			for i, item := range m.Progress.Items {
+				if item.Label == msg.StepID {
+					idx = i
+					break
+				}
+			}
+			if idx >= 0 {
+				if msg.Status == ProgressStatusRunning {
+					m.Progress.Start(idx)
+				} else {
+					m.Progress.Mark(idx, msg.Status)
+				}
+			}
+		}
+		// Re-schedule the channel listener while the pipeline is still running.
+		if m.PipelineRunning && m.progressCh != nil {
+			return m, listenProgress(m.progressCh)
+		}
+		return m, nil
+
+	case PipelineDoneMsg:
+		m.Result = msg.Result
+		m.InstallErr = msg.Err
+		m.PipelineRunning = false
+		m.setScreen(ScreenComplete)
+		return m, nil
+
+	case BackupRestoreMsg:
+		m.RestoreErr = msg.Err
+		m.OperationRunning = false
+		m.setScreen(ScreenRestoreResult)
+		if m.ListBackupsFn != nil {
+			m.Backups, m.BackupWarnings = m.ListBackupsFn()
+		}
+		return m, nil
+
+	case BackupDeleteMsg:
+		m.DeleteErr = msg.Err
+		m.OperationRunning = false
+		m.setScreen(ScreenDeleteResult)
+		if m.ListBackupsFn != nil {
+			m.Backups, m.BackupWarnings = m.ListBackupsFn()
+		}
+		return m, nil
+
+	case SyncDoneMsg:
+		m.SyncFilesChanged = msg.FilesChanged
+		m.SyncErr = msg.Err
+		m.OperationRunning = false
+		if m.Screen == ScreenUpgradeSync {
+			m.UpgradeSyncPhase = "done"
+		}
+		return m, nil
+
+	case UpgradeDoneMsg:
+		m.UpgradeErr = msg.Err
+		m.OperationRunning = false
+		return m, nil
+
+	case UpdateCheckResultMsg:
+		m.UpdateResults = msg.Results
+		m.UpdateCheckDone = true
+		m.OperationRunning = false
+		// If on UpgradeSync screen, auto-start sync phase
+		if m.Screen == ScreenUpgradeSync && m.UpgradeSyncPhase == "checking" {
+			m.UpgradeSyncPhase = "syncing"
+			m.OperationRunning = true
+			profileName := m.SelectedProfile
+			return m, tea.Batch(func() tea.Msg {
+				changed, err := m.SyncFn(profileName)
+				return SyncDoneMsg{FilesChanged: changed, Err: err}
+			}, tickCmd())
+		}
 		return m, nil
 	}
 
-	switch m.screen {
-	case screenWelcome:
+	// Screen-specific update handling
+	switch m.Screen {
+	case ScreenWelcome:
 		return m.updateWelcome(msg)
-	case screenDetection:
+	case ScreenDetection:
 		return m.updateDetection(msg)
-	case screenAgents:
+	case ScreenAgents:
 		return m.updateAgents(msg)
-	case screenPreset:
-		return m.updatePreset(msg)
-	case screenPersona:
+	case ScreenPersona:
 		return m.updatePersona(msg)
-	case screenReview:
+	case ScreenPreset:
+		return m.updatePreset(msg)
+	case ScreenClaudeModelPicker:
+		return m.updateClaudeModelPicker(msg)
+	case ScreenSDDMode:
+		return m.updateSDDMode(msg)
+	case ScreenStrictTDD:
+		return m.updateStrictTDD(msg)
+	case ScreenDependencyTree:
+		return m.updateDependencyTree(msg)
+	case ScreenSkillPicker:
+		return m.updateSkillPicker(msg)
+	case ScreenReview:
 		return m.updateReview(msg)
-	case screenInstalling:
+	case ScreenInstalling:
 		return m, nil
-	case screenComplete:
+	case ScreenComplete:
 		return m.updateComplete(msg)
+	case ScreenBackups:
+		return m.updateBackups(msg)
+	case ScreenRestoreConfirm:
+		return m.updateRestoreConfirm(msg)
+	case ScreenRestoreResult:
+		return m.updateRestoreResult(msg)
+	case ScreenDeleteConfirm:
+		return m.updateDeleteConfirm(msg)
+	case ScreenDeleteResult:
+		return m.updateDeleteResult(msg)
+	case ScreenRenameBackup:
+		return m.updateRenameBackup(msg)
+	case ScreenUpgrade:
+		return m.updateUpgrade(msg)
+	case ScreenSync:
+		return m.updateSync(msg)
+	case ScreenUpgradeSync:
+		return m.updateUpgradeSync(msg)
+	case ScreenModelConfig:
+		return m.updateModelConfig(msg)
+	case ScreenProfiles:
+		return m.updateProfiles(msg)
+	case ScreenProfileCreate:
+		return m.updateProfileCreate(msg)
+	case ScreenProfileDelete:
+		return m.updateProfileDelete(msg)
+	case ScreenAgentBuilderEngine:
+		return m.updateAgentBuilderEngine(msg)
+	case ScreenAgentBuilderPrompt:
+		return m.updateAgentBuilderPrompt(msg)
+	case ScreenAgentBuilderSDD:
+		return m.updateAgentBuilderSDD(msg)
+	case ScreenAgentBuilderSDDPhase:
+		return m.updateAgentBuilderSDDPhase(msg)
+	case ScreenAgentBuilderGenerating:
+		return m.updateAgentBuilderGenerating(msg)
+	case ScreenAgentBuilderPreview:
+		return m.updateAgentBuilderPreview(msg)
+	case ScreenAgentBuilderInstalling:
+		return m.updateAgentBuilderInstalling(msg)
+	case ScreenAgentBuilderComplete:
+		return m.updateAgentBuilderComplete(msg)
 	}
 	return m, nil
 }
 
+// View implements tea.Model.
 func (m Model) View() string {
-	if m.quitting {
+	if m.Quitting {
 		return ""
 	}
-	switch m.screen {
-	case screenWelcome:
+	switch m.Screen {
+	case ScreenWelcome:
 		return m.viewWelcome()
-	case screenDetection:
+	case ScreenDetection:
 		return m.viewDetection()
-	case screenAgents:
+	case ScreenAgents:
 		return m.viewAgents()
-	case screenPreset:
-		return m.viewPreset()
-	case screenPersona:
+	case ScreenPersona:
 		return m.viewPersona()
-	case screenReview:
+	case ScreenPreset:
+		return m.viewPreset()
+	case ScreenClaudeModelPicker:
+		return m.viewClaudeModelPicker()
+	case ScreenSDDMode:
+		return m.viewSDDMode()
+	case ScreenStrictTDD:
+		return m.viewStrictTDD()
+	case ScreenDependencyTree:
+		return m.viewDependencyTree()
+	case ScreenSkillPicker:
+		return m.viewSkillPicker()
+	case ScreenReview:
 		return m.viewReview()
-	case screenInstalling:
+	case ScreenInstalling:
 		return m.viewInstalling()
-	case screenComplete:
+	case ScreenComplete:
 		return m.viewComplete()
+	case ScreenBackups:
+		return m.viewBackups()
+	case ScreenRestoreConfirm:
+		return m.viewRestoreConfirm()
+	case ScreenRestoreResult:
+		return m.viewRestoreResult()
+	case ScreenDeleteConfirm:
+		return m.viewDeleteConfirm()
+	case ScreenDeleteResult:
+		return m.viewDeleteResult()
+	case ScreenRenameBackup:
+		return m.viewRenameBackup()
+	case ScreenUpgrade:
+		return m.viewUpgrade()
+	case ScreenSync:
+		return m.viewSync()
+	case ScreenUpgradeSync:
+		return m.viewUpgradeSync()
+	case ScreenModelConfig:
+		return m.viewModelConfig()
+	case ScreenProfiles:
+		return m.viewProfiles()
+	case ScreenProfileCreate:
+		return m.viewProfileCreate()
+	case ScreenProfileDelete:
+		return m.viewProfileDelete()
+	case ScreenAgentBuilderEngine:
+		return m.viewAgentBuilderEngine()
+	case ScreenAgentBuilderPrompt:
+		return m.viewAgentBuilderPrompt()
+	case ScreenAgentBuilderSDD:
+		return m.viewAgentBuilderSDD()
+	case ScreenAgentBuilderSDDPhase:
+		return m.viewAgentBuilderSDDPhase()
+	case ScreenAgentBuilderGenerating:
+		return m.viewAgentBuilderGenerating()
+	case ScreenAgentBuilderPreview:
+		return m.viewAgentBuilderPreview()
+	case ScreenAgentBuilderInstalling:
+		return m.viewAgentBuilderInstalling()
+	case ScreenAgentBuilderComplete:
+		return m.viewAgentBuilderComplete()
 	}
 	return ""
 }
 
-// --- Welcome ---
+// --- Welcome screen ---
 
 func (m Model) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
-		if key.String() == "enter" {
-			m.runDetection()
-			m.screen = screenDetection
+		opts := welcomeOptions()
+		switch key.String() {
+		case "up", "k":
+			if m.Cursor > 0 {
+				m.Cursor--
+			}
+		case "down", "j":
+			if m.Cursor < len(opts)-1 {
+				m.Cursor++
+			}
+		case "enter":
+			if m.Cursor < len(opts) {
+				switch opts[m.Cursor] {
+				case WelcomeInstall:
+					m.RunDetection()
+					m.setScreen(ScreenDetection)
+				case WelcomeUpgrade:
+					m.setScreen(ScreenUpgrade)
+				case WelcomeSync:
+					m.setScreen(ScreenSync)
+				case WelcomeUpgradeSync:
+					m.setScreen(ScreenUpgradeSync)
+				case WelcomeModelConfig:
+					m.ModelConfigMode = true
+					m.setScreen(ScreenClaudeModelPicker)
+				case WelcomeProfiles:
+					m.loadProfilesFromDisk()
+					m.setScreen(ScreenProfiles)
+				case WelcomeAgentBuilder:
+					m.setScreen(ScreenAgentBuilderEngine)
+				case WelcomeBackups:
+					if m.ListBackupsFn != nil {
+						m.Backups, m.BackupWarnings = m.ListBackupsFn()
+					}
+					m.setScreen(ScreenBackups)
+				case WelcomeQuit:
+					m.Quitting = true
+					return m, tea.Quit
+				}
+			}
 		}
 	}
 	return m, nil
 }
 
-func (m *Model) runDetection() {
-	info := system.Detect()
-	m.detectAgents()
-	m.sysInfo = &sysInfoCache{
-		os: info.OS, arch: info.Arch,
-		pkgMgr: info.Profile.PackageManager, shell: info.Tools.Shell,
-		nodeVer: info.Tools.NodeVersion, gitVer: info.Tools.GitVersion,
-		goVer: info.Tools.GoVersion, npx: info.Tools.NpxAvailable,
-		cortex: info.Tools.CortexFound, detectedAgents: len(m.agents),
-	}
-}
-
 func (m Model) viewWelcome() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render(styles.Logo))
-	sb.WriteString("\n\n")
-	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("v%s — AI Agent Ecosystem Configurator", m.version)))
-	sb.WriteString("\n\n")
-	sb.WriteString("Configure your AI coding agents with:\n")
-	sb.WriteString(styles.StatusOK.Render("  ● Cortex") + "       — Persistent memory + knowledge graph\n")
-	sb.WriteString(styles.StatusOK.Render("  ● ForgeSpec") + "    — SDD contracts + task board\n")
-	sb.WriteString(styles.StatusOK.Render("  ● Mailbox") + "      — Inter-agent messaging\n")
-	sb.WriteString(styles.StatusOK.Render("  ● Orchestrator") + " — Multi-CLI routing\n")
-	sb.WriteString(styles.StatusOK.Render("  ● Context7") + "     — Live documentation\n")
-	sb.WriteString(styles.StatusOK.Render("  ● SDD") + "          — 9-phase development workflow\n")
-	sb.WriteString("\n")
-	sb.WriteString(styles.Help.Render("Press Enter to start • q to quit"))
-	return sb.String()
+	opts := welcomeOptions()
+	labels := make([]string, len(opts))
+	for i, opt := range opts {
+		labels[i] = welcomeLabel(opt)
+	}
+
+	// Add "(updates available)" badge to Upgrade options when updates are found.
+	if m.UpdateCheckDone {
+		hasUpdate := false
+		for _, r := range m.UpdateResults {
+			if r.Error == nil && !r.UpToDate {
+				hasUpdate = true
+				break
+			}
+		}
+		if hasUpdate {
+			for i, opt := range opts {
+				if opt == WelcomeUpgrade || opt == WelcomeUpgradeSync {
+					labels[i] += " (updates available)"
+				}
+			}
+		}
+	}
+
+	return screens.RenderWelcome(screens.WelcomeData{
+		Version: m.Version,
+		Options: labels,
+		Cursor:  m.Cursor,
+	})
 }
 
-// --- Detection ---
+// --- Detection screen ---
 
 func (m Model) updateDetection(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
-		if key.String() == "enter" {
-			m.screen = screenAgents
-			m.cursor = 0
+		switch key.String() {
+		case "enter":
+			m.setScreen(ScreenAgents)
+		case "esc":
+			m.setScreen(ScreenWelcome)
 		}
 	}
 	return m, nil
 }
 
 func (m Model) viewDetection() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("System Detection"))
-	sb.WriteString("\n\n")
-
-	si := m.sysInfo
-	sb.WriteString(styles.Subtitle.Render("Platform"))
-	sb.WriteString("\n")
-	fmt.Fprintf(&sb, "  OS:       %s/%s\n", si.os, si.arch)
-	fmt.Fprintf(&sb, "  Pkg Mgr:  %s\n", si.pkgMgr)
-	fmt.Fprintf(&sb, "  Shell:    %s\n", si.shell)
-	sb.WriteString("\n")
-
-	sb.WriteString(styles.Subtitle.Render("Tools"))
-	sb.WriteString("\n")
-	toolLine := func(name, ver string) {
-		if ver != "" {
-			fmt.Fprintf(&sb, "  %s %-10s %s\n", styles.StatusOK.Render("●"), name, ver)
-		} else {
-			fmt.Fprintf(&sb, "  %s %-10s %s\n", styles.StatusFail.Render("○"), name, styles.Description.Render("not found"))
-		}
+	si := m.SysInfo
+	if si == nil {
+		return "Detecting..."
 	}
-	toolLine("Node.js", si.nodeVer)
-	boolStr := func(b bool) string {
-		if b {
-			return "available"
-		}
-		return ""
-	}
-	toolLine("npx", boolStr(si.npx))
-	toolLine("Git", si.gitVer)
-	toolLine("Go", si.goVer)
-	toolLine("Cortex", boolStr(si.cortex))
-	sb.WriteString("\n")
-
-	fmt.Fprintf(&sb, "%s %d agent(s) detected\n",
-		styles.StatusOK.Render("●"), si.detectedAgents)
-
-	sb.WriteString(styles.Help.Render("\nPress Enter to continue • q to quit"))
-	return sb.String()
+	return screens.RenderDetection(screens.DetectionData{
+		OS: si.OS, Arch: si.Arch, PkgMgr: si.PkgMgr, Shell: si.Shell,
+		NodeVer: si.NodeVer, GitVer: si.GitVer, GoVer: si.GoVer,
+		Npx: si.Npx, Cortex: si.Cortex, DetectedAgents: si.DetectedAgents,
+	})
 }
 
-// --- Agents ---
-
-func (m *Model) detectAgents() {
-	m.agents = nil
-	for _, adapter := range m.registry.All() {
-		installed, binary, _, _, _ := adapter.Detect(m.homeDir)
-		if installed {
-			m.agents = append(m.agents, agentItem{
-				id:       adapter.Agent(),
-				name:     string(adapter.Agent()),
-				binary:   binary,
-				selected: true, // Pre-select all detected
-			})
-		}
-	}
-}
+// --- Agents screen ---
 
 func (m Model) updateAgents(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
+			if m.Cursor > 0 {
+				m.Cursor--
 			}
 		case "down", "j":
-			if m.cursor < len(m.agents)-1 {
-				m.cursor++
+			if m.Cursor < len(m.Agents)-1 {
+				m.Cursor++
 			}
 		case " ":
-			if m.cursor < len(m.agents) {
-				m.agents[m.cursor].selected = !m.agents[m.cursor].selected
+			if m.Cursor < len(m.Agents) {
+				m.Agents[m.Cursor].Selected = !m.Agents[m.Cursor].Selected
 			}
 		case "a":
 			allSelected := true
-			for _, a := range m.agents {
-				if !a.selected {
+			for _, a := range m.Agents {
+				if !a.Selected {
 					allSelected = false
 					break
 				}
 			}
-			for i := range m.agents {
-				m.agents[i].selected = !allSelected
+			for i := range m.Agents {
+				m.Agents[i].Selected = !allSelected
 			}
 		case "enter":
-			hasSelected := false
-			for _, a := range m.agents {
-				if a.selected {
-					hasSelected = true
-					break
-				}
-			}
-			if hasSelected {
-				m.screen = screenPreset
-				m.cursor = 0
+			if m.HasSelectedAgents() {
+				m.setScreen(ScreenPersona)
 			}
 		case "esc":
-			m.screen = screenWelcome
+			m.setScreen(ScreenDetection)
 		}
 	}
 	return m, nil
 }
 
 func (m Model) viewAgents() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Select Agents"))
-	sb.WriteString("\n\n")
-
-	for i, a := range m.agents {
-		cursor := "  "
-		if i == m.cursor {
-			cursor = styles.Cursor.Render("> ")
-		}
-
-		check := "○"
-		nameStyle := lipgloss.NewStyle()
-		if a.selected {
-			check = styles.Selected.Render("●")
-			nameStyle = styles.Selected
-		}
-
-		fmt.Fprintf(&sb, "%s%s %s", cursor, check, nameStyle.Render(a.name))
-		if a.binary != "" {
-			sb.WriteString(styles.Description.Render(fmt.Sprintf(" (%s)", a.binary)))
-		}
-		sb.WriteString("\n")
+	data := make([]screens.AgentData, len(m.Agents))
+	for i, a := range m.Agents {
+		data[i] = screens.AgentData{Name: a.Name, Binary: a.Binary, Selected: a.Selected}
 	}
-
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Space toggle • a all • Enter confirm • Esc back"))
-	return sb.String()
+	return screens.RenderAgents(screens.AgentsData{Agents: data, Cursor: m.Cursor})
 }
 
-// --- Preset ---
-
-func (m Model) updatePreset(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.cursor < len(m.presets)-1 {
-				m.cursor++
-			}
-		case "enter":
-			m.preset = m.presets[m.cursor]
-			components := catalog.ComponentsForPreset(m.preset)
-			m.resolved = catalog.ResolveDeps(components)
-			m.screen = screenPersona
-			m.cursor = 0
-		case "esc":
-			m.screen = screenAgents
-			m.cursor = 0
-		}
-	}
-	return m, nil
-}
-
-func (m Model) viewPreset() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Select Preset"))
-	sb.WriteString("\n\n")
-
-	descs := map[model.PresetID]string{
-		model.PresetFull:    "All 8 components — full ecosystem",
-		model.PresetMinimal: "Cortex + ForgeSpec + Context7 + SDD",
-	}
-
-	for i, p := range m.presets {
-		cursor := "  "
-		if i == m.cursor {
-			cursor = styles.Cursor.Render("> ")
-		}
-
-		name := styles.Subtitle.Render(string(p))
-		desc := styles.Description.Render(" — " + descs[p])
-		fmt.Fprintf(&sb, "%s%s%s\n", cursor, name, desc)
-	}
-
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Enter select • Esc back"))
-	return sb.String()
-}
-
-// --- Persona ---
+// --- Persona screen ---
 
 func (m Model) updatePersona(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
+			if m.Cursor > 0 {
+				m.Cursor--
 			}
 		case "down", "j":
-			if m.cursor < len(m.personas)-1 {
-				m.cursor++
+			if m.Cursor < len(m.Personas)-1 {
+				m.Cursor++
 			}
 		case "enter":
-			m.persona = m.personas[m.cursor]
-			m.screen = screenReview
+			m.Persona = m.Personas[m.Cursor]
+			m.setScreen(ScreenPreset)
 		case "esc":
-			m.screen = screenPreset
-			m.cursor = 0
+			m.setScreen(ScreenAgents)
 		}
 	}
 	return m, nil
 }
 
 func (m Model) viewPersona() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Select Persona"))
-	sb.WriteString("\n\n")
-
-	descs := map[model.PersonaID]string{
-		model.PersonaProfessional: "Direct, concise, technical terminology",
-		model.PersonaMentor:       "Teaching-oriented, explains trade-offs and patterns",
-		model.PersonaMinimal:      "Code only, no explanations unless asked",
-	}
-
-	for i, p := range m.personas {
-		cursor := "  "
-		if i == m.cursor {
-			cursor = styles.Cursor.Render("> ")
-		}
-
-		name := styles.Subtitle.Render(string(p))
-		desc := styles.Description.Render(" — " + descs[p])
-		fmt.Fprintf(&sb, "%s%s%s\n", cursor, name, desc)
-	}
-
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Enter select • Esc back"))
-	return sb.String()
+	return screens.RenderPersona(screens.PersonaData{
+		Personas: m.Personas,
+		Cursor:   m.Cursor,
+	})
 }
 
-// --- Review ---
+// --- Preset screen ---
+
+func (m Model) updatePreset(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "up", "k":
+			if m.Cursor > 0 {
+				m.Cursor--
+			}
+		case "down", "j":
+			if m.Cursor < len(m.Presets)-1 {
+				m.Cursor++
+			}
+		case "enter":
+			m.Preset = m.Presets[m.Cursor]
+			components := catalog.ComponentsForPreset(m.Preset)
+			m.Resolved = catalog.ResolveDeps(components)
+			m.setScreen(ScreenClaudeModelPicker)
+		case "esc":
+			m.setScreen(ScreenPersona)
+		}
+	}
+	return m, nil
+}
+
+func (m Model) viewPreset() string {
+	return screens.RenderPreset(screens.PresetData{
+		Presets: m.Presets,
+		Cursor:  m.Cursor,
+	})
+}
+
+// --- Review screen ---
 
 func (m Model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "enter", "y":
-			m.screen = screenInstalling
-			return m, m.runInstall()
+			// Build expected step labels from selected agents x resolved components.
+			var labels []string
+			for _, a := range m.Agents {
+				if a.Selected {
+					for _, c := range m.Resolved {
+						labels = append(labels, fmt.Sprintf("%s/%s", a.ID, c))
+					}
+				}
+			}
+			m.Progress = NewProgressState(labels)
+
+			ch := make(chan StepProgressMsg, 100)
+			m.progressCh = ch
+			m.setScreen(ScreenInstalling)
+			m.PipelineRunning = true
+			return m, tea.Batch(m.runInstallWithProgress(ch), listenProgress(ch), tickCmd())
 		case "esc", "n":
-			m.screen = screenPersona
-			m.cursor = 0
+			if prev, ok := PreviousScreen(ScreenReview); ok {
+				m.setScreen(prev)
+			}
 		}
 	}
 	return m, nil
 }
 
 func (m Model) viewReview() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Review Installation"))
-	sb.WriteString("\n\n")
-
-	sb.WriteString(styles.Subtitle.Render("Agents:"))
-	sb.WriteString("\n")
-	for _, a := range m.agents {
-		if a.selected {
-			fmt.Fprintf(&sb, "  %s %s\n", styles.StatusOK.Render("●"), a.name)
+	var reviewAgents []screens.ReviewAgent
+	for _, a := range m.Agents {
+		if a.Selected {
+			reviewAgents = append(reviewAgents, screens.ReviewAgent{Name: a.Name})
 		}
 	}
-
-	sb.WriteString("\n")
-	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("Preset: %s", m.preset)))
-	sb.WriteString("  ")
-	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("Persona: %s", m.persona)))
-	sb.WriteString("\n\n")
-
-	sb.WriteString(styles.Subtitle.Render("Components (with dependencies):"))
-	sb.WriteString("\n")
-	cmap := catalog.ComponentMap()
-	for _, id := range m.resolved {
-		if info, ok := cmap[id]; ok {
-			fmt.Fprintf(&sb, "  %s %-18s %s\n",
-				styles.StatusOK.Render("●"),
-				styles.Selected.Render(string(id)),
-				styles.Description.Render(info.Description))
-		}
-	}
-
-	sb.WriteString(styles.Help.Render("\nEnter to install • Esc to go back"))
-	return sb.String()
+	return screens.RenderReview(screens.ReviewData{
+		Agents:   reviewAgents,
+		Preset:   m.Preset,
+		Persona:  m.Persona,
+		Resolved: m.Resolved,
+	})
 }
 
-// --- Installing ---
+// --- Installing screen ---
 
-func (m Model) runInstall() tea.Cmd {
+// listenProgress returns a tea.Cmd that blocks on the progress channel and
+// yields the next StepProgressMsg. The Update handler re-schedules this
+// command after each message so all progress events are delivered.
+func listenProgress(ch <-chan StepProgressMsg) tea.Cmd {
 	return func() tea.Msg {
-		var agentIDs []model.AgentID
-		for _, a := range m.agents {
-			if a.selected {
-				agentIDs = append(agentIDs, a.id)
+		msg, ok := <-ch
+		if !ok {
+			return nil // channel closed — pipeline finished
+		}
+		return msg
+	}
+}
+
+func (m Model) runInstallWithProgress(ch chan StepProgressMsg) tea.Cmd {
+	return func() tea.Msg {
+		components := m.Resolved
+		if !m.SDDEnabled {
+			filtered := make([]model.ComponentID, 0, len(components))
+			for _, c := range components {
+				if c != model.ComponentSDD {
+					filtered = append(filtered, c)
+				}
 			}
+			components = filtered
 		}
 
 		selection := model.Selection{
-			Agents:     agentIDs,
-			Preset:     m.preset,
-			Persona:    m.persona,
-			Components: m.resolved,
+			Agents:           m.SelectedAgentIDs(),
+			Preset:           m.Preset,
+			Persona:          m.Persona,
+			Components:       components,
+			ModelAssignments: m.ModelAssignments,
+			StrictTDD:        m.StrictTDDEnabled,
+			CommunitySkills:  m.SkillSelection,
 		}
 
-		result, err := pipeline.Install(m.homeDir, m.registry, selection, m.version, false)
-		return installDoneMsg{result: result, err: err}
+		onProgress := func(stepID, status string, err error) {
+			ch <- StepProgressMsg{StepID: stepID, Status: status, Err: err}
+		}
+
+		var result pipeline.InstallResult
+		var installErr error
+
+		if m.ExecuteFn != nil {
+			result = m.ExecuteFn(selection, onProgress)
+		} else {
+			result, installErr = pipeline.Install(m.HomeDir, m.Registry, selection, m.Version, false, onProgress)
+		}
+		close(ch)
+
+		if installErr == nil && len(result.Errors) > 0 {
+			installErr = fmt.Errorf("installation completed with %d warning(s)", len(result.Errors))
+		}
+		return PipelineDoneMsg{Result: result, Err: installErr}
 	}
 }
 
 func (m Model) viewInstalling() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Installing..."))
-	sb.WriteString("\n\n")
-	sb.WriteString("Configuring agents with cortex-ia ecosystem.\n")
-	sb.WriteString("This may take a moment.\n")
-	return sb.String()
+	if len(m.Progress.Items) == 0 {
+		// No step-level progress — show simple spinner
+		return screens.RenderInstalling(screens.InstallProgress{
+			CurrentStep: "Configuring agents...",
+			Items: []screens.ProgressItem{
+				{Label: "Configuring agents with cortex-ia ecosystem", Status: ProgressStatusRunning},
+			},
+		}, m.SpinnerFrame)
+	}
+	return screens.RenderInstalling(m.Progress.ViewModel(), m.SpinnerFrame)
 }
 
-// --- Complete ---
+// --- Complete screen ---
 
 func (m Model) updateComplete(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "enter", "q", "esc":
-			m.quitting = true
+			m.Quitting = true
 			return m, tea.Quit
 		}
 	}
@@ -536,32 +625,13 @@ func (m Model) updateComplete(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) viewComplete() string {
-	var sb strings.Builder
-
-	if m.installErr != nil {
-		sb.WriteString(styles.StatusFail.Render("Installation Failed"))
-		sb.WriteString("\n\n")
-		fmt.Fprintf(&sb, "Error: %v\n", m.installErr)
-	} else {
-		sb.WriteString(styles.StatusOK.Render("✓ Installation Complete"))
-		sb.WriteString("\n\n")
-		fmt.Fprintf(&sb, "Components: %d\n", len(m.result.ComponentsDone))
-		fmt.Fprintf(&sb, "Files changed: %d\n", len(m.result.FilesChanged))
-		if m.result.BackupID != "" {
-			fmt.Fprintf(&sb, "Backup: %s\n", m.result.BackupID)
-		}
-	}
-
-	if len(m.result.Errors) > 0 {
-		sb.WriteString(styles.StatusWarn.Render("\nWarnings:"))
-		sb.WriteString("\n")
-		for _, e := range m.result.Errors {
-			fmt.Fprintf(&sb, "  %s\n", e)
-		}
-	}
-
-	sb.WriteString(styles.Help.Render("\nPress any key to exit"))
-	return sb.String()
+	return screens.RenderComplete(screens.CompleteData{
+		Err:            m.InstallErr,
+		ComponentsDone: len(m.Result.ComponentsDone),
+		FilesChanged:   len(m.Result.FilesChanged),
+		BackupID:       m.Result.BackupID,
+		Errors:         m.Result.Errors,
+	})
 }
 
 // Run starts the TUI.
@@ -573,7 +643,67 @@ func Run(version string) error {
 
 	registry := agents.NewDefaultRegistry()
 	m := New(registry, homeDir, version)
-	p := tea.NewProgram(m)
+
+	// Inject ExecuteFn — wraps pipeline.Install
+	m.ExecuteFn = func(selection model.Selection, onProgress pipeline.ProgressFunc) pipeline.InstallResult {
+		var result pipeline.InstallResult
+		var installErr error
+		if onProgress != nil {
+			result, installErr = pipeline.Install(homeDir, registry, selection, version, false, onProgress)
+		} else {
+			result, installErr = pipeline.Install(homeDir, registry, selection, version, false)
+		}
+		if installErr != nil {
+			result.Errors = append(result.Errors, installErr.Error())
+		}
+		return result
+	}
+
+	// Inject RestoreFn — restores from a backup manifest
+	m.RestoreFn = func(manifest backup.Manifest) error {
+		svc := backup.RestoreService{}
+		return svc.Restore(manifest)
+	}
+
+	// Inject DeleteBackupFn — deletes a backup directory
+	m.DeleteBackupFn = func(manifest backup.Manifest) error {
+		return backup.DeleteBackup(manifest)
+	}
+
+	// Inject RenameBackupFn — renames a backup description
+	m.RenameBackupFn = func(manifest backup.Manifest, newDescription string) error {
+		return backup.RenameBackup(manifest, newDescription)
+	}
+
+	// Inject ListBackupsFn — lists available backups
+	m.ListBackupsFn = func() ([]backup.Manifest, []string) {
+		backupsDir := filepath.Join(homeDir, ".cortex-ia", "backups")
+		result := backup.ListManifests(backupsDir)
+		return result.Manifests, result.Warnings
+	}
+
+	// Inject SyncFn — re-runs install from saved state
+	m.SyncFn = func(profileName string) (int, error) {
+		s, err := state.Load(homeDir)
+		if err != nil {
+			return 0, err
+		}
+		lock, err := state.LoadLock(homeDir)
+		if err != nil {
+			return 0, err
+		}
+		sel, err := pipeline.SelectionFromState(s, lock)
+		if err != nil {
+			return 0, err
+		}
+		if profileName != "" {
+			sel.ProfileName = profileName
+		}
+		result, err := pipeline.Install(homeDir, registry, sel, version, false)
+		return len(result.FilesChanged), err
+	}
+
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err = p.Run()
 	return err
 }

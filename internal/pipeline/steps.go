@@ -9,6 +9,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
 // backupStep creates a config snapshot before installation.
@@ -18,6 +19,7 @@ type backupStep struct {
 	agentIDs []model.AgentID
 	resolved []model.ComponentID
 	version  string
+	progress ProgressFunc
 
 	// Output: set during Run().
 	BackupID  string
@@ -41,7 +43,9 @@ func (s *backupStep) Run() error {
 		return fmt.Errorf("write manifest: %w", err)
 	}
 	s.BackupID = manifest.ID
-	fmt.Printf("Backup created: %s (%d files)\n", manifest.ID, manifest.FileCount)
+	if s.progress == nil {
+		fmt.Printf("Backup created: %s (%d files)\n", manifest.ID, manifest.FileCount)
+	}
 	return nil
 }
 
@@ -68,6 +72,7 @@ type componentStep struct {
 	adapter     agents.Adapter
 	componentID model.ComponentID
 	injectorFn  func() ([]string, error)
+	progress    ProgressFunc
 
 	// Output: files written.
 	Files []string
@@ -78,13 +83,26 @@ func (s *componentStep) Name() string {
 }
 
 func (s *componentStep) Run() error {
+	if s.progress != nil {
+		s.progress(s.Name(), "running", nil)
+	}
 	files, err := s.injectorFn()
 	if err != nil {
-		fmt.Printf("  [!] %s/%s: %v\n", s.adapter.Agent(), s.componentID, err)
+		if s.progress != nil {
+			s.progress(s.Name(), "failed", err)
+		}
+		if s.progress == nil {
+			fmt.Printf("  [!] %s/%s: %v\n", s.adapter.Agent(), s.componentID, err)
+		}
 		return err
 	}
 	s.Files = files
-	fmt.Printf("  [+] %s\n", s.componentID)
+	if s.progress != nil {
+		s.progress(s.Name(), "succeeded", nil)
+	}
+	if s.progress == nil {
+		fmt.Printf("  [+] %s\n", s.componentID)
+	}
 	return nil
 }
 
@@ -94,4 +112,28 @@ func (s *backupStep) Rollback() error {
 		return os.RemoveAll(s.BackupDir)
 	}
 	return nil
+}
+
+// installStatusStep writes an install-status marker so that partial failures
+// can be detected by the doctor/verify system. On Run() it writes
+// status "in-progress"; the caller is responsible for updating to "complete"
+// after all components succeed. Rollback() clears the marker.
+type installStatusStep struct {
+	homeDir  string
+	backupID string // set by the caller after backupStep.Run()
+}
+
+func (s *installStatusStep) Name() string { return "install-status" }
+
+func (s *installStatusStep) Run() error {
+	status := state.InstallStatus{
+		Status:    "in-progress",
+		StartedAt: time.Now().UTC().Format(time.RFC3339),
+		BackupID:  s.backupID,
+	}
+	return state.SaveInstallStatus(s.homeDir, status)
+}
+
+func (s *installStatusStep) Rollback() error {
+	return state.ClearInstallStatus(s.homeDir)
 }

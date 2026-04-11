@@ -1,6 +1,6 @@
 # Components
 
-cortex-ia configures 8 components. Each is independently selectable (with automatic dependency resolution).
+cortex-ia configures 7 components. Each is independently selectable (with automatic dependency resolution).
 
 ## MCP Server Components
 
@@ -40,14 +40,6 @@ Inter-agent messaging, A2A task delegation, resource coordination, and dead-lett
 
 **What gets injected**: MCP server config pointing to `npx -y agent-mailbox-mcp`.
 
-### CLI Orchestrator (4 MCP tools)
-
-Multi-CLI routing with circuit breaker and automatic fallback.
-
-**Tools**: `cli_execute`, `cli_stats`, `cli_list`, `cli_route`
-
-**What gets injected**: MCP server config pointing to `npx -y cli-orchestrator-mcp`.
-
 ### Context7 (2 MCP tools)
 
 Live framework and library documentation.
@@ -85,7 +77,6 @@ Non-SDD utility skills. Injected separately to avoid conflicts with SDD componen
 
 ```
 cortex ─────────┐
-cli-orchestrator │  (no deps, injected independently)
 agent-mailbox ──┤
 forgespec ──────┤
 context7        │
@@ -97,7 +88,7 @@ skills          (no deps)
 ## Preset Resolution
 
 ### Full Preset
-All 8 components: cortex, cli-orchestrator, agent-mailbox, forgespec, context7, conventions, sdd, skills.
+All 7 components: cortex, agent-mailbox, forgespec, context7, conventions, sdd, skills.
 
 ### Minimal Preset
 Selected: cortex, forgespec, context7, sdd.

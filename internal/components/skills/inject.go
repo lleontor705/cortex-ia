@@ -1,3 +1,4 @@
+// Package skills installs community and built-in skill files into agent workspaces.
 package skills
 
 import (

@@ -121,13 +121,7 @@ For each viable approach:
 4. **Phased roadmap**: Ordered migration phases with dependencies between them
 5. **Rollback boundaries**: Points where migration can be safely reversed
 
-### Step 6: Consult External LLMs (Optional)
-
-Check the `ENABLED CLIs` line in your task prompt (set by the orchestrator). If CLIs are listed, use them for cross-validation. If the line says `none` or is absent, skip this step entirely.
-
-When CLIs are available: use Claude CLI for hypothesis validation, Gemini CLI for best practices and CVE checks, Codex CLI for rapid prototyping. Ask focused questions with summarized context — never dump entire files.
-
-### Step 7: Persist Artifact
+### Step 6: Persist Artifact
 
 This step is required when tied to a named change.
 
@@ -144,7 +138,7 @@ Use `mem_relate` to connect the explore observation to the bootstrap observation
 
 If you skip this step when a change name exists, draft-proposal will have no exploration context and the pipeline breaks.
 
-### Step 8: Produce Contract
+### Step 7: Produce Contract
 
 Assemble the contract JSON from the analysis and return it as the final output block.
 

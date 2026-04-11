@@ -81,6 +81,7 @@ func Run(ctx *Context, checks []Check) Report {
 // DefaultChecks returns the standard set of health checks.
 func DefaultChecks() []Check {
 	return []Check{
+		{ID: "install-status", Name: "Install completed cleanly", Severity: SeverityError, Fn: checkInstallStatus},
 		{ID: "files-exist", Name: "Tracked files present", Severity: SeverityError, Fn: checkFilesExist},
 		{ID: "cortex-binary", Name: "Cortex MCP binary", Severity: SeverityWarning, Fn: checkCortexBinary},
 		{ID: "node-npx", Name: "Node.js and npx available", Severity: SeverityWarning, Fn: checkNodeNpx},
@@ -88,6 +89,24 @@ func DefaultChecks() []Check {
 		{ID: "convention-present", Name: "Cortex convention file", Severity: SeverityWarning, Fn: checkConventionPresent},
 		{ID: "state-lock-consistent", Name: "State and lock consistent", Severity: SeverityWarning, Fn: checkStateLockConsistent},
 	}
+}
+
+func checkInstallStatus(ctx *Context) error {
+	status, err := state.LoadInstallStatus(ctx.HomeDir)
+	if err != nil {
+		return fmt.Errorf("could not read install status: %w", err)
+	}
+	if status == nil {
+		return nil // no marker — clean state
+	}
+	if status.Status == "in-progress" {
+		msg := "previous installation did not complete cleanly (started " + status.StartedAt + ")"
+		if status.BackupID != "" {
+			msg += "; run 'cortex-ia rollback' to restore backup " + status.BackupID + " or 'cortex-ia repair' to retry"
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
 }
 
 func checkFilesExist(ctx *Context) error {

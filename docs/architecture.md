@@ -33,7 +33,6 @@ cortex-ia/
 │   │   ├── mcpinject/             # Shared MCP injection engine
 │   │   │   └── mcpinject.go       # ServerTemplates + 4-strategy dispatch
 │   │   ├── cortex/                # Cortex MCP (Go binary)
-│   │   ├── orchestrator/          # CLI Orchestrator MCP (npm)
 │   │   ├── mailbox/               # Agent Mailbox MCP (npm)
 │   │   ├── forgespec/             # ForgeSpec MCP (npm)
 │   │   ├── context7/              # Context7 MCP (npm/remote)

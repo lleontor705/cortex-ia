@@ -106,7 +106,6 @@ EVALUATION CRITERIA: {criteria}
 After completing your argument, send it to all other position defenders:
   msg_send(to_agent: "{other_defender}", subject: "Round 1: Position {N} argument", body: "{your argument}")
 
-ENABLED CLIs: {cli_list}
 ```
 
 ### Step 3: Round 2 — Rebuttals

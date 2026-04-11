@@ -181,7 +181,6 @@ Tools: `dlq_list()`, `dlq_retry(dlq_id)`, `dlq_purge()`
 ### Multi-Agent (Claude Code, OpenCode)
 The orchestrator is a pure coordinator — delegates ALL work to sub-agents via Task tool. Uses:
 - `agent_register` for P2P discovery
-- `cli_route` + `cli_execute` for external CLI cross-validation
 - `mem_capture_passive` for automatic learning extraction
 - `tb_list` for board recovery after compaction
 

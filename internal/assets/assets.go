@@ -8,7 +8,7 @@ import (
 	"io/fs"
 )
 
-//go:embed all:skills all:generic all:opencode
+//go:embed all:skills all:generic all:opencode all:gga
 var FS embed.FS
 
 // Read returns the content of an embedded asset file.

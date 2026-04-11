@@ -12,7 +12,7 @@
 
 ---
 
-cortex-ia detects your installed AI coding agents and configures them with a complete development ecosystem: persistent memory, SDD workflow, inter-agent messaging, multi-CLI orchestration, and live documentation — all via a single Go binary with an interactive TUI.
+cortex-ia detects your installed AI coding agents and configures them with a complete development ecosystem: persistent memory, SDD workflow, inter-agent messaging, and live documentation — all via a single Go binary with an interactive TUI.
 
 ## Quick Start
 
@@ -56,14 +56,13 @@ cortex-ia detect
 
 ## What It Configures
 
-cortex-ia injects **5 MCP servers** + **19 SDD skills** + **orchestrator prompts** into any supported agent:
+cortex-ia injects **4 MCP servers** + **19 SDD skills** + **orchestrator prompts** into any supported agent:
 
 | Component | MCP Tools | What It Does |
 |-----------|:---------:|-------------|
 | [**Cortex**](https://github.com/lleontor705/cortex) | 31 | Persistent memory with knowledge graph, FTS5, revision history, temporal tracking |
 | [**ForgeSpec**](https://npmjs.com/package/forgespec-mcp) | 19 | SDD contract validation (Zod), task board with dependencies, file reservation |
 | [**Agent Mailbox**](https://npmjs.com/package/agent-mailbox-mcp) | 26 | Messaging, A2A task delegation, resource locks, dead-letter queue, registry |
-| [**CLI Orchestrator**](https://npmjs.com/package/cli-orchestrator-mcp) | 4 | Multi-CLI routing (Claude/Gemini/Codex) with circuit breaker, retry, fallback |
 | [**Context7**](https://github.com/upstash/context7) | 2 | Live framework and library documentation via MCP |
 
 Plus **3 content components**:
@@ -74,7 +73,7 @@ Plus **3 content components**:
 | **Conventions** | Shared cortex memory protocol + naming conventions for all agents |
 | **Extra Skills** | Non-SDD utility skills (injected separately from SDD) |
 
-**Total: 82 MCP tools across 4 MCPs + Context7**, all documented in skills and orchestrator prompts.
+**Total: 78 MCP tools across 3 MCPs + Context7**, all documented in skills and orchestrator prompts.
 
 ## Supported Agents
 
@@ -95,7 +94,7 @@ Agents with **Task Delegation** get a multi-agent orchestrator that delegates wo
 
 | Preset | Components | Use Case |
 |--------|-----------|----------|
-| **full** | All 8 components | Complete ecosystem (default) |
+| **full** | All 7 components | Complete ecosystem (default) |
 | **minimal** | Cortex + ForgeSpec + Context7 + SDD | Essential SDD workflow (auto-pulls Mailbox via deps) |
 | **custom** | User-selected via TUI | Pick exactly what you need |
 
@@ -309,7 +308,7 @@ cortex-ia update             Check for available updates
 ## Prerequisites
 
 - **Go 1.22+** — for building cortex-ia
-- **Node.js 18+** with `npx` — for npm-based MCP servers (forgespec, mailbox, orchestrator, context7)
+- **Node.js 18+** with `npx` — for npm-based MCP servers (forgespec, mailbox, context7)
 - **Cortex binary** — `go install github.com/lleontor705/cortex/cmd/cortex@latest` or `brew install lleontor705/tap/cortex`
 - At least one [supported agent](#supported-agents) installed
 
@@ -320,7 +319,7 @@ cortex-ia update             Check for available updates
 | [cortex](https://github.com/lleontor705/cortex) | Persistent memory MCP server (Go binary) |
 | [forgespec-mcp](https://github.com/lleontor705/forgespec-mcp) | SDD contracts + task board + file reservation |
 | [agent-mailbox-mcp](https://github.com/lleontor705/agent-mailbox-mcp) | Inter-agent messaging system |
-| [cli-orchestrator-mcp](https://github.com/lleontor705/cli-orchestrator-mcp) | Multi-CLI routing with circuit breaker |
+
 
 ## License
 

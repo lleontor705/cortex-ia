@@ -18,7 +18,6 @@
 - [Cortex MCP](https://github.com/lleontor705/cortex): 31 memory tools (knowledge graph, FTS5, temporal)
 - [ForgeSpec MCP](https://github.com/lleontor705/forgespec-mcp): 19 tools (contracts, task board, file reservation)
 - [Agent Mailbox MCP](https://github.com/lleontor705/agent-mailbox-mcp): 14 tools (messaging, threads, registry)
-- [CLI Orchestrator MCP](https://github.com/lleontor705/cli-orchestrator-mcp): 4 tools (multi-CLI routing, circuit breaker)
 
 ## Optional
 

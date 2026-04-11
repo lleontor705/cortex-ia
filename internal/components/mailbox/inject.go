@@ -1,3 +1,4 @@
+// Package mailbox injects the agent-mailbox MCP server configuration for peer-to-peer agent messaging.
 package mailbox
 
 import (
