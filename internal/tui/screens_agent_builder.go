@@ -120,11 +120,12 @@ func (m Model) updateAgentBuilderSDD(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "up", "k", "down", "j":
-			if m.AgentBuilderSDDMode == "phase" {
+			switch m.AgentBuilderSDDMode {
+			case "phase":
 				m.AgentBuilderSDDMode = "full"
-			} else if m.AgentBuilderSDDMode == "full" {
+			case "full":
 				m.AgentBuilderSDDMode = "none"
-			} else {
+			default:
 				m.AgentBuilderSDDMode = "phase"
 			}
 		case "enter":

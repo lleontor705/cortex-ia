@@ -38,7 +38,7 @@ func (m Model) viewUpgrade() string {
 	sb.WriteString("\n\n")
 
 	if m.OperationRunning {
-		sb.WriteString(fmt.Sprintf("%s Checking for updates...\n", styles.SpinnerChar(m.SpinnerFrame)))
+		fmt.Fprintf(&sb, "%s Checking for updates...\n", styles.SpinnerChar(m.SpinnerFrame))
 	} else if !m.UpdateCheckDone {
 		sb.WriteString("Press r to check for updates.\n")
 	} else if len(m.UpdateResults) > 0 {
@@ -119,12 +119,12 @@ func (m Model) viewSync() string {
 	sb.WriteString(styles.Title.Render("Sync Configuration"))
 	sb.WriteString("\n\n")
 	if m.SelectedProfile != "" {
-		sb.WriteString(fmt.Sprintf("Profile: %s\n\n", styles.Subtitle.Render(m.SelectedProfile)))
+		fmt.Fprintf(&sb, "Profile: %s\n\n", styles.Subtitle.Render(m.SelectedProfile))
 	} else {
 		sb.WriteString("Profile: (none)\n\n")
 	}
 	if m.OperationRunning {
-		sb.WriteString(fmt.Sprintf("%s Syncing managed files...\n", styles.SpinnerChar(m.SpinnerFrame)))
+		fmt.Fprintf(&sb, "%s Syncing managed files...\n", styles.SpinnerChar(m.SpinnerFrame))
 	} else if m.SyncErr != nil {
 		sb.WriteString(styles.StatusFail.Render("Sync failed"))
 		sb.WriteString("\n")
@@ -173,53 +173,52 @@ func (m Model) viewUpgradeSync() string {
 	case m.UpgradeSyncPhase == "" && !m.OperationRunning:
 		sb.WriteString("This will check for updates and then sync your configuration.\n\n")
 		if m.SelectedProfile != "" {
-			sb.WriteString(fmt.Sprintf("Profile: %s\n\n", styles.Subtitle.Render(m.SelectedProfile)))
+			fmt.Fprintf(&sb, "Profile: %s\n\n", styles.Subtitle.Render(m.SelectedProfile))
 		}
 		sb.WriteString("Press Enter to start.\n")
 
 	case m.UpgradeSyncPhase == "checking":
-		sb.WriteString(fmt.Sprintf("%s Checking for updates...\n", styles.SpinnerChar(m.SpinnerFrame)))
+		fmt.Fprintf(&sb, "%s Checking for updates...\n", styles.SpinnerChar(m.SpinnerFrame))
 
 	case m.UpgradeSyncPhase == "syncing":
-		// Show update result
 		if len(m.UpdateResults) > 0 {
 			r := m.UpdateResults[0]
-			if r.Error != nil {
+			switch {
+			case r.Error != nil:
 				sb.WriteString(styles.StatusWarn.Render("Update check failed"))
-				sb.WriteString(fmt.Sprintf(" (%v)\n", r.Error))
-			} else if r.UpToDate {
+				fmt.Fprintf(&sb, " (%v)\n", r.Error)
+			case r.UpToDate:
 				sb.WriteString(styles.StatusOK.Render("✓ Up to date"))
-				sb.WriteString(fmt.Sprintf(" (%s)\n", r.CurrentVersion))
-			} else {
+				fmt.Fprintf(&sb, " (%s)\n", r.CurrentVersion)
+			default:
 				sb.WriteString(styles.StatusWarn.Render("Update available"))
-				sb.WriteString(fmt.Sprintf(" (%s → %s)\n", r.CurrentVersion, r.LatestRelease.TagName))
+				fmt.Fprintf(&sb, " (%s → %s)\n", r.CurrentVersion, r.LatestRelease.TagName)
 			}
 		}
-		sb.WriteString(fmt.Sprintf("\n%s Syncing configuration...\n", styles.SpinnerChar(m.SpinnerFrame)))
+		fmt.Fprintf(&sb, "\n%s Syncing configuration...\n", styles.SpinnerChar(m.SpinnerFrame))
 
 	case m.UpgradeSyncPhase == "done":
-		// Show update result
 		if len(m.UpdateResults) > 0 {
 			r := m.UpdateResults[0]
-			if r.Error != nil {
+			switch {
+			case r.Error != nil:
 				sb.WriteString(styles.StatusWarn.Render("Update check failed"))
-				sb.WriteString(fmt.Sprintf(" (%v)\n", r.Error))
-			} else if r.UpToDate {
+				fmt.Fprintf(&sb, " (%v)\n", r.Error)
+			case r.UpToDate:
 				sb.WriteString(styles.StatusOK.Render("✓ Up to date"))
-				sb.WriteString(fmt.Sprintf(" (%s)\n", r.CurrentVersion))
-			} else {
+				fmt.Fprintf(&sb, " (%s)\n", r.CurrentVersion)
+			default:
 				sb.WriteString(styles.StatusWarn.Render("Update available"))
-				sb.WriteString(fmt.Sprintf(" (%s → %s)\n", r.CurrentVersion, r.LatestRelease.TagName))
+				fmt.Fprintf(&sb, " (%s → %s)\n", r.CurrentVersion, r.LatestRelease.TagName)
 			}
 		}
 		sb.WriteString("\n")
-		// Show sync result
 		if m.SyncErr != nil {
 			sb.WriteString(styles.StatusFail.Render("Sync failed"))
-			sb.WriteString(fmt.Sprintf("\nError: %v\n", m.SyncErr))
+			fmt.Fprintf(&sb, "\nError: %v\n", m.SyncErr)
 		} else {
 			sb.WriteString(styles.StatusOK.Render("✓ Sync complete"))
-			sb.WriteString(fmt.Sprintf("\nFiles changed: %d\n", m.SyncFilesChanged))
+			fmt.Fprintf(&sb, "\nFiles changed: %d\n", m.SyncFilesChanged)
 		}
 	}
 

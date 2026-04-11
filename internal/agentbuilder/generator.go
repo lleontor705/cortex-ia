@@ -31,13 +31,13 @@ func buildSkillContent(name string, spec AgentSpec) string {
 	title := toTitle(spec.Purpose)
 
 	// Frontmatter
-	sb.WriteString(fmt.Sprintf("---\nname: %s\ndescription: %s\ntype: agent\n---\n\n", name, spec.Purpose))
+	fmt.Fprintf(&sb, "---\nname: %s\ndescription: %s\ntype: agent\n---\n\n", name, spec.Purpose)
 
 	// Role section
-	sb.WriteString(fmt.Sprintf("# %s\n\n", title))
+	fmt.Fprintf(&sb, "# %s\n\n", title)
 	sb.WriteString("## Role\n\n")
-	sb.WriteString(fmt.Sprintf("You are a specialized agent for: %s.\n", spec.Purpose))
-	sb.WriteString(fmt.Sprintf("Powered by the %s engine.\n\n", string(spec.Engine)))
+	fmt.Fprintf(&sb, "You are a specialized agent for: %s.\n", spec.Purpose)
+	fmt.Fprintf(&sb, "Powered by the %s engine.\n\n", string(spec.Engine))
 
 	// SDD integration section
 	switch spec.SDDMode {
@@ -51,13 +51,13 @@ func buildSkillContent(name string, spec AgentSpec) string {
 		sb.WriteString("4. Use `mem_relate` to connect your output to upstream artifacts.\n\n")
 
 	case SDDPhase:
-		sb.WriteString(fmt.Sprintf("## SDD Integration (Phase: %s)\n\n", spec.SDDPhase))
-		sb.WriteString(fmt.Sprintf("This agent specializes in the `%s` SDD phase.\n\n", spec.SDDPhase))
+		fmt.Fprintf(&sb, "## SDD Integration (Phase: %s)\n\n", spec.SDDPhase)
+		fmt.Fprintf(&sb, "This agent specializes in the `%s` SDD phase.\n\n", spec.SDDPhase)
 		sb.WriteString("### Workflow\n\n")
-		sb.WriteString(fmt.Sprintf("1. Activate when the orchestrator delegates the `%s` phase.\n", spec.SDDPhase))
+		fmt.Fprintf(&sb, "1. Activate when the orchestrator delegates the `%s` phase.\n", spec.SDDPhase)
 		sb.WriteString("2. Read upstream artifacts required by this phase.\n")
 		sb.WriteString("3. Produce the phase artifact following the SDD contract format.\n")
-		sb.WriteString(fmt.Sprintf("4. Persist output via `mem_save` with topic key `sdd/{change-name}/%s`.\n\n", spec.SDDPhase))
+		fmt.Fprintf(&sb, "4. Persist output via `mem_save` with topic key `sdd/{change-name}/%s`.\n\n", spec.SDDPhase)
 
 	case SDDNone:
 		sb.WriteString("## Standalone Agent\n\n")
