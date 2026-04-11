@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -134,5 +135,53 @@ func TestCheckStateLockConsistent_BothEmpty(t *testing.T) {
 	ctx := &Context{}
 	if err := checkStateLockConsistent(ctx); err != nil {
 		t.Errorf("expected pass for both empty, got: %v", err)
+	}
+}
+
+func TestCheckInstallStatus_NoFile(t *testing.T) {
+	ctx := &Context{HomeDir: t.TempDir()}
+	if err := checkInstallStatus(ctx); err != nil {
+		t.Errorf("expected pass when no install status file, got: %v", err)
+	}
+}
+
+func TestCheckInstallStatus_InProgress(t *testing.T) {
+	tmpDir := t.TempDir()
+	status := state.InstallStatus{
+		Status:    "in-progress",
+		StartedAt: "2026-04-10T12:00:00Z",
+		BackupID:  "20260410-120000",
+	}
+	if err := state.SaveInstallStatus(tmpDir, status); err != nil {
+		t.Fatalf("SaveInstallStatus() error: %v", err)
+	}
+
+	ctx := &Context{HomeDir: tmpDir}
+	err := checkInstallStatus(ctx)
+	if err == nil {
+		t.Fatal("expected error for in-progress install status")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "did not complete cleanly") {
+		t.Errorf("error message %q should mention incomplete install", msg)
+	}
+	if !strings.Contains(msg, "20260410-120000") {
+		t.Errorf("error message %q should mention backup ID", msg)
+	}
+}
+
+func TestCheckInstallStatus_Complete(t *testing.T) {
+	tmpDir := t.TempDir()
+	status := state.InstallStatus{
+		Status:    "complete",
+		StartedAt: "2026-04-10T12:00:00Z",
+	}
+	if err := state.SaveInstallStatus(tmpDir, status); err != nil {
+		t.Fatalf("SaveInstallStatus() error: %v", err)
+	}
+
+	ctx := &Context{HomeDir: tmpDir}
+	if err := checkInstallStatus(ctx); err != nil {
+		t.Errorf("expected pass for complete status, got: %v", err)
 	}
 }

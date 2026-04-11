@@ -1,6 +1,6 @@
 // Package mcpinject provides shared logic for injecting MCP server configs
-// into any supported agent. Each MCP component (cortex, cli-orchestrator,
-// agent-mailbox, forgespec) defines its own templates and delegates to this
+// into any supported agent. Each MCP component (cortex, agent-mailbox,
+// forgespec, context7) defines its own templates and delegates to this
 // package for the actual strategy dispatch.
 package mcpinject
 

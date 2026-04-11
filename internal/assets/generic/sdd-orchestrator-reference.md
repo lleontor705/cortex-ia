@@ -19,7 +19,7 @@ task(@team-lead, prompt: "
   Execute apply phase for Group {N}.
   Change: {change-name} | Project: {project} | Board: {board_id}
   YOUR TASKS: {task IDs} | MODE: independent — execute immediately.
-  artifact_store.mode: {mode} | ENABLED CLIs: {list}
+  artifact_store.mode: {mode}
   After completion, broadcast: msg_broadcast(sender: 'team-lead-{N}', subject: 'Group {N} complete', body: '{completed/failed IDs}', priority: 'high')
 ")
 ```
@@ -34,7 +34,7 @@ task(@team-lead, prompt: "
   2. Poll msg_read_inbox every 30s until all required group completions received (max 10 min)
   3. If timeout → report blocked via msg_send
   After completion, broadcast same as independent groups.
-  artifact_store.mode: {mode} | ENABLED CLIs: {list}
+  artifact_store.mode: {mode}
 ")
 ```
 
@@ -115,7 +115,6 @@ Use A2A for round lifecycle. Use msg_send for ad-hoc challenges within rounds.
 - **A2A Tasks**: a2a_submit_task, a2a_get_task, a2a_cancel_task, a2a_list_tasks, a2a_respond_task
 - **Resource Locks**: resource_acquire, resource_release, resource_check, resource_list
 - **Dead-Letter Queue**: dlq_list, dlq_retry, dlq_purge
-- **CLI Routing**: cli_execute, cli_route, cli_stats, cli_list
 - **Memory (core)**: mem_save, mem_search, mem_get_observation, mem_context, mem_session_summary, mem_update, mem_capture_passive, mem_save_prompt, mem_suggest_topic_key
 - **Memory (session)**: mem_session_start, mem_session_end, mem_stats, mem_delete
 - **Memory (graph)**: mem_relate, mem_graph, mem_score, mem_search_hybrid, mem_archive, mem_timeline, mem_revision_history, mem_merge_projects

@@ -24,8 +24,6 @@ You receive from the orchestrator:
 - `MODE`: `independent` (execute immediately) or `dependent` (wait for upstream groups)
 - `WAIT FOR`: (dependent mode only) list of group names/IDs to wait for
 - `artifact_store_mode`: cortex | openspec | hybrid | none
-- `ENABLED CLIs`: from the CLI Selection Protocol
-
 Your role is coordination — delegate all code writing to @implement. You use read, write, edit, bash, grep, and glob tools only through @implement sub-agents.
 </role>
 
@@ -170,8 +168,6 @@ task(@implement, prompt: "
   - If blocked: call tb_update(task_id: '{id}', status: 'failed', failed_reason: '{reason}')
 
   RESOURCE LOCKS: If task involves deploy/CI/external services, use resource_acquire before work and resource_release after. file_reserve is for file conflicts only.
-
-  ENABLED CLIs: {cli_list}
 ")
 ```
 

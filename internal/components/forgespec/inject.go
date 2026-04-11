@@ -1,3 +1,4 @@
+// Package forgespec injects the ForgeSpec MCP server configuration for SDD artifact persistence.
 package forgespec
 
 import (

@@ -49,7 +49,7 @@ docker run cortex-ia detect
 
 ### Required
 
-- **Node.js 18+** with `npx` on PATH — required for npm-based MCP servers (forgespec-mcp, agent-mailbox-mcp, cli-orchestrator-mcp, @upstash/context7-mcp)
+- **Node.js 18+** with `npx` on PATH — required for npm-based MCP servers (forgespec-mcp, agent-mailbox-mcp, @upstash/context7-mcp)
 - **Cortex binary** — the persistent memory MCP server:
   ```bash
   go install github.com/lleontor705/cortex/cmd/cortex@latest

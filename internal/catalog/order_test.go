@@ -22,7 +22,7 @@ func TestTopoSort_FullPreset(t *testing.T) {
 	for _, id := range groups[0] {
 		level0Set[id] = true
 	}
-	for _, id := range []model.ComponentID{model.ComponentCortex, model.ComponentCLIOrch, model.ComponentMailbox, model.ComponentForgeSpec, model.ComponentContext7, model.ComponentSkills} {
+	for _, id := range []model.ComponentID{model.ComponentCortex, model.ComponentMailbox, model.ComponentForgeSpec, model.ComponentContext7, model.ComponentSkills, model.ComponentGGA} {
 		if !level0Set[id] {
 			t.Errorf("expected %s in level 0", id)
 		}

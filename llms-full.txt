@@ -34,9 +34,6 @@ File reservation: file_reserve, file_check, file_release
 Messaging: msg_send, msg_read_inbox, msg_acknowledge, msg_broadcast, msg_search, msg_request, msg_list_threads, msg_get, msg_delete, msg_count, msg_update_status
 Registry: agent_register, msg_list_agents, msg_activity_feed
 
-### CLI Orchestrator (4 tools)
-cli_execute, cli_route, cli_stats, cli_list
-
 ## SDD Pipeline (9 phases, 19 skills)
 
 ```
@@ -139,7 +136,6 @@ custom-skills:
 - cortex: https://github.com/lleontor705/cortex (memory MCP, 31 tools)
 - forgespec-mcp: https://github.com/lleontor705/forgespec-mcp (contracts + task board, 19 tools)
 - agent-mailbox-mcp: https://github.com/lleontor705/agent-mailbox-mcp (messaging, 14 tools)
-- cli-orchestrator-mcp: https://github.com/lleontor705/cli-orchestrator-mcp (multi-CLI routing, 4 tools)
 
 ## License
 

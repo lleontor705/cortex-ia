@@ -26,13 +26,13 @@ type ComponentID string
 
 const (
 	ComponentCortex        ComponentID = "cortex"
-	ComponentCLIOrch       ComponentID = "cli-orchestrator"
 	ComponentMailbox       ComponentID = "agent-mailbox"
 	ComponentForgeSpec     ComponentID = "forgespec"
 	ComponentSDD           ComponentID = "sdd"
 	ComponentSkills        ComponentID = "skills"
 	ComponentContext7       ComponentID = "context7"
 	ComponentConventions   ComponentID = "conventions"
+	ComponentGGA           ComponentID = "gga"
 )
 
 // SkillID identifies an SDD or utility skill.
@@ -124,3 +124,9 @@ const (
 
 // ModelAssignments maps SDD skill names to Claude model aliases.
 type ModelAssignments map[string]ClaudeModelAlias
+
+// Profile stores a named set of model assignments for reuse.
+type Profile struct {
+	Name             string                      `json:"name"`
+	ModelAssignments map[string]ClaudeModelAlias `json:"model_assignments,omitempty"`
+}

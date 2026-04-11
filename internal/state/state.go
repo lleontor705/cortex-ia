@@ -32,6 +32,8 @@ type State struct {
 	LastInstall     time.Time           `json:"last_install"`
 	LastBackupID    string              `json:"last_backup_id,omitempty"`
 	Version         string              `json:"version,omitempty"`
+	LastProfile     string              `json:"last_profile,omitempty"`
+	StrictTDD       bool                `json:"strict_tdd,omitempty"`
 }
 
 // Lockfile captures the concrete installed artifact set for verification and repair.

@@ -111,13 +111,12 @@ Every sub-agent prompt must include:
 1. **Skill path**: `Read your skill instructions from: {{SKILLS_DIR}}/{skill-id}/SKILL.md`
 2. **Skill loading**: `Check for available skills: 1. mem_search(query: 'skill-registry', project: '{project}') 2. Fallback: read .sdd/skill-registry.md`
 3. **Persistence**: `After completing your work, persist your artifact via mem_save with project: '{project}'. Use mem_relate to connect to upstream artifacts.`
-4. **CLIs**: `ENABLED CLIs: {list}` (from CLI selection)
-5. **Model**: `MODEL: {assigned-model}` (from model assignments)
-6. **Context**: change name, project name, artifact store mode, dependency topic keys
-7. **Focus/task-type**: `FOCUS: {ARCHITECTURE|INVESTIGATION|MIGRATION|GENERAL}` or `TASK-TYPE: {IMPLEMENTATION|REFACTOR|DATABASE|INFRASTRUCTURE|DOCUMENTATION}`
-8. **Peer agents**: `You may message other active agents via msg_send or msg_request. Use msg_list_agents() to discover agents.`
-9. **A2A tasks**: `For formal work delegation with lifecycle tracking, use a2a_submit_task. Check status with a2a_get_task. Use a2a_respond_task for structured results.`
-10. **Resource locks**: `Before deploy/CI/external-API tasks, acquire via resource_acquire. Release via resource_release. Do NOT use for file conflicts — use file_reserve.`
+4. **Model**: `MODEL: {assigned-model}` (from model assignments)
+5. **Context**: change name, project name, artifact store mode, dependency topic keys
+6. **Focus/task-type**: `FOCUS: {ARCHITECTURE|INVESTIGATION|MIGRATION|GENERAL}` or `TASK-TYPE: {IMPLEMENTATION|REFACTOR|DATABASE|INFRASTRUCTURE|DOCUMENTATION}`
+7. **Peer agents**: `You may message other active agents via msg_send or msg_request. Use msg_list_agents() to discover agents.`
+8. **A2A tasks**: `For formal work delegation with lifecycle tracking, use a2a_submit_task. Check status with a2a_get_task. Use a2a_respond_task for structured results.`
+9. **Resource locks**: `Before deploy/CI/external-API tasks, acquire via resource_acquire. Release via resource_release. Do NOT use for file conflicts — use file_reserve.`
 
 Sub-agents handle their own persistence — they save to Cortex before returning.
 
@@ -161,30 +160,6 @@ After @decompose produces task breakdown:
 5. Collect reports, merge, validate with `sdd_validate(phase: "apply", ...)`
 
 For detailed team-lead prompt templates, DLQ handling, and compaction recovery: read `{{SKILLS_DIR}}/../prompts/sdd-orchestrator-reference.md`
-
----
-## CLI Selection and Enforcement
-
-Before the first delegation of a session, use the **question** tool (multiSelect: true):
-- Question: "Which external CLI tools should sub-agents use for this session?"
-- Options: "Claude CLI", "Gemini CLI", "Codex CLI", "None"
-
-Rules:
-- Store selection for the entire session. Persist to Cortex: `mem_save(title: "session/cli-selection", topic_key: "session/cli-selection", type: "config", ...)`
-- On recovery: retrieve via `mem_search(query: "session/cli-selection", ...)`. If not found, ask again.
-- After user answers, continue immediately — do not yield control.
-
-### CLI Tiers
-
-Not all phases benefit from CLI cross-validation. Apply these tiers:
-
-| Tier | Agents | Policy |
-|------|--------|--------|
-| **Mandatory** | implement, validate | Include `ENABLED CLIs: {list}`. Must run 1+ CLI consultation per task. |
-| **Recommended** | investigate, architect | Include `ENABLED CLIs: {list}`. Use CLI when confidence < 0.8 or reviewing unfamiliar patterns. |
-| **Skip** | write-specs, decompose, finalize, draft-proposal, bootstrap, team-lead, parallel-dispatch | Do NOT include CLI directive. Deterministic/mechanical work — CLI adds latency without value. |
-
-Only include `ENABLED CLIs` in delegation prompts for mandatory and recommended tiers. Use `cli_execute` MCP tool (cli: claude|gemini|codex|ollama, prompt, mode: generate|analyze).
 
 ---
 ## Peer-to-Peer Messaging
@@ -270,7 +245,7 @@ Include `MODEL: {assigned-model}` in each delegation prompt.
 
 For the full tools catalog: read `{{SKILLS_DIR}}/../prompts/sdd-orchestrator-reference.md`
 
-Key tools: task, question, skill | tb_create_board, tb_status | sdd_validate, sdd_save | msg_send, msg_request, msg_broadcast | mem_save, mem_search, mem_get_observation, mem_relate | cli_execute
+Key tools: task, question, skill | tb_create_board, tb_status | sdd_validate, sdd_save | msg_send, msg_request, msg_broadcast | mem_save, mem_search, mem_get_observation, mem_relate
 
 SKILLS DIRECTORY: {{SKILLS_DIR}}
 

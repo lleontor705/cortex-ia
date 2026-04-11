@@ -168,6 +168,86 @@ func TestInstall_ExplicitComponents(t *testing.T) {
 	}
 }
 
+func TestInstall_WithProfileName(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+
+	// Create a profile with model assignments.
+	profiles := []model.Profile{
+		{
+			Name: "premium",
+			ModelAssignments: model.ModelAssignments{
+				"sdd-explore": model.ModelOpus,
+				"sdd-spec":    model.ModelSonnet,
+			},
+		},
+	}
+	if err := state.SaveProfiles(homeDir, profiles); err != nil {
+		t.Fatalf("SaveProfiles() error = %v", err)
+	}
+
+	selection := model.Selection{
+		Agents:      []model.AgentID{model.AgentCodex},
+		Preset:      model.PresetFull,
+		ProfileName: "premium",
+	}
+
+	result, err := Install(homeDir, registry, selection, "test-v1", false)
+	if err != nil {
+		t.Fatalf("Install() error = %v\nErrors: %v", err, result.Errors)
+	}
+
+	if len(result.ComponentsDone) == 0 {
+		t.Error("expected components done")
+	}
+
+	// Verify state saved the profile name.
+	s, err := state.Load(homeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.LastProfile != "premium" {
+		t.Errorf("state.LastProfile = %q, want %q", s.LastProfile, "premium")
+	}
+}
+
+func TestInstall_ProfileNameDoesNotOverrideExplicitAssignments(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+
+	// Create a profile.
+	profiles := []model.Profile{
+		{
+			Name: "economy",
+			ModelAssignments: model.ModelAssignments{
+				"sdd-explore": model.ModelHaiku,
+			},
+		},
+	}
+	if err := state.SaveProfiles(homeDir, profiles); err != nil {
+		t.Fatalf("SaveProfiles() error = %v", err)
+	}
+
+	// Selection already has explicit ModelAssignments — profile should NOT override.
+	explicit := model.ModelAssignments{"sdd-explore": model.ModelOpus}
+	selection := model.Selection{
+		Agents:           []model.AgentID{model.AgentCodex},
+		Preset:           model.PresetFull,
+		ProfileName:      "economy",
+		ModelAssignments: explicit,
+	}
+
+	result, err := Install(homeDir, registry, selection, "test-v1", false)
+	if err != nil {
+		t.Fatalf("Install() error = %v\nErrors: %v", err, result.Errors)
+	}
+	// The explicit assignments should have been preserved (not overridden by profile).
+	// We can't directly inspect selection inside Install, but the test confirms no panic/error.
+	if len(result.ComponentsDone) == 0 {
+		t.Error("expected components done")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Repair
 // ---------------------------------------------------------------------------

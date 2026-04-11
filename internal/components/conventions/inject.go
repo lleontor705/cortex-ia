@@ -1,3 +1,4 @@
+// Package conventions writes shared convention and advanced-convention prompt files into agent workspaces.
 package conventions
 
 import (
