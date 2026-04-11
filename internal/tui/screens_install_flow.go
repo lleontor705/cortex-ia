@@ -265,7 +265,7 @@ func (m Model) viewSkillPicker() string {
 		sb.WriteString("Use " + styles.Subtitle.Render("cortex-ia skill add <path>") + " to install skills.\n")
 		sb.WriteString("Or use " + styles.Subtitle.Render("Create your own Agent") + " from the main menu.\n")
 	} else {
-		sb.WriteString(fmt.Sprintf("Found %d community skill(s). Toggle which to include:\n\n", len(m.AvailableSkills)))
+		fmt.Fprintf(&sb, "Found %d community skill(s). Toggle which to include:\n\n", len(m.AvailableSkills))
 		for i, s := range m.AvailableSkills {
 			cursor := "  "
 			if i == m.SkillCursor {

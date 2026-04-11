@@ -30,7 +30,7 @@ func RenderInstalling(progress InstallProgress, spinnerFrame int) string {
 	empty := 20 - filled
 	bar := styles.ProgressFilled.Render(strings.Repeat("█", filled)) +
 		styles.ProgressEmpty.Render(strings.Repeat("░", empty))
-	sb.WriteString(fmt.Sprintf("  %s %s\n\n", bar, styles.Percent.Render(fmt.Sprintf("%d%%", percent))))
+	fmt.Fprintf(&sb, "  %s %s\n\n", bar, styles.Percent.Render(fmt.Sprintf("%d%%", percent)))
 
 	// Step list
 	for _, item := range progress.Items {
