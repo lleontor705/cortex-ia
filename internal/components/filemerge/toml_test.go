@@ -49,9 +49,8 @@ func TestUpsertMCPServerTOML_MultipleServers(t *testing.T) {
 	content = UpsertMCPServerTOML(content, "cortex", "cortex", []string{"mcp"})
 	content = UpsertMCPServerTOML(content, "forgespec", "npx", []string{"-y", "forgespec-mcp"})
 	content = UpsertMCPServerTOML(content, "agent-mailbox", "npx", []string{"-y", "agent-mailbox-mcp"})
-	content = UpsertMCPServerTOML(content, "cli-orchestrator", "npx", []string{"-y", "cli-orchestrator-mcp"})
 
-	for _, name := range []string{"cortex", "forgespec", "agent-mailbox", "cli-orchestrator"} {
+	for _, name := range []string{"cortex", "forgespec", "agent-mailbox"} {
 		if !strings.Contains(content, "[mcp_servers."+name+"]") {
 			t.Errorf("expected [mcp_servers.%s]", name)
 		}

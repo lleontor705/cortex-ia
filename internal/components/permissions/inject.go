@@ -1,3 +1,4 @@
+// Package permissions injects file-access deny patterns and tool-permission rules into agent configurations.
 package permissions
 
 import (

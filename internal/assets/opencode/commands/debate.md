@@ -15,7 +15,6 @@ Follow the DEBATE MODE section in the orchestrator prompt (`prompts/orchestrator
 
 3. **Spawn debate agents.** Launch 2-4 @investigate agents in parallel, one per position. Each agent's prompt MUST include:
    - `ADVERSARIAL ROLE: You defend position '{X}'. Challenge opposing positions via msg_send. Read rebuttals via msg_read_inbox. You have 3 rounds of 1 message each.`
-   - `ENABLED CLIs: {list from CLI Selection Protocol}`
    - The topic context and any relevant prior artifacts
 
 4. **Monitor rounds.** Allow 3 rounds. If an agent does not respond within its turn, skip it. After 2 skips from the same agent, remove it from the debate.

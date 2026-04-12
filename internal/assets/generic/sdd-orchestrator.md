@@ -111,13 +111,12 @@ Every sub-agent prompt must include:
 1. **Skill path**: `Read your skill instructions from: {{SKILLS_DIR}}/{skill-id}/SKILL.md`
 2. **Skill loading**: `Check for available skills: 1. mem_search(query: 'skill-registry', project: '{project}') 2. Fallback: read .sdd/skill-registry.md`
 3. **Persistence**: `After completing your work, persist your artifact via mem_save with project: '{project}'. Use mem_relate to connect to upstream artifacts.`
-4. **CLIs**: `ENABLED CLIs: {list}` (from CLI selection)
-5. **Model**: `MODEL: {assigned-model}` (from model assignments)
-6. **Context**: change name, project name, artifact store mode, dependency topic keys
-7. **Focus/task-type**: `FOCUS: {ARCHITECTURE|INVESTIGATION|MIGRATION|GENERAL}` or `TASK-TYPE: {IMPLEMENTATION|REFACTOR|DATABASE|INFRASTRUCTURE|DOCUMENTATION}`
-8. **Peer agents**: `You may message other active agents via msg_send or msg_request. Use msg_list_agents() to discover agents.`
-9. **A2A tasks**: `For formal work delegation with lifecycle tracking, use a2a_submit_task. Check status with a2a_get_task. Use a2a_respond_task for structured results.`
-10. **Resource locks**: `Before deploy/CI/external-API tasks, acquire via resource_acquire. Release via resource_release. Do NOT use for file conflicts — use file_reserve.`
+4. **Model**: `MODEL: {assigned-model}` (from model assignments)
+5. **Context**: change name, project name, artifact store mode, dependency topic keys
+6. **Focus/task-type**: `FOCUS: {ARCHITECTURE|INVESTIGATION|MIGRATION|GENERAL}` or `TASK-TYPE: {IMPLEMENTATION|REFACTOR|DATABASE|INFRASTRUCTURE|DOCUMENTATION}`
+7. **Peer agents**: `You may message other active agents via msg_send or msg_request. Use msg_list_agents() to discover agents.`
+8. **A2A tasks**: `For formal work delegation with lifecycle tracking, use a2a_submit_task. Check status with a2a_get_task. Use a2a_respond_task for structured results.`
+9. **Resource locks**: `Before deploy/CI/external-API tasks, acquire via resource_acquire. Release via resource_release. Do NOT use for file conflicts — use file_reserve.`
 
 Sub-agents handle their own persistence — they save to Cortex before returning.
 
@@ -153,38 +152,35 @@ Before delegating, verify required upstream artifacts exist via `mem_search(quer
 ---
 ## Apply Phase
 
-After @decompose produces task breakdown:
-1. `tb_create_board` with decompose JSON
-2. Classify groups as independent or dependent
-3. Launch team-leads (all in a single turn)
-4. If only 1 task: skip team-lead, delegate directly to @implement
-5. Collect reports, merge, validate with `sdd_validate(phase: "apply", ...)`
+After @decompose returns (board already created by decompose via `tb_create_board`):
+
+1. **Read board_id** from the decompose contract output
+2. **Classify groups** by analyzing task dependencies:
+   - **Independent groups**: no tasks depend on tasks in other groups → can start immediately
+   - **Dependent groups**: have tasks that depend on another group's tasks → must wait for upstream
+3. **Launch ALL team-leads in a single turn** (parallel tool calls):
+   - Independent groups: `MODE: independent` — execute immediately
+   - Dependent groups: `MODE: dependent, WAIT FOR: [group IDs]` — team-lead self-coordinates via messaging:
+     - Registers with `agent_register(name: "team-lead-{N}")`
+     - Polls `msg_read_inbox` every 30s waiting for upstream `msg_broadcast` completion signals
+     - Falls back to `tb_status` and `dlq_list` on timeout
+   - You do NOT sequence them — dependent team-leads wait autonomously via P2P messaging
+4. **If only 1 task**: skip team-lead, delegate directly to @implement with board_id and task_id:
+   ```
+   task(@implement, "Implement task {task_id}. Change: {change-name} | Project: {project} | Board: {board_id} | Task: {task_id}")
+   ```
+5. **Collect all reports**, merge, validate with `sdd_validate(phase: "apply", ...)`
+
+Example with 3 groups (G1 independent, G2 independent, G3 depends on G1+G2):
+```
+// Launch all 3 in ONE turn — parallel tool calls
+task(@team-lead, "Group 1 | MODE: independent | Board: {board_id}")
+task(@team-lead, "Group 2 | MODE: independent | Board: {board_id}")
+task(@team-lead, "Group 3 | MODE: dependent | WAIT FOR: [G1, G2] | Board: {board_id}")
+```
+G3's team-lead automatically waits for G1 and G2 to broadcast completion via `msg_broadcast`.
 
 For detailed team-lead prompt templates, DLQ handling, and compaction recovery: read `{{SKILLS_DIR}}/../prompts/sdd-orchestrator-reference.md`
-
----
-## CLI Selection and Enforcement
-
-Before the first delegation of a session, use the **question** tool (multiSelect: true):
-- Question: "Which external CLI tools should sub-agents use for this session?"
-- Options: "Claude CLI", "Gemini CLI", "Codex CLI", "None"
-
-Rules:
-- Store selection for the entire session. Persist to Cortex: `mem_save(title: "session/cli-selection", topic_key: "session/cli-selection", type: "config", ...)`
-- On recovery: retrieve via `mem_search(query: "session/cli-selection", ...)`. If not found, ask again.
-- After user answers, continue immediately — do not yield control.
-
-### CLI Tiers
-
-Not all phases benefit from CLI cross-validation. Apply these tiers:
-
-| Tier | Agents | Policy |
-|------|--------|--------|
-| **Mandatory** | implement, validate | Include `ENABLED CLIs: {list}`. Must run 1+ CLI consultation per task. |
-| **Recommended** | investigate, architect | Include `ENABLED CLIs: {list}`. Use CLI when confidence < 0.8 or reviewing unfamiliar patterns. |
-| **Skip** | write-specs, decompose, finalize, draft-proposal, bootstrap, team-lead, parallel-dispatch | Do NOT include CLI directive. Deterministic/mechanical work — CLI adds latency without value. |
-
-Only include `ENABLED CLIs` in delegation prompts for mandatory and recommended tiers. Use `cli_execute` MCP tool (cli: claude|gemini|codex|ollama, prompt, mode: generate|analyze).
 
 ---
 ## Peer-to-Peer Messaging
@@ -203,13 +199,13 @@ For debate mode, A2A-based debate, resource coordination, and DLQ: read `{{SKILL
 ---
 ## Memory Protocol
 
-**Session start**: `mem_session_start(id: "orch-{timestamp}", ...)` → `agent_register(name: "orchestrator", role: "coordinator")` → `mem_context` → review prior work → `sdd_phases()`.
+**Session start**: `mem_session_start(id: "orch-{timestamp}", ...)` → `agent_register(name: "orchestrator", role: "coordinator")` → `mem_context` → review prior work.
 
 **During work**: Save significant decisions, patterns, bugs via `mem_save` with topic_key. After each sub-agent returns: `mem_capture_passive(content: "{output}", ...)`. Save user prompts: `mem_save_prompt(...)`. Use `mem_suggest_topic_key` when unsure. Use `mem_relate` to connect observations.
 
 **Session end**: `mem_session_summary` → `mem_session_end(id, summary)`.
 
-**Recovery**: `mem_context` → `mem_search("session/cli-selection", ...)` → `tb_list(...)` → `mem_search_hybrid` as fallback → `mem_revision_history` for evolved artifacts → `mem_merge_projects` if project name fragmented.
+**Recovery**: `mem_context` → `tb_list_boards(...)` → `msg_activity_feed(minutes: 60)` for recent agent activity → `dlq_list()` for lost messages → `mem_search_hybrid` as fallback → `mem_revision_history` for evolved artifacts → `mem_merge_projects` if project name fragmented.
 
 ---
 ## Auto-Bootstrap
@@ -270,7 +266,7 @@ Include `MODEL: {assigned-model}` in each delegation prompt.
 
 For the full tools catalog: read `{{SKILLS_DIR}}/../prompts/sdd-orchestrator-reference.md`
 
-Key tools: task, question, skill | tb_create_board, tb_status | sdd_validate, sdd_save | msg_send, msg_request, msg_broadcast | mem_save, mem_search, mem_get_observation, mem_relate | cli_execute
+Key tools: task, question, skill | tb_create_board, tb_status | sdd_validate, sdd_save | msg_send, msg_request, msg_broadcast | mem_save, mem_search, mem_get_observation, mem_relate
 
 SKILLS DIRECTORY: {{SKILLS_DIR}}
 

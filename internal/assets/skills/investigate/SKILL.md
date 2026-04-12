@@ -66,6 +66,13 @@ The orchestrator passes a `focus` directive that shapes the entire analysis:
 
 Follow the Skill Loading Protocol from the shared convention.
 
+### Step 2: Search for Prior Work
+
+Before investigating from scratch, check if this topic has been explored before:
+1. `mem_search(query: "sdd/{change-name}/explore", project: "{project}")` — check for prior exploration
+2. If no results and the topic is broad, try `mem_search_hybrid(query: "{topic keywords}", project: "{project}")` — combines FTS5 + vector similarity for fuzzy matches
+3. If prior exploration exists, `mem_get_observation(id)` to read it. Use it as a starting point — update rather than duplicate.
+
 ### Step 3: Parse the Investigation Request
 
 Extract from the orchestrator's prompt:
@@ -121,13 +128,7 @@ For each viable approach:
 4. **Phased roadmap**: Ordered migration phases with dependencies between them
 5. **Rollback boundaries**: Points where migration can be safely reversed
 
-### Step 6: Consult External LLMs (Optional)
-
-Check the `ENABLED CLIs` line in your task prompt (set by the orchestrator). If CLIs are listed, use them for cross-validation. If the line says `none` or is absent, skip this step entirely.
-
-When CLIs are available: use Claude CLI for hypothesis validation, Gemini CLI for best practices and CVE checks, Codex CLI for rapid prototyping. Ask focused questions with summarized context — never dump entire files.
-
-### Step 7: Persist Artifact
+### Step 6: Persist Artifact
 
 This step is required when tied to a named change.
 
@@ -144,7 +145,7 @@ Use `mem_relate` to connect the explore observation to the bootstrap observation
 
 If you skip this step when a change name exists, draft-proposal will have no exploration context and the pipeline breaks.
 
-### Step 8: Produce Contract
+### Step 7: Produce Contract
 
 Assemble the contract JSON from the analysis and return it as the final output block.
 

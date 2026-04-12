@@ -146,7 +146,7 @@ For revision history, timeline context, project consolidation, hybrid search, se
 Use `mem_save` with `topic_key` to create a new observation or update an existing one:
 - Creating a new artifact: `mem_save(title: "sdd/{change}/spec", topic_key: "sdd/{change}/spec", ...)`
 - Updating an evolving artifact: same call — `topic_key` triggers upsert (replaces content if key exists)
-- Saving session state: `mem_save(title: "session/cli-selection", topic_key: "session/cli-selection", ...)`
+- Saving session state: `mem_save(title: "session/preferences", topic_key: "session/preferences", ...)`
 
 ### mem_update (modify by ID)
 Use `mem_update` when you have the exact observation ID and want to modify specific content:
@@ -187,8 +187,8 @@ For formal work requests with lifecycle tracking (alternative to msg_send for de
 
 | Mechanism | Source | Use For |
 |-----------|--------|---------|
-| `file_reserve` / `file_check` / `file_release` | ForgeSpec | File glob patterns during apply |
-| `resource_acquire` / `resource_release` / `resource_check` / `resource_list` | Agent Mailbox | Deploy, CI, APIs, DB, infrastructure |
+| `file_reserve` / `file_release` | ForgeSpec | File glob patterns during apply (use `check_only: true` to check without reserving) |
+| `resource_acquire` / `resource_release` / `resource_check` | Agent Mailbox | Deploy, CI, APIs, DB, infrastructure |
 
 **resource_acquire params**: resource_id (string key), agent, lease_type ("exclusive"/"shared"), ttl_seconds (default 300), metadata (optional context).
 
@@ -200,10 +200,26 @@ You are a leaf agent. The `task` tool is not available to you — do all work di
 
 ## Contract Persistence Protocol (ForgeSpec)
 
-After generating your phase contract:
-1. `sdd_validate(phase: "{your-phase}", contract: {json})` — validate structure and required fields
-2. `sdd_save(contract: {validated_json}, project: "{project}")` — persist to ForgeSpec store
-If validation fails: fix errors in the contract and re-validate (max 2 retries before returning with status: "blocked").
+After generating your phase contract, self-validate and persist:
+1. `sdd_validate(contract: {json_string})` — validate structure. The contract MUST have these exact top-level fields:
+   ```json
+   {
+     "schema_version": "1.0",
+     "phase": "{your-phase}",
+     "change_name": "{change-name}",
+     "project": "{project}",
+     "status": "success|partial|failed|blocked",
+     "confidence": 0.0-1.0,
+     "executive_summary": "10+ chars describing outcome",
+     "artifacts_saved": [{"topic_key": "...", "type": "cortex|openspec|inline"}],
+     "next_recommended": ["next-phase"],
+     "risks": [{"description": "...", "level": "low|medium|high|critical"}],
+     "data": { ... phase-specific output ... }
+   }
+   ```
+   Common validation errors: `status` must be one of the 4 values (NOT "complete"), `risks` items need `description` + `level` (NOT `risk` + `severity`), `confidence` must be 0-1 number.
+2. `sdd_save(contract: {validated_json_string})` — persist to ForgeSpec store
+If validation fails: read the error paths, fix the contract fields, and re-validate (max 2 retries before returning with status: "blocked").
 
 ## Standard Pre-Return Checklist
 

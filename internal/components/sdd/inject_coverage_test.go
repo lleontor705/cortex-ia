@@ -59,7 +59,7 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 	tmpDir := t.TempDir()
 	adapter := opencode.NewAdapter()
 
-	result, err := Inject(tmpDir, adapter, nil)
+	result, err := Inject(tmpDir, adapter, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,10 +220,10 @@ func TestInjectSDD_OpenCode_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
 	adapter := opencode.NewAdapter()
 
-	if _, err := Inject(tmpDir, adapter, nil); err != nil {
+	if _, err := Inject(tmpDir, adapter, nil, false); err != nil {
 		t.Fatal(err)
 	}
-	second, err := Inject(tmpDir, adapter, nil)
+	second, err := Inject(tmpDir, adapter, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestInjectSDD_OpenCode_Idempotent(t *testing.T) {
 
 func TestInject_NoFeatures(t *testing.T) {
 	ResetSharedWrite()
-	result, err := Inject(t.TempDir(), &stubAdapter{agentID: "test-agent"}, nil)
+	result, err := Inject(t.TempDir(), &stubAdapter{agentID: "test-agent"}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestInject_NoFeatures(t *testing.T) {
 func TestInjectAgentPrompt_EmptyPromptFile(t *testing.T) {
 	ResetSharedWrite()
 	adapter := &stubAdapter{agentID: "test", supportsPrompt: true, promptFileVal: ""}
-	result, err := injectAgentPrompt(t.TempDir(), adapter, nil)
+	result, err := injectAgentPrompt(t.TempDir(), adapter, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestInjectAgentPrompt_ReadError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := injectAgentPrompt(tmpDir, adapter, nil)
+	_, err := injectAgentPrompt(tmpDir, adapter, nil, false)
 	if err == nil {
 		t.Fatal("expected error when prompt file is a directory")
 	}
@@ -359,7 +359,7 @@ func TestInject_OrchestratorError(t *testing.T) {
 	os.MkdirAll(promptFile, 0o755)
 
 	adapter := &stubAdapter{agentID: "test", supportsPrompt: true, promptFileVal: promptFile}
-	_, err := Inject(tmpDir, adapter, nil)
+	_, err := Inject(tmpDir, adapter, nil, false)
 	if err == nil || !strings.Contains(err.Error(), "sdd orchestrator prompt") {
 		t.Fatalf("expected wrapped orchestrator error, got: %v", err)
 	}
@@ -372,7 +372,7 @@ func TestInject_CommandsError(t *testing.T) {
 	os.WriteFile(commandsDir, []byte("block"), 0o644)
 
 	adapter := &stubAdapter{agentID: "test", supportsCommands: true, commandsDirVal: commandsDir}
-	_, err := Inject(tmpDir, adapter, nil)
+	_, err := Inject(tmpDir, adapter, nil, false)
 	if err == nil || !strings.Contains(err.Error(), "sdd commands") {
 		t.Fatalf("expected wrapped commands error, got: %v", err)
 	}
@@ -388,7 +388,7 @@ func TestInject_SubAgentsError(t *testing.T) {
 		agentID: "test", supportsSubAgents: true,
 		subAgentsDirVal: subAgentsDir, settingsPathVal: filepath.Join(tmpDir, "s.json"),
 	}
-	_, err := Inject(tmpDir, adapter, nil)
+	_, err := Inject(tmpDir, adapter, nil, false)
 	if err == nil || !strings.Contains(err.Error(), "sdd sub-agents") {
 		t.Fatalf("expected wrapped sub-agents error, got: %v", err)
 	}

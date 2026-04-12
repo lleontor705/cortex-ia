@@ -5,9 +5,9 @@ Detailed protocols loaded on demand. For the main orchestrator prompt, see the p
 ---
 ## Apply Phase (Team-Lead Pattern)
 
-After @decompose produces task breakdown:
+After @decompose returns (board already created by decompose):
 
-**Step 1 — Persist plan**: Call `tb_create_board` with the JSON from decompose output.
+**Step 1 — Read board_id**: Extract `board_id` from the decompose contract output. The board and all tasks already exist in SQLite.
 
 **Step 2 — Analyze groups**: Classify parallel groups as independent (no cross-group deps) or dependent.
 
@@ -19,7 +19,7 @@ task(@team-lead, prompt: "
   Execute apply phase for Group {N}.
   Change: {change-name} | Project: {project} | Board: {board_id}
   YOUR TASKS: {task IDs} | MODE: independent — execute immediately.
-  artifact_store.mode: {mode} | ENABLED CLIs: {list}
+  artifact_store.mode: {mode}
   After completion, broadcast: msg_broadcast(sender: 'team-lead-{N}', subject: 'Group {N} complete', body: '{completed/failed IDs}', priority: 'high')
 ")
 ```
@@ -34,7 +34,7 @@ task(@team-lead, prompt: "
   2. Poll msg_read_inbox every 30s until all required group completions received (max 10 min)
   3. If timeout → report blocked via msg_send
   After completion, broadcast same as independent groups.
-  artifact_store.mode: {mode} | ENABLED CLIs: {list}
+  artifact_store.mode: {mode}
 ")
 ```
 
@@ -86,7 +86,7 @@ Use A2A for round lifecycle. Use msg_send for ad-hoc challenges within rounds.
 
 | Resource Type | Tool | Example |
 |--------------|------|---------|
-| Source files during apply | `file_reserve` / `file_check` / `file_release` (ForgeSpec) | `patterns: ["src/auth/**"]` |
+| Source files during apply | `file_reserve` / `file_release` (ForgeSpec) | `file_reserve(patterns: ["src/auth/**"], agent: "...", check_only: true)` to check, omit check_only to reserve |
 | Deploy environments | `resource_acquire` / `resource_release` (Mailbox) | `resource_id: "deploy-staging"` |
 | CI pipeline slots | `resource_acquire` (shared) | `resource_id: "ci-pipeline", lease_type: "shared"` |
 | External API rate limits | `resource_acquire` (shared, short TTL) | `resource_id: "github-api", ttl_seconds: 60` |
@@ -108,14 +108,13 @@ Use A2A for round lifecycle. Use msg_send for ad-hoc challenges within rounds.
 
 - **Coordination**: task, question, skill
 - **Progress**: todowrite, todoread
-- **Task Board**: tb_create_board, tb_status, tb_unblocked, tb_claim, tb_update, tb_get, tb_add_task, tb_add_notes, tb_delete_task, tb_list
-- **Validation**: sdd_validate, sdd_save, sdd_get, sdd_list, sdd_history, sdd_phases
-- **Communication**: msg_send, msg_read_inbox, msg_broadcast, msg_acknowledge, msg_search, msg_request, msg_list_threads, msg_get, msg_delete, msg_count, msg_update_status, msg_list_agents, msg_activity_feed, agent_register
-- **File Locks**: file_reserve, file_check, file_release
+- **Task Board**: tb_create_board, tb_status, tb_unblocked, tb_claim, tb_update, tb_get, tb_list_boards
+- **Validation**: sdd_validate, sdd_save, sdd_get, sdd_list, sdd_history
+- **Communication**: msg_send, msg_read_inbox, msg_broadcast, msg_search, msg_request, msg_list_threads, msg_count, msg_list_agents, msg_activity_feed, agent_register
+- **File Locks**: file_reserve, file_release
 - **A2A Tasks**: a2a_submit_task, a2a_get_task, a2a_cancel_task, a2a_list_tasks, a2a_respond_task
-- **Resource Locks**: resource_acquire, resource_release, resource_check, resource_list
+- **Resource Locks**: resource_acquire, resource_release, resource_check
 - **Dead-Letter Queue**: dlq_list, dlq_retry, dlq_purge
-- **CLI Routing**: cli_execute, cli_route, cli_stats, cli_list
 - **Memory (core)**: mem_save, mem_search, mem_get_observation, mem_context, mem_session_summary, mem_update, mem_capture_passive, mem_save_prompt, mem_suggest_topic_key
 - **Memory (session)**: mem_session_start, mem_session_end, mem_stats, mem_delete
 - **Memory (graph)**: mem_relate, mem_graph, mem_score, mem_search_hybrid, mem_archive, mem_timeline, mem_revision_history, mem_merge_projects

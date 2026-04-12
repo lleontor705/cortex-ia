@@ -35,7 +35,7 @@ Follow the Skill Loading Protocol from the shared convention.
 </persistence>
 
 <context>
-This is a utility skill providing visual pipeline observability. It aggregates data from multiple MCP sources (task boards, agent messages, CLI stats, Cortex memory, ForgeSpec contracts, git history) and renders a single self-contained HTML dashboard. The HTML file is rendered output (not state), so filesystem write is acceptable -- it can be regenerated at any time from the live data sources.
+This is a utility skill providing visual pipeline observability. It aggregates data from multiple MCP sources (task boards, agent messages, Cortex memory, ForgeSpec contracts, git history) and renders a single self-contained HTML dashboard. The HTML file is rendered output (not state), so filesystem write is acceptable -- it can be regenerated at any time from the live data sources.
 </context>
 
 <delegation>You are a leaf agent -- the task tool is not available to you. All work is done directly using your own tools. You cannot launch sub-agents or delegate work. Return results to the caller.</delegation>
@@ -67,7 +67,7 @@ Execute each of these tool calls. If any call fails, capture the error and conti
 
 ### 2a: Task Board State
 ```
-tb_list(project: "{project}") -> list all boards
+tb_list_boards(project: "{project}") -> list all boards
 For each board: tb_status(board_id) -> task list with: id, title, status, agent, dependencies
 ```
 Parse into structured data: group tasks by status, count totals.
@@ -81,33 +81,26 @@ msg_search("sdd") -> messages tagged with SDD context
 ```
 Extract the last 20 messages with: timestamp, sender, recipient, content preview, priority.
 
-### 2c: CLI Usage Metrics
-```
-cli_stats() -> per-provider: installed, circuit_breaker state (closed|open|half_open), total_executions, total_failures, strengths
-cli_list() -> installed providers with paths
-```
-Extract: install status, circuit breaker health, execution counts, failure rates.
-
-### 2d: SDD Contract History
+### 2c: SDD Contract History
 ```
 sdd_history(project: "{project}") -> phase transitions with confidence scores and timestamps
 sdd_list(project: "{project}") -> all contracts with filters
 ```
 Extract: latest phase per change, confidence trend, blocked/failed contracts.
 
-### 2e: Recent SDD Artifacts from Memory
+### 2d: Recent SDD Artifacts from Memory
 ```
 mem_search(query: "sdd", project: "{project}", limit: 10) -> recent SDD observations
 ```
 For each result, extract: title, type, timestamp, topic_key.
 
-### 2f: Git History
+### 2e: Git History
 ```bash
 git log --oneline -20
 ```
 Parse into: SHA (short), commit message, for the 20 most recent commits.
 
-### 2g: Agent Activity Feed
+### 2f: Agent Activity Feed
 ```
 msg_activity_feed(limit: 30, minutes: 60)
 ```
@@ -169,7 +162,7 @@ Write the complete HTML to `.sdd-dashboard.html`. The file must follow this stru
   <!-- TASK BOARD (left column): progress bar + tasks grouped by parallel_group -->
   <!-- DEPENDENCY GRAPH (right column): SVG or text-based task dependency visualization -->
   <!-- AGENT FEED (left column): last 20 agent messages, color-coded by priority -->
-  <!-- METRICS PANEL (right column): CLI usage breakdown, confidence scores -->
+  <!-- METRICS PANEL (right column): confidence scores -->
   <!-- AGENT COMMUNICATION (full-width): inter-agent message timeline from msg_activity_feed -->
   <!-- TIMELINE (full-width): git commits + SDD phase transitions -->
 </body>
@@ -203,7 +196,6 @@ Populate every section with data from Step 2. For each section:
 - Color the sender name by priority: high=--error, normal=--text, low=--text-muted
 
 ### Metrics Panel Section
-- CLI usage: show bar chart or counts for Claude, Gemini, Codex calls
 - Confidence scores: display phase confidence values from SDD contracts found in memory
 - Task completion rate as a percentage
 
@@ -251,7 +243,6 @@ After generating the dashboard, return:
 |--------|--------|-------|
 | Task Board | OK / Unavailable | {N} tasks |
 | Agent Messages | OK / Unavailable | {N} messages |
-| CLI Stats | OK / Unavailable | {N} calls tracked |
 | Cortex Memory | OK / Unavailable | {N} artifacts |
 | Git History | OK / Unavailable | {N} commits |
 
@@ -275,7 +266,7 @@ Open `.sdd-dashboard.html` in your browser to view the dashboard.
   "confidence": 1.0,
   "executive_summary": "Dashboard generated with {N} tasks, {M} messages, {K} artifacts.",
   "data": {
-    "data_sources": {"task_board": "ok|unavailable", "agent_messages": "ok|unavailable", "cli_stats": "ok|unavailable", "cortex": "ok|unavailable", "git": "ok|unavailable"},
+    "data_sources": {"task_board": "ok|unavailable", "agent_messages": "ok|unavailable", "cortex": "ok|unavailable", "git": "ok|unavailable"},
     "active_change": "{change-name or none}",
     "current_phase": "{phase}",
     "progress_pct": 58,
@@ -296,7 +287,6 @@ Open `.sdd-dashboard.html` in your browser to view the dashboard.
 Data gathered:
 - Task board: 12 tasks, 7 completed, 3 in_progress, 1 blocked, 1 pending
 - Messages: 15 agent messages, 3 high priority
-- CLI stats: Claude=8, Gemini=3, Codex=2
 - Memory: 6 SDD artifacts found for change "add-auth"
 - Git: 20 commits, 4 with "SDD" in the message
 
@@ -330,7 +320,7 @@ Include Cortex health metrics in the dashboard:
 
 ## Task Board Overview (ForgeSpec)
 Include task board status:
-- `tb_list(project: "{project}")` -> list all boards
+- `tb_list_boards(project: "{project}")` -> list all boards
 - For each active board: `tb_status(board_id: "{id}")` -> task counts by status
 (Why: the dashboard should show both artifact state and task execution state)
 
@@ -356,7 +346,6 @@ Before producing your final output, verify:
 Before returning your report, confirm:
 - [ ] tb_status() was called and results are in the dashboard (or "unavailable" shown)
 - [ ] msg_list_threads() and msg_search("sdd") were called
-- [ ] cli_stats() was called
 - [ ] mem_search(query: "sdd") was called
 - [ ] git log --oneline -20 was executed
 - [ ] msg_activity_feed(limit: 30, minutes: 60) was called for agent communication

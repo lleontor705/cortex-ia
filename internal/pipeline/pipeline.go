@@ -15,14 +15,20 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/conventions"
 	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
 	"github.com/lleontor705/cortex-ia/internal/components/mailbox"
-	"github.com/lleontor705/cortex-ia/internal/components/orchestrator"
+	"github.com/lleontor705/cortex-ia/internal/components/persona"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
+	ggacomp "github.com/lleontor705/cortex-ia/internal/components/gga"
+	skillscomp "github.com/lleontor705/cortex-ia/internal/components/skills"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
 // validBackupID matches safe backup IDs (alphanumeric, hyphens, underscores).
 var validBackupID = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
+
+// ProgressFunc is called by the pipeline to report step-level progress.
+// Implementations must be safe for concurrent use.
+type ProgressFunc func(stepID string, status string, err error)
 
 // InstallResult describes the outcome of a full installation.
 type InstallResult struct {
@@ -90,8 +96,26 @@ func Rollback(homeDir, backupID string) (backup.Manifest, error) {
 // Install runs the full installation pipeline using a 2-stage orchestrator:
 // Stage 1 (Prepare): validate agents + create backup (stops on error, rolls back)
 // Stage 2 (Apply): inject components per agent + save state (continues on error)
-func Install(homeDir string, registry *agents.Registry, selection model.Selection, version string, dryRun bool) (InstallResult, error) {
+func Install(homeDir string, registry *agents.Registry, selection model.Selection, version string, dryRun bool, onProgress ...ProgressFunc) (InstallResult, error) {
+	var progress ProgressFunc
+	if len(onProgress) > 0 {
+		progress = onProgress[0]
+	}
+
 	result := InstallResult{}
+
+	// Resolve profile if specified.
+	if selection.ProfileName != "" && selection.ModelAssignments == nil {
+		profiles, err := state.LoadProfiles(homeDir)
+		if err == nil {
+			for _, p := range profiles {
+				if p.Name == selection.ProfileName {
+					selection.ModelAssignments = p.ModelAssignments
+					break
+				}
+			}
+		}
+	}
 
 	// 1. Resolve components with dependencies.
 	components := selection.Components
@@ -101,11 +125,13 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 	resolved := catalog.ResolveDeps(components)
 
 	if dryRun {
-		fmt.Println("=== DRY RUN ===")
-		fmt.Printf("Agents: %v\n", selection.Agents)
-		fmt.Printf("Preset: %s\n", selection.Preset)
-		fmt.Printf("Components (resolved): %v\n", resolved)
-		fmt.Println("No changes will be made.")
+		if progress == nil {
+			fmt.Println("=== DRY RUN ===")
+			fmt.Printf("Agents: %v\n", selection.Agents)
+			fmt.Printf("Preset: %s\n", selection.Preset)
+			fmt.Printf("Components (resolved): %v\n", resolved)
+			fmt.Println("No changes will be made.")
+		}
 		result.ComponentsDone = resolved
 		return result, nil
 	}
@@ -119,6 +145,7 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 	bkStep := &backupStep{
 		homeDir: homeDir, registry: registry,
 		agentIDs: selection.Agents, resolved: resolved, version: version,
+		progress: progress,
 	}
 	prepareSteps := []Step{
 		&validateStep{registry: registry, agentIDs: selection.Agents},
@@ -142,7 +169,9 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 			continue // validateStep already catches this
 		}
 
-		fmt.Printf("\nConfiguring %s...\n", agentID)
+		if progress == nil {
+			fmt.Printf("\nConfiguring %s...\n", agentID)
+		}
 		var chain []Step
 		for _, inj := range buildInjectors(homeDir, adapter, selection) {
 			if !componentSet[inj.id] {
@@ -151,6 +180,7 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 			cs := &componentStep{
 				homeDir: homeDir, adapter: adapter,
 				componentID: inj.id, injectorFn: inj.fn,
+				progress: progress,
 			}
 			chain = append(chain, cs)
 			allComponentSteps = append(allComponentSteps, cs)
@@ -170,9 +200,34 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		return result, prepResult.Error
 	}
 
+	// 5a. Mark installation as in-progress (after backup succeeds).
+	// If the process crashes or components fail, the marker stays so
+	// that "cortex-ia doctor" can detect the incomplete install.
+	statusStep := &installStatusStep{homeDir: homeDir, backupID: bkStep.BackupID}
+	if err := statusStep.Run(); err != nil {
+		// Non-fatal: warn but continue — the install itself is more important.
+		result.Errors = append(result.Errors, fmt.Sprintf("install status marker: %v", err))
+	}
+
 	applyResult := RunParallelChains(agentChains)
 
-	// 6. Translate results.
+	// 6. Inject persona for each agent (non-component injection).
+	if selection.Persona != "" {
+		for _, agentID := range selection.Agents {
+			adapter, err := registry.Get(agentID)
+			if err != nil {
+				continue
+			}
+			pResult, pErr := persona.Inject(homeDir, adapter, selection.Persona)
+			if pErr != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("persona/%s: %v", agentID, pErr))
+				continue
+			}
+			result.FilesChanged = append(result.FilesChanged, pResult.Files...)
+		}
+	}
+
+	// 7. Translate results.
 	result.BackupID = bkStep.BackupID
 	result.ComponentsDone = resolved
 	for _, cs := range allComponentSteps {
@@ -180,13 +235,14 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 	}
 
 	if applyResult.Error != nil {
+		// Leave install-status as "in-progress" so doctor can detect the failure.
 		if applyResult.Failed != "" {
 			result.Errors = append(result.Errors, applyResult.Failed)
 		}
 		return result, fmt.Errorf("installation completed with errors")
 	}
 
-	// 7. Save state (after successful apply).
+	// 8. Save state (after successful apply).
 	s := state.State{
 		InstalledAgents: selection.Agents,
 		Preset:          selection.Preset,
@@ -194,6 +250,8 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		LastInstall:     time.Now(),
 		LastBackupID:    result.BackupID,
 		Version:         version,
+		LastProfile:     selection.ProfileName,
+		StrictTDD:       selection.StrictTDD,
 	}
 	if err := state.Save(homeDir, s); err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("save state: %v", err))
@@ -210,6 +268,11 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 	}
 	if err := state.SaveLock(homeDir, lock); err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("save lock: %v", err))
+	}
+
+	// 9. Clear the in-progress marker — installation succeeded.
+	if err := state.ClearInstallStatus(homeDir); err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("clear install status: %v", err))
 	}
 
 	if len(result.Errors) > 0 {
@@ -231,10 +294,6 @@ func buildInjectors(homeDir string, adapter agents.Adapter, selection model.Sele
 			r, err := cortexcomp.Inject(homeDir, adapter)
 			return r.Files, err
 		}},
-		{model.ComponentCLIOrch, func() ([]string, error) {
-			r, err := orchestrator.Inject(homeDir, adapter)
-			return r.Files, err
-		}},
 		{model.ComponentMailbox, func() ([]string, error) {
 			r, err := mailbox.Inject(homeDir, adapter)
 			return r.Files, err
@@ -252,7 +311,15 @@ func buildInjectors(homeDir string, adapter agents.Adapter, selection model.Sele
 			return r.Files, err
 		}},
 		{model.ComponentSDD, func() ([]string, error) {
-			r, err := sdd.Inject(homeDir, adapter, selection.ModelAssignments)
+			r, err := sdd.Inject(homeDir, adapter, selection.ModelAssignments, selection.StrictTDD)
+			return r.Files, err
+		}},
+		{model.ComponentSkills, func() ([]string, error) {
+			r, err := skillscomp.Inject(homeDir, adapter, selection.CommunitySkills)
+			return r.Files, err
+		}},
+		{model.ComponentGGA, func() ([]string, error) {
+			r, err := ggacomp.Inject(homeDir, selection.Agents)
 			return r.Files, err
 		}},
 	}
@@ -280,7 +347,7 @@ func collectBackupPaths(homeDir string, registry *agents.Registry, agentIDs []mo
 			paths = append(paths, f)
 		}
 		// MCP config files.
-		for _, name := range []string{"cortex", "cli-orchestrator", "agent-mailbox", "forgespec", "context7"} {
+		for _, name := range []string{"cortex", "agent-mailbox", "forgespec", "context7"} {
 			if f := adapter.MCPConfigPath(homeDir, name); f != "" {
 				if _, err := os.Stat(f); err == nil {
 					paths = append(paths, f)

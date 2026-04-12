@@ -26,7 +26,6 @@ WORKFLOW:
      Execute the apply phase.
      Change: $ARGUMENTS | Project: {project} | Board: {board_id}
      artifact_store.mode: {mode}
-     ENABLED CLIs: {list}
    ")
    ```
    The team-lead handles all group coordination, parallel @implement launches, file reservations, and retries.

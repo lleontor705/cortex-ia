@@ -32,7 +32,7 @@ If any phase fails or returns low confidence, escalate to the next deeper track.
     INVESTIGATION SUMMARY: {paste the full investigation output}
     AFFECTED FILES: {list from investigation}
     APPROACH: {recommended approach from investigation}
-    artifact_store.mode: {mode} | ENABLED CLIs: {list}
+    artifact_store.mode: {mode}
   ")
   ```
 - After @implement completes, delegate to @validate

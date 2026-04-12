@@ -25,17 +25,14 @@ Session: mem_session_start, mem_session_end, mem_stats, mem_delete
 Knowledge graph: mem_relate, mem_graph, mem_score, mem_search_hybrid, mem_archive, mem_timeline, mem_revision_history, mem_merge_projects
 Temporal (experimental): temporal_create_edge, temporal_get_edges, temporal_get_relevant, temporal_create_snapshot, temporal_record_operation, temporal_evaluate_quality, temporal_system_metrics, temporal_health_check, temporal_evolution_path, temporal_fact_state
 
-### ForgeSpec (19 tools)
-Contracts: sdd_validate, sdd_save, sdd_get, sdd_list, sdd_history, sdd_phases
-Task board: tb_create_board, tb_add_task, tb_status, tb_claim, tb_update, tb_unblocked, tb_get, tb_delete_task, tb_add_notes, tb_list
-File reservation: file_reserve, file_check, file_release
+### ForgeSpec (15 tools)
+Contracts: sdd_validate, sdd_save, sdd_get, sdd_list, sdd_history
+Task board: tb_create_board, tb_add_task, tb_status, tb_claim, tb_update, tb_unblocked, tb_get, tb_list_boards
+File reservation: file_reserve (check_only flag for conflict check), file_release
 
 ### Agent Mailbox (14 tools)
-Messaging: msg_send, msg_read_inbox, msg_acknowledge, msg_broadcast, msg_search, msg_request, msg_list_threads, msg_get, msg_delete, msg_count, msg_update_status
+Messaging: msg_send, msg_read_inbox, msg_broadcast, msg_search, msg_request, msg_list_threads, msg_count
 Registry: agent_register, msg_list_agents, msg_activity_feed
-
-### CLI Orchestrator (4 tools)
-cli_execute, cli_route, cli_stats, cli_list
 
 ## SDD Pipeline (9 phases, 19 skills)
 
@@ -139,7 +136,6 @@ custom-skills:
 - cortex: https://github.com/lleontor705/cortex (memory MCP, 31 tools)
 - forgespec-mcp: https://github.com/lleontor705/forgespec-mcp (contracts + task board, 19 tools)
 - agent-mailbox-mcp: https://github.com/lleontor705/agent-mailbox-mcp (messaging, 14 tools)
-- cli-orchestrator-mcp: https://github.com/lleontor705/cli-orchestrator-mcp (multi-CLI routing, 4 tools)
 
 ## License
 

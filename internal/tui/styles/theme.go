@@ -50,7 +50,39 @@ var (
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(Primary).
 		Padding(1, 2)
+
+	Frame = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(Primary).
+		Padding(1, 2)
+
+	Panel = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(Muted).
+		Padding(0, 1)
+
+	ProgressFilled = lipgloss.NewStyle().
+			Foreground(Success).
+			Bold(true)
+
+	ProgressEmpty = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	Percent = lipgloss.NewStyle().
+		Foreground(Secondary).
+		Bold(true)
 )
+
+// CursorPrefix is the cursor indicator string used in selection lists.
+const CursorPrefix = "> "
+
+// SpinnerFrames contains the spinner animation characters.
+var SpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// SpinnerChar returns the spinner character for the given frame index.
+func SpinnerChar(frame int) string {
+	return SpinnerFrames[frame%len(SpinnerFrames)]
+}
 
 const (
 	Logo = `                __                      _

@@ -19,15 +19,16 @@ You receive from the orchestrator: `change-name`, `project`, `tasks` (IDs to imp
 This skill is DONE when:
 1. Every assigned task has passing code that satisfies its spec scenarios
 2. tasks.md is updated with [x] marks for each completed task
-3. A progress artifact is persisted to cortex with topic_key "sdd/{change-name}/apply-progress"
+3. Task board is updated via `tb_update` for each completed/failed task (team-lead owns apply-progress persistence)
 4. The contract JSON is returned to the orchestrator with all required fields populated
 </success_criteria>
 
 <persistence>
 Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
 
-This skill reads: `sdd/{change-name}/spec` + `design` + `tasks` | Writes: `sdd/{change-name}/apply-progress`
+This skill reads: `sdd/{change-name}/spec` + `design` + `tasks`
 Updates: `sdd/{change-name}/tasks` (marks completed with [x] via mem_update)
+Note: Team-lead owns `sdd/{change-name}/apply-progress` — implement reports via `tb_update` only.
 OpenSpec read/write: `openspec/changes/{change-name}/tasks.md`
 </persistence>
 
@@ -69,7 +70,6 @@ Follow the Two-Step Retrieval Protocol from the shared convention for full artif
 
 Artifacts to retrieve:
 ```
-sdd/{change-name}/proposal → proposal_id
 sdd/{change-name}/spec → spec_id
 sdd/{change-name}/design → design_id
 sdd/{change-name}/tasks → tasks_id
@@ -77,7 +77,13 @@ sdd/{change-name}/tasks → tasks_id
 
 From the design artifact, extract the **File Changes table** — use it as the authoritative list of files to create/modify/delete. Cross-reference with task descriptions to ensure alignment.
 
-Store the `tasks_id` — you will call `mem_update` on it as you complete tasks.
+Store `spec_id`, `design_id`, and `tasks_id` — you will call `mem_update` on tasks_id as you complete tasks.
+
+**Compaction recovery**: If you lose context mid-task (compaction message or missing artifact IDs), re-fetch immediately:
+1. `mem_search(query: "sdd/{change-name}/spec")` → `mem_get_observation(id)` to restore spec
+2. `mem_search(query: "sdd/{change-name}/design")` → `mem_get_observation(id)` to restore design
+3. Check `tb_status(board_id)` if available, or read task details from the delegation prompt
+4. Resume from the last incomplete task
 
 For `openspec` mode: read from `openspec/changes/{change-name}/` filesystem paths instead.
 For `hybrid` mode: do both cortex retrieval and filesystem reads.
@@ -167,20 +173,15 @@ Update the tasks artifact with completion marks:
 mem_update(id: {tasks_id}, content: "{updated tasks markdown with [x] marks}")
 ```
 
-Save the progress report:
+Report completion via task board (team-lead reads this to track progress):
 ```
-mem_save(
-  title: "sdd/{change-name}/apply-progress",
-  topic_key: "sdd/{change-name}/apply-progress",
-  type: "architecture",
-  project: "{project}",
-  content: "{structured progress report}"
-)
+tb_update(task_id: "{id}", status: "done", notes: "Completed: {summary of what was implemented}")
 ```
-Use `mem_relate(from: {progress_id}, to: {tasks_id}, relation: "follows")` to connect progress to the task breakdown.
+
+Do NOT write to `sdd/{change-name}/apply-progress` — team-lead owns that artifact and writes it after each group completes. This prevents upsert race conditions.
 
 For `openspec` or `hybrid` modes: tasks.md was already updated on the filesystem in Step 6.
-For `hybrid` mode: also call `mem_save` and `mem_update` as above.
+For `hybrid` mode: also call `mem_update` as above.
 
 ## Step 8: Return Contract to Orchestrator
 
@@ -284,12 +285,14 @@ See "Peer Communication Protocol" in convention.
 - `a2a_submit_task(from_agent: "implement-{task_id}", to_agent: "architect", message: "{question}")` — formal design clarification with tracking
 - Check response: `a2a_get_task(task_id)` — status changes to "completed" when answered
 - Prefer over `msg_request` when the clarification blocks your task and needs audit trail
+- If `a2a_get_task` returns no response after timeout, check `dlq_list()` — the response may have failed delivery
 
 ### Resource Coordination
 If your task involves deployment, CI, or external services:
-1. `resource_acquire(resource_id: "{resource}", agent: "implement-{task_id}", lease_type: "exclusive", ttl_seconds: 300)`
-2. Perform the work
-3. `resource_release(resource_id: "{resource}", agent: "implement-{task_id}")`
+1. `resource_check(resource_id: "{resource}")` — verify availability before attempting acquire
+2. `resource_acquire(resource_id: "{resource}", agent: "implement-{task_id}", lease_type: "exclusive", ttl_seconds: 300)` — if conflict, wait or report blocked
+3. Perform the work
+4. `resource_release(resource_id: "{resource}", agent: "implement-{task_id}")`
 
 Do NOT use resource_acquire for file locks — use file_reserve from ForgeSpec.
 </collaboration>

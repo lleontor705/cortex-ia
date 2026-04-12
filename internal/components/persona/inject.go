@@ -1,3 +1,4 @@
+// Package persona injects persona-specific instructions into an agent's system prompt.
 package persona
 
 import (

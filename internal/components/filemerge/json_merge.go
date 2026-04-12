@@ -1,3 +1,4 @@
+// Package filemerge provides atomic file writes, JSON deep-merge, TOML merge, and section-based text merge utilities.
 package filemerge
 
 import (

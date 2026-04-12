@@ -105,3 +105,39 @@ func RenameBackup(manifest Manifest, newDescription string) error {
 	manifestPath := filepath.Join(manifest.RootDir, ManifestFilename)
 	return WriteManifest(manifestPath, manifest)
 }
+
+// ListResult holds manifests and any warnings from scanning.
+type ListResult struct {
+	Manifests []Manifest
+	Warnings  []string
+}
+
+// ListManifests reads all backup manifests from the given backups directory.
+// Each immediate subdirectory is expected to contain a manifest.json file.
+// Directories without a valid manifest produce a warning in the result.
+func ListManifests(backupsDir string) ListResult {
+	entries, err := os.ReadDir(backupsDir)
+	if err != nil {
+		return ListResult{}
+	}
+
+	var result ListResult
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		manifestPath := filepath.Join(backupsDir, name, ManifestFilename)
+		if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("backup %s: missing manifest.json", name))
+			continue
+		}
+		m, err := ReadManifest(manifestPath)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("backup %s: %v", name, err))
+			continue
+		}
+		result.Manifests = append(result.Manifests, m)
+	}
+	return result
+}

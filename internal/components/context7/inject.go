@@ -1,3 +1,4 @@
+// Package context7 injects the Context7 MCP server configuration for live framework documentation.
 package context7
 
 import (

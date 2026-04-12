@@ -1,3 +1,4 @@
+// Package cortex injects the Cortex persistent-memory MCP server configuration into agents.
 package cortex
 
 import (

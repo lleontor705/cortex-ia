@@ -1,3 +1,4 @@
+// Package theme injects terminal color-theme configuration into agent system prompts.
 package theme
 
 import (
