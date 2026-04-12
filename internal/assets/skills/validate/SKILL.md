@@ -80,6 +80,13 @@ sdd/{change-name}/apply-progress → progress_id
 For `openspec` mode: read from `openspec/changes/{change-name}/` filesystem paths.
 For `hybrid` mode: do both. For `none` mode: work from orchestrator-provided context only.
 
+### Step 2b: Verify Pipeline Integrity
+
+Call `sdd_history(project: "{project}")` to verify all expected phases completed before this one:
+- Check that propose, spec, design, tasks, and apply contracts exist
+- If any phase is missing or has `status: "failed"`, flag as a **critical** finding — the pipeline may have been bypassed
+- Use `sdd_get(contract_id)` to inspect any suspicious contract (e.g., low confidence, partial status)
+
 ## Step 3: Check Completeness
 
 ```
@@ -89,6 +96,8 @@ Count completed [x] tasks
 Count incomplete [ ] tasks
 Classify: critical if core tasks are incomplete, warning if only cleanup tasks remain
 ```
+
+**Cross-check with apply-progress**: If `progress_id` was retrieved in Step 2, read the team-lead's apply-progress report. Compare its `tasks_completed` list against the [x] marks in tasks.md. Flag discrepancies (e.g., task marked [x] but not in apply-progress, or apply-progress reports failure but task shows [x]).
 
 ## Step 4: Check Correctness (Static Structural Evidence)
 

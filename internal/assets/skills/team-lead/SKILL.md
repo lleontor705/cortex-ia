@@ -99,8 +99,10 @@ If MODE is `independent`: skip this step entirely.
 
 ## Step 1: Load Context
 
-1. Call `tb_status(board_id: "{board_id}")` to see the full board state and total task count.
-2. Follow the Two-Step Retrieval Protocol from the shared convention for full artifact content.
+1. If `board_id` is provided, call `tb_status(board_id: "{board_id}")`.
+   If `board_id` is missing (e.g., after compaction), recover it: `tb_list_boards(project: "{project}")` → find the board for this change → extract `board_id` → then call `tb_status`.
+2. Call `msg_list_agents()` to discover active peer agents for this change (other team-leads, implement agents).
+3. Follow the Two-Step Retrieval Protocol from the shared convention for full artifact content.
 
    Artifacts to retrieve:
    ```
@@ -108,7 +110,8 @@ If MODE is `independent`: skip this step entirely.
    sdd/{change-name}/design → design_id
    sdd/{change-name}/tasks → tasks_id
    ```
-3. Store the `tasks_id` — you will call `mem_update` on it as tasks complete.
+4. Store the `tasks_id` — you will call `mem_update` on it as tasks complete.
+5. **Context enrichment**: Call `mem_graph(observation_id: {tasks_id}, depth: 2)` to discover related artifacts (proposal, prior apply-progress, design decisions). This gives you lineage context for better error handling and retry decisions.
 
 ## Step 2: Execute Group Loop
 
@@ -130,15 +133,17 @@ Take the lowest group number — that is your current group.
 
 For each task in the current group:
 1. Extract file patterns from the task description and the design's File Changes table
-2. Call `file_check(patterns: ["{files}"])` first to detect existing reservations (Why: prevents blind reserve attempts that would fail silently)
-3. If `file_check` shows patterns held by another agent → defer the task or wait for TTL expiry
-4. Call `file_reserve(patterns: ["{files}"], task_id: "{task_id}")` only after check passes
+2. Call `file_reserve(patterns: ["{files}"], agent: "{agent}", check_only: true)` to detect existing reservations without locking
+3. If `has_conflicts: true` → defer the task or wait for TTL expiry
+4. Call `file_reserve(patterns: ["{files}"], agent: "{agent}")` to actually reserve (omit check_only)
 5. If conflict within the group: serialize — put the conflicting task in a `deferred` list
 6. If conflict with a previous group's unreleased reservation: wait for TTL expiry or report as blocked
 
 ### 2c. Launch @implement Sub-agents
 
-For each non-deferred task, in a single turn:
+For each non-deferred task:
+1. Call `tb_get(task_id: "{id}")` to retrieve full task details (description, acceptance_criteria, dependencies, priority)
+2. Then in a single turn, claim and launch:
 
 ```
 tb_claim(task_id: "{id}", board_id: "{board_id}")
@@ -149,10 +154,10 @@ task(@implement, prompt: "
   artifact_store.mode: {mode}
 
   TASK DETAILS:
-  {description from tb_get}
+  {description from tb_get result}
 
   ACCEPTANCE CRITERIA:
-  {acceptance_criteria from tb_get}
+  {acceptance_criteria from tb_get result}
 
   TASK TYPE: {task_type}
   FILES TO TOUCH: {file list}
@@ -183,25 +188,22 @@ For each returned @implement sub-agent:
 
 **If failed — first attempt:**
 - Read the failure reason
-- Call `tb_add_notes(task_id: "{id}", notes: "Attempt 1 failed: {failure_reason}")` to record the failure
-- Call `tb_update(task_id: "{id}", status: "pending")` to reset
+- Call `tb_update(task_id: "{id}", status: "pending", notes: "Attempt 1 failed: {failure_reason}")` to record the failure and reset
 - Launch a new @implement with the original prompt plus:
   `"RETRY: Previous attempt failed with: {failure_reason}. Address this issue."`
 
 **If failed — second attempt:**
-- Call `tb_add_notes(task_id: "{id}", notes: "Attempt 2 failed: {failure_reason}")` to record
-- Call `tb_update(task_id: "{id}", status: "failed", failed_reason: "{reason}")`
+- Call `tb_update(task_id: "{id}", status: "failed", notes: "Attempt 2 failed: {failure_reason}")`
 - Do not retry further
 - Persistent failures are captured in DLQ if messaging was involved. The orchestrator can `dlq_list()` to review all escalations.
 - Check if downstream tasks depend on this one — they will remain blocked automatically
 
 **Cleanup (optional):**
-- If a backlog task becomes irrelevant mid-apply: `tb_delete_task(task_id: "{id}")` — only works for backlog/done status
 - Use `msg_count(agent: "team-lead")` to check for pending messages from sub-agents before finalizing
 
 ### 2e. Finalize Group
 
-1. Release file reservations for this group: `file_release()` for all patterns reserved by your tasks
+1. Verify file releases: each @implement agent releases its own files via `file_release` on completion. Only call `file_release` here for patterns that were reserved but the task failed before releasing (cleanup orphaned locks).
 2. Update the tasks artifact in Cortex:
    ```
    mem_update(id: {tasks_id}, content: "{updated tasks markdown with [x] marks}")

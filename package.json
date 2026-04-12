@@ -1,0 +1,28 @@
+{
+  "name": "cortex-ia",
+  "version": "1.0.0",
+  "description": "<p align=\"center\">\r   <br>\r   <img src=\"docs/assets/logo.svg\" alt=\"cortex-ia\" width=\"400\" />\r   <br><br>\r   <em>One command. Any agent. Full SDD stack.</em>\r   <br><br>\r   <a href=\"https://github.com/lleontor705/cortex-ia/actions/workflows/ci.yml\"><img src=\"https://github.com/lleontor705/cortex-ia/actions/workflows/ci.yml/badge.svg\" alt=\"CI\"></a>\r   <a href=\"https://github.com/lleontor705/cortex-ia/releases/latest\"><img src=\"https://img.shields.io/github/v/release/lleontor705/cortex-ia\" alt=\"Release\"></a>\r   <a href=\"https://github.com/lleontor705/cortex-ia/blob/main/LICENSE\"><img src=\"https://img.shields.io/github/license/lleontor705/cortex-ia\" alt=\"License\"></a>\r   <a href=\"https://goreportcard.com/report/github.com/lleontor705/cortex-ia\"><img src=\"https://goreportcard.com/badge/github.com/lleontor705/cortex-ia\" alt=\"Go Report Card\"></a>\r </p>",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lleontor705/cortex-ia.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/lleontor705/cortex-ia/issues"
+  },
+  "homepage": "https://github.com/lleontor705/cortex-ia#readme",
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

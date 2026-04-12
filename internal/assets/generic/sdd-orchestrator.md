@@ -152,12 +152,33 @@ Before delegating, verify required upstream artifacts exist via `mem_search(quer
 ---
 ## Apply Phase
 
-After @decompose produces task breakdown:
-1. `tb_create_board` with decompose JSON
-2. Classify groups as independent or dependent
-3. Launch team-leads (all in a single turn)
-4. If only 1 task: skip team-lead, delegate directly to @implement
-5. Collect reports, merge, validate with `sdd_validate(phase: "apply", ...)`
+After @decompose returns (board already created by decompose via `tb_create_board`):
+
+1. **Read board_id** from the decompose contract output
+2. **Classify groups** by analyzing task dependencies:
+   - **Independent groups**: no tasks depend on tasks in other groups → can start immediately
+   - **Dependent groups**: have tasks that depend on another group's tasks → must wait for upstream
+3. **Launch ALL team-leads in a single turn** (parallel tool calls):
+   - Independent groups: `MODE: independent` — execute immediately
+   - Dependent groups: `MODE: dependent, WAIT FOR: [group IDs]` — team-lead self-coordinates via messaging:
+     - Registers with `agent_register(name: "team-lead-{N}")`
+     - Polls `msg_read_inbox` every 30s waiting for upstream `msg_broadcast` completion signals
+     - Falls back to `tb_status` and `dlq_list` on timeout
+   - You do NOT sequence them — dependent team-leads wait autonomously via P2P messaging
+4. **If only 1 task**: skip team-lead, delegate directly to @implement with board_id and task_id:
+   ```
+   task(@implement, "Implement task {task_id}. Change: {change-name} | Project: {project} | Board: {board_id} | Task: {task_id}")
+   ```
+5. **Collect all reports**, merge, validate with `sdd_validate(phase: "apply", ...)`
+
+Example with 3 groups (G1 independent, G2 independent, G3 depends on G1+G2):
+```
+// Launch all 3 in ONE turn — parallel tool calls
+task(@team-lead, "Group 1 | MODE: independent | Board: {board_id}")
+task(@team-lead, "Group 2 | MODE: independent | Board: {board_id}")
+task(@team-lead, "Group 3 | MODE: dependent | WAIT FOR: [G1, G2] | Board: {board_id}")
+```
+G3's team-lead automatically waits for G1 and G2 to broadcast completion via `msg_broadcast`.
 
 For detailed team-lead prompt templates, DLQ handling, and compaction recovery: read `{{SKILLS_DIR}}/../prompts/sdd-orchestrator-reference.md`
 
@@ -178,13 +199,13 @@ For debate mode, A2A-based debate, resource coordination, and DLQ: read `{{SKILL
 ---
 ## Memory Protocol
 
-**Session start**: `mem_session_start(id: "orch-{timestamp}", ...)` → `agent_register(name: "orchestrator", role: "coordinator")` → `mem_context` → review prior work → `sdd_phases()`.
+**Session start**: `mem_session_start(id: "orch-{timestamp}", ...)` → `agent_register(name: "orchestrator", role: "coordinator")` → `mem_context` → review prior work.
 
 **During work**: Save significant decisions, patterns, bugs via `mem_save` with topic_key. After each sub-agent returns: `mem_capture_passive(content: "{output}", ...)`. Save user prompts: `mem_save_prompt(...)`. Use `mem_suggest_topic_key` when unsure. Use `mem_relate` to connect observations.
 
 **Session end**: `mem_session_summary` → `mem_session_end(id, summary)`.
 
-**Recovery**: `mem_context` → `mem_search("session/cli-selection", ...)` → `tb_list(...)` → `mem_search_hybrid` as fallback → `mem_revision_history` for evolved artifacts → `mem_merge_projects` if project name fragmented.
+**Recovery**: `mem_context` → `tb_list_boards(...)` → `msg_activity_feed(minutes: 60)` for recent agent activity → `dlq_list()` for lost messages → `mem_search_hybrid` as fallback → `mem_revision_history` for evolved artifacts → `mem_merge_projects` if project name fragmented.
 
 ---
 ## Auto-Bootstrap

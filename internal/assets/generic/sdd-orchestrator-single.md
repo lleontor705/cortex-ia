@@ -132,20 +132,16 @@ Additional ForgeSpec tools available:
 - `sdd_get(contract_id)` → retrieve a specific contract by ID
 - `sdd_list(project, phase?, limit?)` → query contracts with filters
 - `sdd_history(project)` → phase transition timeline
-- `sdd_phases()` → get all phase metadata (thresholds, transitions)
 
 ### Task Board (ForgeSpec)
 
 During the apply phase, use the task board for tracking:
-1. `tb_create_board(project: "{project}", name: "{change}")` — create board
-2. `tb_add_task(board_id, title, description, priority, spec_ref, acceptance_criteria, dependencies)` — add tasks from decompose
+1. `tb_create_board(project: "{project}", name: "{change}", tasks: [...])` — create board with all tasks in one call (tasks with no deps start as "ready", others as "backlog")
 3. `tb_unblocked(board_id)` — find ready tasks (no unresolved deps)
 4. `tb_claim(task_id, agent)` — start working on a task
-5. `tb_update(task_id, status: "done", notes?)` — mark complete; auto-unblocks dependents
-6. `tb_add_notes(task_id, notes)` — append timestamped notes without changing status
-7. `tb_delete_task(task_id)` — remove task (only backlog/done status)
-8. `tb_get(task_id)` — get full task details
-9. `tb_list(project?)` — list all boards
+5. `tb_update(task_id, status?: "done", notes?: "reason")` — update status and/or append timestamped notes; auto-unblocks dependents on done
+6. `tb_get(task_id)` — get full task details
+7. `tb_list_boards(project?)` — list all boards (for recovery after context loss)
 
 ### File Reservation (ForgeSpec)
 

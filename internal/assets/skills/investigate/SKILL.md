@@ -66,6 +66,13 @@ The orchestrator passes a `focus` directive that shapes the entire analysis:
 
 Follow the Skill Loading Protocol from the shared convention.
 
+### Step 2: Search for Prior Work
+
+Before investigating from scratch, check if this topic has been explored before:
+1. `mem_search(query: "sdd/{change-name}/explore", project: "{project}")` — check for prior exploration
+2. If no results and the topic is broad, try `mem_search_hybrid(query: "{topic keywords}", project: "{project}")` — combines FTS5 + vector similarity for fuzzy matches
+3. If prior exploration exists, `mem_get_observation(id)` to read it. Use it as a starting point — update rather than duplicate.
+
 ### Step 3: Parse the Investigation Request
 
 Extract from the orchestrator's prompt:

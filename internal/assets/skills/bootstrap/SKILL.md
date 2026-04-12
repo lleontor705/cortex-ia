@@ -57,6 +57,8 @@ The skill registry catalogs all available skills (user-level and project-level) 
 
 ### Step 1: Detect Project Context
 
+**Quick start**: If Cortex is available, call `mem_project_dna(project: "{project}")` first. If it returns useful content (prior bootstrap, decisions, patterns), use it to accelerate detection — skip re-scanning categories already confirmed.
+
 Read these files to extract the tech stack (stop at the first match per category):
 
 | Category | Files to check | What to extract |
