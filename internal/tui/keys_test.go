@@ -72,15 +72,6 @@ func TestScreenKeyMap_AgentBuilderPrompt(t *testing.T) {
 	}
 }
 
-func TestScreenKeyMap_RestoreConfirm(t *testing.T) {
-	m := New(nil, "/tmp", "1.0.0")
-	m.Screen = ScreenRestoreConfirm
-	km := m.screenKeyMap()
-	if _, ok := km.(ConfirmKeyMap); !ok {
-		t.Errorf("RestoreConfirm should return ConfirmKeyMap, got %T", km)
-	}
-}
-
 func TestScreenKeyMap_DefaultScreen(t *testing.T) {
 	m := New(nil, "/tmp", "1.0.0")
 	m.Screen = ScreenDetection

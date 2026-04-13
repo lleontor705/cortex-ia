@@ -15,13 +15,12 @@ type KeyMap struct {
 	Space    key.Binding
 	All      key.Binding
 	Help     key.Binding
-	Restore  key.Binding
-	Delete   key.Binding
-	Rename   key.Binding
-	Create   key.Binding
-	Refresh  key.Binding
-	Profile  key.Binding
-	Filter   key.Binding
+	Restore key.Binding
+	Delete  key.Binding
+	Rename  key.Binding
+	Create  key.Binding
+	Profile key.Binding
+	Filter  key.Binding
 
 	// ShowFullHelp toggles the full help view.
 	ShowFullHelp bool
@@ -77,10 +76,6 @@ func DefaultKeyMap() KeyMap {
 		Create: key.NewBinding(
 			key.WithKeys("c"),
 			key.WithHelp("c", "create"),
-		),
-		Refresh: key.NewBinding(
-			key.WithKeys("r"),
-			key.WithHelp("r", "refresh"),
 		),
 		Profile: key.NewBinding(
 			key.WithKeys("p"),
@@ -165,20 +160,6 @@ func (k InputKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{{k.Enter, k.Esc}}
 }
 
-// ConfirmKeyMap is used for confirmation screens.
-type ConfirmKeyMap struct {
-	Yes key.Binding
-	No  key.Binding
-}
-
-func (k ConfirmKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Yes, k.No}
-}
-
-func (k ConfirmKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Yes, k.No}}
-}
-
 // ProfileKeyMap is used for the profile management screen.
 type ProfileKeyMap struct {
 	Up     key.Binding
@@ -235,11 +216,6 @@ func (m Model) screenKeyMap() help.KeyMap {
 		return InputKeyMap{
 			Enter: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 			Esc:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
-		}
-	case ScreenRestoreConfirm, ScreenDeleteConfirm, ScreenProfileDelete:
-		return ConfirmKeyMap{
-			Yes: key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/enter", "confirm")),
-			No:  key.NewBinding(key.WithKeys("n", "esc"), key.WithHelp("n/esc", "cancel")),
 		}
 	default:
 		return NavigateKeyMap{Up: m.Keys.Up, Down: m.Keys.Down, Enter: m.Keys.Enter, Esc: m.Keys.Esc, Help: m.Keys.Help}

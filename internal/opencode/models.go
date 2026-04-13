@@ -2,31 +2,113 @@
 package opencode
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
-// cacheModel represents a model entry in OpenCode's models.json cache.
+// RunModelsCommand executes `opencode models` and parses the output into
+// grouped providers. Each line of output is "provider/model-id".
+func RunModelsCommand() ([]model.OpenCodeProvider, error) {
+	cmd := exec.Command("opencode", "models")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run 'opencode models': %w", err)
+	}
+	return ParseModelsOutput(string(output))
+}
+
+// ParseModelsOutput parses the output of `opencode models` command.
+// Each line is "provider/model-id". Groups by provider.
+func ParseModelsOutput(output string) ([]model.OpenCodeProvider, error) {
+	providerMap := make(map[string][]model.OpenCodeModel)
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		// Format: "provider/model-id" or "provider/sub/model-id"
+		slashIdx := strings.Index(line, "/")
+		if slashIdx < 0 {
+			continue
+		}
+		provider := line[:slashIdx]
+		modelID := line[slashIdx+1:]
+		if provider == "" || modelID == "" {
+			continue
+		}
+		providerMap[provider] = append(providerMap[provider], model.OpenCodeModel{
+			ID:       modelID,
+			Name:     modelID,
+			ToolCall: true,
+		})
+	}
+
+	var providers []model.OpenCodeProvider
+	for id, models := range providerMap {
+		sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+		providers = append(providers, model.OpenCodeProvider{
+			ID:     id,
+			Name:   id,
+			Models: models,
+		})
+	}
+	sort.Slice(providers, func(i, j int) bool { return providers[i].ID < providers[j].ID })
+	return providers, nil
+}
+
+// FlatModelList converts grouped providers into a flat list of "provider/model" strings.
+func FlatModelList(providers []model.OpenCodeProvider) []string {
+	var list []string
+	for _, p := range providers {
+		for _, m := range p.Models {
+			list = append(list, p.ID+"/"+m.ID)
+		}
+	}
+	return list
+}
+
+// DetectModels tries `opencode models` CLI first, then cache, then static fallback.
+func DetectModels(homeDir string) []model.OpenCodeProvider {
+	// 1. Try CLI command
+	providers, err := RunModelsCommand()
+	if err == nil && len(providers) > 0 {
+		return providers
+	}
+
+	// 2. Try cache file
+	providers, err = LoadModelsCache(homeDir)
+	if err == nil && len(providers) > 0 {
+		return providers
+	}
+
+	// 3. Static fallback
+	return FallbackProviders()
+}
+
+// --- Cache reading (kept as secondary source) ---
+
 type cacheModel struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	ToolCall bool   `json:"tool_call"`
 }
 
-// cacheProvider represents a provider entry in OpenCode's models.json cache.
 type cacheProvider struct {
 	ID     string                `json:"id"`
 	Name   string                `json:"name"`
-	Env    []string              `json:"env"`
 	Models map[string]cacheModel `json:"models"`
 }
 
 // LoadModelsCache reads OpenCode's cached models from ~/.cache/opencode/models.json.
-// Returns nil and error if the file doesn't exist or is invalid.
 func LoadModelsCache(homeDir string) ([]model.OpenCodeProvider, error) {
 	path := filepath.Join(homeDir, ".cache", "opencode", "models.json")
 	data, err := os.ReadFile(path)
@@ -65,51 +147,96 @@ func LoadModelsCache(homeDir string) ([]model.OpenCodeProvider, error) {
 	return providers, nil
 }
 
-// DetectProviders tries to load from cache first, falls back to static list.
-func DetectProviders(homeDir string) []model.OpenCodeProvider {
-	providers, err := LoadModelsCache(homeDir)
-	if err == nil && len(providers) > 0 {
-		return providers
-	}
-	return FallbackProviders()
-}
-
-// FallbackProviders returns a static list of common providers with popular models.
+// FallbackProviders returns a static list of common providers.
 func FallbackProviders() []model.OpenCodeProvider {
 	return []model.OpenCodeProvider{
 		{
 			ID:   "anthropic",
-			Name: "Anthropic",
+			Name: "anthropic",
 			Models: []model.OpenCodeModel{
-				{ID: "claude-opus-4-20250514", Name: "Claude Opus 4", ToolCall: true},
-				{ID: "claude-sonnet-4-20250514", Name: "Claude Sonnet 4", ToolCall: true},
-				{ID: "claude-haiku-4-20250506", Name: "Claude Haiku 4", ToolCall: true},
+				{ID: "claude-opus-4-20250514", Name: "claude-opus-4-20250514", ToolCall: true},
+				{ID: "claude-sonnet-4-20250514", Name: "claude-sonnet-4-20250514", ToolCall: true},
+				{ID: "claude-haiku-4-5-20251001", Name: "claude-haiku-4-5-20251001", ToolCall: true},
 			},
 		},
 		{
 			ID:   "openai",
-			Name: "OpenAI",
+			Name: "openai",
 			Models: []model.OpenCodeModel{
-				{ID: "gpt-4o", Name: "GPT-4o", ToolCall: true},
-				{ID: "gpt-4o-mini", Name: "GPT-4o Mini", ToolCall: true},
-				{ID: "o3", Name: "o3", ToolCall: true},
-				{ID: "o4-mini", Name: "o4-mini", ToolCall: true},
+				{ID: "gpt-4o", Name: "gpt-4o", ToolCall: true},
+				{ID: "gpt-5.4", Name: "gpt-5.4", ToolCall: true},
 			},
 		},
 		{
 			ID:   "google",
-			Name: "Google",
+			Name: "google",
 			Models: []model.OpenCodeModel{
-				{ID: "gemini-2.5-pro", Name: "Gemini 2.5 Pro", ToolCall: true},
-				{ID: "gemini-2.5-flash", Name: "Gemini 2.5 Flash", ToolCall: true},
-			},
-		},
-		{
-			ID:   "opencode",
-			Name: "OpenCode (Built-in)",
-			Models: []model.OpenCodeModel{
-				{ID: "opencode", Name: "OpenCode Default", ToolCall: true},
+				{ID: "gemini-2.5-pro", Name: "gemini-2.5-pro", ToolCall: true},
+				{ID: "gemini-2.5-flash", Name: "gemini-2.5-flash", ToolCall: true},
 			},
 		},
 	}
+}
+
+// ApplyToOpenCodeConfig reads opencode.json, sets "model" field on each agent, and writes back.
+func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssignments) error {
+	configPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+
+	// Read existing config
+	var config map[string]interface{}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			config = make(map[string]interface{})
+		} else {
+			return fmt.Errorf("read opencode.json: %w", err)
+		}
+	} else {
+		if err := json.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("parse opencode.json: %w", err)
+		}
+	}
+
+	// Get or create agent section
+	agentSection, ok := config["agent"].(map[string]interface{})
+	if !ok {
+		agentSection = make(map[string]interface{})
+	}
+
+	// Apply model assignments to each agent
+	for agentName, assignment := range assignments {
+		modelStr := assignment.FormatOpenCodeModel()
+		if modelStr == "" {
+			continue
+		}
+
+		// Prefix sub-agents with "sdd-" for OpenCode config
+		configName := agentName
+		if agentName != "orchestrator" {
+			configName = "sdd-" + agentName
+		} else {
+			configName = "sdd-orchestrator"
+		}
+
+		agentConf, ok := agentSection[configName].(map[string]interface{})
+		if !ok {
+			agentConf = make(map[string]interface{})
+		}
+		agentConf["model"] = modelStr
+		agentSection[configName] = agentConf
+	}
+
+	config["agent"] = agentSection
+
+	// Write back
+	out, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal opencode.json: %w", err)
+	}
+
+	dir := filepath.Dir(configPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	return os.WriteFile(configPath, out, 0644)
 }

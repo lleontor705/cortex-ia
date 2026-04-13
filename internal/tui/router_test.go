@@ -97,10 +97,6 @@ func TestBackupRoutes(t *testing.T) {
 		want   Screen
 	}{
 		{ScreenBackups, ScreenWelcome},
-		{ScreenRestoreConfirm, ScreenBackups},
-		{ScreenRestoreResult, ScreenBackups},
-		{ScreenDeleteConfirm, ScreenBackups},
-		{ScreenDeleteResult, ScreenBackups},
 		{ScreenRenameBackup, ScreenBackups},
 	}
 

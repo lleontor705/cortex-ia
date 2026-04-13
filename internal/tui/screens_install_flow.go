@@ -6,6 +6,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -35,6 +36,12 @@ func (m Model) updateClaudeModelPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ModelPreset = model.ModelPresetBalanced
 			}
 			m.ModelAssignments = model.ModelsForPreset(m.ModelPreset)
+			if m.ModelConfigMode {
+				m.ModelConfigMode = false
+				m.ActiveToast = Toast{Text: "Model preset updated: " + string(m.ModelPreset), Visible: true}
+				m.setScreen(ScreenWelcome)
+				return m, dismissToastAfter(3 * time.Second)
+			}
 			m.setScreen(ScreenSDDMode)
 		case "esc":
 			if m.ModelConfigMode {

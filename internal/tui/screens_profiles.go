@@ -138,30 +138,4 @@ func (m Model) viewProfileCreate() string {
 	return sb.String()
 }
 
-// --- Profile Delete ---
-
-func (m Model) updateProfileDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "y", "enter":
-			if m.Cursor < len(m.Profiles) {
-				m.Profiles = append(m.Profiles[:m.Cursor], m.Profiles[m.Cursor+1:]...)
-				m.saveProfilesToDisk()
-			}
-			m.setScreen(ScreenProfiles)
-		case "n", "esc":
-			m.setScreen(ScreenProfiles)
-		}
-	}
-	return m, nil
-}
-
-func (m Model) viewProfileDelete() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Delete Profile"))
-	sb.WriteString("\n\n")
-	if m.Cursor < len(m.Profiles) {
-		fmt.Fprintf(&sb, "Delete profile %s?\n", styles.StatusFail.Render(m.Profiles[m.Cursor].Name))
-	}
-	return sb.String()
-}
+// Profile deletion is handled by the dialog system in tui.go (DialogProfileDelete).

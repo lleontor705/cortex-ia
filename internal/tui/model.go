@@ -38,18 +38,12 @@ const (
 	ScreenInstalling
 	ScreenComplete
 	ScreenBackups
-	ScreenRestoreConfirm
-	ScreenRestoreResult
-	ScreenDeleteConfirm
-	ScreenDeleteResult
 	ScreenRenameBackup
 	ScreenUpgrade
 	ScreenSync
 	ScreenUpgradeSync
-	ScreenModelConfig
 	ScreenProfiles
 	ScreenProfileCreate
-	ScreenProfileDelete
 	ScreenAgentBuilderEngine
 	ScreenAgentBuilderPrompt
 	ScreenAgentBuilderSDD
@@ -59,7 +53,6 @@ const (
 	ScreenAgentBuilderInstalling
 	ScreenAgentBuilderComplete
 	ScreenOpenCodeModels
-	ScreenOpenCodeProviderPicker
 	ScreenOpenCodeModelPicker
 )
 
@@ -323,8 +316,9 @@ type Model struct {
 	// OpenCode model configuration
 	OpenCodeAssignments model.OpenCodeModelAssignments
 	OpenCodeProviders   []model.OpenCodeProvider
+	OCFlatModels        []string // flat "provider/model" list for picker
 	OCModelCursor       int
-	OCProviderCursor    int
+	OCModelFilter       FilterInput
 	OCSelectedAgent     string
 	OCErr               error
 
@@ -401,6 +395,7 @@ func New(registry *agents.Registry, homeDir, version string) Model {
 		Keys:              DefaultKeyMap(),
 		AgentFilter:          NewFilterInput(),
 		SkillFilter:          NewFilterInput(),
+		OCModelFilter:        NewFilterInput(),
 		BackupRenameInput:    newTextInput("Enter description..."),
 		ProfileInput:         newTextInput("Enter profile name..."),
 		AgentBuilderTextArea: newTextArea("Describe what this agent should do..."),
