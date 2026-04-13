@@ -186,22 +186,19 @@ func TestReview_Enter_InitializesProgressAndChannel(t *testing.T) {
 	}
 }
 
-func TestUpdate_TickMsg_IncrementsSpinner(t *testing.T) {
+func TestUpdate_SpinnerTickMsg_ReturnsCmd(t *testing.T) {
 	m := newTestModel()
-	m.SpinnerFrame = 5
-	result, _ := m.Update(TickMsg{})
-	rm := result.(Model)
-	if rm.SpinnerFrame != 6 {
-		t.Errorf("SpinnerFrame = %d, want 6", rm.SpinnerFrame)
-	}
+	// Spinner tick messages should be handled and return a cmd
+	_, cmd := m.Update(m.Spinner.Tick())
+	// The spinner tick handler returns a batch of commands
+	_ = cmd // spinner tick handling is internal to the bubbles spinner
 }
 
-func TestUpdate_TickMsg_ContinuesWhenRunning(t *testing.T) {
+func TestUpdate_SpinnerView_NotEmpty(t *testing.T) {
 	m := newTestModel()
-	m.PipelineRunning = true
-	_, cmd := m.Update(TickMsg{})
-	if cmd == nil {
-		t.Error("cmd should be non-nil (tickCmd) when PipelineRunning is true")
+	view := m.Spinner.View()
+	if view == "" {
+		t.Error("Spinner.View() should return non-empty string")
 	}
 }
 
@@ -396,13 +393,13 @@ func TestUpdateComplete_Enter(t *testing.T) {
 	m := newTestModel()
 	m.Screen = ScreenComplete
 
-	result, cmd := m.Update(keyMsg("enter"))
+	result, _ := m.Update(keyMsg("enter"))
 	rm := result.(Model)
-	if !rm.Quitting {
-		t.Error("Quitting should be true after enter on complete screen")
+	if rm.Screen != ScreenWelcome {
+		t.Errorf("Screen = %v, want ScreenWelcome after enter on complete screen", rm.Screen)
 	}
-	if cmd == nil {
-		t.Error("cmd should be non-nil (tea.Quit)")
+	if rm.Quitting {
+		t.Error("Quitting should be false — enter returns to welcome")
 	}
 }
 

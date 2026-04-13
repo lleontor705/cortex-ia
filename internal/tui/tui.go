@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/lleontor705/cortex-ia/internal/agents"
+	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/catalog"
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -18,10 +22,58 @@ import (
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
+	// Handle dialog overlay first — intercept all key events when dialog is active
+	if m.ActiveDialog.Type != DialogNone {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "y", "enter":
+				switch m.ActiveDialog.Type {
+				case DialogRestoreConfirm:
+					m.ActiveDialog = Dialog{}
+					m.OperationRunning = true
+					return m, func() tea.Msg {
+						if m.RestoreFn != nil {
+							err := m.RestoreFn(m.SelectedBackup)
+							return BackupRestoreMsg{Err: err}
+						}
+						return BackupRestoreMsg{Err: fmt.Errorf("restore not available")}
+					}
+				case DialogDeleteConfirm:
+					m.ActiveDialog = Dialog{}
+					m.OperationRunning = true
+					return m, func() tea.Msg {
+						if m.DeleteBackupFn != nil {
+							err := m.DeleteBackupFn(m.SelectedBackup)
+							return BackupDeleteMsg{Err: err}
+						}
+						return BackupDeleteMsg{Err: fmt.Errorf("delete not available")}
+					}
+				case DialogProfileDelete:
+					m.ActiveDialog = Dialog{}
+					if m.Cursor < len(m.Profiles) {
+						m.Profiles = append(m.Profiles[:m.Cursor], m.Profiles[m.Cursor+1:]...)
+						m.saveProfilesToDisk()
+					}
+					return m, nil
+				}
+			case "n", "esc":
+				m.ActiveDialog = Dialog{}
+				return m, nil
+			}
+			return m, nil // swallow all other keys while dialog is open
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
+		m.Help.Width = msg.Width
+		m.ProgressBar.Width = min(msg.Width-10, 40)
+		m.AgentBuilderViewport.Width = min(msg.Width-4, 76)
+		m.AgentBuilderViewport.Height = max(msg.Height-12, 10)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -34,14 +86,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Quitting = true
 				return m, tea.Quit
 			}
+		case "?":
+			// Toggle full help on screens that are not text input
+			if m.Screen != ScreenAgentBuilderPrompt &&
+				m.Screen != ScreenRenameBackup &&
+				m.Screen != ScreenProfileCreate {
+				m.Keys.ShowFullHelp = !m.Keys.ShowFullHelp
+				m.Help.ShowAll = m.Keys.ShowFullHelp
+				return m, nil
+			}
+		case "ctrl+h":
+			// Home shortcut — return to welcome from any screen
+			if m.Screen != ScreenWelcome && m.Screen != ScreenInstalling &&
+				!m.PipelineRunning && !m.OperationRunning {
+				m.AgentFilter.Deactivate()
+				m.SkillFilter.Deactivate()
+				m.setScreen(ScreenWelcome)
+				return m, nil
+			}
+		case "t":
+			// Toggle dark/light theme on non-input screens
+			if m.Screen != ScreenAgentBuilderPrompt &&
+				m.Screen != ScreenRenameBackup &&
+				m.Screen != ScreenProfileCreate &&
+				!m.AgentFilter.Active && !m.SkillFilter.Active {
+				styles.ToggleTheme()
+				return m, nil
+			}
 		}
 
-	case TickMsg:
-		m.SpinnerFrame++
-		if m.PipelineRunning || m.OperationRunning {
-			return m, tickCmd()
-		}
-		return m, nil
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.Spinner, cmd = m.Spinner.Update(msg)
+		cmds = append(cmds, cmd)
+		return m, tea.Batch(cmds...)
 
 	case StepProgressMsg:
 		if msg.Err != nil {
@@ -79,20 +157,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case BackupRestoreMsg:
 		m.RestoreErr = msg.Err
 		m.OperationRunning = false
-		m.setScreen(ScreenRestoreResult)
 		if m.ListBackupsFn != nil {
 			m.Backups, m.BackupWarnings = m.ListBackupsFn()
 		}
-		return m, nil
+		if msg.Err != nil {
+			m.ActiveToast = Toast{Text: fmt.Sprintf("Restore failed: %v", msg.Err), IsError: true, Visible: true}
+		} else {
+			m.ActiveToast = Toast{Text: "Restore complete", Visible: true}
+		}
+		return m, dismissToastAfter(3 * time.Second)
 
 	case BackupDeleteMsg:
 		m.DeleteErr = msg.Err
 		m.OperationRunning = false
-		m.setScreen(ScreenDeleteResult)
 		if m.ListBackupsFn != nil {
 			m.Backups, m.BackupWarnings = m.ListBackupsFn()
 		}
-		return m, nil
+		if msg.Err != nil {
+			m.ActiveToast = Toast{Text: fmt.Sprintf("Delete failed: %v", msg.Err), IsError: true, Visible: true}
+		} else {
+			m.ActiveToast = Toast{Text: "Backup deleted", Visible: true}
+		}
+		return m, dismissToastAfter(3 * time.Second)
 
 	case SyncDoneMsg:
 		m.SyncFilesChanged = msg.FilesChanged
@@ -108,6 +194,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.OperationRunning = false
 		return m, nil
 
+	case TransitionFrameMsg:
+		cmd := m.ScreenTransition.advanceTransition()
+		return m, cmd
+
+	case ToastDismissMsg:
+		m.ActiveToast.Visible = false
+		return m, nil
+
 	case UpdateCheckResultMsg:
 		m.UpdateResults = msg.Results
 		m.UpdateCheckDone = true
@@ -117,10 +211,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.UpgradeSyncPhase = "syncing"
 			m.OperationRunning = true
 			profileName := m.SelectedProfile
-			return m, tea.Batch(func() tea.Msg {
+			return m, func() tea.Msg {
 				changed, err := m.SyncFn(profileName)
 				return SyncDoneMsg{FilesChanged: changed, Err: err}
-			}, tickCmd())
+			}
 		}
 		return m, nil
 	}
@@ -195,6 +289,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAgentBuilderInstalling(msg)
 	case ScreenAgentBuilderComplete:
 		return m.updateAgentBuilderComplete(msg)
+	case ScreenOpenCodeModels:
+		return m.updateOpenCodeModels(msg)
+	case ScreenOpenCodeProviderPicker:
+		return m.updateOpenCodeProviderPicker(msg)
+	case ScreenOpenCodeModelPicker:
+		return m.updateOpenCodeModelPicker(msg)
 	}
 	return m, nil
 }
@@ -204,77 +304,128 @@ func (m Model) View() string {
 	if m.Quitting {
 		return ""
 	}
+
+	var content string
 	switch m.Screen {
 	case ScreenWelcome:
-		return m.viewWelcome()
+		content = m.viewWelcome()
 	case ScreenDetection:
-		return m.viewDetection()
+		content = m.viewDetection()
 	case ScreenAgents:
-		return m.viewAgents()
+		content = m.viewAgents()
 	case ScreenPersona:
-		return m.viewPersona()
+		content = m.viewPersona()
 	case ScreenPreset:
-		return m.viewPreset()
+		content = m.viewPreset()
 	case ScreenClaudeModelPicker:
-		return m.viewClaudeModelPicker()
+		content = m.viewClaudeModelPicker()
 	case ScreenSDDMode:
-		return m.viewSDDMode()
+		content = m.viewSDDMode()
 	case ScreenStrictTDD:
-		return m.viewStrictTDD()
+		content = m.viewStrictTDD()
 	case ScreenDependencyTree:
-		return m.viewDependencyTree()
+		content = m.viewDependencyTree()
 	case ScreenSkillPicker:
-		return m.viewSkillPicker()
+		content = m.viewSkillPicker()
 	case ScreenReview:
-		return m.viewReview()
+		content = m.viewReview()
 	case ScreenInstalling:
-		return m.viewInstalling()
+		content = m.viewInstalling()
 	case ScreenComplete:
-		return m.viewComplete()
+		content = m.viewComplete()
 	case ScreenBackups:
-		return m.viewBackups()
+		content = m.viewBackups()
 	case ScreenRestoreConfirm:
-		return m.viewRestoreConfirm()
+		content = m.viewRestoreConfirm()
 	case ScreenRestoreResult:
-		return m.viewRestoreResult()
+		content = m.viewRestoreResult()
 	case ScreenDeleteConfirm:
-		return m.viewDeleteConfirm()
+		content = m.viewDeleteConfirm()
 	case ScreenDeleteResult:
-		return m.viewDeleteResult()
+		content = m.viewDeleteResult()
 	case ScreenRenameBackup:
-		return m.viewRenameBackup()
+		content = m.viewRenameBackup()
 	case ScreenUpgrade:
-		return m.viewUpgrade()
+		content = m.viewUpgrade()
 	case ScreenSync:
-		return m.viewSync()
+		content = m.viewSync()
 	case ScreenUpgradeSync:
-		return m.viewUpgradeSync()
+		content = m.viewUpgradeSync()
 	case ScreenModelConfig:
-		return m.viewModelConfig()
+		content = m.viewModelConfig()
 	case ScreenProfiles:
-		return m.viewProfiles()
+		content = m.viewProfiles()
 	case ScreenProfileCreate:
-		return m.viewProfileCreate()
+		content = m.viewProfileCreate()
 	case ScreenProfileDelete:
-		return m.viewProfileDelete()
+		content = m.viewProfileDelete()
 	case ScreenAgentBuilderEngine:
-		return m.viewAgentBuilderEngine()
+		content = m.viewAgentBuilderEngine()
 	case ScreenAgentBuilderPrompt:
-		return m.viewAgentBuilderPrompt()
+		content = m.viewAgentBuilderPrompt()
 	case ScreenAgentBuilderSDD:
-		return m.viewAgentBuilderSDD()
+		content = m.viewAgentBuilderSDD()
 	case ScreenAgentBuilderSDDPhase:
-		return m.viewAgentBuilderSDDPhase()
+		content = m.viewAgentBuilderSDDPhase()
 	case ScreenAgentBuilderGenerating:
-		return m.viewAgentBuilderGenerating()
+		content = m.viewAgentBuilderGenerating()
 	case ScreenAgentBuilderPreview:
-		return m.viewAgentBuilderPreview()
+		content = m.viewAgentBuilderPreview()
 	case ScreenAgentBuilderInstalling:
-		return m.viewAgentBuilderInstalling()
+		content = m.viewAgentBuilderInstalling()
 	case ScreenAgentBuilderComplete:
-		return m.viewAgentBuilderComplete()
+		content = m.viewAgentBuilderComplete()
+	case ScreenOpenCodeModels:
+		content = m.viewOpenCodeModels()
+	case ScreenOpenCodeProviderPicker:
+		content = m.viewOpenCodeProviderPicker()
+	case ScreenOpenCodeModelPicker:
+		content = m.viewOpenCodeModelPicker()
 	}
-	return ""
+
+	// Apply transition animation
+	content = applyTransition(content, m.ScreenTransition)
+
+	// Add breadcrumb and help
+	bc := renderBreadcrumb(m.Screen)
+	helpView := m.Help.View(m.screenKeyMap())
+	statusBar := renderStatusBar(m)
+
+	var view string
+	if bc != "" {
+		view = bc + "\n\n" + content + "\n" + helpView
+	} else {
+		view = content + "\n" + helpView
+	}
+
+	// Center content with responsive width
+	if m.Width > 0 {
+		maxWidth := min(m.Width, 80)
+		view = lipgloss.NewStyle().MaxWidth(maxWidth).Render(view)
+
+		// Reserve last line for status bar
+		contentHeight := m.Height - 1
+		if contentHeight < 1 {
+			contentHeight = m.Height
+		}
+		view = lipgloss.Place(m.Width, contentHeight, lipgloss.Left, lipgloss.Top, view, lipgloss.WithWhitespaceChars(" "))
+		view += "\n" + statusBar
+	}
+
+	// Render dialog overlay on top of everything
+	if m.ActiveDialog.Type != DialogNone {
+		view = renderDialog(m.ActiveDialog, m.Width, m.Height)
+	}
+
+	// Render toast notification
+	if m.ActiveToast.Visible {
+		toastLine := renderToast(m.ActiveToast, m.Width)
+		if toastLine != "" {
+			view = toastLine + "\n" + view
+		}
+	}
+
+	return view
 }
 
 // --- Welcome screen ---
@@ -305,16 +456,26 @@ func (m Model) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.setScreen(ScreenUpgradeSync)
 				case WelcomeModelConfig:
 					m.ModelConfigMode = true
+					m.ClaudeModelCursor = 0
 					m.setScreen(ScreenClaudeModelPicker)
 				case WelcomeProfiles:
 					m.loadProfilesFromDisk()
+					m.ProfileErr = nil
 					m.setScreen(ScreenProfiles)
 				case WelcomeAgentBuilder:
+					m.resetAgentBuilder()
 					m.setScreen(ScreenAgentBuilderEngine)
+				case WelcomeOpenCodeModels:
+					m.loadOpenCodeModels()
+					m.OCErr = nil
+					m.setScreen(ScreenOpenCodeModels)
 				case WelcomeBackups:
 					if m.ListBackupsFn != nil {
 						m.Backups, m.BackupWarnings = m.ListBackupsFn()
 					}
+					m.RenameErr = nil
+					m.RestoreErr = nil
+					m.DeleteErr = nil
 					m.setScreen(ScreenBackups)
 				case WelcomeQuit:
 					m.Quitting = true
@@ -387,19 +548,43 @@ func (m Model) viewDetection() string {
 // --- Agents screen ---
 
 func (m Model) updateAgents(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// When filter is active, delegate to filter input first
+	if m.AgentFilter.Active {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "esc":
+				m.AgentFilter.Deactivate()
+				return m, nil
+			case "enter":
+				m.AgentFilter.Deactivate()
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.AgentFilter.Input, cmd = m.AgentFilter.Input.Update(msg)
+		// Clamp cursor to visible items
+		visible := m.visibleAgents()
+		if m.Cursor >= len(visible) {
+			m.Cursor = max(len(visible)-1, 0)
+		}
+		return m, cmd
+	}
+
 	if key, ok := msg.(tea.KeyMsg); ok {
+		visible := m.visibleAgents()
 		switch key.String() {
 		case "up", "k":
 			if m.Cursor > 0 {
 				m.Cursor--
 			}
 		case "down", "j":
-			if m.Cursor < len(m.Agents)-1 {
+			if m.Cursor < len(visible)-1 {
 				m.Cursor++
 			}
 		case " ":
-			if m.Cursor < len(m.Agents) {
-				m.Agents[m.Cursor].Selected = !m.Agents[m.Cursor].Selected
+			if m.Cursor < len(visible) {
+				idx := visible[m.Cursor]
+				m.Agents[idx].Selected = !m.Agents[idx].Selected
 			}
 		case "a":
 			allSelected := true
@@ -412,23 +597,46 @@ func (m Model) updateAgents(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for i := range m.Agents {
 				m.Agents[i].Selected = !allSelected
 			}
+		case "/":
+			m.AgentFilter.Activate()
+			return m, m.AgentFilter.Input.Focus()
 		case "enter":
 			if m.HasSelectedAgents() {
+				m.AgentFilter.Deactivate()
 				m.setScreen(ScreenPersona)
 			}
 		case "esc":
+			m.AgentFilter.Deactivate()
 			m.setScreen(ScreenDetection)
 		}
 	}
 	return m, nil
 }
 
-func (m Model) viewAgents() string {
-	data := make([]screens.AgentData, len(m.Agents))
+// visibleAgents returns indices of agents matching the current filter.
+func (m Model) visibleAgents() []int {
+	var indices []int
 	for i, a := range m.Agents {
+		if m.AgentFilter.Matches(a.Name) {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
+func (m Model) viewAgents() string {
+	visible := m.visibleAgents()
+	data := make([]screens.AgentData, len(visible))
+	for i, idx := range visible {
+		a := m.Agents[idx]
 		data[i] = screens.AgentData{Name: a.Name, Binary: a.Binary, Selected: a.Selected}
 	}
-	return screens.RenderAgents(screens.AgentsData{Agents: data, Cursor: m.Cursor})
+	listHeight := max(m.Height-10, 5)
+	content := screens.RenderAgents(screens.AgentsData{Agents: data, Cursor: m.Cursor, MaxHeight: listHeight})
+	if m.AgentFilter.Active || m.AgentFilter.Query() != "" {
+		return m.AgentFilter.View() + content
+	}
+	return content
 }
 
 // --- Persona screen ---
@@ -458,6 +666,7 @@ func (m Model) viewPersona() string {
 	return screens.RenderPersona(screens.PersonaData{
 		Personas: m.Personas,
 		Cursor:   m.Cursor,
+		Selected: m.Persona,
 	})
 }
 
@@ -488,8 +697,9 @@ func (m Model) updatePreset(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) viewPreset() string {
 	return screens.RenderPreset(screens.PresetData{
-		Presets: m.Presets,
-		Cursor:  m.Cursor,
+		Presets:  m.Presets,
+		Cursor:   m.Cursor,
+		Selected: m.Preset,
 	})
 }
 
@@ -514,7 +724,7 @@ func (m Model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.progressCh = ch
 			m.setScreen(ScreenInstalling)
 			m.PipelineRunning = true
-			return m, tea.Batch(m.runInstallWithProgress(ch), listenProgress(ch), tickCmd())
+			return m, tea.Batch(m.runInstallWithProgress(ch), listenProgress(ch))
 		case "esc", "n":
 			if prev, ok := PreviousScreen(ScreenReview); ok {
 				m.setScreen(prev)
@@ -606,9 +816,9 @@ func (m Model) viewInstalling() string {
 			Items: []screens.ProgressItem{
 				{Label: "Configuring agents with cortex-ia ecosystem", Status: ProgressStatusRunning},
 			},
-		}, m.SpinnerFrame)
+		}, m.Spinner.View(), m.ProgressBar)
 	}
-	return screens.RenderInstalling(m.Progress.ViewModel(), m.SpinnerFrame)
+	return screens.RenderInstalling(m.Progress.ViewModel(), m.Spinner.View(), m.ProgressBar)
 }
 
 // --- Complete screen ---
@@ -616,9 +826,11 @@ func (m Model) viewInstalling() string {
 func (m Model) updateComplete(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
-		case "enter", "q", "esc":
+		case "q":
 			m.Quitting = true
 			return m, tea.Quit
+		case "enter", "esc", "m":
+			m.setScreen(ScreenWelcome)
 		}
 	}
 	return m, nil
@@ -703,7 +915,7 @@ func Run(version string) error {
 		return len(result.FilesChanged), err
 	}
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err = p.Run()
 	return err
 }

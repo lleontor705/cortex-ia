@@ -56,6 +56,5 @@ func RenderDetection(data DetectionData) string {
 	fmt.Fprintf(&sb, "%s %d agent(s) detected\n",
 		styles.StatusOK.Render("●"), data.DetectedAgents)
 
-	sb.WriteString(styles.Help.Render("\nPress Enter to continue • q to quit"))
 	return sb.String()
 }

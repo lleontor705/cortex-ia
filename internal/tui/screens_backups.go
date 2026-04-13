@@ -27,18 +27,28 @@ func (m Model) updateBackups(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if m.Cursor < len(m.Backups) {
 				m.SelectedBackup = m.Backups[m.Cursor]
-				m.setScreen(ScreenRestoreConfirm)
+				m.ActiveDialog = Dialog{
+					Type:    DialogRestoreConfirm,
+					Title:   "Confirm Restore",
+					Message: "Restore backup " + m.SelectedBackup.ID + "?",
+					Warning: "This will overwrite current configuration files.",
+				}
 			}
 		case "d":
 			if m.Cursor < len(m.Backups) {
 				m.SelectedBackup = m.Backups[m.Cursor]
-				m.setScreen(ScreenDeleteConfirm)
+				m.ActiveDialog = Dialog{
+					Type:    DialogDeleteConfirm,
+					Title:   "Confirm Delete",
+					Message: "Delete backup " + m.SelectedBackup.ID + "?",
+					Warning: "This action cannot be undone.",
+				}
 			}
 		case "n":
 			if m.Cursor < len(m.Backups) {
 				m.SelectedBackup = m.Backups[m.Cursor]
-				m.BackupRenameText = m.SelectedBackup.Description
-				m.BackupRenamePos = len(m.BackupRenameText)
+				m.BackupRenameInput.SetValue(m.SelectedBackup.Description)
+				m.BackupRenameInput.Focus()
 				m.RenameErr = nil
 				m.setScreen(ScreenRenameBackup)
 			}
@@ -83,7 +93,6 @@ func (m Model) viewBackups() string {
 		}
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • r restore • d delete • n rename • Esc back"))
 	return sb.String()
 }
 
@@ -115,7 +124,6 @@ func (m Model) viewRestoreConfirm() string {
 	fmt.Fprintf(&sb, "Restore backup %s?\n", styles.Subtitle.Render(m.SelectedBackup.ID))
 	sb.WriteString(styles.StatusWarn.Render("This will overwrite current configuration files."))
 	sb.WriteString("\n")
-	sb.WriteString(styles.Help.Render("\ny to confirm • n/Esc to cancel"))
 	return sb.String()
 }
 
@@ -142,7 +150,6 @@ func (m Model) viewRestoreResult() string {
 		sb.WriteString("\n\n")
 		sb.WriteString("Configuration files have been restored.\n")
 	}
-	sb.WriteString(styles.Help.Render("\nPress Enter to continue"))
 	return sb.String()
 }
 
@@ -174,7 +181,6 @@ func (m Model) viewDeleteConfirm() string {
 	fmt.Fprintf(&sb, "Delete backup %s?\n", styles.Subtitle.Render(m.SelectedBackup.ID))
 	sb.WriteString(styles.StatusFail.Render("This action cannot be undone."))
 	sb.WriteString("\n")
-	sb.WriteString(styles.Help.Render("\ny to confirm • n/Esc to cancel"))
 	return sb.String()
 }
 
@@ -200,7 +206,6 @@ func (m Model) viewDeleteResult() string {
 		sb.WriteString(styles.StatusOK.Render("✓ Backup Deleted"))
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString(styles.Help.Render("\nPress Enter to continue"))
 	return sb.String()
 }
 
@@ -210,8 +215,9 @@ func (m Model) updateRenameBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "enter":
-			if m.RenameBackupFn != nil && m.BackupRenameText != "" {
-				if err := m.RenameBackupFn(m.SelectedBackup, m.BackupRenameText); err != nil {
+			val := m.BackupRenameInput.Value()
+			if m.RenameBackupFn != nil && val != "" {
+				if err := m.RenameBackupFn(m.SelectedBackup, val); err != nil {
 					m.RenameErr = err
 				} else {
 					m.RenameErr = nil
@@ -220,30 +226,19 @@ func (m Model) updateRenameBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.Backups, m.BackupWarnings = m.ListBackupsFn()
 				}
 			}
+			m.BackupRenameInput.Blur()
 			m.setScreen(ScreenBackups)
+			return m, nil
 		case "esc":
+			m.BackupRenameInput.Blur()
 			m.setScreen(ScreenBackups)
-		case "backspace":
-			m.BackupRenameText, m.BackupRenamePos = textBackspace(m.BackupRenameText, m.BackupRenamePos)
-		case "delete":
-			m.BackupRenameText = textDelete(m.BackupRenameText, m.BackupRenamePos)
-		case "left":
-			if m.BackupRenamePos > 0 {
-				m.BackupRenamePos--
-			}
-		case "right":
-			m.BackupRenamePos = clampPos(m.BackupRenameText, m.BackupRenamePos+1)
-		case "home", "ctrl+a":
-			m.BackupRenamePos = 0
-		case "end", "ctrl+e":
-			m.BackupRenamePos = len([]rune(m.BackupRenameText))
-		default:
-			if len(key.String()) == 1 {
-				m.BackupRenameText, m.BackupRenamePos = textInsert(m.BackupRenameText, m.BackupRenamePos, key.String())
-			}
+			return m, nil
 		}
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.BackupRenameInput, cmd = m.BackupRenameInput.Update(msg)
+	return m, cmd
 }
 
 func (m Model) viewRenameBackup() string {
@@ -251,9 +246,8 @@ func (m Model) viewRenameBackup() string {
 	sb.WriteString(styles.Title.Render("Rename Backup"))
 	sb.WriteString("\n\n")
 	fmt.Fprintf(&sb, "Backup: %s\n\n", styles.Subtitle.Render(m.SelectedBackup.ID))
-	sb.WriteString("Description: ")
-	sb.WriteString(styles.Box.Render(textRenderWithCursor(m.BackupRenameText, m.BackupRenamePos)))
+	sb.WriteString("Description:\n")
+	sb.WriteString(m.BackupRenameInput.View())
 	sb.WriteString("\n")
-	sb.WriteString(styles.Help.Render("\nEnter to save • ←→ move cursor • Esc to cancel"))
 	return sb.String()
 }

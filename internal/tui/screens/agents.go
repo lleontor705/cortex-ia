@@ -17,8 +17,9 @@ type AgentData struct {
 
 // AgentsData holds the data needed to render the agent selection screen.
 type AgentsData struct {
-	Agents []AgentData
-	Cursor int
+	Agents    []AgentData
+	Cursor    int
+	MaxHeight int // 0 means no limit
 }
 
 // RenderAgents renders the agent selection screen.
@@ -28,7 +29,30 @@ func RenderAgents(data AgentsData) string {
 	sb.WriteString(styles.Title.Render("Select Agents"))
 	sb.WriteString("\n\n")
 
-	for i, a := range data.Agents {
+	// Calculate visible window
+	total := len(data.Agents)
+	maxVisible := total
+	if data.MaxHeight > 0 && data.MaxHeight < total {
+		maxVisible = data.MaxHeight
+	}
+
+	start := 0
+	if data.Cursor >= maxVisible {
+		start = data.Cursor - maxVisible + 1
+	}
+	end := start + maxVisible
+	if end > total {
+		end = total
+		start = max(end-maxVisible, 0)
+	}
+
+	// Scroll indicator (above)
+	if start > 0 {
+		sb.WriteString(RenderScrollIndicator(total, start, end))
+	}
+
+	for i := start; i < end; i++ {
+		a := data.Agents[i]
 		cursor := "  "
 		if i == data.Cursor {
 			cursor = styles.Cursor.Render("> ")
@@ -48,6 +72,10 @@ func RenderAgents(data AgentsData) string {
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Space toggle • a all • Enter confirm • Esc back"))
+	// Scroll indicator (below)
+	if end < total {
+		sb.WriteString(RenderScrollIndicator(total, start, end))
+	}
+
 	return sb.String()
 }

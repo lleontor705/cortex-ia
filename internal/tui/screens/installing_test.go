@@ -3,10 +3,12 @@ package screens
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/bubbles/progress"
 )
 
 func TestRenderInstalling_InProgress(t *testing.T) {
-	progress := InstallProgress{
+	prog := InstallProgress{
 		Percent:     40,
 		CurrentStep: "Installing MCP servers",
 		Items: []ProgressItem{
@@ -17,7 +19,8 @@ func TestRenderInstalling_InProgress(t *testing.T) {
 		Logs: []string{"cortex installed"},
 		Done: false,
 	}
-	output := RenderInstalling(progress, 0)
+	pb := progress.New(progress.WithDefaultGradient(), progress.WithWidth(20))
+	output := RenderInstalling(prog, "⠋", pb)
 
 	if !strings.Contains(output, "Installing") {
 		t.Error("expected 'Installing' in in-progress output")
@@ -25,13 +28,10 @@ func TestRenderInstalling_InProgress(t *testing.T) {
 	if !strings.Contains(output, "40%") {
 		t.Error("expected '40%' percentage in output")
 	}
-	if !strings.Contains(output, "Please wait") {
-		t.Error("expected 'Please wait' help text for in-progress state")
-	}
 }
 
 func TestRenderInstalling_Done(t *testing.T) {
-	progress := InstallProgress{
+	prog := InstallProgress{
 		Percent: 100,
 		Items: []ProgressItem{
 			{Label: "Cortex", Status: "succeeded"},
@@ -40,18 +40,16 @@ func TestRenderInstalling_Done(t *testing.T) {
 		Done:   true,
 		Failed: false,
 	}
-	output := RenderInstalling(progress, 0)
+	pb := progress.New(progress.WithDefaultGradient(), progress.WithWidth(20))
+	output := RenderInstalling(prog, "⠋", pb)
 
 	if !strings.Contains(output, "Installation complete") {
 		t.Error("expected 'Installation complete' in done output")
 	}
-	if strings.Contains(output, "Please wait") {
-		t.Error("should not show 'Please wait' when done")
-	}
 }
 
 func TestRenderInstalling_Failed(t *testing.T) {
-	progress := InstallProgress{
+	prog := InstallProgress{
 		Percent: 100,
 		Items: []ProgressItem{
 			{Label: "Cortex", Status: "succeeded"},
@@ -60,7 +58,8 @@ func TestRenderInstalling_Failed(t *testing.T) {
 		Done:   true,
 		Failed: true,
 	}
-	output := RenderInstalling(progress, 0)
+	pb := progress.New(progress.WithDefaultGradient(), progress.WithWidth(20))
+	output := RenderInstalling(prog, "⠋", pb)
 
 	if !strings.Contains(output, "errors") {
 		t.Error("expected 'errors' indicator in failed output")

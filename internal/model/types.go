@@ -130,3 +130,53 @@ type Profile struct {
 	Name             string                      `json:"name"`
 	ModelAssignments map[string]ClaudeModelAlias `json:"model_assignments,omitempty"`
 }
+
+// --- OpenCode model types ---
+
+// OpenCodeProvider represents a detected provider with its models.
+type OpenCodeProvider struct {
+	ID     string           `json:"id"`
+	Name   string           `json:"name"`
+	Models []OpenCodeModel  `json:"models"`
+}
+
+// OpenCodeModel represents a model available in OpenCode.
+type OpenCodeModel struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	ToolCall bool   `json:"tool_call"`
+}
+
+// OpenCodeModelAssignment maps a sub-agent to a provider/model pair.
+type OpenCodeModelAssignment struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+}
+
+// OpenCodeModelAssignments maps sub-agent names to provider/model pairs.
+type OpenCodeModelAssignments map[string]OpenCodeModelAssignment
+
+// FormatOpenCodeModel returns "provider/model" string used in OpenCode config.
+func (a OpenCodeModelAssignment) FormatOpenCodeModel() string {
+	if a.Provider == "" || a.Model == "" {
+		return ""
+	}
+	return a.Provider + "/" + a.Model
+}
+
+// OpenCodeSubAgents returns the ordered list of SDD sub-agent names.
+func OpenCodeSubAgents() []string {
+	return []string{
+		"orchestrator",
+		"bootstrap",
+		"investigate",
+		"draft-proposal",
+		"write-specs",
+		"architect",
+		"decompose",
+		"team-lead",
+		"implement",
+		"validate",
+		"finalize",
+	}
+}

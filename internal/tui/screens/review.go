@@ -53,6 +53,5 @@ func RenderReview(data ReviewData) string {
 		}
 	}
 
-	sb.WriteString(styles.Help.Render("\nEnter to install • Esc to go back"))
 	return sb.String()
 }

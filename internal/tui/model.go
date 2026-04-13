@@ -1,15 +1,21 @@
 package tui
 
 import (
-	"time"
-
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/lleontor705/cortex-ia/internal/agentbuilder"
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/system"
+	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 	"github.com/lleontor705/cortex-ia/internal/update"
 )
 
@@ -52,18 +58,12 @@ const (
 	ScreenAgentBuilderPreview
 	ScreenAgentBuilderInstalling
 	ScreenAgentBuilderComplete
+	ScreenOpenCodeModels
+	ScreenOpenCodeProviderPicker
+	ScreenOpenCodeModelPicker
 )
 
 // --- Message types ---
-
-// TickMsg drives the spinner animation on progress screens.
-type TickMsg time.Time
-
-func tickCmd() tea.Cmd {
-	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
-		return TickMsg(t)
-	})
-}
 
 // StepProgressMsg is sent when a pipeline step changes status.
 type StepProgressMsg struct {
@@ -171,6 +171,7 @@ const (
 	WelcomeProfiles
 	WelcomeAgentBuilder
 	WelcomeBackups
+	WelcomeOpenCodeModels
 	WelcomeQuit
 )
 
@@ -185,6 +186,7 @@ func welcomeOptions() []WelcomeOption {
 		WelcomeProfiles,
 		WelcomeAgentBuilder,
 		WelcomeBackups,
+		WelcomeOpenCodeModels,
 		WelcomeQuit,
 	}
 }
@@ -208,6 +210,8 @@ func welcomeLabel(opt WelcomeOption) string {
 		return "Manage profiles"
 	case WelcomeBackups:
 		return "Manage backups"
+	case WelcomeOpenCodeModels:
+		return "OpenCode models"
 	case WelcomeQuit:
 		return "Quit"
 	}
@@ -234,7 +238,25 @@ type Model struct {
 	Height         int
 	Cursor         int
 	Version        string
-	SpinnerFrame   int
+
+	// Bubbles components
+	Spinner      spinner.Model
+	ProgressBar  progress.Model
+	Help         help.Model
+	Keys         KeyMap
+
+	// Dialog overlay
+	ActiveDialog Dialog
+
+	// Toast notification
+	ActiveToast Toast
+
+	// Screen transition animation
+	ScreenTransition Transition
+
+	// Filters
+	AgentFilter FilterInput
+	SkillFilter FilterInput
 
 	// Core state
 	Registry *agents.Registry
@@ -267,12 +289,10 @@ type Model struct {
 	BackupWarnings   []string
 	SelectedBackup   backup.Manifest
 	BackupScroll     int
-	BackupRenameText string
-	BackupRenamePos  int
+	BackupRenameInput textinput.Model
 	RestoreErr       error
 	DeleteErr        error
 	RenameErr        error
-	PinErr           error
 
 	// Post-install operations
 	UpdateResults    []update.CheckResult
@@ -288,19 +308,25 @@ type Model struct {
 	// Profiles
 	Profiles         []model.Profile
 	SelectedProfile  string
-	ProfileNameInput string
-	ProfileNamePos   int
+	ProfileInput     textinput.Model
 	ProfileErr       error
 
 	// Agent builder
 	AgentBuilderEngine    model.AgentID
-	AgentBuilderPrompt    string
-	AgentBuilderPromptPos int
+	AgentBuilderTextArea  textarea.Model
 	AgentBuilderSDDMode   string
 	AgentBuilderSDDPhase  string
 	AgentBuilderErr       error
-	AgentBuilderScroll    int
+	AgentBuilderViewport  viewport.Model
 	AgentBuilderGenerated *agentbuilder.GeneratedAgent
+
+	// OpenCode model configuration
+	OpenCodeAssignments model.OpenCodeModelAssignments
+	OpenCodeProviders   []model.OpenCodeProvider
+	OCModelCursor       int
+	OCProviderCursor    int
+	OCSelectedAgent     string
+	OCErr               error
 
 	// Pipeline tracking
 	PipelineRunning  bool
@@ -312,7 +338,6 @@ type Model struct {
 	RestoreFn      RestoreFunc
 	DeleteBackupFn DeleteBackupFunc
 	RenameBackupFn RenameBackupFunc
-	TogglePinFn    func(manifest backup.Manifest) error
 	ListBackupsFn  ListBackupsFn
 	UpgradeFn      UpgradeFunc
 	SyncFn         SyncFunc
@@ -320,18 +345,79 @@ type Model struct {
 	Quitting bool
 }
 
+// newTextInput creates a styled textinput.Model with sensible defaults.
+func newTextInput(placeholder string) textinput.Model {
+	ti := textinput.New()
+	ti.Placeholder = placeholder
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(styles.Primary)
+	ti.TextStyle = lipgloss.NewStyle().Foreground(styles.White)
+	ti.Cursor.Style = lipgloss.NewStyle().Foreground(styles.Secondary)
+	return ti
+}
+
+// newTextArea creates a styled textarea.Model with sensible defaults.
+func newTextArea(placeholder string) textarea.Model {
+	ta := textarea.New()
+	ta.Placeholder = placeholder
+	ta.ShowLineNumbers = false
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.SetWidth(60)
+	ta.SetHeight(5)
+	return ta
+}
+
 // New creates a new TUI model with default values.
 func New(registry *agents.Registry, homeDir, version string) Model {
+	// Spinner
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(styles.Secondary)
+
+	// Progress bar
+	pb := progress.New(
+		progress.WithDefaultGradient(),
+		progress.WithWidth(40),
+	)
+
+	// Help
+	h := help.New()
+	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(styles.Secondary).Bold(true)
+	h.Styles.ShortDesc = lipgloss.NewStyle().Foreground(styles.Muted)
+	h.Styles.FullKey = lipgloss.NewStyle().Foreground(styles.Secondary).Bold(true)
+	h.Styles.FullDesc = lipgloss.NewStyle().Foreground(styles.Muted)
+
 	return Model{
-		Screen:     ScreenWelcome,
-		Registry:   registry,
-		HomeDir:    homeDir,
-		Version:    version,
-		Presets:    []model.PresetID{model.PresetFull, model.PresetMinimal},
-		Personas:   []model.PersonaID{model.PersonaProfessional, model.PersonaMentor, model.PersonaMinimal},
-		Persona:    model.PersonaProfessional,
-		SDDEnabled: true,
+		Screen:            ScreenWelcome,
+		Registry:          registry,
+		HomeDir:           homeDir,
+		Version:           version,
+		Presets:           []model.PresetID{model.PresetFull, model.PresetMinimal},
+		Personas:          []model.PersonaID{model.PersonaProfessional, model.PersonaMentor, model.PersonaMinimal},
+		Persona:           model.PersonaProfessional,
+		SDDEnabled:        true,
+		Spinner:           sp,
+		ProgressBar:       pb,
+		Help:              h,
+		Keys:              DefaultKeyMap(),
+		AgentFilter:          NewFilterInput(),
+		SkillFilter:          NewFilterInput(),
+		BackupRenameInput:    newTextInput("Enter description..."),
+		ProfileInput:         newTextInput("Enter profile name..."),
+		AgentBuilderTextArea: newTextArea("Describe what this agent should do..."),
+		AgentBuilderViewport: viewport.New(70, 20),
 	}
+}
+
+// resetAgentBuilder clears all agent builder state for a fresh flow.
+func (m *Model) resetAgentBuilder() {
+	m.AgentBuilderEngine = ""
+	m.AgentBuilderTextArea.Reset()
+	m.AgentBuilderSDDMode = ""
+	m.AgentBuilderSDDPhase = ""
+	m.AgentBuilderErr = nil
+	m.AgentBuilderGenerated = nil
+	m.AgentBuilderViewport.SetContent("")
+	m.AgentBuilderViewport.GotoTop()
 }
 
 // setScreen transitions to a new screen, saving the previous screen for back navigation.
@@ -339,6 +425,7 @@ func (m *Model) setScreen(s Screen) {
 	m.PreviousScreen = m.Screen
 	m.Screen = s
 	m.Cursor = 0
+	m.ScreenTransition, _ = startTransition()
 }
 
 // RunDetection performs system detection and agent discovery.
@@ -393,8 +480,11 @@ func (m Model) HasSelectedAgents() bool {
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
-	return func() tea.Msg {
-		result := update.Check(m.Version)
-		return UpdateCheckResultMsg{Results: []update.CheckResult{result}}
-	}
+	return tea.Batch(
+		m.Spinner.Tick,
+		func() tea.Msg {
+			result := update.Check(m.Version)
+			return UpdateCheckResultMsg{Results: []update.CheckResult{result}}
+		},
+	)
 }

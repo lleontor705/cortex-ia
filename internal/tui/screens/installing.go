@@ -4,36 +4,31 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
 
 // RenderInstalling renders the installation progress screen.
-func RenderInstalling(progress InstallProgress, spinnerFrame int) string {
+func RenderInstalling(prog InstallProgress, spinnerView string, progressBar progress.Model) string {
 	var sb strings.Builder
 
-	spinner := styles.SpinnerChar(spinnerFrame)
-
-	if progress.Done {
-		if progress.Failed {
+	if prog.Done {
+		if prog.Failed {
 			sb.WriteString(styles.StatusFail.Render("Installation completed with errors"))
 		} else {
 			sb.WriteString(styles.StatusOK.Render("✓ Installation complete"))
 		}
 	} else {
-		sb.WriteString(styles.Title.Render(fmt.Sprintf("%s Installing...", spinner)))
+		sb.WriteString(styles.Title.Render(fmt.Sprintf("%s Installing...", spinnerView)))
 	}
 	sb.WriteString("\n\n")
 
-	// Progress bar
-	percent := progress.Percent
-	filled := percent / 5
-	empty := 20 - filled
-	bar := styles.ProgressFilled.Render(strings.Repeat("█", filled)) +
-		styles.ProgressEmpty.Render(strings.Repeat("░", empty))
-	fmt.Fprintf(&sb, "  %s %s\n\n", bar, styles.Percent.Render(fmt.Sprintf("%d%%", percent)))
+	// Progress bar using bubbles progress component
+	pct := float64(prog.Percent) / 100.0
+	fmt.Fprintf(&sb, "  %s %s\n\n", progressBar.ViewAs(pct), styles.Percent.Render(fmt.Sprintf("%d%%", prog.Percent)))
 
 	// Step list
-	for _, item := range progress.Items {
+	for _, item := range prog.Items {
 		var icon string
 		switch item.Status {
 		case "succeeded":
@@ -41,7 +36,7 @@ func RenderInstalling(progress InstallProgress, spinnerFrame int) string {
 		case "failed":
 			icon = styles.StatusFail.Render("✗")
 		case "running":
-			icon = styles.StatusWarn.Render(spinner)
+			icon = spinnerView
 		default:
 			icon = styles.Description.Render("○")
 		}
@@ -49,19 +44,15 @@ func RenderInstalling(progress InstallProgress, spinnerFrame int) string {
 	}
 
 	// Logs (show last 5)
-	if len(progress.Logs) > 0 {
+	if len(prog.Logs) > 0 {
 		sb.WriteString("\n")
 		start := 0
-		if len(progress.Logs) > 5 {
-			start = len(progress.Logs) - 5
+		if len(prog.Logs) > 5 {
+			start = len(prog.Logs) - 5
 		}
-		for _, log := range progress.Logs[start:] {
+		for _, log := range prog.Logs[start:] {
 			sb.WriteString(styles.Description.Render("  " + log + "\n"))
 		}
-	}
-
-	if !progress.Done {
-		sb.WriteString(styles.Help.Render("\nPlease wait..."))
 	}
 
 	return sb.String()

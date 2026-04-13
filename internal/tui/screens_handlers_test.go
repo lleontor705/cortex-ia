@@ -492,15 +492,15 @@ func TestProfiles_DeleteKey(t *testing.T) {
 	m.Cursor = 0
 
 	m = updateModel(t, m, "d")
-	if m.Screen != ScreenProfileDelete {
-		t.Errorf("Screen = %v, want ScreenProfileDelete", m.Screen)
+	if m.ActiveDialog.Type != DialogProfileDelete {
+		t.Errorf("ActiveDialog.Type = %v, want DialogProfileDelete", m.ActiveDialog.Type)
 	}
 }
 
 func TestProfileCreate_Enter(t *testing.T) {
 	m := New(nil, t.TempDir(), "test")
 	m.Screen = ScreenProfileCreate
-	m.ProfileNameInput = "my-profile"
+	m.ProfileInput.SetValue("my-profile")
 	m.Profiles = []model.Profile{}
 
 	m = updateModel(t, m, "enter")
@@ -518,14 +518,14 @@ func TestProfileCreate_Enter(t *testing.T) {
 func TestProfileCreate_Esc(t *testing.T) {
 	m := New(nil, "/tmp", "test")
 	m.Screen = ScreenProfileCreate
-	m.ProfileNameInput = "something"
+	m.ProfileInput.SetValue("something")
 
 	m = updateModel(t, m, "esc")
 	if m.Screen != ScreenProfiles {
 		t.Errorf("Screen = %v, want ScreenProfiles", m.Screen)
 	}
-	if m.ProfileNameInput != "" {
-		t.Errorf("ProfileNameInput = %q, want empty", m.ProfileNameInput)
+	if m.ProfileInput.Value() != "" {
+		t.Errorf("ProfileInput.Value() = %q, want empty", m.ProfileInput.Value())
 	}
 }
 
@@ -689,20 +689,20 @@ func TestSync_CycleProfile(t *testing.T) {
 	}
 	m.SelectedProfile = ""
 
-	// First press: selects first profile
-	m = updateModel(t, m, "p")
+	// Down arrow: selects first profile
+	m = updateModel(t, m, "down")
 	if m.SelectedProfile != "economy" {
 		t.Errorf("SelectedProfile = %q, want %q", m.SelectedProfile, "economy")
 	}
 
-	// Second press: selects second profile
-	m = updateModel(t, m, "p")
+	// Down arrow again: selects second profile
+	m = updateModel(t, m, "down")
 	if m.SelectedProfile != "premium" {
 		t.Errorf("SelectedProfile = %q, want %q", m.SelectedProfile, "premium")
 	}
 
-	// Third press: cycles back to none
-	m = updateModel(t, m, "p")
+	// Down arrow again: cycles back to none
+	m = updateModel(t, m, "down")
 	if m.SelectedProfile != "" {
 		t.Errorf("SelectedProfile = %q, want empty", m.SelectedProfile)
 	}
@@ -816,8 +816,8 @@ func TestBackups_RestoreKey(t *testing.T) {
 	m.Cursor = 1
 
 	m = updateModel(t, m, "r")
-	if m.Screen != ScreenRestoreConfirm {
-		t.Errorf("Screen = %v, want ScreenRestoreConfirm", m.Screen)
+	if m.ActiveDialog.Type != DialogRestoreConfirm {
+		t.Errorf("ActiveDialog.Type = %v, want DialogRestoreConfirm", m.ActiveDialog.Type)
 	}
 	if m.SelectedBackup.ID != "b2" {
 		t.Errorf("SelectedBackup.ID = %q, want %q", m.SelectedBackup.ID, "b2")
@@ -831,8 +831,8 @@ func TestBackups_DeleteKey(t *testing.T) {
 	m.Cursor = 0
 
 	m = updateModel(t, m, "d")
-	if m.Screen != ScreenDeleteConfirm {
-		t.Errorf("Screen = %v, want ScreenDeleteConfirm", m.Screen)
+	if m.ActiveDialog.Type != DialogDeleteConfirm {
+		t.Errorf("ActiveDialog.Type = %v, want DialogDeleteConfirm", m.ActiveDialog.Type)
 	}
 	if m.SelectedBackup.ID != "b1" {
 		t.Errorf("SelectedBackup.ID = %q, want %q", m.SelectedBackup.ID, "b1")
@@ -849,8 +849,8 @@ func TestBackups_RenameKey(t *testing.T) {
 	if m.Screen != ScreenRenameBackup {
 		t.Errorf("Screen = %v, want ScreenRenameBackup", m.Screen)
 	}
-	if m.BackupRenameText != "old desc" {
-		t.Errorf("BackupRenameText = %q, want %q", m.BackupRenameText, "old desc")
+	if m.BackupRenameInput.Value() != "old desc" {
+		t.Errorf("BackupRenameInput.Value() = %q, want %q", m.BackupRenameInput.Value(), "old desc")
 	}
 }
 
@@ -863,7 +863,7 @@ func TestRenameBackup_Enter(t *testing.T) {
 	m := New(nil, "/tmp", "test")
 	m.Screen = ScreenRenameBackup
 	m.SelectedBackup = backup.Manifest{ID: "b1"}
-	m.BackupRenameText = "new description"
+	m.BackupRenameInput.SetValue("new description")
 	m.RenameBackupFn = func(_ backup.Manifest, newDesc string) error {
 		renamed = true
 		return nil
@@ -884,7 +884,7 @@ func TestRenameBackup_Enter(t *testing.T) {
 func TestRenameBackup_Esc(t *testing.T) {
 	m := New(nil, "/tmp", "test")
 	m.Screen = ScreenRenameBackup
-	m.BackupRenameText = "some text"
+	m.BackupRenameInput.SetValue("some text")
 
 	m = updateModel(t, m, "esc")
 	if m.Screen != ScreenBackups {
@@ -949,18 +949,29 @@ func TestAgentBuilderSDDPhase_Enter(t *testing.T) {
 // Complete screen — any key quits
 // ---------------------------------------------------------------------------
 
-func TestComplete_AnyKey_Quits(t *testing.T) {
-	for _, key := range []string{"enter", "q", "esc"} {
-		m := New(nil, "/tmp", "test")
-		m.Screen = ScreenComplete
+func TestComplete_Q_Quits(t *testing.T) {
+	m := New(nil, "/tmp", "test")
+	m.Screen = ScreenComplete
 
-		result, cmd := m.Update(keyMsg(key))
-		m = result.(Model)
-		if !m.Quitting {
-			t.Errorf("key=%q: Quitting should be true", key)
-		}
-		if cmd == nil {
-			t.Errorf("key=%q: expected non-nil cmd (tea.Quit)", key)
-		}
+	result, cmd := m.Update(keyMsg("q"))
+	m = result.(Model)
+	if !m.Quitting {
+		t.Error("Quitting should be true after q")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd (tea.Quit)")
+	}
+}
+
+func TestComplete_Enter_ReturnsToWelcome(t *testing.T) {
+	m := New(nil, "/tmp", "test")
+	m.Screen = ScreenComplete
+
+	m = updateModel(t, m, "enter")
+	if m.Screen != ScreenWelcome {
+		t.Errorf("Screen = %v, want ScreenWelcome", m.Screen)
+	}
+	if m.Quitting {
+		t.Error("Quitting should be false — enter goes to menu")
 	}
 }

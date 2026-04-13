@@ -37,6 +37,5 @@ func RenderWelcome(data WelcomeData) string {
 
 	sb.WriteString(RenderOptions(data.Options, data.Cursor))
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Enter select • q quit"))
 	return sb.String()
 }

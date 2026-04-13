@@ -42,11 +42,18 @@ func (m Model) updateProfiles(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "c":
 			m.ProfileErr = nil
+			m.ProfileInput.SetValue("")
+			m.ProfileInput.Focus()
 			m.setScreen(ScreenProfileCreate)
 		case "d":
 			if m.Cursor < len(m.Profiles) && len(m.Profiles) > 0 {
 				m.ProfileErr = nil
-				m.setScreen(ScreenProfileDelete)
+				m.ActiveDialog = Dialog{
+					Type:    DialogProfileDelete,
+					Title:   "Delete Profile",
+					Message: "Delete profile " + m.Profiles[m.Cursor].Name + "?",
+					Warning: "This action cannot be undone.",
+				}
 			}
 		case "esc":
 			m.setScreen(ScreenWelcome)
@@ -78,7 +85,6 @@ func (m Model) viewProfiles() string {
 		}
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • c create • d delete • Esc back"))
 	return sb.String()
 }
 
@@ -88,48 +94,47 @@ func (m Model) updateProfileCreate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "enter":
-			if m.ProfileNameInput != "" {
-				m.Profiles = append(m.Profiles, model.Profile{Name: m.ProfileNameInput})
-				m.saveProfilesToDisk()
-				m.ProfileNameInput = ""
-				m.ProfileNamePos = 0
+			val := m.ProfileInput.Value()
+			if val != "" {
+				// Check for duplicate names
+				duplicate := false
+				for _, p := range m.Profiles {
+					if p.Name == val {
+						duplicate = true
+						break
+					}
+				}
+				if duplicate {
+					m.ProfileErr = fmt.Errorf("profile %q already exists", val)
+				} else {
+					m.Profiles = append(m.Profiles, model.Profile{Name: val})
+					m.saveProfilesToDisk()
+					m.ProfileInput.SetValue("")
+				}
 			}
+			m.ProfileInput.Blur()
 			m.setScreen(ScreenProfiles)
+			return m, nil
 		case "esc":
-			m.ProfileNameInput = ""
-			m.ProfileNamePos = 0
+			m.ProfileInput.SetValue("")
+			m.ProfileInput.Blur()
 			m.setScreen(ScreenProfiles)
-		case "backspace":
-			m.ProfileNameInput, m.ProfileNamePos = textBackspace(m.ProfileNameInput, m.ProfileNamePos)
-		case "delete":
-			m.ProfileNameInput = textDelete(m.ProfileNameInput, m.ProfileNamePos)
-		case "left":
-			if m.ProfileNamePos > 0 {
-				m.ProfileNamePos--
-			}
-		case "right":
-			m.ProfileNamePos = clampPos(m.ProfileNameInput, m.ProfileNamePos+1)
-		case "home", "ctrl+a":
-			m.ProfileNamePos = 0
-		case "end", "ctrl+e":
-			m.ProfileNamePos = len([]rune(m.ProfileNameInput))
-		default:
-			if len(key.String()) == 1 {
-				m.ProfileNameInput, m.ProfileNamePos = textInsert(m.ProfileNameInput, m.ProfileNamePos, key.String())
-			}
+			return m, nil
 		}
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.ProfileInput, cmd = m.ProfileInput.Update(msg)
+	return m, cmd
 }
 
 func (m Model) viewProfileCreate() string {
 	var sb strings.Builder
 	sb.WriteString(styles.Title.Render("Create Profile"))
 	sb.WriteString("\n\n")
-	sb.WriteString("Profile name: ")
-	sb.WriteString(styles.Box.Render(textRenderWithCursor(m.ProfileNameInput, m.ProfileNamePos)))
+	sb.WriteString("Profile name:\n")
+	sb.WriteString(m.ProfileInput.View())
 	sb.WriteString("\n")
-	sb.WriteString(styles.Help.Render("\nEnter to create • ←→ move cursor • Esc to cancel"))
 	return sb.String()
 }
 
@@ -158,6 +163,5 @@ func (m Model) viewProfileDelete() string {
 	if m.Cursor < len(m.Profiles) {
 		fmt.Fprintf(&sb, "Delete profile %s?\n", styles.StatusFail.Render(m.Profiles[m.Cursor].Name))
 	}
-	sb.WriteString(styles.Help.Render("\ny to confirm • n/Esc to cancel"))
 	return sb.String()
 }
