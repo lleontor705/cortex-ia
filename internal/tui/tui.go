@@ -414,6 +414,9 @@ func (m Model) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.Cursor < len(opts)-1 {
 				m.Cursor++
 			}
+		case "esc":
+			m.Quitting = true
+			return m, tea.Quit
 		case "enter":
 			if m.Cursor < len(opts) {
 				switch opts[m.Cursor] {
