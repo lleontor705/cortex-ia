@@ -164,7 +164,8 @@ func (a OpenCodeModelAssignment) FormatOpenCodeModel() string {
 	return a.Provider + "/" + a.Model
 }
 
-// OpenCodeSubAgents returns the ordered list of SDD sub-agent names.
+// OpenCodeSubAgents returns the ordered list of SDD sub-agent names
+// that are registered in opencode.json as agents.
 func OpenCodeSubAgents() []string {
 	return []string{
 		"orchestrator",
@@ -178,5 +179,6 @@ func OpenCodeSubAgents() []string {
 		"implement",
 		"validate",
 		"finalize",
+		"parallel-dispatch",
 	}
 }

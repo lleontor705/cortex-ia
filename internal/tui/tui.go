@@ -194,10 +194,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.OperationRunning = false
 		return m, nil
 
-	case TransitionFrameMsg:
-		cmd := m.ScreenTransition.advanceTransition()
-		return m, cmd
-
 	case ToastDismissMsg:
 		m.ActiveToast.Visible = false
 		return m, nil
@@ -354,9 +350,6 @@ func (m Model) View() string {
 	case ScreenOpenCodeModelPicker:
 		content = m.viewOpenCodeModelPicker()
 	}
-
-	// Apply transition animation
-	content = applyTransition(content, m.ScreenTransition)
 
 	// Add breadcrumb and help
 	bc := renderBreadcrumb(m.Screen)
