@@ -133,6 +133,25 @@ func TestClaudeModelPicker_Esc_ModelConfigMode(t *testing.T) {
 	}
 }
 
+func TestClaudeModelPicker_Enter_ModelConfigMode(t *testing.T) {
+	m := New(nil, "/tmp", "test")
+	m.Screen = ScreenClaudeModelPicker
+	m.ModelConfigMode = true
+	m.ClaudeModelCursor = 1 // Balanced
+
+	result, _ := m.Update(keyMsg("enter"))
+	rm := result.(Model)
+	if rm.Screen != ScreenWelcome {
+		t.Errorf("Screen = %v, want ScreenWelcome (config mode should return to menu)", rm.Screen)
+	}
+	if rm.ModelConfigMode {
+		t.Error("ModelConfigMode should be false after enter in config mode")
+	}
+	if rm.ModelPreset != model.ModelPresetBalanced {
+		t.Errorf("ModelPreset = %q, want %q", rm.ModelPreset, model.ModelPresetBalanced)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Install flow — SDD Mode
 // ---------------------------------------------------------------------------
