@@ -244,8 +244,6 @@ type Model struct {
 	// Toast notification
 	ActiveToast Toast
 
-	// Screen transition animation
-	ScreenTransition Transition
 
 	// Filters
 	AgentFilter FilterInput
@@ -420,7 +418,6 @@ func (m *Model) setScreen(s Screen) {
 	m.PreviousScreen = m.Screen
 	m.Screen = s
 	m.Cursor = 0
-	m.ScreenTransition, _ = startTransition()
 }
 
 // RunDetection performs system detection and agent discovery.

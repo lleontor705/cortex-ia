@@ -14,7 +14,8 @@ func OpenCodeDefaultAssignments() OpenCodeModelAssignments {
 		"team-lead":      {Provider: "anthropic", Model: "claude-sonnet-4-20250514"},
 		"implement":      {Provider: "anthropic", Model: "claude-sonnet-4-20250514"},
 		"validate":       {Provider: "anthropic", Model: "claude-opus-4-20250514"},
-		"finalize":       {Provider: "anthropic", Model: "claude-haiku-4-20250506"},
+		"finalize":           {Provider: "anthropic", Model: "claude-haiku-4-20250506"},
+		"parallel-dispatch": {Provider: "anthropic", Model: "claude-sonnet-4-20250514"},
 	}
 }
 
@@ -43,6 +44,8 @@ func OpenCodeSubAgentDescription(name string) string {
 		return "Verifies correctness"
 	case "finalize":
 		return "Archives and documents"
+	case "parallel-dispatch":
+		return "Runs independent tasks concurrently"
 	}
 	return ""
 }
