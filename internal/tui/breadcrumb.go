@@ -79,8 +79,6 @@ func screenName(s Screen) string {
 		return "Done"
 	case ScreenOpenCodeModels:
 		return "OpenCode Models"
-	case ScreenOpenCodeProviderPicker:
-		return "Provider"
 	case ScreenOpenCodeModelPicker:
 		return "Model"
 	}

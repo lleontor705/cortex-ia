@@ -109,7 +109,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.Screen != ScreenAgentBuilderPrompt &&
 				m.Screen != ScreenRenameBackup &&
 				m.Screen != ScreenProfileCreate &&
-				!m.AgentFilter.Active && !m.SkillFilter.Active {
+				!m.AgentFilter.Active && !m.SkillFilter.Active && !m.OCModelFilter.Active {
 				styles.ToggleTheme()
 				return m, nil
 			}
@@ -291,8 +291,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAgentBuilderComplete(msg)
 	case ScreenOpenCodeModels:
 		return m.updateOpenCodeModels(msg)
-	case ScreenOpenCodeProviderPicker:
-		return m.updateOpenCodeProviderPicker(msg)
 	case ScreenOpenCodeModelPicker:
 		return m.updateOpenCodeModelPicker(msg)
 	}
@@ -377,8 +375,6 @@ func (m Model) View() string {
 		content = m.viewAgentBuilderComplete()
 	case ScreenOpenCodeModels:
 		content = m.viewOpenCodeModels()
-	case ScreenOpenCodeProviderPicker:
-		content = m.viewOpenCodeProviderPicker()
 	case ScreenOpenCodeModelPicker:
 		content = m.viewOpenCodeModelPicker()
 	}

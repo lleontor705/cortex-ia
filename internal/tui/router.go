@@ -52,9 +52,8 @@ var linearRoutes = map[Screen]Route{
 	ScreenAgentBuilderComplete:   {Backward: ScreenWelcome},
 
 	// OpenCode model configuration
-	ScreenOpenCodeModels:         {Backward: ScreenWelcome},
-	ScreenOpenCodeProviderPicker: {Backward: ScreenOpenCodeModels},
-	ScreenOpenCodeModelPicker:    {Backward: ScreenOpenCodeProviderPicker},
+	ScreenOpenCodeModels:      {Backward: ScreenWelcome},
+	ScreenOpenCodeModelPicker: {Backward: ScreenOpenCodeModels},
 }
 
 // NextScreen returns the forward screen for the given screen, if defined.
