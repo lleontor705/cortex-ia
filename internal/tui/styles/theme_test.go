@@ -31,3 +31,48 @@ func TestCursorPrefix_NonEmpty(t *testing.T) {
 		t.Errorf("CursorPrefix = %q, want %q", CursorPrefix, "> ")
 	}
 }
+
+func TestToggleTheme(t *testing.T) {
+	// Start with dark
+	ApplyTheme(ThemeDark)
+	if ActiveTheme != ThemeDark {
+		t.Errorf("initial theme should be dark, got %q", ActiveTheme)
+	}
+
+	ToggleTheme()
+	if ActiveTheme != ThemeLight {
+		t.Errorf("after toggle should be light, got %q", ActiveTheme)
+	}
+
+	ToggleTheme()
+	if ActiveTheme != ThemeDark {
+		t.Errorf("after second toggle should be dark, got %q", ActiveTheme)
+	}
+}
+
+func TestApplyTheme_UpdatesColors(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	darkPrimary := Primary
+
+	ApplyTheme(ThemeLight)
+	lightPrimary := Primary
+
+	if string(darkPrimary) == string(lightPrimary) {
+		t.Error("dark and light themes should have different primary colors")
+	}
+
+	// Restore dark theme
+	ApplyTheme(ThemeDark)
+}
+
+func TestApplyTheme_UpdatesStyles(t *testing.T) {
+	ApplyTheme(ThemeLight)
+	// Styles should be rebuilt — just verify they exist
+	view := Title.Render("test")
+	if view == "" {
+		t.Error("Title style should render after theme apply")
+	}
+
+	// Restore
+	ApplyTheme(ThemeDark)
+}

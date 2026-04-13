@@ -1,7 +1,6 @@
 package screens
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -12,6 +11,7 @@ import (
 type PersonaData struct {
 	Personas []model.PersonaID
 	Cursor   int
+	Selected model.PersonaID
 }
 
 // RenderPersona renders the persona selection screen.
@@ -28,16 +28,11 @@ func RenderPersona(data PersonaData) string {
 	}
 
 	for i, p := range data.Personas {
-		cursor := "  "
-		if i == data.Cursor {
-			cursor = styles.Cursor.Render("> ")
-		}
-
-		name := styles.Subtitle.Render(string(p))
-		desc := styles.Description.Render(" — " + descs[p])
-		fmt.Fprintf(&sb, "%s%s%s\n", cursor, name, desc)
+		label := string(p) + " — " + descs[p]
+		isSelected := p == data.Selected
+		isFocused := i == data.Cursor
+		sb.WriteString(RenderRadio(label, isSelected, isFocused))
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Enter select • Esc back"))
 	return sb.String()
 }

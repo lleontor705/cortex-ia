@@ -42,6 +42,8 @@ func RenderComplete(data CompleteData) string {
 		}
 	}
 
-	sb.WriteString(styles.Help.Render("\nPress any key to exit"))
+	sb.WriteString("\n")
+	sb.WriteString(styles.Description.Render("Enter/Esc back to menu • q quit"))
+
 	return sb.String()
 }

@@ -30,6 +30,7 @@ func (m Model) updateAgentBuilderEngine(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.Cursor < len(agents) {
 				m.AgentBuilderEngine = agents[m.Cursor]
+				m.AgentBuilderTextArea.Focus()
 				m.setScreen(ScreenAgentBuilderPrompt)
 			}
 		case "esc":
@@ -52,6 +53,29 @@ func (m Model) availableEngines() []model.AgentID {
 	}
 }
 
+// engineDescription returns a short description for each engine.
+func engineDescription(engine model.AgentID) string {
+	switch engine {
+	case model.AgentClaudeCode:
+		return "Anthropic's CLI coding agent"
+	case model.AgentOpenCode:
+		return "Open-source terminal coding agent"
+	case model.AgentGeminiCLI:
+		return "Google's Gemini CLI agent"
+	case model.AgentCursor:
+		return "AI-powered code editor"
+	case model.AgentVSCodeCopilot:
+		return "GitHub Copilot in VS Code"
+	case model.AgentCodex:
+		return "OpenAI's Codex CLI agent"
+	case model.AgentWindsurf:
+		return "Codeium's AI code editor"
+	case model.AgentAntigravity:
+		return "Antigravity AI agent"
+	}
+	return ""
+}
+
 func (m Model) viewAgentBuilderEngine() string {
 	var sb strings.Builder
 	sb.WriteString(styles.Title.Render("Create Agent — Select Engine"))
@@ -62,10 +86,11 @@ func (m Model) viewAgentBuilderEngine() string {
 		if i == m.Cursor {
 			cursor = styles.Cursor.Render("> ")
 		}
-		fmt.Fprintf(&sb, "%s%s\n", cursor, string(engine))
+		name := styles.Subtitle.Render(string(engine))
+		desc := styles.Description.Render(" — " + engineDescription(engine))
+		fmt.Fprintf(&sb, "%s%s%s\n", cursor, name, desc)
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Enter select • Esc back"))
 	return sb.String()
 }
 
@@ -74,33 +99,20 @@ func (m Model) viewAgentBuilderEngine() string {
 func (m Model) updateAgentBuilderPrompt(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
-		case "enter":
-			if m.AgentBuilderPrompt != "" {
-				m.setScreen(ScreenAgentBuilderSDD)
-			}
 		case "esc":
 			m.setScreen(ScreenAgentBuilderEngine)
-		case "backspace":
-			m.AgentBuilderPrompt, m.AgentBuilderPromptPos = textBackspace(m.AgentBuilderPrompt, m.AgentBuilderPromptPos)
-		case "delete":
-			m.AgentBuilderPrompt = textDelete(m.AgentBuilderPrompt, m.AgentBuilderPromptPos)
-		case "left":
-			if m.AgentBuilderPromptPos > 0 {
-				m.AgentBuilderPromptPos--
+			return m, nil
+		case "ctrl+enter":
+			if m.AgentBuilderTextArea.Value() != "" {
+				m.setScreen(ScreenAgentBuilderSDD)
 			}
-		case "right":
-			m.AgentBuilderPromptPos = clampPos(m.AgentBuilderPrompt, m.AgentBuilderPromptPos+1)
-		case "home", "ctrl+a":
-			m.AgentBuilderPromptPos = 0
-		case "end", "ctrl+e":
-			m.AgentBuilderPromptPos = len([]rune(m.AgentBuilderPrompt))
-		default:
-			if len(key.String()) == 1 {
-				m.AgentBuilderPrompt, m.AgentBuilderPromptPos = textInsert(m.AgentBuilderPrompt, m.AgentBuilderPromptPos, key.String())
-			}
+			return m, nil
 		}
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.AgentBuilderTextArea, cmd = m.AgentBuilderTextArea.Update(msg)
+	return m, cmd
 }
 
 func (m Model) viewAgentBuilderPrompt() string {
@@ -108,9 +120,13 @@ func (m Model) viewAgentBuilderPrompt() string {
 	sb.WriteString(styles.Title.Render("Create Agent — Describe Purpose"))
 	sb.WriteString("\n\n")
 	sb.WriteString("What should this agent do?\n\n")
-	sb.WriteString(styles.Box.Render(textRenderWithCursor(m.AgentBuilderPrompt, m.AgentBuilderPromptPos)))
-	sb.WriteString("\n")
-	sb.WriteString(styles.Help.Render("\nType your description • ←→ move cursor • Enter to continue • Esc back"))
+	sb.WriteString(m.AgentBuilderTextArea.View())
+	sb.WriteString("\n\n")
+	sb.WriteString(styles.Description.Render("Press "))
+	sb.WriteString(styles.Subtitle.Render("Ctrl+Enter"))
+	sb.WriteString(styles.Description.Render(" to continue, "))
+	sb.WriteString(styles.Subtitle.Render("Esc"))
+	sb.WriteString(styles.Description.Render(" to go back"))
 	return sb.String()
 }
 
@@ -173,7 +189,6 @@ func (m Model) viewAgentBuilderSDD() string {
 			styles.Description.Render("— "+mode.desc))
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Enter confirm • Esc back"))
 	return sb.String()
 }
 
@@ -217,7 +232,6 @@ func (m Model) viewAgentBuilderSDDPhase() string {
 		fmt.Fprintf(&sb, "%s%s\n", cursor, phase)
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Enter select • Esc back"))
 	return sb.String()
 }
 
@@ -232,7 +246,10 @@ func (m Model) updateAgentBuilderGenerating(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentBuilderGeneratedResultMsg:
 		m.OperationRunning = false
 		m.AgentBuilderGenerated = v.Agent
-		m.AgentBuilderScroll = 0
+		if v.Agent != nil {
+			m.AgentBuilderViewport.SetContent(v.Agent.SkillContent)
+			m.AgentBuilderViewport.GotoTop()
+		}
 		m.setScreen(ScreenAgentBuilderPreview)
 	}
 	return m, nil
@@ -240,10 +257,9 @@ func (m Model) updateAgentBuilderGenerating(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) viewAgentBuilderGenerating() string {
 	var sb strings.Builder
-	sb.WriteString(styles.Title.Render(fmt.Sprintf("%s Generating Agent...", styles.SpinnerChar(m.SpinnerFrame))))
+	sb.WriteString(styles.Title.Render(fmt.Sprintf("%s Generating Agent...", m.Spinner.View())))
 	sb.WriteString("\n\n")
 	sb.WriteString("Creating agent configuration based on your description.\n")
-	sb.WriteString(styles.Help.Render("\nPlease wait..."))
 	return sb.String()
 }
 
@@ -258,15 +274,13 @@ func (m Model) updateAgentBuilderPreview(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.agentBuilderInstallCmd()
 		case "esc":
 			m.setScreen(ScreenAgentBuilderPrompt)
-		case "up", "k":
-			if m.AgentBuilderScroll > 0 {
-				m.AgentBuilderScroll--
-			}
-		case "down", "j":
-			m.AgentBuilderScroll++
+			return m, nil
 		}
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.AgentBuilderViewport, cmd = m.AgentBuilderViewport.Update(msg)
+	return m, cmd
 }
 
 func (m Model) viewAgentBuilderPreview() string {
@@ -274,7 +288,7 @@ func (m Model) viewAgentBuilderPreview() string {
 	sb.WriteString(styles.Title.Render("Agent Preview"))
 	sb.WriteString("\n\n")
 	fmt.Fprintf(&sb, "Engine: %s\n", styles.Subtitle.Render(string(m.AgentBuilderEngine)))
-	fmt.Fprintf(&sb, "Purpose: %s\n", m.AgentBuilderPrompt)
+	fmt.Fprintf(&sb, "Purpose: %s\n", m.AgentBuilderTextArea.Value())
 	fmt.Fprintf(&sb, "SDD Mode: %s\n", m.AgentBuilderSDDMode)
 	if m.AgentBuilderSDDPhase != "" {
 		fmt.Fprintf(&sb, "SDD Phase: %s\n", m.AgentBuilderSDDPhase)
@@ -282,20 +296,10 @@ func (m Model) viewAgentBuilderPreview() string {
 	if m.AgentBuilderGenerated != nil {
 		fmt.Fprintf(&sb, "Skill Name: %s\n", styles.Subtitle.Render(m.AgentBuilderGenerated.SkillName))
 		sb.WriteString("\n--- SKILL.md Preview ---\n\n")
-		lines := strings.Split(m.AgentBuilderGenerated.SkillContent, "\n")
-		start := m.AgentBuilderScroll
-		if start > len(lines) {
-			start = len(lines)
-		}
-		end := start + 20
-		if end > len(lines) {
-			end = len(lines)
-		}
-		for _, line := range lines[start:end] {
-			sb.WriteString(line + "\n")
-		}
+		sb.WriteString(m.AgentBuilderViewport.View())
+		sb.WriteString("\n")
+		sb.WriteString(styles.Description.Render(fmt.Sprintf("  %d%%", int(m.AgentBuilderViewport.ScrollPercent()*100))))
 	}
-	sb.WriteString(styles.Help.Render("\n↑↓ scroll • Enter to install • Esc to edit"))
 	return sb.String()
 }
 
@@ -313,9 +317,9 @@ func (m Model) updateAgentBuilderInstalling(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) viewAgentBuilderInstalling() string {
 	var sb strings.Builder
-	sb.WriteString(styles.Title.Render(fmt.Sprintf("%s Installing Agent...", styles.SpinnerChar(m.SpinnerFrame))))
+	sb.WriteString(styles.Title.Render(fmt.Sprintf("%s Installing Agent...", m.Spinner.View())))
 	sb.WriteString("\n\n")
-	sb.WriteString(styles.Help.Render("Please wait..."))
+	sb.WriteString(styles.Description.Render("Please wait..."))
 	return sb.String()
 }
 
@@ -335,7 +339,7 @@ func (m Model) updateAgentBuilderComplete(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) agentBuilderGenerateCmd() tea.Cmd {
 	spec := agentbuilder.AgentSpec{
 		Engine:   m.AgentBuilderEngine,
-		Purpose:  m.AgentBuilderPrompt,
+		Purpose:  m.AgentBuilderTextArea.Value(),
 		SDDMode:  agentbuilder.SDDIntegrationMode(m.AgentBuilderSDDMode),
 		SDDPhase: m.AgentBuilderSDDPhase,
 	}
@@ -376,7 +380,11 @@ func (m Model) viewAgentBuilderComplete() string {
 		sb.WriteString(styles.StatusOK.Render("✓ Agent Created"))
 		sb.WriteString("\n\n")
 		fmt.Fprintf(&sb, "Agent for %s has been configured.\n", styles.Subtitle.Render(string(m.AgentBuilderEngine)))
+		if m.AgentBuilderGenerated != nil && m.AgentBuilderGenerated.SkillName != "" {
+			fmt.Fprintf(&sb, "\nSkill: %s\n", styles.Subtitle.Render(m.AgentBuilderGenerated.SkillName))
+			fmt.Fprintf(&sb, "Path:  %s\n", styles.Description.Render(
+				fmt.Sprintf("~/.claude/skills/%s/SKILL.md", m.AgentBuilderGenerated.SkillName)))
+		}
 	}
-	sb.WriteString(styles.Help.Render("\nPress Enter to return to menu"))
 	return sb.String()
 }

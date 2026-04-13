@@ -23,7 +23,7 @@ func (m Model) updateUpgrade(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(func() tea.Msg {
 					result := update.Check(m.Version)
 					return UpdateCheckResultMsg{Results: []update.CheckResult{result}}
-				}, tickCmd())
+				})
 			}
 		case "esc":
 			m.setScreen(ScreenWelcome)
@@ -38,7 +38,7 @@ func (m Model) viewUpgrade() string {
 	sb.WriteString("\n\n")
 
 	if m.OperationRunning {
-		fmt.Fprintf(&sb, "%s Checking for updates...\n", styles.SpinnerChar(m.SpinnerFrame))
+		fmt.Fprintf(&sb, "%s Checking for updates...\n", m.Spinner.View())
 	} else if !m.UpdateCheckDone {
 		sb.WriteString("Press r to check for updates.\n")
 	} else if len(m.UpdateResults) > 0 {
@@ -65,7 +65,7 @@ func (m Model) viewUpgrade() string {
 			sb.WriteString("\n")
 		}
 	}
-	sb.WriteString(styles.Help.Render("\nr refresh • Esc back"))
+	// help rendered centrally
 	return sb.String()
 }
 
@@ -81,16 +81,38 @@ func (m Model) updateSync(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(func() tea.Msg {
 					changed, err := m.SyncFn(profileName)
 					return SyncDoneMsg{FilesChanged: changed, Err: err}
-				}, tickCmd())
+				})
 			}
-		case "p":
+		case "up", "k":
 			if !m.OperationRunning {
 				if len(m.Profiles) == 0 {
 					m.loadProfilesFromDisk()
 				}
-				if len(m.Profiles) > 0 {
-					// Cycle through profiles: "" -> first -> second -> ... -> ""
-					found := false
+				// Move to previous profile (or clear)
+				if m.SelectedProfile == "" && len(m.Profiles) > 0 {
+					m.SelectedProfile = m.Profiles[len(m.Profiles)-1].Name
+				} else {
+					for i, p := range m.Profiles {
+						if p.Name == m.SelectedProfile {
+							if i > 0 {
+								m.SelectedProfile = m.Profiles[i-1].Name
+							} else {
+								m.SelectedProfile = ""
+							}
+							break
+						}
+					}
+				}
+			}
+		case "down", "j":
+			if !m.OperationRunning {
+				if len(m.Profiles) == 0 {
+					m.loadProfilesFromDisk()
+				}
+				// Move to next profile (or clear)
+				if m.SelectedProfile == "" && len(m.Profiles) > 0 {
+					m.SelectedProfile = m.Profiles[0].Name
+				} else {
 					for i, p := range m.Profiles {
 						if p.Name == m.SelectedProfile {
 							if i+1 < len(m.Profiles) {
@@ -98,12 +120,8 @@ func (m Model) updateSync(msg tea.Msg) (tea.Model, tea.Cmd) {
 							} else {
 								m.SelectedProfile = ""
 							}
-							found = true
 							break
 						}
-					}
-					if !found {
-						m.SelectedProfile = m.Profiles[0].Name
 					}
 				}
 			}
@@ -118,13 +136,32 @@ func (m Model) viewSync() string {
 	var sb strings.Builder
 	sb.WriteString(styles.Title.Render("Sync Configuration"))
 	sb.WriteString("\n\n")
-	if m.SelectedProfile != "" {
-		fmt.Fprintf(&sb, "Profile: %s\n\n", styles.Subtitle.Render(m.SelectedProfile))
-	} else {
-		sb.WriteString("Profile: (none)\n\n")
+
+	// Profile selector
+	sb.WriteString(styles.Subtitle.Render("Profile:"))
+	sb.WriteString("\n")
+	// "(none)" option
+	noneMarker := "( )"
+	noneCursor := "  "
+	if m.SelectedProfile == "" {
+		noneMarker = styles.Selected.Render("(*)")
+		noneCursor = styles.Cursor.Render("> ")
 	}
+	fmt.Fprintf(&sb, "%s%s %s\n", noneCursor, noneMarker, styles.Description.Render("(none)"))
+	// Profile options
+	for _, p := range m.Profiles {
+		marker := "( )"
+		cursor := "  "
+		if p.Name == m.SelectedProfile {
+			marker = styles.Selected.Render("(*)")
+			cursor = styles.Cursor.Render("> ")
+		}
+		fmt.Fprintf(&sb, "%s%s %s\n", cursor, marker, p.Name)
+	}
+	sb.WriteString("\n")
+
 	if m.OperationRunning {
-		fmt.Fprintf(&sb, "%s Syncing managed files...\n", styles.SpinnerChar(m.SpinnerFrame))
+		fmt.Fprintf(&sb, "%s Syncing managed files...\n", m.Spinner.View())
 	} else if m.SyncErr != nil {
 		sb.WriteString(styles.StatusFail.Render("Sync failed"))
 		sb.WriteString("\n")
@@ -136,7 +173,7 @@ func (m Model) viewSync() string {
 	} else {
 		sb.WriteString("Press Enter to sync managed configuration files.\n")
 	}
-	sb.WriteString(styles.Help.Render("\nEnter to sync • p cycle profile • Esc back"))
+	// help rendered centrally
 	return sb.String()
 }
 
@@ -152,7 +189,7 @@ func (m Model) updateUpgradeSync(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(func() tea.Msg {
 					result := update.Check(m.Version)
 					return UpdateCheckResultMsg{Results: []update.CheckResult{result}}
-				}, tickCmd())
+				})
 			}
 		case "esc":
 			if !m.OperationRunning {
@@ -178,7 +215,7 @@ func (m Model) viewUpgradeSync() string {
 		sb.WriteString("Press Enter to start.\n")
 
 	case m.UpgradeSyncPhase == "checking":
-		fmt.Fprintf(&sb, "%s Checking for updates...\n", styles.SpinnerChar(m.SpinnerFrame))
+		fmt.Fprintf(&sb, "%s Checking for updates...\n", m.Spinner.View())
 
 	case m.UpgradeSyncPhase == "syncing":
 		if len(m.UpdateResults) > 0 {
@@ -195,7 +232,7 @@ func (m Model) viewUpgradeSync() string {
 				fmt.Fprintf(&sb, " (%s → %s)\n", r.CurrentVersion, r.LatestRelease.TagName)
 			}
 		}
-		fmt.Fprintf(&sb, "\n%s Syncing configuration...\n", styles.SpinnerChar(m.SpinnerFrame))
+		fmt.Fprintf(&sb, "\n%s Syncing configuration...\n", m.Spinner.View())
 
 	case m.UpgradeSyncPhase == "done":
 		if len(m.UpdateResults) > 0 {
@@ -222,7 +259,7 @@ func (m Model) viewUpgradeSync() string {
 		}
 	}
 
-	sb.WriteString(styles.Help.Render("\nEnter start • Esc back"))
+	// help rendered centrally
 	return sb.String()
 }
 
@@ -247,6 +284,6 @@ func (m Model) viewModelConfig() string {
 	sb.WriteString("\n\n")
 	sb.WriteString("Adjust the AI model used for each SDD phase.\n\n")
 	sb.WriteString("Current preset: " + styles.Subtitle.Render(string(m.ModelPreset)) + "\n")
-	sb.WriteString(styles.Help.Render("\nEnter to configure • Esc back"))
+	// help rendered centrally
 	return sb.String()
 }

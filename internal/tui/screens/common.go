@@ -1,6 +1,8 @@
 package screens
 
 import (
+	"fmt"
+
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
 
@@ -79,4 +81,20 @@ type ClaudeModelPickerState struct {
 	Options  []string
 	Cursor   int
 	Selected int
+}
+
+// RenderScrollIndicator renders scroll indicators for a list that may overflow.
+// It shows "▲ N more above" and "▼ N more below" hints.
+func RenderScrollIndicator(total, visibleStart, visibleEnd int) string {
+	if total <= 0 || (visibleStart == 0 && visibleEnd >= total) {
+		return ""
+	}
+	result := ""
+	if visibleStart > 0 {
+		result += styles.Description.Render(fmt.Sprintf("  ▲ %d more above\n", visibleStart))
+	}
+	if visibleEnd < total {
+		result += styles.Description.Render(fmt.Sprintf("  ▼ %d more below\n", total-visibleEnd))
+	}
+	return result
 }

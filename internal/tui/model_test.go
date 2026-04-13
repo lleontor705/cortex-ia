@@ -32,8 +32,8 @@ func TestNew_DefaultValues(t *testing.T) {
 
 func TestWelcomeOptions_Count(t *testing.T) {
 	opts := welcomeOptions()
-	if len(opts) != 9 {
-		t.Errorf("len(welcomeOptions) = %d, want 9", len(opts))
+	if len(opts) != 10 {
+		t.Errorf("len(welcomeOptions) = %d, want 10", len(opts))
 	}
 }
 

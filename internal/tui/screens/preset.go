@@ -1,7 +1,6 @@
 package screens
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -10,8 +9,9 @@ import (
 
 // PresetData holds the data needed to render the preset selection screen.
 type PresetData struct {
-	Presets []model.PresetID
-	Cursor  int
+	Presets  []model.PresetID
+	Cursor   int
+	Selected model.PresetID
 }
 
 // RenderPreset renders the preset selection screen.
@@ -27,16 +27,11 @@ func RenderPreset(data PresetData) string {
 	}
 
 	for i, p := range data.Presets {
-		cursor := "  "
-		if i == data.Cursor {
-			cursor = styles.Cursor.Render("> ")
-		}
-
-		name := styles.Subtitle.Render(string(p))
-		desc := styles.Description.Render(" — " + descs[p])
-		fmt.Fprintf(&sb, "%s%s%s\n", cursor, name, desc)
+		label := string(p) + " — " + descs[p]
+		isSelected := p == data.Selected
+		isFocused := i == data.Cursor
+		sb.WriteString(RenderRadio(label, isSelected, isFocused))
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Enter select • Esc back"))
 	return sb.String()
 }

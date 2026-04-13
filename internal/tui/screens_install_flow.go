@@ -72,7 +72,7 @@ func (m Model) viewClaudeModelPicker() string {
 		fmt.Fprintf(&sb, "%s%s%s\n", cursor, name, desc)
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Enter select • Esc back"))
+	// help rendered centrally
 	return sb.String()
 }
 
@@ -119,7 +119,7 @@ func (m Model) viewSDDMode() string {
 		fmt.Fprintf(&sb, "%s%s %s\n", cursor, marker, opt.label)
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ toggle • Enter confirm • Esc back"))
+	// help rendered centrally
 	return sb.String()
 }
 
@@ -166,7 +166,7 @@ func (m Model) viewStrictTDD() string {
 		fmt.Fprintf(&sb, "%s%s %s\n", cursor, marker, opt.label)
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ toggle • Enter confirm • Esc back"))
+	// help rendered centrally
 	return sb.String()
 }
 
@@ -176,11 +176,13 @@ func (m Model) updateDependencyTree(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "enter":
-			// Load community skills before showing picker.
-			names := state.ListCommunitySkills(m.HomeDir)
-			m.AvailableSkills = make([]SkillItem, len(names))
-			for i, name := range names {
-				m.AvailableSkills[i] = SkillItem{Name: name, Selected: true}
+			// Load community skills before showing picker (only if not already loaded).
+			if len(m.AvailableSkills) == 0 {
+				names := state.ListCommunitySkills(m.HomeDir)
+				m.AvailableSkills = make([]SkillItem, len(names))
+				for i, name := range names {
+					m.AvailableSkills[i] = SkillItem{Name: name, Selected: true}
+				}
 			}
 			m.SkillCursor = 0
 			m.setScreen(ScreenSkillPicker)
@@ -206,26 +208,49 @@ func (m Model) viewDependencyTree() string {
 		fmt.Fprintf(&sb, "  %s%s\n", styles.Description.Render(prefix), styles.Selected.Render(string(id)))
 	}
 
-	sb.WriteString(styles.Help.Render("\nEnter to continue • Esc back"))
+	// help rendered centrally
 	return sb.String()
 }
 
 // --- Skill Picker ---
 
 func (m Model) updateSkillPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// When filter is active, delegate to filter input
+	if m.SkillFilter.Active {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "esc":
+				m.SkillFilter.Deactivate()
+				return m, nil
+			case "enter":
+				m.SkillFilter.Deactivate()
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.SkillFilter.Input, cmd = m.SkillFilter.Input.Update(msg)
+		visible := m.visibleSkills()
+		if m.SkillCursor >= len(visible) {
+			m.SkillCursor = max(len(visible)-1, 0)
+		}
+		return m, cmd
+	}
+
 	if key, ok := msg.(tea.KeyMsg); ok {
+		visible := m.visibleSkills()
 		switch key.String() {
 		case "up", "k":
 			if m.SkillCursor > 0 {
 				m.SkillCursor--
 			}
 		case "down", "j":
-			if m.SkillCursor < len(m.AvailableSkills)-1 {
+			if m.SkillCursor < len(visible)-1 {
 				m.SkillCursor++
 			}
 		case " ":
-			if m.SkillCursor < len(m.AvailableSkills) {
-				m.AvailableSkills[m.SkillCursor].Selected = !m.AvailableSkills[m.SkillCursor].Selected
+			if m.SkillCursor < len(visible) {
+				idx := visible[m.SkillCursor]
+				m.AvailableSkills[idx].Selected = !m.AvailableSkills[idx].Selected
 			}
 		case "a":
 			allSelected := true
@@ -238,20 +263,35 @@ func (m Model) updateSkillPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for i := range m.AvailableSkills {
 				m.AvailableSkills[i].Selected = !allSelected
 			}
+		case "/":
+			m.SkillFilter.Activate()
+			return m, m.SkillFilter.Input.Focus()
 		case "enter":
-			// Collect selected skills into SkillSelection.
 			m.SkillSelection = nil
 			for _, s := range m.AvailableSkills {
 				if s.Selected {
 					m.SkillSelection = append(m.SkillSelection, model.SkillID(s.Name))
 				}
 			}
+			m.SkillFilter.Deactivate()
 			m.setScreen(ScreenReview)
 		case "esc":
+			m.SkillFilter.Deactivate()
 			m.setScreen(ScreenDependencyTree)
 		}
 	}
 	return m, nil
+}
+
+// visibleSkills returns indices of skills matching the current filter.
+func (m Model) visibleSkills() []int {
+	var indices []int
+	for i, s := range m.AvailableSkills {
+		if m.SkillFilter.Matches(s.Name) {
+			indices = append(indices, i)
+		}
+	}
+	return indices
 }
 
 func (m Model) viewSkillPicker() string {
@@ -266,7 +306,15 @@ func (m Model) viewSkillPicker() string {
 		sb.WriteString("Or use " + styles.Subtitle.Render("Create your own Agent") + " from the main menu.\n")
 	} else {
 		fmt.Fprintf(&sb, "Found %d community skill(s). Toggle which to include:\n\n", len(m.AvailableSkills))
-		for i, s := range m.AvailableSkills {
+
+		// Show filter input
+		if m.SkillFilter.Active || m.SkillFilter.Query() != "" {
+			sb.WriteString(m.SkillFilter.View())
+		}
+
+		visible := m.visibleSkills()
+		for i, idx := range visible {
+			s := m.AvailableSkills[idx]
 			cursor := "  "
 			if i == m.SkillCursor {
 				cursor = styles.Cursor.Render("> ")
@@ -277,8 +325,11 @@ func (m Model) viewSkillPicker() string {
 			}
 			fmt.Fprintf(&sb, "%s%s %s\n", cursor, check, s.Name)
 		}
+
+		if len(visible) == 0 && m.SkillFilter.Query() != "" {
+			sb.WriteString(styles.Description.Render("  No matching skills.\n"))
+		}
 	}
 
-	sb.WriteString(styles.Help.Render("\n↑↓ navigate • Space toggle • a all • Enter confirm • Esc back"))
 	return sb.String()
 }
