@@ -23,23 +23,17 @@ var linearRoutes = map[Screen]Route{
 	ScreenComplete:          {},
 
 	// Backup management
-	ScreenBackups:        {Backward: ScreenWelcome},
-	ScreenRestoreConfirm: {Backward: ScreenBackups},
-	ScreenRestoreResult:  {Backward: ScreenBackups},
-	ScreenDeleteConfirm:  {Backward: ScreenBackups},
-	ScreenDeleteResult:   {Backward: ScreenBackups},
-	ScreenRenameBackup:   {Backward: ScreenBackups},
+	ScreenBackups:      {Backward: ScreenWelcome},
+	ScreenRenameBackup: {Backward: ScreenBackups},
 
 	// Post-install operations
 	ScreenUpgrade:     {Backward: ScreenWelcome},
 	ScreenSync:        {Backward: ScreenWelcome},
 	ScreenUpgradeSync: {Backward: ScreenWelcome},
-	ScreenModelConfig: {Backward: ScreenWelcome},
 
 	// Profile management
 	ScreenProfiles:      {Backward: ScreenWelcome},
 	ScreenProfileCreate: {Backward: ScreenProfiles},
-	ScreenProfileDelete: {Backward: ScreenProfiles},
 
 	// Agent builder
 	ScreenAgentBuilderEngine:     {Backward: ScreenWelcome},

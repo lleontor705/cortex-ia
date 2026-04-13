@@ -249,14 +249,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateComplete(msg)
 	case ScreenBackups:
 		return m.updateBackups(msg)
-	case ScreenRestoreConfirm:
-		return m.updateRestoreConfirm(msg)
-	case ScreenRestoreResult:
-		return m.updateRestoreResult(msg)
-	case ScreenDeleteConfirm:
-		return m.updateDeleteConfirm(msg)
-	case ScreenDeleteResult:
-		return m.updateDeleteResult(msg)
 	case ScreenRenameBackup:
 		return m.updateRenameBackup(msg)
 	case ScreenUpgrade:
@@ -265,14 +257,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSync(msg)
 	case ScreenUpgradeSync:
 		return m.updateUpgradeSync(msg)
-	case ScreenModelConfig:
-		return m.updateModelConfig(msg)
 	case ScreenProfiles:
 		return m.updateProfiles(msg)
 	case ScreenProfileCreate:
 		return m.updateProfileCreate(msg)
-	case ScreenProfileDelete:
-		return m.updateProfileDelete(msg)
 	case ScreenAgentBuilderEngine:
 		return m.updateAgentBuilderEngine(msg)
 	case ScreenAgentBuilderPrompt:
@@ -333,14 +321,6 @@ func (m Model) View() string {
 		content = m.viewComplete()
 	case ScreenBackups:
 		content = m.viewBackups()
-	case ScreenRestoreConfirm:
-		content = m.viewRestoreConfirm()
-	case ScreenRestoreResult:
-		content = m.viewRestoreResult()
-	case ScreenDeleteConfirm:
-		content = m.viewDeleteConfirm()
-	case ScreenDeleteResult:
-		content = m.viewDeleteResult()
 	case ScreenRenameBackup:
 		content = m.viewRenameBackup()
 	case ScreenUpgrade:
@@ -349,14 +329,10 @@ func (m Model) View() string {
 		content = m.viewSync()
 	case ScreenUpgradeSync:
 		content = m.viewUpgradeSync()
-	case ScreenModelConfig:
-		content = m.viewModelConfig()
 	case ScreenProfiles:
 		content = m.viewProfiles()
 	case ScreenProfileCreate:
 		content = m.viewProfileCreate()
-	case ScreenProfileDelete:
-		content = m.viewProfileDelete()
 	case ScreenAgentBuilderEngine:
 		content = m.viewAgentBuilderEngine()
 	case ScreenAgentBuilderPrompt:
@@ -447,8 +423,14 @@ func (m Model) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case WelcomeUpgrade:
 					m.setScreen(ScreenUpgrade)
 				case WelcomeSync:
+					m.SyncErr = nil
+					m.SyncFilesChanged = 0
+					m.loadProfilesFromDisk()
 					m.setScreen(ScreenSync)
 				case WelcomeUpgradeSync:
+					m.UpgradeSyncPhase = ""
+					m.SyncErr = nil
+					m.UpgradeErr = nil
 					m.setScreen(ScreenUpgradeSync)
 				case WelcomeModelConfig:
 					m.ModelConfigMode = true

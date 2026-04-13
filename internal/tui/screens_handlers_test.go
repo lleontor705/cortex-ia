@@ -413,26 +413,29 @@ func TestBackups_Esc(t *testing.T) {
 	}
 }
 
-func TestRestoreConfirm_Yes(t *testing.T) {
+func TestRestoreDialog_Yes(t *testing.T) {
 	restored := false
 	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenRestoreConfirm
+	m.Screen = ScreenBackups
 	m.SelectedBackup = backup.Manifest{ID: "b1"}
+	m.ActiveDialog = Dialog{Type: DialogRestoreConfirm, Title: "Confirm", Message: "Restore?"}
 	m.RestoreFn = func(manifest backup.Manifest) error {
 		restored = true
 		return nil
 	}
 
 	result, cmd := m.Update(keyMsg("y"))
-	m = result.(Model)
-	if !m.OperationRunning {
+	rm := result.(Model)
+	if rm.ActiveDialog.Type != DialogNone {
+		t.Error("dialog should be closed after confirm")
+	}
+	if !rm.OperationRunning {
 		t.Error("OperationRunning should be true")
 	}
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd")
 	}
 
-	// Execute the command to trigger the restore function
 	msg := cmd()
 	if !restored {
 		t.Error("RestoreFn should have been called")
@@ -442,30 +445,21 @@ func TestRestoreConfirm_Yes(t *testing.T) {
 	}
 }
 
-func TestRestoreConfirm_Esc(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenRestoreConfirm
-
-	m = updateModel(t, m, "esc")
-	if m.Screen != ScreenBackups {
-		t.Errorf("Screen = %v, want ScreenBackups", m.Screen)
-	}
-}
-
-func TestDeleteConfirm_Yes(t *testing.T) {
+func TestDeleteDialog_Yes(t *testing.T) {
 	deleted := false
 	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenDeleteConfirm
+	m.Screen = ScreenBackups
 	m.SelectedBackup = backup.Manifest{ID: "b1"}
+	m.ActiveDialog = Dialog{Type: DialogDeleteConfirm, Title: "Confirm", Message: "Delete?"}
 	m.DeleteBackupFn = func(manifest backup.Manifest) error {
 		deleted = true
 		return nil
 	}
 
 	result, cmd := m.Update(keyMsg("y"))
-	m = result.(Model)
-	if !m.OperationRunning {
-		t.Error("OperationRunning should be true")
+	rm := result.(Model)
+	if rm.ActiveDialog.Type != DialogNone {
+		t.Error("dialog should be closed after confirm")
 	}
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd")
@@ -480,13 +474,14 @@ func TestDeleteConfirm_Yes(t *testing.T) {
 	}
 }
 
-func TestDeleteResult_Enter(t *testing.T) {
+func TestDialog_Esc_Dismisses(t *testing.T) {
 	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenDeleteResult
+	m.ActiveDialog = Dialog{Type: DialogRestoreConfirm, Title: "Test"}
 
-	m = updateModel(t, m, "enter")
-	if m.Screen != ScreenBackups {
-		t.Errorf("Screen = %v, want ScreenBackups", m.Screen)
+	result, _ := m.Update(keyMsg("esc"))
+	rm := result.(Model)
+	if rm.ActiveDialog.Type != DialogNone {
+		t.Error("dialog should be dismissed on esc")
 	}
 }
 
@@ -548,21 +543,23 @@ func TestProfileCreate_Esc(t *testing.T) {
 	}
 }
 
-func TestProfileDelete_Yes(t *testing.T) {
+func TestProfileDeleteDialog_Yes(t *testing.T) {
 	m := New(nil, t.TempDir(), "test")
-	m.Screen = ScreenProfileDelete
+	m.Screen = ScreenProfiles
 	m.Profiles = []model.Profile{{Name: "to-delete"}, {Name: "keep"}}
 	m.Cursor = 0
+	m.ActiveDialog = Dialog{Type: DialogProfileDelete, Title: "Delete", Message: "Delete?"}
 
-	m = updateModel(t, m, "y")
-	if m.Screen != ScreenProfiles {
-		t.Errorf("Screen = %v, want ScreenProfiles", m.Screen)
+	result, _ := m.Update(keyMsg("y"))
+	rm := result.(Model)
+	if rm.ActiveDialog.Type != DialogNone {
+		t.Error("dialog should be dismissed")
 	}
-	if len(m.Profiles) != 1 {
-		t.Fatalf("len(Profiles) = %d, want 1", len(m.Profiles))
+	if len(rm.Profiles) != 1 {
+		t.Fatalf("len(Profiles) = %d, want 1", len(rm.Profiles))
 	}
-	if m.Profiles[0].Name != "keep" {
-		t.Errorf("remaining profile = %q, want %q", m.Profiles[0].Name, "keep")
+	if rm.Profiles[0].Name != "keep" {
+		t.Errorf("remaining profile = %q, want %q", rm.Profiles[0].Name, "keep")
 	}
 }
 
@@ -811,18 +808,8 @@ func TestUpgradeSync_EscWhenIdle(t *testing.T) {
 	}
 }
 
-func TestModelConfig_Enter(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenModelConfig
-
-	m = updateModel(t, m, "enter")
-	if m.Screen != ScreenClaudeModelPicker {
-		t.Errorf("Screen = %v, want ScreenClaudeModelPicker", m.Screen)
-	}
-	if !m.ModelConfigMode {
-		t.Error("ModelConfigMode should be true")
-	}
-}
+// ModelConfig screen was removed — Welcome goes directly to ClaudeModelPicker.
+// See TestClaudeModelPicker_Enter_ModelConfigMode for the config mode test.
 
 // ---------------------------------------------------------------------------
 // Backup handlers — additional coverage

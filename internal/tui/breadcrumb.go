@@ -37,14 +37,6 @@ func screenName(s Screen) string {
 		return "Complete"
 	case ScreenBackups:
 		return "Backups"
-	case ScreenRestoreConfirm:
-		return "Restore"
-	case ScreenRestoreResult:
-		return "Result"
-	case ScreenDeleteConfirm:
-		return "Delete"
-	case ScreenDeleteResult:
-		return "Result"
 	case ScreenRenameBackup:
 		return "Rename"
 	case ScreenUpgrade:
@@ -53,14 +45,10 @@ func screenName(s Screen) string {
 		return "Sync"
 	case ScreenUpgradeSync:
 		return "Upgrade+Sync"
-	case ScreenModelConfig:
-		return "Models"
 	case ScreenProfiles:
 		return "Profiles"
 	case ScreenProfileCreate:
 		return "Create"
-	case ScreenProfileDelete:
-		return "Delete"
 	case ScreenAgentBuilderEngine:
 		return "Engine"
 	case ScreenAgentBuilderPrompt:

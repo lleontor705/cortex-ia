@@ -263,27 +263,4 @@ func (m Model) viewUpgradeSync() string {
 	return sb.String()
 }
 
-// --- Model Config ---
-
-func (m Model) updateModelConfig(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "enter":
-			m.ModelConfigMode = true
-			m.setScreen(ScreenClaudeModelPicker)
-		case "esc":
-			m.setScreen(ScreenWelcome)
-		}
-	}
-	return m, nil
-}
-
-func (m Model) viewModelConfig() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Configure Models"))
-	sb.WriteString("\n\n")
-	sb.WriteString("Adjust the AI model used for each SDD phase.\n\n")
-	sb.WriteString("Current preset: " + styles.Subtitle.Render(string(m.ModelPreset)) + "\n")
-	// help rendered centrally
-	return sb.String()
-}
+// ModelConfig screen removed — Welcome now goes directly to ClaudeModelPicker.

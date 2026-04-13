@@ -38,18 +38,12 @@ const (
 	ScreenInstalling
 	ScreenComplete
 	ScreenBackups
-	ScreenRestoreConfirm
-	ScreenRestoreResult
-	ScreenDeleteConfirm
-	ScreenDeleteResult
 	ScreenRenameBackup
 	ScreenUpgrade
 	ScreenSync
 	ScreenUpgradeSync
-	ScreenModelConfig
 	ScreenProfiles
 	ScreenProfileCreate
-	ScreenProfileDelete
 	ScreenAgentBuilderEngine
 	ScreenAgentBuilderPrompt
 	ScreenAgentBuilderSDD

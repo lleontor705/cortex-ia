@@ -10,7 +10,7 @@ func TestScreenName_AllScreensHaveNames(t *testing.T) {
 		ScreenWelcome, ScreenDetection, ScreenAgents, ScreenPersona,
 		ScreenPreset, ScreenClaudeModelPicker, ScreenSDDMode, ScreenStrictTDD,
 		ScreenDependencyTree, ScreenSkillPicker, ScreenReview, ScreenInstalling,
-		ScreenComplete, ScreenBackups, ScreenRestoreConfirm, ScreenDeleteConfirm,
+		ScreenComplete, ScreenBackups,
 		ScreenRenameBackup, ScreenUpgrade, ScreenSync, ScreenProfiles,
 		ScreenAgentBuilderEngine, ScreenAgentBuilderPrompt,
 	}
@@ -50,8 +50,8 @@ func TestRenderBreadcrumb_SubFlow(t *testing.T) {
 }
 
 func TestRenderBreadcrumb_DeepSubFlow(t *testing.T) {
-	bc := renderBreadcrumb(ScreenRestoreConfirm)
-	if !strings.Contains(bc, "Restore") {
-		t.Errorf("deep sub-flow breadcrumb should contain 'Restore', got %q", bc)
+	bc := renderBreadcrumb(ScreenRenameBackup)
+	if !strings.Contains(bc, "Rename") {
+		t.Errorf("deep sub-flow breadcrumb should contain 'Rename', got %q", bc)
 	}
 }
