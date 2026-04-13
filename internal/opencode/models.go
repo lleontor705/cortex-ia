@@ -210,13 +210,8 @@ func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssign
 			continue
 		}
 
-		// Prefix sub-agents with "sdd-" for OpenCode config
-		configName := agentName
-		if agentName != "orchestrator" {
-			configName = "sdd-" + agentName
-		} else {
-			configName = "sdd-orchestrator"
-		}
+		// All SDD agents use "sdd-" prefix in OpenCode config
+		configName := "sdd-" + agentName
 
 		agentConf, ok := agentSection[configName].(map[string]interface{})
 		if !ok {
