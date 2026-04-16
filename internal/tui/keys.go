@@ -93,7 +93,7 @@ func globalBindings() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("ctrl+h"), key.WithHelp("ctrl+h", "home")),
 		key.NewBinding(key.WithKeys("ctrl+b"), key.WithHelp("ctrl+b", "backups")),
-		key.NewBinding(key.WithKeys("ctrl+m"), key.WithHelp("ctrl+m", "maintenance")),
+		key.NewBinding(key.WithKeys("alt+m"), key.WithHelp("alt+m", "maintenance")),
 		key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "theme")),
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),

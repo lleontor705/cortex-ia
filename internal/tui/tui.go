@@ -136,8 +136,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setScreen(ScreenBackups)
 				return m, nil
 			}
-		case "ctrl+m":
-			// Quick jump to maintenance
+		case "alt+m":
+			// Quick jump to maintenance (alt+m — ctrl+m collides with Enter in terminals)
 			if m.Screen != ScreenWelcome && m.Screen != ScreenInstalling &&
 				!m.PipelineRunning && !m.OperationRunning {
 				m.loadProfilesFromDisk()
