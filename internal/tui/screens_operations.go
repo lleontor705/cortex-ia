@@ -85,6 +85,18 @@ func (m Model) updateMaintenanceUpgrade(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.OperationRunning {
 				m.OperationRunning = true
 				m.UpdateCheckDone = false
+				m.UpgradeSyncChain = false
+				return m, tea.Batch(func() tea.Msg {
+					result := update.Check(m.Version)
+					return UpdateCheckResultMsg{Results: []update.CheckResult{result}}
+				})
+			}
+		case "s":
+			// Upgrade + Sync: check updates then auto-run sync
+			if !m.OperationRunning && m.SyncFn != nil {
+				m.OperationRunning = true
+				m.UpdateCheckDone = false
+				m.UpgradeSyncChain = true
 				return m, tea.Batch(func() tea.Msg {
 					result := update.Check(m.Version)
 					return UpdateCheckResultMsg{Results: []update.CheckResult{result}}
@@ -132,6 +144,10 @@ func (m Model) viewMaintenanceUpgrade() string {
 		fmt.Fprintf(&sb, "%s Checking for updates...\n", m.Spinner.View())
 	} else if !m.UpdateCheckDone {
 		sb.WriteString("Press Enter to check for updates.\n")
+		if m.SyncFn != nil {
+			sb.WriteString(styles.Description.Render("Press s to check updates and auto-sync configs"))
+			sb.WriteString("\n")
+		}
 	} else if len(m.UpdateResults) > 0 {
 		r := m.UpdateResults[0]
 		if r.Error != nil {
@@ -182,13 +198,20 @@ func (m Model) updateMaintenanceSync(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setScreen(ScreenProfileCreate)
 			return m, nil
 		case "d":
-			// Delete selected profile
-			if m.SelectedProfile != "" {
+			// Delete profile at cursor (falls back to SelectedProfile for compat)
+			target := ""
+			if m.Cursor >= 0 && m.Cursor < len(m.Profiles) {
+				target = m.Profiles[m.Cursor].Name
+			} else if m.SelectedProfile != "" {
+				target = m.SelectedProfile
+			}
+			if target != "" {
 				m.ProfileErr = nil
+				m.ProfileDeleteTarget = target
 				m.ActiveDialog = Dialog{
 					Type:    DialogProfileDelete,
 					Title:   "Delete Profile",
-					Message: "Delete profile " + m.SelectedProfile + "?",
+					Message: "Delete profile " + target + "?",
 					Warning: "This action cannot be undone.",
 				}
 			}
@@ -213,13 +236,16 @@ func (m Model) updateMaintenanceSync(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if m.SelectedProfile == "" && len(m.Profiles) > 0 {
 					m.SelectedProfile = m.Profiles[len(m.Profiles)-1].Name
+					m.Cursor = len(m.Profiles) - 1
 				} else {
 					for i, p := range m.Profiles {
 						if p.Name == m.SelectedProfile {
 							if i > 0 {
 								m.SelectedProfile = m.Profiles[i-1].Name
+								m.Cursor = i - 1
 							} else {
 								m.SelectedProfile = ""
+								m.Cursor = -1
 							}
 							break
 						}
@@ -233,13 +259,16 @@ func (m Model) updateMaintenanceSync(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if m.SelectedProfile == "" && len(m.Profiles) > 0 {
 					m.SelectedProfile = m.Profiles[0].Name
+					m.Cursor = 0
 				} else {
 					for i, p := range m.Profiles {
 						if p.Name == m.SelectedProfile {
 							if i+1 < len(m.Profiles) {
 								m.SelectedProfile = m.Profiles[i+1].Name
+								m.Cursor = i + 1
 							} else {
 								m.SelectedProfile = ""
+								m.Cursor = -1
 							}
 							break
 						}

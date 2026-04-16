@@ -301,6 +301,7 @@ type Model struct {
 	SyncFilesChanged int
 	SyncErr          error
 	UpgradeErr       error
+	UpgradeSyncChain bool // when true, after update check completes auto-run sync
 
 	// Maintenance screen
 	MaintenanceTab MaintenanceTab
@@ -309,10 +310,11 @@ type Model struct {
 	ModelConfigTab ModelConfigTab
 
 	// Profiles
-	Profiles         []model.Profile
-	SelectedProfile  string
-	ProfileInput     textinput.Model
-	ProfileErr       error
+	Profiles            []model.Profile
+	SelectedProfile     string
+	ProfileInput        textinput.Model
+	ProfileErr          error
+	ProfileDeleteTarget string // name of profile pending deletion (set when dialog opens)
 
 	// Agent builder
 	AgentBuilderEngine    model.AgentID

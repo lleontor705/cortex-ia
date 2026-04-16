@@ -53,18 +53,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case DialogProfileDelete:
 					m.ActiveDialog = Dialog{}
-					// Remove the profile by name, persist, THEN clear state
+					// Delete the target profile (set when dialog was opened)
+					target := m.ProfileDeleteTarget
+					m.ProfileDeleteTarget = ""
 					for i, p := range m.Profiles {
-						if p.Name == m.SelectedProfile {
-							updated := append(m.Profiles[:i], m.Profiles[i+1:]...)
-							// Persist first — if save fails, don't corrupt in-memory state
+						if p.Name == target {
 							old := m.Profiles
-							m.Profiles = updated
+							m.Profiles = append(m.Profiles[:i], m.Profiles[i+1:]...)
 							m.saveProfilesToDisk()
 							if m.ProfileErr != nil {
-								m.Profiles = old // rollback
+								m.Profiles = old // rollback on save failure
 							} else {
-								m.SelectedProfile = ""
+								// Clear SelectedProfile if we just deleted it
+								if m.SelectedProfile == target {
+									m.SelectedProfile = ""
+								}
+								// Clamp cursor to new bounds
+								if m.Cursor >= len(m.Profiles) {
+									m.Cursor = max(len(m.Profiles)-1, 0)
+								}
 							}
 							break
 						}
@@ -256,6 +263,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.UpdateResults = msg.Results
 		m.UpdateCheckDone = true
 		m.OperationRunning = false
+		// If chain mode (Upgrade+Sync), auto-run sync after check completes
+		if m.UpgradeSyncChain && m.SyncFn != nil {
+			m.UpgradeSyncChain = false
+			m.OperationRunning = true
+			profileName := m.SelectedProfile
+			return m, func() tea.Msg {
+				changed, err := m.SyncFn(profileName)
+				return SyncDoneMsg{FilesChanged: changed, Err: err}
+			}
+		}
 		return m, nil
 	}
 
@@ -692,9 +709,9 @@ func (m Model) viewPersona() string {
 // --- Review screen ---
 
 // ReviewCursor tracks which item has focus on the review screen.
-// 0 = SDD toggle, 1 = TDD toggle, 2+ = confirm/back actions.
 const (
-	reviewCursorSDD = iota
+	reviewCursorPreset = iota
+	reviewCursorSDD
 	reviewCursorTDD
 	reviewCursorConfirm
 )
@@ -711,8 +728,18 @@ func (m Model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Cursor++
 			}
 		case " ":
-			// Toggle SDD or TDD based on cursor
+			// Toggle based on cursor
 			switch m.Cursor {
+			case reviewCursorPreset:
+				// Toggle between Full and Minimal preset
+				if m.Preset == model.PresetFull {
+					m.Preset = model.PresetMinimal
+				} else {
+					m.Preset = model.PresetFull
+				}
+				// Re-resolve components for the new preset
+				components := catalog.ComponentsForPreset(m.Preset)
+				m.Resolved = catalog.ResolveDeps(components)
 			case reviewCursorSDD:
 				m.SDDEnabled = !m.SDDEnabled
 			case reviewCursorTDD:
@@ -808,6 +835,22 @@ func (m Model) viewReview() string {
 	sb.WriteString("  ")
 	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("Model: %s", m.ModelPreset)))
 	sb.WriteString("\n\n")
+
+	// Preset toggle (Full / Minimal)
+	presetCursor := "  "
+	if m.Cursor == reviewCursorPreset {
+		presetCursor = styles.Cursor.Render("> ")
+	}
+	presetLabel := "Full"
+	presetDesc := "All 8 components (Cortex, ForgeSpec, SDD, Mailbox, Context7, Conventions, GGA, Skills)"
+	if m.Preset == model.PresetMinimal {
+		presetLabel = "Minimal"
+		presetDesc = "Cortex + ForgeSpec + Context7 + SDD only"
+	}
+	fmt.Fprintf(&sb, "%s%s Preset: %s %s\n", presetCursor,
+		styles.Selected.Render("●"),
+		styles.Subtitle.Render(presetLabel),
+		styles.Description.Render("— "+presetDesc))
 
 	// SDD toggle
 	sddCursor := "  "

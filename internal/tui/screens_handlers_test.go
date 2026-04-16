@@ -476,6 +476,7 @@ func TestProfileDeleteDialog_Yes(t *testing.T) {
 	m.MaintenanceTab = MaintenanceTabSync
 	m.Profiles = []model.Profile{{Name: "to-delete"}, {Name: "keep"}}
 	m.SelectedProfile = "to-delete"
+	m.ProfileDeleteTarget = "to-delete"
 	m.ActiveDialog = Dialog{Type: DialogProfileDelete, Title: "Delete", Message: "Delete?"}
 
 	result, _ := m.Update(keyMsg("y"))
