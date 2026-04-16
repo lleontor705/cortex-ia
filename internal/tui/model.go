@@ -12,8 +12,10 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agentbuilder"
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/backup"
+	"github.com/lleontor705/cortex-ia/internal/catalog"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/internal/state"
 	"github.com/lleontor705/cortex-ia/internal/system"
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 	"github.com/lleontor705/cortex-ia/internal/update"
@@ -28,31 +30,22 @@ const (
 	ScreenDetection
 	ScreenAgents
 	ScreenPersona
-	ScreenPreset
 	ScreenClaudeModelPicker
-	ScreenSDDMode
-	ScreenStrictTDD
-	ScreenDependencyTree
 	ScreenSkillPicker
 	ScreenReview
 	ScreenInstalling
 	ScreenComplete
 	ScreenBackups
 	ScreenRenameBackup
-	ScreenUpgrade
-	ScreenSync
-	ScreenUpgradeSync
-	ScreenProfiles
+	ScreenMaintenance
 	ScreenProfileCreate
 	ScreenAgentBuilderEngine
 	ScreenAgentBuilderPrompt
 	ScreenAgentBuilderSDD
-	ScreenAgentBuilderSDDPhase
 	ScreenAgentBuilderGenerating
 	ScreenAgentBuilderPreview
-	ScreenAgentBuilderInstalling
 	ScreenAgentBuilderComplete
-	ScreenOpenCodeModels
+	ScreenModelConfig
 	ScreenOpenCodeModelPicker
 )
 
@@ -97,6 +90,18 @@ type SyncDoneMsg struct {
 	Err          error
 }
 
+// RepairDoneMsg is sent when a repair operation completes.
+type RepairDoneMsg struct {
+	Result pipeline.InstallResult
+	Err    error
+}
+
+// DryRunDoneMsg is sent when a dry-run preview completes.
+type DryRunDoneMsg struct {
+	Result pipeline.InstallResult
+	Err    error
+}
+
 // AgentBuilderGeneratedMsg is sent when agent generation completes.
 type AgentBuilderGeneratedMsg struct {
 	Err error
@@ -130,6 +135,9 @@ type ListBackupsFn func() ([]backup.Manifest, []string)
 // UpgradeFunc performs tool upgrades.
 type UpgradeFunc func(results []update.CheckResult) error
 
+// RepairFunc re-runs installation from saved state.
+type RepairFunc func() (pipeline.InstallResult, error)
+
 // SyncFunc syncs managed configuration files.
 // profileName is the name of a saved profile whose model assignments to apply.
 type SyncFunc func(profileName string) (int, error)
@@ -146,8 +154,9 @@ type AgentItem struct {
 
 // SkillItem represents a community skill in the picker.
 type SkillItem struct {
-	Name     string
-	Selected bool
+	Name        string
+	Description string
+	Selected    bool
 }
 
 // --- Welcome menu ---
@@ -157,14 +166,10 @@ type WelcomeOption int
 
 const (
 	WelcomeInstall WelcomeOption = iota
-	WelcomeUpgrade
-	WelcomeSync
-	WelcomeUpgradeSync
+	WelcomeMaintenance
 	WelcomeModelConfig
-	WelcomeProfiles
 	WelcomeAgentBuilder
 	WelcomeBackups
-	WelcomeOpenCodeModels
 	WelcomeQuit
 )
 
@@ -172,14 +177,10 @@ const (
 func welcomeOptions() []WelcomeOption {
 	return []WelcomeOption{
 		WelcomeInstall,
-		WelcomeUpgrade,
-		WelcomeSync,
-		WelcomeUpgradeSync,
+		WelcomeMaintenance,
 		WelcomeModelConfig,
-		WelcomeProfiles,
 		WelcomeAgentBuilder,
 		WelcomeBackups,
-		WelcomeOpenCodeModels,
 		WelcomeQuit,
 	}
 }
@@ -189,27 +190,27 @@ func welcomeLabel(opt WelcomeOption) string {
 	switch opt {
 	case WelcomeInstall:
 		return "Install ecosystem"
-	case WelcomeUpgrade:
-		return "Upgrade tools"
-	case WelcomeSync:
-		return "Sync configs"
-	case WelcomeUpgradeSync:
-		return "Upgrade + Sync"
+	case WelcomeMaintenance:
+		return "Maintenance"
 	case WelcomeModelConfig:
 		return "Configure models"
 	case WelcomeAgentBuilder:
-		return "Create your own Agent"
-	case WelcomeProfiles:
-		return "Manage profiles"
+		return "Agent Builder"
 	case WelcomeBackups:
 		return "Manage backups"
-	case WelcomeOpenCodeModels:
-		return "OpenCode models"
 	case WelcomeQuit:
 		return "Quit"
 	}
 	return ""
 }
+
+// MaintenanceTab identifies the active tab on the Maintenance screen.
+type MaintenanceTab int
+
+const (
+	MaintenanceTabUpgrade MaintenanceTab = iota
+	MaintenanceTabSync
+)
 
 // --- System info cache ---
 
@@ -230,6 +231,7 @@ type Model struct {
 	Width          int
 	Height         int
 	Cursor         int
+	SavedCursor    int
 	Version        string
 
 	// Bubbles components
@@ -243,18 +245,19 @@ type Model struct {
 
 	// Toast notification
 	ActiveToast Toast
+	Toasts      ToastQueue
 
 
 	// Filters
-	AgentFilter FilterInput
-	SkillFilter FilterInput
+	AgentFilter  FilterInput
+	SkillFilter  FilterInput
+	BackupFilter FilterInput
 
 	// Core state
 	Registry *agents.Registry
 	HomeDir  string
 	Agents   []AgentItem
 	Preset   model.PresetID
-	Presets  []model.PresetID
 	Personas []model.PersonaID
 	Persona  model.PersonaID
 	Resolved []model.ComponentID
@@ -266,9 +269,16 @@ type Model struct {
 	ClaudeModelCursor  int
 	SDDEnabled         bool
 	StrictTDDEnabled   bool
+	QuickInstall       bool
+	DryRunResult       *pipeline.InstallResult
+	ConfigExported     bool
+	FirstRun           bool
 	SkillSelection     []model.SkillID
 	AvailableSkills    []SkillItem
 	SkillCursor        int
+
+	// Inline validation error (cleared on screen change)
+	ValidationErr string
 
 	// Installation
 	Progress    ProgressState
@@ -291,16 +301,20 @@ type Model struct {
 	SyncFilesChanged int
 	SyncErr          error
 	UpgradeErr       error
-	UpgradeSyncPhase string // "", "checking", "syncing", "done"
+	UpgradeSyncChain bool // when true, after update check completes auto-run sync
 
-	// Model config mode
-	ModelConfigMode bool
+	// Maintenance screen
+	MaintenanceTab MaintenanceTab
+
+	// Model config screen
+	ModelConfigTab ModelConfigTab
 
 	// Profiles
-	Profiles         []model.Profile
-	SelectedProfile  string
-	ProfileInput     textinput.Model
-	ProfileErr       error
+	Profiles            []model.Profile
+	SelectedProfile     string
+	ProfileInput        textinput.Model
+	ProfileErr          error
+	ProfileDeleteTarget string // name of profile pending deletion (set when dialog opens)
 
 	// Agent builder
 	AgentBuilderEngine    model.AgentID
@@ -319,6 +333,7 @@ type Model struct {
 	OCModelFilter       FilterInput
 	OCSelectedAgent     string
 	OCErr               error
+	OCSavedAssignments  model.OpenCodeModelAssignments
 
 	// Pipeline tracking
 	PipelineRunning  bool
@@ -333,6 +348,7 @@ type Model struct {
 	ListBackupsFn  ListBackupsFn
 	UpgradeFn      UpgradeFunc
 	SyncFn         SyncFunc
+	RepairFn       RepairFunc
 
 	Quitting bool
 }
@@ -378,12 +394,17 @@ func New(registry *agents.Registry, homeDir, version string) Model {
 	h.Styles.FullKey = lipgloss.NewStyle().Foreground(styles.Secondary).Bold(true)
 	h.Styles.FullDesc = lipgloss.NewStyle().Foreground(styles.Muted)
 
+	// Detect first run
+	_, stateErr := state.Load(homeDir)
+	isFirstRun := stateErr != nil
+
 	return Model{
 		Screen:            ScreenWelcome,
 		Registry:          registry,
 		HomeDir:           homeDir,
 		Version:           version,
-		Presets:           []model.PresetID{model.PresetFull, model.PresetMinimal},
+		FirstRun:          isFirstRun,
+		Preset:            model.PresetFull,
 		Personas:          []model.PersonaID{model.PersonaProfessional, model.PersonaMentor, model.PersonaMinimal},
 		Persona:           model.PersonaProfessional,
 		SDDEnabled:        true,
@@ -393,6 +414,7 @@ func New(registry *agents.Registry, homeDir, version string) Model {
 		Keys:              DefaultKeyMap(),
 		AgentFilter:          NewFilterInput(),
 		SkillFilter:          NewFilterInput(),
+		BackupFilter:         NewFilterInput(),
 		OCModelFilter:        NewFilterInput(),
 		BackupRenameInput:    newTextInput("Enter description..."),
 		ProfileInput:         newTextInput("Enter profile name..."),
@@ -418,6 +440,58 @@ func (m *Model) setScreen(s Screen) {
 	m.PreviousScreen = m.Screen
 	m.Screen = s
 	m.Cursor = 0
+	m.ValidationErr = ""
+}
+
+// setScreenKeepCursor saves the current cursor position before navigating to a child screen.
+func (m *Model) setScreenKeepCursor(s Screen) {
+	m.SavedCursor = m.Cursor
+	m.setScreen(s)
+}
+
+// restoreScreen returns to a screen and restores the saved cursor position.
+func (m *Model) restoreScreen(s Screen) {
+	m.setScreen(s)
+	m.Cursor = m.SavedCursor
+}
+
+// exportConfig saves the current installation config to a JSON file.
+func (m *Model) exportConfig() error {
+	cfg := model.ExportConfig{
+		Agents:          m.SelectedAgentIDs(),
+		Preset:          m.Preset,
+		Persona:         m.Persona,
+		ModelPreset:     m.ModelPreset,
+		SDDEnabled:      m.SDDEnabled,
+		StrictTDD:       m.StrictTDDEnabled,
+		CommunitySkills: m.SkillSelection,
+	}
+	return state.SaveExportConfig(m.HomeDir, cfg)
+}
+
+// applyQuickDefaults sets sensible defaults for a quick install:
+// Persona=Professional, Model=Balanced/Sonnet, SDD=on, TDD=off, all skills.
+func (m *Model) applyQuickDefaults() {
+	m.Persona = model.PersonaProfessional
+	m.ModelPreset = model.ModelPresetBalanced
+	m.ModelAssignments = model.ModelsForPreset(m.ModelPreset)
+	m.SDDEnabled = true
+	m.StrictTDDEnabled = false
+	// Resolve components
+	components := catalog.ComponentsForPreset(m.Preset)
+	m.Resolved = catalog.ResolveDeps(components)
+	// Load all skills as selected
+	names := state.ListCommunitySkills(m.HomeDir)
+	m.AvailableSkills = make([]SkillItem, len(names))
+	for i, name := range names {
+		m.AvailableSkills[i] = SkillItem{Name: name, Selected: true}
+	}
+	m.SkillSelection = nil
+	for _, s := range m.AvailableSkills {
+		if s.Selected {
+			m.SkillSelection = append(m.SkillSelection, model.SkillID(s.Name))
+		}
+	}
 }
 
 // RunDetection performs system detection and agent discovery.

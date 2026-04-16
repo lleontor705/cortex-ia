@@ -88,6 +88,18 @@ func DefaultKeyMap() KeyMap {
 	}
 }
 
+// globalBindings returns key bindings shown in every FullHelp.
+func globalBindings() []key.Binding {
+	return []key.Binding{
+		key.NewBinding(key.WithKeys("ctrl+h"), key.WithHelp("ctrl+h", "home")),
+		key.NewBinding(key.WithKeys("ctrl+b"), key.WithHelp("ctrl+b", "backups")),
+		key.NewBinding(key.WithKeys("alt+m"), key.WithHelp("alt+m", "maintenance")),
+		key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "theme")),
+		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
+		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+	}
+}
+
 // --- Help KeyMap interfaces for different screen contexts ---
 
 // NavigateKeyMap is used for screens with simple up/down/enter/esc navigation.
@@ -104,7 +116,7 @@ func (k NavigateKeyMap) ShortHelp() []key.Binding {
 }
 
 func (k NavigateKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.Enter, k.Esc, k.Help}}
+	return [][]key.Binding{{k.Up, k.Down, k.Enter, k.Esc, k.Help}, globalBindings()}
 }
 
 // CheckboxKeyMap is used for screens with checkbox selection.
@@ -124,7 +136,7 @@ func (k CheckboxKeyMap) ShortHelp() []key.Binding {
 }
 
 func (k CheckboxKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.Space, k.All, k.Filter, k.Enter, k.Esc, k.Help}}
+	return [][]key.Binding{{k.Up, k.Down, k.Space, k.All, k.Filter, k.Enter, k.Esc, k.Help}, globalBindings()}
 }
 
 // BackupKeyMap is used for the backup management screen.
@@ -143,7 +155,7 @@ func (k BackupKeyMap) ShortHelp() []key.Binding {
 }
 
 func (k BackupKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.Restore, k.Delete, k.Rename, k.Esc, k.Help}}
+	return [][]key.Binding{{k.Up, k.Down, k.Restore, k.Delete, k.Rename, k.Esc, k.Help}, globalBindings()}
 }
 
 // InputKeyMap is used for text input screens.
@@ -160,24 +172,6 @@ func (k InputKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{{k.Enter, k.Esc}}
 }
 
-// ProfileKeyMap is used for the profile management screen.
-type ProfileKeyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Create key.Binding
-	Delete key.Binding
-	Esc    key.Binding
-	Help   key.Binding
-}
-
-func (k ProfileKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Create, k.Delete, k.Esc}
-}
-
-func (k ProfileKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.Create, k.Delete, k.Esc, k.Help}}
-}
-
 // WelcomeKeyMap is used for the welcome screen.
 type WelcomeKeyMap struct {
 	Up    key.Binding
@@ -192,7 +186,7 @@ func (k WelcomeKeyMap) ShortHelp() []key.Binding {
 }
 
 func (k WelcomeKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.Enter, k.Quit, k.Help}}
+	return [][]key.Binding{{k.Up, k.Down, k.Enter, k.Quit, k.Help}, globalBindings()}
 }
 
 // --- Helper to get the appropriate keymap for a screen ---
@@ -205,11 +199,9 @@ func (m Model) screenKeyMap() help.KeyMap {
 		return CheckboxKeyMap{Up: m.Keys.Up, Down: m.Keys.Down, Space: m.Keys.Space, All: m.Keys.All, Filter: m.Keys.Filter, Enter: m.Keys.Enter, Esc: m.Keys.Esc, Help: m.Keys.Help}
 	case ScreenBackups:
 		return BackupKeyMap{Up: m.Keys.Up, Down: m.Keys.Down, Restore: m.Keys.Restore, Delete: m.Keys.Delete, Rename: m.Keys.Rename, Esc: m.Keys.Esc, Help: m.Keys.Help}
-	case ScreenProfiles:
-		return ProfileKeyMap{Up: m.Keys.Up, Down: m.Keys.Down, Create: m.Keys.Create, Delete: m.Keys.Delete, Esc: m.Keys.Esc, Help: m.Keys.Help}
 	case ScreenAgentBuilderPrompt:
 		return InputKeyMap{
-			Enter: key.NewBinding(key.WithKeys("ctrl+enter"), key.WithHelp("ctrl+enter", "confirm")),
+			Enter: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 			Esc:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
 		}
 	case ScreenRenameBackup, ScreenProfileCreate:

@@ -80,13 +80,10 @@ func renderStatusContext(m Model) string {
 	case ScreenBackups:
 		return statusBarStyle.Render(fmt.Sprintf("%d backups", len(m.Backups)))
 
-	case ScreenProfiles:
-		return statusBarStyle.Render(fmt.Sprintf("%d profiles", len(m.Profiles)))
-
 	case ScreenInstalling:
 		return statusBarStyle.Render(fmt.Sprintf("%d%%", m.Progress.Percent()))
 
-	case ScreenSync:
+	case ScreenMaintenance:
 		if m.SelectedProfile != "" {
 			return statusBarStyle.Render(fmt.Sprintf("profile: %s", m.SelectedProfile))
 		}

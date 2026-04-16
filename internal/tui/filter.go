@@ -71,3 +71,11 @@ func (f FilterInput) View() string {
 	}
 	return f.Input.View() + "\n"
 }
+
+// Hint returns a dim hint when filter is available but not active.
+func (f FilterInput) Hint() string {
+	if f.Active || f.Query() != "" {
+		return ""
+	}
+	return styles.Description.Render("  [/ filter]")
+}
