@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -52,9 +53,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case DialogProfileDelete:
 					m.ActiveDialog = Dialog{}
-					if m.Cursor < len(m.Profiles) {
-						m.Profiles = append(m.Profiles[:m.Cursor], m.Profiles[m.Cursor+1:]...)
-						m.saveProfilesToDisk()
+					// Remove the profile by name, persist, THEN clear state
+					for i, p := range m.Profiles {
+						if p.Name == m.SelectedProfile {
+							updated := append(m.Profiles[:i], m.Profiles[i+1:]...)
+							// Persist first — if save fails, don't corrupt in-memory state
+							old := m.Profiles
+							m.Profiles = updated
+							m.saveProfilesToDisk()
+							if m.ProfileErr != nil {
+								m.Profiles = old // rollback
+							} else {
+								m.SelectedProfile = ""
+							}
+							break
+						}
 					}
 					return m, nil
 				}
@@ -90,7 +103,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle full help on screens that are not text input
 			if m.Screen != ScreenAgentBuilderPrompt &&
 				m.Screen != ScreenRenameBackup &&
-				m.Screen != ScreenProfileCreate {
+				m.Screen != ScreenProfileCreate &&
+				!m.AgentFilter.Active && !m.SkillFilter.Active && !m.OCModelFilter.Active {
 				m.Keys.ShowFullHelp = !m.Keys.ShowFullHelp
 				m.Help.ShowAll = m.Keys.ShowFullHelp
 				return m, nil
@@ -104,8 +118,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setScreen(ScreenWelcome)
 				return m, nil
 			}
+		case "ctrl+b":
+			// Quick jump to backups
+			if m.Screen != ScreenWelcome && m.Screen != ScreenInstalling &&
+				!m.PipelineRunning && !m.OperationRunning {
+				if m.ListBackupsFn != nil {
+					m.Backups, m.BackupWarnings = m.ListBackupsFn()
+				}
+				m.BackupFilter.Deactivate()
+				m.setScreen(ScreenBackups)
+				return m, nil
+			}
+		case "ctrl+m":
+			// Quick jump to maintenance
+			if m.Screen != ScreenWelcome && m.Screen != ScreenInstalling &&
+				!m.PipelineRunning && !m.OperationRunning {
+				m.loadProfilesFromDisk()
+				m.setScreen(ScreenMaintenance)
+				return m, nil
+			}
 		case "t":
-			// Toggle dark/light theme on non-input screens
+			// Toggle theme on non-input screens
 			if m.Screen != ScreenAgentBuilderPrompt &&
 				m.Screen != ScreenRenameBackup &&
 				m.Screen != ScreenProfileCreate &&
@@ -161,11 +194,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Backups, m.BackupWarnings = m.ListBackupsFn()
 		}
 		if msg.Err != nil {
-			m.ActiveToast = Toast{Text: fmt.Sprintf("Restore failed: %v", msg.Err), IsError: true, Visible: true}
+			m.ActiveToast = Toast{Text: fmt.Sprintf("Restore failed: %v — press r to retry", msg.Err), IsError: true, Visible: true}
 		} else {
 			m.ActiveToast = Toast{Text: "Restore complete", Visible: true}
 		}
-		return m, dismissToastAfter(3 * time.Second)
+		return m, dismissToastAfter(5 * time.Second)
 
 	case BackupDeleteMsg:
 		m.DeleteErr = msg.Err
@@ -184,8 +217,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.SyncFilesChanged = msg.FilesChanged
 		m.SyncErr = msg.Err
 		m.OperationRunning = false
-		if m.Screen == ScreenUpgradeSync {
-			m.UpgradeSyncPhase = "done"
+		if msg.Err != nil {
+			m.ActiveToast = Toast{Text: "Sync failed — press Enter to retry", IsError: true, Visible: true}
+			return m, dismissToastAfter(5 * time.Second)
 		}
 		return m, nil
 
@@ -196,22 +230,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ToastDismissMsg:
 		m.ActiveToast.Visible = false
+		m.Toasts.Dismiss()
 		return m, nil
+
+	case RepairDoneMsg:
+		m.OperationRunning = false
+		if msg.Err != nil {
+			m.ActiveToast = Toast{Text: fmt.Sprintf("Repair failed: %v", msg.Err), IsError: true, Visible: true}
+		} else {
+			m.ActiveToast = Toast{Text: fmt.Sprintf("Repair complete: %d files updated", len(msg.Result.FilesChanged)), Visible: true}
+		}
+		return m, dismissToastAfter(4 * time.Second)
+
+	case DryRunDoneMsg:
+		m.OperationRunning = false
+		if msg.Err != nil {
+			m.ActiveToast = Toast{Text: fmt.Sprintf("Dry-run failed: %v", msg.Err), IsError: true, Visible: true}
+		} else {
+			m.DryRunResult = &msg.Result
+			m.ActiveToast = Toast{Text: fmt.Sprintf("Preview: %d components, %d files would change", len(msg.Result.ComponentsDone), len(msg.Result.FilesChanged)), Visible: true}
+		}
+		return m, dismissToastAfter(5 * time.Second)
 
 	case UpdateCheckResultMsg:
 		m.UpdateResults = msg.Results
 		m.UpdateCheckDone = true
 		m.OperationRunning = false
-		// If on UpgradeSync screen, auto-start sync phase
-		if m.Screen == ScreenUpgradeSync && m.UpgradeSyncPhase == "checking" {
-			m.UpgradeSyncPhase = "syncing"
-			m.OperationRunning = true
-			profileName := m.SelectedProfile
-			return m, func() tea.Msg {
-				changed, err := m.SyncFn(profileName)
-				return SyncDoneMsg{FilesChanged: changed, Err: err}
-			}
-		}
 		return m, nil
 	}
 
@@ -225,16 +269,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAgents(msg)
 	case ScreenPersona:
 		return m.updatePersona(msg)
-	case ScreenPreset:
-		return m.updatePreset(msg)
 	case ScreenClaudeModelPicker:
 		return m.updateClaudeModelPicker(msg)
-	case ScreenSDDMode:
-		return m.updateSDDMode(msg)
-	case ScreenStrictTDD:
-		return m.updateStrictTDD(msg)
-	case ScreenDependencyTree:
-		return m.updateDependencyTree(msg)
 	case ScreenSkillPicker:
 		return m.updateSkillPicker(msg)
 	case ScreenReview:
@@ -247,14 +283,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateBackups(msg)
 	case ScreenRenameBackup:
 		return m.updateRenameBackup(msg)
-	case ScreenUpgrade:
-		return m.updateUpgrade(msg)
-	case ScreenSync:
-		return m.updateSync(msg)
-	case ScreenUpgradeSync:
-		return m.updateUpgradeSync(msg)
-	case ScreenProfiles:
-		return m.updateProfiles(msg)
+	case ScreenMaintenance:
+		return m.updateMaintenance(msg)
 	case ScreenProfileCreate:
 		return m.updateProfileCreate(msg)
 	case ScreenAgentBuilderEngine:
@@ -263,18 +293,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAgentBuilderPrompt(msg)
 	case ScreenAgentBuilderSDD:
 		return m.updateAgentBuilderSDD(msg)
-	case ScreenAgentBuilderSDDPhase:
-		return m.updateAgentBuilderSDDPhase(msg)
 	case ScreenAgentBuilderGenerating:
 		return m.updateAgentBuilderGenerating(msg)
 	case ScreenAgentBuilderPreview:
 		return m.updateAgentBuilderPreview(msg)
-	case ScreenAgentBuilderInstalling:
-		return m.updateAgentBuilderInstalling(msg)
 	case ScreenAgentBuilderComplete:
 		return m.updateAgentBuilderComplete(msg)
-	case ScreenOpenCodeModels:
-		return m.updateOpenCodeModels(msg)
+	case ScreenModelConfig:
+		return m.updateModelConfig(msg)
 	case ScreenOpenCodeModelPicker:
 		return m.updateOpenCodeModelPicker(msg)
 	}
@@ -297,16 +323,8 @@ func (m Model) View() string {
 		content = m.viewAgents()
 	case ScreenPersona:
 		content = m.viewPersona()
-	case ScreenPreset:
-		content = m.viewPreset()
 	case ScreenClaudeModelPicker:
 		content = m.viewClaudeModelPicker()
-	case ScreenSDDMode:
-		content = m.viewSDDMode()
-	case ScreenStrictTDD:
-		content = m.viewStrictTDD()
-	case ScreenDependencyTree:
-		content = m.viewDependencyTree()
 	case ScreenSkillPicker:
 		content = m.viewSkillPicker()
 	case ScreenReview:
@@ -319,14 +337,8 @@ func (m Model) View() string {
 		content = m.viewBackups()
 	case ScreenRenameBackup:
 		content = m.viewRenameBackup()
-	case ScreenUpgrade:
-		content = m.viewUpgrade()
-	case ScreenSync:
-		content = m.viewSync()
-	case ScreenUpgradeSync:
-		content = m.viewUpgradeSync()
-	case ScreenProfiles:
-		content = m.viewProfiles()
+	case ScreenMaintenance:
+		content = m.viewMaintenance()
 	case ScreenProfileCreate:
 		content = m.viewProfileCreate()
 	case ScreenAgentBuilderEngine:
@@ -335,32 +347,34 @@ func (m Model) View() string {
 		content = m.viewAgentBuilderPrompt()
 	case ScreenAgentBuilderSDD:
 		content = m.viewAgentBuilderSDD()
-	case ScreenAgentBuilderSDDPhase:
-		content = m.viewAgentBuilderSDDPhase()
 	case ScreenAgentBuilderGenerating:
 		content = m.viewAgentBuilderGenerating()
 	case ScreenAgentBuilderPreview:
 		content = m.viewAgentBuilderPreview()
-	case ScreenAgentBuilderInstalling:
-		content = m.viewAgentBuilderInstalling()
 	case ScreenAgentBuilderComplete:
 		content = m.viewAgentBuilderComplete()
-	case ScreenOpenCodeModels:
-		content = m.viewOpenCodeModels()
+	case ScreenModelConfig:
+		content = m.viewModelConfig()
 	case ScreenOpenCodeModelPicker:
 		content = m.viewOpenCodeModelPicker()
 	}
 
-	// Add breadcrumb and help
+	// Add breadcrumb, validation error, and help
 	bc := renderBreadcrumb(m.Screen)
 	helpView := m.Help.View(m.screenKeyMap())
 	statusBar := renderStatusBar(m)
 
+	// Inline validation error
+	validationLine := ""
+	if m.ValidationErr != "" {
+		validationLine = "\n" + styles.StatusFail.Render("⚠ "+m.ValidationErr) + "\n"
+	}
+
 	var view string
 	if bc != "" {
-		view = bc + "\n\n" + content + "\n" + helpView
+		view = bc + "\n\n" + content + validationLine + "\n" + helpView
 	} else {
-		view = content + "\n" + helpView
+		view = content + validationLine + "\n" + helpView
 	}
 
 	// Center content with responsive width
@@ -382,8 +396,13 @@ func (m Model) View() string {
 		view = renderDialog(m.ActiveDialog, m.Width, m.Height)
 	}
 
-	// Render toast notification
-	if m.ActiveToast.Visible {
+	// Render toast notifications (queue + legacy single toast)
+	if m.Toasts.HasVisible() {
+		toastLines := renderToastQueue(m.Toasts, m.Width)
+		if toastLines != "" {
+			view = toastLines + "\n" + view
+		}
+	} else if m.ActiveToast.Visible {
 		toastLine := renderToast(m.ActiveToast, m.Width)
 		if toastLine != "" {
 			view = toastLine + "\n" + view
@@ -416,33 +435,20 @@ func (m Model) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case WelcomeInstall:
 					m.RunDetection()
 					m.setScreen(ScreenDetection)
-				case WelcomeUpgrade:
-					m.setScreen(ScreenUpgrade)
-				case WelcomeSync:
+				case WelcomeMaintenance:
+					m.loadProfilesFromDisk()
 					m.SyncErr = nil
 					m.SyncFilesChanged = 0
-					m.loadProfilesFromDisk()
-					m.setScreen(ScreenSync)
-				case WelcomeUpgradeSync:
-					m.UpgradeSyncPhase = ""
-					m.SyncErr = nil
 					m.UpgradeErr = nil
-					m.setScreen(ScreenUpgradeSync)
-				case WelcomeModelConfig:
-					m.ModelConfigMode = true
-					m.ClaudeModelCursor = 0
-					m.setScreen(ScreenClaudeModelPicker)
-				case WelcomeProfiles:
-					m.loadProfilesFromDisk()
 					m.ProfileErr = nil
-					m.setScreen(ScreenProfiles)
+					m.setScreen(ScreenMaintenance)
+				case WelcomeModelConfig:
+					m.ClaudeModelCursor = 0
+					m.ModelConfigTab = ModelConfigTabClaude
+					m.setScreen(ScreenModelConfig)
 				case WelcomeAgentBuilder:
 					m.resetAgentBuilder()
 					m.setScreen(ScreenAgentBuilderEngine)
-				case WelcomeOpenCodeModels:
-					m.loadOpenCodeModels()
-					m.OCErr = nil
-					m.setScreen(ScreenOpenCodeModels)
 				case WelcomeBackups:
 					if m.ListBackupsFn != nil {
 						m.Backups, m.BackupWarnings = m.ListBackupsFn()
@@ -468,7 +474,7 @@ func (m Model) viewWelcome() string {
 		labels[i] = welcomeLabel(opt)
 	}
 
-	// Add "(updates available)" badge to Upgrade options when updates are found.
+	// Add contextual badges to menu items
 	if m.UpdateCheckDone {
 		hasUpdate := false
 		for _, r := range m.UpdateResults {
@@ -479,17 +485,26 @@ func (m Model) viewWelcome() string {
 		}
 		if hasUpdate {
 			for i, opt := range opts {
-				if opt == WelcomeUpgrade || opt == WelcomeUpgradeSync {
+				if opt == WelcomeMaintenance {
 					labels[i] += " (updates available)"
 				}
 			}
 		}
 	}
+	// Show current model preset on Configure models
+	if m.ModelPreset != "" {
+		for i, opt := range opts {
+			if opt == WelcomeModelConfig {
+				labels[i] += " (" + string(m.ModelPreset) + ")"
+			}
+		}
+	}
 
 	return screens.RenderWelcome(screens.WelcomeData{
-		Version: m.Version,
-		Options: labels,
-		Cursor:  m.Cursor,
+		Version:  m.Version,
+		Options:  labels,
+		Cursor:   m.Cursor,
+		FirstRun: m.FirstRun,
 	})
 }
 
@@ -499,6 +514,11 @@ func (m Model) updateDetection(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "enter":
+			m.QuickInstall = false
+			m.setScreen(ScreenAgents)
+		case "f":
+			// Quick install: skip to agents with fast flag
+			m.QuickInstall = true
 			m.setScreen(ScreenAgents)
 		case "esc":
 			m.setScreen(ScreenWelcome)
@@ -512,11 +532,13 @@ func (m Model) viewDetection() string {
 	if si == nil {
 		return "Detecting..."
 	}
-	return screens.RenderDetection(screens.DetectionData{
+	content := screens.RenderDetection(screens.DetectionData{
 		OS: si.OS, Arch: si.Arch, PkgMgr: si.PkgMgr, Shell: si.Shell,
 		NodeVer: si.NodeVer, GitVer: si.GitVer, GoVer: si.GoVer,
 		Npx: si.Npx, Cortex: si.Cortex, DetectedAgents: si.DetectedAgents,
 	})
+	content += "\n" + styles.Description.Render("Enter customize • f quick install (recommended defaults)")
+	return content
 }
 
 // --- Agents screen ---
@@ -545,6 +567,7 @@ func (m Model) updateAgents(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if key, ok := msg.(tea.KeyMsg); ok {
+		m.ValidationErr = "" // clear inline error on any input
 		visible := m.visibleAgents()
 		switch key.String() {
 		case "up", "k":
@@ -577,7 +600,14 @@ func (m Model) updateAgents(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.HasSelectedAgents() {
 				m.AgentFilter.Deactivate()
-				m.setScreen(ScreenPersona)
+				if m.QuickInstall {
+					m.applyQuickDefaults()
+					m.setScreen(ScreenReview)
+				} else {
+					m.setScreen(ScreenPersona)
+				}
+			} else {
+				m.ValidationErr = "Select at least one agent to continue"
 			}
 		case "esc":
 			m.AgentFilter.Deactivate()
@@ -610,12 +640,25 @@ func (m Model) viewAgents() string {
 	if m.AgentFilter.Active || m.AgentFilter.Query() != "" {
 		return m.AgentFilter.View() + content
 	}
+	hint := m.AgentFilter.Hint()
+	if hint != "" {
+		return content + "\n" + hint
+	}
 	return content
 }
 
 // --- Persona screen ---
 
 func (m Model) updatePersona(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Auto-skip if only one persona available
+	if len(m.Personas) == 1 {
+		m.Persona = m.Personas[0]
+		components := catalog.ComponentsForPreset(m.Preset)
+		m.Resolved = catalog.ResolveDeps(components)
+		m.setScreen(ScreenClaudeModelPicker)
+		return m, nil
+	}
+
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "up", "k":
@@ -628,7 +671,9 @@ func (m Model) updatePersona(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			m.Persona = m.Personas[m.Cursor]
-			m.setScreen(ScreenPreset)
+			components := catalog.ComponentsForPreset(m.Preset)
+			m.Resolved = catalog.ResolveDeps(components)
+			m.setScreen(ScreenClaudeModelPicker)
 		case "esc":
 			m.setScreen(ScreenAgents)
 		}
@@ -644,9 +689,17 @@ func (m Model) viewPersona() string {
 	})
 }
 
-// --- Preset screen ---
+// --- Review screen ---
 
-func (m Model) updatePreset(msg tea.Msg) (tea.Model, tea.Cmd) {
+// ReviewCursor tracks which item has focus on the review screen.
+// 0 = SDD toggle, 1 = TDD toggle, 2+ = confirm/back actions.
+const (
+	reviewCursorSDD = iota
+	reviewCursorTDD
+	reviewCursorConfirm
+)
+
+func (m Model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "up", "k":
@@ -654,34 +707,17 @@ func (m Model) updatePreset(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Cursor--
 			}
 		case "down", "j":
-			if m.Cursor < len(m.Presets)-1 {
+			if m.Cursor < reviewCursorConfirm {
 				m.Cursor++
 			}
-		case "enter":
-			m.Preset = m.Presets[m.Cursor]
-			components := catalog.ComponentsForPreset(m.Preset)
-			m.Resolved = catalog.ResolveDeps(components)
-			m.setScreen(ScreenClaudeModelPicker)
-		case "esc":
-			m.setScreen(ScreenPersona)
-		}
-	}
-	return m, nil
-}
-
-func (m Model) viewPreset() string {
-	return screens.RenderPreset(screens.PresetData{
-		Presets:  m.Presets,
-		Cursor:   m.Cursor,
-		Selected: m.Preset,
-	})
-}
-
-// --- Review screen ---
-
-func (m Model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
+		case " ":
+			// Toggle SDD or TDD based on cursor
+			switch m.Cursor {
+			case reviewCursorSDD:
+				m.SDDEnabled = !m.SDDEnabled
+			case reviewCursorTDD:
+				m.StrictTDDEnabled = !m.StrictTDDEnabled
+			}
 		case "enter", "y":
 			// Build expected step labels from selected agents x resolved components.
 			var labels []string
@@ -699,6 +735,51 @@ func (m Model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setScreen(ScreenInstalling)
 			m.PipelineRunning = true
 			return m, tea.Batch(m.runInstallWithProgress(ch), listenProgress(ch))
+		case "e":
+			// Export config
+			if err := m.exportConfig(); err != nil {
+				m.ActiveToast = Toast{Text: fmt.Sprintf("Export failed: %v", err), IsError: true, Visible: true}
+			} else {
+				m.ConfigExported = true
+				m.ActiveToast = Toast{Text: "Config exported to ~/.cortex-ia/export-config.json", Visible: true}
+			}
+			return m, dismissToastAfter(4 * time.Second)
+		case "d":
+			// Dry-run preview
+			if !m.OperationRunning {
+				m.OperationRunning = true
+				m.DryRunResult = nil
+				components := m.Resolved
+				if !m.SDDEnabled {
+					filtered := make([]model.ComponentID, 0, len(components))
+					for _, c := range components {
+						if c != model.ComponentSDD {
+							filtered = append(filtered, c)
+						}
+					}
+					components = filtered
+				}
+				sel := model.Selection{
+					Agents:           m.SelectedAgentIDs(),
+					Preset:           m.Preset,
+					Persona:          m.Persona,
+					Components:       components,
+					ModelAssignments: m.ModelAssignments,
+					StrictTDD:        m.StrictTDDEnabled,
+					CommunitySkills:  m.SkillSelection,
+				}
+				return m, func() tea.Msg {
+					result, err := pipeline.Install(m.HomeDir, m.Registry, sel, m.Version, true)
+					return DryRunDoneMsg{Result: result, Err: err}
+				}
+			}
+		case "c":
+			// Customize: go to full flow from Persona
+			if m.QuickInstall {
+				m.QuickInstall = false
+				m.setScreen(ScreenPersona)
+				return m, nil
+			}
 		case "esc", "n":
 			if prev, ok := PreviousScreen(ScreenReview); ok {
 				m.setScreen(prev)
@@ -709,18 +790,93 @@ func (m Model) updateReview(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) viewReview() string {
-	var reviewAgents []screens.ReviewAgent
+	var sb strings.Builder
+	sb.WriteString(styles.Title.Render("Review Installation"))
+	sb.WriteString("\n\n")
+
+	// Agents
+	sb.WriteString(styles.Subtitle.Render("Agents:"))
+	sb.WriteString("\n")
 	for _, a := range m.Agents {
 		if a.Selected {
-			reviewAgents = append(reviewAgents, screens.ReviewAgent{Name: a.Name})
+			fmt.Fprintf(&sb, "  %s %s\n", styles.StatusOK.Render("●"), a.Name)
 		}
 	}
-	return screens.RenderReview(screens.ReviewData{
-		Agents:   reviewAgents,
-		Preset:   m.Preset,
-		Persona:  m.Persona,
-		Resolved: m.Resolved,
-	})
+
+	sb.WriteString("\n")
+	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("Persona: %s", m.Persona)))
+	sb.WriteString("  ")
+	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("Model: %s", m.ModelPreset)))
+	sb.WriteString("\n\n")
+
+	// SDD toggle
+	sddCursor := "  "
+	if m.Cursor == reviewCursorSDD {
+		sddCursor = styles.Cursor.Render("> ")
+	}
+	sddCheck := "○"
+	if m.SDDEnabled {
+		sddCheck = styles.Selected.Render("●")
+	}
+	fmt.Fprintf(&sb, "%s%s SDD Integration %s\n", sddCursor, sddCheck,
+		styles.Description.Render("— 9-phase structured dev workflow"))
+
+	// TDD toggle
+	tddCursor := "  "
+	if m.Cursor == reviewCursorTDD {
+		tddCursor = styles.Cursor.Render("> ")
+	}
+	tddCheck := "○"
+	if m.StrictTDDEnabled {
+		tddCheck = styles.Selected.Render("●")
+	}
+	fmt.Fprintf(&sb, "%s%s Strict TDD %s\n", tddCursor, tddCheck,
+		styles.Description.Render("— Tests required before implementation"))
+
+	sb.WriteString("\n")
+
+	// Components (dependency tree)
+	sb.WriteString(styles.Subtitle.Render("Components:"))
+	sb.WriteString("\n")
+	cmap := catalog.ComponentMap() // static catalog, cheap to build
+	for i, id := range m.Resolved {
+		prefix := "├── "
+		if i == len(m.Resolved)-1 {
+			prefix = "└── "
+		}
+		desc := ""
+		if info, ok := cmap[id]; ok {
+			desc = " " + styles.Description.Render(info.Description)
+		}
+		fmt.Fprintf(&sb, "  %s%s%s\n", styles.Description.Render(prefix), styles.Selected.Render(string(id)), desc)
+	}
+
+	sb.WriteString("\n")
+	confirmCursor := "  "
+	if m.Cursor == reviewCursorConfirm {
+		confirmCursor = styles.Cursor.Render("> ")
+	}
+	sb.WriteString(confirmCursor + styles.Subtitle.Render("Confirm & Install"))
+	sb.WriteString("\n\n")
+	// Show dry-run results if available
+	if m.DryRunResult != nil {
+		sb.WriteString("\n")
+		sb.WriteString(styles.Subtitle.Render("Dry-run preview:"))
+		sb.WriteString("\n")
+		fmt.Fprintf(&sb, "  Components: %d  Files: %d\n",
+			len(m.DryRunResult.ComponentsDone), len(m.DryRunResult.FilesChanged))
+		for _, f := range m.DryRunResult.FilesChanged {
+			fmt.Fprintf(&sb, "  %s %s\n", styles.StatusOK.Render("~"), styles.Description.Render(f))
+		}
+	}
+
+	hints := "Space toggle • d dry-run • Enter confirm • Esc back"
+	if m.QuickInstall {
+		hints = "Space toggle • d dry-run • Enter confirm • c customize • Esc back"
+	}
+	sb.WriteString(styles.Description.Render(hints))
+
+	return sb.String()
 }
 
 // --- Installing screen ---
@@ -803,6 +959,21 @@ func (m Model) updateComplete(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q":
 			m.Quitting = true
 			return m, tea.Quit
+		case "u":
+			// Undo: restore from the backup created during this install
+			if m.Result.BackupID != "" && m.RestoreFn != nil && m.ListBackupsFn != nil {
+				backups, _ := m.ListBackupsFn()
+				for _, bk := range backups {
+					if bk.ID == m.Result.BackupID {
+						m.OperationRunning = true
+						manifest := bk
+						return m, func() tea.Msg {
+							err := m.RestoreFn(manifest)
+							return BackupRestoreMsg{Err: err}
+						}
+					}
+				}
+			}
 		case "enter", "esc", "m":
 			m.setScreen(ScreenWelcome)
 		}
@@ -887,6 +1058,11 @@ func Run(version string) error {
 		}
 		result, err := pipeline.Install(homeDir, registry, sel, version, false)
 		return len(result.FilesChanged), err
+	}
+
+	// Inject RepairFn — wraps pipeline.Repair
+	m.RepairFn = func() (pipeline.InstallResult, error) {
+		return pipeline.Repair(homeDir, registry, version, false)
 	}
 
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())

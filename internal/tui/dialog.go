@@ -23,11 +23,10 @@ type Dialog struct {
 	Warning string
 }
 
-var dialogBoxStyle = lipgloss.NewStyle().
+var dialogBoxBase = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(styles.Warning).
-	Padding(1, 3).
-	Width(50)
+	Padding(1, 3)
 
 var dialogTitleStyle = lipgloss.NewStyle().
 	Bold(true).
@@ -47,7 +46,12 @@ func renderDialog(d Dialog, width, height int) string {
 
 	content += "\n\n" + lipgloss.NewStyle().Foreground(styles.Muted).Render("y/enter confirm • n/esc cancel")
 
-	box := dialogBoxStyle.Render(content)
+	// Responsive dialog width: min 40, max 70, 60% of terminal
+	dialogWidth := 50
+	if width > 0 {
+		dialogWidth = max(40, min(70, width*60/100))
+	}
+	box := dialogBoxBase.Width(dialogWidth).Render(content)
 
 	if width > 0 && height > 0 {
 		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)

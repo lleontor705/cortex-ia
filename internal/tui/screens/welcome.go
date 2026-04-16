@@ -9,9 +9,10 @@ import (
 
 // WelcomeData holds the data needed to render the welcome screen.
 type WelcomeData struct {
-	Version string
-	Options []string
-	Cursor  int
+	Version  string
+	Options  []string
+	Cursor   int
+	FirstRun bool
 }
 
 // RenderWelcome renders the welcome screen as a menu hub.
@@ -19,21 +20,26 @@ func RenderWelcome(data WelcomeData) string {
 	var sb strings.Builder
 
 	sb.WriteString(styles.Title.Render(styles.Logo))
-	sb.WriteString("\n\n")
-	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("v%s — AI Agent Ecosystem Configurator", data.Version)))
-	sb.WriteString("\n\n")
-
-	sb.WriteString("Configure your AI coding agents with:\n")
-	sb.WriteString(styles.StatusOK.Render("  ● Cortex") + "       — Persistent memory + knowledge graph\n")
-	sb.WriteString(styles.StatusOK.Render("  ● ForgeSpec") + "    — SDD contracts + task board\n")
-	sb.WriteString(styles.StatusOK.Render("  ● Mailbox") + "      — Inter-agent messaging\n")
-	sb.WriteString(styles.StatusOK.Render("  ● Context7") + "     — Live documentation\n")
-	sb.WriteString(styles.StatusOK.Render("  ● SDD") + "          — 9-phase development workflow\n")
-	sb.WriteString(styles.StatusOK.Render("  ● GGA") + "          — AI-powered pre-commit code review\n")
+	sb.WriteString("\n")
+	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("v%s", data.Version)))
+	sb.WriteString(styles.Description.Render(" — AI Agent Ecosystem Configurator"))
 	sb.WriteString("\n")
 
-	sb.WriteString(styles.Subtitle.Render("What would you like to do?"))
+	// Compact feature list in one line
+	features := []string{"Cortex", "ForgeSpec", "Mailbox", "Context7", "SDD", "GGA"}
+	sb.WriteString(styles.Description.Render("Components: "))
+	for i, f := range features {
+		if i > 0 {
+			sb.WriteString(styles.Description.Render(" · "))
+		}
+		sb.WriteString(styles.StatusOK.Render(f))
+	}
 	sb.WriteString("\n\n")
+
+	if data.FirstRun {
+		sb.WriteString(styles.Subtitle.Render("  Welcome! Select \"Install ecosystem\" to get started."))
+		sb.WriteString("\n\n")
+	}
 
 	sb.WriteString(RenderOptions(data.Options, data.Cursor))
 

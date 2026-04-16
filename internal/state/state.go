@@ -154,3 +154,38 @@ func SaveLock(homeDir string, lock Lockfile) error {
 	}
 	return nil
 }
+
+const exportConfigFile = "export-config.json"
+
+// ExportConfigPath returns the path to the export config file.
+func ExportConfigPath(homeDir string) string {
+	return filepath.Join(homeDir, stateDir, exportConfigFile)
+}
+
+// SaveExportConfig writes an installation config for sharing/reuse.
+func SaveExportConfig(homeDir string, cfg model.ExportConfig) error {
+	path := ExportConfigPath(homeDir)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal export config: %w", err)
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o644)
+}
+
+// LoadExportConfig reads a previously exported config.
+func LoadExportConfig(homeDir string) (model.ExportConfig, error) {
+	data, err := os.ReadFile(ExportConfigPath(homeDir))
+	if err != nil {
+		return model.ExportConfig{}, err
+	}
+	var cfg model.ExportConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return model.ExportConfig{}, err
+	}
+	return cfg, nil
+}

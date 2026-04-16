@@ -54,12 +54,13 @@ func TestScreenKeyMap_Backups(t *testing.T) {
 	}
 }
 
-func TestScreenKeyMap_Profiles(t *testing.T) {
+func TestScreenKeyMap_Maintenance(t *testing.T) {
 	m := New(nil, "/tmp", "1.0.0")
-	m.Screen = ScreenProfiles
+	m.Screen = ScreenMaintenance
 	km := m.screenKeyMap()
-	if _, ok := km.(ProfileKeyMap); !ok {
-		t.Errorf("Profiles should return ProfileKeyMap, got %T", km)
+	// Maintenance uses the default NavigateKeyMap
+	if _, ok := km.(NavigateKeyMap); !ok {
+		t.Errorf("Maintenance should return NavigateKeyMap, got %T", km)
 	}
 }
 

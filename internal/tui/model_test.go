@@ -22,8 +22,8 @@ func TestNew_DefaultValues(t *testing.T) {
 	if !m.SDDEnabled {
 		t.Error("SDDEnabled should be true by default")
 	}
-	if len(m.Presets) != 2 {
-		t.Errorf("len(Presets) = %d, want 2", len(m.Presets))
+	if m.Preset != "full" {
+		t.Errorf("Preset = %v, want full", m.Preset)
 	}
 	if len(m.Personas) != 3 {
 		t.Errorf("len(Personas) = %d, want 3", len(m.Personas))
@@ -32,8 +32,8 @@ func TestNew_DefaultValues(t *testing.T) {
 
 func TestWelcomeOptions_Count(t *testing.T) {
 	opts := welcomeOptions()
-	if len(opts) != 10 {
-		t.Errorf("len(welcomeOptions) = %d, want 10", len(opts))
+	if len(opts) != 6 {
+		t.Errorf("len(welcomeOptions) = %d, want 6", len(opts))
 	}
 }
 
