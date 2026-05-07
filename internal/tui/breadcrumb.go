@@ -17,16 +17,8 @@ func screenName(s Screen) string {
 		return "Agents"
 	case ScreenPersona:
 		return "Persona"
-	case ScreenPreset:
-		return "Preset"
 	case ScreenClaudeModelPicker:
 		return "Model"
-	case ScreenSDDMode:
-		return "SDD"
-	case ScreenStrictTDD:
-		return "TDD"
-	case ScreenDependencyTree:
-		return "Dependencies"
 	case ScreenSkillPicker:
 		return "Skills"
 	case ScreenReview:
@@ -39,34 +31,24 @@ func screenName(s Screen) string {
 		return "Backups"
 	case ScreenRenameBackup:
 		return "Rename"
-	case ScreenUpgrade:
-		return "Upgrade"
-	case ScreenSync:
-		return "Sync"
-	case ScreenUpgradeSync:
-		return "Upgrade+Sync"
-	case ScreenProfiles:
-		return "Profiles"
+	case ScreenMaintenance:
+		return "Maintenance"
 	case ScreenProfileCreate:
-		return "Create"
+		return "Create Profile"
 	case ScreenAgentBuilderEngine:
 		return "Engine"
 	case ScreenAgentBuilderPrompt:
 		return "Purpose"
 	case ScreenAgentBuilderSDD:
 		return "SDD"
-	case ScreenAgentBuilderSDDPhase:
-		return "Phase"
 	case ScreenAgentBuilderGenerating:
 		return "Generating"
 	case ScreenAgentBuilderPreview:
 		return "Preview"
-	case ScreenAgentBuilderInstalling:
-		return "Installing"
 	case ScreenAgentBuilderComplete:
 		return "Done"
-	case ScreenOpenCodeModels:
-		return "OpenCode Models"
+	case ScreenModelConfig:
+		return "Models"
 	case ScreenOpenCodeModelPicker:
 		return "Model"
 	}
@@ -75,14 +57,13 @@ func screenName(s Screen) string {
 
 // installFlowScreens defines the ordered screens in the main install flow.
 var installFlowScreens = []Screen{
-	ScreenDetection, ScreenAgents, ScreenPersona, ScreenPreset,
-	ScreenClaudeModelPicker, ScreenSDDMode, ScreenStrictTDD,
-	ScreenDependencyTree, ScreenSkillPicker, ScreenReview,
+	ScreenDetection, ScreenAgents, ScreenPersona,
+	ScreenClaudeModelPicker, ScreenSkillPicker, ScreenReview,
 	ScreenInstalling, ScreenComplete,
 }
 
 // renderBreadcrumb returns a breadcrumb string for the current screen.
-// For the install flow, it shows "Step N/12: ScreenName".
+// For the install flow, it shows "Step N/8: ScreenName".
 // For sub-flows, it shows "Home > Section > Current".
 func renderBreadcrumb(current Screen) string {
 	// Check if it's part of the install flow

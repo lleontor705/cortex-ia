@@ -6,8 +6,9 @@ import "github.com/charmbracelet/lipgloss"
 type ThemeID string
 
 const (
-	ThemeDark  ThemeID = "dark"
-	ThemeLight ThemeID = "light"
+	ThemeDark         ThemeID = "dark"
+	ThemeLight        ThemeID = "light"
+	ThemeHighContrast ThemeID = "high-contrast"
 )
 
 // Theme holds all color values for a TUI theme.
@@ -42,6 +43,17 @@ var lightTheme = Theme{
 	Muted:     lipgloss.Color("#6B7280"),
 	White:     lipgloss.Color("#1F2937"),
 	BgColor:   lipgloss.Color("#F9FAFB"),
+}
+
+var highContrastTheme = Theme{
+	Primary:   lipgloss.Color("#FFFFFF"),
+	Secondary: lipgloss.Color("#00FFFF"),
+	Success:   lipgloss.Color("#00FF00"),
+	Warning:   lipgloss.Color("#FFFF00"),
+	Error:     lipgloss.Color("#FF0000"),
+	Muted:     lipgloss.Color("#AAAAAA"),
+	White:     lipgloss.Color("#FFFFFF"),
+	BgColor:   lipgloss.Color("#000000"),
 }
 
 // ActiveTheme tracks the currently active theme.
@@ -137,11 +149,14 @@ const (
 \___/\____/_/   \__/\___/_/|_|    /_/\__,_/  `
 )
 
-// ToggleTheme switches between dark and light themes.
+// ToggleTheme cycles through dark → light → high-contrast themes.
 func ToggleTheme() {
-	if ActiveTheme == ThemeDark {
+	switch ActiveTheme {
+	case ThemeDark:
 		ApplyTheme(ThemeLight)
-	} else {
+	case ThemeLight:
+		ApplyTheme(ThemeHighContrast)
+	default:
 		ApplyTheme(ThemeDark)
 	}
 }
@@ -154,6 +169,8 @@ func ApplyTheme(id ThemeID) {
 	switch id {
 	case ThemeLight:
 		t = lightTheme
+	case ThemeHighContrast:
+		t = highContrastTheme
 	default:
 		t = darkTheme
 	}

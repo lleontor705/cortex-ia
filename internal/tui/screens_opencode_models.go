@@ -1,7 +1,8 @@
 package tui
 
-// OpenCode model configuration screens: sub-agent list with assignments,
+// OpenCode model configuration: sub-agent list with assignments,
 // and a flat model picker with search filter.
+// Now serves as the OpenCode tab within the unified Model Config screen.
 
 import (
 	"fmt"
@@ -25,14 +26,19 @@ func (m *Model) loadOpenCodeModels() {
 	} else {
 		m.OpenCodeAssignments = saved
 	}
+	// Snapshot for unsaved-changes detection
+	m.OCSavedAssignments = make(model.OpenCodeModelAssignments)
+	for k, v := range m.OpenCodeAssignments {
+		m.OCSavedAssignments[k] = v
+	}
 	// Load available models (CLI → cache → fallback)
 	m.OpenCodeProviders = opencode.DetectModels(m.HomeDir)
 	m.OCFlatModels = opencode.FlatModelList(m.OpenCodeProviders)
 }
 
-// --- ScreenOpenCodeModels: Sub-agent list ---
+// --- OpenCode tab within Model Config ---
 
-func (m Model) updateOpenCodeModels(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) updateModelConfigOpenCode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	agents := model.OpenCodeSubAgents()
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
@@ -49,20 +55,28 @@ func (m Model) updateOpenCodeModels(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.OCSelectedAgent = agents[m.Cursor]
 				m.OCModelCursor = 0
 				m.OCModelFilter.Deactivate()
-				m.setScreen(ScreenOpenCodeModelPicker)
+				m.setScreenKeepCursor(ScreenOpenCodeModelPicker)
 			}
 		case "s":
-			// Save to cortex-ia state AND apply to opencode.json
+			// Save to cortex-ia state AND apply to opencode.json atomically
 			if err := state.SaveOpenCodeModels(m.HomeDir, m.OpenCodeAssignments); err != nil {
 				m.OCErr = err
 				return m, nil
 			}
 			if err := opencode.ApplyToOpenCodeConfig(m.HomeDir, m.OpenCodeAssignments); err != nil {
+				// Rollback: revert state save to previous snapshot
+				if m.OCSavedAssignments != nil {
+					_ = state.SaveOpenCodeModels(m.HomeDir, m.OCSavedAssignments)
+				}
 				m.OCErr = err
-				m.ActiveToast = Toast{Text: fmt.Sprintf("Saved but failed to update opencode.json: %v", err), IsError: true, Visible: true}
+				m.ActiveToast = Toast{Text: fmt.Sprintf("Failed to apply — rolled back: %v", err), IsError: true, Visible: true}
 			} else {
 				m.OCErr = nil
-				m.ActiveToast = Toast{Text: "Models saved and applied to opencode.json", Visible: true}
+				m.OCSavedAssignments = make(model.OpenCodeModelAssignments)
+				for k, v := range m.OpenCodeAssignments {
+					m.OCSavedAssignments[k] = v
+				}
+				m.ActiveToast = Toast{Text: "Models saved and applied", Visible: true}
 			}
 			return m, dismissToastAfter(3 * time.Second)
 		case "r":
@@ -71,17 +85,13 @@ func (m Model) updateOpenCodeModels(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.OCFlatModels = opencode.FlatModelList(m.OpenCodeProviders)
 			m.ActiveToast = Toast{Text: fmt.Sprintf("Loaded %d models", len(m.OCFlatModels)), Visible: true}
 			return m, dismissToastAfter(2 * time.Second)
-		case "esc":
-			m.setScreen(ScreenWelcome)
 		}
 	}
 	return m, nil
 }
 
-func (m Model) viewOpenCodeModels() string {
+func (m Model) viewModelConfigOpenCode() string {
 	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("OpenCode Model Configuration"))
-	sb.WriteString("\n\n")
 
 	if m.OCErr != nil {
 		sb.WriteString(styles.StatusFail.Render(fmt.Sprintf("Error: %v", m.OCErr)))
@@ -115,7 +125,10 @@ func (m Model) viewOpenCodeModels() string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(styles.Description.Render("Enter select • s save & apply • r reload models • Esc back"))
+	if m.ocHasUnsavedChanges() {
+		sb.WriteString(styles.StatusWarn.Render("(unsaved changes) "))
+	}
+	sb.WriteString(styles.Description.Render("Enter select • s save & apply • r reload models"))
 	return sb.String()
 }
 
@@ -135,7 +148,7 @@ func (m Model) updateOpenCodeModelPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.OCModelCursor < len(visible) {
 					m.assignOCModel(visible[m.OCModelCursor])
 					m.OCModelFilter.Deactivate()
-					m.setScreen(ScreenOpenCodeModels)
+					m.restoreScreen(ScreenModelConfig)
 				}
 				return m, nil
 			}
@@ -166,14 +179,30 @@ func (m Model) updateOpenCodeModelPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.OCModelCursor < len(visible) {
 				m.assignOCModel(visible[m.OCModelCursor])
-				m.setScreen(ScreenOpenCodeModels)
+				m.restoreScreen(ScreenModelConfig)
 			}
 		case "esc":
 			m.OCModelFilter.Deactivate()
-			m.setScreen(ScreenOpenCodeModels)
+			m.setScreen(ScreenModelConfig)
 		}
 	}
 	return m, nil
+}
+
+// ocHasUnsavedChanges returns true if OpenCode assignments differ from last save.
+func (m Model) ocHasUnsavedChanges() bool {
+	if m.OCSavedAssignments == nil {
+		return len(m.OpenCodeAssignments) > 0
+	}
+	if len(m.OpenCodeAssignments) != len(m.OCSavedAssignments) {
+		return true
+	}
+	for k, v := range m.OpenCodeAssignments {
+		if saved, ok := m.OCSavedAssignments[k]; !ok || saved != v {
+			return true
+		}
+	}
+	return false
 }
 
 // assignOCModel parses "provider/model" and sets the assignment.

@@ -1,10 +1,13 @@
 package tui
 
-// Install flow screens: Claude Model Picker, SDD Mode, Strict TDD,
-// Dependency Tree, Skill Picker.
+// Install flow screens: Claude Model Picker, Skill Picker.
+// Removed: Preset, SDD Mode, Strict TDD, Dependency Tree (integrated into Review).
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,6 +16,36 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/state"
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
+
+// readSkillDescription reads the first non-empty, non-frontmatter line from a SKILL.md.
+func readSkillDescription(homeDir, skillName string) string {
+	path := filepath.Join(state.CommunitySkillsDir(homeDir), skillName, "SKILL.md")
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	inFrontmatter := false
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "---" {
+			inFrontmatter = !inFrontmatter
+			continue
+		}
+		if inFrontmatter {
+			continue
+		}
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if len(line) > 60 {
+			return line[:57] + "..."
+		}
+		return line
+	}
+	return ""
+}
 
 // --- Claude Model Picker ---
 
@@ -36,20 +69,22 @@ func (m Model) updateClaudeModelPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ModelPreset = model.ModelPresetBalanced
 			}
 			m.ModelAssignments = model.ModelsForPreset(m.ModelPreset)
-			if m.ModelConfigMode {
-				m.ModelConfigMode = false
-				m.ActiveToast = Toast{Text: "Model preset updated: " + string(m.ModelPreset), Visible: true}
-				m.setScreen(ScreenWelcome)
-				return m, dismissToastAfter(3 * time.Second)
+			// Load community skills before showing picker
+			if len(m.AvailableSkills) == 0 {
+				names := state.ListCommunitySkills(m.HomeDir)
+				m.AvailableSkills = make([]SkillItem, len(names))
+				for i, name := range names {
+					m.AvailableSkills[i] = SkillItem{
+						Name:        name,
+						Description: readSkillDescription(m.HomeDir, name),
+						Selected:    true,
+					}
+				}
 			}
-			m.setScreen(ScreenSDDMode)
+			m.SkillCursor = 0
+			m.setScreen(ScreenSkillPicker)
 		case "esc":
-			if m.ModelConfigMode {
-				m.ModelConfigMode = false
-				m.setScreen(ScreenWelcome)
-			} else {
-				m.setScreen(ScreenPreset)
-			}
+			m.setScreen(ScreenPersona)
 		}
 	}
 	return m, nil
@@ -79,143 +114,6 @@ func (m Model) viewClaudeModelPicker() string {
 		fmt.Fprintf(&sb, "%s%s%s\n", cursor, name, desc)
 	}
 
-	// help rendered centrally
-	return sb.String()
-}
-
-// --- SDD Mode ---
-
-func (m Model) updateSDDMode(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "up", "k", "down", "j":
-			m.SDDEnabled = !m.SDDEnabled
-		case "enter":
-			m.setScreen(ScreenStrictTDD)
-		case "esc":
-			m.setScreen(ScreenClaudeModelPicker)
-		}
-	}
-	return m, nil
-}
-
-func (m Model) viewSDDMode() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("SDD Integration"))
-	sb.WriteString("\n\n")
-	sb.WriteString("Enable Spec-Driven Development workflow?\n")
-	sb.WriteString("SDD provides a 9-phase structured development process.\n\n")
-
-	options := []struct {
-		label    string
-		selected bool
-	}{
-		{"Enable SDD (recommended)", m.SDDEnabled},
-		{"Disable SDD", !m.SDDEnabled},
-	}
-
-	for i, opt := range options {
-		cursor := "  "
-		if (i == 0 && m.SDDEnabled) || (i == 1 && !m.SDDEnabled) {
-			cursor = styles.Cursor.Render("> ")
-		}
-		marker := "( )"
-		if opt.selected {
-			marker = styles.Selected.Render("(*)")
-		}
-		fmt.Fprintf(&sb, "%s%s %s\n", cursor, marker, opt.label)
-	}
-
-	// help rendered centrally
-	return sb.String()
-}
-
-// --- Strict TDD ---
-
-func (m Model) updateStrictTDD(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "up", "k", "down", "j":
-			m.StrictTDDEnabled = !m.StrictTDDEnabled
-		case "enter":
-			m.setScreen(ScreenDependencyTree)
-		case "esc":
-			m.setScreen(ScreenSDDMode)
-		}
-	}
-	return m, nil
-}
-
-func (m Model) viewStrictTDD() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Strict TDD Mode"))
-	sb.WriteString("\n\n")
-	sb.WriteString("Enable strict Test-Driven Development?\n")
-	sb.WriteString("When enabled, tests must be written before implementation.\n\n")
-
-	options := []struct {
-		label    string
-		selected bool
-	}{
-		{"Enable Strict TDD", m.StrictTDDEnabled},
-		{"Disable Strict TDD (default)", !m.StrictTDDEnabled},
-	}
-
-	for i, opt := range options {
-		cursor := "  "
-		if (i == 0 && m.StrictTDDEnabled) || (i == 1 && !m.StrictTDDEnabled) {
-			cursor = styles.Cursor.Render("> ")
-		}
-		marker := "( )"
-		if opt.selected {
-			marker = styles.Selected.Render("(*)")
-		}
-		fmt.Fprintf(&sb, "%s%s %s\n", cursor, marker, opt.label)
-	}
-
-	// help rendered centrally
-	return sb.String()
-}
-
-// --- Dependency Tree ---
-
-func (m Model) updateDependencyTree(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "enter":
-			// Load community skills before showing picker (only if not already loaded).
-			if len(m.AvailableSkills) == 0 {
-				names := state.ListCommunitySkills(m.HomeDir)
-				m.AvailableSkills = make([]SkillItem, len(names))
-				for i, name := range names {
-					m.AvailableSkills[i] = SkillItem{Name: name, Selected: true}
-				}
-			}
-			m.SkillCursor = 0
-			m.setScreen(ScreenSkillPicker)
-		case "esc":
-			m.setScreen(ScreenStrictTDD)
-		}
-	}
-	return m, nil
-}
-
-func (m Model) viewDependencyTree() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Dependency Tree"))
-	sb.WriteString("\n\n")
-	sb.WriteString(styles.Subtitle.Render("Resolved components (in dependency order):"))
-	sb.WriteString("\n\n")
-
-	for i, id := range m.Resolved {
-		prefix := "├── "
-		if i == len(m.Resolved)-1 {
-			prefix = "└── "
-		}
-		fmt.Fprintf(&sb, "  %s%s\n", styles.Description.Render(prefix), styles.Selected.Render(string(id)))
-	}
-
-	// help rendered centrally
 	return sb.String()
 }
 
@@ -284,7 +182,7 @@ func (m Model) updateSkillPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setScreen(ScreenReview)
 		case "esc":
 			m.SkillFilter.Deactivate()
-			m.setScreen(ScreenDependencyTree)
+			m.setScreen(ScreenClaudeModelPicker)
 		}
 	}
 	return m, nil
@@ -310,9 +208,11 @@ func (m Model) viewSkillPicker() string {
 		sb.WriteString(styles.Description.Render("No community skills installed."))
 		sb.WriteString("\n")
 		sb.WriteString("Use " + styles.Subtitle.Render("cortex-ia skill add <path>") + " to install skills.\n")
-		sb.WriteString("Or use " + styles.Subtitle.Render("Create your own Agent") + " from the main menu.\n")
+		sb.WriteString("Or use " + styles.Subtitle.Render("Agent Builder") + " from the main menu.\n")
 	} else {
-		fmt.Fprintf(&sb, "Found %d community skill(s). Toggle which to include:\n\n", len(m.AvailableSkills))
+		fmt.Fprintf(&sb, "Found %d community skill(s). Toggle which to include:", len(m.AvailableSkills))
+		sb.WriteString(m.SkillFilter.Hint())
+		sb.WriteString("\n\n")
 
 		// Show filter input
 		if m.SkillFilter.Active || m.SkillFilter.Query() != "" {
@@ -330,12 +230,129 @@ func (m Model) viewSkillPicker() string {
 			if s.Selected {
 				check = styles.Selected.Render("●")
 			}
-			fmt.Fprintf(&sb, "%s%s %s\n", cursor, check, s.Name)
+			if s.Description != "" {
+				fmt.Fprintf(&sb, "%s%s %s %s\n", cursor, check, s.Name,
+					styles.Description.Render("— "+s.Description))
+			} else {
+				fmt.Fprintf(&sb, "%s%s %s\n", cursor, check, s.Name)
+			}
 		}
 
 		if len(visible) == 0 && m.SkillFilter.Query() != "" {
 			sb.WriteString(styles.Description.Render("  No matching skills.\n"))
 		}
+	}
+
+	return sb.String()
+}
+
+// --- Model Config screen (unified Claude + OpenCode) ---
+
+// ModelConfigTab identifies the active tab on the Model Config screen.
+type ModelConfigTab int
+
+const (
+	ModelConfigTabClaude ModelConfigTab = iota
+	ModelConfigTabOpenCode
+)
+
+func (m Model) updateModelConfig(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "tab":
+			if m.ModelConfigTab == ModelConfigTabClaude {
+				m.ModelConfigTab = ModelConfigTabOpenCode
+				if len(m.OpenCodeProviders) == 0 {
+					m.loadOpenCodeModels()
+				}
+			} else {
+				m.ModelConfigTab = ModelConfigTabClaude
+			}
+			m.Cursor = 0
+			return m, nil
+		case "esc":
+			m.setScreen(ScreenWelcome)
+			return m, nil
+		}
+
+		if m.ModelConfigTab == ModelConfigTabClaude {
+			return m.updateModelConfigClaude(msg)
+		}
+		return m.updateModelConfigOpenCode(msg)
+	}
+	return m, nil
+}
+
+func (m Model) updateModelConfigClaude(msg tea.Msg) (tea.Model, tea.Cmd) {
+	models := []model.ClaudeModelAlias{model.ModelOpus, model.ModelSonnet, model.ModelHaiku}
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "up", "k":
+			if m.ClaudeModelCursor > 0 {
+				m.ClaudeModelCursor--
+			}
+		case "down", "j":
+			if m.ClaudeModelCursor < len(models)-1 {
+				m.ClaudeModelCursor++
+			}
+		case "enter":
+			presets := []model.ModelPreset{model.ModelPresetPerformance, model.ModelPresetBalanced, model.ModelPresetEconomy}
+			if m.ClaudeModelCursor < len(presets) {
+				m.ModelPreset = presets[m.ClaudeModelCursor]
+			} else {
+				m.ModelPreset = model.ModelPresetBalanced
+			}
+			m.ModelAssignments = model.ModelsForPreset(m.ModelPreset)
+			m.ActiveToast = Toast{Text: "Model preset updated: " + string(m.ModelPreset), Visible: true}
+			return m, dismissToastAfter(3 * time.Second)
+		}
+	}
+	return m, nil
+}
+
+func (m Model) viewModelConfig() string {
+	var sb strings.Builder
+	sb.WriteString(styles.Title.Render("Configure Models"))
+	sb.WriteString("\n\n")
+
+	sb.WriteString(renderTabBar([]string{"Claude", "OpenCode"}, int(m.ModelConfigTab)))
+	sb.WriteString("\n\n")
+
+	if m.ModelConfigTab == ModelConfigTabClaude {
+		sb.WriteString(m.viewModelConfigClaude())
+	} else {
+		sb.WriteString(m.viewModelConfigOpenCode())
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(styles.Description.Render("Tab switch • Esc back"))
+	return sb.String()
+}
+
+func (m Model) viewModelConfigClaude() string {
+	var sb strings.Builder
+	models := []struct {
+		alias model.ClaudeModelAlias
+		desc  string
+	}{
+		{model.ModelOpus, "Most capable — deep reasoning, complex tasks"},
+		{model.ModelSonnet, "Balanced — fast and capable (recommended)"},
+		{model.ModelHaiku, "Fastest — simple tasks, low latency"},
+	}
+
+	for i, m2 := range models {
+		cursor := "  "
+		if i == m.ClaudeModelCursor {
+			cursor = styles.Cursor.Render("> ")
+		}
+		name := styles.Subtitle.Render(string(m2.alias))
+		desc := styles.Description.Render(" — " + m2.desc)
+		fmt.Fprintf(&sb, "%s%s%s\n", cursor, name, desc)
+	}
+
+	if m.ModelPreset != "" {
+		sb.WriteString("\n")
+		fmt.Fprintf(&sb, "Current: %s\n", styles.Selected.Render(string(m.ModelPreset)))
 	}
 
 	return sb.String()

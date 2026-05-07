@@ -366,23 +366,8 @@ func TestUpdatePersona_Enter(t *testing.T) {
 	if rm.Persona != model.PersonaMentor {
 		t.Errorf("Persona = %v, want PersonaMentor", rm.Persona)
 	}
-	if rm.Screen != ScreenPreset {
-		t.Errorf("Screen = %v, want ScreenPreset", rm.Screen)
-	}
-}
-
-func TestUpdatePreset_Enter(t *testing.T) {
-	m := newTestModel()
-	m.Screen = ScreenPreset
-	m.Cursor = 0 // PresetFull (index 0 in default Presets)
-
-	result, _ := m.Update(keyMsg("enter"))
-	rm := result.(Model)
-	if rm.Preset != model.PresetFull {
-		t.Errorf("Preset = %v, want PresetFull", rm.Preset)
-	}
 	if rm.Resolved == nil {
-		t.Error("Resolved should be populated after preset selection")
+		t.Error("Resolved should be populated after persona selection")
 	}
 	if rm.Screen != ScreenClaudeModelPicker {
 		t.Errorf("Screen = %v, want ScreenClaudeModelPicker", rm.Screen)

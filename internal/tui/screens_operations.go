@@ -1,6 +1,6 @@
 package tui
 
-// Operation screens: Upgrade, Sync, Upgrade+Sync, Model Config.
+// Maintenance screen: unified Upgrade, Sync, and Profiles in a single tabbed view.
 
 import (
 	"fmt"
@@ -11,36 +11,143 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/update"
 )
 
-// --- Upgrade ---
+// renderTabBar renders a horizontal tab bar with the active tab highlighted.
+func renderTabBar(labels []string, activeIdx int) string {
+	var sb strings.Builder
+	for i, label := range labels {
+		if i > 0 {
+			sb.WriteString(styles.Description.Render(" │ "))
+		}
+		if i == activeIdx {
+			sb.WriteString(styles.Subtitle.Render("[" + label + "]"))
+		} else {
+			sb.WriteString(styles.Description.Render(" " + label + " "))
+		}
+	}
+	return sb.String()
+}
 
-func (m Model) updateUpgrade(msg tea.Msg) (tea.Model, tea.Cmd) {
+// --- Maintenance screen (tabbed: Upgrade | Sync | Profiles) ---
+
+func (m Model) updateMaintenance(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
-		case "r":
-			if !m.OperationRunning {
-				m.OperationRunning = true
-				m.UpdateCheckDone = false
-				return m, tea.Batch(func() tea.Msg {
-					result := update.Check(m.Version)
-					return UpdateCheckResultMsg{Results: []update.CheckResult{result}}
-				})
-			}
+		case "tab", "right", "l":
+			m.MaintenanceTab = (m.MaintenanceTab + 1) % 2
+			m.Cursor = 0
+			return m, nil
+		case "shift+tab", "left", "h":
+			m.MaintenanceTab = (m.MaintenanceTab + 1) % 2 // wraps backward (2 tabs)
+			m.Cursor = 0
+			return m, nil
 		case "esc":
 			m.setScreen(ScreenWelcome)
+			return m, nil
+		}
+
+		// Delegate to the active tab
+		switch m.MaintenanceTab {
+		case MaintenanceTabUpgrade:
+			return m.updateMaintenanceUpgrade(msg)
+		case MaintenanceTabSync:
+			return m.updateMaintenanceSync(msg)
 		}
 	}
 	return m, nil
 }
 
-func (m Model) viewUpgrade() string {
+func (m Model) viewMaintenance() string {
 	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Check for Updates"))
+	sb.WriteString(styles.Title.Render("Maintenance"))
 	sb.WriteString("\n\n")
 
-	if m.OperationRunning {
+	sb.WriteString(renderTabBar([]string{"Upgrade", "Sync"}, int(m.MaintenanceTab)))
+	sb.WriteString("\n\n")
+
+	switch m.MaintenanceTab {
+	case MaintenanceTabUpgrade:
+		sb.WriteString(m.viewMaintenanceUpgrade())
+	case MaintenanceTabSync:
+		sb.WriteString(m.viewMaintenanceSync())
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(styles.Description.Render("Tab switch • Esc back"))
+	return sb.String()
+}
+
+// --- Upgrade tab ---
+
+func (m Model) updateMaintenanceUpgrade(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "r", "enter":
+			if !m.OperationRunning {
+				m.OperationRunning = true
+				m.UpdateCheckDone = false
+				m.UpgradeSyncChain = false
+				return m, tea.Batch(func() tea.Msg {
+					result := update.Check(m.Version)
+					return UpdateCheckResultMsg{Results: []update.CheckResult{result}}
+				})
+			}
+		case "s":
+			// Upgrade + Sync: check updates then auto-run sync
+			if !m.OperationRunning && m.SyncFn != nil {
+				m.OperationRunning = true
+				m.UpdateCheckDone = false
+				m.UpgradeSyncChain = true
+				return m, tea.Batch(func() tea.Msg {
+					result := update.Check(m.Version)
+					return UpdateCheckResultMsg{Results: []update.CheckResult{result}}
+				})
+			}
+		case "x":
+			// Repair ecosystem
+			if m.RepairFn != nil && !m.OperationRunning {
+				m.OperationRunning = true
+				return m, func() tea.Msg {
+					result, err := m.RepairFn()
+					return RepairDoneMsg{Result: result, Err: err}
+				}
+			}
+		case "u":
+			// Auto-upgrade
+			if m.UpdateCheckDone && !m.OperationRunning && len(m.UpdateResults) > 0 {
+				r := m.UpdateResults[0]
+				if r.Error == nil && !r.UpToDate && m.UpgradeFn != nil {
+					m.OperationRunning = true
+					results := m.UpdateResults
+					return m, func() tea.Msg {
+						err := m.UpgradeFn(results)
+						return UpgradeDoneMsg{Err: err}
+					}
+				}
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m Model) viewMaintenanceUpgrade() string {
+	var sb strings.Builder
+
+	if m.UpgradeErr != nil {
+		sb.WriteString(styles.StatusFail.Render("Upgrade failed"))
+		sb.WriteString("\n")
+		fmt.Fprintf(&sb, "Error: %v\n", m.UpgradeErr)
+		sb.WriteString("\n")
+		sb.WriteString("To upgrade manually, run:\n")
+		sb.WriteString(styles.Subtitle.Render("  curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh | bash"))
+		sb.WriteString("\n")
+	} else if m.OperationRunning {
 		fmt.Fprintf(&sb, "%s Checking for updates...\n", m.Spinner.View())
 	} else if !m.UpdateCheckDone {
-		sb.WriteString("Press r to check for updates.\n")
+		sb.WriteString("Press Enter to check for updates.\n")
+		if m.SyncFn != nil {
+			sb.WriteString(styles.Description.Render("Press s to check updates and auto-sync configs"))
+			sb.WriteString("\n")
+		}
 	} else if len(m.UpdateResults) > 0 {
 		r := m.UpdateResults[0]
 		if r.Error != nil {
@@ -51,6 +158,11 @@ func (m Model) viewUpgrade() string {
 			sb.WriteString(styles.StatusOK.Render("✓ Up to date"))
 			sb.WriteString("\n\n")
 			fmt.Fprintf(&sb, "cortex-ia %s is the latest version.\n", r.CurrentVersion)
+			if m.RepairFn != nil {
+				sb.WriteString("\n")
+				sb.WriteString(styles.Description.Render("Press x to repair/re-sync ecosystem files"))
+				sb.WriteString("\n")
+			}
 		} else {
 			sb.WriteString(styles.StatusWarn.Render("Update available"))
 			sb.WriteString("\n\n")
@@ -60,22 +172,56 @@ func (m Model) viewUpgrade() string {
 				fmt.Fprintf(&sb, "  Release: %s\n", r.LatestRelease.HTMLURL)
 			}
 			sb.WriteString("\n")
-			sb.WriteString("To upgrade, run:\n")
-			sb.WriteString(styles.Subtitle.Render("  curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh | bash"))
-			sb.WriteString("\n")
+			if m.UpgradeFn != nil {
+				sb.WriteString(styles.Subtitle.Render("Press u to upgrade automatically"))
+				sb.WriteString("\n")
+			} else {
+				sb.WriteString("To upgrade, run:\n")
+				sb.WriteString(styles.Subtitle.Render("  curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh | bash"))
+				sb.WriteString("\n")
+			}
 		}
 	}
-	// help rendered centrally
 	return sb.String()
 }
 
-// --- Sync ---
+// --- Sync tab ---
 
-func (m Model) updateSync(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) updateMaintenanceSync(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
+		case "c":
+			// Create profile inline
+			m.ProfileErr = nil
+			m.ProfileInput.SetValue("")
+			m.ProfileInput.Focus()
+			m.setScreen(ScreenProfileCreate)
+			return m, nil
+		case "d":
+			// Delete profile at cursor (falls back to SelectedProfile for compat)
+			target := ""
+			if m.Cursor >= 0 && m.Cursor < len(m.Profiles) {
+				target = m.Profiles[m.Cursor].Name
+			} else if m.SelectedProfile != "" {
+				target = m.SelectedProfile
+			}
+			if target != "" {
+				m.ProfileErr = nil
+				m.ProfileDeleteTarget = target
+				m.ActiveDialog = Dialog{
+					Type:    DialogProfileDelete,
+					Title:   "Delete Profile",
+					Message: "Delete profile " + target + "?",
+					Warning: "This action cannot be undone.",
+				}
+			}
+			return m, nil
 		case "enter":
-			if m.SyncFn != nil && !m.OperationRunning {
+			if m.SyncFn == nil {
+				m.SyncErr = fmt.Errorf("sync not available")
+				return m, nil
+			}
+			if !m.OperationRunning {
 				m.OperationRunning = true
 				profileName := m.SelectedProfile
 				return m, tea.Batch(func() tea.Msg {
@@ -88,16 +234,18 @@ func (m Model) updateSync(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(m.Profiles) == 0 {
 					m.loadProfilesFromDisk()
 				}
-				// Move to previous profile (or clear)
 				if m.SelectedProfile == "" && len(m.Profiles) > 0 {
 					m.SelectedProfile = m.Profiles[len(m.Profiles)-1].Name
+					m.Cursor = len(m.Profiles) - 1
 				} else {
 					for i, p := range m.Profiles {
 						if p.Name == m.SelectedProfile {
 							if i > 0 {
 								m.SelectedProfile = m.Profiles[i-1].Name
+								m.Cursor = i - 1
 							} else {
 								m.SelectedProfile = ""
+								m.Cursor = -1
 							}
 							break
 						}
@@ -109,38 +257,35 @@ func (m Model) updateSync(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(m.Profiles) == 0 {
 					m.loadProfilesFromDisk()
 				}
-				// Move to next profile (or clear)
 				if m.SelectedProfile == "" && len(m.Profiles) > 0 {
 					m.SelectedProfile = m.Profiles[0].Name
+					m.Cursor = 0
 				} else {
 					for i, p := range m.Profiles {
 						if p.Name == m.SelectedProfile {
 							if i+1 < len(m.Profiles) {
 								m.SelectedProfile = m.Profiles[i+1].Name
+								m.Cursor = i + 1
 							} else {
 								m.SelectedProfile = ""
+								m.Cursor = -1
 							}
 							break
 						}
 					}
 				}
 			}
-		case "esc":
-			m.setScreen(ScreenWelcome)
 		}
 	}
 	return m, nil
 }
 
-func (m Model) viewSync() string {
+func (m Model) viewMaintenanceSync() string {
 	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Sync Configuration"))
-	sb.WriteString("\n\n")
 
 	// Profile selector
 	sb.WriteString(styles.Subtitle.Render("Profile:"))
 	sb.WriteString("\n")
-	// "(none)" option
 	noneMarker := "( )"
 	noneCursor := "  "
 	if m.SelectedProfile == "" {
@@ -148,7 +293,6 @@ func (m Model) viewSync() string {
 		noneCursor = styles.Cursor.Render("> ")
 	}
 	fmt.Fprintf(&sb, "%s%s %s\n", noneCursor, noneMarker, styles.Description.Render("(none)"))
-	// Profile options
 	for _, p := range m.Profiles {
 		marker := "( )"
 		cursor := "  "
@@ -173,94 +317,8 @@ func (m Model) viewSync() string {
 	} else {
 		sb.WriteString("Press Enter to sync managed configuration files.\n")
 	}
-	// help rendered centrally
+
+	sb.WriteString("\n")
+	sb.WriteString(styles.Description.Render("Enter sync • c create profile • d delete profile"))
 	return sb.String()
 }
-
-// --- Upgrade + Sync ---
-
-func (m Model) updateUpgradeSync(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "enter":
-			if !m.OperationRunning {
-				m.OperationRunning = true
-				m.UpgradeSyncPhase = "checking"
-				return m, tea.Batch(func() tea.Msg {
-					result := update.Check(m.Version)
-					return UpdateCheckResultMsg{Results: []update.CheckResult{result}}
-				})
-			}
-		case "esc":
-			if !m.OperationRunning {
-				m.UpgradeSyncPhase = ""
-				m.setScreen(ScreenWelcome)
-			}
-		}
-	}
-	return m, nil
-}
-
-func (m Model) viewUpgradeSync() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Upgrade + Sync"))
-	sb.WriteString("\n\n")
-
-	switch {
-	case m.UpgradeSyncPhase == "" && !m.OperationRunning:
-		sb.WriteString("This will check for updates and then sync your configuration.\n\n")
-		if m.SelectedProfile != "" {
-			fmt.Fprintf(&sb, "Profile: %s\n\n", styles.Subtitle.Render(m.SelectedProfile))
-		}
-		sb.WriteString("Press Enter to start.\n")
-
-	case m.UpgradeSyncPhase == "checking":
-		fmt.Fprintf(&sb, "%s Checking for updates...\n", m.Spinner.View())
-
-	case m.UpgradeSyncPhase == "syncing":
-		if len(m.UpdateResults) > 0 {
-			r := m.UpdateResults[0]
-			switch {
-			case r.Error != nil:
-				sb.WriteString(styles.StatusWarn.Render("Update check failed"))
-				fmt.Fprintf(&sb, " (%v)\n", r.Error)
-			case r.UpToDate:
-				sb.WriteString(styles.StatusOK.Render("✓ Up to date"))
-				fmt.Fprintf(&sb, " (%s)\n", r.CurrentVersion)
-			default:
-				sb.WriteString(styles.StatusWarn.Render("Update available"))
-				fmt.Fprintf(&sb, " (%s → %s)\n", r.CurrentVersion, r.LatestRelease.TagName)
-			}
-		}
-		fmt.Fprintf(&sb, "\n%s Syncing configuration...\n", m.Spinner.View())
-
-	case m.UpgradeSyncPhase == "done":
-		if len(m.UpdateResults) > 0 {
-			r := m.UpdateResults[0]
-			switch {
-			case r.Error != nil:
-				sb.WriteString(styles.StatusWarn.Render("Update check failed"))
-				fmt.Fprintf(&sb, " (%v)\n", r.Error)
-			case r.UpToDate:
-				sb.WriteString(styles.StatusOK.Render("✓ Up to date"))
-				fmt.Fprintf(&sb, " (%s)\n", r.CurrentVersion)
-			default:
-				sb.WriteString(styles.StatusWarn.Render("Update available"))
-				fmt.Fprintf(&sb, " (%s → %s)\n", r.CurrentVersion, r.LatestRelease.TagName)
-			}
-		}
-		sb.WriteString("\n")
-		if m.SyncErr != nil {
-			sb.WriteString(styles.StatusFail.Render("Sync failed"))
-			fmt.Fprintf(&sb, "\nError: %v\n", m.SyncErr)
-		} else {
-			sb.WriteString(styles.StatusOK.Render("✓ Sync complete"))
-			fmt.Fprintf(&sb, "\nFiles changed: %d\n", m.SyncFilesChanged)
-		}
-	}
-
-	// help rendered centrally
-	return sb.String()
-}
-
-// ModelConfig screen removed — Welcome now goes directly to ClaudeModelPicker.

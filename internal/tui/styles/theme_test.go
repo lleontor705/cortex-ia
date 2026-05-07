@@ -41,12 +41,17 @@ func TestToggleTheme(t *testing.T) {
 
 	ToggleTheme()
 	if ActiveTheme != ThemeLight {
-		t.Errorf("after toggle should be light, got %q", ActiveTheme)
+		t.Errorf("after first toggle should be light, got %q", ActiveTheme)
+	}
+
+	ToggleTheme()
+	if ActiveTheme != ThemeHighContrast {
+		t.Errorf("after second toggle should be high-contrast, got %q", ActiveTheme)
 	}
 
 	ToggleTheme()
 	if ActiveTheme != ThemeDark {
-		t.Errorf("after second toggle should be dark, got %q", ActiveTheme)
+		t.Errorf("after third toggle should be dark, got %q", ActiveTheme)
 	}
 }
 

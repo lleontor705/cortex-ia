@@ -32,29 +32,26 @@ func RenderDetection(data DetectionData) string {
 	sb.WriteString(styles.Subtitle.Render("Tools"))
 	sb.WriteString("\n")
 
-	toolLine := func(name, ver string) {
+	// Normalized tool line: always shows icon + name + version/status
+	toolLine := func(name, ver string, available bool) {
 		if ver != "" {
-			fmt.Fprintf(&sb, "  %s %-10s %s\n", styles.StatusOK.Render("●"), name, ver)
+			fmt.Fprintf(&sb, "  %s %-10s %s\n", styles.StatusOK.Render("✓"), name, styles.Subtitle.Render(ver))
+		} else if available {
+			fmt.Fprintf(&sb, "  %s %-10s %s\n", styles.StatusOK.Render("✓"), name, styles.Description.Render("available"))
 		} else {
-			fmt.Fprintf(&sb, "  %s %-10s %s\n", styles.StatusFail.Render("○"), name, styles.Description.Render("not found"))
+			fmt.Fprintf(&sb, "  %s %-10s %s\n", styles.StatusFail.Render("✗"), name, styles.Description.Render("not found"))
 		}
 	}
 
-	toolLine("Node.js", data.NodeVer)
-	boolStr := func(b bool) string {
-		if b {
-			return "available"
-		}
-		return ""
-	}
-	toolLine("npx", boolStr(data.Npx))
-	toolLine("Git", data.GitVer)
-	toolLine("Go", data.GoVer)
-	toolLine("Cortex", boolStr(data.Cortex))
+	toolLine("Node.js", data.NodeVer, false)
+	toolLine("npx", "", data.Npx)
+	toolLine("Git", data.GitVer, false)
+	toolLine("Go", data.GoVer, false)
+	toolLine("Cortex", "", data.Cortex)
 	sb.WriteString("\n")
 
 	fmt.Fprintf(&sb, "%s %d agent(s) detected\n",
-		styles.StatusOK.Render("●"), data.DetectedAgents)
+		styles.StatusOK.Render("✓"), data.DetectedAgents)
 
 	return sb.String()
 }

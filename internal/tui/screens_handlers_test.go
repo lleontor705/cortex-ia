@@ -79,8 +79,8 @@ func TestClaudeModelPicker_Enter(t *testing.T) {
 	m.Screen = ScreenClaudeModelPicker
 
 	m = updateModel(t, m, "enter")
-	if m.Screen != ScreenSDDMode {
-		t.Errorf("Screen = %v, want ScreenSDDMode", m.Screen)
+	if m.Screen != ScreenSkillPicker {
+		t.Errorf("Screen = %v, want ScreenSkillPicker", m.Screen)
 	}
 }
 
@@ -108,121 +108,46 @@ func TestClaudeModelPicker_Enter_MapsPresetFromCursor(t *testing.T) {
 	}
 }
 
-func TestClaudeModelPicker_Esc_NormalMode(t *testing.T) {
+func TestClaudeModelPicker_Esc(t *testing.T) {
 	m := New(nil, "/tmp", "test")
 	m.Screen = ScreenClaudeModelPicker
-	m.ModelConfigMode = false
 
 	m = updateModel(t, m, "esc")
-	if m.Screen != ScreenPreset {
-		t.Errorf("Screen = %v, want ScreenPreset", m.Screen)
-	}
-}
-
-func TestClaudeModelPicker_Esc_ModelConfigMode(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenClaudeModelPicker
-	m.ModelConfigMode = true
-
-	m = updateModel(t, m, "esc")
-	if m.Screen != ScreenWelcome {
-		t.Errorf("Screen = %v, want ScreenWelcome", m.Screen)
-	}
-	if m.ModelConfigMode {
-		t.Error("ModelConfigMode should be false after esc")
-	}
-}
-
-func TestClaudeModelPicker_Enter_ModelConfigMode(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenClaudeModelPicker
-	m.ModelConfigMode = true
-	m.ClaudeModelCursor = 1 // Balanced
-
-	result, _ := m.Update(keyMsg("enter"))
-	rm := result.(Model)
-	if rm.Screen != ScreenWelcome {
-		t.Errorf("Screen = %v, want ScreenWelcome (config mode should return to menu)", rm.Screen)
-	}
-	if rm.ModelConfigMode {
-		t.Error("ModelConfigMode should be false after enter in config mode")
-	}
-	if rm.ModelPreset != model.ModelPresetBalanced {
-		t.Errorf("ModelPreset = %q, want %q", rm.ModelPreset, model.ModelPresetBalanced)
+	if m.Screen != ScreenPersona {
+		t.Errorf("Screen = %v, want ScreenPersona", m.Screen)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Install flow — SDD Mode
+// Install flow — Review (with SDD/TDD toggles)
 // ---------------------------------------------------------------------------
 
-func TestSDDMode_Toggle(t *testing.T) {
+func TestReview_SpaceTogglesSDD(t *testing.T) {
 	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenSDDMode
+	m.Screen = ScreenReview
 	m.SDDEnabled = true
+	m.Cursor = reviewCursorSDD
 
-	m = updateModel(t, m, "down")
+	m = updateModel(t, m, " ")
 	if m.SDDEnabled {
-		t.Error("SDDEnabled should be false after toggle")
+		t.Error("SDDEnabled should be false after space toggle")
 	}
 
-	m = updateModel(t, m, "up")
+	m = updateModel(t, m, " ")
 	if !m.SDDEnabled {
 		t.Error("SDDEnabled should be true after second toggle")
 	}
 }
 
-func TestSDDMode_Enter(t *testing.T) {
+func TestReview_SpaceTogglesTDD(t *testing.T) {
 	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenSDDMode
-
-	m = updateModel(t, m, "enter")
-	if m.Screen != ScreenStrictTDD {
-		t.Errorf("Screen = %v, want ScreenStrictTDD", m.Screen)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Install flow — Strict TDD
-// ---------------------------------------------------------------------------
-
-func TestStrictTDD_Toggle(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenStrictTDD
+	m.Screen = ScreenReview
 	m.StrictTDDEnabled = false
+	m.Cursor = reviewCursorTDD
 
-	m = updateModel(t, m, "down")
+	m = updateModel(t, m, " ")
 	if !m.StrictTDDEnabled {
 		t.Error("StrictTDDEnabled should be true after toggle")
-	}
-
-	m = updateModel(t, m, "up")
-	if m.StrictTDDEnabled {
-		t.Error("StrictTDDEnabled should be false after second toggle")
-	}
-}
-
-func TestStrictTDD_Enter(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenStrictTDD
-
-	m = updateModel(t, m, "enter")
-	if m.Screen != ScreenDependencyTree {
-		t.Errorf("Screen = %v, want ScreenDependencyTree", m.Screen)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Install flow — Dependency Tree
-// ---------------------------------------------------------------------------
-
-func TestDependencyTree_Enter(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenDependencyTree
-
-	m = updateModel(t, m, "enter")
-	if m.Screen != ScreenSkillPicker {
-		t.Errorf("Screen = %v, want ScreenSkillPicker", m.Screen)
 	}
 }
 
@@ -362,8 +287,8 @@ func TestSkillPicker_Esc(t *testing.T) {
 	m.Screen = ScreenSkillPicker
 
 	m = updateModel(t, m, "esc")
-	if m.Screen != ScreenDependencyTree {
-		t.Errorf("Screen = %v, want ScreenDependencyTree", m.Screen)
+	if m.Screen != ScreenClaudeModelPicker {
+		t.Errorf("Screen = %v, want ScreenClaudeModelPicker", m.Screen)
 	}
 }
 
@@ -486,12 +411,13 @@ func TestDialog_Esc_Dismisses(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Profile handlers
+// Maintenance screen — Sync tab profile management
 // ---------------------------------------------------------------------------
 
-func TestProfiles_CreateKey(t *testing.T) {
+func TestMaintenance_SyncTab_CreateKey(t *testing.T) {
 	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenProfiles
+	m.Screen = ScreenMaintenance
+	m.MaintenanceTab = MaintenanceTabSync
 
 	m = updateModel(t, m, "c")
 	if m.Screen != ScreenProfileCreate {
@@ -499,11 +425,12 @@ func TestProfiles_CreateKey(t *testing.T) {
 	}
 }
 
-func TestProfiles_DeleteKey(t *testing.T) {
+func TestMaintenance_SyncTab_DeleteKey(t *testing.T) {
 	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenProfiles
+	m.Screen = ScreenMaintenance
+	m.MaintenanceTab = MaintenanceTabSync
 	m.Profiles = []model.Profile{{Name: "default"}}
-	m.Cursor = 0
+	m.SelectedProfile = "default"
 
 	m = updateModel(t, m, "d")
 	if m.ActiveDialog.Type != DialogProfileDelete {
@@ -518,8 +445,8 @@ func TestProfileCreate_Enter(t *testing.T) {
 	m.Profiles = []model.Profile{}
 
 	m = updateModel(t, m, "enter")
-	if m.Screen != ScreenProfiles {
-		t.Errorf("Screen = %v, want ScreenProfiles", m.Screen)
+	if m.Screen != ScreenMaintenance {
+		t.Errorf("Screen = %v, want ScreenMaintenance", m.Screen)
 	}
 	if len(m.Profiles) != 1 {
 		t.Fatalf("len(Profiles) = %d, want 1", len(m.Profiles))
@@ -535,8 +462,8 @@ func TestProfileCreate_Esc(t *testing.T) {
 	m.ProfileInput.SetValue("something")
 
 	m = updateModel(t, m, "esc")
-	if m.Screen != ScreenProfiles {
-		t.Errorf("Screen = %v, want ScreenProfiles", m.Screen)
+	if m.Screen != ScreenMaintenance {
+		t.Errorf("Screen = %v, want ScreenMaintenance", m.Screen)
 	}
 	if m.ProfileInput.Value() != "" {
 		t.Errorf("ProfileInput.Value() = %q, want empty", m.ProfileInput.Value())
@@ -545,9 +472,11 @@ func TestProfileCreate_Esc(t *testing.T) {
 
 func TestProfileDeleteDialog_Yes(t *testing.T) {
 	m := New(nil, t.TempDir(), "test")
-	m.Screen = ScreenProfiles
+	m.Screen = ScreenMaintenance
+	m.MaintenanceTab = MaintenanceTabSync
 	m.Profiles = []model.Profile{{Name: "to-delete"}, {Name: "keep"}}
-	m.Cursor = 0
+	m.SelectedProfile = "to-delete"
+	m.ProfileDeleteTarget = "to-delete"
 	m.ActiveDialog = Dialog{Type: DialogProfileDelete, Title: "Delete", Message: "Delete?"}
 
 	result, _ := m.Update(keyMsg("y"))
@@ -591,21 +520,10 @@ func TestAgentBuilderEngine_Esc(t *testing.T) {
 	}
 }
 
-func TestAgentBuilderSDD_EnterPhase(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenAgentBuilderSDD
-	m.AgentBuilderSDDMode = "phase"
-
-	m = updateModel(t, m, "enter")
-	if m.Screen != ScreenAgentBuilderSDDPhase {
-		t.Errorf("Screen = %v, want ScreenAgentBuilderSDDPhase", m.Screen)
-	}
-}
-
 func TestAgentBuilderSDD_EnterFull(t *testing.T) {
 	m := New(nil, "/tmp", "test")
 	m.Screen = ScreenAgentBuilderSDD
-	m.AgentBuilderSDDMode = "full"
+	m.Cursor = 0 // Full SDD is first option
 
 	result, cmd := m.Update(keyMsg("enter"))
 	m = result.(Model)
@@ -615,7 +533,6 @@ func TestAgentBuilderSDD_EnterFull(t *testing.T) {
 	if !m.OperationRunning {
 		t.Error("OperationRunning should be true")
 	}
-	// cmd should be non-nil (the generate command)
 	if cmd == nil {
 		t.Error("expected non-nil cmd for generation")
 	}
@@ -627,9 +544,6 @@ func TestAgentBuilderPreview_Enter(t *testing.T) {
 
 	result, cmd := m.Update(keyMsg("enter"))
 	m = result.(Model)
-	if m.Screen != ScreenAgentBuilderInstalling {
-		t.Errorf("Screen = %v, want ScreenAgentBuilderInstalling", m.Screen)
-	}
 	if !m.OperationRunning {
 		t.Error("OperationRunning should be true")
 	}
@@ -647,169 +561,6 @@ func TestAgentBuilderComplete_Enter(t *testing.T) {
 		t.Errorf("Screen = %v, want ScreenWelcome", m.Screen)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Operations handlers
-// ---------------------------------------------------------------------------
-
-func TestSync_Enter_CallsSyncFn(t *testing.T) {
-	synced := false
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenSync
-	m.SyncFn = func(profileName string) (int, error) {
-		synced = true
-		return 3, nil
-	}
-
-	result, cmd := m.Update(keyMsg("enter"))
-	m = result.(Model)
-	if !m.OperationRunning {
-		t.Error("OperationRunning should be true")
-	}
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd")
-	}
-
-	// The command is a tea.Batch, so we cannot easily execute it here.
-	// But we can verify the state was set correctly.
-	_ = synced
-}
-
-func TestSync_Enter_PassesProfileName(t *testing.T) {
-	var receivedProfile string
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenSync
-	m.SelectedProfile = "premium"
-	m.SyncFn = func(profileName string) (int, error) {
-		receivedProfile = profileName
-		return 1, nil
-	}
-
-	result, cmd := m.Update(keyMsg("enter"))
-	m = result.(Model)
-	if !m.OperationRunning {
-		t.Error("OperationRunning should be true")
-	}
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd")
-	}
-	_ = receivedProfile
-}
-
-func TestSync_CycleProfile(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenSync
-	m.Profiles = []model.Profile{
-		{Name: "economy"},
-		{Name: "premium"},
-	}
-	m.SelectedProfile = ""
-
-	// Down arrow: selects first profile
-	m = updateModel(t, m, "down")
-	if m.SelectedProfile != "economy" {
-		t.Errorf("SelectedProfile = %q, want %q", m.SelectedProfile, "economy")
-	}
-
-	// Down arrow again: selects second profile
-	m = updateModel(t, m, "down")
-	if m.SelectedProfile != "premium" {
-		t.Errorf("SelectedProfile = %q, want %q", m.SelectedProfile, "premium")
-	}
-
-	// Down arrow again: cycles back to none
-	m = updateModel(t, m, "down")
-	if m.SelectedProfile != "" {
-		t.Errorf("SelectedProfile = %q, want empty", m.SelectedProfile)
-	}
-}
-
-func TestUpgrade_Esc(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenUpgrade
-
-	m = updateModel(t, m, "esc")
-	if m.Screen != ScreenWelcome {
-		t.Errorf("Screen = %v, want ScreenWelcome", m.Screen)
-	}
-}
-
-func TestUpgrade_RefreshKey(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenUpgrade
-	m.Version = "dev" // "dev" makes Check() return immediately with UpToDate=true
-
-	result, cmd := m.Update(keyMsg("r"))
-	m = result.(Model)
-	if !m.OperationRunning {
-		t.Error("OperationRunning should be true after pressing r")
-	}
-	if m.UpdateCheckDone {
-		t.Error("UpdateCheckDone should be false while check is running")
-	}
-	if cmd == nil {
-		t.Error("expected non-nil cmd for update check")
-	}
-}
-
-func TestUpgrade_RefreshKey_IgnoredWhenRunning(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenUpgrade
-	m.OperationRunning = true
-
-	result, cmd := m.Update(keyMsg("r"))
-	m = result.(Model)
-	if cmd != nil {
-		t.Error("expected nil cmd when operation is already running")
-	}
-	_ = m
-}
-
-func TestUpgradeSync_EnterStartsChecking(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenUpgradeSync
-	m.Version = "dev"
-
-	result, cmd := m.Update(keyMsg("enter"))
-	m = result.(Model)
-	if !m.OperationRunning {
-		t.Error("OperationRunning should be true after pressing enter")
-	}
-	if m.UpgradeSyncPhase != "checking" {
-		t.Errorf("UpgradeSyncPhase = %q, want %q", m.UpgradeSyncPhase, "checking")
-	}
-	if cmd == nil {
-		t.Error("expected non-nil cmd for update check")
-	}
-}
-
-func TestUpgradeSync_EscIgnoredWhenRunning(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenUpgradeSync
-	m.OperationRunning = true
-
-	m = updateModel(t, m, "esc")
-	if m.Screen != ScreenUpgradeSync {
-		t.Errorf("Screen = %v, want ScreenUpgradeSync (should not navigate while running)", m.Screen)
-	}
-}
-
-func TestUpgradeSync_EscWhenIdle(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenUpgradeSync
-	m.UpgradeSyncPhase = "done"
-
-	m = updateModel(t, m, "esc")
-	if m.Screen != ScreenWelcome {
-		t.Errorf("Screen = %v, want ScreenWelcome", m.Screen)
-	}
-	if m.UpgradeSyncPhase != "" {
-		t.Errorf("UpgradeSyncPhase = %q, want empty", m.UpgradeSyncPhase)
-	}
-}
-
-// ModelConfig screen was removed — Welcome goes directly to ClaudeModelPicker.
-// See TestClaudeModelPicker_Enter_ModelConfigMode for the config mode test.
 
 // ---------------------------------------------------------------------------
 // Backup handlers — additional coverage
@@ -899,60 +650,7 @@ func TestRenameBackup_Esc(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Agent Builder SDD — cycle mode
-// ---------------------------------------------------------------------------
-
-func TestAgentBuilderSDD_CycleMode(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenAgentBuilderSDD
-	m.AgentBuilderSDDMode = "phase"
-
-	// phase -> full
-	m = updateModel(t, m, "down")
-	if m.AgentBuilderSDDMode != "full" {
-		t.Errorf("mode = %q, want %q", m.AgentBuilderSDDMode, "full")
-	}
-
-	// full -> none
-	m = updateModel(t, m, "down")
-	if m.AgentBuilderSDDMode != "none" {
-		t.Errorf("mode = %q, want %q", m.AgentBuilderSDDMode, "none")
-	}
-
-	// none -> phase
-	m = updateModel(t, m, "up")
-	if m.AgentBuilderSDDMode != "phase" {
-		t.Errorf("mode = %q, want %q", m.AgentBuilderSDDMode, "phase")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Agent Builder SDD Phase — enter selects phase
-// ---------------------------------------------------------------------------
-
-func TestAgentBuilderSDDPhase_Enter(t *testing.T) {
-	m := New(nil, "/tmp", "test")
-	m.Screen = ScreenAgentBuilderSDDPhase
-	m.Cursor = 0
-
-	result, cmd := m.Update(keyMsg("enter"))
-	m = result.(Model)
-	if m.Screen != ScreenAgentBuilderGenerating {
-		t.Errorf("Screen = %v, want ScreenAgentBuilderGenerating", m.Screen)
-	}
-	if m.AgentBuilderSDDPhase != "init" {
-		t.Errorf("AgentBuilderSDDPhase = %q, want %q", m.AgentBuilderSDDPhase, "init")
-	}
-	if !m.OperationRunning {
-		t.Error("OperationRunning should be true")
-	}
-	if cmd == nil {
-		t.Error("expected non-nil cmd for generation")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Complete screen — any key quits
+// Complete screen
 // ---------------------------------------------------------------------------
 
 func TestComplete_Q_Quits(t *testing.T) {
@@ -979,5 +677,19 @@ func TestComplete_Enter_ReturnsToWelcome(t *testing.T) {
 	}
 	if m.Quitting {
 		t.Error("Quitting should be false — enter goes to menu")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance — Esc
+// ---------------------------------------------------------------------------
+
+func TestMaintenance_Esc(t *testing.T) {
+	m := New(nil, "/tmp", "test")
+	m.Screen = ScreenMaintenance
+
+	m = updateModel(t, m, "esc")
+	if m.Screen != ScreenWelcome {
+		t.Errorf("Screen = %v, want ScreenWelcome", m.Screen)
 	}
 }

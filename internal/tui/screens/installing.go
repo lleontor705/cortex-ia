@@ -43,12 +43,15 @@ func RenderInstalling(prog InstallProgress, spinnerView string, progressBar prog
 		fmt.Fprintf(&sb, "  %s %s\n", icon, item.Label)
 	}
 
-	// Logs (show last 5)
+	// Logs with overflow indicator
 	if len(prog.Logs) > 0 {
 		sb.WriteString("\n")
+		maxLogs := 5
+		total := len(prog.Logs)
 		start := 0
-		if len(prog.Logs) > 5 {
-			start = len(prog.Logs) - 5
+		if total > maxLogs {
+			start = total - maxLogs
+			sb.WriteString(styles.Description.Render(fmt.Sprintf("  ... %d more log lines above\n", start)))
 		}
 		for _, log := range prog.Logs[start:] {
 			sb.WriteString(styles.Description.Render("  " + log + "\n"))

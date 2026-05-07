@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,7 +15,7 @@ type ToastMsg struct {
 	IsError bool
 }
 
-// ToastDismissMsg is sent when a toast should be dismissed.
+// ToastDismissMsg is sent when a toast should be dismissed (removes the oldest).
 type ToastDismissMsg struct{}
 
 // Toast holds the state for a temporary notification.
@@ -24,11 +25,63 @@ type Toast struct {
 	Visible bool
 }
 
+// ToastQueue manages up to maxToasts visible notifications.
+type ToastQueue struct {
+	Items []Toast
+}
+
+const maxToasts = 3
+
+// Push adds a toast to the queue, evicting the oldest if full.
+func (q *ToastQueue) Push(t Toast) {
+	if len(q.Items) >= maxToasts {
+		q.Items = q.Items[1:]
+	}
+	q.Items = append(q.Items, t)
+}
+
+// Dismiss removes the oldest toast.
+func (q *ToastQueue) Dismiss() {
+	if len(q.Items) > 0 {
+		q.Items = q.Items[1:]
+	}
+}
+
+// HasVisible returns true if there are any toasts to show.
+func (q *ToastQueue) HasVisible() bool {
+	return len(q.Items) > 0
+}
+
 var toastStyle = lipgloss.NewStyle().
 	Padding(0, 2).
 	Bold(true)
 
-// renderToast renders the toast as a right-aligned overlay line.
+// renderToastQueue renders all active toasts stacked vertically.
+func renderToastQueue(q ToastQueue, width int) string {
+	if len(q.Items) == 0 {
+		return ""
+	}
+	var lines []string
+	for _, t := range q.Items {
+		if t.Text == "" {
+			continue
+		}
+		style := toastStyle.Foreground(styles.Success)
+		icon := "✓ "
+		if t.IsError {
+			style = toastStyle.Foreground(styles.Error)
+			icon = "✗ "
+		}
+		rendered := style.Render(icon + t.Text)
+		if width > 0 {
+			rendered = lipgloss.Place(width, 1, lipgloss.Right, lipgloss.Top, rendered)
+		}
+		lines = append(lines, rendered)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// Legacy compat: renderToast for single toast (used by View)
 func renderToast(t Toast, width int) string {
 	if !t.Visible || t.Text == "" {
 		return ""
@@ -40,7 +93,6 @@ func renderToast(t Toast, width int) string {
 		icon = "✗ "
 	}
 	rendered := style.Render(icon + t.Text)
-
 	if width > 0 {
 		return lipgloss.Place(width, 1, lipgloss.Right, lipgloss.Top, rendered)
 	}

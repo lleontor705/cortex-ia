@@ -8,10 +8,11 @@ func TestNextScreen_MainFlow(t *testing.T) {
 		ScreenDetection,
 		ScreenAgents,
 		ScreenPersona,
-		ScreenPreset,
 		ScreenClaudeModelPicker,
-		ScreenSDDMode,
-		ScreenStrictTDD,
+		ScreenSkillPicker,
+		ScreenReview,
+		ScreenInstalling,
+		ScreenComplete,
 	}
 
 	for i := 0; i < len(chain)-1; i++ {
@@ -23,24 +24,6 @@ func TestNextScreen_MainFlow(t *testing.T) {
 			t.Errorf("NextScreen(%d) = %d, want %d", chain[i], got, chain[i+1])
 		}
 	}
-
-	// Continue from DependencyTree onward
-	laterChain := []Screen{
-		ScreenDependencyTree,
-		ScreenSkillPicker,
-		ScreenReview,
-		ScreenInstalling,
-		ScreenComplete,
-	}
-	for i := 0; i < len(laterChain)-1; i++ {
-		got, ok := NextScreen(laterChain[i])
-		if !ok {
-			t.Fatalf("NextScreen(%d) returned ok=false", laterChain[i])
-		}
-		if got != laterChain[i+1] {
-			t.Errorf("NextScreen(%d) = %d, want %d", laterChain[i], got, laterChain[i+1])
-		}
-	}
 }
 
 func TestPreviousScreen_MainFlow(t *testing.T) {
@@ -50,12 +33,8 @@ func TestPreviousScreen_MainFlow(t *testing.T) {
 		{ScreenDetection, ScreenWelcome},
 		{ScreenAgents, ScreenDetection},
 		{ScreenPersona, ScreenAgents},
-		{ScreenPreset, ScreenPersona},
-		{ScreenClaudeModelPicker, ScreenPreset},
-		{ScreenSDDMode, ScreenClaudeModelPicker},
-		{ScreenStrictTDD, ScreenSDDMode},
-		{ScreenDependencyTree, ScreenStrictTDD},
-		{ScreenSkillPicker, ScreenDependencyTree},
+		{ScreenClaudeModelPicker, ScreenPersona},
+		{ScreenSkillPicker, ScreenClaudeModelPicker},
 		{ScreenReview, ScreenSkillPicker},
 	}
 
@@ -119,12 +98,6 @@ func TestAgentBuilderRoutes(t *testing.T) {
 			got, ok, ScreenAgentBuilderSDD)
 	}
 
-	got, ok = NextScreen(ScreenAgentBuilderInstalling)
-	if !ok || got != ScreenAgentBuilderComplete {
-		t.Errorf("NextScreen(AgentBuilderInstalling) = %d, %v; want %d, true",
-			got, ok, ScreenAgentBuilderComplete)
-	}
-
 	// Backward chain
 	backTests := []struct {
 		from, want Screen
@@ -132,7 +105,6 @@ func TestAgentBuilderRoutes(t *testing.T) {
 		{ScreenAgentBuilderEngine, ScreenWelcome},
 		{ScreenAgentBuilderPrompt, ScreenAgentBuilderEngine},
 		{ScreenAgentBuilderSDD, ScreenAgentBuilderPrompt},
-		{ScreenAgentBuilderSDDPhase, ScreenAgentBuilderSDD},
 		{ScreenAgentBuilderGenerating, ScreenAgentBuilderPrompt},
 		{ScreenAgentBuilderPreview, ScreenAgentBuilderPrompt},
 		{ScreenAgentBuilderComplete, ScreenWelcome},
@@ -146,5 +118,29 @@ func TestAgentBuilderRoutes(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("PreviousScreen(%d) = %d, want %d", tt.from, got, tt.want)
 		}
+	}
+}
+
+func TestMaintenanceRoutes(t *testing.T) {
+	got, ok := PreviousScreen(ScreenMaintenance)
+	if !ok || got != ScreenWelcome {
+		t.Errorf("PreviousScreen(Maintenance) = %d, %v; want ScreenWelcome", got, ok)
+	}
+
+	got, ok = PreviousScreen(ScreenProfileCreate)
+	if !ok || got != ScreenMaintenance {
+		t.Errorf("PreviousScreen(ProfileCreate) = %d, %v; want ScreenMaintenance", got, ok)
+	}
+}
+
+func TestModelConfigRoutes(t *testing.T) {
+	got, ok := PreviousScreen(ScreenModelConfig)
+	if !ok || got != ScreenWelcome {
+		t.Errorf("PreviousScreen(ModelConfig) = %d, %v; want ScreenWelcome", got, ok)
+	}
+
+	got, ok = PreviousScreen(ScreenOpenCodeModelPicker)
+	if !ok || got != ScreenModelConfig {
+		t.Errorf("PreviousScreen(OpenCodeModelPicker) = %d, %v; want ScreenModelConfig", got, ok)
 	}
 }

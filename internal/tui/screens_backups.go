@@ -13,20 +13,58 @@ import (
 
 // --- Backups screen ---
 
+// visibleBackups returns indices of backups matching the current filter.
+func (m Model) visibleBackups() []int {
+	var indices []int
+	for i, bk := range m.Backups {
+		text := bk.ID + " " + bk.Description
+		if m.BackupFilter.Matches(text) {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
 func (m Model) updateBackups(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// When filter is active, delegate to filter input
+	if m.BackupFilter.Active {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "esc":
+				m.BackupFilter.Deactivate()
+				return m, nil
+			case "enter":
+				m.BackupFilter.Deactivate()
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.BackupFilter.Input, cmd = m.BackupFilter.Input.Update(msg)
+		visible := m.visibleBackups()
+		if m.Cursor >= len(visible) {
+			m.Cursor = max(len(visible)-1, 0)
+		}
+		return m, cmd
+	}
+
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
+		case "/"  :
+			m.BackupFilter.Activate()
+			return m, m.BackupFilter.Input.Focus()
 		case "up", "k":
 			if m.Cursor > 0 {
 				m.Cursor--
 			}
 		case "down", "j":
-			if m.Cursor < len(m.Backups)-1 {
+			visible := m.visibleBackups()
+			if m.Cursor < len(visible)-1 {
 				m.Cursor++
 			}
 		case "r":
-			if m.Cursor < len(m.Backups) {
-				m.SelectedBackup = m.Backups[m.Cursor]
+			visible := m.visibleBackups()
+			if m.Cursor < len(visible) {
+				m.SelectedBackup = m.Backups[visible[m.Cursor]]
 				m.ActiveDialog = Dialog{
 					Type:    DialogRestoreConfirm,
 					Title:   "Confirm Restore",
@@ -35,8 +73,9 @@ func (m Model) updateBackups(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "d":
-			if m.Cursor < len(m.Backups) {
-				m.SelectedBackup = m.Backups[m.Cursor]
+			visible := m.visibleBackups()
+			if m.Cursor < len(visible) {
+				m.SelectedBackup = m.Backups[visible[m.Cursor]]
 				m.ActiveDialog = Dialog{
 					Type:    DialogDeleteConfirm,
 					Title:   "Confirm Delete",
@@ -45,12 +84,13 @@ func (m Model) updateBackups(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "n":
-			if m.Cursor < len(m.Backups) {
-				m.SelectedBackup = m.Backups[m.Cursor]
+			visible := m.visibleBackups()
+			if m.Cursor < len(visible) {
+				m.SelectedBackup = m.Backups[visible[m.Cursor]]
 				m.BackupRenameInput.SetValue(m.SelectedBackup.Description)
 				m.BackupRenameInput.Focus()
 				m.RenameErr = nil
-				m.setScreen(ScreenRenameBackup)
+				m.setScreenKeepCursor(ScreenRenameBackup)
 			}
 		case "esc":
 			m.setScreen(ScreenWelcome)
@@ -69,11 +109,20 @@ func (m Model) viewBackups() string {
 		sb.WriteString("\n\n")
 	}
 
+	if m.BackupFilter.Active || m.BackupFilter.Query() != "" {
+		sb.WriteString(m.BackupFilter.View())
+	}
+
+	visible := m.visibleBackups()
 	if len(m.Backups) == 0 {
 		sb.WriteString(styles.Description.Render("No backups found."))
 		sb.WriteString("\n")
+	} else if len(visible) == 0 && m.BackupFilter.Query() != "" {
+		sb.WriteString(styles.Description.Render("No matching backups."))
+		sb.WriteString("\n")
 	} else {
-		for i, bk := range m.Backups {
+		for i, idx := range visible {
+			bk := m.Backups[idx]
 			cursor := "  "
 			if i == m.Cursor {
 				cursor = styles.Cursor.Render("> ")
@@ -92,6 +141,9 @@ func (m Model) viewBackups() string {
 			fmt.Fprintf(&sb, "%s\n", styles.StatusWarn.Render("⚠ "+w))
 		}
 	}
+
+	sb.WriteString("\n")
+	sb.WriteString(styles.Description.Render("r restore • d delete • n rename • / filter • Esc back"))
 
 	return sb.String()
 }
@@ -114,11 +166,11 @@ func (m Model) updateRenameBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.BackupRenameInput.Blur()
-			m.setScreen(ScreenBackups)
+			m.restoreScreen(ScreenBackups)
 			return m, nil
 		case "esc":
 			m.BackupRenameInput.Blur()
-			m.setScreen(ScreenBackups)
+			m.restoreScreen(ScreenBackups)
 			return m, nil
 		}
 	}

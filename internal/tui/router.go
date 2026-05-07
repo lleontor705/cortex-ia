@@ -7,17 +7,13 @@ type Route struct {
 }
 
 var linearRoutes = map[Screen]Route{
-	// Main install flow
+	// Main install flow (simplified: 8 steps)
 	ScreenWelcome:           {Forward: ScreenDetection},
 	ScreenDetection:         {Forward: ScreenAgents, Backward: ScreenWelcome},
 	ScreenAgents:            {Forward: ScreenPersona, Backward: ScreenDetection},
-	ScreenPersona:           {Forward: ScreenPreset, Backward: ScreenAgents},
-	ScreenPreset:            {Forward: ScreenClaudeModelPicker, Backward: ScreenPersona},
-	ScreenClaudeModelPicker: {Forward: ScreenSDDMode, Backward: ScreenPreset},
-	ScreenSDDMode:           {Forward: ScreenStrictTDD, Backward: ScreenClaudeModelPicker},
-	ScreenStrictTDD:         {Forward: ScreenDependencyTree, Backward: ScreenSDDMode},
-	ScreenDependencyTree:    {Forward: ScreenSkillPicker, Backward: ScreenStrictTDD},
-	ScreenSkillPicker:       {Forward: ScreenReview, Backward: ScreenDependencyTree},
+	ScreenPersona:           {Forward: ScreenClaudeModelPicker, Backward: ScreenAgents},
+	ScreenClaudeModelPicker: {Forward: ScreenSkillPicker, Backward: ScreenPersona},
+	ScreenSkillPicker:       {Forward: ScreenReview, Backward: ScreenClaudeModelPicker},
 	ScreenReview:            {Forward: ScreenInstalling, Backward: ScreenSkillPicker},
 	ScreenInstalling:        {Forward: ScreenComplete},
 	ScreenComplete:          {},
@@ -26,28 +22,21 @@ var linearRoutes = map[Screen]Route{
 	ScreenBackups:      {Backward: ScreenWelcome},
 	ScreenRenameBackup: {Backward: ScreenBackups},
 
-	// Post-install operations
-	ScreenUpgrade:     {Backward: ScreenWelcome},
-	ScreenSync:        {Backward: ScreenWelcome},
-	ScreenUpgradeSync: {Backward: ScreenWelcome},
+	// Maintenance (upgrade, sync, profiles)
+	ScreenMaintenance:   {Backward: ScreenWelcome},
+	ScreenProfileCreate: {Backward: ScreenMaintenance},
 
-	// Profile management
-	ScreenProfiles:      {Backward: ScreenWelcome},
-	ScreenProfileCreate: {Backward: ScreenProfiles},
-
-	// Agent builder
+	// Agent builder (simplified: 5 screens)
 	ScreenAgentBuilderEngine:     {Backward: ScreenWelcome},
 	ScreenAgentBuilderPrompt:     {Forward: ScreenAgentBuilderSDD, Backward: ScreenAgentBuilderEngine},
 	ScreenAgentBuilderSDD:        {Backward: ScreenAgentBuilderPrompt},
-	ScreenAgentBuilderSDDPhase:   {Backward: ScreenAgentBuilderSDD},
 	ScreenAgentBuilderGenerating: {Backward: ScreenAgentBuilderPrompt},
 	ScreenAgentBuilderPreview:    {Backward: ScreenAgentBuilderPrompt},
-	ScreenAgentBuilderInstalling: {Forward: ScreenAgentBuilderComplete},
 	ScreenAgentBuilderComplete:   {Backward: ScreenWelcome},
 
-	// OpenCode model configuration
-	ScreenOpenCodeModels:      {Backward: ScreenWelcome},
-	ScreenOpenCodeModelPicker: {Backward: ScreenOpenCodeModels},
+	// Model configuration (Claude + OpenCode unified)
+	ScreenModelConfig:         {Backward: ScreenWelcome},
+	ScreenOpenCodeModelPicker: {Backward: ScreenModelConfig},
 }
 
 // NextScreen returns the forward screen for the given screen, if defined.

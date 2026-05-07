@@ -42,8 +42,27 @@ func RenderComplete(data CompleteData) string {
 		}
 	}
 
+	// Next steps guidance
 	sb.WriteString("\n")
-	sb.WriteString(styles.Description.Render("Enter/Esc back to menu • q quit"))
+	sb.WriteString(styles.Subtitle.Render("Next steps:"))
+	sb.WriteString("\n")
+	if data.Err != nil {
+		sb.WriteString("  1. Check the errors above and fix any issues\n")
+		if data.BackupID != "" {
+			sb.WriteString("  2. Press " + styles.Subtitle.Render("u") + " to undo and restore previous state\n")
+		}
+		sb.WriteString("  3. Return to menu and re-run installation\n")
+	} else {
+		sb.WriteString("  1. Open a new terminal for changes to take effect\n")
+		sb.WriteString("  2. Run " + styles.Subtitle.Render("cortex-ia verify") + " to validate the installation\n")
+		sb.WriteString("  3. Config files are in " + styles.Description.Render("~/.cortex-ia/") + "\n")
+		if data.BackupID != "" {
+			sb.WriteString("  4. Press " + styles.Subtitle.Render("u") + " to undo if something went wrong\n")
+		}
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(styles.Description.Render("Enter menu • u undo • q quit"))
 
 	return sb.String()
 }

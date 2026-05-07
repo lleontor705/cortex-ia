@@ -12,3 +12,14 @@ type Selection struct {
 	StrictTDD        bool             // when true, enforce test-first development in SDD
 	CommunitySkills  []SkillID        // community skills selected for installation
 }
+
+// ExportConfig represents a shareable installation configuration.
+type ExportConfig struct {
+	Agents          []AgentID    `json:"agents"`
+	Preset          PresetID     `json:"preset"`
+	Persona         PersonaID    `json:"persona"`
+	ModelPreset     ModelPreset  `json:"model_preset"`
+	SDDEnabled      bool         `json:"sdd_enabled"`
+	StrictTDD       bool         `json:"strict_tdd"`
+	CommunitySkills []SkillID    `json:"community_skills,omitempty"`
+}
