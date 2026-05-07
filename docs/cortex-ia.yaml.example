@@ -1,0 +1,49 @@
+# .cortex-ia.yaml — full schema reference
+#
+# Place this file at the root of your repo and run `cortex-ia install --local`
+# (or `sync --local`) to apply it. Project config wins over CLI defaults but
+# loses to explicit CLI flags.
+#
+# All fields are optional. Omit any you don't need.
+
+# Component bundle — shorthand for the component selection.
+# Valid: full | minimal | custom
+preset: full
+
+# Communication style for every configured agent.
+# Valid: professional | mentor | minimal
+persona: professional
+
+# Per-phase Claude model routing (built-in preset).
+# Valid: balanced | performance | economy
+# Conflicts with `profile` — `profile` wins if both are set.
+model-preset: balanced
+
+# Active OpenCode SDD profile name. The profile must already exist
+# (create with `cortex-ia profiles create <name>:<provider>/<model>`).
+# When set, `install` and `sync` auto-apply the profile's per-phase
+# assignments to ~/.config/opencode/opencode.json.
+profile: cheap
+
+# Enforce TDD across SDD apply / verify phases.
+strict-tdd: false
+
+# Restrict cortex-ia to these agents on this project. Omit (or leave empty)
+# to apply to every detected agent.
+# Supported IDs: claude-code, opencode, gemini-cli, cursor, vscode-copilot,
+#                codex, windsurf, antigravity, kilocode, kimi, kiro-ide, qwen-code
+agents:
+  - claude-code
+  - opencode
+
+# Opt out of specific components even when `preset: full`.
+# Valid IDs: cortex, agent-mailbox, forgespec, sdd, skills, context7,
+#            conventions, gga, persona, permissions, theme
+disabled-components:
+  - agent-mailbox
+
+# Layer project-specific custom skills on top of the embedded set.
+# Each entry points at a directory containing a SKILL.md.
+custom-skills:
+  - path: ./skills/domain-validator
+  - path: ./skills/ci-helper

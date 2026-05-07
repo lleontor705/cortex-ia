@@ -60,10 +60,6 @@ Spec and design can run in parallel (but since you're a single agent, run them s
 SDD skill instructions are installed at: `{{SKILLS_DIR}}/`
 When executing any phase, read the corresponding skill file first (e.g. `{{SKILLS_DIR}}/investigate/SKILL.md` for explore phase).
 
-### Model Assignments
-
-{{MODEL_ASSIGNMENTS}}
-
 ### Commands
 
 - `/sdd-init` — Detect project stack, bootstrap persistence, build skill registry

@@ -111,12 +111,11 @@ Every sub-agent prompt must include:
 1. **Skill path**: `Read your skill instructions from: {{SKILLS_DIR}}/{skill-id}/SKILL.md`
 2. **Skill loading**: `Check for available skills: 1. mem_search(query: 'skill-registry', project: '{project}') 2. Fallback: read .sdd/skill-registry.md`
 3. **Persistence**: `After completing your work, persist your artifact via mem_save with project: '{project}'. Use mem_relate to connect to upstream artifacts.`
-4. **Model**: `MODEL: {assigned-model}` (from model assignments)
-5. **Context**: change name, project name, artifact store mode, dependency topic keys
-6. **Focus/task-type**: `FOCUS: {ARCHITECTURE|INVESTIGATION|MIGRATION|GENERAL}` or `TASK-TYPE: {IMPLEMENTATION|REFACTOR|DATABASE|INFRASTRUCTURE|DOCUMENTATION}`
-7. **Peer agents**: `You may message other active agents via msg_send or msg_request. Use msg_list_agents() to discover agents.`
-8. **A2A tasks**: `For formal work delegation with lifecycle tracking, use a2a_submit_task. Check status with a2a_get_task. Use a2a_respond_task for structured results.`
-9. **Resource locks**: `Before deploy/CI/external-API tasks, acquire via resource_acquire. Release via resource_release. Do NOT use for file conflicts — use file_reserve.`
+4. **Context**: change name, project name, artifact store mode, dependency topic keys
+5. **Focus/task-type**: `FOCUS: {ARCHITECTURE|INVESTIGATION|MIGRATION|GENERAL}` or `TASK-TYPE: {IMPLEMENTATION|REFACTOR|DATABASE|INFRASTRUCTURE|DOCUMENTATION}`
+6. **Peer agents**: `You may message other active agents via msg_send or msg_request. Use msg_list_agents() to discover agents.`
+7. **A2A tasks**: `For formal work delegation with lifecycle tracking, use a2a_submit_task. Check status with a2a_get_task. Use a2a_respond_task for structured results.`
+8. **Resource locks**: `Before deploy/CI/external-API tasks, acquire via resource_acquire. Release via resource_release. Do NOT use for file conflicts — use file_reserve.`
 
 Sub-agents handle their own persistence — they save to Cortex before returning.
 
@@ -256,11 +255,9 @@ Each phase returns: `{ status, executive_summary, artifacts, next_recommended, r
 
 Sub-agents retrieve full content: `mem_search(query: "{topic_key}", ...)` → `mem_get_observation(id)` (search results are truncated to 300 chars).
 
-### Model Assignments
+### Runtime Model Routing
 
-{{MODEL_ASSIGNMENTS}}
-
-Include `MODEL: {assigned-model}` in each delegation prompt.
+Do not include model labels in delegation prompts. For OpenCode, model routing is configured on each agent entry in `opencode.json`; for other agents, use the host runtime's native model controls.
 
 ### Tools Reference
 

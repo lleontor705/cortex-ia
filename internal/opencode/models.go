@@ -210,8 +210,7 @@ func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssign
 			continue
 		}
 
-		// All SDD agents use "sdd-" prefix in OpenCode config
-		configName := "sdd-" + agentName
+		configName := resolveOpenCodeAgentConfigName(agentSection, agentName)
 
 		agentConf, ok := agentSection[configName].(map[string]interface{})
 		if !ok {
@@ -234,4 +233,20 @@ func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssign
 		return fmt.Errorf("create config dir: %w", err)
 	}
 	return os.WriteFile(configPath, out, 0644)
+}
+
+func resolveOpenCodeAgentConfigName(agentSection map[string]interface{}, agentName string) string {
+	canonical := strings.TrimPrefix(agentName, "sdd-")
+	if _, ok := agentSection[canonical]; ok {
+		return canonical
+	}
+	if _, ok := agentSection[agentName]; ok {
+		return agentName
+	}
+
+	legacy := "sdd-" + canonical
+	if _, ok := agentSection[legacy]; ok {
+		return legacy
+	}
+	return canonical
 }

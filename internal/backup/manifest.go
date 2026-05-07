@@ -8,13 +8,28 @@ import (
 	"time"
 )
 
+// backupRoot is the default backup root resolver. It returns ~/.cortex-ia/backups.
+func backupRoot() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory: %w", err)
+	}
+	return filepath.Join(home, ".cortex-ia", "backups"), nil
+}
+
+// BackupRootFn is the function used to resolve the backup root directory.
+// Package-level var for testability — swapped in tests to use a temp directory.
+// Exported so tests in other packages can override it as well.
+var BackupRootFn = backupRoot
+
 // BackupSource identifies what operation created a backup.
 type BackupSource string
 
 const (
-	BackupSourceInstall BackupSource = "install"
-	BackupSourceSync    BackupSource = "sync"
-	BackupSourceUpgrade BackupSource = "upgrade"
+	BackupSourceInstall   BackupSource = "install"
+	BackupSourceSync      BackupSource = "sync"
+	BackupSourceUpgrade   BackupSource = "upgrade"
+	BackupSourceUninstall BackupSource = "uninstall"
 )
 
 func (s BackupSource) Label() string {
@@ -25,6 +40,8 @@ func (s BackupSource) Label() string {
 		return "sync"
 	case BackupSourceUpgrade:
 		return "upgrade"
+	case BackupSourceUninstall:
+		return "uninstall"
 	default:
 		return "unknown source"
 	}
@@ -42,6 +59,14 @@ type Manifest struct {
 	Description      string          `json:"description,omitempty"`
 	FileCount        int             `json:"file_count,omitempty"`
 	CreatedByVersion string          `json:"created_by_version,omitempty"`
+
+	// Pinned marks a backup as protected from automatic pruning.
+	// Manifests written before pinning was supported lack this field; absent ⇒ false.
+	Pinned bool `json:"pinned,omitempty"`
+
+	// Checksum is the SHA-256 digest of the snapshot inputs (per ComputeChecksum).
+	// Absent on legacy manifests; an empty string disables dedup for that backup.
+	Checksum string `json:"checksum,omitempty"`
 }
 
 func (m Manifest) DisplayLabel() string {

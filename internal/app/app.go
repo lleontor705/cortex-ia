@@ -40,6 +40,18 @@ func runCLI(args []string) error {
 	case "rollback":
 		return runRollback(args[1:])
 
+	case "uninstall":
+		return runUninstall(args[1:])
+
+	case "gga":
+		return runGGA(args[1:])
+
+	case "profiles":
+		return runProfiles(args[1:])
+
+	case "agent-builder":
+		return runAgentBuilder(args[1:])
+
 	case "update", "upgrade":
 		return runUpdate()
 
@@ -100,10 +112,26 @@ Usage:
   cortex-ia list agents      List detected agents
   cortex-ia list components  List installed components
   cortex-ia list backups     List available backups
+  cortex-ia list profiles    List saved OpenCode SDD profiles
+  cortex-ia list skills      List installed community skills
   cortex-ia doctor           Verify installed files from lockfile
   cortex-ia verify           Alias of doctor
   cortex-ia repair           Re-apply managed files from lockfile/state
   cortex-ia rollback         Restore managed files from the last backup
+  cortex-ia gga --provider <id>  Switch GGA provider (anthropic|openai|google|ollama|claude|opencode|gemini|codex)
+  cortex-ia gga --list           List supported GGA providers
+  cortex-ia agent-builder list                              List custom skills built via the Agent Builder
+  cortex-ia agent-builder create --engine claude --purpose "review go diffs" --target claude-code
+  cortex-ia agent-builder remove <name>                     Remove a custom skill from the registry
+  cortex-ia profiles list                                   List saved OpenCode SDD profiles
+  cortex-ia profiles create <name>:<provider>/<model>       Create a profile that maps every SDD phase to one model
+  cortex-ia profiles set <name>:<phase>:<provider>/<model>  Override a single SDD phase
+  cortex-ia profiles apply <name>                           Write the profile's per-phase models into opencode.json
+  cortex-ia profiles delete <name>                          Remove a profile
+  cortex-ia uninstall        Reverse all (or selected) cortex-ia injections
+  cortex-ia uninstall --component persona --component cortex
+  cortex-ia uninstall --agent claude-code --dry-run
+  cortex-ia uninstall --all  Wipe every managed change and clear state
   cortex-ia auto-install     Install missing agents via package managers
   cortex-ia auto-install --dry-run
   cortex-ia update           Check for available updates

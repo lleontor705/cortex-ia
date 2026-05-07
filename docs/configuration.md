@@ -16,6 +16,10 @@ cortex-ia doctor                       # Run health checks
 cortex-ia repair [--dry-run]           # Re-apply from state
 cortex-ia rollback [--backup ID]       # Restore from backup
 cortex-ia update                       # Check for updates
+cortex-ia uninstall [flags]            # Reverse cortex-ia injections (with snapshot)
+cortex-ia gga --provider <id>          # Switch GGA provider
+cortex-ia profiles list|create|set|apply|delete   # OpenCode SDD profiles
+cortex-ia agent-builder list|create|remove        # AI-generated custom skills
 cortex-ia version                      # Show version
 cortex-ia help                         # Show usage
 ```
@@ -34,6 +38,66 @@ cortex-ia help                         # Show usage
 If no `--agent` is specified, cortex-ia auto-detects all installed agents.
 
 If no `--preset` is specified, defaults to `full`.
+
+Valid `--agent` values: `claude-code`, `opencode`, `gemini-cli`, `cursor`, `vscode-copilot`, `codex`, `windsurf`, `antigravity`, `kilocode`, `kimi`, `kiro-ide`, `qwen-code`.
+
+### Uninstall Flags
+
+| Flag | Description |
+|------|-------------|
+| `--agent <id>` | Uninstall only from a specific agent (repeatable) |
+| `--component <id>` | Uninstall only a specific component (repeatable) |
+| `--all` | Reverse every managed change and clear `state.json` |
+| `--dry-run` | Print the planned operations without writing |
+| `--yes`, `-y` | Skip the destructive-action confirmation prompt |
+| `--no-backup` | Skip the pre-uninstall snapshot (not recommended) |
+
+A snapshot tagged `BackupSourceUninstall` is taken before any change so rollback works exactly like an install rollback.
+
+### GGA Switcher
+
+```bash
+cortex-ia gga --provider anthropic    # Anthropic API directly
+cortex-ia gga --provider ollama       # Local Ollama (sets API_BASE)
+cortex-ia gga --provider claude       # Route via Claude Code (default)
+cortex-ia gga --list                  # List supported providers
+cortex-ia gga --show                  # Print current ~/.config/gga/config
+```
+
+Direct-LLM providers (`anthropic`, `openai`, `google`, `ollama`) emit a `MODEL=` line; agent-routed providers (`claude`, `opencode`, `gemini`, `codex`) do not.
+
+### OpenCode SDD Profiles
+
+```bash
+# Create a profile that maps every SDD phase to one model
+cortex-ia profiles create cheap:openai/gpt-4o-mini
+
+# Override one phase
+cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
+
+# Write the profile's per-phase models into ~/.config/opencode/opencode.json
+cortex-ia profiles apply cheap
+
+cortex-ia profiles list
+cortex-ia profiles delete cheap
+```
+
+Profile values may be either a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`) or a fully-qualified `provider/model` string. `apply` writes them to the real SDD agent entries in `opencode.json` (`architect`, `decompose`, `team-lead`, `implement`, etc.). The `sdd-apply` phase maps to both `team-lead` and `implement`.
+
+### Agent Builder
+
+```bash
+cortex-ia agent-builder create \
+  --engine claude \
+  --purpose "review go diffs against project conventions" \
+  --target claude-code --target opencode \
+  --persona professional
+
+cortex-ia agent-builder list
+cortex-ia agent-builder remove <name>
+```
+
+Supported `--engine` values: `claude-code`, `opencode`, `gemini-cli`, `codex`. The engine binary must be on `PATH`. The default `--timeout` is 120 s; `--dry-run` prints the prompt that would be sent to the engine. The persisted registry lives at `~/.cortex-ia/agentbuilder/registry.json`.
 
 ## Interactive TUI
 
@@ -64,7 +128,7 @@ Assign Claude model tiers (opus/sonnet/haiku) to SDD phases for cost/quality opt
 cortex-ia install --model-preset economy
 ```
 
-The model assignments table is injected into the orchestrator prompt via `{{MODEL_ASSIGNMENTS}}`.
+For OpenCode, these assignments are written to each agent's `model` field in `opencode.json`; the orchestrator no longer passes model names as text in delegation prompts.
 
 ## Persona System
 
@@ -175,6 +239,17 @@ cortex-ia rollback         # Restore from most recent backup
 cortex-ia rollback --backup 20260331-000000  # Restore specific backup
 cortex-ia repair           # Re-apply current state (no restore, just re-inject)
 ```
+
+### Retention & Pinning
+
+Backups now carry two optional fields (omitempty for backwards compatibility):
+
+| Field | Purpose |
+|-------|---------|
+| `pinned` | Excludes the backup from `Prune`. Pin manually for known-good snapshots. |
+| `checksum` | SHA-256 over the snapshot inputs. Used by `IsDuplicate` to skip duplicate backups. |
+
+Default retention is **5 unpinned backups** (`backup.DefaultRetentionCount`). `Prune` runs at the end of `install` / `sync` so the backup directory does not grow without bound.
 
 ## Dependency Resolution
 

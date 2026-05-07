@@ -17,6 +17,8 @@ type ProjectConfig struct {
 	Preset             string   `yaml:"preset,omitempty"`
 	Persona            string   `yaml:"persona,omitempty"`
 	ModelPreset        string   `yaml:"model-preset,omitempty"`
+	Profile            string   `yaml:"profile,omitempty"`
+	StrictTDD          bool     `yaml:"strict-tdd,omitempty"`
 	Agents             []string `yaml:"agents,omitempty"`
 	DisabledComponents []string `yaml:"disabled-components,omitempty"`
 	CustomSkills       []Skill  `yaml:"custom-skills,omitempty"`
@@ -69,21 +71,29 @@ func WriteDefault(dir string) (string, error) {
 	path := filepath.Join(dir, FileName)
 	content := `# cortex-ia project configuration
 # See: https://github.com/lleontor705/cortex-ia
+# Full schema: docs/cortex-ia.yaml.example
 
-preset: full
-persona: professional
-model-preset: balanced
+preset: full           # full | minimal | custom
+persona: professional  # professional | mentor | minimal
+model-preset: balanced # balanced | performance | economy
 
-# Uncomment to restrict agents for this project:
+# Use a saved OpenCode SDD profile (per-phase model assignments).
+# Create one with: cortex-ia profiles create <name>:<provider>/<model>
+# profile: cheap
+
+# Enforce TDD across SDD apply/verify phases.
+# strict-tdd: false
+
+# Restrict the agents this project supports. Omit to apply to every detected agent.
 # agents:
 #   - claude-code
 #   - opencode
 
-# Uncomment to disable specific components:
+# Opt out of specific components for this project.
 # disabled-components:
-#   - mailbox
+#   - agent-mailbox
 
-# Add project-specific custom skills:
+# Layer project-specific custom skills on top of the embedded set.
 # custom-skills:
 #   - path: ./skills/domain-validator
 `
@@ -112,5 +122,11 @@ func ApplyToSelection(cfg *ProjectConfig, sel *model.Selection) {
 		for _, a := range cfg.Agents {
 			sel.Agents = append(sel.Agents, model.AgentID(a))
 		}
+	}
+	if cfg.Profile != "" && sel.ProfileName == "" {
+		sel.ProfileName = cfg.Profile
+	}
+	if cfg.StrictTDD && !sel.StrictTDD {
+		sel.StrictTDD = cfg.StrictTDD
 	}
 }

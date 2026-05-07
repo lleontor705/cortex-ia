@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd"
 	"github.com/lleontor705/cortex-ia/internal/config"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
@@ -311,6 +312,12 @@ func runConfig() error {
 	fmt.Printf("  Components: %v\n", s.Components)
 	fmt.Printf("  Last install: %s\n", s.LastInstall.Format("2006-01-02 15:04:05"))
 	fmt.Printf("  Last backup: %s\n", s.LastBackupID)
+	if s.LastProfile != "" {
+		fmt.Printf("  Last profile: %s\n", s.LastProfile)
+	} else {
+		fmt.Println("  Last profile: (none)")
+	}
+	fmt.Printf("  Strict TDD: %v\n", s.StrictTDD)
 	fmt.Printf("  Tracked files: %d\n", len(lock.Files))
 	fmt.Printf("  State: %s\n", state.StatePath(homeDir))
 	fmt.Printf("  Lock: %s\n", state.LockPath(homeDir))
@@ -367,11 +374,31 @@ func runList(what string) error {
 			}
 		}
 
+	case "profiles":
+		profs, err := state.LoadProfiles(homeDir)
+		if err != nil {
+			return err
+		}
+		if len(profs) == 0 {
+			fmt.Println("No profiles saved. Create one with `cortex-ia profiles create <name>:<provider>/<model>`.")
+			return nil
+		}
+		fmt.Printf("Saved profiles (%d):\n", len(profs))
+		for _, p := range profs {
+			fmt.Printf("  %s\n", sdd.ProfileSummary(p))
+		}
+
+	case "skills":
+		fmt.Println("Community skills:")
+		for _, name := range state.ListCommunitySkills(homeDir) {
+			fmt.Printf("  %s\n", name)
+		}
+
 	case "all":
-		fmt.Println("Usage: cortex-ia list <agents|components|backups>")
+		fmt.Println("Usage: cortex-ia list <agents|components|backups|profiles|skills>")
 
 	default:
-		return fmt.Errorf("unknown list target: %s (use: agents, components, backups)", what)
+		return fmt.Errorf("unknown list target: %s (use: agents, components, backups, profiles, skills)", what)
 	}
 	return nil
 }

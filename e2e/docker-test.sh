@@ -8,7 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-DISTROS="${1:-ubuntu fedora}"
+DISTROS="${1:-ubuntu fedora arch}"
 
 echo "=== cortex-ia E2E Docker Tests ==="
 echo "Project: $PROJECT_DIR"

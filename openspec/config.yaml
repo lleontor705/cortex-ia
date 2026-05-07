@@ -1,0 +1,91 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Tech stack: Go 1.24, Bubbletea TUI (charmbracelet/bubbletea v1.3.x), lipgloss v1.1.x
+  Architecture: cmd/cortex-ia entrypoint, internal/ packages
+    (agents, agentbuilder, app, assets, backup, catalog, components, config,
+     model, opencode, pipeline, state, system, tui, update, verify)
+  Pipeline: 2-stage (Prepare → Apply) with rollback via lockfile + manifest snapshots
+  Agents: 12 supported adapters (claude, opencode, gemini, cursor, vscode,
+          codex, windsurf, antigravity, kilocode, kimi, kiro, qwen)
+  Components: 13 granular injectors
+    (cortex, agent-mailbox, forgespec, sdd, skills, context7, conventions,
+     mcpinject, persona, permissions, theme, gga, filemerge)
+  Cortex memory: persisted via the cortex MCP server (31 tools)
+  Project config: .cortex-ia.yaml with preset / persona / model-preset / agents / disabled-components
+  Build: goreleaser (.goreleaser.yaml), CI: GitHub Actions (ci.yml, pr-check.yml, release.yml, stale.yml)
+  Style: gofmt (standard), go vet, golangci-lint (.golangci.yml)
+
+strict_tdd: true
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Identify affected internal/ packages
+    - Note pipeline-stage impact (Prepare vs Apply)
+  specs:
+    - Use Given/When/Then format for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex TUI flows
+    - Document architecture decisions with rationale
+    - State per-agent strategy when adding new components
+  tasks:
+    - Group tasks by phase (infrastructure, implementation, testing)
+    - Use hierarchical numbering (1.1, 1.2, etc.)
+    - Keep tasks small enough to complete in one session
+  apply:
+    - Load relevant SDD skills (sdd-explore, sdd-spec, sdd-design, sdd-apply, sdd-verify)
+    - Load go-testing community skill when writing tests
+    - Follow existing code patterns in internal/ packages
+    - Reuse mcpinject + filemerge utilities for new MCP/system-prompt injection
+  verify:
+    - Run: go test ./...
+    - Run: go vet ./...
+    - Run: cortex-ia doctor (post-install integration check)
+    - Compare implementation against every spec scenario
+  archive:
+    - Warn before merging destructive deltas (large removals)
+
+testing:
+  strict_tdd: true
+
+  runner:
+    command: "go test ./..."
+    framework: "Go standard testing"
+
+  layers:
+    unit:
+      available: true
+      tool: "go test"
+      note: "test files across internal/ packages"
+    integration:
+      available: true
+      tool: "net/http/httptest (built-in)"
+    e2e:
+      available: true
+      tool: "Docker-based E2E (e2e/docker-test.sh)"
+      note: "Dockerfile.ubuntu, Dockerfile.fedora, Dockerfile.arch"
+    tui:
+      available: true
+      tool: "bubbletea tea.KeyMsg simulation (direct model.Update() testing)"
+    golden:
+      available: true
+      tool: "internal/components/golden_test.go + testdata/golden/"
+      note: "Regenerate with: go test -update ./internal/components/..."
+
+  coverage:
+    available: true
+    command: "go test -cover ./..."
+
+  quality:
+    linter:
+      available: true
+      command: "golangci-lint run"
+    type_checker:
+      available: true
+      command: "go vet ./..."
+    formatter:
+      available: true
+      command: "gofmt"

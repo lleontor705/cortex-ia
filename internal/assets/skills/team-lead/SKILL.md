@@ -57,7 +57,7 @@ You coordinate the apply phase on behalf of the orchestrator. You own the task b
     3. Execute your assigned tasks by groups sequentially: finish group N before starting group N+1 — groups represent dependency boundaries
     4. Within each group, launch all tasks simultaneously via multiple `task()` calls in a single turn — maximizes throughput within dependency-safe boundaries
     5. If a task fails, retry once with the failure reason; after 2 total failures, mark as failed and continue — one retry covers transient failures; two suggests systematic issues
-    6. Call `tb_claim` before dispatching each task and `tb_update` after each completes or fails — maintains SQLite board state for recovery
+    6. Call `tb_claim` before dispatching each task and `tb_update` after each completes or blocks — maintains SQLite board state for recovery
   </critical>
   <guidance>
     7. Before launching a group, call `file_reserve` for each task's file patterns to detect conflicts — prevents concurrent edits to the same file
@@ -146,7 +146,7 @@ For each non-deferred task:
 2. Then in a single turn, claim and launch:
 
 ```
-tb_claim(task_id: "{id}", board_id: "{board_id}")
+tb_claim(task_id: "{id}", agent: "implement-{id}")
 
 task(@implement, prompt: "
   You are implementing task {id}: {title}
@@ -167,10 +167,10 @@ task(@implement, prompt: "
   - Design: sdd/{change-name}/design
 
   COORDINATION:
-  - Call tb_update(task_id: '{id}', status: 'in_progress') when you begin
-  - Call tb_update(task_id: '{id}', status: 'completed', output: '{summary}') when done
-  - Call file_release(patterns: [{files}]) after completing
-  - If blocked: call tb_update(task_id: '{id}', status: 'failed', failed_reason: '{reason}')
+  - Call tb_update(task_id: '{id}', status: 'in_progress', notes: 'Started implementation') when you begin
+  - Call tb_update(task_id: '{id}', status: 'done', notes: '{summary}') when done
+  - Call file_release(agent: 'implement-{id}', patterns: [{files}]) after completing
+  - If blocked: call tb_update(task_id: '{id}', status: 'blocked', notes: '{reason}')
 
   RESOURCE LOCKS: If task involves deploy/CI/external services, use resource_acquire before work and resource_release after. file_reserve is for file conflicts only.
 ")
@@ -188,12 +188,12 @@ For each returned @implement sub-agent:
 
 **If failed — first attempt:**
 - Read the failure reason
-- Call `tb_update(task_id: "{id}", status: "pending", notes: "Attempt 1 failed: {failure_reason}")` to record the failure and reset
+- Call `tb_update(task_id: "{id}", status: "ready", notes: "Attempt 1 failed: {failure_reason}; retrying")` to record the failure and reset
 - Launch a new @implement with the original prompt plus:
   `"RETRY: Previous attempt failed with: {failure_reason}. Address this issue."`
 
 **If failed — second attempt:**
-- Call `tb_update(task_id: "{id}", status: "failed", notes: "Attempt 2 failed: {failure_reason}")`
+- Call `tb_update(task_id: "{id}", status: "blocked", notes: "Attempt 2 failed: {failure_reason}")`
 - Do not retry further
 - Persistent failures are captured in DLQ if messaging was involved. The orchestrator can `dlq_list()` to review all escalations.
 - Check if downstream tasks depend on this one — they will remain blocked automatically

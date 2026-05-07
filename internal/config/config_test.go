@@ -135,3 +135,27 @@ func TestApplyToSelection_NoOverride(t *testing.T) {
 		t.Error("should not override existing selection values")
 	}
 }
+
+func TestApplyToSelection_ProfileAndStrictTDD(t *testing.T) {
+	cfg := &ProjectConfig{
+		Profile:   "cheap",
+		StrictTDD: true,
+	}
+	sel := model.Selection{}
+	ApplyToSelection(cfg, &sel)
+	if sel.ProfileName != "cheap" {
+		t.Errorf("ProfileName = %q, want cheap", sel.ProfileName)
+	}
+	if !sel.StrictTDD {
+		t.Error("StrictTDD = false, want true")
+	}
+}
+
+func TestApplyToSelection_ProfileDoesNotOverride(t *testing.T) {
+	cfg := &ProjectConfig{Profile: "cheap"}
+	sel := model.Selection{ProfileName: "premium"} // CLI flag wins
+	ApplyToSelection(cfg, &sel)
+	if sel.ProfileName != "premium" {
+		t.Errorf("explicit ProfileName overridden by yaml: got %q", sel.ProfileName)
+	}
+}

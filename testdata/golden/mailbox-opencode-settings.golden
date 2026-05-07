@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "agent-mailbox": {
+      "command": [
+        "npx",
+        "-y",
+        "agent-mailbox-mcp"
+      ],
+      "enabled": true,
+      "type": "local"
+    }
+  }
+}

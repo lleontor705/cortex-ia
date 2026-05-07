@@ -8,13 +8,22 @@ import (
 )
 
 // WelcomeData holds the data needed to render the welcome screen.
+//
+// Two modes are supported, in priority order:
+//
+//   - Groups (preferred): rendered with RenderMenu, supports hotkeys + hints.
+//   - Options (legacy):   plain string list rendered with RenderOptions.
+//
+// New callers should populate Groups; Options stays for backwards compatibility
+// with anything that hasn't migrated yet (e.g. older tests).
 type WelcomeData struct {
 	Version string
+	Groups  []MenuGroup
 	Options []string
 	Cursor  int
 }
 
-// RenderWelcome renders the welcome screen as a menu hub.
+// RenderWelcome renders the welcome screen as a grouped menu hub.
 func RenderWelcome(data WelcomeData) string {
 	var sb strings.Builder
 
@@ -35,7 +44,19 @@ func RenderWelcome(data WelcomeData) string {
 	sb.WriteString(styles.Subtitle.Render("What would you like to do?"))
 	sb.WriteString("\n\n")
 
-	sb.WriteString(RenderOptions(data.Options, data.Cursor))
+	if len(data.Groups) > 0 {
+		sb.WriteString(RenderMenu(data.Groups, data.Cursor))
+	} else {
+		sb.WriteString(RenderOptions(data.Options, data.Cursor))
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(RenderHelpBar(
+		"↑↓ navigate",
+		"enter select",
+		"1-9 jump",
+		"q quit",
+	))
 
 	return sb.String()
 }

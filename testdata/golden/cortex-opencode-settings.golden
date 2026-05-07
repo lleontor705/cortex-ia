@@ -1,0 +1,12 @@
+{
+  "mcp": {
+    "cortex": {
+      "command": [
+        "cortex",
+        "mcp"
+      ],
+      "enabled": true,
+      "type": "local"
+    }
+  }
+}

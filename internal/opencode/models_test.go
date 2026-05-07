@@ -117,7 +117,7 @@ func TestApplyToOpenCodeConfig(t *testing.T) {
 	initial := map[string]interface{}{
 		"theme": "dark",
 		"agent": map[string]interface{}{
-			"sdd-orchestrator": map[string]interface{}{
+			"orchestrator": map[string]interface{}{
 				"mode": "primary",
 			},
 		},
@@ -143,7 +143,7 @@ func TestApplyToOpenCodeConfig(t *testing.T) {
 	agents := config["agent"].(map[string]interface{})
 
 	// Check orchestrator
-	orch := agents["sdd-orchestrator"].(map[string]interface{})
+	orch := agents["orchestrator"].(map[string]interface{})
 	if orch["model"] != "anthropic/claude-opus-4" {
 		t.Errorf("orchestrator model = %q, want %q", orch["model"], "anthropic/claude-opus-4")
 	}
@@ -152,14 +152,52 @@ func TestApplyToOpenCodeConfig(t *testing.T) {
 	}
 
 	// Check implement
-	impl := agents["sdd-implement"].(map[string]interface{})
+	impl := agents["implement"].(map[string]interface{})
 	if impl["model"] != "openai/gpt-4o" {
 		t.Errorf("implement model = %q, want %q", impl["model"], "openai/gpt-4o")
+	}
+	if _, hasLegacy := agents["sdd-implement"]; hasLegacy {
+		t.Error("should not create legacy sdd-implement model-only entry")
 	}
 
 	// Check theme preserved
 	if config["theme"] != "dark" {
 		t.Error("theme should be preserved")
+	}
+}
+
+func TestApplyToOpenCodeConfig_PreservesLegacyAgentWhenOnlyLegacyExists(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, ".config", "opencode")
+	os.MkdirAll(configDir, 0755)
+
+	initial := map[string]interface{}{
+		"agent": map[string]interface{}{
+			"sdd-orchestrator": map[string]interface{}{
+				"mode": "primary",
+			},
+		},
+	}
+	data, _ := json.Marshal(initial)
+	os.WriteFile(filepath.Join(configDir, "opencode.json"), data, 0644)
+
+	assignments := model.OpenCodeModelAssignments{
+		"orchestrator": {Provider: "anthropic", Model: "claude-opus-4"},
+	}
+	if err := ApplyToOpenCodeConfig(dir, assignments); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	result, _ := os.ReadFile(filepath.Join(configDir, "opencode.json"))
+	var config map[string]interface{}
+	json.Unmarshal(result, &config)
+	agents := config["agent"].(map[string]interface{})
+	legacy := agents["sdd-orchestrator"].(map[string]interface{})
+	if legacy["model"] != "anthropic/claude-opus-4" {
+		t.Errorf("legacy orchestrator model = %q", legacy["model"])
+	}
+	if _, hasNew := agents["orchestrator"]; hasNew {
+		t.Error("should not create a duplicate orchestrator when only legacy key exists")
 	}
 }
 

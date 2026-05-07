@@ -398,7 +398,16 @@ func (m Model) View() string {
 func (m Model) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		opts := welcomeOptions()
-		switch key.String() {
+		groups := m.welcomeGroups()
+		keyStr := key.String()
+
+		// Hotkey jump: any digit or 'q' with a registered MenuItem.Hotkey.
+		if idx, found := screens.FindItemByHotkey(groups, keyStr); found && idx < len(opts) {
+			m.Cursor = idx
+			return m.dispatchWelcome(opts[idx])
+		}
+
+		switch keyStr {
 		case "up", "k":
 			if m.Cursor > 0 {
 				m.Cursor--
@@ -407,90 +416,130 @@ func (m Model) updateWelcome(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.Cursor < len(opts)-1 {
 				m.Cursor++
 			}
+		case "home", "g":
+			m.Cursor = 0
+		case "end", "G":
+			m.Cursor = len(opts) - 1
 		case "esc":
 			m.Quitting = true
 			return m, tea.Quit
 		case "enter":
 			if m.Cursor < len(opts) {
-				switch opts[m.Cursor] {
-				case WelcomeInstall:
-					m.RunDetection()
-					m.setScreen(ScreenDetection)
-				case WelcomeUpgrade:
-					m.setScreen(ScreenUpgrade)
-				case WelcomeSync:
-					m.SyncErr = nil
-					m.SyncFilesChanged = 0
-					m.loadProfilesFromDisk()
-					m.setScreen(ScreenSync)
-				case WelcomeUpgradeSync:
-					m.UpgradeSyncPhase = ""
-					m.SyncErr = nil
-					m.UpgradeErr = nil
-					m.setScreen(ScreenUpgradeSync)
-				case WelcomeModelConfig:
-					m.ModelConfigMode = true
-					m.ClaudeModelCursor = 0
-					m.setScreen(ScreenClaudeModelPicker)
-				case WelcomeProfiles:
-					m.loadProfilesFromDisk()
-					m.ProfileErr = nil
-					m.setScreen(ScreenProfiles)
-				case WelcomeAgentBuilder:
-					m.resetAgentBuilder()
-					m.setScreen(ScreenAgentBuilderEngine)
-				case WelcomeOpenCodeModels:
-					m.loadOpenCodeModels()
-					m.OCErr = nil
-					m.setScreen(ScreenOpenCodeModels)
-				case WelcomeBackups:
-					if m.ListBackupsFn != nil {
-						m.Backups, m.BackupWarnings = m.ListBackupsFn()
-					}
-					m.RenameErr = nil
-					m.RestoreErr = nil
-					m.DeleteErr = nil
-					m.setScreen(ScreenBackups)
-				case WelcomeQuit:
-					m.Quitting = true
-					return m, tea.Quit
-				}
+				return m.dispatchWelcome(opts[m.Cursor])
 			}
 		}
 	}
 	return m, nil
 }
 
-func (m Model) viewWelcome() string {
-	opts := welcomeOptions()
-	labels := make([]string, len(opts))
-	for i, opt := range opts {
-		labels[i] = welcomeLabel(opt)
+// dispatchWelcome routes a chosen WelcomeOption to the right screen + side
+// effects. Extracted from updateWelcome so hotkeys and Enter share the path.
+func (m Model) dispatchWelcome(opt WelcomeOption) (tea.Model, tea.Cmd) {
+	switch opt {
+	case WelcomeInstall:
+		m.RunDetection()
+		m.setScreen(ScreenDetection)
+	case WelcomeUpgrade:
+		m.setScreen(ScreenUpgrade)
+	case WelcomeSync:
+		m.SyncErr = nil
+		m.SyncFilesChanged = 0
+		m.loadProfilesFromDisk()
+		m.setScreen(ScreenSync)
+	case WelcomeUpgradeSync:
+		m.UpgradeSyncPhase = ""
+		m.SyncErr = nil
+		m.UpgradeErr = nil
+		m.setScreen(ScreenUpgradeSync)
+	case WelcomeModelConfig:
+		m.ModelConfigMode = true
+		m.ClaudeModelCursor = 0
+		m.setScreen(ScreenClaudeModelPicker)
+	case WelcomeProfiles:
+		m.loadProfilesFromDisk()
+		m.ProfileErr = nil
+		m.setScreen(ScreenProfiles)
+	case WelcomeAgentBuilder:
+		m.resetAgentBuilder()
+		m.setScreen(ScreenAgentBuilderEngine)
+	case WelcomeOpenCodeModels:
+		m.loadOpenCodeModels()
+		m.OCErr = nil
+		m.setScreen(ScreenOpenCodeModels)
+	case WelcomeBackups:
+		if m.ListBackupsFn != nil {
+			m.Backups, m.BackupWarnings = m.ListBackupsFn()
+		}
+		m.RenameErr = nil
+		m.RestoreErr = nil
+		m.DeleteErr = nil
+		m.setScreen(ScreenBackups)
+	case WelcomeQuit:
+		m.Quitting = true
+		return m, tea.Quit
 	}
+	return m, nil
+}
 
-	// Add "(updates available)" badge to Upgrade options when updates are found.
+func (m Model) viewWelcome() string {
+	return screens.RenderWelcome(screens.WelcomeData{
+		Version: m.Version,
+		Groups:  m.welcomeGroups(),
+		Cursor:  m.Cursor,
+	})
+}
+
+// welcomeGroups builds the hub menu as three semantic groups:
+//
+//	SETUP      — first-time and routine installation paths
+//	CUSTOMIZE  — model routing, profiles, custom skills
+//	MAINTAIN   — backups, upgrades
+//
+// Order MUST match welcomeOptions() so the cursor stays in sync. The
+// "(updates available)" badge is attached as MenuItem.Badge instead of
+// being mangled into the label.
+func (m Model) welcomeGroups() []screens.MenuGroup {
+	updatesBadge := ""
 	if m.UpdateCheckDone {
-		hasUpdate := false
 		for _, r := range m.UpdateResults {
 			if r.Error == nil && !r.UpToDate {
-				hasUpdate = true
+				updatesBadge = styles.StatusWarn.Render("(updates available)")
 				break
 			}
 		}
-		if hasUpdate {
-			for i, opt := range opts {
-				if opt == WelcomeUpgrade || opt == WelcomeUpgradeSync {
-					labels[i] += " (updates available)"
-				}
-			}
-		}
 	}
 
-	return screens.RenderWelcome(screens.WelcomeData{
-		Version: m.Version,
-		Options: labels,
-		Cursor:  m.Cursor,
-	})
+	return []screens.MenuGroup{
+		{
+			Title: "SETUP",
+			Items: []screens.MenuItem{
+				{Hotkey: "1", Label: "Install ecosystem", Hint: "Detect agents and configure the full stack"},
+				{Hotkey: "2", Label: "Sync configs", Hint: "Refresh managed files from current state"},
+			},
+		},
+		{
+			Title: "CUSTOMIZE",
+			Items: []screens.MenuItem{
+				{Hotkey: "3", Label: "Configure models", Hint: "Per-phase model routing (opus / sonnet / haiku)"},
+				{Hotkey: "4", Label: "Manage profiles", Hint: "Saved OpenCode SDD profiles"},
+				{Hotkey: "5", Label: "Create custom agent", Hint: "AI-generated skills via Agent Builder"},
+				{Hotkey: "6", Label: "OpenCode models", Hint: "Pick provider/model per OpenCode sub-agent"},
+			},
+		},
+		{
+			Title: "MAINTAIN",
+			Items: []screens.MenuItem{
+				{Hotkey: "7", Label: "Manage backups", Hint: "Browse, pin, restore snapshots"},
+				{Hotkey: "8", Label: "Upgrade tools", Hint: "Update agent binaries", Badge: updatesBadge},
+				{Hotkey: "9", Label: "Upgrade + Sync", Hint: "Run upgrade then refresh configs", Badge: updatesBadge},
+			},
+		},
+		{
+			Items: []screens.MenuItem{
+				{Hotkey: "q", Label: "Quit", Hint: "Exit cortex-ia"},
+			},
+		},
+	}
 }
 
 // --- Detection screen ---

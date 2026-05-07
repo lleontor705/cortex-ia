@@ -11,15 +11,16 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/catalog"
 	"github.com/lleontor705/cortex-ia/internal/components/context7"
-	cortexcomp "github.com/lleontor705/cortex-ia/internal/components/cortex"
 	"github.com/lleontor705/cortex-ia/internal/components/conventions"
+	cortexcomp "github.com/lleontor705/cortex-ia/internal/components/cortex"
 	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
+	ggacomp "github.com/lleontor705/cortex-ia/internal/components/gga"
 	"github.com/lleontor705/cortex-ia/internal/components/mailbox"
 	"github.com/lleontor705/cortex-ia/internal/components/persona"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
-	ggacomp "github.com/lleontor705/cortex-ia/internal/components/gga"
 	skillscomp "github.com/lleontor705/cortex-ia/internal/components/skills"
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/opencode"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
@@ -227,7 +228,32 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		}
 	}
 
-	// 7. Translate results.
+	// 7a. Auto-apply model assignments to opencode.json so per-agent model
+	// routing lands without requiring a separate `profiles apply` call.
+	// Only runs when (a) model assignments exist, (b) OpenCode is in the
+	// selected agents, and (c) Apply succeeded.
+	if applyResult.Error == nil && len(selection.ModelAssignments) > 0 {
+		hasOpenCode := false
+		for _, id := range selection.Agents {
+			if id == model.AgentOpenCode {
+				hasOpenCode = true
+				break
+			}
+		}
+		if hasOpenCode {
+			ocAssignments := sdd.ProfileToOpenCodeAssignments(model.Profile{
+				Name:             firstNonEmptyString(selection.ProfileName, "active"),
+				ModelAssignments: selection.ModelAssignments,
+			})
+			if len(ocAssignments) > 0 {
+				if err := opencode.ApplyToOpenCodeConfig(homeDir, ocAssignments); err != nil {
+					result.Errors = append(result.Errors, fmt.Sprintf("apply model assignments to opencode.json: %v", err))
+				}
+			}
+		}
+	}
+
+	// 7b. Translate results.
 	result.BackupID = bkStep.BackupID
 	result.ComponentsDone = resolved
 	for _, cs := range allComponentSteps {

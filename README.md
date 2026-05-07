@@ -52,6 +52,25 @@ cortex-ia install --dry-run
 
 # Show detected agents + runtime deps
 cortex-ia detect
+
+# Reverse a previous install (snapshot first; use --all to wipe everything)
+cortex-ia uninstall --component persona --component cortex
+cortex-ia uninstall --all --dry-run
+
+# Switch GGA provider (anthropic, openai, google, ollama, claude, opencode, gemini, codex)
+cortex-ia gga --provider ollama
+
+# OpenCode SDD profiles (per-phase model assignment)
+cortex-ia profiles create cheap:openai/gpt-4o-mini
+cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
+cortex-ia profiles list
+
+# Build a custom skill via an installed AI engine
+cortex-ia agent-builder create \
+  --engine claude \
+  --purpose "review go diffs against project conventions" \
+  --target claude-code --target opencode
+cortex-ia agent-builder list
 ```
 
 ## What It Configures
@@ -87,6 +106,10 @@ Plus **3 content components**:
 | **Codex** | TOML file | File replace | — | — | — |
 | **Windsurf** | MCP config file | Append to file | — | — | — |
 | **Antigravity** | MCP config file | Append to file | — | — | — |
+| **Kilocode** | Merge into settings | File replace | — | — | ✅ |
+| **Kimi** | MCP config file | File replace | ✅ | ✅ | — |
+| **Kiro IDE** | MCP config file | File replace (steering) | ✅ | ✅ | — |
+| **Qwen Code** | Merge into settings | File replace | — | — | ✅ |
 
 Agents with **Task Delegation** get a multi-agent orchestrator that delegates work to sub-agents. Others get a single-agent prompt that executes SDD phases sequentially.
 
@@ -197,6 +220,30 @@ cortex-ia install --model-preset performance # Opus for critical phases, Sonnet 
 | **performance** | opus | sonnet | opus | sonnet | opus | haiku |
 | **economy** | sonnet | sonnet | sonnet | sonnet | sonnet | haiku |
 
+## OpenCode SDD Profiles
+
+For OpenCode users who want per-phase models from any provider (not just Claude), profiles let you save named bundles of `provider/model` assignments and apply them to `opencode.json` automatically.
+
+```bash
+# Create a profile that maps every SDD phase to one model
+cortex-ia profiles create cheap:openai/gpt-4o-mini
+
+# Override specific phases
+cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
+cortex-ia profiles set cheap:sdd-apply:anthropic/claude-haiku-4-5
+
+# Use the profile during install — auto-applied to opencode.json
+cortex-ia install --profile cheap
+
+# Or apply to an existing install without re-injecting everything
+cortex-ia profiles apply cheap
+
+cortex-ia profiles list
+cortex-ia profiles delete cheap
+```
+
+Values can be either a fully-qualified `provider/model` (e.g. `openai/gpt-4o-mini`) or a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`). Profiles persist in `~/.cortex-ia/profiles.json` and the active one is recorded in `state.json` so `cortex-ia sync` keeps using it.
+
 ## Persona System
 
 Choose the communication style for all configured agents:
@@ -225,9 +272,13 @@ cortex-ia init    # Creates .cortex-ia.yaml with defaults
 preset: full
 persona: professional
 model-preset: balanced
+profile: cheap          # optional: name of a saved OpenCode SDD profile
+strict-tdd: false       # optional: enforce TDD across SDD apply/verify
 agents:
   - claude-code
   - opencode
+disabled-components:
+  - agent-mailbox       # optional: opt-out per project
 custom-skills:
   - path: ./skills/domain-validator
 ```
@@ -235,6 +286,8 @@ custom-skills:
 ```bash
 cortex-ia install --local    # Applies project config
 ```
+
+Full schema reference: [`docs/cortex-ia.yaml.example`](docs/cortex-ia.yaml.example) — every field documented with valid values and behavior notes. CLI flags always override yaml; yaml overrides CLI defaults.
 
 ## How It Works
 
@@ -289,6 +342,10 @@ cortex-ia auto-install       Install missing agents via package managers
 cortex-ia doctor             Run 6 health checks against installation
 cortex-ia repair             Re-apply from lockfile/state
 cortex-ia rollback           Restore from backup
+cortex-ia uninstall          Reverse cortex-ia injections (with pre-uninstall snapshot)
+cortex-ia gga --provider <id>      Switch GGA provider (anthropic, openai, google, ollama, claude, opencode, gemini, codex)
+cortex-ia profiles list|create|set|apply|delete   Manage OpenCode SDD profiles
+cortex-ia agent-builder list|create|remove        Generate custom skills via an installed AI engine
 cortex-ia update             Check for available updates
 ```
 
@@ -302,7 +359,15 @@ cortex-ia update             Check for available updates
 | [SDD Workflow](docs/sdd-workflow.md) | 9-phase pipeline, commands, contract validation, prompting techniques |
 | [Architecture](docs/architecture.md) | Codebase structure, patterns, testing, contributing |
 | [Configuration](docs/configuration.md) | Presets, CLI flags, model routing, personas, project config |
-| [Changelog](CHANGELOG.md) | Version history (v0.1.0 → v0.2.0) |
+| [Quickstart](docs/quickstart.md) | Three-command setup |
+| [Platforms](docs/platforms.md) | OS support matrix, Windows symlink note |
+| [Cortex memory](docs/cortex-memory.md) | The cortex MCP — 31 tools across 4 groups |
+| [Rollback](docs/rollback.md) | Backups, retention, dedup, pinning, uninstall snapshots |
+| [Non-interactive](docs/non-interactive.md) | CLI-only recipes for CI |
+| [Docker E2E](docs/docker-e2e-testing.md) | Three-distro test harness (ubuntu/fedora/arch) |
+| [PRD](PRD.md) | Project requirements + relationship to gentle-ai |
+| [PRD Agent Builder](PRD-AGENT-BUILDER.md) | Agent Builder design contract |
+| [Changelog](CHANGELOG.md) | Version history (v0.1.0 → v0.3.0) |
 | [llms.txt](llms.txt) | LLM-readable project index |
 
 ## Prerequisites

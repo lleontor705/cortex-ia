@@ -1,5 +1,68 @@
 # Changelog
 
+## v0.3.0 (2026-04-25) — gentle-ai parity sweep
+
+This release ports the high-value functionality and governance assets from the
+upstream `gentle-ai` project while keeping cortex-ia's identity (granular
+components, 2-stage pipeline, persona system, doctor, `cortex` memory).
+
+### New agents (8 → 12)
+
+- **kilocode** — adapter for Kilo (`~/.config/kilo/`)
+- **kimi** — Kimi CLI with shared skills root (`~/.config/agents/skills`)
+- **kiro-ide** — Kiro IDE (split-root layout, native sub-agents)
+- **qwen-code** — Qwen Code (`~/.qwen/`)
+
+### New top-level CLI commands
+
+- **`cortex-ia uninstall`** — reverse cortex-ia injections per agent or component, with snapshot rollback (`--agent`, `--component`, `--all`, `--dry-run`, `--no-backup`)
+- **`cortex-ia gga --provider <id>`** — switch GGA provider explicitly (anthropic, openai, google, ollama in addition to the agent-routed providers); `--list`, `--show` subcommands
+- **`cortex-ia profiles list|create|set|delete`** — manage saved OpenCode SDD profiles (per-phase model assignments)
+- **`cortex-ia agent-builder list|create|remove`** — generate custom skills via an installed AI engine (Claude Code, OpenCode, Gemini CLI, Codex), parse the output, install across selected adapters with rollback, and persist a registry under `~/.cortex-ia/agentbuilder/registry.json`
+
+### New components
+
+- **`uninstall`** — first-class component with marker-aware cleaners (rewrite, remove, remove-tree, remove-if-empty, remove-json-key) for every cortex-ia injection
+- **`agentbuilder`** — engine + parser + prompt + registry + multi-installer for AI-generated skills
+
+### Infrastructure
+
+- **`agents.DiscoverInstalled` + `ConfigRootsForBackup`** — pure FS-based detection used by detection / backup pipeline / agent-builder target picker
+- **Backup compression + retention** — tar.gz archives, SHA-256 dedup (`IsDuplicate`), `Prune` (default keep 5 unpinned), `Manifest.Pinned` / `Checksum` / `BackupSourceUninstall`, `BackupRootFn` swap point
+- **Golden file testing** — `internal/components/golden_test.go` + 20 fixtures in `testdata/golden/` covering cortex / forgespec / mailbox / context7 / persona / conventions across claude / opencode / windsurf / antigravity. Regenerate with `go test -update ./internal/components/...`
+- **`judgment-day` skill** — adversarial dual-judge review protocol added to the skills bundle
+
+### Governance & docs
+
+- **`CONTRIBUTING.md`** — issue-first workflow with cortex-ia label system
+- **`AGENTS.md`** (root) — index of community + built-in skills
+- **`CONTRIBUTORS.md`** with explicit gentle-ai lineage acknowledgement
+- **`PRD.md`** + **`PRD-AGENT-BUILDER.md`** — vision and design docs
+- **`docs/`** expanded with `quickstart`, `platforms`, `rollback`, `cortex-memory`, `non-interactive`, `docker-e2e-testing`
+- **`openspec/`** scaffolding (`config.yaml` + `changes/` + `specs/cortex-ia/`)
+- **`skills/`** community skills (`issue-creation`, `branch-pr`)
+- **`.github/ISSUE_TEMPLATE/`** with `bug_report`, `feature_request`, `config`
+- **`pr-check.yml`** gains a `check-branch-name` job and emoji-aware logging
+
+### E2E
+
+- **`Dockerfile.arch`** — third Linux distro target (forces `--platform=linux/amd64`, disables pacman seccomp under QEMU)
+- **`e2e/lib.sh`** — shared shell helpers (`assert_*`, `log_*`, `resolve_binary`, `cleanup_test_env` covering all 12 agents)
+
+### Model
+
+Additive constants (no breaking changes):
+
+- `model.AgentKilocode`, `AgentKimi`, `AgentKiroIDE`, `AgentQwenCode`
+- `model.SkillJudgmentDay`
+- `model.ComponentPersona`, `ComponentPermissions`, `ComponentTheme`
+- `backup.BackupSourceUninstall`
+- `backup.Manifest.Pinned`, `.Checksum` (both `omitempty`)
+
+### Testing
+
+44 packages, all green. Backwards-compatible manifest format — older backups load without modification.
+
 ## v0.2.0 (2026-03-31)
 
 ### Infrastructure

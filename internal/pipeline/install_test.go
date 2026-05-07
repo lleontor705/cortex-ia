@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/agents/codex"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
@@ -16,6 +18,7 @@ import (
 func newTestRegistry() *agents.Registry {
 	r := agents.NewRegistry()
 	r.Register(codex.NewAdapter())
+	r.Register(opencode.NewAdapter())
 	return r
 }
 
@@ -209,6 +212,119 @@ func TestInstall_WithProfileName(t *testing.T) {
 	if s.LastProfile != "premium" {
 		t.Errorf("state.LastProfile = %q, want %q", s.LastProfile, "premium")
 	}
+}
+
+// TestInstall_ProfileAutoAppliesToOpenCodeJSON verifies that when an OpenCode
+// adapter is in the selection AND a profile is resolved, the per-phase model
+// assignments are written to opencode.json without requiring `profiles apply`.
+func TestInstall_ProfileAutoAppliesToOpenCodeJSON(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+
+	profiles := []model.Profile{{
+		Name: "cheap",
+		ModelAssignments: model.ModelAssignments{
+			"sdd-design": "openai/gpt-4o-mini",
+			"sdd-apply":  "anthropic/claude-haiku-4-5",
+		},
+	}}
+	if err := state.SaveProfiles(homeDir, profiles); err != nil {
+		t.Fatalf("SaveProfiles: %v", err)
+	}
+
+	selection := model.Selection{
+		Agents:      []model.AgentID{model.AgentOpenCode},
+		Preset:      model.PresetFull,
+		ProfileName: "cheap",
+	}
+	if _, err := Install(homeDir, registry, selection, "test-v1", false); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	cfgPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("ReadFile opencode.json: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal: %v\n%s", err, string(data))
+	}
+	agentSection, ok := parsed["agent"].(map[string]any)
+	if !ok {
+		t.Fatalf("agent section missing in opencode.json: %s", string(data))
+	}
+	design, ok := agentSection["architect"].(map[string]any)
+	if !ok {
+		t.Fatalf("architect entry missing: %v", agentSection)
+	}
+	if design["model"] != "openai/gpt-4o-mini" {
+		t.Errorf("architect.model = %v, want openai/gpt-4o-mini", design["model"])
+	}
+	apply, ok := agentSection["team-lead"].(map[string]any)
+	if !ok {
+		t.Fatalf("team-lead entry missing")
+	}
+	if apply["model"] != "anthropic/claude-haiku-4-5" {
+		t.Errorf("team-lead.model = %v", apply["model"])
+	}
+	worker, ok := agentSection["implement"].(map[string]any)
+	if !ok {
+		t.Fatalf("implement entry missing")
+	}
+	if worker["model"] != "anthropic/claude-haiku-4-5" {
+		t.Errorf("implement.model = %v", worker["model"])
+	}
+	if _, hasLegacy := agentSection["sdd-apply"]; hasLegacy {
+		t.Error("profile auto-apply should not create legacy sdd-apply entry")
+	}
+}
+
+func TestInstall_ModelAssignmentsAutoApplyToOpenCodeJSON(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+
+	selection := model.Selection{
+		Agents: []model.AgentID{model.AgentOpenCode},
+		Preset: model.PresetFull,
+		ModelAssignments: model.ModelAssignments{
+			"architect":    model.ModelOpus,
+			"team-lead":    model.ModelHaiku,
+			"implement":    "openai/gpt-4o-mini",
+			"orchestrator": model.ModelSonnet,
+		},
+	}
+	if _, err := Install(homeDir, registry, selection, "test-v1", false); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	cfgPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("ReadFile opencode.json: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal: %v\n%s", err, string(data))
+	}
+	agentSection, ok := parsed["agent"].(map[string]any)
+	if !ok {
+		t.Fatalf("agent section missing in opencode.json: %s", string(data))
+	}
+	assertAgentModel := func(agent, want string) {
+		t.Helper()
+		entry, _ := agentSection[agent].(map[string]any)
+		if entry == nil {
+			t.Fatalf("%s entry missing", agent)
+		}
+		if entry["model"] != want {
+			t.Errorf("%s.model = %v, want %s", agent, entry["model"], want)
+		}
+	}
+	assertAgentModel("architect", "anthropic/claude-opus-4")
+	assertAgentModel("team-lead", "anthropic/claude-haiku-4-5")
+	assertAgentModel("implement", "openai/gpt-4o-mini")
+	assertAgentModel("orchestrator", "anthropic/claude-sonnet-4-6")
 }
 
 func TestInstall_ProfileNameDoesNotOverrideExplicitAssignments(t *testing.T) {

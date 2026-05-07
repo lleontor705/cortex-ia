@@ -168,18 +168,26 @@ const (
 	WelcomeQuit
 )
 
-// welcomeOptions returns the ordered list of welcome menu items.
+// welcomeOptions returns the welcome menu items in DISPLAY order.
+//
+// The order must stay aligned with viewWelcome's MenuGroup layout so a cursor
+// index N renders at the same position as opts[N] when dispatched. Logical
+// grouping (SETUP / CUSTOMIZE / MAINTAIN) is the new contract.
 func welcomeOptions() []WelcomeOption {
 	return []WelcomeOption{
+		// SETUP
 		WelcomeInstall,
-		WelcomeUpgrade,
 		WelcomeSync,
-		WelcomeUpgradeSync,
+		// CUSTOMIZE
 		WelcomeModelConfig,
 		WelcomeProfiles,
 		WelcomeAgentBuilder,
-		WelcomeBackups,
 		WelcomeOpenCodeModels,
+		// MAINTAIN
+		WelcomeBackups,
+		WelcomeUpgrade,
+		WelcomeUpgradeSync,
+		// EXIT
 		WelcomeQuit,
 	}
 }

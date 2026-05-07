@@ -53,6 +53,7 @@ jobs:
 
             for (const match of matches) {
               const issueNumber = parseInt(match[1], 10);
+              core.info(`Checking issue #${issueNumber} for status:approved label...`);
               let issue;
               try {
                 const response = await github.rest.issues.get({
@@ -62,20 +63,24 @@ jobs:
                 });
                 issue = response.data;
               } catch (err) {
-                failures.push(`Issue #${issueNumber}: could not be fetched (${err.message})`);
+                failures.push(`❌ Issue #${issueNumber}: could not be fetched (${err.message})`);
                 continue;
               }
 
               const labels = issue.labels.map(l => l.name);
+              core.info(`Labels on #${issueNumber}: ${labels.join(', ') || '(none)'}`);
               if (!labels.includes('status:approved')) {
                 failures.push(
-                  `Issue #${issueNumber} ("${issue.title}") does not have the status:approved label.`
+                  `❌ Issue #${issueNumber} ("${issue.title}") does not have the status:approved label.\n` +
+                  '   Issues must be approved by a maintainer before work begins.'
                 );
+              } else {
+                core.info(`✅ Issue #${issueNumber} has status:approved.`);
               }
             }
 
             if (failures.length > 0) {
-              core.setFailed('❌ Linked issue(s) not approved:\n' + failures.join('\n'));
+              core.setFailed(failures.join('\n\n'));
             }
 
   check-type-label:
@@ -97,11 +102,37 @@ jobs:
             const labels = pullRequest.labels.map(l => l.name);
             const typeLabels = labels.filter(l => l.startsWith('type:'));
 
+            core.info(`All PR labels: ${labels.join(', ') || '(none)'}`);
+            core.info(`type:* labels found: ${typeLabels.join(', ') || '(none)'}`);
+
             if (typeLabels.length === 0) {
               core.setFailed(
                 '❌ PR must have exactly one type:* label.\n' +
-                'Valid: type:bug, type:feature, type:docs, type:refactor, type:chore, type:breaking-change'
+                'Valid: type:bug, type:feature, type:docs, type:refactor, type:chore, type:breaking, type:test'
               );
             } else if (typeLabels.length > 1) {
               core.setFailed(`❌ PR has multiple type:* labels: ${typeLabels.join(', ')}`);
+            } else {
+              core.info(`✅ PR has type label: ${typeLabels[0]}`);
+            }
+
+  check-branch-name:
+    name: Check Branch Name Convention
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify branch matches the cortex-ia naming convention
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref || '';
+            const pattern = /^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)\/[a-z0-9._-]+$/;
+
+            if (!pattern.test(branch)) {
+              core.setFailed(
+                `❌ Branch name "${branch}" does not match the required pattern.\n` +
+                'Expected: <type>/<kebab-case>\n' +
+                'Examples: feat/agent-builder-tui, fix/persona-injection-windows.'
+              );
+            } else {
+              core.info(`✅ Branch name "${branch}" matches the convention.`);
             }

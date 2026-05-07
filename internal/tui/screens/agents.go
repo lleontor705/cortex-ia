@@ -22,14 +22,29 @@ type AgentsData struct {
 	MaxHeight int // 0 means no limit
 }
 
-// RenderAgents renders the agent selection screen.
+// RenderAgents renders the agent selection screen with a counter header and
+// a help bar listing the relevant shortcuts.
 func RenderAgents(data AgentsData) string {
 	var sb strings.Builder
 
-	sb.WriteString(styles.Title.Render("Select Agents"))
+	selected := 0
+	for _, a := range data.Agents {
+		if a.Selected {
+			selected++
+		}
+	}
+	header := fmt.Sprintf("Select Agents  %s",
+		styles.Description.Render(fmt.Sprintf("(%d of %d selected)", selected, len(data.Agents))))
+	sb.WriteString(styles.Title.Render(header))
 	sb.WriteString("\n\n")
 
-	// Calculate visible window
+	if len(data.Agents) == 0 {
+		sb.WriteString(styles.StatusWarn.Render("  ⚠ No agents detected. Install one and re-run `cortex-ia detect`."))
+		sb.WriteString("\n\n")
+		sb.WriteString(RenderHelpBar("esc back"))
+		return sb.String()
+	}
+
 	total := len(data.Agents)
 	maxVisible := total
 	if data.MaxHeight > 0 && data.MaxHeight < total {
@@ -46,7 +61,6 @@ func RenderAgents(data AgentsData) string {
 		start = max(end-maxVisible, 0)
 	}
 
-	// Scroll indicator (above)
 	if start > 0 {
 		sb.WriteString(RenderScrollIndicator(total, start, end))
 	}
@@ -55,7 +69,7 @@ func RenderAgents(data AgentsData) string {
 		a := data.Agents[i]
 		cursor := "  "
 		if i == data.Cursor {
-			cursor = styles.Cursor.Render("> ")
+			cursor = styles.Cursor.Render(styles.CursorPrefix)
 		}
 
 		check := "○"
@@ -72,10 +86,19 @@ func RenderAgents(data AgentsData) string {
 		sb.WriteString("\n")
 	}
 
-	// Scroll indicator (below)
 	if end < total {
 		sb.WriteString(RenderScrollIndicator(total, start, end))
 	}
+
+	sb.WriteString("\n")
+	sb.WriteString(RenderHelpBar(
+		"↑↓ navigate",
+		"space toggle",
+		"a select all",
+		"n select none",
+		"enter continue",
+		"esc back",
+	))
 
 	return sb.String()
 }

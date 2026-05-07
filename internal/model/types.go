@@ -12,6 +12,10 @@ const (
 	AgentCodex         AgentID = "codex"
 	AgentAntigravity   AgentID = "antigravity"
 	AgentWindsurf      AgentID = "windsurf"
+	AgentKilocode      AgentID = "kilocode"
+	AgentKimi          AgentID = "kimi"
+	AgentKiroIDE       AgentID = "kiro-ide"
+	AgentQwenCode      AgentID = "qwen-code"
 )
 
 // SupportTier indicates how fully an agent supports the cortex-ia ecosystem.
@@ -25,14 +29,17 @@ const (
 type ComponentID string
 
 const (
-	ComponentCortex        ComponentID = "cortex"
-	ComponentMailbox       ComponentID = "agent-mailbox"
-	ComponentForgeSpec     ComponentID = "forgespec"
-	ComponentSDD           ComponentID = "sdd"
-	ComponentSkills        ComponentID = "skills"
-	ComponentContext7       ComponentID = "context7"
-	ComponentConventions   ComponentID = "conventions"
-	ComponentGGA           ComponentID = "gga"
+	ComponentCortex      ComponentID = "cortex"
+	ComponentMailbox     ComponentID = "agent-mailbox"
+	ComponentForgeSpec   ComponentID = "forgespec"
+	ComponentSDD         ComponentID = "sdd"
+	ComponentSkills      ComponentID = "skills"
+	ComponentContext7    ComponentID = "context7"
+	ComponentConventions ComponentID = "conventions"
+	ComponentGGA         ComponentID = "gga"
+	ComponentPersona     ComponentID = "persona"
+	ComponentPermissions ComponentID = "permissions"
+	ComponentTheme       ComponentID = "theme"
 )
 
 // SkillID identifies an SDD or utility skill.
@@ -57,6 +64,7 @@ const (
 	SkillOpenPR       SkillID = "open-pr"
 	SkillFileIssue    SkillID = "file-issue"
 	SkillScanRegistry SkillID = "scan-registry"
+	SkillJudgmentDay  SkillID = "judgment-day"
 )
 
 // SystemPromptStrategy defines how an agent's system prompt file is managed.
