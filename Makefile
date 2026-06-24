@@ -1,4 +1,4 @@
-.PHONY: build run test test-coverage lint fmt clean tidy docker-build install help hooks check
+.PHONY: build run test test-coverage lint fmt clean tidy docker-build install help check
 
 BINARY_NAME=cortex-ia
 BINARY_DIR=bin
@@ -88,11 +88,6 @@ watch:
 
 security:
 	@govulncheck ./... || echo "Install: go install golang.org/x/vuln/cmd/govulncheck@latest"
-
-hooks:
-	@echo "Installing git hooks..."
-	git config core.hooksPath .hooks
-	@echo "Git hooks installed from .hooks/"
 
 check: fmt lint test security
 	@echo "All checks passed."
