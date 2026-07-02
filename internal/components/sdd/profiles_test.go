@@ -104,7 +104,7 @@ func TestRemoveProfile(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 
-	got, removed = RemoveProfile(got, "missing")
+	_, removed = RemoveProfile(got, "missing")
 	if removed {
 		t.Error("expected removed=false for missing profile")
 	}

@@ -76,6 +76,9 @@ func runCLI(args []string) error {
 		}
 		return runSkill(args[1], args[2:])
 
+	case "skill-registry":
+		return runSkillRegistry(args[1:])
+
 	case "auto-install":
 		return runAutoInstall(args[1:])
 
@@ -104,6 +107,7 @@ Usage:
   cortex-ia skill add <path>         Add community skill
   cortex-ia skill list               List community skills
   cortex-ia skill remove <name>      Remove community skill
+  cortex-ia skill-registry refresh   Rebuild .sdd/skill-registry.md from all tiers
   cortex-ia sync             Refresh managed files from current state
   cortex-ia sync --persona mentor
   cortex-ia sync --profile <name>     Use a saved model profile

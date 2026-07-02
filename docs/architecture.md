@@ -13,7 +13,9 @@ cortex-ia/
 │   ├── model/
 │   │   ├── types.go               # AgentID, ComponentID, SkillID, strategies
 │   │   └── selection.go           # User selection struct
-│   ├── agents/                    # 8 agent adapters
+│   ├── agents/                    # 12 agent adapters (claude, opencode, gemini,
+│   │   │                          # cursor, vscode, codex, windsurf, antigravity,
+│   │   │                          # kilocode, kimi, kiro, qwen)
 │   │   ├── interface.go           # Adapter interface (23 methods)
 │   │   ├── registry.go            # Registry with insertion order
 │   │   ├── factory.go             # Default registry builder
@@ -25,7 +27,11 @@ cortex-ia/
 │   │   ├── vscode/adapter.go
 │   │   ├── codex/adapter.go
 │   │   ├── windsurf/adapter.go
-│   │   └── antigravity/adapter.go
+│   │   ├── antigravity/adapter.go
+│   │   ├── kilocode/adapter.go
+│   │   ├── kimi/adapter.go
+│   │   ├── kiro/adapter.go
+│   │   └── qwen/adapter.go
 │   ├── catalog/
 │   │   ├── components.go          # Component definitions, presets, ResolveDeps()
 │   │   └── skills.go              # Skill ID lists

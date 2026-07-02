@@ -1,2 +1,12 @@
+#!/usr/bin/env sh
+echo "=== cortex-ia pre-push ==="
+
+echo "[1/2] Running golangci-lint..."
 golangci-lint run ./...
+echo "  OK: Lint"
+
+echo "[2/2] Running tests..."
 go test -v ./...
+echo "  OK: Tests"
+
+echo "=== Pre-push checks passed ==="

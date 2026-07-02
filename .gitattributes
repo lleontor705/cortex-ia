@@ -1,0 +1,5 @@
+# Golden test fixtures are compared byte-for-byte (raw string equality, no
+# line-ending normalization). On Windows, core.autocrlf=true converts these to
+# CRLF on checkout, which breaks every TestGolden* test on a fresh clone.
+# Pin them to LF so they are byte-identical across all platforms and checkouts.
+testdata/golden/** text eol=lf

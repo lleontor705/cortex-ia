@@ -65,6 +65,16 @@ const (
 	SkillFileIssue    SkillID = "file-issue"
 	SkillScanRegistry SkillID = "scan-registry"
 	SkillJudgmentDay  SkillID = "judgment-day"
+
+	// Skills ported from gentle-ai in the port-gentle-ai-patterns change.
+	SkillWorkUnitCommits SkillID = "work-unit-commits"
+	SkillChainedPR       SkillID = "chained-pr"
+	SkillCognitiveDoc    SkillID = "cognitive-doc-design"
+	SkillCommentWriter   SkillID = "comment-writer"
+	SkillGoTesting       SkillID = "go-testing"
+	SkillSkillCreator    SkillID = "skill-creator"
+	SkillSkillImprover   SkillID = "skill-improver"
+	SkillOnboard         SkillID = "onboard"
 )
 
 // SystemPromptStrategy defines how an agent's system prompt file is managed.

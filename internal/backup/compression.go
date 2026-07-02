@@ -35,7 +35,7 @@ func CreateArchive(archivePath string, entries []ArchiveEntry) error {
 	if err != nil {
 		return fmt.Errorf("create archive file %q: %w", archivePath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gw)
@@ -91,13 +91,13 @@ func ExtractArchive(archivePath string, destDir string) ([]ArchiveEntry, error) 
 	if err != nil {
 		return nil, fmt.Errorf("open archive %q: %w", archivePath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
 		return nil, fmt.Errorf("create gzip reader for %q: %w", archivePath, err)
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 
 	tr := tar.NewReader(gr)
 
@@ -113,7 +113,7 @@ func ExtractArchive(archivePath string, destDir string) ([]ArchiveEntry, error) 
 		}
 
 		// Only process regular files; skip symlinks, hardlinks, directories, etc.
-		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
+		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
 

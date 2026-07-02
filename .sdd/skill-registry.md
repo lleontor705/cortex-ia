@@ -1,6 +1,6 @@
 # cortex-ia Skill Registry
 
-Generated: 2026-05-07T05:33:00-05:00
+Generated: 2026-06-24T00:00:00Z
 
 ## Skills
 
@@ -34,14 +34,28 @@ Generated: 2026-05-07T05:33:00-05:00
 | File | Path |
 |---|---|
 | AGENTS.md | AGENTS.md |
-| docs/agents.md | docs/agents.md |
-| SDD workflow | docs/sdd-workflow.md |
-| Cortex memory | docs/cortex-memory.md |
+| CONTRIBUTING.md | CONTRIBUTING.md |
+| docs/sdd-workflow.md | docs/sdd-workflow.md |
+| docs/cortex-memory.md | docs/cortex-memory.md |
 
 ## Project Context
 
 - Runtime: Go 1.26.1, module `github.com/lleontor705/cortex-ia`.
-- UI/tooling stack: Bubble Tea, Bubbles, Lip Gloss, YAML v3.
-- Build/test commands: `make build`, `make test`, `go test ./...`, `make lint`.
-- Test pattern: Go package tests with `*_test.go`; TDD is required by AGENTS.md.
-- Persistence mode: Cortex is available; use Cortex for SDD artifacts.
+- UI/tooling stack: Bubbletea v1.3.10, bubbles v1.0.0, lipgloss v1.1.0, yaml.v3.
+- Architecture: cmd/cortex-ia entrypoint, internal/ packages (agents, agentbuilder, app, assets, backup, catalog, components, config, model, opencode, pipeline, state, system, tui, update, verify).
+- Pipeline: 2-stage (Prepare -> Apply) with rollback via lockfile + manifest snapshots.
+- Agents: 12 supported adapters (claude, opencode, gemini, cursor, vscode, codex, windsurf, antigravity, kilocode, kimi, kiro, qwen).
+- Components: 14 granular injectors (context7, conventions, cortex, filemerge, forgespec, gga, mailbox, mcpinject, permissions, persona, sdd, skills, theme, uninstall).
+- Test pattern: Go package tests with co-located `*_test.go`; strict TDD required (AGENTS.md).
+- Test command: `go test -v ./...` (or `make test`).
+- Coverage: `go test -v -coverprofile=coverage/coverage.out -covermode=atomic ./...`.
+- Golden files: testdata/golden/, regenerate with `go test -update ./internal/components/...`.
+- Pre-existing failure: TestGoldenCortex_Claude (internal/components) — golden files stale.
+- Linter: golangci-lint v2 (errcheck, govet, staticcheck, unused, ineffassign). Command: `make lint`.
+- Formatter: gofmt -s.
+- CI: GitHub Actions (ci.yml, pr-check.yml, release.yml, stale.yml).
+- Build: goreleaser (.goreleaser.yaml).
+- Commit convention: Conventional Commits (type(scope)!: description).
+- Branch convention: ^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)/[a-z0-9._-]+$.
+- Workflow: Issue-first — no PR without an approved linked issue.
+- Persistence mode: Cortex MCP (mem_save / mem_search / mem_get_observation).

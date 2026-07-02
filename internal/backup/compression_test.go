@@ -276,9 +276,9 @@ func TestExtractArchive_RejectsDotEntry(t *testing.T) {
 	}
 }
 
-// TestExtractArchive_HandlesTypeRegA verifies that archive entries with Typeflag
-// set to TypeRegA (legacy '\x00') are extracted as regular files, matching the
-// behaviour of TypeReg entries.
+// TestExtractArchive_HandlesTypeRegA verifies that regular-file archive entries
+// are extracted. The Go tar reader normalises the deprecated TypeRegA ('\x00')
+// to TypeReg, so the test uses TypeReg directly.
 func TestExtractArchive_HandlesTypeRegA(t *testing.T) {
 	dir := t.TempDir()
 
@@ -299,7 +299,7 @@ func TestExtractArchive_HandlesTypeRegA(t *testing.T) {
 		defer tw.Close()
 
 		hdr := &tar.Header{
-			Typeflag: tar.TypeRegA, // legacy '\x00'
+			Typeflag: tar.TypeReg,
 			Name:     "files/legacy.txt",
 			Mode:     0o644,
 			Size:     int64(len(content)),

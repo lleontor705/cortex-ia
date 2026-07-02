@@ -9,11 +9,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/agents/antigravity"
 	"github.com/lleontor705/cortex-ia/internal/agents/claude"
-	codexagent "github.com/lleontor705/cortex-ia/internal/agents/codex"
-	"github.com/lleontor705/cortex-ia/internal/agents/cursor"
-	"github.com/lleontor705/cortex-ia/internal/agents/gemini"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
-	"github.com/lleontor705/cortex-ia/internal/agents/vscode"
 	"github.com/lleontor705/cortex-ia/internal/agents/windsurf"
 )
 
@@ -21,10 +17,6 @@ var update = flag.Bool("update", false, "update golden files")
 
 func claudeAdapter() agents.Adapter      { return claude.NewAdapter() }
 func opencodeAdapter() agents.Adapter    { return opencode.NewAdapter() }
-func cursorAdapter() agents.Adapter      { return cursor.NewAdapter() }
-func geminiAdapter() agents.Adapter      { return gemini.NewAdapter() }
-func vscodeAdapter() agents.Adapter      { return vscode.NewAdapter() }
-func codexAdapter() agents.Adapter       { return codexagent.NewAdapter() }
 func antigravityAdapter() agents.Adapter { return antigravity.NewAdapter() }
 func windsurfAdapter() agents.Adapter    { return windsurf.NewAdapter() }
 
