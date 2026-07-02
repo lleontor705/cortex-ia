@@ -63,7 +63,7 @@ scoops:
   - repository:
       owner: lleontor705
       name: scoop-bucket
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
     name: cortex-ia
     homepage: "https://github.com/lleontor705/cortex-ia"
     description: "AI Agent Ecosystem Configurator — persistent memory, SDD workflow, inter-agent messaging, multi-CLI orchestration"
