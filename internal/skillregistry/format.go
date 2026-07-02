@@ -28,8 +28,8 @@ func FormatMarkdown(out RegistryOutput) string {
 		if trigger == "" {
 			trigger = "N/A"
 		}
-		sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
-			s.Name, s.Category, s.Path, trigger))
+		fmt.Fprintf(&sb, "| %s | %s | %s | %s |\n",
+			s.Name, s.Category, s.Path, trigger)
 	}
 
 	return sb.String()

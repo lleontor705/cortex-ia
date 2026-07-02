@@ -59,10 +59,8 @@ func scanSources(projectRoot, homeDir string) (RegistryOutput, error) {
 	var skills []SkillEntry
 
 	// Tier 1: embedded assets.
-	embedded, err := scanEmbedded()
-	if err != nil {
-		// Embedded scan errors are non-fatal — we still scan filesystem tiers.
-	}
+	// Embedded scan errors are non-fatal — we still scan filesystem tiers.
+	embedded, _ := scanEmbedded()
 	skills = append(skills, embedded...)
 
 	// Tier 2: project-level skills (filesystem).

@@ -147,9 +147,8 @@ func TestAllSDDSkillIDs_BackwardCompat(t *testing.T) {
 		}
 	}
 
-	// Verify the return type is []model.SkillID (compile-time check via
-	// variable assignment).
-	var _ []model.SkillID = ids
+	// The return type []model.SkillID is enforced by the function signature;
+	// the compiler rejects any mismatch, so no explicit assertion is needed.
 }
 
 // TestAllSDDSkillIDs_ReturnTypeIsModelSkillID ensures the return type is
