@@ -1,5 +1,11 @@
 version: 2
 
+project_name: cortex-ia
+
+before:
+  hooks:
+    - go mod tidy
+
 builds:
   - main: ./cmd/cortex-ia
     binary: cortex-ia
@@ -22,7 +28,7 @@ archives:
       - goos: windows
         formats:
           - zip
-    name_template: "cortex-ia_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
@@ -42,7 +48,8 @@ changelog:
       - "^chore\\(deps\\)"
 
 brews:
-  - repository:
+  - name: cortex-ia
+    repository:
       owner: lleontor705
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
@@ -51,3 +58,14 @@ brews:
     description: "AI Agent Ecosystem Configurator — persistent memory, SDD workflow, inter-agent messaging, multi-CLI orchestration"
     license: "MIT"
     commit_msg_template: "chore: update cortex-ia formula to {{ .Tag }}"
+
+scoops:
+  - repository:
+      owner: lleontor705
+      name: scoop-bucket
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    name: cortex-ia
+    homepage: "https://github.com/lleontor705/cortex-ia"
+    description: "AI Agent Ecosystem Configurator — persistent memory, SDD workflow, inter-agent messaging, multi-CLI orchestration"
+    license: MIT
+    commit_msg_template: "chore: update cortex-ia to {{ .Tag }}"

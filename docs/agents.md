@@ -1,6 +1,6 @@
 # Agent Reference
 
-cortex-ia supports 8 AI coding agents. Each agent has a dedicated adapter that knows its config paths, MCP strategy, and capabilities.
+cortex-ia supports 12 AI coding agents. Each agent has a dedicated adapter that knows its config paths, MCP strategy, and capabilities.
 
 ## Claude Code
 
@@ -101,6 +101,73 @@ VS Code User directory varies by platform:
 | MCP config | `~/.gemini/antigravity/mcp_config.json` |
 | Prompt strategy | Append to file |
 | MCP strategy | MCP config file |
+
+## Kilocode
+
+| Property | Value |
+|----------|-------|
+| Binary | `kilo` |
+| Config dir | `~/.config/kilo` |
+| System prompt | `~/.config/kilo/AGENTS.md` |
+| Skills dir | `~/.config/kilo/skills/` |
+| Settings | `~/.config/kilo/opencode.json` |
+| Commands dir | `~/.config/kilo/commands/` |
+| MCP config | `~/.config/kilo/opencode.json` (`"mcp"` key) |
+| Prompt strategy | File replace |
+| MCP strategy | Merge into settings |
+| Task delegation | No |
+| Slash commands | Yes |
+
+## Kimi Code
+
+| Property | Value |
+|----------|-------|
+| Binary | `kimi` |
+| Config dir | `~/.kimi` |
+| System prompt | `~/.kimi/KIMI.md` |
+| Skills dir | `~/.config/agents/skills/` (cross-agent shared path) |
+| Settings | `~/.kimi/config.toml` |
+| MCP config | `~/.kimi/mcp.json` |
+| Prompt strategy | File replace |
+| MCP strategy | MCP config file |
+| Task delegation | Yes |
+| Sub-agents | Yes (`~/.kimi/agents/`) |
+
+## Kiro IDE
+
+| Property | Value |
+|----------|-------|
+| Binary | `kiro` |
+| Config dir | `~/.kiro` (home-based, all platforms) |
+| System prompt | `~/.kiro/steering/cortex-ia.md` |
+| Skills dir | `~/.kiro/skills/` |
+| Settings | Platform-specific (see below) |
+| MCP config | `~/.kiro/settings/mcp.json` |
+| Prompt strategy | File replace |
+| MCP strategy | MCP config file |
+| Task delegation | Yes |
+| Sub-agents | Yes (`~/.kiro/agents/`) |
+
+Settings directory varies by platform (VS Code fork split-root layout):
+- **macOS**: `~/Library/Application Support/Kiro/User/settings.json`
+- **Windows**: `%APPDATA%/kiro/User/settings.json`
+- **Linux**: `~/.config/kiro/user/settings.json` (respects `XDG_CONFIG_HOME`)
+
+## Qwen Code
+
+| Property | Value |
+|----------|-------|
+| Binary | `qwen` |
+| Config dir | `~/.qwen` |
+| System prompt | `~/.qwen/QWEN.md` |
+| Skills dir | `~/.qwen/skills/` |
+| Settings | `~/.qwen/settings.json` |
+| Commands dir | `~/.qwen/commands/` |
+| MCP config | `~/.qwen/settings.json` (`"mcpServers"` key) |
+| Prompt strategy | File replace |
+| MCP strategy | Merge into settings |
+| Task delegation | No |
+| Slash commands | Yes |
 
 ## MCP Strategy Details
 
