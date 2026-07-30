@@ -7,17 +7,17 @@ import (
 	"path/filepath"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lleontor705/cortex-ia/internal/agents"
-	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/catalog"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/state"
 	"github.com/lleontor705/cortex-ia/internal/tui/screens"
+	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
 
 // Update implements tea.Model.
@@ -520,10 +520,10 @@ func (m Model) welcomeGroups() []screens.MenuGroup {
 		{
 			Title: "CUSTOMIZE",
 			Items: []screens.MenuItem{
-				{Hotkey: "3", Label: "Configure models", Hint: "Per-phase model routing (opus / sonnet / haiku)"},
+				{Hotkey: "3", Label: "Configure routes", Hint: "Per-phase provider-neutral route configuration"},
 				{Hotkey: "4", Label: "Manage profiles", Hint: "Saved OpenCode SDD profiles"},
 				{Hotkey: "5", Label: "Create custom agent", Hint: "AI-generated skills via Agent Builder"},
-				{Hotkey: "6", Label: "OpenCode models", Hint: "Pick provider/model per OpenCode sub-agent"},
+				{Hotkey: "6", Label: "OpenCode routes", Hint: "Pick configured provider/model per OpenCode sub-agent"},
 			},
 		},
 		{

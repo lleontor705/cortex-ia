@@ -36,7 +36,12 @@ func (CodexRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bundl
 	slices.SortFunc(roles, func(left, right ir.Role) int { return strings.Compare(string(left.ID), string(right.ID)) })
 	for _, role := range roles {
 		name := codexSemanticName(role.ID)
-		assets = append(assets, codexAsset("skills/"+name+"/SKILL.md", "codex/skill/"+ir.SemanticID(name), AssetSkill, renderCodexSkill(role), permissions))
+		// Once the typed composition owns canonical skills, Codex only lowers
+		// role syntax. Keeping a renderer-local skill writer would create a
+		// duplicate path and a second mutable authority.
+		if !hasComposedAsset(resolved.Composition, ir.AssetSkill, "skills/"+name+"/SKILL.md") {
+			assets = append(assets, codexAsset("skills/"+name+"/SKILL.md", "codex/skill/"+ir.SemanticID(name), AssetSkill, renderCodexSkill(role), permissions))
+		}
 		if resolved.Profile != "portable-sequential" && role.ID != "role/orchestrator" {
 			assets = append(assets, codexAsset("agents/"+name+".toml", "codex/agent/"+ir.SemanticID(name), AssetAgent, renderCodexAgent(role, resolved.Profile), permissions))
 		}
@@ -47,7 +52,20 @@ func (CodexRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bundl
 		return Bundle{}, err
 	}
 	assets = append(assets, manifestAssets...)
+	assets, err = appendCompositionAsset(resolved, assets)
+	if err != nil {
+		return Bundle{}, err
+	}
 	return Bundle{Assets: assets}, nil
+}
+
+func hasComposedAsset(composition Composition, class ir.AssetClass, assetPath string) bool {
+	for _, asset := range composition.OperationalAssets {
+		if asset.Class == class && asset.Path == assetPath {
+			return true
+		}
+	}
+	return false
 }
 
 func validateCodexProfile(resolved ResolvedWorkflow) error {

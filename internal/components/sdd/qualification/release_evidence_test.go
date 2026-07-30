@@ -130,7 +130,7 @@ func validPolicyEvidence(kind EvidenceKind, enforcement Enforcement, mutators ..
 		Kind: kind, Enforcement: enforcement, Termination: TerminationCompleted,
 		Numerator: 3, Denominator: 3, Exclusions: []string{},
 		Budget: EvidenceBudget{WallTimeSeconds: 30, Retries: 1, Cases: 3},
-		Tool: "pinned-tool@1.0.0", EvidenceRefs: []string{"sha256:abc"},
+		Tool:   "pinned-tool@1.0.0", EvidenceRefs: []string{"sha256:abc"},
 	}
 	for _, mutate := range mutators {
 		mutate(&evidence)

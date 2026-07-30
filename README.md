@@ -60,9 +60,9 @@ cortex-ia uninstall --all --dry-run
 # Switch GGA provider (anthropic, openai, google, ollama, claude, opencode, gemini, codex)
 cortex-ia gga --provider ollama
 
-# OpenCode SDD profiles (per-phase model assignment)
+# OpenCode SDD profiles (per-phase semantic route assignment)
 cortex-ia profiles create cheap:openai/gpt-4o-mini
-cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
+cortex-ia profiles set cheap:sdd-design:route/v1/architecture
 cortex-ia profiles list
 
 # Build a custom skill via an installed AI engine
@@ -178,45 +178,41 @@ Skills incorporate research-backed techniques for better AI performance:
 | **Step-Back Prompting** | architect | Abstract principles before specific design |
 | **Inline WHY** | orchestrator, all rules | Motivation on every rule improves compliance |
 
-## Per-Phase Model Routing
+## Provider-Neutral Route Resolution
 
-Assign different Claude model tiers to SDD phases for cost/quality optimization:
+Phase configuration selects versioned semantic routes and typed capability requirements. Concrete provider/model references are resolved only from explicit user/provider configuration or fresh qualified discovery evidence.
 
 ```bash
-cortex-ia install --model-preset economy    # Sonnet everywhere, Haiku for archive
-cortex-ia install --model-preset balanced   # Opus for design+validate, Sonnet for apply
-cortex-ia install --model-preset performance # Opus for critical phases, Sonnet for rest
+cortex-ia profiles set default:sdd-design:route/v1/architecture
+cortex-ia profiles set default:sdd-apply:route/v1/implementation
+cortex-ia install --profile default
 ```
 
-| Preset | Orchestrator | Investigate | Architect | Implement | Validate | Finalize |
-|--------|:-:|:-:|:-:|:-:|:-:|:-:|
-| **balanced** | opus | sonnet | opus | sonnet | opus | haiku |
-| **performance** | opus | sonnet | opus | sonnet | opus | haiku |
-| **economy** | sonnet | sonnet | sonnet | sonnet | sonnet | haiku |
+The resolver records provenance, freshness, capability evidence, and fallback/degradation reason. Missing or ineligible configuration fails closed before generation; there is no phase-to-provider assignment table or implicit model preset.
 
 ## OpenCode SDD Profiles
 
-For OpenCode users who want per-phase models from any provider (not just Claude), profiles let you save named bundles of `provider/model` assignments and apply them to `opencode.json` automatically.
+For OpenCode users who want per-phase routing, profiles save named bundles of semantic route assignments and apply configuration-backed resolutions to `opencode.json` automatically.
 
 ```bash
-# Create a profile that maps every SDD phase to one model
-cortex-ia profiles create cheap:openai/gpt-4o-mini
+# Create a profile with a semantic route
+cortex-ia profiles create default:route/v1/implementation
 
-# Override specific phases
-cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
-cortex-ia profiles set cheap:sdd-apply:anthropic/claude-haiku-4-5
+# Override specific phases with semantic routes
+cortex-ia profiles set default:sdd-design:route/v1/architecture
+cortex-ia profiles set default:sdd-apply:route/v1/implementation
 
 # Use the profile during install — auto-applied to opencode.json
-cortex-ia install --profile cheap
+cortex-ia install --profile default
 
 # Or apply to an existing install without re-injecting everything
-cortex-ia profiles apply cheap
+cortex-ia profiles apply default
 
 cortex-ia profiles list
-cortex-ia profiles delete cheap
+cortex-ia profiles delete default
 ```
 
-Values can be either a fully-qualified `provider/model` (e.g. `openai/gpt-4o-mini`) or a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`). Profiles persist in `~/.cortex-ia/profiles.json` and the active one is recorded in `state.json` so `cortex-ia sync` keeps using it.
+Values are versioned semantic route IDs. Provider/model mappings may be supplied separately through explicit provider configuration and are never invented by profile selection. Profiles persist in `~/.cortex-ia/profiles.json` and the active one is recorded in `state.json` so `cortex-ia sync` keeps using it.
 
 ## Persona System
 

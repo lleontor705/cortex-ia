@@ -54,6 +54,10 @@ func (QwenRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bundle
 			})
 		}
 	}
+	assets, err := appendCompositionAsset(resolved, assets)
+	if err != nil {
+		return Bundle{}, err
+	}
 	return Bundle{Assets: assets}, nil
 }
 

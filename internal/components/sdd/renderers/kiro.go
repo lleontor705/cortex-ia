@@ -50,7 +50,12 @@ func (KiroRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bundle
 	switch resolved.Profile {
 	case "portable-sequential":
 		content := renderKiroSteering(resolved, roles, phases, false)
-		return Bundle{Assets: []Asset{kiroSteeringAsset(content)}}, nil
+		assets := []Asset{kiroSteeringAsset(content)}
+		assets, err = appendCompositionAsset(resolved, assets)
+		if err != nil {
+			return Bundle{}, err
+		}
+		return Bundle{Assets: assets}, nil
 	case "portable-flat":
 		if reason := unqualifiedKiroDirectChild(resolved.Capabilities); reason != "" {
 			return Bundle{}, &KiroProfileError{ID: ErrorKiroUnqualifiedProfile, Profile: resolved.Profile, Reason: reason}
@@ -72,6 +77,10 @@ func (KiroRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bundle
 			})
 		}
 		assets = append(assets, kiroSteeringAsset(renderKiroSteering(resolved, roles, phases, true)))
+		assets, err = appendCompositionAsset(resolved, assets)
+		if err != nil {
+			return Bundle{}, err
+		}
 		return Bundle{Assets: assets}, nil
 	default:
 		return Bundle{}, &KiroProfileError{

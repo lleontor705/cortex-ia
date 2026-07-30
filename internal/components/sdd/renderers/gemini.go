@@ -81,6 +81,11 @@ func (GeminiRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bund
 			return Bundle{}, validationError(ErrorGeminiSecretMaterial, assets[index].SemanticID, fmt.Sprintf("$.assets[%d].content", index), "secret-like material", "opaque secret references only")
 		}
 	}
+	var err error
+	assets, err = appendCompositionAsset(resolved, assets)
+	if err != nil {
+		return Bundle{}, err
+	}
 	return Bundle{Assets: assets}, nil
 }
 
@@ -174,7 +179,7 @@ func renderGeminiAgent(resolved ResolvedWorkflow, role ir.Role) (Asset, error) {
 		Path:        "agents/" + name + ".md",
 		SemanticID:  ir.SemanticID("agent/gemini/" + name),
 		Kind:        AssetAgent,
-		Content:     content.Bytes(),
+		Content:     canonicalGeminiAgentContent(content.Bytes()),
 		Mode:        0o644,
 		Permissions: permissions,
 	}
@@ -355,4 +360,12 @@ func writeGeminiList(output *bytes.Buffer, title string, values []string) {
 		fmt.Fprintf(output, "- `%s`\n", value)
 	}
 	output.WriteByte('\n')
+}
+
+// canonicalGeminiAgentContent normalizes the trailing whitespace of a rendered
+// Gemini agent asset so it ends with exactly one newline. The list renderer
+// emits a trailing blank line after its final section; collapsing it keeps the
+// output deterministic and free of dirty golden diffs.
+func canonicalGeminiAgentContent(content []byte) []byte {
+	return append(bytes.TrimRight(content, "\n"), '\n')
 }

@@ -15,8 +15,8 @@ import (
 
 // ServerInfo identifies the published ForgeSpec server.
 type ServerInfo struct {
-	Name      string `json:"name"`
-	Version   string `json:"version"`
+	Name       string `json:"name"`
+	Version    string `json:"version"`
 	APIVersion string `json:"api_version"`
 }
 
@@ -28,29 +28,29 @@ type PublishedVersionRange struct {
 
 // PublishedCapability is one capability entry in the published response.
 type PublishedCapability struct {
-	ID       string                 `json:"id"`
+	ID        string                `json:"id"`
 	Supported PublishedVersionRange `json:"supported"`
-	Selected string                 `json:"selected"`
+	Selected  string                `json:"selected"`
 }
 
 // PublishedCompatibility records the server's self-assessed negotiation result.
 type PublishedCompatibility struct {
-	Compatible        bool     `json:"compatible"`
-	SelectedMode      string   `json:"selected_mode"`
-	Missing           []string `json:"missing"`
-	Incompatible      []string `json:"incompatible"`
+	Compatible          bool     `json:"compatible"`
+	SelectedMode        string   `json:"selected_mode"`
+	Missing             []string `json:"missing"`
+	Incompatible        []string `json:"incompatible"`
 	UnavailableOptional []string `json:"unavailable_optional"`
 }
 
 // PublishedCapabilityResponse mirrors the JSON response returned by the
 // forgespec_capabilities MCP tool in the published forgespec-mcp@1.4.0.
 type PublishedCapabilityResponse struct {
-	Server       ServerInfo              `json:"server"`
-	Modes        []string                `json:"modes"`
-	Schemas      map[string]PublishedVersionRange `json:"schemas,omitempty"`
-	Capabilities []PublishedCapability   `json:"capabilities"`
-	Limits       map[string]int          `json:"limits,omitempty"`
-	Compatibility PublishedCompatibility `json:"compatibility"`
+	Server        ServerInfo                       `json:"server"`
+	Modes         []string                         `json:"modes"`
+	Schemas       map[string]PublishedVersionRange `json:"schemas,omitempty"`
+	Capabilities  []PublishedCapability            `json:"capabilities"`
+	Limits        map[string]int                   `json:"limits,omitempty"`
+	Compatibility PublishedCompatibility           `json:"compatibility"`
 }
 
 // ProbeEvidence carries cortex-ia's independent observation metadata that
@@ -102,7 +102,6 @@ func TranslatePublishedResponse(response PublishedCapabilityResponse, evidence P
 			ProbeStatus:     ProbeUnavailable,
 		}, nil
 	}
-
 	capabilities := make([]NegotiatedCapability, 0, len(response.Capabilities))
 	for _, pub := range response.Capabilities {
 		selected, err := ir.ParseVersion(pub.Selected)
@@ -169,17 +168,17 @@ func TranslatePublishedResponse(response PublishedCapabilityResponse, evidence P
 // probing the published forgespec-mcp@1.4.0 package. This is the redacted,
 // credential-free evidence record that supports direct-v1 enablement.
 type PublishedQualificationEvidence struct {
-	PackageName    string         `json:"package_name"`
-	PackageVersion string         `json:"package_version"`
-	NPMSHASum      string         `json:"npm_shasum"`
-	TagSHA         string         `json:"tag_sha"`
-	ProbeID        string         `json:"probe_id"`
-	ProbeCommand   string         `json:"probe_command"`
-	ObservedAt     time.Time      `json:"observed_at"`
-	CapabilityIDs  []string       `json:"capability_ids"`
+	PackageName    string               `json:"package_name"`
+	PackageVersion string               `json:"package_version"`
+	NPMSHASum      string               `json:"npm_shasum"`
+	TagSHA         string               `json:"tag_sha"`
+	ProbeID        string               `json:"probe_id"`
+	ProbeCommand   string               `json:"probe_command"`
+	ObservedAt     time.Time            `json:"observed_at"`
+	CapabilityIDs  []string             `json:"capability_ids"`
 	P0Semantics    []P0SemanticEvidence `json:"p0_semantics"`
-	Isolated       bool           `json:"isolated"`
-	ExternalDB     bool           `json:"external_db_mutated"`
+	Isolated       bool                 `json:"isolated"`
+	ExternalDB     bool                 `json:"external_db_mutated"`
 }
 
 // P0SemanticEvidence records one independently qualified P0 semantic behavior.
@@ -193,9 +192,9 @@ type P0SemanticEvidence struct {
 // QualificationDecision reports whether the published evidence is sufficient
 // to enable direct-v1 bindings.
 type QualificationDecision struct {
-	Qualified  bool     `json:"qualified"`
-	Reason     string   `json:"reason"`
-	FailedP0   []string `json:"failed_p0,omitempty"`
+	Qualified bool     `json:"qualified"`
+	Reason    string   `json:"reason"`
+	FailedP0  []string `json:"failed_p0,omitempty"`
 }
 
 // EvaluateQualification determines whether all required P0 semantics are

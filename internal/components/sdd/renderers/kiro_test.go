@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
@@ -66,6 +67,25 @@ func TestKiroRendererBlocksUnqualifiedOrUnsupportedProfiles(t *testing.T) {
 				t.Fatalf("Render() error = %v, want KiroProfileError ID %q", err, tt.wantID)
 			}
 		})
+	}
+}
+
+func TestKiroSplitRootFixtureKeepsExternalConfigOutOfBundle(t *testing.T) {
+	assetMap, err := AdapterAssetMapFor("kiro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assetMap.WorkflowRoot != ".kiro" || assetMap.ExternalConfigRoot == "" {
+		t.Fatalf("Kiro roots are not split: %+v", assetMap)
+	}
+	bundle, err := Render(context.Background(), NewKiroRenderer(), kiroResolved("portable-sequential", kiroUnsupportedDirectChild()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, asset := range bundle.Assets {
+		if strings.Contains(asset.Path, "APPDATA") || strings.Contains(asset.Path, "User") {
+			t.Fatalf("bundle rebased protected external config: %q", asset.Path)
+		}
 	}
 }
 

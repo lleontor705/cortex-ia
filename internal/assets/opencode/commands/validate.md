@@ -1,37 +1,11 @@
 ---
-description: Validate implementation matches specs, design, and tasks
+description: Activate validation for an SDD change
 agent: orchestrator
 subtask: true
 ---
 
-You are an SDD sub-agent. Read the skill file at {{HOME}}/.config/opencode/skills/validate/SKILL.md FIRST, then follow its instructions exactly.
+Activate validation for the named change. Capture the working directory, project, artifact store, and user context.
 
-CONTEXT:
-- Working directory: !`echo -n "$(pwd)"`
-- Current project: !`echo -n "$(basename $(pwd))"`
-- Artifact store mode: {determined by orchestrator — default: cortex if Cortex MCP available, else none}
+Read the canonical validation skill before dispatch. Reference the executable verification handler, which evaluates specifications, design, tasks, tests, quality evidence, and typed verdicts. This command only activates and contextualizes; it does not inspect artifacts, run checks, or convert verification verdict into phase status.
 
-TASK:
-Verify the active SDD change. Read the proposal, specs, design, and tasks artifacts. Then:
-
-CORTEX PERSISTENCE (when artifact store mode is cortex or hybrid):
-CRITICAL: mem_search returns 300-char PREVIEWS, not full content. You MUST call mem_get_observation(id) for EVERY artifact.
-STEP A — SEARCH (get IDs only):
-  mem_search(query: "sdd/{change-name}/spec", project: "{project}") → save spec_id
-  mem_search(query: "sdd/{change-name}/design", project: "{project}") → save design_id
-  mem_search(query: "sdd/{change-name}/tasks", project: "{project}") → save tasks_id
-STEP B — RETRIEVE FULL CONTENT (mandatory):
-  mem_get_observation(id: spec_id) → full spec
-  mem_get_observation(id: design_id) → full design
-  mem_get_observation(id: tasks_id) → full tasks
-Save report:
-  mem_save(title: "sdd/{change-name}/verify-report", topic_key: "sdd/{change-name}/verify-report", type: "architecture", project: "{project}", content: "{verification report}")
-
-Then:
-1. Check completeness — are all tasks done?
-2. Check correctness — does code match specs?
-3. Check coherence — were design decisions followed?
-4. Run tests and build (real execution)
-5. Build the spec compliance matrix
-
-Return a structured verification report with: status, executive_summary, detailed_report, artifacts, and next_recommended.
+If a human gate is requested, present the evidence-backed question and wait for explicit approval. Return the handler's canonical status, verdict, findings, and references unchanged.

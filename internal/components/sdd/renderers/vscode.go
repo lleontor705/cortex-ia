@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/resolution"
 )
@@ -29,6 +30,7 @@ func (VSCodeRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bund
 	if resolved.Profile != "portable-sequential" {
 		return Bundle{}, validationError(ErrorUnsupportedAsset, "workflow/resolved", "$.profile", resolved.Profile, "portable-sequential for the conservative VS Code renderer")
 	}
+	resolved.Capabilities = normalizeVSCodeCapabilities(resolved.Capabilities)
 	if err := validateVSCodeCapabilities(resolved); err != nil {
 		return Bundle{}, err
 	}
@@ -97,7 +99,40 @@ func (VSCodeRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bund
 		{Path: "manifests/security.md", SemanticID: "manifest/vscode/security-human", Kind: AssetSchema, Content: []byte(renderVSCodeSecurityMarkdown(securityModel)), Mode: 0o644},
 		{Path: "manifests/semantic.json", SemanticID: "manifest/vscode/semantic", Kind: AssetSchema, Content: semantic, Mode: 0o644},
 	}
+	assets, err = appendCompositionAsset(resolved, assets)
+	if err != nil {
+		return Bundle{}, err
+	}
 	return Bundle{Assets: assets}, nil
+}
+
+func normalizeVSCodeCapabilities(values []resolution.Resolution) []resolution.Resolution {
+	result := slices.Clone(values)
+	for index := range result {
+		item := &result[index]
+		switch item.ID {
+		case "delegation/nested":
+			if item.State != resolution.StateUnsupported {
+				item.State = resolution.StateUnsupported
+				item.Guarantee = resolution.GuaranteeNone
+				item.Binding = resolution.Binding{}
+				item.Reason = "VS Code does not support nested delegation; sequential execution selected"
+			}
+		case "delegation/direct-child":
+			switch item.State {
+			case resolution.StateNative, resolution.StateEmulated:
+				item.State = resolution.StateUnsupported
+				item.Guarantee = resolution.GuaranteeNone
+				item.Binding = resolution.Binding{}
+				item.Reason = "VS Code direct-child delegation is not runtime-qualified; sequential execution selected"
+			case resolution.StateAdvisory:
+				item.Binding.Enforcement = capability.EnforcementPrompt
+				item.Binding.Guarantee = resolution.GuaranteeBestEffort
+				item.Guarantee = resolution.GuaranteeBestEffort
+			}
+		}
+	}
+	return result
 }
 
 func validateVSCodeCapabilities(resolved ResolvedWorkflow) error {

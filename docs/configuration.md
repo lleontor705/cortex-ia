@@ -30,7 +30,7 @@ cortex-ia help                         # Show usage
 |------|-------------|---------|
 | `--agent <id>` | Target specific agent (repeatable) | `--agent claude-code --agent opencode` |
 | `--preset <id>` | Installation preset | `--preset minimal` |
-| `--model-preset <id>` | Per-phase model routing | `--model-preset economy` |
+| `--profile <id>` | Apply a configured semantic route bundle | `--profile default` |
 | `--persona <id>` | Communication style | `--persona mentor` |
 | `--local` | Load project .cortex-ia.yaml config | `--local` |
 | `--dry-run` | Preview without making changes | `--dry-run` |
@@ -69,20 +69,20 @@ Direct-LLM providers (`anthropic`, `openai`, `google`, `ollama`) emit a `MODEL=`
 ### OpenCode SDD Profiles
 
 ```bash
-# Create a profile that maps every SDD phase to one model
-cortex-ia profiles create cheap:openai/gpt-4o-mini
+# Create a profile with a semantic route
+cortex-ia profiles create default:route/v1/implementation
 
-# Override one phase
-cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
+# Override one phase with a semantic route
+cortex-ia profiles set default:sdd-design:route/v1/architecture
 
-# Write the profile's per-phase models into ~/.config/opencode/opencode.json
-cortex-ia profiles apply cheap
+# Resolve configured routes into ~/.config/opencode/opencode.json
+cortex-ia profiles apply default
 
 cortex-ia profiles list
-cortex-ia profiles delete cheap
+cortex-ia profiles delete default
 ```
 
-Profile values may be either a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`) or a fully-qualified `provider/model` string. `apply` writes them to direct SDD agent entries in `opencode.json` (`architect`, `decompose`, `implement`, etc.). The historical `team-lead` entry is retired and removed.
+Profile values are versioned semantic route IDs. `apply` resolves them only from explicit user/provider configuration or fresh qualified discovery evidence, then writes the resulting evidence-backed assignments to direct SDD agent entries in `opencode.json` (`architect`, `decompose`, `implement`, etc.). Unresolved routes fail closed before mutation.
 
 ### Agent Builder
 
@@ -114,21 +114,16 @@ When run without arguments, cortex-ia launches an 8-screen interactive installer
 
 Navigation: `Esc` goes back, `q` quits, `Enter` confirms.
 
-## Per-Phase Model Routing
+## Provider-Neutral Route Resolution
 
-Assign Claude model tiers (opus/sonnet/haiku) to SDD phases for cost/quality optimization:
-
-| Preset | Orchestrator | Architect | Implement | Validate | Finalize |
-|--------|:-:|:-:|:-:|:-:|:-:|
-| **balanced** (default) | opus | opus | sonnet | opus | haiku |
-| **performance** | opus | opus | sonnet | opus | haiku |
-| **economy** | sonnet | sonnet | sonnet | sonnet | haiku |
+Assign versioned semantic routes and typed capability requirements to SDD phases. Provider/model values are resolved only from explicit configuration with provenance, freshness, and qualification evidence.
 
 ```bash
-cortex-ia install --model-preset economy
+cortex-ia profiles set default:sdd-design:route/v1/architecture
+cortex-ia profiles set default:sdd-apply:route/v1/implementation
 ```
 
-For OpenCode, these assignments are written to each agent's `model` field in `opencode.json`; the orchestrator no longer passes model names as text in delegation prompts.
+There is no phase-to-provider assignment table and no implicit model preset. Missing or ineligible mappings fail closed before generation or installation.
 
 ## Persona System
 

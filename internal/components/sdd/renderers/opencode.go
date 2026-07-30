@@ -89,6 +89,10 @@ func (OpenCodeRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bu
 			})
 		}
 	}
+	assets, err = appendCompositionAsset(resolved, assets)
+	if err != nil {
+		return Bundle{}, err
+	}
 	return Bundle{Assets: assets}, nil
 }
 

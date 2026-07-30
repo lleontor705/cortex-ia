@@ -25,16 +25,46 @@ func TestProviderForAgents_Gemini(t *testing.T) {
 
 func TestProviderForAgents_Default(t *testing.T) {
 	got := ProviderForAgents(nil)
-	if got != "claude" {
-		t.Errorf("expected claude as default, got %s", got)
+	if got != "" {
+		t.Errorf("expected unresolved provider, got %s", got)
 	}
 }
 
 func TestProviderForAgents_Priority(t *testing.T) {
-	// When both claude and gemini are present, claude wins.
+	// Agent selection may identify a provider, but never a model.
 	got := ProviderForAgents([]model.AgentID{model.AgentGeminiCLI, model.AgentClaudeCode})
 	if got != "claude" {
 		t.Errorf("expected claude (priority), got %s", got)
+	}
+}
+
+func TestBuildConfigResolved_RequiresProvenance(t *testing.T) {
+	if _, err := BuildConfigResolved(ModelConfig{Provider: "anthropic", Model: "configured-model"}); err == nil {
+		t.Fatal("expected unproven model to fail closed")
+	}
+}
+
+func TestBuildConfigResolved_EmitsConfiguredModel(t *testing.T) {
+	cfg, err := BuildConfigResolved(ModelConfig{
+		Provider: "anthropic", Model: "configured-model", Provenance: "user-config", Resolved: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(cfg)
+	if !strings.Contains(content, `MODEL="configured-model"`) || !strings.Contains(content, `MODEL_SOURCE="user-config"`) {
+		t.Fatalf("configured model provenance missing: %s", content)
+	}
+}
+
+func TestBuildConfigResolved_AllowsRouteOnlyDefer(t *testing.T) {
+	cfg, err := BuildConfigResolved(ModelConfig{Route: "route/v1/review", Deferred: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(cfg)
+	if !strings.Contains(content, `ROUTE="route/v1/review"`) || !strings.Contains(content, "RESOLUTION=\"deferred\"") || strings.Contains(content, "MODEL=") {
+		t.Fatalf("route-only config must defer without model: %s", content)
 	}
 }
 

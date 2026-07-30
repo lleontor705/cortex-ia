@@ -6,6 +6,7 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/manifest"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/phasecontract"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/renderers"
 )
 
@@ -26,6 +27,11 @@ type Product struct {
 	Renderer           renderers.Renderer
 	AllowedAssetKinds  []renderers.AssetKind
 	AllowedPermissions []string
+	// PhaseSchemas carries the canonical per-phase budget/stop policies from
+	// phasecontract.PhaseSchemas so that downstream consumers (compiler,
+	// renderers, installer) have the corrected phase contracts without a
+	// second mutable authority.
+	PhaseSchemas map[phasecontract.PhaseID]phasecontract.PhaseSchema
 }
 
 type Factory struct{}
@@ -56,6 +62,7 @@ func (Factory) Create(input FactoryInput) (Product, error) {
 			"filesystem/read", "filesystem/write", "mcp/cortex", "mcp/forgespec",
 			"process/execute", "tool/read", "tool/search",
 		},
+		PhaseSchemas: phasecontract.PhaseSchemas,
 	}, nil
 }
 

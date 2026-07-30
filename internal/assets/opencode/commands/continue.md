@@ -1,26 +1,11 @@
 ---
-description: Continue the next SDD phase in the dependency chain
+description: Activate the next SDD phase
 agent: orchestrator
 subtask: false
 ---
 
-Follow the SDD orchestrator workflow to continue the active change.
+Activate continuation for the named change. Capture the working directory, project, change name, artifact store, and user context.
 
-WORKFLOW:
-1. Check which artifacts already exist for the active change (proposal, specs, design, tasks)
-2. Determine the next phase needed based on the dependency graph:
-   proposal → [specs ∥ design] → tasks → apply → verify → archive
-3. Launch the appropriate sub-agent(s) for the next phase
-4. Present the result and ask the user to proceed
+Reference the executable readiness-and-dispatch handler. It reads authoritative dependency state, selects exactly one ready phase or reports a blocked gate, and returns canonical evidence references. This command does not inspect artifacts, infer readiness, or implement phase policy.
 
-CONTEXT:
-- Working directory: !`echo -n "$(pwd)"`
-- Current project: !`echo -n "$(basename $(pwd))"`
-- Change name: $ARGUMENTS
-- Artifact store mode: {determined by orchestrator — default: cortex if Cortex MCP available, else none}
-
-CORTEX NOTE:
-To check which artifacts exist, search: mem_search(query: "sdd/$ARGUMENTS/", project: "{project}") to list all artifacts for this change.
-Sub-agents handle persistence automatically with topic_key "sdd/$ARGUMENTS/{type}".
-
-Read the orchestrator instructions to coordinate this workflow. Do NOT execute phase work inline — delegate to sub-agents.
+If a human gate is required, present the handler's decision request and wait for explicit approval. Dispatch only after approval, then return the handler's canonical status and next recommendation unchanged.

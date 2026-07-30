@@ -12,14 +12,53 @@ import (
 // The prompt is cortex-ia-aware: it instructs the engine to write a SKILL.md
 // that references the cortex MCP (memory) and forgespec (artifact contracts)
 // rather than gentle-ai's Engram. It also injects the user's selected persona
-// tone and an optional model-preset hint so the generated skill stays coherent
-// with the rest of the cortex-ia ecosystem.
+// tone and route-resolution evidence so the generated skill stays coherent
+// with the rest of the cortex-ia ecosystem. Legacy model assignments supplied
+// to the compatibility-shaped API are intentionally ignored.
+type RouteSelection struct {
+	Route      string
+	Provider   string
+	Model      string
+	Provenance string
+	Resolved   bool
+	Deferred   bool
+}
+
+// ComposePromptWithRoute composes a prompt with an explicit route decision.
+// Concrete provider/model values require trusted configuration provenance.
+func ComposePromptWithRoute(userInput string, sdd *SDDIntegration, installedTargets []model.AgentID, persona model.PersonaID, selection RouteSelection) (string, error) {
+	if selection.Resolved {
+		if selection.Route == "" || selection.Provider == "" || selection.Model == "" || !trustedRouteProvenance(selection.Provenance) {
+			return "", fmt.Errorf("agentbuilder: resolved route requires trusted configuration provenance")
+		}
+	} else if selection.Route == "" && !selection.Deferred {
+		return "", fmt.Errorf("agentbuilder: route decision is unresolved")
+	}
+	p := composePromptBody(userInput, sdd, installedTargets, persona, selection)
+	return p, nil
+}
+
+func trustedRouteProvenance(source string) bool {
+	return source == "user-config" || source == "provider-config"
+}
+
 func ComposePrompt(
 	userInput string,
 	sdd *SDDIntegration,
 	installedTargets []model.AgentID,
 	persona model.PersonaID,
-	models model.ModelAssignments,
+	models any,
+) string {
+	return composePromptBody(userInput, sdd, installedTargets, persona, RouteSelection{Deferred: true})
+}
+
+/* prompt body continues below */
+func composePromptBody(
+	userInput string,
+	sdd *SDDIntegration,
+	installedTargets []model.AgentID,
+	persona model.PersonaID,
+	selection RouteSelection,
 ) string {
 	var sb strings.Builder
 
@@ -44,13 +83,13 @@ func ComposePrompt(
 		sb.WriteString("## SDD integration\n")
 		switch sdd.Mode {
 		case SDDStandalone, SDDFull:
-		sb.WriteString("Standalone — the skill is loaded on its own trigger; it can ")
-		sb.WriteString("call cortex memory tools (`mem_save`, `mem_search`, ")
-		sb.WriteString("`mem_get_observation`, `mem_relate`, `mem_graph`), forgespec ")
-		sb.WriteString("tools (`sdd_validate`, `sdd_save`, `sdd_list`, `sdd_get`, ")
-		sb.WriteString("`tb_create_board`, `tb_status`, `tb_claim`, `tb_update`, ")
-		sb.WriteString("`tb_get`, `tb_unblocked`, `file_reserve`, `file_release`) ")
-		sb.WriteString("when useful.\n\n")
+			sb.WriteString("Standalone — the skill is loaded on its own trigger; it can ")
+			sb.WriteString("call cortex memory tools (`mem_save`, `mem_search`, ")
+			sb.WriteString("`mem_get_observation`, `mem_relate`, `mem_graph`), forgespec ")
+			sb.WriteString("tools (`sdd_validate`, `sdd_save`, `sdd_list`, `sdd_get`, ")
+			sb.WriteString("`tb_create_board`, `tb_status`, `tb_claim`, `tb_update`, ")
+			sb.WriteString("`tb_get`, `tb_unblocked`, `file_reserve`, `file_release`) ")
+			sb.WriteString("when useful.\n\n")
 		case SDDPhaseSupport:
 			fmt.Fprintf(&sb,
 				"Phase-support — augments the existing SDD phase %q. "+
@@ -81,13 +120,15 @@ func ComposePrompt(
 		}
 	}
 
-	if len(models) > 0 {
-		sb.WriteString("## Model hints (optional)\n")
-		sb.WriteString("If the skill needs to recommend a model for a phase, prefer:\n")
-		for phase, alias := range models {
-			fmt.Fprintf(&sb, "  - %s → %s\n", phase, alias)
+	if selection.Route != "" {
+		fmt.Fprintf(&sb, "## Route resolution\nRoute: %s\n", selection.Route)
+		if selection.Resolved {
+			fmt.Fprintf(&sb, "Configured provider/model: %s/%s\nConfiguration source: %s\n\n", selection.Provider, selection.Model, selection.Provenance)
+		} else {
+			sb.WriteString("Concrete provider/model resolution is deferred until execution.\n\n")
 		}
-		sb.WriteString("\n")
+	} else if selection.Deferred {
+		sb.WriteString("## Route resolution\nConcrete provider/model resolution is unresolved and MUST fail closed before execution.\n\n")
 	}
 
 	if len(installedTargets) > 0 {

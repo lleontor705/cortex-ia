@@ -11,6 +11,8 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/compiler"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/manifest"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/prompt"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/renderers"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/resolution"
 )
@@ -27,6 +29,10 @@ type BundleCompilationInput struct {
 	AllowedAssetKinds  []renderers.AssetKind
 	AllowedPermissions []string
 	Extensions         []renderers.ExtensionDeclaration
+	// ProfileOverride is the already-qualified profile selected by PrepareWorkflow.
+	// When present it prevents a later renderer pass from silently falling back
+	// to portable-sequential.
+	ProfileOverride string
 }
 
 // CompiledInjectionBundle is an immutable, pre-install result. Profile and
@@ -43,23 +49,35 @@ type CompiledInjectionBundle struct {
 // compiler snapshot and renders one deterministic bundle. It performs no
 // filesystem or external-service mutation.
 func CompileInjectionBundle(ctx context.Context, input BundleCompilationInput) (CompiledInjectionBundle, error) {
-	selection, err := SelectCompiledWorkflowProfile(input.Compilation, input.NativeCapabilities, input.ExperimentalOptIns)
-	if err != nil {
-		return CompiledInjectionBundle{}, err
+	var selection ProfileSelection
+	if input.ProfileOverride != "" {
+		selection = ProfileSelection{Profile: WorkflowProfile(input.ProfileOverride), Degradations: []string{}}
+	} else {
+		var err error
+		selection, err = SelectCompiledWorkflowProfile(input.Compilation, input.NativeCapabilities, input.ExperimentalOptIns)
+		if err != nil {
+			return CompiledInjectionBundle{}, err
+		}
 	}
 	if input.Renderer == nil {
 		return CompiledInjectionBundle{}, fmt.Errorf("compiled bundle renderer is required")
 	}
 	target := renderers.TargetID(input.Compilation.Normalized.Target)
 	resolved := renderers.ResolvedWorkflow{
-		Workflow:              input.Compilation.Normalized.Workflow,
-		Target:                target,
-		Profile:               string(selection.Profile),
-		GenerationFingerprint: input.Compilation.Fingerprint,
-		Capabilities:          slices.Clone(input.Capabilities),
-		AllowedAssetKinds:     slices.Clone(input.AllowedAssetKinds),
-		AllowedPermissions:    slices.Clone(input.AllowedPermissions),
-		Extensions:            slices.Clone(input.Extensions),
+		Workflow:                input.Compilation.Normalized.Workflow,
+		Target:                  target,
+		Profile:                 string(selection.Profile),
+		GenerationFingerprint:   input.Compilation.Fingerprint,
+		Capabilities:            slices.Clone(input.Capabilities),
+		AllowedAssetKinds:       slices.Clone(input.AllowedAssetKinds),
+		AllowedPermissions:      slices.Clone(input.AllowedPermissions),
+		Extensions:              slices.Clone(input.Extensions),
+		QualificationEvidence:   qualificationEvidence(input.Compilation.Normalized.Catalog.Facts),
+		Metadata:                slices.Clone(input.Compilation.Metadata),
+		Composition:             renderersComposition(input.Compilation.Composition),
+		NativeSkillPreload:      input.Compilation.Composition.Adapter.NativeSkillPreload,
+		NativeModelField:        input.Compilation.Composition.Adapter.NativeModelField,
+		NativeWorktreeIsolation: input.Compilation.Composition.Adapter.NativeWorktreeIsolation,
 	}
 	bundle, err := renderers.Render(ctx, input.Renderer, resolved)
 	if err != nil {
@@ -78,6 +96,44 @@ func CompileInjectionBundle(ctx context.Context, input BundleCompilationInput) (
 		Fingerprint:  input.Compilation.Fingerprint,
 		Bundle:       bundle,
 	}, nil
+}
+
+func qualificationEvidence(facts []capability.CapabilityFact) []manifest.Evidence {
+	result := make([]manifest.Evidence, 0, len(facts))
+	for _, fact := range facts {
+		if fact.EvidenceRef == "" {
+			continue
+		}
+		result = append(result, manifest.Evidence{
+			ID: ir.SemanticID("evidence/" + string(fact.ID)), Class: fact.EvidenceClass, Reference: fact.EvidenceRef,
+			Fresh: fact.FreshUntil.After(fact.ObservedAt), Experimental: fact.Experimental, Confidence: fact.Confidence,
+		})
+	}
+	return result
+}
+
+func renderersComposition(input prompt.CompositionResult) renderers.Composition {
+	bindings := make([]renderers.SkillBinding, len(input.SkillBindings))
+	for i, binding := range input.SkillBindings {
+		mode := renderers.SkillModeFallbackRead
+		if binding.Mode == prompt.SkillModeNativePreload {
+			mode = renderers.SkillModeNativePreload
+		}
+		bindings[i] = renderers.SkillBinding{Role: binding.Role, Skill: binding.Skill, Mode: mode, Path: binding.Path, Hash: binding.Hash}
+	}
+	assets := make([]renderers.CompositionAsset, len(input.OperationalAssets))
+	for i, asset := range input.OperationalAssets {
+		assets[i] = renderers.CompositionAsset{ID: asset.ID, Class: asset.Class, Path: asset.Path, Content: slices.Clone(asset.Content), LoadMode: renderers.SkillLoadMode(asset.LoadMode), Permissions: slices.Clone(asset.Permissions), Metadata: slices.Clone(asset.Metadata), Route: asset.Route}
+	}
+	routes := make([]renderers.ModelRoute, 0, len(input.OperationalAssets))
+	for _, asset := range input.OperationalAssets {
+		if asset.Primary == "" && asset.Fallback == "" {
+			continue
+		}
+		asset.Route.Role = asset.ID
+		routes = append(routes, asset.Route)
+	}
+	return renderers.Composition{RootIndex: input.RootIndex, Modules: slices.Clone(input.Modules), SkillBindings: bindings, SharedContract: input.SharedContract, ProfileOverlay: input.ProfileOverlay, QualityTemplate: input.QualityTemplate, QualityPlan: input.QualityPlan, ModelRoutes: routes, OperationalAssets: assets, Metadata: slices.Clone(input.Metadata)}
 }
 
 // InjectCompiledBundle applies only the assets in a previously compiled

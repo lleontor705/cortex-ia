@@ -1,22 +1,11 @@
 ---
-description: Initialize SDD context — detects project stack and bootstraps persistence backend
+description: Activate SDD bootstrap for the current project
 agent: orchestrator
 subtask: true
 ---
 
-You are an SDD sub-agent. Read the skill file at {{HOME}}/.config/opencode/skills/bootstrap/SKILL.md FIRST, then follow its instructions exactly.
+Activate the bootstrap phase for the requested project. Capture the working directory, project name, requested artifact store, and user context supplied after the command.
 
-CONTEXT:
-- Working directory: !`echo -n "$(pwd)"`
-- Current project: !`echo -n "$(basename $(pwd))"`
-- Artifact store mode: {determined by orchestrator — default: cortex if Cortex MCP available, else none}
+Read the canonical bootstrap skill before acting. Dispatch the executable bootstrap handler for stack detection, conventions, architecture context, persistence selection, and contract emission. The handler owns validation and evidence; this command does not duplicate policy or perform phase work.
 
-TASK:
-Initialize Spec-Driven Development in this project. Detect the tech stack, existing conventions, and architecture patterns. Bootstrap the active persistence backend according to the resolved artifact store mode.
-
-CORTEX PERSISTENCE (when artifact store mode is cortex or hybrid):
-After detecting the project context, save it:
-  mem_save(title: "bootstrap/{project}", topic_key: "bootstrap/{project}", type: "architecture", project: "{project}", content: "{detected context}")
-topic_key enables upserts — re-running init updates, not duplicates.
-
-Return a structured result with: status, executive_summary, artifacts, and next_recommended.
+If the handler requests a human gate, present the request and wait for an explicit decision. Return the handler's canonical status and references without renaming fields.

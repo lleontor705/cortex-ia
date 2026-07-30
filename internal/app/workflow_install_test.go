@@ -12,6 +12,9 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
+	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/modelroute"
+	"github.com/lleontor705/cortex-ia/internal/state"
 	"github.com/lleontor705/cortex-ia/internal/verify"
 )
 
@@ -218,8 +221,11 @@ func TestCLIInstallDryRunPreservesTargetAtShippedBoundary(t *testing.T) {
 	if err := os.WriteFile(target, want, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := state.SaveProfiles(homeDir, []model.Profile{explicitTestProfile()}); err != nil {
+		t.Fatal(err)
+	}
 
-	if err := runInstall([]string{"--agent", "codex", "--preset", "minimal", "--dry-run"}); err != nil {
+	if err := runInstall([]string{"--agent", "codex", "--profile", "explicit-test", "--dry-run"}); err != nil {
 		t.Fatalf("runInstall() dry-run error = %v", err)
 	}
 	got, err := os.ReadFile(target)
@@ -229,4 +235,15 @@ func TestCLIInstallDryRunPreservesTargetAtShippedBoundary(t *testing.T) {
 	if !bytes.Equal(got, want) {
 		t.Fatalf("shipped CLI dry-run mutated target: got %q want %q", got, want)
 	}
+}
+
+func explicitTestProfile() model.Profile {
+	routes := model.RouteAssignments{}
+	assignments := map[string]model.OpenCodeModelAssignment{}
+	for _, phase := range []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize"} {
+		route, _ := modelroute.NewRouteID("route/v1/" + phase)
+		routes[phase] = modelroute.RouteRequest{RouteID: route}
+		assignments[phase] = model.OpenCodeModelAssignment{Provider: "provider-test", Model: "model-test"}
+	}
+	return model.Profile{Name: "explicit-test", Routes: routes, ConfiguredAssignments: assignments}
 }

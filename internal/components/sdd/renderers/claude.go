@@ -19,7 +19,6 @@ const (
 	claudeDirectChildCapability      ir.SemanticID = "delegation/direct-child"
 	claudeTaskDependenciesCapability ir.SemanticID = "tasks/dependencies"
 	claudeDirectChildExtension       ir.SemanticID = "claude/direct-child-agents"
-	claudeAgentTeamsExtension        ir.SemanticID = "claude/agent-teams"
 )
 
 // ClaudeRenderer lowers one already-resolved workflow into Claude Code assets.
@@ -39,6 +38,7 @@ func (r ClaudeRenderer) Render(ctx context.Context, resolved ResolvedWorkflow) (
 	if err := ctx.Err(); err != nil {
 		return Bundle{}, err
 	}
+	resolved = sanitizeClaudeCoordination(resolved)
 	profile, err := validateClaudeProfile(resolved)
 	if err != nil {
 		return Bundle{}, err
@@ -48,13 +48,6 @@ func (r ClaudeRenderer) Render(ctx context.Context, resolved ResolvedWorkflow) (
 	assets := []Asset{claudeRootInstruction(workflow, profile)}
 	if profile != "portable-sequential" {
 		assets = append(assets, claudeAgentAssets(workflow, profile)...)
-	}
-	if profile == "native-advanced" {
-		teamAsset, marshalErr := claudeAgentTeamsAsset(workflow)
-		if marshalErr != nil {
-			return Bundle{}, marshalErr
-		}
-		assets = append(assets, teamAsset)
 	}
 
 	semanticContent, err := emitClaudeSemanticManifest(resolved, workflow)
@@ -71,8 +64,12 @@ func (r ClaudeRenderer) Render(ctx context.Context, resolved ResolvedWorkflow) (
 	manifestInput.Target = string(resolved.Target)
 	manifestInput.Profile = resolved.Profile
 	manifestInput.Resolutions = slices.Clone(resolved.Capabilities)
+	if len(resolved.QualificationEvidence) > 0 {
+		manifestInput.Evidence = slices.Clone(resolved.QualificationEvidence)
+	}
 	manifestInput.RequestedPermissions = slices.Clone(resolved.AllowedPermissions)
 	manifestInput.EffectivePermissions = effectiveClaudePermissions(resolved)
+	manifestInput.Metadata = slices.Clone(resolved.Metadata)
 	manifestInput.Hashes = hashAssets(assets)
 	manifestInput.Degradations = claudeDegradations(resolved.Capabilities)
 	manifestOutput, err := manifest.Emit(manifestInput)
@@ -85,6 +82,10 @@ func (r ClaudeRenderer) Render(ctx context.Context, resolved ResolvedWorkflow) (
 		Asset{Path: ".cortex-ia/degradation-manifest.json", SemanticID: "claude/manifest/degradation-json", Kind: AssetSchema, Content: manifestOutput.DegradationJSON, Mode: 0o644},
 		Asset{Path: ".cortex-ia/degradation-manifest.md", SemanticID: "claude/manifest/degradation-markdown", Kind: AssetInstruction, Content: manifestOutput.DegradationMarkdown, Mode: 0o644},
 	)
+	assets, err = appendCompositionAsset(resolved, assets)
+	if err != nil {
+		return Bundle{}, err
+	}
 	return Bundle{Assets: assets}, nil
 }
 
@@ -120,20 +121,62 @@ func validateClaudeProfile(resolved ResolvedWorkflow) (string, error) {
 		}
 		return profile, nil
 	case "native-advanced":
-		for _, capabilityID := range []ir.SemanticID{claudeDirectChildCapability, claudeTaskDependenciesCapability} {
+		for _, capabilityID := range []ir.SemanticID{claudeDirectChildCapability} {
 			if err := requireNative(capabilityID); err != nil {
 				return "", err
 			}
 		}
-		for _, extensionID := range []ir.SemanticID{claudeDirectChildExtension, claudeAgentTeamsExtension} {
-			if err := requireExtension(extensionID); err != nil {
-				return "", err
-			}
+		if err := requireExtension(claudeDirectChildExtension); err != nil {
+			return "", err
 		}
 		return profile, nil
 	default:
 		return "", fmt.Errorf("claude renderer does not advertise profile %q", resolved.Profile)
 	}
+}
+
+func sanitizeClaudeCoordination(resolved ResolvedWorkflow) ResolvedWorkflow {
+	clean := resolved
+	clean.Extensions = slices.Clone(resolved.Extensions)
+	clean.Capabilities = slices.Clone(resolved.Capabilities)
+	filteredExtensions := clean.Extensions[:0]
+	for _, extension := range clean.Extensions {
+		if !strings.Contains(strings.ToLower(string(extension.ID)), "agent-teams") {
+			filteredExtensions = append(filteredExtensions, extension)
+		}
+	}
+	clean.Extensions = filteredExtensions
+	filteredCapabilities := clean.Capabilities[:0]
+	for _, item := range clean.Capabilities {
+		if item.ID == claudeTaskDependenciesCapability || containsClaudeTeamEvidence(item.Evidence) || containsClaudeTeamEvidence(item.Binding.Evidence) {
+			continue
+		}
+		item.Evidence = filterClaudeEvidence(item.Evidence)
+		item.Binding.Evidence = filterClaudeEvidence(item.Binding.Evidence)
+		filteredCapabilities = append(filteredCapabilities, item)
+	}
+	clean.Capabilities = filteredCapabilities
+	return clean
+}
+
+func containsClaudeTeamEvidence(evidence []resolution.EvidenceRef) bool {
+	for _, item := range evidence {
+		if strings.Contains(strings.ToLower(string(item)), "agent-teams") {
+			return true
+		}
+	}
+	return false
+}
+
+func filterClaudeEvidence(evidence []resolution.EvidenceRef) []resolution.EvidenceRef {
+	filtered := evidence[:0]
+	for _, item := range evidence {
+		value := strings.ToLower(string(item))
+		if !strings.Contains(value, "agent-teams") {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
 }
 
 func claudeRootInstruction(workflow ir.WorkflowIR, profile string) Asset {
@@ -146,7 +189,7 @@ func claudeRootInstruction(workflow ir.WorkflowIR, profile string) Asset {
 	case "portable-flat":
 		content.WriteString("- Execution: qualified direct child agents only; nested delegation and runtime DAG scheduling are forbidden.\n")
 	case "native-advanced":
-		content.WriteString("- Execution: qualified native agent teams with explicit task dependencies; ForgeSpec remains authoritative.\n")
+		content.WriteString("- Execution: qualified direct-child agents with explicit task dependencies; ForgeSpec remains authoritative.\n")
 	}
 	content.WriteString("\n## Roles\n\n")
 	for _, role := range workflow.Roles {
@@ -178,31 +221,6 @@ func claudeAgentAssets(workflow ir.WorkflowIR, profile string) []Asset {
 		})
 	}
 	return assets
-}
-
-func claudeAgentTeamsAsset(workflow ir.WorkflowIR) (Asset, error) {
-	type task struct {
-		ID        ir.SemanticID   `json:"id"`
-		Agent     string          `json:"agent"`
-		DependsOn []ir.SemanticID `json:"depends_on"`
-	}
-	tasks := make([]task, len(workflow.Phases))
-	for index, phase := range workflow.Phases {
-		tasks[index] = task{ID: phase.ID, Agent: claudeRoleName(phase.Role), DependsOn: slices.Clone(phase.DependsOn)}
-	}
-	data, err := json.Marshal(struct {
-		Schema       string `json:"schema"`
-		Authority    string `json:"authority"`
-		Experimental bool   `json:"experimental"`
-		Tasks        []task `json:"tasks"`
-	}{Schema: "claude/agent-teams/v1", Authority: "forgespec", Experimental: true, Tasks: tasks})
-	if err != nil {
-		return Asset{}, fmt.Errorf("marshal Claude agent teams: %w", err)
-	}
-	return Asset{
-		Path: ".claude/agent-teams.json", SemanticID: "claude/config/agent-teams", Kind: AssetSchema,
-		Content: append(data, '\n'), Mode: 0o644, Extensions: []ir.SemanticID{claudeAgentTeamsExtension},
-	}, nil
 }
 
 type claudeSemanticManifest struct {

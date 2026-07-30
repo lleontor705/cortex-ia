@@ -3,13 +3,17 @@ package opencode
 
 import (
 	"bufio"
+	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
@@ -23,6 +27,86 @@ func RunModelsCommand() ([]model.OpenCodeProvider, error) {
 		return nil, fmt.Errorf("failed to run 'opencode models': %w", err)
 	}
 	return ParseModelsOutput(string(output))
+}
+
+const discoveryFreshness = 5 * time.Minute
+
+const (
+	SourceDiscovery = "opencode-discovery"
+	SourceCache     = "opencode-cache"
+	SourceConfig    = "opencode-config"
+
+	ReasonDiscoveryUnavailable = "opencode.discovery-unavailable"
+	ReasonDiscoveryEmpty       = "opencode.discovery-empty"
+	ReasonAssignmentUnresolved = "opencode.assignment-unresolved"
+	ReasonAssignmentStale      = "opencode.assignment-stale"
+)
+
+// DiscoveryEvidence describes where a model list came from and whether it is
+// still usable. It is deliberately separate from the provider list so callers
+// cannot mistake observed data for a configured default.
+type DiscoveryEvidence struct {
+	Source     string    `json:"source"`
+	ObservedAt time.Time `json:"observed_at"`
+	FreshUntil time.Time `json:"fresh_until"`
+	Digest     string    `json:"digest"`
+	Qualified  bool      `json:"qualified"`
+	ReasonID   string    `json:"reason_id"`
+}
+
+type DiscoverySnapshot struct {
+	Providers []model.OpenCodeProvider `json:"providers"`
+	Evidence  DiscoveryEvidence        `json:"evidence"`
+}
+
+type DiscoveryOptions struct {
+	Now func() time.Time
+	Run func(context.Context) ([]byte, error)
+}
+
+type UnresolvedDiscoveryError struct {
+	Reason string
+}
+
+func (e *UnresolvedDiscoveryError) Error() string { return e.Reason }
+
+// DiscoverModels uses only observed CLI output or an explicit cache. It never
+// substitutes a vendor/model list when both sources are unavailable.
+func DiscoverModels(ctx context.Context, homeDir string, options DiscoveryOptions) (DiscoverySnapshot, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	now := time.Now().UTC()
+	if options.Now != nil {
+		now = options.Now().UTC()
+	}
+	run := options.Run
+	if run == nil {
+		run = func(ctx context.Context) ([]byte, error) {
+			cmd := exec.CommandContext(ctx, "opencode", "models")
+			return cmd.Output()
+		}
+	}
+	if output, err := run(ctx); err == nil {
+		providers, parseErr := ParseModelsOutput(string(output))
+		if parseErr == nil && len(providers) > 0 {
+			return DiscoverySnapshot{Providers: providers, Evidence: freshEvidence(SourceDiscovery, output, now)}, nil
+		}
+	}
+	if providers, err := LoadModelsCache(homeDir); err == nil && len(providers) > 0 {
+		cacheData, marshalErr := json.Marshal(providers)
+		if marshalErr != nil {
+			return DiscoverySnapshot{}, fmt.Errorf("marshal cached models: %w", marshalErr)
+		}
+		return DiscoverySnapshot{Providers: providers, Evidence: freshEvidence(SourceCache, cacheData, now)}, nil
+	}
+	evidence := DiscoveryEvidence{Source: SourceDiscovery, ObservedAt: now, ReasonID: ReasonDiscoveryUnavailable}
+	return DiscoverySnapshot{Evidence: evidence}, &UnresolvedDiscoveryError{Reason: ReasonDiscoveryUnavailable}
+}
+
+func freshEvidence(source string, data []byte, now time.Time) DiscoveryEvidence {
+	digest := sha256.Sum256(data)
+	return DiscoveryEvidence{Source: source, ObservedAt: now, FreshUntil: now.Add(discoveryFreshness), Digest: fmt.Sprintf("sha256:%x", digest[:]), Qualified: true}
 }
 
 // ParseModelsOutput parses the output of `opencode models` command.
@@ -76,22 +160,11 @@ func FlatModelList(providers []model.OpenCodeProvider) []string {
 	return list
 }
 
-// DetectModels tries `opencode models` CLI first, then cache, then static fallback.
+// DetectModels is a compatibility wrapper. An empty result is intentional and
+// means discovery was unresolved; it is never a static provider fallback.
 func DetectModels(homeDir string) []model.OpenCodeProvider {
-	// 1. Try CLI command
-	providers, err := RunModelsCommand()
-	if err == nil && len(providers) > 0 {
-		return providers
-	}
-
-	// 2. Try cache file
-	providers, err = LoadModelsCache(homeDir)
-	if err == nil && len(providers) > 0 {
-		return providers
-	}
-
-	// 3. Static fallback
-	return FallbackProviders()
+	snapshot, _ := DiscoverModels(context.Background(), homeDir, DiscoveryOptions{})
+	return snapshot.Providers
 }
 
 // --- Cache reading (kept as secondary source) ---
@@ -147,53 +220,68 @@ func LoadModelsCache(homeDir string) ([]model.OpenCodeProvider, error) {
 	return providers, nil
 }
 
-// FallbackProviders returns a static list of common providers.
-func FallbackProviders() []model.OpenCodeProvider {
-	return []model.OpenCodeProvider{
-		{
-			ID:   "anthropic",
-			Name: "anthropic",
-			Models: []model.OpenCodeModel{
-				{ID: "claude-opus-4-20250514", Name: "claude-opus-4-20250514", ToolCall: true},
-				{ID: "claude-sonnet-4-20250514", Name: "claude-sonnet-4-20250514", ToolCall: true},
-				{ID: "claude-haiku-4-5-20251001", Name: "claude-haiku-4-5-20251001", ToolCall: true},
-			},
-		},
-		{
-			ID:   "openai",
-			Name: "openai",
-			Models: []model.OpenCodeModel{
-				{ID: "gpt-4o", Name: "gpt-4o", ToolCall: true},
-				{ID: "gpt-5.4", Name: "gpt-5.4", ToolCall: true},
-			},
-		},
-		{
-			ID:   "google",
-			Name: "google",
-			Models: []model.OpenCodeModel{
-				{ID: "gemini-2.5-pro", Name: "gemini-2.5-pro", ToolCall: true},
-				{ID: "gemini-2.5-flash", Name: "gemini-2.5-flash", ToolCall: true},
-			},
-		},
+type ResolvedAssignment struct {
+	Assignment model.OpenCodeModelAssignment `json:"assignment"`
+	Evidence   DiscoveryEvidence             `json:"evidence"`
+}
+
+type ConfigReceipt struct {
+	ConfigPath     string `json:"config_path"`
+	BeforeDigest   string `json:"before_digest"`
+	AfterDigest    string `json:"after_digest"`
+	EvidenceDigest string `json:"evidence_digest"`
+	Before         []byte `json:"-"`
+}
+
+func (r ConfigReceipt) Rollback() error {
+	if len(r.Before) == 0 {
+		return os.Remove(r.ConfigPath)
 	}
+	return os.WriteFile(r.ConfigPath, r.Before, 0o644)
 }
 
 // ApplyToOpenCodeConfig reads opencode.json, sets "model" field on each agent, and writes back.
 func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssignments) error {
+	now := time.Now().UTC()
+	resolved := make(map[string]ResolvedAssignment, len(assignments))
+	for name, assignment := range assignments {
+		resolved[name] = ResolvedAssignment{
+			Assignment: assignment,
+			Evidence:   DiscoveryEvidence{Source: SourceConfig, ObservedAt: now, FreshUntil: now.Add(discoveryFreshness), Qualified: true},
+		}
+	}
+	_, err := ApplyToOpenCodeConfigResolved(homeDir, resolved)
+	return err
+}
+
+// ApplyToOpenCodeConfigResolved writes only explicitly resolved assignments.
+// It returns a receipt that can restore the exact pre-mutation bytes.
+func ApplyToOpenCodeConfigResolved(homeDir string, assignments map[string]ResolvedAssignment) (receipt ConfigReceipt, err error) {
 	configPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
 
 	// Read existing config
 	var config map[string]interface{}
+	var before []byte
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			config = make(map[string]interface{})
 		} else {
-			return fmt.Errorf("read opencode.json: %w", err)
+			return ConfigReceipt{}, fmt.Errorf("read opencode.json: %w", err)
 		}
 	} else {
+		before = append([]byte(nil), data...)
 		if err := json.Unmarshal(data, &config); err != nil {
-			return fmt.Errorf("parse opencode.json: %w", err)
+			return ConfigReceipt{}, fmt.Errorf("parse opencode.json: %w", err)
+		}
+	}
+
+	for agentName, resolved := range assignments {
+		if resolved.Assignment.Provider == "" || resolved.Assignment.Model == "" {
+			return ConfigReceipt{}, fmt.Errorf("%s: %s", ReasonAssignmentUnresolved, agentName)
+		}
+		if !resolved.Evidence.Qualified || resolved.Evidence.FreshUntil.IsZero() || !resolved.Evidence.FreshUntil.After(time.Now().UTC()) {
+			return ConfigReceipt{}, fmt.Errorf("%s: %s", ReasonAssignmentStale, agentName)
 		}
 	}
 
@@ -206,13 +294,17 @@ func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssign
 	delete(agentSection, "sdd-team-lead")
 
 	// Apply model assignments to each agent
-	for agentName, assignment := range assignments {
+	var evidenceDigest string
+	for agentName, resolved := range assignments {
 		if strings.TrimPrefix(agentName, "sdd-") == "team-lead" {
 			continue
 		}
-		modelStr := assignment.FormatOpenCodeModel()
+		modelStr := resolved.Assignment.FormatOpenCodeModel()
 		if modelStr == "" {
 			continue
+		}
+		if evidenceDigest == "" {
+			evidenceDigest = resolved.Evidence.Digest
 		}
 
 		configName := resolveOpenCodeAgentConfigName(agentSection, agentName)
@@ -230,14 +322,47 @@ func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssign
 	// Write back
 	out, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshal opencode.json: %w", err)
+		return ConfigReceipt{}, fmt.Errorf("marshal opencode.json: %w", err)
 	}
 
 	dir := filepath.Dir(configPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
+		return ConfigReceipt{}, fmt.Errorf("create config dir: %w", err)
 	}
-	return os.WriteFile(configPath, out, 0644)
+	tmp, err := os.CreateTemp(dir, ".opencode.json.*.tmp")
+	if err != nil {
+		return ConfigReceipt{}, fmt.Errorf("create config temp: %w", err)
+	}
+	tmpName := tmp.Name()
+	removeTemp := true
+	defer func() {
+		if !removeTemp {
+			return
+		}
+		if removeErr := os.Remove(tmpName); removeErr != nil && !os.IsNotExist(removeErr) {
+			err = errors.Join(err, fmt.Errorf("remove config temp: %w", removeErr))
+			receipt = ConfigReceipt{}
+		}
+	}()
+	if err := tmp.Chmod(0o644); err != nil {
+		return ConfigReceipt{}, errors.Join(fmt.Errorf("chmod config temp: %w", err), tmp.Close())
+	}
+	if _, err := tmp.Write(out); err != nil {
+		return ConfigReceipt{}, errors.Join(fmt.Errorf("write config temp: %w", err), tmp.Close())
+	}
+	if err := tmp.Close(); err != nil {
+		return ConfigReceipt{}, fmt.Errorf("close config temp: %w", err)
+	}
+	if err := os.Rename(tmpName, configPath); err != nil {
+		return ConfigReceipt{}, fmt.Errorf("replace opencode.json: %w", err)
+	}
+	removeTemp = false
+	return ConfigReceipt{ConfigPath: configPath, BeforeDigest: digestBytes(before), AfterDigest: digestBytes(out), EvidenceDigest: evidenceDigest, Before: before}, nil
+}
+
+func digestBytes(data []byte) string {
+	digest := sha256.Sum256(data)
+	return fmt.Sprintf("sha256:%x", digest[:])
 }
 
 func resolveOpenCodeAgentConfigName(agentSection map[string]interface{}, agentName string) string {

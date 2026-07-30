@@ -117,6 +117,7 @@ type Input struct {
 	Resolutions              []resolution.Resolution
 	RequestedPermissions     []string
 	EffectivePermissions     []string
+	Metadata                 json.RawMessage
 	ApprovalIntent           string
 	IsolationIntent          string
 	TrustBoundaries          []TrustBoundary
@@ -155,6 +156,7 @@ type commonManifest struct {
 	RetiredEntries           []RetiredEntry          `json:"retired_entries"`
 	Hashes                   []AssetHash             `json:"hashes"`
 	Validation               Validation              `json:"validation"`
+	Metadata                 json.RawMessage         `json:"metadata,omitempty"`
 }
 
 type securityManifest struct {
@@ -184,6 +186,7 @@ func Emit(input Input) (Output, error) {
 		IsolationIntent: normalized.IsolationIntent, TrustBoundaries: normalized.TrustBoundaries,
 		SecretReferences: normalized.SecretReferences, Services: normalized.Services, RetiredEntries: normalized.RetiredEntries,
 		Hashes: normalized.Hashes, Validation: normalized.Validation,
+		Metadata: normalized.Metadata,
 	}
 	security := securityManifest{Kind: "security", commonManifest: common, Degradations: normalized.Degradations}
 	degradation := degradationManifest{Kind: "degradation", commonManifest: common, Degradations: normalized.Degradations}
@@ -222,6 +225,7 @@ func normalize(input Input) Input {
 	slices.SortFunc(result.Resolutions, func(a, b resolution.Resolution) int { return strings.Compare(string(a.ID), string(b.ID)) })
 	result.RequestedPermissions = sortedUnique(input.RequestedPermissions)
 	result.EffectivePermissions = sortedUnique(input.EffectivePermissions)
+	result.Metadata = slices.Clone(input.Metadata)
 	result.TrustBoundaries = slices.Clone(input.TrustBoundaries)
 	for index := range result.TrustBoundaries {
 		result.TrustBoundaries[index].Rules = sortedUnique(result.TrustBoundaries[index].Rules)

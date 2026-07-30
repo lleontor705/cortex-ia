@@ -39,6 +39,10 @@ type PlanRequest struct {
 	CompatibilityMetadata    []string
 	ForgeSpecMode            string
 	CapabilitySnapshotSHA256 string
+	RequiredAssets           []ir.AssetSpec
+	OwnershipMarkers         bool
+	GeneratorVersion         string
+	Metadata                 json.RawMessage
 }
 
 // Effect is one apply-ready managed filesystem mutation.
@@ -92,6 +96,18 @@ type Plan struct {
 	ProtectedPaths           []string
 	ForgeSpecMode            string
 	CapabilitySnapshotSHA256 string
+	OwnershipMarkers         bool
+	GeneratorVersion         string
+	Metadata                 json.RawMessage
+	Inventory                []AssetInventory
+}
+
+// AssetInventory is the receipt/planner evidence for every selected asset,
+// including assets that are unchanged during an idempotent reinstall.
+type AssetInventory struct {
+	Path       string
+	SemanticID ir.SemanticID
+	SHA256     string
 }
 
 func (p Plan) HasBlockingConflicts() bool { return len(p.Conflicts) != 0 }
@@ -120,6 +136,12 @@ func (p Planner) Plan(request PlanRequest) (Plan, error) {
 		Profile: strings.TrimSpace(request.Profile), Degradations: sortedUniqueStrings(request.Degradations),
 		ForgeSpecMode:            strings.TrimSpace(request.ForgeSpecMode),
 		CapabilitySnapshotSHA256: strings.ToLower(strings.TrimSpace(request.CapabilitySnapshotSHA256)),
+		OwnershipMarkers:         request.OwnershipMarkers,
+		GeneratorVersion:         strings.TrimSpace(request.GeneratorVersion),
+		Metadata:                 slices.Clone(request.Metadata),
+	}
+	if plan.GeneratorVersion == "" {
+		plan.GeneratorVersion = "1.0.0"
 	}
 	for _, asset := range request.Bundle.Assets {
 		if err := validateAssetPath(asset.Path); err != nil {
@@ -129,6 +151,7 @@ func (p Planner) Plan(request PlanRequest) (Plan, error) {
 			return Plan{}, fmt.Errorf("duplicate desired asset path %q", asset.Path)
 		}
 		desired[asset.Path] = struct{}{}
+		plan.Inventory = append(plan.Inventory, AssetInventory{Path: asset.Path, SemanticID: asset.SemanticID, SHA256: SHA256(asset.Content)})
 		current, mode, exists, err := p.read(asset.Path)
 		if err != nil {
 			return Plan{}, err
@@ -185,6 +208,9 @@ func (p Planner) Plan(request PlanRequest) (Plan, error) {
 			plan.PermissionChanges = append(plan.PermissionChanges, PermissionChange{Path: asset.Path, From: currentMode, To: asset.Mode.Perm()})
 		}
 	}
+	if err := validateRequiredAssets(request.RequiredAssets, request.Bundle); err != nil {
+		return Plan{}, err
+	}
 
 	for path, previous := range managed {
 		if _, retained := desired[path]; retained {
@@ -217,6 +243,9 @@ func (p Planner) Plan(request PlanRequest) (Plan, error) {
 	backupPaths := make([]string, 0, len(plan.Creates)+len(plan.Updates)*3+len(plan.Deletes)*3+len(request.CompatibilityMetadata))
 	for _, effect := range plan.Creates {
 		backupPaths = append(backupPaths, effect.Path)
+		if request.OwnershipMarkers {
+			backupPaths = append(backupPaths, effect.Path+sidecarSuffix, effect.Path+baseSuffix)
+		}
 	}
 	for _, effect := range plan.Updates {
 		backupPaths = append(backupPaths, effect.Path)
@@ -239,6 +268,32 @@ func (p Planner) Plan(request PlanRequest) (Plan, error) {
 	plan.Backup = BackupScope{Required: len(backupPaths) != 0, Paths: backupPaths}
 	plan.Fingerprint = FingerprintPlan(plan)
 	return plan, nil
+}
+
+func validateRequiredAssets(required []ir.AssetSpec, bundle renderers.Bundle) error {
+	for _, spec := range required {
+		if !spec.Required {
+			continue
+		}
+		if err := spec.Validate(); err != nil {
+			return fmt.Errorf("required asset %q: %w", spec.ID, err)
+		}
+		found := false
+		for _, asset := range bundle.Assets {
+			if asset.Path != spec.SourcePath && !strings.HasSuffix(asset.Path, "/"+strings.TrimPrefix(spec.SourcePath, "/")) && asset.SemanticID != spec.ID {
+				continue
+			}
+			found = true
+			if spec.SHA256 != "" && SHA256(asset.Content) != strings.ToLower(spec.SHA256) {
+				return fmt.Errorf("required asset %q content fingerprint mismatch", spec.ID)
+			}
+			break
+		}
+		if !found {
+			return fmt.Errorf("required asset %q is absent from install bundle", spec.ID)
+		}
+	}
+	return nil
 }
 
 // FingerprintPlan returns the canonical immutable plan identity. The
@@ -355,6 +410,7 @@ func normalizePlan(plan *Plan) {
 	slices.SortFunc(plan.Deletes, compareEffects)
 	slices.SortFunc(plan.Conflicts, func(left, right PlanConflict) int { return strings.Compare(left.Path, right.Path) })
 	slices.SortFunc(plan.PermissionChanges, func(left, right PermissionChange) int { return strings.Compare(left.Path, right.Path) })
+	slices.SortFunc(plan.Inventory, func(left, right AssetInventory) int { return strings.Compare(left.Path, right.Path) })
 }
 
 func compareEffects(left, right Effect) int { return strings.Compare(left.Path, right.Path) }

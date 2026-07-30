@@ -69,7 +69,7 @@ func (WindsurfRenderer) Render(ctx context.Context, resolved ResolvedWorkflow) (
 	}
 	machine = append(machine, '\n')
 
-	return Bundle{Assets: []Asset{
+	assets := []Asset{
 		{
 			Path:       ".windsurf/cortex-ia-manifest.json",
 			SemanticID: "manifest/windsurf/disclosure",
@@ -85,7 +85,12 @@ func (WindsurfRenderer) Render(ctx context.Context, resolved ResolvedWorkflow) (
 			Mode:        0o644,
 			Permissions: slices.Clone(permissions),
 		},
-	}}, nil
+	}
+	assets, err = appendCompositionAsset(resolved, assets)
+	if err != nil {
+		return Bundle{}, err
+	}
+	return Bundle{Assets: assets}, nil
 }
 
 func windsurfValidFingerprint(value string) bool {

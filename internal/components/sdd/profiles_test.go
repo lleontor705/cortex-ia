@@ -198,11 +198,11 @@ func TestParseProfileSpec(t *testing.T) {
 	if p.Name != "cheap" {
 		t.Errorf("name = %q, want cheap", p.Name)
 	}
-	if len(p.ModelAssignments) != len(ProfilePhaseOrder()) {
-		t.Errorf("expected %d phase assignments, got %d", len(ProfilePhaseOrder()), len(p.ModelAssignments))
+	if len(p.ConfiguredAssignments) != len(ProfilePhaseOrder()) {
+		t.Errorf("expected %d phase assignments, got %d", len(ProfilePhaseOrder()), len(p.ConfiguredAssignments))
 	}
-	if string(p.ModelAssignments["sdd-design"]) != "openai/gpt-4o-mini" {
-		t.Errorf("sdd-design = %q", p.ModelAssignments["sdd-design"])
+	if p.ConfiguredAssignments["sdd-design"].FormatOpenCodeModel() != "openai/gpt-4o-mini" {
+		t.Errorf("sdd-design = %#v", p.ConfiguredAssignments["sdd-design"])
 	}
 }
 
@@ -215,11 +215,11 @@ func TestParseProfileSpec_Invalid(t *testing.T) {
 }
 
 func TestParseProfilePhaseSpec(t *testing.T) {
-	name, phase, pm, err := ParseProfilePhaseSpec("cheap:sdd-design:anthropic/claude-opus-4")
+	name, phase, pm, err := ParseProfilePhaseSpec("cheap:sdd-design:provider-test/model-test")
 	if err != nil {
 		t.Fatalf("ParseProfilePhaseSpec: %v", err)
 	}
-	if name != "cheap" || phase != "sdd-design" || pm != "anthropic/claude-opus-4" {
+	if name != "cheap" || phase != "sdd-design" || pm != "provider-test/model-test" {
 		t.Errorf("got (%q, %q, %q)", name, phase, pm)
 	}
 }
@@ -239,28 +239,28 @@ func TestUpsertProfile_Inserts(t *testing.T) {
 
 func TestUpsertProfile_Replaces(t *testing.T) {
 	initial := []model.Profile{
-		{Name: "a", ModelAssignments: map[string]model.ClaudeModelAlias{"sdd-init": "v1"}},
+		{Name: "a", ModelAssignments: map[string]string{"sdd-init": "route/v1/one"}},
 	}
 	got := UpsertProfile(initial, model.Profile{
-		Name: "a", ModelAssignments: map[string]model.ClaudeModelAlias{"sdd-init": "v2"},
+		Name: "a", ModelAssignments: map[string]string{"sdd-init": "route/v1/two"},
 	})
 	if len(got) != 1 {
 		t.Errorf("expected 1 profile after upsert, got %d", len(got))
 	}
-	if got[0].ModelAssignments["sdd-init"] != "v2" {
+	if got[0].ModelAssignments["sdd-init"] != "route/v1/two" {
 		t.Errorf("upsert did not replace value")
 	}
 }
 
 func TestSetProfilePhase_NewProfile(t *testing.T) {
-	got := SetProfilePhase(nil, "fast", "sdd-apply", "anthropic/claude-haiku-4-5")
+	got := SetProfilePhase(nil, "fast", "sdd-apply", "provider-test/model-test")
 	if len(got) != 1 {
 		t.Fatalf("expected 1 profile, got %d", len(got))
 	}
-	if got[0].ModelAssignments["sdd-apply"] != "anthropic/claude-haiku-4-5" {
-		t.Errorf("phase value not set: %v", got[0].ModelAssignments)
+	if got[0].ConfiguredAssignments["sdd-apply"].FormatOpenCodeModel() != "provider-test/model-test" {
+		t.Errorf("phase value not set: %v", got[0].ConfiguredAssignments)
 	}
-	if len(got[0].ModelAssignments) != 1 {
+	if len(got[0].ConfiguredAssignments) != 1 {
 		t.Errorf("expected only one phase set, got %d", len(got[0].ModelAssignments))
 	}
 }
@@ -290,9 +290,9 @@ func TestProfileSummary_Uniform(t *testing.T) {
 }
 
 func TestProfileSummary_PerPhase(t *testing.T) {
-	p := model.Profile{Name: "mix", ModelAssignments: map[string]model.ClaudeModelAlias{
-		"sdd-init":   "openai/gpt-4o-mini",
-		"sdd-design": "anthropic/claude-opus-4",
+	p := model.Profile{Name: "mix", ConfiguredAssignments: map[string]model.OpenCodeModelAssignment{
+		"sdd-init":   {Provider: "openai", Model: "gpt-4o-mini"},
+		"sdd-design": {Provider: "provider-test", Model: "model-test"},
 	}}
 	s := ProfileSummary(p)
 	if !contains(s, "phase(s) configured") {
@@ -324,28 +324,20 @@ func TestProfileToOpenCodeAssignments_FullyQualified(t *testing.T) {
 	}
 }
 
-func TestProfileToOpenCodeAssignments_ExpandsClaudeAliases(t *testing.T) {
-	p := model.Profile{Name: "x", ModelAssignments: map[string]model.ClaudeModelAlias{
-		"sdd-init":   model.ModelOpus,
-		"sdd-design": model.ModelSonnet,
-		"sdd-apply":  model.ModelHaiku,
+func TestProfileToOpenCodeAssignments_RejectsLegacyAliases(t *testing.T) {
+	p := model.Profile{Name: "x", ModelAssignments: map[string]string{
+		"sdd-init": "legacy-tier",
 	}}
 	got := ProfileToOpenCodeAssignments(p)
-	if got["bootstrap"].Provider != "anthropic" || got["bootstrap"].Model != "claude-opus-4" {
-		t.Errorf("bootstrap = %+v", got["bootstrap"])
-	}
-	if got["implement"].Model != "claude-haiku-4-5" {
-		t.Errorf("apply aliases should map directly to implement, got %+v", got["implement"])
-	}
-	if _, has := got["team-lead"]; has {
-		t.Error("portable apply alias must not emit team-lead")
+	if len(got) != 0 {
+		t.Errorf("legacy aliases must not emit assignments: %+v", got)
 	}
 }
 
 func TestProfileToOpenCodeAssignments_DropsUnparseable(t *testing.T) {
-	p := model.Profile{Name: "x", ModelAssignments: map[string]model.ClaudeModelAlias{
-		"sdd-init":  "anthropic/claude-opus-4",
-		"sdd-bogus": "garbage-no-slash-not-an-alias",
+	p := model.Profile{Name: "x", ConfiguredAssignments: map[string]model.OpenCodeModelAssignment{
+		"sdd-init":  {Provider: "provider-test", Model: "model-test"},
+		"sdd-bogus": {Provider: "provider-test"},
 	}}
 	got := ProfileToOpenCodeAssignments(p)
 	if _, has := got["bootstrap"]; !has {
@@ -357,15 +349,15 @@ func TestProfileToOpenCodeAssignments_DropsUnparseable(t *testing.T) {
 }
 
 func TestProfileToOpenCodeAssignments_AcceptsDirectAgentKeys(t *testing.T) {
-	p := model.Profile{Name: "direct", ModelAssignments: map[string]model.ClaudeModelAlias{
-		"architect": "openai/gpt-5.4",
-		"implement": model.ModelSonnet,
+	p := model.Profile{Name: "direct", ConfiguredAssignments: map[string]model.OpenCodeModelAssignment{
+		"architect": {Provider: "openai", Model: "gpt-5.4"},
+		"implement": {Provider: "provider-test", Model: "model-test"},
 	}}
 	got := ProfileToOpenCodeAssignments(p)
 	if got["architect"].FormatOpenCodeModel() != "openai/gpt-5.4" {
 		t.Errorf("architect = %+v", got["architect"])
 	}
-	if got["implement"].FormatOpenCodeModel() != "anthropic/claude-sonnet-4-6" {
+	if got["implement"].FormatOpenCodeModel() != "provider-test/model-test" {
 		t.Errorf("implement = %+v", got["implement"])
 	}
 }

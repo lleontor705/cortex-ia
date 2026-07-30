@@ -1,17 +1,21 @@
 package opencode
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
 func TestParseModelsOutput_Basic(t *testing.T) {
-	output := `anthropic/claude-sonnet-4-20250514
-anthropic/claude-opus-4-20250514
+	output := `provider-a/model-a
+	provider-a/model-b
 openai/gpt-4o
 openai/gpt-5.4
 google/gemini-2.5-pro
@@ -26,7 +30,7 @@ google/gemini-2.5-pro
 
 	// Check anthropic has 2 models
 	for _, p := range providers {
-		if p.ID == "anthropic" {
+		if p.ID == "provider-a" {
 			if len(p.Models) != 2 {
 				t.Errorf("anthropic should have 2 models, got %d", len(p.Models))
 			}
@@ -35,7 +39,7 @@ google/gemini-2.5-pro
 }
 
 func TestParseModelsOutput_OpenRouter(t *testing.T) {
-	output := `openrouter/anthropic/claude-opus-4
+	output := `openrouter/provider-a/model-b
 openrouter/google/gemini-2.5-pro
 `
 	providers, err := ParseModelsOutput(output)
@@ -49,14 +53,20 @@ openrouter/google/gemini-2.5-pro
 		t.Errorf("provider ID = %q, want %q", providers[0].ID, "openrouter")
 	}
 	// openrouter models include the sub-path
-	if providers[0].Models[0].ID != "anthropic/claude-opus-4" {
-		t.Errorf("model ID = %q, want %q", providers[0].Models[0].ID, "anthropic/claude-opus-4")
+	found := false
+	for _, candidate := range providers[0].Models {
+		if candidate.ID == "provider-a/model-b" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("openrouter models = %#v, want provider-a/model-b", providers[0].Models)
 	}
 }
 
 func TestParseModelsOutput_EmptyLines(t *testing.T) {
 	output := `
-anthropic/claude-sonnet-4
+	provider-a/model-a
 
 openai/gpt-4o
 
@@ -82,22 +92,121 @@ func TestParseModelsOutput_Empty(t *testing.T) {
 
 func TestFlatModelList(t *testing.T) {
 	providers := []model.OpenCodeProvider{
-		{ID: "anthropic", Models: []model.OpenCodeModel{{ID: "claude-sonnet-4"}}},
+		{ID: "provider-a", Models: []model.OpenCodeModel{{ID: "model-a"}}},
 		{ID: "openai", Models: []model.OpenCodeModel{{ID: "gpt-4o"}, {ID: "gpt-5"}}},
 	}
 	list := FlatModelList(providers)
 	if len(list) != 3 {
 		t.Fatalf("expected 3 models, got %d", len(list))
 	}
-	if list[0] != "anthropic/claude-sonnet-4" {
-		t.Errorf("list[0] = %q, want %q", list[0], "anthropic/claude-sonnet-4")
+	if list[0] != "provider-a/model-a" {
+		t.Errorf("list[0] = %q, want %q", list[0], "provider-a/model-a")
 	}
 }
 
-func TestFallbackProviders(t *testing.T) {
-	providers := FallbackProviders()
-	if len(providers) == 0 {
-		t.Fatal("FallbackProviders should return providers")
+func TestDiscoverModels_NoFallbackReturnsTypedUnresolvedEvidence(t *testing.T) {
+	now := time.Now().UTC()
+	snapshot, err := DiscoverModels(context.Background(), t.TempDir(), DiscoveryOptions{
+		Now: func() time.Time { return now },
+		Run: func(context.Context) ([]byte, error) { return nil, errors.New("opencode unavailable") },
+	})
+	if err == nil {
+		t.Fatal("expected unresolved discovery error")
+	}
+	var unresolved *UnresolvedDiscoveryError
+	if !errors.As(err, &unresolved) {
+		t.Fatalf("error = %T, want *UnresolvedDiscoveryError", err)
+	}
+	if len(snapshot.Providers) != 0 {
+		t.Fatalf("unresolved discovery returned providers: %#v", snapshot.Providers)
+	}
+	if snapshot.Evidence.ReasonID != ReasonDiscoveryUnavailable || snapshot.Evidence.Source != SourceDiscovery {
+		t.Fatalf("unexpected unresolved evidence: %#v", snapshot.Evidence)
+	}
+}
+
+func TestDiscoverModels_UsesFreshCLIProvenance(t *testing.T) {
+	now := time.Now().UTC()
+	snapshot, err := DiscoverModels(context.Background(), t.TempDir(), DiscoveryOptions{
+		Now: func() time.Time { return now },
+		Run: func(context.Context) ([]byte, error) { return []byte("provider-x/model-y\n"), nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := FlatModelList(snapshot.Providers); len(got) != 1 || got[0] != "provider-x/model-y" {
+		t.Fatalf("providers = %#v", got)
+	}
+	if snapshot.Evidence.Source != SourceDiscovery || !snapshot.Evidence.Qualified || snapshot.Evidence.FreshUntil.Before(now) {
+		t.Fatalf("missing fresh provenance: %#v", snapshot.Evidence)
+	}
+}
+
+func TestApplyToOpenCodeConfigResolved_RejectsUnresolvedBeforeMutation(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, ".config", "opencode")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(configDir, "opencode.json")
+	before := []byte(`{"theme":"dark"}`)
+	if err := os.WriteFile(path, before, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ApplyToOpenCodeConfigResolved(dir, map[string]ResolvedAssignment{
+		"implement": {Assignment: model.OpenCodeModelAssignment{Provider: "provider-x", Model: "model-y"}},
+	})
+	if err == nil {
+		t.Fatal("expected unresolved assignment error")
+	}
+	after, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("config mutated on unresolved assignment: %s", after)
+	}
+}
+
+func TestApplyToOpenCodeConfigResolved_PreservesConfigAndReturnsReceipt(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, ".config", "opencode")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(configDir, "opencode.json")
+	if err := os.WriteFile(path, []byte(`{"theme":"dark","agent":{"implement":{"mode":"subagent"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	receipt, err := ApplyToOpenCodeConfigResolved(dir, map[string]ResolvedAssignment{
+		"implement": {
+			Assignment: model.OpenCodeModelAssignment{Provider: "provider-x", Model: "model-y"},
+			Evidence:   DiscoveryEvidence{Source: SourceConfig, ObservedAt: now, FreshUntil: now.Add(time.Hour), Qualified: true, Digest: "cfg-digest"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.BeforeDigest == "" || receipt.AfterDigest == "" || receipt.BeforeDigest == receipt.AfterDigest || receipt.EvidenceDigest != "cfg-digest" {
+		t.Fatalf("invalid receipt: %#v", receipt)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !json.Valid(data) || !strings.Contains(string(data), "provider-x/model-y") || !strings.Contains(string(data), "dark") {
+		t.Fatalf("config was not preserved and updated: %s", data)
+	}
+	if err := receipt.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(restored) != `{"theme":"dark","agent":{"implement":{"mode":"subagent"}}}` {
+		t.Fatalf("rollback did not restore original bytes: %s", restored)
 	}
 }
 
@@ -127,7 +236,7 @@ func TestApplyToOpenCodeConfig(t *testing.T) {
 
 	// Apply assignments
 	assignments := model.OpenCodeModelAssignments{
-		"orchestrator": {Provider: "anthropic", Model: "claude-opus-4"},
+		"orchestrator": {Provider: "provider-a", Model: "model-a"},
 		"implement":    {Provider: "openai", Model: "gpt-4o"},
 	}
 	err := ApplyToOpenCodeConfig(dir, assignments)
@@ -144,8 +253,8 @@ func TestApplyToOpenCodeConfig(t *testing.T) {
 
 	// Check orchestrator
 	orch := agents["orchestrator"].(map[string]interface{})
-	if orch["model"] != "anthropic/claude-opus-4" {
-		t.Errorf("orchestrator model = %q, want %q", orch["model"], "anthropic/claude-opus-4")
+	if orch["model"] != "provider-a/model-a" {
+		t.Errorf("orchestrator model = %q, want %q", orch["model"], "provider-a/model-a")
 	}
 	if orch["mode"] != "primary" {
 		t.Error("existing fields should be preserved")
@@ -178,8 +287,8 @@ func TestApplyToOpenCodeConfig_DropsLegacyPortableTeamLead(t *testing.T) {
 		t.Fatal(err)
 	}
 	assignments := model.OpenCodeModelAssignments{
-		"team-lead": {Provider: "anthropic", Model: "claude-sonnet"},
-		"implement": {Provider: "anthropic", Model: "claude-sonnet"},
+		"team-lead": {Provider: "provider-a", Model: "model-a"},
+		"implement": {Provider: "provider-a", Model: "model-a"},
 	}
 
 	if err := ApplyToOpenCodeConfig(homeDir, assignments); err != nil {
@@ -197,7 +306,7 @@ func TestApplyToOpenCodeConfig_DropsLegacyPortableTeamLead(t *testing.T) {
 	if _, exists := agents["team-lead"]; exists {
 		t.Fatal("legacy portable team-lead config must not be restored by model assignment")
 	}
-	if agents["implement"].(map[string]any)["model"] != "anthropic/claude-sonnet" {
+	if agents["implement"].(map[string]any)["model"] != "provider-a/model-a" {
 		t.Fatal("replacement implement model assignment was not applied")
 	}
 }
@@ -218,7 +327,7 @@ func TestApplyToOpenCodeConfig_PreservesLegacyAgentWhenOnlyLegacyExists(t *testi
 	os.WriteFile(filepath.Join(configDir, "opencode.json"), data, 0644)
 
 	assignments := model.OpenCodeModelAssignments{
-		"orchestrator": {Provider: "anthropic", Model: "claude-opus-4"},
+		"orchestrator": {Provider: "provider-a", Model: "model-a"},
 	}
 	if err := ApplyToOpenCodeConfig(dir, assignments); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -229,7 +338,7 @@ func TestApplyToOpenCodeConfig_PreservesLegacyAgentWhenOnlyLegacyExists(t *testi
 	json.Unmarshal(result, &config)
 	agents := config["agent"].(map[string]interface{})
 	legacy := agents["sdd-orchestrator"].(map[string]interface{})
-	if legacy["model"] != "anthropic/claude-opus-4" {
+	if legacy["model"] != "provider-a/model-a" {
 		t.Errorf("legacy orchestrator model = %q", legacy["model"])
 	}
 	if _, hasNew := agents["orchestrator"]; hasNew {
@@ -240,7 +349,7 @@ func TestApplyToOpenCodeConfig_PreservesLegacyAgentWhenOnlyLegacyExists(t *testi
 func TestApplyToOpenCodeConfig_NoExistingFile(t *testing.T) {
 	dir := t.TempDir()
 	assignments := model.OpenCodeModelAssignments{
-		"orchestrator": {Provider: "anthropic", Model: "claude-opus-4"},
+		"orchestrator": {Provider: "provider-a", Model: "model-a"},
 	}
 	err := ApplyToOpenCodeConfig(dir, assignments)
 	if err != nil {

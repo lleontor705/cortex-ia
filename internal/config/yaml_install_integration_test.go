@@ -21,6 +21,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/config"
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/modelroute"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
@@ -37,13 +38,7 @@ func TestYAMLProfile_FlowsThroughInstallToOpencodeJSON(t *testing.T) {
 	homeDir := t.TempDir()
 
 	// 1. Persist a profile that the yaml will reference by name.
-	profiles := []model.Profile{{
-		Name: "cheap",
-		ModelAssignments: model.ModelAssignments{
-			"sdd-design": "openai/gpt-4o-mini",
-			"sdd-apply":  "anthropic/claude-haiku-4-5",
-		},
-	}}
+	profiles := []model.Profile{{Name: "cheap", Routes: explicitRoutes(), ConfiguredAssignments: explicitAssignments()}}
 	if err := state.SaveProfiles(homeDir, profiles); err != nil {
 		t.Fatalf("SaveProfiles: %v", err)
 	}
@@ -94,14 +89,14 @@ func TestYAMLProfile_FlowsThroughInstallToOpencodeJSON(t *testing.T) {
 		t.Fatalf("agent section missing: %s", string(data))
 	}
 	design, _ := agentSection["architect"].(map[string]any)
-	if design == nil || design["model"] != "openai/gpt-4o-mini" {
-		t.Errorf("architect.model = %v, want openai/gpt-4o-mini\n%s", design, string(data))
+	if design == nil || design["model"] != "provider-test/model-test" {
+		t.Errorf("architect.model = %v, want provider-test/model-test\n%s", design, string(data))
 	}
 	if _, exists := agentSection["team-lead"]; exists {
 		t.Errorf("portable install must not create team-lead\n%s", string(data))
 	}
 	worker, _ := agentSection["implement"].(map[string]any)
-	if worker == nil || worker["model"] != "anthropic/claude-haiku-4-5" {
+	if worker == nil || worker["model"] != "provider-test/model-test" {
 		t.Errorf("implement.model = %v\n%s", worker, string(data))
 	}
 	if _, hasLegacy := agentSection["sdd-apply"]; hasLegacy {
@@ -116,4 +111,21 @@ func TestYAMLProfile_FlowsThroughInstallToOpencodeJSON(t *testing.T) {
 	if st.LastProfile != "cheap" {
 		t.Errorf("state.LastProfile = %q, want cheap", st.LastProfile)
 	}
+}
+
+func explicitRoutes() model.RouteAssignments {
+	routes := model.RouteAssignments{}
+	for _, phase := range []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize"} {
+		route, _ := modelroute.NewRouteID("route/v1/" + phase)
+		routes[phase] = modelroute.RouteRequest{RouteID: route}
+	}
+	return routes
+}
+
+func explicitAssignments() map[string]model.OpenCodeModelAssignment {
+	assignments := map[string]model.OpenCodeModelAssignment{}
+	for _, phase := range []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize"} {
+		assignments[phase] = model.OpenCodeModelAssignment{Provider: "provider-test", Model: "model-test"}
+	}
+	return assignments
 }

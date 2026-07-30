@@ -111,8 +111,8 @@ func TestMapPublishedCapabilityMapsBareIDToNamespacedSemanticID(t *testing.T) {
 func TestPublishedCapabilityResponseTranslatesToCapabilitySnapshot(t *testing.T) {
 	now := time.Date(2026, time.July, 27, 16, 0, 0, 0, time.UTC)
 	response := PublishedCapabilityResponse{
-		Server:     ServerInfo{Name: "forgespec-mcp", Version: PublishedServerVersion, APIVersion: "1.0.0"},
-		Modes:      []string{"legacy", "direct-v1"},
+		Server: ServerInfo{Name: "forgespec-mcp", Version: PublishedServerVersion, APIVersion: "1.0.0"},
+		Modes:  []string{"legacy", "direct-v1"},
 		Capabilities: []PublishedCapability{
 			{ID: "forgespec.capabilities", Supported: PublishedVersionRange{MinInclusive: "1.0.0", MaxExclusive: "2.0.0"}, Selected: "1.0.0"},
 			{ID: "task-cas", Supported: PublishedVersionRange{MinInclusive: "1.0.0", MaxExclusive: "2.0.0"}, Selected: "1.0.0"},
@@ -132,11 +132,11 @@ func TestPublishedCapabilityResponseTranslatesToCapabilitySnapshot(t *testing.T)
 	}
 
 	evidence := ProbeEvidence{
-		ProbeID:      "probe/forgespec/capabilities",
-		EvidenceRef:  "npm:forgespec-mcp@1.4.0/forgespec_capabilities",
-		ObservedAt:   now.Add(-time.Minute),
-		FreshUntil:   now.Add(time.Hour),
-		Enforcement:  capability.EnforcementMCP,
+		ProbeID:     "probe/forgespec/capabilities",
+		EvidenceRef: "npm:forgespec-mcp@1.4.0/forgespec_capabilities",
+		ObservedAt:  now.Add(-time.Minute),
+		FreshUntil:  now.Add(time.Hour),
+		Enforcement: capability.EnforcementMCP,
 	}
 
 	snapshot, err := TranslatePublishedResponse(response, evidence)

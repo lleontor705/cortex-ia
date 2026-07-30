@@ -112,7 +112,7 @@ assert_file_contains "$HOME/.config/gga/config" 'PROVIDER="anthropic"' "gga conf
 run_cmd "profiles-list-empty" "$CORTEX_IA profiles list"
 run_cmd "profiles-create" "$CORTEX_IA profiles create cheap:openai/gpt-4o-mini"
 run_cmd "profiles-list-cheap" "$CORTEX_IA profiles list | grep -q cheap"
-run_cmd "profiles-set-phase" "$CORTEX_IA profiles set cheap:sdd-design:anthropic/claude-opus-4"
+run_cmd "profiles-set-phase" "$CORTEX_IA profiles set cheap:sdd-design:provider-test/model-test"
 run_cmd "profiles-delete" "$CORTEX_IA profiles delete cheap"
 
 # Agent Builder: list (empty registry is fine) + remove of unknown returns non-zero.

@@ -64,11 +64,29 @@ func TestComposePrompt_ReferencesCortexNotEngram(t *testing.T) {
 	}
 }
 
-func TestComposePrompt_ModelHints(t *testing.T) {
-	models := model.ModelAssignments{"sdd-design": "anthropic/claude-opus-4"}
+func TestComposePrompt_ModelHintsAreNotInferred(t *testing.T) {
+	models := model.ModelAssignments{"sdd-design": "untrusted-model"}
 	p := ComposePrompt("x", nil, nil, "", models)
-	if !strings.Contains(p, "anthropic/claude-opus-4") {
-		t.Errorf("model hint not injected: %s", p)
+	if strings.Contains(p, "untrusted-model") || strings.Contains(p, "Model hints") {
+		t.Errorf("unproven model hint must not be emitted: %s", p)
+	}
+}
+
+func TestComposePromptWithRoute_EmitsConfiguredProvenance(t *testing.T) {
+	p, err := ComposePromptWithRoute("x", nil, nil, "", RouteSelection{
+		Route: "route/v1/review", Provider: "provider-x", Model: "model-y", Provenance: "user-config", Resolved: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p, "provider-x/model-y") || !strings.Contains(p, "user-config") {
+		t.Fatalf("configured route missing from prompt: %s", p)
+	}
+}
+
+func TestComposePromptWithRoute_ForgedSelectionFailsClosed(t *testing.T) {
+	if _, err := ComposePromptWithRoute("x", nil, nil, "", RouteSelection{Provider: "provider-x", Model: "model-y", Resolved: true}); err == nil {
+		t.Fatal("expected forged route selection to fail closed")
 	}
 }
 
@@ -93,16 +111,16 @@ func TestComposePrompt_StandaloneHasNoMailboxOrMessagingToolAdvertisement(t *tes
 	// from fragments so this test file does not itself carry literal forbidden
 	// current-surface vocabulary.
 	forbidden := []string{
-		strings.Join([]string{"mai", "lbox"}, ""),              // Mailbox
-		strings.Join([]string{"ms", "g_send"}, ""),             // msg_send
+		strings.Join([]string{"mai", "lbox"}, ""),  // Mailbox
+		strings.Join([]string{"ms", "g_send"}, ""), // msg_send
 		strings.Join([]string{"ms", "g_broadcast"}, ""),
 		strings.Join([]string{"ms", "g_request"}, ""),
 		strings.Join([]string{"ms", "g_read_inbox"}, ""),
-		strings.Join([]string{"a2", "a_submit_task"}, ""),      // a2a_submit_task
+		strings.Join([]string{"a2", "a_submit_task"}, ""), // a2a_submit_task
 		strings.Join([]string{"a2", "a_respond_task"}, ""),
-		strings.Join([]string{"resour", "ce_acquire"}, ""),     // resource_acquire
+		strings.Join([]string{"resour", "ce_acquire"}, ""), // resource_acquire
 		strings.Join([]string{"resour", "ce_release"}, ""),
-		strings.Join([]string{"dl", "q_list"}, ""),             // dlq_list
+		strings.Join([]string{"dl", "q_list"}, ""), // dlq_list
 		strings.Join([]string{"dl", "q_retry"}, ""),
 	}
 	lower := strings.ToLower(p)

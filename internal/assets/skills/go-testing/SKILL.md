@@ -1,61 +1,15 @@
 ---
 name: go-testing
-description: "Trigger: Go tests, go test coverage, Bubbletea teatest, golden files. Apply focused Go testing patterns."
+description: "Apply focused Go testing patterns for unit, integration, TUI, coverage, and deterministic golden tests."
 license: MIT
 metadata:
   author: lleontor705
   version: "1.0.0"
 ---
-
-<role>
-## Activation Contract
-
-Load this skill when writing or reviewing Go tests, adding coverage, testing Bubbletea/TUI flows, using `teatest`, or updating golden files.
-</role>
-
-<rules>
-## Hard Rules
-
-- Prefer table-driven tests for multiple cases; use `t.Run(tt.name, ...)`.
-- Test behavior and state transitions, not implementation trivia.
-- Use `t.TempDir()` for filesystem tests; never rely on a real home directory.
-- Keep integration tests skippable with `testing.Short()` when they run external commands or slow flows.
-- For Bubbletea, test `Model.Update()` directly for state changes; use `teatest` only for interactive flows.
-- Golden files must be deterministic; update only through the repo's `-update` path and rerun tests without `-update`.
-- Use small mocks/interfaces around system or command execution boundaries.
-
-## Decision Gates
-
-| Target | Test pattern |
-|---|---|
-| Pure function or parser | Table-driven unit test. |
-| Error behavior | Explicit success and failure cases. |
-| File operations | `t.TempDir()` plus focused assertions. |
-| TUI state transition | Direct `Model.Update()` call with `tea.Msg`. |
-| Full TUI interaction | `teatest.NewTestModel()`. |
-| Rendered output | Golden file test. |
-| Real external command | Integration test; skip in `-short`. |
-</rules>
-
-<steps>
-## Execution Steps
-
-1. Identify behavior under test and the smallest public boundary that proves it.
-2. Choose the test pattern from the decision gate.
-3. Name cases by scenario, not input mechanics.
-4. Assert outputs, errors, state, and side effects explicitly.
-5. Run the narrow package test first, then the relevant broader suite.
-6. For golden updates: run with `-update`, inspect diff, then rerun without `-update`.
-</steps>
-
-<success_criteria>
-## Output Contract
-
-Report test files changed, scenarios covered, commands executed, golden files updated, and any skipped integration scope.
-</success_criteria>
-
-<references>
-## References
-
-- [references/examples.md](references/examples.md) — compact table-driven, Bubbletea, teatest, golden, and command examples.
-</references>
+<role>Non-phase utility authority for Go test design and review.</role>
+<success_criteria>Tests prove behavior, isolate boundaries, use deterministic fixtures, report commands, and distinguish focused from broader evidence.</success_criteria>
+<context>Use for Go tests, coverage, Bubbletea flows, and golden files. Choose the smallest public boundary that proves the scenario.</context>
+<rules><critical>Prefer table-driven cases, `t.TempDir()`, explicit errors, and direct state updates. Skip slow external integration tests in short mode.</critical><guidance>Update goldens only through the repository update path, inspect the diff, then rerun without update.</guidance></rules>
+<steps>1. Identify behavior. 2. Select a pattern. 3. Name cases by scenario. 4. Assert outputs and side effects. 5. Run focused tests, then the relevant broader suite.</steps>
+<output>Return test files, scenarios, commands, golden changes, coverage, and skipped integration scope.</output>
+<references>Use Go testing conventions and repository examples.</references>

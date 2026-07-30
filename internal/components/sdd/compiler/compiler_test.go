@@ -9,6 +9,8 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/prompt"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/quality"
 )
 
 func TestCompileProducesStableNormalizedResultAndFingerprint(t *testing.T) {
@@ -179,6 +181,75 @@ func TestCompileRejectsIncompatibleSchemasBeforeMutation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCompileIntegratesCompleteAssetCatalogCompositionAndQuality(t *testing.T) {
+	input := validInput(t)
+	input.AssetCatalog = completeAssetCatalog()
+	input.Adapter = prompt.AdapterPromptContract{
+		Target: "claude", RootPath: ".claude", SkillRoot: "skills", CommandRoot: "commands",
+		AgentPath:  func(id ir.SemanticID) string { return "agents/" + string(id) },
+		ExpandPath: func(root, relative string) (string, error) { return root + "/" + relative, nil },
+	}
+	input.ProfilePlan = quality.ProfilePlan{ProfileID: "portable-sequential"}
+	input.QualityPolicy = &quality.QualityPolicy{Version: "1.0.0"}
+
+	result, err := Compile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Composition.SkillBindings) != 9 || result.Composition.RootIndex == "" {
+		t.Fatalf("composition did not include complete role/assets output: %+v", result.Composition)
+	}
+	if result.QualityPolicyIR.PolicySHA256 == "" || result.QualityTemplate.PolicySHA256 == "" {
+		t.Fatalf("quality policy was not normalized: %+v %+v", result.QualityPolicyIR, result.QualityTemplate)
+	}
+}
+
+func TestCompileRejectsIncompleteAssetCatalogBeforeComposition(t *testing.T) {
+	input := validInput(t)
+	input.AssetCatalog = completeAssetCatalog()
+	input.AssetCatalog.Assets = input.AssetCatalog.Assets[1:]
+	input.Adapter = prompt.AdapterPromptContract{Target: "claude", RootPath: ".claude", SkillRoot: "skills", CommandRoot: "commands", AgentPath: func(ir.SemanticID) string { return "agent" }, ExpandPath: func(root, relative string) (string, error) { return root + "/" + relative, nil }}
+	input.ProfilePlan = quality.ProfilePlan{ProfileID: "portable-sequential"}
+
+	if _, err := Compile(input); err == nil {
+		t.Fatal("Compile accepted an incomplete asset catalog")
+	}
+}
+
+func TestCompileFingerprintIncludesAssetAndQualityInputs(t *testing.T) {
+	base := validInput(t)
+	base.AssetCatalog = completeAssetCatalog()
+	base.Adapter = prompt.AdapterPromptContract{Target: "claude", RootPath: ".claude", SkillRoot: "skills", CommandRoot: "commands", AgentPath: func(ir.SemanticID) string { return "agent" }, ExpandPath: func(root, relative string) (string, error) { return root + "/" + relative, nil }}
+	base.ProfilePlan = quality.ProfilePlan{ProfileID: "portable-sequential"}
+	base.QualityPolicy = &quality.QualityPolicy{Version: "1.0.0"}
+	want, err := Compile(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := base
+	changed.AssetCatalog.Assets = append([]ir.AssetSpec(nil), base.AssetCatalog.Assets...)
+	changed.AssetCatalog.Assets[0].SHA256 = "changed"
+	changed.QualityPolicy = &quality.QualityPolicy{Version: "1.0.1"}
+	got, err := Compile(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Fingerprint == want.Fingerprint {
+		t.Fatal("fingerprint omitted asset or quality input")
+	}
+}
+
+func completeAssetCatalog() ir.AssetCatalog {
+	sha := "sha256"
+	return ir.AssetCatalog{SchemaVersion: ir.MustParseVersion("1.0.0"), Assets: []ir.AssetSpec{
+		{ID: "asset/root", Class: ir.AssetRootIndex, SourcePath: "root.md", Required: true, SHA256: sha},
+		{ID: "asset/module", Class: ir.AssetRootModule, SourcePath: "module.md", Required: true, SHA256: sha},
+		{ID: "asset/shared", Class: ir.AssetSharedContract, SourcePath: "shared.md", Required: true, SHA256: sha},
+		{ID: "asset/quality", Class: ir.AssetQualityTemplate, SourcePath: "quality.md", Required: true, SHA256: sha},
+		{ID: "asset/profile", Class: ir.AssetProfileOverlay, SourcePath: "profile.md", Profiles: []ir.SemanticID{"portable-sequential"}, Required: true, SHA256: sha},
+	}}
 }
 
 func validInput(t *testing.T) Input {

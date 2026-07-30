@@ -64,7 +64,6 @@ None.
 - `blocked`
 - `failed`
 - `success`
-
 == agents/validate.md | agent/gemini/validate | agent | 0644 ==
 permissions: filesystem/read
 extensions: gemini/native-advanced-opt-in
@@ -100,4 +99,3 @@ None.
 
 - `failed`
 - `success`
-

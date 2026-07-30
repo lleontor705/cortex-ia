@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -18,14 +19,20 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/mcpinject"
 	"github.com/lleontor705/cortex-ia/internal/components/mcpprobe"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
+	operationalassets "github.com/lleontor705/cortex-ia/internal/components/sdd/assets"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/canonical"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/compiler"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/installroots"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/manifest"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/prompt"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/quality"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/renderers"
+	sddresolution "github.com/lleontor705/cortex-ia/internal/components/sdd/resolution"
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/modelroute"
 	"github.com/lleontor705/cortex-ia/internal/state"
 	"github.com/lleontor705/cortex-ia/internal/verify"
 )
@@ -37,6 +44,10 @@ type WorkflowRequest struct {
 	ForgeSpecEndpoint     string
 	ForgeSpecRequirements forgespeccomp.WorkflowRequirements
 	EvaluationTime        time.Time
+	RequestedProfile      sdd.WorkflowProfile
+	ExperimentalOptIns    []capability.CapabilityID
+	ModelRoutes           prompt.ModelTable
+	RouteResolution       modelroute.ResolverInput
 }
 
 type TargetBundle struct {
@@ -56,7 +67,39 @@ type PreparedWorkflowInstall struct {
 	Cutover           forgespeccomp.ForgeSpecResolution
 	Doctor            verify.DoctorReport
 	Retirements       []mcpinject.ConfigRetirement
+	Metadata          WorkflowMetadata
 	root              string
+}
+
+func resolveWorkflowRoutes(ctx context.Context, request WorkflowRequest) (prompt.ModelTable, map[string]modelroute.ResolvedRoute, error) {
+	if len(request.RouteResolution.Requests) != 0 || request.RouteResolution.ActiveProfile != "" {
+		resolved, _, err := modelroute.NewResolver().Resolve(ctx, request.RouteResolution)
+		if err != nil {
+			return prompt.ModelTable{}, nil, err
+		}
+		routes := make([]prompt.ModelRoute, 0, len(resolved))
+		metadata := make(map[string]modelroute.ResolvedRoute, len(resolved))
+		for name, decision := range resolved {
+			role := ir.SemanticID(name)
+			if !strings.HasPrefix(string(role), "role/") {
+				role = ir.SemanticID("role/" + name)
+			}
+			decision.Role = role
+			routes = append(routes, decision)
+			metadata[string(role)] = decision
+		}
+		return prompt.ModelTable{Routes: routes}, metadata, nil
+	}
+	if len(request.ModelRoutes.Routes) == 0 {
+		return prompt.ModelTable{}, nil, fmt.Errorf("explicit model routes are required")
+	}
+	metadata := make(map[string]modelroute.ResolvedRoute)
+	for _, route := range request.ModelRoutes.Routes {
+		if route.PrimaryID != "" {
+			metadata[string(route.Role)] = route
+		}
+	}
+	return request.ModelRoutes, metadata, nil
 }
 
 func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWorkflowInstall, error) {
@@ -65,6 +108,10 @@ func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWork
 	}
 	if len(request.Adapters) == 0 {
 		return PreparedWorkflowInstall{}, errors.New("workflow install requires at least one target adapter")
+	}
+	modelRoutes, routeMetadata, err := resolveWorkflowRoutes(ctx, request)
+	if err != nil {
+		return PreparedWorkflowInstall{}, fmt.Errorf("resolve workflow model routes: %w", err)
 	}
 	evaluationTime := request.EvaluationTime
 	resolutionTime := evaluationTime
@@ -81,8 +128,52 @@ func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWork
 	if err != nil {
 		return PreparedWorkflowInstall{}, fmt.Errorf("digest ForgeSpec capability snapshot: %w", err)
 	}
-	profile := string(sdd.ProfilePortableSequential)
-	degradations := workflowDegradations(resolution)
+	profileDecision := resolveProductionProfile(request.Adapters, request.RequestedProfile, request.ExperimentalOptIns, resolutionTime)
+	if profileDecision.Disposition == ProfileDispositionBlocked {
+		return PreparedWorkflowInstall{}, fmt.Errorf("resolve workflow profile: %s", profileDecision.ReasonID)
+	}
+	profile := string(profileDecision.Effective)
+	profileDegradations := profileDecision.Degradations
+	profileReason := profileDecision.ReasonID
+	degradations := append(workflowDegradations(resolution), profileDegradations...)
+	qualityPolicy := productionQualityPolicy()
+	qualitySignals := quality.ChangeSignals{
+		ChangeName: "prepare-workflow", Kind: quality.ChangeBehavior, ObservableBehavior: true,
+		Risk: quality.RiskMedium, Reversibility: quality.ReversibilityDifficult,
+		TrustBoundary: quality.TrustBoundaryInternal, DependencyBreadth: quality.DependencyCrossDomain,
+		MigrationImpact: quality.MigrationNone,
+	}
+	qualityPlan, qualityTrace, err := quality.BuildPlan(quality.PipelineInput{
+		Policy: qualityPolicy, Profile: quality.ProfilePlan{ProfileID: profile, Degradations: degradations}, Signals: qualitySignals,
+		Evaluation: quality.EvaluationInput{Change: quality.ChangeContext{
+			Kind: qualitySignals.Kind, ObservableBehavior: qualitySignals.ObservableBehavior, Risk: qualitySignals.Risk,
+			Reversibility: qualitySignals.Reversibility, TrustBoundary: qualitySignals.TrustBoundary,
+			DependencyBreadth: qualitySignals.DependencyBreadth, MigrationImpact: qualitySignals.MigrationImpact,
+		}},
+	})
+	if err != nil {
+		return PreparedWorkflowInstall{}, fmt.Errorf("build production quality plan: %w", err)
+	}
+	operationalCatalog, err := operationalassets.BuildOperationalCatalog()
+	if err != nil {
+		return PreparedWorkflowInstall{}, fmt.Errorf("materialize operational asset catalog: %w", err)
+	}
+	metadata := WorkflowMetadata{
+		ContractFingerprint: capabilityDigest,
+		ProfileRequested:    string(profileDecision.Requested),
+		ProfileEffective:    string(profileDecision.Effective),
+		QualityPlanID:       qualityTrace.PlanSHA256,
+		ProfileReasonID:     profileReason,
+		TrustEvidence:       []string{"forgespec://capabilities/" + capabilityDigest},
+		Permissions:         []string{"workflow/read", "workflow/write-managed"},
+		HumanGate:           fmt.Sprintf("approval-required:%t", request.ForgeSpecRequirements.RequireApproval),
+		Observability:       "workflow.prepare/compile/materialize/install",
+		Routes:              routeMetadata,
+	}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return PreparedWorkflowInstall{}, fmt.Errorf("marshal workflow metadata: %w", err)
+	}
 
 	workflowFactory := canonical.NewFactory()
 	combined := renderers.Bundle{Assets: []renderers.Asset{}}
@@ -104,34 +195,73 @@ func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWork
 		if err != nil {
 			return PreparedWorkflowInstall{}, fmt.Errorf("marshal canonical workflow: %w", err)
 		}
+		facts := []capability.CapabilityFact{}
+		if provider, ok := adapter.(agents.CapabilityProvider); ok {
+			facts = append(facts, provider.CapabilityFacts()...)
+		}
+		if _, err := installroots.Resolve(string(target), request.HomeDir, adapter.GlobalConfigDir(request.HomeDir)); err != nil && target != "kiro" {
+			return PreparedWorkflowInstall{}, fmt.Errorf("resolve typed install roots for %s: %w", target, err)
+		}
 		catalogDocument, err := json.Marshal(capability.Catalog{
 			SchemaVersion: capability.CatalogSchema.Current,
 			Version:       ir.MustParseVersion("1.0.0"),
-			Facts:         []capability.CapabilityFact{},
+			Facts:         facts,
 		})
 		if err != nil {
 			return PreparedWorkflowInstall{}, fmt.Errorf("marshal capability catalog: %w", err)
 		}
+		adapterContract := workflowPromptContract(request.HomeDir, adapter, target)
+		profilePlan := quality.ProfilePlan{ProfileID: profile, Degradations: degradations}
+		commonAssets, commonDegradations, err := prompt.Materialize(prompt.MaterializerInput{
+			Catalog: operationalCatalog.Catalog, Contents: operationalCatalog.Contents,
+			Workflow: product.Workflow, Adapter: adapterContract, Profile: profile,
+			Models: modelRoutes, AllowedPermissions: product.AllowedPermissions,
+			Metadata: metadataJSON,
+		})
+		if err != nil {
+			return PreparedWorkflowInstall{}, fmt.Errorf("materialize common workflow assets for %s: %w", target, err)
+		}
+		profilePlan.Degradations = append(profilePlan.Degradations, commonDegradations...)
 		compiled, err := compiler.Compile(compiler.Input{
-			WorkflowDocument: workflowDocument,
-			CatalogDocument:  catalogDocument,
-			Target:           string(target),
-			Profile:          profile,
-			Configuration:    json.RawMessage(`{}`),
-			CompilerVersion:  ir.MustParseVersion("1.0.0"),
-			EvaluationTime:   evaluationTime,
+			WorkflowDocument:  workflowDocument,
+			CatalogDocument:   catalogDocument,
+			Target:            string(target),
+			Profile:           profile,
+			Configuration:     json.RawMessage(`{}`),
+			CompilerVersion:   ir.MustParseVersion("1.0.0"),
+			EvaluationTime:    evaluationTime,
+			AssetCatalog:      operationalCatalog.Catalog,
+			Adapter:           adapterContract,
+			ProfilePlan:       profilePlan,
+			QualityPolicy:     &qualityPolicy,
+			QualitySignals:    &qualitySignals,
+			Models:            modelRoutes,
+			OperationalAssets: commonAssets,
+			Metadata:          metadataJSON,
 		})
 		if err != nil {
 			return PreparedWorkflowInstall{}, fmt.Errorf("compile canonical workflow for %s: %w", target, err)
 		}
+		compiled.Composition.OperationalAssets = commonAssets
+		compiled.Composition.QualityPlan = qualityPlan
+		compiled.Normalized.Composition.OperationalAssets = commonAssets
+		compiled.Normalized.Composition.QualityPlan = qualityPlan
+		capabilityResolutions := nativeResolutions(facts)
 		bundle, err := sdd.CompileInjectionBundle(ctx, sdd.BundleCompilationInput{
 			Compilation: compiled, Renderer: product.Renderer,
 			AllowedAssetKinds: product.AllowedAssetKinds, AllowedPermissions: product.AllowedPermissions,
+			ProfileOverride: profile, NativeCapabilities: capabilityIDs(facts), Capabilities: capabilityResolutions,
 		})
 		if err != nil {
 			return PreparedWorkflowInstall{}, fmt.Errorf("compile workflow bundle for %s: %w", target, err)
 		}
-		rebased, err := rebaseWorkflowBundle(request.HomeDir, adapter.GlobalConfigDir(request.HomeDir), bundle.Bundle)
+		configRoot := adapter.GlobalConfigDir(request.HomeDir)
+		if target == "kiro" {
+			// Kiro's settings root is external and protected; workflow assets
+			// lower beneath the typed home-relative .kiro root only.
+			configRoot = filepath.Join(request.HomeDir, ".kiro")
+		}
+		rebased, err := rebaseWorkflowBundle(request.HomeDir, configRoot, bundle.Bundle)
 		if err != nil {
 			return PreparedWorkflowInstall{}, fmt.Errorf("rebase workflow bundle for %s: %w", target, err)
 		}
@@ -147,9 +277,14 @@ func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWork
 	if err != nil {
 		return PreparedWorkflowInstall{}, err
 	}
+	combined.Metadata = slices.Clone(metadataJSON)
+	for index := range bundles {
+		bundles[index].Bundle.Metadata = slices.Clone(metadataJSON)
+	}
 	plan, err := sddinstall.NewPlanner(request.HomeDir).Plan(sddinstall.PlanRequest{
 		Bundle: combined, Managed: managed, Profile: profile, Degradations: degradations,
 		ForgeSpecMode: string(resolution.Mode), CapabilitySnapshotSHA256: capabilityDigest,
+		OwnershipMarkers: true, GeneratorVersion: request.GeneratorVersion, Metadata: metadataJSON,
 	})
 	if err != nil {
 		return PreparedWorkflowInstall{}, fmt.Errorf("plan workflow install: %w", err)
@@ -161,8 +296,89 @@ func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWork
 	doctor := productionWorkflowDoctor(profile, resolution, plan, bundles, retirements, request.HomeDir)
 	return PreparedWorkflowInstall{
 		Plan: plan, Bundles: bundles, Fingerprint: plan.Fingerprint, BundleFingerprint: fingerprint,
-		Cutover: resolution, Doctor: doctor, Retirements: retirements, root: request.HomeDir,
+		Cutover: resolution, Doctor: doctor, Retirements: retirements, Metadata: metadata.Clone(), root: request.HomeDir,
 	}, nil
+}
+
+func capabilityIDs(facts []capability.CapabilityFact) []capability.CapabilityID {
+	ids := make([]capability.CapabilityID, 0, len(facts))
+	for _, fact := range facts {
+		ids = append(ids, fact.ID)
+	}
+	return ids
+}
+
+func nativeResolutions(facts []capability.CapabilityFact) []sddresolution.Resolution {
+	result := make([]sddresolution.Resolution, 0, len(facts))
+	for _, fact := range facts {
+		result = append(result, sddresolution.Resolution{
+			ID: fact.ID, State: sddresolution.StateNative,
+			Evidence:  []sddresolution.EvidenceRef{sddresolution.EvidenceRef("evidence/" + string(fact.ID))},
+			Guarantee: sddresolution.GuaranteeEnforced,
+			Binding: sddresolution.Binding{
+				ID: "binding/" + ir.SemanticID(fact.ID), Kind: sddresolution.BindingNative, CapabilityID: fact.ID,
+				Evidence:    []sddresolution.EvidenceRef{sddresolution.EvidenceRef("evidence/" + string(fact.ID))},
+				Enforcement: capability.EnforcementRuntime, Guarantee: sddresolution.GuaranteeEnforced,
+			},
+			Reason: "fresh adapter/runtime evidence",
+		})
+	}
+	return result
+}
+
+func resolveProductionProfile(adapters []agents.Adapter, requested sdd.WorkflowProfile, optIns []capability.CapabilityID, now time.Time) ProfileDecision {
+	facts := make([]capability.CapabilityFact, 0)
+	for _, adapter := range adapters {
+		if provider, ok := adapter.(agents.CapabilityProvider); ok {
+			facts = append(facts, provider.CapabilityFacts()...)
+		}
+	}
+	return ResolveProfileDecision(ProfileResolutionInput{Requested: requested, Facts: facts, ExperimentalOptIns: optIns, Now: now})
+}
+
+func profileRank(profile sdd.WorkflowProfile) int {
+	switch profile {
+	case sdd.ProfilePortableSequential:
+		return 0
+	case sdd.ProfilePortableFlat:
+		return 1
+	case sdd.ProfileNativeAdvanced:
+		return 2
+	default:
+		return -1
+	}
+}
+
+func workflowPromptContract(homeDir string, adapter agents.Adapter, target renderers.TargetID) prompt.AdapterPromptContract {
+	root := adapter.GlobalConfigDir(homeDir)
+	if relative, err := filepath.Rel(homeDir, root); err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative) {
+		root = filepath.ToSlash(relative)
+	} else if target == "kiro" {
+		root = ".kiro"
+	}
+	expand := func(base, relative string) (string, error) {
+		if strings.Contains(relative, "..") {
+			return "", fmt.Errorf("unsafe composition path %q", relative)
+		}
+		return path.Join(base, filepath.ToSlash(relative)), nil
+	}
+	commands := adapter.CommandsDir(homeDir)
+	if commands == "" {
+		commands = path.Join(root, "commands")
+	} else if relative, err := filepath.Rel(homeDir, commands); err == nil && !filepath.IsAbs(relative) {
+		commands = filepath.ToSlash(relative)
+	}
+	return prompt.AdapterPromptContract{Target: target, RootPath: root, SkillRoot: path.Join(root, "skills"), CommandRoot: commands, AgentPath: func(id ir.SemanticID) string { return path.Join(root, "agents", string(id)) }, ExpandPath: expand}
+}
+
+func productionQualityPolicy() quality.QualityPolicy {
+	return quality.QualityPolicy{
+		Version:  "1.0.0",
+		TDD:      quality.VerticalTDDPolicy{RequireWhenEligible: false},
+		Property: quality.PropertyPolicy{Budget: quality.ActivityBudget{}},
+		Fuzz:     quality.FuzzPolicy{Budget: quality.ActivityBudget{}},
+		Mutation: quality.MutationPolicy{Mode: quality.MutationOff, Budget: quality.ActivityBudget{}},
+	}
 }
 
 func (prepared PreparedWorkflowInstall) Apply() (sddinstall.Receipt, error) {
@@ -172,6 +388,9 @@ func (prepared PreparedWorkflowInstall) Apply() (sddinstall.Receipt, error) {
 		return receipt, err
 	}
 	receipt.CapabilitySnapshot, _ = json.Marshal(prepared.Cutover.Snapshot)
+	if len(receipt.Metadata) == 0 {
+		receipt.Metadata, _ = json.Marshal(prepared.Metadata)
+	}
 	receipt.PreDoctor, _ = json.Marshal(prepared.Doctor)
 	receipt.PostDoctor, _ = json.Marshal(prepared.Doctor)
 	for _, retirement := range prepared.Retirements {
@@ -340,10 +559,15 @@ func rebaseWorkflowBundle(homeDir, configDir string, bundle renderers.Bundle) (r
 	assets := make([]renderers.Asset, len(bundle.Assets))
 	for index, input := range bundle.Assets {
 		asset := input
-		asset.Path = filepath.ToSlash(filepath.Join(prefix, filepath.FromSlash(input.Path)))
+		assetPath := filepath.ToSlash(filepath.Clean(filepath.FromSlash(input.Path)))
+		prefixSlash := filepath.ToSlash(filepath.Clean(prefix))
+		if assetPath != prefixSlash && !strings.HasPrefix(assetPath, prefixSlash+"/") {
+			assetPath = filepath.ToSlash(filepath.Join(prefix, filepath.FromSlash(assetPath)))
+		}
+		asset.Path = assetPath
 		assets[index] = asset
 	}
-	return renderers.Bundle{Assets: assets}, nil
+	return renderers.Bundle{Assets: assets, Metadata: slices.Clone(bundle.Metadata)}, nil
 }
 
 func loadManagedWorkflowAssets(root string, bundle renderers.Bundle) ([]sddinstall.ManagedAsset, error) {

@@ -1,82 +1,15 @@
 ---
 name: comment-writer
-description: "Write warm, direct collaboration comments. Trigger: PR feedback, issue replies, reviews, Slack messages, or GitHub comments."
+description: "Write concise, contextual code and review comments that explain intent and constraints."
 license: MIT
 metadata:
-  author: lleontor705
+  author: cortex-ia
   version: "1.0.0"
 ---
-
-<role>
-## When to Use
-
-Load this skill whenever you write a comment that another human will read.
-
-Use it for:
-
-- GitHub PR or issue comments.
-- Review feedback and requested changes.
-- Maintainer replies.
-- Slack, Discord, or async project updates.
-</role>
-
-<rules>
-## Voice Rules
-
-| Rule | Requirement |
-|------|-------------|
-| Be useful fast | Start with the actionable point. Do not recap the whole PR before feedback. |
-| Be warm and direct | Sound like a thoughtful teammate, not a corporate bot. |
-| Keep it short | Prefer 1 to 3 short paragraphs or a tight bullet list. |
-| Explain why | Give the technical reason when asking for a change. |
-| Avoid pile-ons | Comment on the highest-value issue, not every tiny preference. |
-| Match target context language | Write in the target context language by default: Spanish issue/thread -> Spanish comment, English issue/thread -> English comment, mixed context -> target message language. If the user explicitly requests a language or tone, follow that request. For Spanish comments, use neutral/professional Spanish by default unless the user or target context clearly calls for regional tone. |
-| No em dashes | Use commas, periods, or parentheses instead. |
-</rules>
-
-<steps>
-## Comment Formula
-
-```text
-<Direct observation or request>
-
-<Why it matters, only if needed>
-
-<Concrete next action>
-```
-
-## Commands
-
-```bash
-# Inspect a PR before writing review feedback
-gh pr view <PR_NUMBER> --json title,body,additions,deletions,changedFiles
-```
-</steps>
-
-<examples>
-## Examples
-
-### Request change
-
-```markdown
-Good approach overall. I'd split this into a separate commit because it mixes validation logic with UI wiring.
-
-That keeps the reviewer's focus narrower and makes rollback cleaner if the integration fails.
-```
-
-### Approve with a note
-
-```markdown
-Approved. The scope is clear and the change is well-contained.
-
-For the next PR, add links to the previous and following PRs so the chain stays navigable.
-```
-
-### Ask for split
-
-```markdown
-This PR exceeds the 400-line budget, so we need to split it or justify `size:exception`.
-
-Suggested order: foundation + tests first, then integration, then docs. That gives each review a clear start and end.
-```
-</examples>
+<role>Non-phase utility authority for durable technical comments.</role>
+<success_criteria>Comments explain non-obvious intent, remain accurate, match local tone, and avoid duplicating the implementation.</success_criteria>
+<context>Use when future readers need rationale, invariants, or external constraints. Prefer clear names over comments for obvious behavior.</context>
+<rules><critical>Describe why, not what. Keep comments near the invariant they protect.</critical><guidance>Use neutral language, cite durable references, and update comments when behavior changes.</guidance></rules>
+<steps>1. Identify the reader question. 2. Confirm the invariant or constraint. 3. Draft the shortest useful explanation. 4. Check accuracy and tone. 5. Place it beside the relevant code.</steps>
+<output>Return comment text, placement, rationale, and reference links when applicable.</output>
+<references>Follow repository language, lint, and documentation conventions.</references>

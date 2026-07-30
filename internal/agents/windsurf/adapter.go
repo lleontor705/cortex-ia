@@ -15,7 +15,7 @@ type Adapter struct{}
 
 func NewAdapter() *Adapter { return &Adapter{} }
 
-func (a *Adapter) Agent() model.AgentID   { return model.AgentWindsurf }
+func (a *Adapter) Agent() model.AgentID    { return model.AgentWindsurf }
 func (a *Adapter) Tier() model.SupportTier { return model.TierFull }
 
 func (a *Adapter) Detect(homeDir string) (bool, string, string, bool, error) {
@@ -67,7 +67,7 @@ func (a *Adapter) MCPConfigPath(homeDir string, _ string) string {
 	return filepath.Join(homeDir, ".codeium", "windsurf", "mcp_config.json")
 }
 
-func (a *Adapter) SupportsSkills() bool        { return true }
+func (a *Adapter) SupportsSkills() bool         { return true }
 func (a *Adapter) SupportsSystemPrompt() bool   { return true }
 func (a *Adapter) SupportsMCP() bool            { return true }
 func (a *Adapter) SupportsSlashCommands() bool  { return false }
@@ -127,5 +127,5 @@ func (a *Adapter) CapabilityProber() capability.Prober { return nil }
 
 // --- Auto-install ---
 
-func (a *Adapter) SupportsAutoInstall() bool                          { return false }
+func (a *Adapter) SupportsAutoInstall() bool                           { return false }
 func (a *Adapter) InstallCommands(_ system.PlatformProfile) [][]string { return nil }

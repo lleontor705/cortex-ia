@@ -15,6 +15,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/compiler"
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/modelroute"
 )
 
 // WorkflowProfile is the capability-aware lowering profile selected for a
@@ -211,17 +212,24 @@ func ParseProfileSpec(spec string) (model.Profile, error) {
 		return model.Profile{}, fmt.Errorf("invalid provider/model %q: expected provider/model", providerModel)
 	}
 
-	assignments := make(map[string]model.ClaudeModelAlias, len(ProfilePhaseOrder()))
+	p := model.Profile{Name: name, ConfiguredAssignments: make(map[string]model.OpenCodeModelAssignment, len(ProfilePhaseOrder()))}
 	for _, phase := range ProfilePhaseOrder() {
-		assignments[phase] = model.ClaudeModelAlias(provider + "/" + modelID)
+		p.ConfiguredAssignments[phase] = model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
 	}
-	return model.Profile{Name: name, ModelAssignments: assignments}, nil
+	if route, routeErr := modelroute.NewRouteID(providerModel); routeErr == nil {
+		p.Routes = make(map[string]modelroute.RouteRequest, len(ProfilePhaseOrder()))
+		p.ConfiguredAssignments = nil
+		for _, phase := range ProfilePhaseOrder() {
+			p.Routes[phase] = modelroute.RouteRequest{RouteID: route}
+		}
+	}
+	return p, nil
 }
 
 // ParseProfilePhaseSpec parses `name:phase:provider/model` and returns the
 // phase + assignment so callers can update an existing profile in place.
 //
-// Example: "cheap:sdd-design:anthropic/claude-opus-4" → ("cheap", "sdd-design", "anthropic/claude-opus-4", nil)
+// Example: "cheap:sdd-design:provider-test/model-test" → ("cheap", "sdd-design", "provider-test/model-test", nil)
 func ParseProfilePhaseSpec(spec string) (profileName, phase, providerModel string, err error) {
 	parts := strings.SplitN(spec, ":", 3)
 	if len(parts) != 3 {
@@ -267,12 +275,23 @@ func UpsertProfile(profiles []model.Profile, p model.Profile) []model.Profile {
 func SetProfilePhase(profiles []model.Profile, profileName, phase, providerModel string) []model.Profile {
 	existing, ok := FindProfile(profiles, profileName)
 	if !ok {
-		existing = model.Profile{Name: profileName, ModelAssignments: map[string]model.ClaudeModelAlias{}}
+		existing = model.Profile{Name: profileName, ModelAssignments: map[string]string{}}
 	}
-	if existing.ModelAssignments == nil {
-		existing.ModelAssignments = map[string]model.ClaudeModelAlias{}
+	if route, err := modelroute.NewRouteID(providerModel); err == nil {
+		if existing.Routes == nil {
+			existing.Routes = map[string]modelroute.RouteRequest{}
+		}
+		existing.Routes[phase] = modelroute.RouteRequest{RouteID: route}
+	} else {
+		provider, modelID, ok := strings.Cut(strings.TrimSpace(providerModel), "/")
+		if !ok || provider == "" || modelID == "" {
+			return profiles
+		}
+		if existing.ConfiguredAssignments == nil {
+			existing.ConfiguredAssignments = map[string]model.OpenCodeModelAssignment{}
+		}
+		existing.ConfiguredAssignments[phase] = model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
 	}
-	existing.ModelAssignments[phase] = model.ClaudeModelAlias(providerModel)
 	return UpsertProfile(profiles, existing)
 }
 
@@ -290,16 +309,15 @@ func RemoveProfile(profiles []model.Profile, name string) ([]model.Profile, bool
 // ProfileToOpenCodeAssignments converts a saved Profile into the
 // OpenCodeModelAssignments shape consumed by opencode.ApplyToOpenCodeConfig.
 //
-// Profile.ModelAssignments stores values either as a Claude alias
-// ("opus" / "sonnet" / "haiku") or as a fully-qualified "provider/model"
-// (what ParseProfileSpec emits). Both shapes are normalised here.
+// Profile.ModelAssignments stores explicit provider/model values or semantic
+// route identifiers. Both shapes are normalised here.
 //
 // Phase keys lose their "sdd-" prefix because ApplyToOpenCodeConfig re-adds it
 // when looking up agents in opencode.json.
 func ProfileToOpenCodeAssignments(p model.Profile) model.OpenCodeModelAssignments {
 	out := make(model.OpenCodeModelAssignments, len(p.ModelAssignments))
-	for phase, value := range p.ModelAssignments {
-		assignment := parseProfileValue(string(value))
+	for phase, value := range p.ConfiguredAssignments {
+		assignment := value
 		if assignment.Provider == "" || assignment.Model == "" {
 			continue
 		}
@@ -340,35 +358,13 @@ func profileKeyToOpenCodeAgents(key string) []string {
 	}
 }
 
-// parseProfileValue handles both shapes profiles can store:
-//   - "anthropic/claude-opus-4"      → split into provider + model
-//   - "opus" / "sonnet" / "haiku"    → expand to anthropic/claude-<alias>-N
-//   - anything else                  → zero assignment (caller filters out)
-func parseProfileValue(value string) model.OpenCodeModelAssignment {
-	v := strings.TrimSpace(value)
-	if v == "" {
-		return model.OpenCodeModelAssignment{}
-	}
-
-	if provider, modelID, ok := strings.Cut(v, "/"); ok {
-		return model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
-	}
-
-	switch v {
-	case string(model.ModelOpus):
-		return model.OpenCodeModelAssignment{Provider: "anthropic", Model: "claude-opus-4"}
-	case string(model.ModelSonnet):
-		return model.OpenCodeModelAssignment{Provider: "anthropic", Model: "claude-sonnet-4-6"}
-	case string(model.ModelHaiku):
-		return model.OpenCodeModelAssignment{Provider: "anthropic", Model: "claude-haiku-4-5"}
-	default:
-		return model.OpenCodeModelAssignment{}
-	}
-}
-
 // ProfileSummary renders a one-line description of a profile for CLI listing.
 func ProfileSummary(p model.Profile) string {
-	if len(p.ModelAssignments) == 0 {
+	assignments := p.ConfiguredAssignments
+	if len(assignments) == 0 {
+		assignments = map[string]model.OpenCodeModelAssignment{}
+	}
+	if len(p.Routes) == 0 && len(assignments) == 0 {
 		return fmt.Sprintf("%-20s (no phase assignments)", p.Name)
 	}
 	// Identify the dominant model — if every phase shares the same value,
@@ -376,21 +372,21 @@ func ProfileSummary(p model.Profile) string {
 	var seen string
 	uniform := true
 	for _, phase := range ProfilePhaseOrder() {
-		v, ok := p.ModelAssignments[phase]
+		v, ok := assignments[phase]
 		if !ok {
 			uniform = false
 			continue
 		}
 		if seen == "" {
-			seen = string(v)
+			seen = v.FormatOpenCodeModel()
 			continue
 		}
-		if string(v) != seen {
+		if v.FormatOpenCodeModel() != seen {
 			uniform = false
 		}
 	}
 	if uniform && seen != "" {
 		return fmt.Sprintf("%-20s → %s (all phases)", p.Name, seen)
 	}
-	return fmt.Sprintf("%-20s %d phase(s) configured", p.Name, len(p.ModelAssignments))
+	return fmt.Sprintf("%-20s %d phase(s) configured", p.Name, len(assignments)+len(p.Routes))
 }

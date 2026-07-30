@@ -168,8 +168,8 @@ func rendererConformanceFixtures() []conformanceFixture {
 	}, []ExtensionDeclaration{{ID: "claude/direct-child-agents"}})
 	claudeNative := claudeResolvedWorkflow("native-advanced", []resolution.Resolution{
 		nativeResolution("delegation/direct-child", "evidence/claude/direct-child"),
-		nativeResolution("tasks/dependencies", "evidence/claude/agent-teams"),
-	}, []ExtensionDeclaration{{ID: "claude/agent-teams"}, {ID: "claude/direct-child-agents"}})
+		unsupportedResolution("tasks/dependencies", "Claude task dependencies remain ForgeSpec-owned; no native agent-team surface is emitted"),
+	}, []ExtensionDeclaration{{ID: "claude/direct-child-agents"}})
 
 	fixtures := []conformanceFixture{
 		{Target: "antigravity", Name: "portable-sequential", Renderer: NewAntigravityRenderer(), Resolved: antigravityResolvedWorkflow("portable-sequential")},

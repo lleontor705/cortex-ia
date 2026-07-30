@@ -2,10 +2,12 @@ package pipeline
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +24,7 @@ import (
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	skillscomp "github.com/lleontor705/cortex-ia/internal/components/skills"
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/modelroute"
 	"github.com/lleontor705/cortex-ia/internal/opencode"
 	"github.com/lleontor705/cortex-ia/internal/state"
 	"github.com/lleontor705/cortex-ia/internal/verify"
@@ -124,6 +127,12 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 			for _, p := range profiles {
 				if p.Name == selection.ProfileName {
 					selection.ModelAssignments = p.ModelAssignments
+					if len(selection.ModelAssignments) == 0 && len(p.ConfiguredAssignments) > 0 {
+						selection.ModelAssignments = make(model.ModelAssignments, len(p.ConfiguredAssignments))
+						for phase, assignment := range p.ConfiguredAssignments {
+							selection.ModelAssignments[phase] = assignment.FormatOpenCodeModel()
+						}
+					}
 					break
 				}
 			}
@@ -146,9 +155,19 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 			}
 			adapters = append(adapters, adapter)
 		}
+		routeInput, routeErr := explicitWorkflowRoutes(homeDir, selection)
+		if routeErr != nil {
+			return result, routeErr
+		}
+		if selection.ProfileName == "" && !dryRun {
+			selection.ProfileName = "active"
+			if err := persistActiveWorkflowProfile(homeDir, selection); err != nil {
+				return result, fmt.Errorf("persist explicit workflow route profile: %w", err)
+			}
+		}
 		var prepareErr error
 		preparedWorkflow, prepareErr = PrepareWorkflow(context.Background(), WorkflowRequest{
-			HomeDir: homeDir, Adapters: adapters, GeneratorVersion: version,
+			HomeDir: homeDir, Adapters: adapters, GeneratorVersion: version, RouteResolution: routeInput,
 		})
 		if prepareErr != nil {
 			return result, prepareErr
@@ -288,9 +307,16 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 			}
 		}
 		if hasOpenCode {
+			configured := make(model.OpenCodeModelAssignments, len(selection.ModelAssignments))
+			for phase, value := range selection.ModelAssignments {
+				provider, modelID, ok := strings.Cut(string(value), "/")
+				if ok && provider != "" && modelID != "" {
+					configured[phase] = model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
+				}
+			}
 			ocAssignments := sdd.ProfileToOpenCodeAssignments(model.Profile{
-				Name:             firstNonEmptyString(selection.ProfileName, "active"),
-				ModelAssignments: selection.ModelAssignments,
+				Name:                  firstNonEmptyString(selection.ProfileName, "active"),
+				ConfiguredAssignments: configured,
 			})
 			if len(ocAssignments) > 0 {
 				if err := opencode.ApplyToOpenCodeConfig(homeDir, ocAssignments); err != nil {
@@ -353,6 +379,123 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 	}
 
 	return result, nil
+}
+
+func persistActiveWorkflowProfile(homeDir string, selection model.Selection) error {
+	assignments := make(model.OpenCodeModelAssignments, len(selection.ModelAssignments))
+	for phase, value := range selection.ModelAssignments {
+		provider, modelID, ok := strings.Cut(string(value), "/")
+		if !ok || provider == "" || modelID == "" {
+			continue
+		}
+		assignments[phase] = model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
+	}
+	if len(assignments) == 0 {
+		return fmt.Errorf("explicit provider/model assignments are required")
+	}
+	return state.SaveProfiles(homeDir, []model.Profile{{Name: "active", ConfiguredAssignments: assignments}})
+}
+
+// explicitWorkflowRoutes converts only caller/profile configuration into the
+// resolver input. It never supplies a provider, model, or fallback itself.
+func explicitWorkflowRoutes(homeDir string, selection model.Selection) (modelroute.ResolverInput, error) {
+	requests := map[string]modelroute.RouteRequest{}
+	assignments := map[string]model.OpenCodeModelAssignment{}
+	if selection.ProfileName != "" {
+		profiles, err := state.LoadProfiles(homeDir)
+		if err != nil {
+			return modelroute.ResolverInput{}, err
+		}
+		profile, found := sdd.FindProfile(profiles, selection.ProfileName)
+		if !found {
+			return modelroute.ResolverInput{}, fmt.Errorf("workflow profile %q is not configured", selection.ProfileName)
+		}
+		for phase, route := range profile.Routes {
+			requests[canonicalRouteName(phase)] = route
+		}
+		for phase, assignment := range profile.ConfiguredAssignments {
+			phase = canonicalRouteName(phase)
+			assignments[phase] = assignment
+			if _, exists := requests[phase]; !exists {
+				route, routeErr := modelroute.NewRouteID("route/v1/" + phase)
+				if routeErr != nil {
+					return modelroute.ResolverInput{}, routeErr
+				}
+				requests[phase] = modelroute.RouteRequest{RouteID: route}
+			}
+		}
+	}
+	for phase, value := range selection.ModelAssignments {
+		phase = canonicalRouteName(phase)
+		text := string(value)
+		if route, err := modelroute.NewRouteID(text); err == nil {
+			requests[phase] = modelroute.RouteRequest{RouteID: route}
+			continue
+		}
+		provider, modelID, ok := strings.Cut(text, "/")
+		if !ok || provider == "" || modelID == "" {
+			return modelroute.ResolverInput{}, fmt.Errorf("workflow assignment %q has no explicit route or provider/model configuration", phase)
+		}
+		assignments[phase] = model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
+		if _, exists := requests[phase]; !exists {
+			semantic, err := modelroute.NewRouteID("route/v1/" + strings.TrimPrefix(strings.ToLower(phase), "sdd-"))
+			if err != nil {
+				return modelroute.ResolverInput{}, fmt.Errorf("derive semantic route for %q: %w", phase, err)
+			}
+			requests[phase] = modelroute.RouteRequest{RouteID: semantic}
+		}
+	}
+	if len(requests) == 0 {
+		return modelroute.ResolverInput{}, fmt.Errorf("explicit workflow ModelRoutes configuration is required")
+	}
+	providers := map[modelroute.ProviderID]modelroute.ProviderConfig{}
+	now := time.Now().UTC()
+	for phase, request := range requests {
+		assignment, ok := assignments[phase]
+		if !ok {
+			continue
+		}
+		provider := modelroute.ProviderID(assignment.Provider)
+		config := providers[provider]
+		config.Provider = provider
+		if config.Routes == nil {
+			config.Routes = map[modelroute.RouteID]modelroute.RouteRef{}
+		}
+		config.Routes[request.RouteID] = modelroute.RouteRef{Provider: provider, Model: modelroute.ModelID(assignment.Model)}
+		digest := sha256.Sum256([]byte(string(provider) + "/" + assignment.Model + "|" + string(request.RouteID)))
+		config.Evidence = append(config.Evidence, modelroute.ResolutionEvidence{ID: fmt.Sprintf("user-config:%s", phase), Source: modelroute.SourceUserConfig, Provider: provider, Route: request.RouteID, ObservedAt: now, FreshUntil: now.Add(time.Hour), Digest: fmt.Sprintf("%x", digest), Qualified: true, ReasonID: "route.configured"})
+		providers[provider] = config
+	}
+	providerConfigs := make([]modelroute.ProviderConfig, 0, len(providers))
+	for _, config := range providers {
+		providerConfigs = append(providerConfigs, config)
+	}
+	return modelroute.ResolverInput{Requests: requests, ProviderConfigs: providerConfigs, Now: now}, nil
+}
+
+func canonicalRouteName(phase string) string {
+	switch strings.TrimSpace(strings.ToLower(phase)) {
+	case "sdd-init", "init", "bootstrap", "orchestrator":
+		return "bootstrap"
+	case "sdd-explore", "explore", "investigate":
+		return "investigate"
+	case "sdd-propose", "propose", "draft-proposal":
+		return "draft-proposal"
+	case "sdd-spec", "spec", "write-specs":
+		return "write-specs"
+	case "sdd-design", "design", "architect":
+		return "architect"
+	case "sdd-tasks", "tasks", "decompose":
+		return "decompose"
+	case "sdd-apply", "apply", "implement":
+		return "implement"
+	case "sdd-verify", "verify", "validate":
+		return "validate"
+	case "sdd-archive", "archive", "finalize":
+		return "finalize"
+	default:
+		return phase
+	}
 }
 
 type injectorEntry struct {
@@ -470,9 +613,10 @@ func SelectionFromState(s state.State, lock state.Lockfile) (model.Selection, er
 
 func selectionFromMetadata(s state.State, lock state.Lockfile) (model.Selection, error) {
 	selection := model.Selection{
-		Agents:     dedupeAgents(lock.InstalledAgents, s.InstalledAgents),
-		Preset:     firstNonEmptyPreset(lock.Preset, s.Preset, model.PresetFull),
-		Components: dedupeComponents(lock.Components, s.Components),
+		Agents:      dedupeAgents(lock.InstalledAgents, s.InstalledAgents),
+		Preset:      firstNonEmptyPreset(lock.Preset, s.Preset, model.PresetFull),
+		Components:  dedupeComponents(lock.Components, s.Components),
+		ProfileName: s.LastProfile,
 	}
 
 	if len(selection.Agents) == 0 {

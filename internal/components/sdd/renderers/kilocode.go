@@ -78,6 +78,10 @@ func (kilocodeRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bu
 		return Bundle{}, fmt.Errorf("kilocode renderer: encode bundle manifest: %w", err)
 	}
 	assets = append(assets, kilocodeAsset("manifests/bundle.json", "kilocode/manifest/bundle", AssetSchema, bundleJSON, permissions))
+	assets, err = appendCompositionAsset(resolved, assets)
+	if err != nil {
+		return Bundle{}, err
+	}
 	return Bundle{Assets: assets}, nil
 }
 

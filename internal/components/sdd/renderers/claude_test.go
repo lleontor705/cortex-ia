@@ -42,9 +42,9 @@ func TestClaudeRendererProfilesMatchIsolatedGoldens(t *testing.T) {
 			name: "native-advanced",
 			resolutions: []resolution.Resolution{
 				nativeResolution("delegation/direct-child", "evidence/claude/direct-child"),
-				nativeResolution("tasks/dependencies", "evidence/claude/agent-teams"),
+				unsupportedResolution("tasks/dependencies", "Claude task dependencies remain ForgeSpec-owned; no native agent-team surface is emitted"),
 			},
-			extensions: []ExtensionDeclaration{{ID: "claude/agent-teams"}, {ID: "claude/direct-child-agents"}},
+			extensions: []ExtensionDeclaration{{ID: "claude/direct-child-agents"}},
 		},
 	}
 
@@ -107,11 +107,12 @@ func TestClaudeRendererAdvertisesProfileBoundariesAndManifestDisclosures(t *test
 			profile: "native-advanced",
 			resolutions: []resolution.Resolution{
 				nativeResolution("delegation/direct-child", "evidence/claude/direct-child"),
-				nativeResolution("tasks/dependencies", "evidence/claude/agent-teams"),
+				unsupportedResolution("tasks/dependencies", "Claude task dependencies remain ForgeSpec-owned; no native agent-team surface is emitted"),
 			},
-			extensions: []ExtensionDeclaration{{ID: "claude/agent-teams"}, {ID: "claude/direct-child-agents"}},
-			wantPath:   ".claude/agent-teams.json",
-			wantText:   "qualified native agent teams",
+			extensions:    []ExtensionDeclaration{{ID: "claude/direct-child-agents"}},
+			wantPath:      ".claude/agents/role--implement.md",
+			forbiddenPath: ".claude/agent-teams.json",
+			wantText:      "qualified direct-child",
 		},
 	}
 
@@ -148,6 +149,15 @@ func TestClaudeRendererAdvertisesProfileBoundariesAndManifestDisclosures(t *test
 				t.Fatalf("degradation manifest does not disclose unsupported profile capability: %s", degradation)
 			}
 		})
+	}
+}
+
+func TestClaudeRendererCarriesQualificationEvidenceReferencedByResolution(t *testing.T) {
+	resolved := claudeResolvedWorkflow("portable-flat", []resolution.Resolution{nativeResolution("delegation/direct-child", "evidence/claude/direct-child")}, nil)
+	resolved.Extensions = []ExtensionDeclaration{{ID: "claude/direct-child-agents"}}
+	resolved.QualificationEvidence = claudeManifestInput().Evidence
+	if _, err := Render(context.Background(), NewClaudeRenderer(claudeManifestInput()), resolved); err != nil {
+		t.Fatalf("Claude renderer rejected qualified capability evidence: %v", err)
 	}
 }
 

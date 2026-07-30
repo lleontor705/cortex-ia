@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/components/forgespec"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 )
 
 type Client struct {
@@ -44,7 +46,36 @@ func (client Client) ProbeForgeSpec(ctx context.Context) (forgespec.CapabilitySn
 	if response.StatusCode != http.StatusOK {
 		return forgespec.CapabilitySnapshot{}, fmt.Errorf("ForgeSpec capability endpoint returned HTTP %d", response.StatusCode)
 	}
-	decoder := json.NewDecoder(response.Body)
+	var payload json.RawMessage
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return forgespec.CapabilitySnapshot{}, fmt.Errorf("decode ForgeSpec capability response: %w", err)
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		return forgespec.CapabilitySnapshot{}, fmt.Errorf("decode ForgeSpec capability response object: %w", err)
+	}
+	if _, published := fields["server"]; published {
+		var publishedResponse forgespec.PublishedCapabilityResponse
+		decoder := json.NewDecoder(strings.NewReader(string(payload)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&publishedResponse); err != nil {
+			return forgespec.CapabilitySnapshot{}, fmt.Errorf("decode published ForgeSpec capabilities: %w", err)
+		}
+		if err := forgespec.ValidateDirectV1Capabilities(publishedResponse); err != nil {
+			return forgespec.CapabilitySnapshot{}, err
+		}
+		now := time.Now().UTC()
+		return forgespec.TranslatePublishedResponse(publishedResponse, forgespec.ProbeEvidence{
+			ProbeID:     "probe/forgespec/capabilities",
+			EvidenceRef: client.baseURL + "/capabilities",
+			ObservedAt:  now,
+			FreshUntil:  now.Add(time.Hour),
+			Enforcement: capability.EnforcementMCP,
+		})
+	}
+
+	decoder := json.NewDecoder(strings.NewReader(string(payload)))
 	decoder.DisallowUnknownFields()
 	var snapshot forgespec.CapabilitySnapshot
 	if err := decoder.Decode(&snapshot); err != nil {

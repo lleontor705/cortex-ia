@@ -125,20 +125,34 @@ func TestVSCodeRendererDisclosesSecurityWithoutUnsupportedNesting(t *testing.T) 
 	}
 }
 
+func TestVSCodeScopedRootsAndSequentialTruthFixture(t *testing.T) {
+	assetMap, err := AdapterAssetMapFor("vscode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assetMap.WorkflowRoot != ".copilot" || assetMap.ManifestRoot != ".cortex-ia" {
+		t.Fatalf("VS Code roots are not scoped: %+v", assetMap)
+	}
+	bundle, err := Render(context.Background(), NewVSCodeRenderer(), vscodeResolvedWorkflow([]resolution.Resolution{
+		{ID: "delegation/direct-child", State: resolution.StateAdvisory, Reason: "documentation only"},
+		unsupportedVSCodeCapability("delegation/nested", "not supported"),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, asset := range bundle.Assets {
+		if strings.Contains(strings.ToLower(string(asset.Content)), "direct-child enforcement") {
+			t.Fatalf("VS Code claimed advisory direct-child enforcement in %q", asset.Path)
+		}
+	}
+}
+
 func TestVSCodeRendererRejectsUnsupportedNestingAndPermissionWidening(t *testing.T) {
 	tests := []struct {
 		name         string
 		capabilities []resolution.Resolution
 		wantID       ir.SemanticID
 	}{
-		{
-			name: "nested delegation claim",
-			capabilities: []resolution.Resolution{{
-				ID: "delegation/nested", State: resolution.StateNative, Guarantee: resolution.GuaranteeEnforced,
-				Binding: resolution.Binding{ID: "binding/vscode/nested", CapabilityID: "delegation/nested", Kind: resolution.BindingNative, Guarantee: resolution.GuaranteeEnforced, Enforcement: capability.EnforcementRuntime},
-			}},
-			wantID: ErrorUnsupportedAsset,
-		},
 		{
 			name: "capability permission widening",
 			capabilities: []resolution.Resolution{{
@@ -158,6 +172,53 @@ func TestVSCodeRendererRejectsUnsupportedNestingAndPermissionWidening(t *testing
 				t.Fatalf("Render() error = %v, want validation ID %q", err, tt.wantID)
 			}
 		})
+	}
+}
+
+func TestVSCodeRendererDegradesObservedNativeCapabilitiesTruthfully(t *testing.T) {
+	capabilities := []resolution.Resolution{
+		{
+			ID:        "delegation/direct-child",
+			State:     resolution.StateAdvisory,
+			Guarantee: resolution.GuaranteeBestEffort,
+			Binding: resolution.Binding{
+				ID: "binding/vscode/direct-child", CapabilityID: "delegation/direct-child",
+				Kind: resolution.BindingAdvisory, Guarantee: resolution.GuaranteeBestEffort,
+				Enforcement: capability.EnforcementRuntime,
+			},
+			Reason: "preview documentation only",
+		},
+		{
+			ID:        "delegation/nested",
+			State:     resolution.StateNative,
+			Guarantee: resolution.GuaranteeEnforced,
+			Binding: resolution.Binding{
+				ID: "binding/vscode/nested", CapabilityID: "delegation/nested",
+				Kind: resolution.BindingNative, Guarantee: resolution.GuaranteeEnforced,
+				Enforcement: capability.EnforcementRuntime,
+			},
+			Reason: "observed by a shared capability probe",
+		},
+	}
+	bundle, err := Render(context.Background(), NewVSCodeRenderer(), vscodeResolvedWorkflow(capabilities))
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	var degradation vscodeDegradationManifest
+	for _, asset := range bundle.Assets {
+		if asset.Path == "manifests/degradation.json" {
+			if err := json.Unmarshal(asset.Content, &degradation); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for _, item := range degradation.Capabilities {
+		if item.ID == "delegation/nested" && item.State != resolution.StateUnsupported {
+			t.Fatalf("nested capability state = %q, want unsupported", item.State)
+		}
+		if item.ID == "delegation/direct-child" && item.Binding.Enforcement == capability.EnforcementRuntime {
+			t.Fatal("VS Code claimed runtime enforcement for advisory direct-child capability")
+		}
 	}
 }
 

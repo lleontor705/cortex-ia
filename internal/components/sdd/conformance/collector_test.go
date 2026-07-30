@@ -65,6 +65,18 @@ func TestCollectRepositoryBudgetExhaustionIsInconclusiveNotPass(t *testing.T) {
 	}
 }
 
+func TestCollectRepositoryIncludesActiveCorpusAliasGate(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "internal/active.txt", corpusTerm("son", "net")+"\n")
+	evidence, err := CollectRepository(CollectorRequest{Root: root, Now: time.Now().UTC(), Budget: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evidence.Status != EvidenceFailed || evidence.ActiveCorpus.Status != EvidenceFailed {
+		t.Fatalf("active corpus gate did not fail closed: %+v", evidence)
+	}
+}
+
 func writeFixture(t *testing.T, root, name, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(name))

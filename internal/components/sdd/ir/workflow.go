@@ -49,6 +49,7 @@ type Contract struct {
 	ID            SemanticID `json:"id"`
 	SchemaVersion Version    `json:"schema_version"`
 	Required      bool       `json:"required"`
+	Trust         TrustClass `json:"trust,omitempty"`
 }
 
 // Phase expresses dependency intent without prescribing runtime scheduling.

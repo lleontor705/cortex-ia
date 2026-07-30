@@ -1,89 +1,15 @@
 ---
 name: cognitive-doc-design
-description: "Design docs that reduce cognitive load. Trigger: writing guides, READMEs, RFCs, onboarding, architecture, or review-facing docs."
+description: "Design documentation that reduces cognitive load and supports reliable reader decisions."
 license: MIT
 metadata:
-  author: lleontor705
+  author: cortex-ia
   version: "1.0.0"
 ---
-
-<role>
-## When to Use
-
-Load this skill when creating or editing documentation that people need to understand quickly, retain, or use during review.
-
-Use it especially for:
-
-- PR descriptions and review notes.
-- Contributor or maintainer guides.
-- Architecture, workflow, or onboarding docs.
-- Any doc that currently feels long, dense, or hard to scan.
-</role>
-
-<rules>
-## Critical Patterns
-
-| Pattern | Rule |
-|---------|------|
-| Lead with the answer | Put the decision, action, or outcome first. Context comes after. |
-| Progressive disclosure | Start with the happy path, then add details, edge cases, and references. |
-| Chunking | Group related information into small sections. Keep flat lists short. |
-| Signposting | Use headings, labels, callouts, and summaries so readers know where they are. |
-| Recognition over recall | Prefer tables, checklists, examples, and templates over prose that must be remembered. |
-| Review empathy | Design docs so reviewers can verify intent without reconstructing the whole story. |
-</rules>
-
-<steps>
-## Documentation Shape
-
-Use this default structure unless the repo already provides a stronger template:
-
-```markdown
-# <Outcome-oriented title>
-
-<One paragraph: what changed, who it helps, and why it matters.>
-
-## Quick path
-
-1. <First action>
-2. <Second action>
-3. <Verification or expected result>
-
-## Details
-
-| Topic | Decision |
-|-------|----------|
-| <area> | <concise explanation> |
-
-## Checklist
-
-- [ ] <Reader can confirm this>
-- [ ] <Reader can confirm that>
-
-## Next step
-
-<Link or action that continues the workflow.>
-```
-
-## Commands
-
-```bash
-# Check markdown files changed in the current branch
-git diff --name-only -- '*.md'
-
-# Inspect PR changed-line count for cognitive load
-gh pr view <PR_NUMBER> --json additions,deletions,changedFiles
-```
-</steps>
-
-<context>
-## PR and Review Docs
-
-When documenting a PR, reduce reviewer burnout by making the review path explicit:
-
-- State what to review first.
-- State what is intentionally out of scope.
-- Link the previous and next PR when work is chained.
-- Keep each section focused on one decision or unit of work.
-- Use checklists for acceptance criteria and verification.
-</context>
+<role>Non-phase utility authority for cognitive-load-aware document design.</role>
+<success_criteria>The document has a clear audience and task, progressive disclosure, scannable structure, accessible language, and verified examples.</success_criteria>
+<context>Use for guides, reference pages, and decision documents. Optimize for the reader's next action, not author completeness.</context>
+<rules><critical>Put the answer and prerequisites where readers need them. Keep one concept per section.</critical><guidance>Use headings, diagrams, examples, warnings, and summaries deliberately; test navigation with a fresh reader.</guidance></rules>
+<steps>1. Define audience and task. 2. Map prerequisite knowledge. 3. Order concepts from orientation to action. 4. Add examples and recovery paths. 5. Review readability and accessibility.</steps>
+<output>Return audience, task map, outline, content decisions, examples, accessibility checks, and revision notes.</output>
+<references>Follow repository documentation style and accessibility guidance.</references>

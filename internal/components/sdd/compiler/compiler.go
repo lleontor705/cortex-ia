@@ -15,41 +15,64 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/prompt"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/quality"
 )
 
 // Input is the complete deterministic compiler boundary. EvaluationTime is an
 // explicit input because evidence freshness can change whether compilation is
 // accepted; callers must reuse it when they require repeatable generation.
 type Input struct {
-	WorkflowDocument []byte
-	CatalogDocument  []byte
-	ProbeResults     []capability.ProbeResult
-	Target           string
-	Profile          string
-	Configuration    json.RawMessage
-	CompilerVersion  ir.Version
-	EvaluationTime   time.Time
+	WorkflowDocument  []byte
+	CatalogDocument   []byte
+	ProbeResults      []capability.ProbeResult
+	Target            string
+	Profile           string
+	Configuration     json.RawMessage
+	CompilerVersion   ir.Version
+	EvaluationTime    time.Time
+	AssetCatalog      ir.AssetCatalog
+	Adapter           prompt.AdapterPromptContract
+	ProfilePlan       quality.ProfilePlan
+	QualityPolicy     *quality.QualityPolicy
+	QualitySignals    *quality.ChangeSignals
+	Models            prompt.ModelTable
+	OperationalAssets []prompt.MaterializedAsset
+	Metadata          json.RawMessage
 }
 
 // NormalizedInput contains stable, owned values suitable for renderers and
 // manifests. Every field participates in Canonical and Fingerprint.
 type NormalizedInput struct {
-	Workflow        ir.WorkflowIR            `json:"workflow"`
-	Catalog         capability.Catalog       `json:"catalog"`
-	ProbeResults    []capability.ProbeResult `json:"probe_results"`
-	Target          string                   `json:"target"`
-	Profile         string                   `json:"profile"`
-	Configuration   json.RawMessage          `json:"configuration"`
-	CompilerVersion ir.Version               `json:"compiler_version"`
-	EvaluationTime  string                   `json:"evaluation_time"`
-	Degradations    []ir.Degradation         `json:"degradations"`
+	Workflow          ir.WorkflowIR               `json:"workflow"`
+	Catalog           capability.Catalog          `json:"catalog"`
+	ProbeResults      []capability.ProbeResult    `json:"probe_results"`
+	Target            string                      `json:"target"`
+	Profile           string                      `json:"profile"`
+	Configuration     json.RawMessage             `json:"configuration"`
+	CompilerVersion   ir.Version                  `json:"compiler_version"`
+	EvaluationTime    string                      `json:"evaluation_time"`
+	Degradations      []ir.Degradation            `json:"degradations"`
+	AssetCatalog      ir.AssetCatalog             `json:"asset_catalog,omitempty"`
+	Composition       prompt.CompositionResult    `json:"composition,omitempty"`
+	QualityPolicyIR   quality.QualityPolicyIR     `json:"quality_policy_ir,omitempty"`
+	QualityTemplate   quality.QualityPlanTemplate `json:"quality_template,omitempty"`
+	QualityPlan       quality.QualityPlan         `json:"quality_plan,omitempty"`
+	OperationalAssets []prompt.MaterializedAsset  `json:"operational_assets,omitempty"`
+	Metadata          json.RawMessage             `json:"metadata,omitempty"`
 }
 
 // Result carries the canonical representation used to calculate Fingerprint.
 type Result struct {
-	Normalized  NormalizedInput
-	Canonical   []byte
-	Fingerprint string
+	Normalized        NormalizedInput
+	Canonical         []byte
+	Fingerprint       string
+	Composition       prompt.CompositionResult
+	QualityPolicyIR   quality.QualityPolicyIR
+	QualityTemplate   quality.QualityPlanTemplate
+	QualityPlan       quality.QualityPlan
+	OperationalAssets []prompt.MaterializedAsset
+	Metadata          json.RawMessage
 }
 
 type ErrorCode string
@@ -88,6 +111,45 @@ func Compile(input Input) (Result, error) {
 	if err := validateInput(input, workflowResult.Workflow); err != nil {
 		return Result{}, err
 	}
+	var composition prompt.CompositionResult
+	var policyIR quality.QualityPolicyIR
+	var qualityTemplate quality.QualityPlanTemplate
+	var qualityPlan quality.QualityPlan
+	if len(input.AssetCatalog.Assets) > 0 {
+		if err := input.AssetCatalog.Validate(); err != nil {
+			return Result{}, invalid("$.asset_catalog", err.Error(), "provide a complete typed operational asset catalog")
+		}
+		if input.QualityPolicy != nil {
+			var err error
+			policyIR, qualityTemplate, err = quality.CompilePolicy(*input.QualityPolicy, quality.TestingCapabilities{}, input.ProfilePlan)
+			if err != nil {
+				return Result{}, fmt.Errorf("compile quality policy: %w", err)
+			}
+			if input.QualitySignals != nil {
+				qualityPlan, _, err = quality.BuildPlan(quality.PipelineInput{
+					Policy: *input.QualityPolicy, Capabilities: quality.TestingCapabilities{},
+					Profile: input.ProfilePlan, Signals: *input.QualitySignals,
+					Evaluation: quality.EvaluationInput{Change: quality.ChangeContext{
+						Kind: input.QualitySignals.Kind, ObservableBehavior: input.QualitySignals.ObservableBehavior,
+						Risk: input.QualitySignals.Risk, Reversibility: input.QualitySignals.Reversibility,
+						TrustBoundary: input.QualitySignals.TrustBoundary, DependencyBreadth: input.QualitySignals.DependencyBreadth,
+						MigrationImpact: input.QualitySignals.MigrationImpact,
+					}},
+				})
+				if err != nil {
+					return Result{}, fmt.Errorf("build quality plan: %w", err)
+				}
+			}
+		}
+		var err error
+		composition, err = prompt.Compose(prompt.CompositionInput{
+			Workflow: workflowResult.Workflow, Catalog: input.AssetCatalog, Adapter: input.Adapter,
+			Profile: input.ProfilePlan, QualityTemplate: qualityTemplate, QualityPlan: qualityPlan, Models: input.Models, Metadata: input.Metadata,
+		})
+		if err != nil {
+			return Result{}, fmt.Errorf("compose operational assets: %w", err)
+		}
+	}
 
 	configuration, err := canonicalJSON(input.Configuration)
 	if err != nil {
@@ -103,15 +165,22 @@ func Compile(input Input) (Result, error) {
 	})
 
 	normalized := NormalizedInput{
-		Workflow:        normalizeWorkflow(workflowResult.Workflow),
-		Catalog:         normalizeCatalog(catalogResult.Catalog),
-		ProbeResults:    normalizeProbeResults(input.ProbeResults),
-		Target:          strings.TrimSpace(input.Target),
-		Profile:         input.Profile,
-		Configuration:   configuration,
-		CompilerVersion: input.CompilerVersion,
-		EvaluationTime:  input.EvaluationTime.UTC().Format(time.RFC3339Nano),
-		Degradations:    degradations,
+		Workflow:          normalizeWorkflow(workflowResult.Workflow),
+		Catalog:           normalizeCatalog(catalogResult.Catalog),
+		ProbeResults:      normalizeProbeResults(input.ProbeResults),
+		Target:            strings.TrimSpace(input.Target),
+		Profile:           input.Profile,
+		Configuration:     configuration,
+		CompilerVersion:   input.CompilerVersion,
+		EvaluationTime:    input.EvaluationTime.UTC().Format(time.RFC3339Nano),
+		Degradations:      degradations,
+		AssetCatalog:      normalizeAssetCatalog(input.AssetCatalog),
+		Composition:       composition,
+		QualityPolicyIR:   policyIR,
+		QualityTemplate:   qualityTemplate,
+		QualityPlan:       qualityPlan,
+		OperationalAssets: slices.Clone(input.OperationalAssets),
+		Metadata:          slices.Clone(input.Metadata),
 	}
 	canonical, err := json.Marshal(normalized)
 	if err != nil {
@@ -119,10 +188,27 @@ func Compile(input Input) (Result, error) {
 	}
 	digest := sha256.Sum256(canonical)
 	return Result{
-		Normalized:  normalized,
-		Canonical:   canonical,
-		Fingerprint: hex.EncodeToString(digest[:]),
+		Normalized:        normalized,
+		Canonical:         canonical,
+		Fingerprint:       hex.EncodeToString(digest[:]),
+		Composition:       composition,
+		QualityPolicyIR:   policyIR,
+		QualityTemplate:   qualityTemplate,
+		OperationalAssets: slices.Clone(input.OperationalAssets),
+		Metadata:          slices.Clone(input.Metadata),
 	}, nil
+}
+
+func normalizeAssetCatalog(catalog ir.AssetCatalog) ir.AssetCatalog {
+	normalized := catalog
+	normalized.Assets = slices.Clone(catalog.Assets)
+	for i := range normalized.Assets {
+		normalized.Assets[i].Profiles = slices.Clone(catalog.Assets[i].Profiles)
+	}
+	slices.SortFunc(normalized.Assets, func(left, right ir.AssetSpec) int {
+		return strings.Compare(string(left.ID), string(right.ID))
+	})
+	return normalized
 }
 
 func validateInput(input Input, workflow ir.WorkflowIR) error {

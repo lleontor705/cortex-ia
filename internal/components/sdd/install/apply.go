@@ -32,6 +32,7 @@ type Receipt struct {
 	Applied            []string
 	FailedPath         string
 	Installed          []InstalledAsset
+	Inventory          []AssetInventory
 	OperationOutcomes  []OperationOutcome
 	CapabilitySnapshot json.RawMessage
 	PreDoctor          json.RawMessage
@@ -40,6 +41,7 @@ type Receipt struct {
 	Retirements        []RetirementReceipt
 	ProtectedPaths     []string
 	RollbackEligible   bool
+	Metadata           json.RawMessage
 }
 
 type ReceiptState string
@@ -158,6 +160,8 @@ func (a *Applier) ApplyWithStore(plan Plan, store WorkflowReceiptStore) (Receipt
 	receipt.State = ReceiptPrepared
 	receipt.Conflicts = slices.Clone(plan.Conflicts)
 	receipt.ProtectedPaths = slices.Clone(plan.ProtectedPaths)
+	receipt.Inventory = slices.Clone(plan.Inventory)
+	receipt.Metadata = slices.Clone(plan.Metadata)
 	sealReceipt(&receipt)
 	if err := saveReceipt(store, receipt); err != nil {
 		return receipt, fmt.Errorf("persist PREPARED workflow receipt before mutation: %w", err)
@@ -190,6 +194,16 @@ func (a *Applier) ApplyWithStore(plan Plan, store WorkflowReceiptStore) (Receipt
 			_ = saveReceipt(store, receipt)
 			return receipt, err
 		}
+		if plan.OwnershipMarkers {
+			if err := a.writeOwnership(plan, mutation.effect); err != nil {
+				receipt.FailedPath = mutation.effect.Path
+				receipt.State = ReceiptFailed
+				receipt.OperationOutcomes = append(receipt.OperationOutcomes, failedOutcome(mutation.effect, err))
+				sealReceipt(&receipt)
+				_ = saveReceipt(store, receipt)
+				return receipt, err
+			}
+		}
 		receipt.Applied = append(receipt.Applied, mutation.effect.Path)
 		receipt.Installed = append(receipt.Installed, InstalledAsset{
 			Path:         mutation.effect.Path,
@@ -214,6 +228,21 @@ func (a *Applier) ApplyWithStore(plan Plan, store WorkflowReceiptStore) (Receipt
 		return receipt, fmt.Errorf("persist COMMITTED workflow receipt: %w", err)
 	}
 	return receipt, nil
+}
+
+func (a *Applier) writeOwnership(plan Plan, effect Effect) error {
+	generatorVersion := plan.GeneratorVersion
+	if _, err := ir.ParseVersion(generatorVersion); err != nil {
+		generatorVersion = "1.0.0"
+	}
+	metadata, err := NewOwnership(effect.Path, generatorVersion, effect.SemanticID, effect.Content, effect.Content)
+	if err != nil {
+		return fmt.Errorf("create ownership for %q: %w", effect.Path, err)
+	}
+	if err := NewOwnershipStore(a.root).Write(metadata, effect.Content); err != nil {
+		return fmt.Errorf("persist ownership for %q: %w", effect.Path, err)
+	}
+	return nil
 }
 
 var ErrStalePlan = errors.New("immutable install plan is stale")

@@ -1,0 +1,20 @@
+[
+  {"name":"work-unit-commits","path":"internal/assets/skills/work-unit-commits/SKILL.md","method":["commit","rollback"]},
+  {"name":"file-issue","path":"internal/assets/skills/file-issue/SKILL.md","method":["issue template","reproduction"]},
+  {"name":"execute-plan","path":"internal/assets/skills/execute-plan/SKILL.md","method":["plan","verification"]},
+  {"name":"onboard","path":"internal/assets/skills/onboard/SKILL.md","method":["guided walkthrough","learner"]},
+  {"name":"monitor","path":"internal/assets/skills/monitor/SKILL.md","method":["dashboard","health"]},
+  {"name":"skill-improver","path":"internal/assets/skills/skill-improver/SKILL.md","method":["style guide","audit"]},
+  {"name":"judgment-day","path":"internal/assets/skills/judgment-day/SKILL.md","method":["judge","adversarial"]},
+  {"name":"skill-creator","path":"internal/assets/skills/skill-creator/SKILL.md","method":["skill documents","validation"]},
+  {"name":"debug","path":"internal/assets/skills/debug/SKILL.md","method":["hypothesis","reproduction"]},
+  {"name":"scan-registry","path":"internal/assets/skills/scan-registry/SKILL.md","method":["registry scan","inventory"]},
+  {"name":"debate","path":"internal/assets/skills/debate/SKILL.md","method":["positions","recommendation"]},
+  {"name":"parallel-dispatch","path":"internal/assets/skills/parallel-dispatch/SKILL.md","method":["independent","dispatch"]},
+  {"name":"comment-writer","path":"internal/assets/skills/comment-writer/SKILL.md","method":["comment","tone"]},
+  {"name":"ideate","path":"internal/assets/skills/ideate/SKILL.md","method":["brainstorm","diverge"]},
+  {"name":"open-pr","path":"internal/assets/skills/open-pr/SKILL.md","method":["pull request","checks"]},
+  {"name":"cognitive-doc-design","path":"internal/assets/skills/cognitive-doc-design/SKILL.md","method":["cognitive load","document"]},
+  {"name":"go-testing","path":"internal/assets/skills/go-testing/SKILL.md","method":["go test","table-driven"]},
+  {"name":"chained-pr","path":"internal/assets/skills/chained-pr/SKILL.md","method":["chain","boundary"]}
+]

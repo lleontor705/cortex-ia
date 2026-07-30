@@ -13,15 +13,15 @@ func TestSaveAndLoadProfiles(t *testing.T) {
 	profiles := []model.Profile{
 		{
 			Name: "balanced",
-			ModelAssignments: map[string]model.ClaudeModelAlias{
-				"sdd-explore": model.ModelSonnet,
-				"sdd-propose": model.ModelOpus,
+			ConfiguredAssignments: map[string]model.OpenCodeModelAssignment{
+				"sdd-explore": {Provider: "provider-x", Model: "model-y"},
+				"sdd-propose": {Provider: "provider-x", Model: "model-z"},
 			},
 		},
 		{
 			Name: "economy",
-			ModelAssignments: map[string]model.ClaudeModelAlias{
-				"sdd-explore": model.ModelHaiku,
+			ConfiguredAssignments: map[string]model.OpenCodeModelAssignment{
+				"sdd-explore": {Provider: "provider-x", Model: "model-y"},
 			},
 		},
 	}
@@ -44,8 +44,8 @@ func TestSaveAndLoadProfiles(t *testing.T) {
 	if loaded[1].Name != "economy" {
 		t.Errorf("expected second profile name 'economy', got %q", loaded[1].Name)
 	}
-	if loaded[0].ModelAssignments["sdd-explore"] != model.ModelSonnet {
-		t.Errorf("expected sdd-explore=sonnet, got %q", loaded[0].ModelAssignments["sdd-explore"])
+	if loaded[0].ConfiguredAssignments["sdd-explore"].FormatOpenCodeModel() != "provider-x/model-y" {
+		t.Errorf("expected explicit assignment migration, got %#v", loaded[0].ConfiguredAssignments)
 	}
 }
 

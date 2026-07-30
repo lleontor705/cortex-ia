@@ -121,16 +121,17 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 		t.Error("expected bootstrap skill in shared dir")
 	}
 
-	// Verify convention refs replaced with absolute path in skills.
+	// Verify the current shared phase-contract reference is preserved.
 	implSkill, err := os.ReadFile(filepath.Join(sharedSkillsDir, "implement", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(implSkill), "../_shared/cortex-convention.md") {
-		t.Error("expected relative convention refs to be replaced with absolute path")
+	implText := string(implSkill)
+	if !strings.Contains(implText, "_shared/sdd-phase-contract.md") {
+		t.Error("expected shared phase-contract reference in implement skill")
 	}
-	if !strings.Contains(string(implSkill), ".cortex-ia/skills/_shared/cortex-convention.md") {
-		t.Error("expected absolute convention path in skill content")
+	if strings.Contains(implText, "cortex-convention.md") {
+		t.Error("expected stale convention references to be absent from implement skill")
 	}
 
 	// Verify orchestrator prompt written to shared prompts dir.

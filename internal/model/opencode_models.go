@@ -1,21 +1,9 @@
 package model
 
-// OpenCodeDefaultAssignments returns default model assignments for OpenCode sub-agents.
-// Uses Anthropic models as defaults since they're the most commonly used.
+// OpenCodeDefaultAssignments is retained as a compatibility boundary. It never
+// invents assignments; callers must provide explicit configuration.
 func OpenCodeDefaultAssignments() OpenCodeModelAssignments {
-	return OpenCodeModelAssignments{
-		"orchestrator":      {Provider: "anthropic", Model: "claude-opus-4-20250514"},
-		"bootstrap":         {Provider: "anthropic", Model: "claude-sonnet-4-20250514"},
-		"investigate":       {Provider: "anthropic", Model: "claude-sonnet-4-20250514"},
-		"draft-proposal":    {Provider: "anthropic", Model: "claude-sonnet-4-20250514"},
-		"write-specs":       {Provider: "anthropic", Model: "claude-sonnet-4-20250514"},
-		"architect":         {Provider: "anthropic", Model: "claude-opus-4-20250514"},
-		"decompose":         {Provider: "anthropic", Model: "claude-sonnet-4-20250514"},
-		"implement":         {Provider: "anthropic", Model: "claude-sonnet-4-20250514"},
-		"validate":          {Provider: "anthropic", Model: "claude-opus-4-20250514"},
-		"finalize":          {Provider: "anthropic", Model: "claude-haiku-4-20250506"},
-		"parallel-dispatch": {Provider: "anthropic", Model: "claude-sonnet-4-20250514"},
-	}
+	return OpenCodeModelAssignments{}
 }
 
 // OpenCodeSubAgentDescription returns a human-readable description for a sub-agent.

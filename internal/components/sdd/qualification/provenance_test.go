@@ -20,7 +20,11 @@ func TestValidateHistoricalProvenanceRejectsDuplicatesInvalidCommandsAndCountMis
 		want   string
 	}{
 		{name: "duplicate task IDs", mutate: func(p *HistoricalProvenance) { p.Records = append(p.Records, p.Records[0]) }, want: "duplicate task ID"},
-		{name: "duplicate source digests", mutate: func(p *HistoricalProvenance) { duplicate := p.Records[0]; duplicate.TaskID = "task-2"; p.Records = append(p.Records, duplicate) }, want: "duplicate source digest"},
+		{name: "duplicate source digests", mutate: func(p *HistoricalProvenance) {
+			duplicate := p.Records[0]
+			duplicate.TaskID = "task-2"
+			p.Records = append(p.Records, duplicate)
+		}, want: "duplicate source digest"},
 		{name: "invalid four-dot command", mutate: func(p *HistoricalProvenance) { p.Records[0].Green.Command = "go test ./...." }, want: "invalid Go test command"},
 		{name: "count mismatch", mutate: func(p *HistoricalProvenance) { p.ExpectedCount = 2 }, want: "record count"},
 	}
@@ -90,7 +94,7 @@ func validHistoricalProvenance() HistoricalProvenance {
 		Records: []HistoricalRecord{{
 			TaskID: "task-1", SourceID: "forgespec:task-1", SourceDigest: "sha256:one",
 			Classification: ProvenanceProven, Red: evidence("go test ./internal/example -run TestThing -count=1", 0, 1),
-			Green: evidence("go test ./internal/example -run TestThing -count=1", 2*time.Second, 0),
+			Green:    evidence("go test ./internal/example -run TestThing -count=1", 2*time.Second, 0),
 			Refactor: evidence("go test ./internal/example -run TestThing -count=1", 4*time.Second, 0),
 		}},
 		CurrentGreen: evidence("go test ./...", 6*time.Second, 0),

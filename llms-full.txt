@@ -11,7 +11,7 @@ cortex-ia detects supported coding-agent targets, compiles canonical Go workflow
 
 ## Execution profiles
 
-`portable-sequential` requires no delegation. `portable-flat` requires fresh direct-child evidence. `native-advanced` uses only independently qualified capabilities. ForgeSpec `direct-v1` requires every P0 capability; ForgeSpec 1.2.x may run only as `legacy-sequential`. Missing optional P1 file reservations forces disclosed sequential/no-concurrent-write execution.
+`portable-sequential` requires no delegation. `portable-flat` requires fresh direct-child evidence. `native-advanced` uses only independently qualified capabilities. ForgeSpec `direct-v1` requires every P0 capability; ForgeSpec 1.2.x may run only as `legacy-sequential`. Missing optional P1 file reservations forces disclosed sequential/no-concurrent-write execution. Phase routing uses versioned semantic route IDs and typed capability requirements; concrete provider/model values come only from explicit configuration or qualified discovery evidence.
 
 The orchestrator dispatches one ForgeSpec-ready bounded reference directly to `implement`. The historical `team-lead` role is retired and absent from every current profile.
 

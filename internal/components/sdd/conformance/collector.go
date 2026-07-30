@@ -22,10 +22,12 @@ const (
 )
 
 type CollectorRequest struct {
-	Root       string
-	Allowances []LegacyAllowance
-	Now        time.Time
-	Budget     int
+	Root            string
+	Allowances      []LegacyAllowance
+	CorpusAllowlist []CorpusAllowlistEntry
+	InstallCatalog  []string
+	Now             time.Time
+	Budget          int
 }
 
 type SourceViolation struct {
@@ -48,6 +50,7 @@ type RepositoryEvidence struct {
 	AllowedOccurrences int
 	Complete           bool
 	Violations         []SourceViolation
+	ActiveCorpus       CorpusScanReport
 }
 
 var forbiddenCurrentPatterns = []string{"agent-mailbox", "team-lead"}
@@ -126,6 +129,27 @@ func CollectRepository(request CollectorRequest) (RepositoryEvidence, error) {
 	})
 	if err != nil {
 		return RepositoryEvidence{}, fmt.Errorf("collect repository conformance: %w", err)
+	}
+	active, activeErr := ScanActiveCorpus(CorpusScanRequest{
+		Root: root, Allowlist: request.CorpusAllowlist, InstallCatalog: request.InstallCatalog,
+		Now: request.Now, Budget: request.Budget,
+	})
+	if activeErr != nil {
+		return RepositoryEvidence{}, activeErr
+	}
+	evidence.ActiveCorpus = active
+	evidence.Occurrences += active.Occurrences
+	evidence.AllowedOccurrences += active.AllowedOccurrences
+	for _, violation := range active.Violations {
+		evidence.Violations = append(evidence.Violations, SourceViolation{Path: violation.Path, Pattern: string(violation.Pattern), Count: violation.Count})
+	}
+	switch active.Status {
+	case EvidenceInconclusive:
+		evidence.Status = EvidenceInconclusive
+		evidence.Complete = false
+	case EvidenceFailed:
+		evidence.Status = EvidenceFailed
+		evidence.Complete = false
 	}
 	slices.Sort(records)
 	tree := sha256.Sum256([]byte(strings.Join(records, "\n")))

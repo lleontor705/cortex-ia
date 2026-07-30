@@ -7,14 +7,21 @@ var workflowVersion = ir.MustParseVersion("1.0.0")
 
 // Workflow returns a fresh copy of the canonical, runtime-neutral SDD
 // workflow. Renderers may normalize their copy but cannot mutate this source.
+//
+// Each role's input/output contracts match design §9. Multi-input phases
+// (spec, tasks, apply, verify, archive) declare all their upstream contracts
+// per ADR-06 so that the phasecontract types and the IR roles agree.
 func Workflow() ir.WorkflowIR {
 	contract := func(id ir.SemanticID) ir.Contract {
 		return ir.Contract{ID: id, SchemaVersion: ir.ContractSchema.Current, Required: true}
 	}
-	role := func(id ir.SemanticID, objective string, input, output ir.SemanticID, effects ...ir.Effect) ir.Role {
+	optionalContract := func(id ir.SemanticID) ir.Contract {
+		return ir.Contract{ID: id, SchemaVersion: ir.ContractSchema.Current, Required: false}
+	}
+	role := func(id ir.SemanticID, objective string, inputs, outputs []ir.Contract, effects ...ir.Effect) ir.Role {
 		return ir.Role{
 			ID: id, Objective: objective,
-			Inputs: []ir.Contract{contract(input)}, Outputs: []ir.Contract{contract(output)},
+			Inputs: inputs, Outputs: outputs,
 			NonGoals:       []string{"create a second mutable task or runtime authority"},
 			AllowedEffects: effects,
 			Evidence:       []ir.SemanticID{"evidence/phase-contract"},
@@ -27,15 +34,45 @@ func Workflow() ir.WorkflowIR {
 		ID:            "workflow/sdd",
 		Version:       workflowVersion,
 		Roles: []ir.Role{
-			role("role/bootstrap", "Detect project capabilities and initialize SDD context.", "contract/bootstrap-request", "contract/bootstrap-context", "filesystem/read", "filesystem/write"),
-			role("role/investigate", "Investigate the codebase and produce grounded exploration evidence.", "contract/investigation-request", "contract/exploration", "filesystem/read"),
-			role("role/draft-proposal", "Define the bounded product change and measurable outcome.", "contract/exploration", "contract/proposal"),
-			role("role/write-specs", "Express observable requirements and acceptance scenarios.", "contract/proposal", "contract/specification"),
-			role("role/architect", "Design implementation boundaries and explicit tradeoffs.", "contract/proposal", "contract/design"),
-			role("role/decompose", "Break approved design and specifications into dependency-ready work.", "contract/design", "contract/tasks"),
-			role("role/implement", "Implement one bounded vertical work unit through required evidence.", "contract/tasks", "contract/apply-progress", "filesystem/read", "filesystem/write", "process/execute"),
-			role("role/validate", "Independently validate outcomes and evidence against specifications.", "contract/apply-progress", "contract/verify-report", "filesystem/read", "process/execute"),
-			role("role/finalize", "Archive verified change evidence without changing runtime behavior.", "contract/verify-report", "contract/archive-report", "filesystem/write"),
+			role("role/bootstrap", "Detect project capabilities and initialize SDD context.",
+				[]ir.Contract{contract("contract/bootstrap-request")},
+				[]ir.Contract{contract("contract/bootstrap-context")},
+				"filesystem/read", "filesystem/write"),
+			role("role/investigate", "Investigate the codebase and produce grounded exploration evidence.",
+				[]ir.Contract{contract("contract/investigation-request"), contract("contract/bootstrap-context")},
+				[]ir.Contract{contract("contract/exploration")},
+				"filesystem/read"),
+			role("role/draft-proposal", "Define the bounded product change and measurable outcome.",
+				[]ir.Contract{contract("contract/exploration"), contract("contract/operator-input")},
+				[]ir.Contract{contract("contract/proposal")}),
+			role("role/write-specs", "Express observable requirements and acceptance scenarios.",
+				[]ir.Contract{contract("contract/proposal"), contract("contract/quality-plan")},
+				[]ir.Contract{contract("contract/specification")}),
+			role("role/architect", "Design implementation boundaries and explicit tradeoffs.",
+				[]ir.Contract{contract("contract/proposal")},
+				[]ir.Contract{contract("contract/design")}),
+			role("role/decompose", "Break approved design and specifications into dependency-ready work.",
+				[]ir.Contract{contract("contract/specification"), contract("contract/design"), contract("contract/quality-plan")},
+				[]ir.Contract{contract("contract/tasks")}),
+			role("role/implement", "Implement one bounded vertical work unit through required evidence.",
+				[]ir.Contract{
+					contract("contract/task"), contract("contract/specification"),
+					contract("contract/design"), contract("contract/quality-plan"),
+					optionalContract("contract/apply-progress"),
+				},
+				[]ir.Contract{contract("contract/apply-progress")},
+				"filesystem/read", "filesystem/write", "process/execute"),
+			role("role/validate", "Independently validate outcomes and evidence against specifications.",
+				[]ir.Contract{
+					contract("contract/specification"), contract("contract/tasks"),
+					contract("contract/quality-plan"), contract("contract/apply-progress"),
+				},
+				[]ir.Contract{contract("contract/verify-report")},
+				"filesystem/read", "process/execute"),
+			role("role/finalize", "Archive verified change evidence without changing runtime behavior.",
+				[]ir.Contract{contract("contract/verify-report"), contract("contract/lineage")},
+				[]ir.Contract{contract("contract/archive-report")},
+				"filesystem/write"),
 		},
 		Phases: []ir.Phase{
 			{ID: "phase/bootstrap", Role: "role/bootstrap"},

@@ -24,8 +24,8 @@ func TestBuildConfig_Anthropic(t *testing.T) {
 	if !strings.Contains(cfg, `PROVIDER="anthropic"`) {
 		t.Errorf("missing PROVIDER line: %s", cfg)
 	}
-	if !strings.Contains(cfg, `MODEL="claude`) {
-		t.Errorf("anthropic config should contain a default Claude MODEL: %s", cfg)
+	if strings.Contains(cfg, `MODEL=`) {
+		t.Errorf("provider-only config must not invent a MODEL: %s", cfg)
 	}
 	if strings.Contains(cfg, "API_BASE") {
 		t.Errorf("anthropic config should NOT contain API_BASE: %s", cfg)
@@ -34,11 +34,8 @@ func TestBuildConfig_Anthropic(t *testing.T) {
 
 func TestBuildConfig_Ollama(t *testing.T) {
 	cfg := string(BuildConfig("ollama"))
-	if !strings.Contains(cfg, `MODEL="llama3.2"`) {
-		t.Errorf("ollama config should default MODEL to llama3.2: %s", cfg)
-	}
-	if !strings.Contains(cfg, `API_BASE="http://localhost:11434"`) {
-		t.Errorf("ollama config should contain API_BASE: %s", cfg)
+	if strings.Contains(cfg, "MODEL=") || strings.Contains(cfg, "API_BASE=") {
+		t.Errorf("provider-only config must not invent model or endpoint: %s", cfg)
 	}
 }
 

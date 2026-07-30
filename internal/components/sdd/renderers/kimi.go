@@ -85,6 +85,10 @@ func (KimiRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bundle
 		return Bundle{}, err
 	}
 	assets = append(assets, kimiAsset(".kimi/manifests/bundle.json", "asset/kimi/manifest-bundle", AssetSchema, bundleManifest, []string{"filesystem/read"}))
+	assets, err = appendCompositionAsset(resolved, assets)
+	if err != nil {
+		return Bundle{}, err
+	}
 	return Bundle{Assets: assets}, nil
 }
 
