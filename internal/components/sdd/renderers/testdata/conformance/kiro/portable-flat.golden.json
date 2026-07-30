@@ -1,0 +1,65 @@
+{
+  "target": "kiro",
+  "fixture": "portable-flat",
+  "profile": "portable-flat",
+  "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf",
+  "portable_invariants": [
+    "1.0.0",
+    "Implement one bounded vertical work unit.",
+    "Independently validate outcomes and evidence.",
+    "blocked",
+    "contract/apply",
+    "contract/task",
+    "contract/verify",
+    "evidence/red-green-refactor",
+    "evidence/verification",
+    "failed",
+    "filesystem/read",
+    "phase/apply",
+    "phase/verify",
+    "repository_data",
+    "requirement/req-eval-001",
+    "requirement/req-gen-003",
+    "role/implement",
+    "role/validate",
+    "service/cortex",
+    "service/forgespec",
+    "success",
+    "trusted_policy",
+    "workflow/renderer-conformance"
+  ],
+  "extensions": null,
+  "degradations": [],
+  "assets": [
+    {
+      "path": "agents/implement.json",
+      "semantic_id": "kiro/agent/implement",
+      "kind": "agent",
+      "mode": "0644",
+      "permissions": [],
+      "extensions": [],
+      "sha256": "9c63d6783878ac3edd7ddb76c6c892ea243b8009653749f6d7646d57a62543e9",
+      "content": "{\n  \"name\": \"implement\",\n  \"description\": \"Implement one bounded vertical work unit.\",\n  \"prompt\": \"Objective: Implement one bounded vertical work unit.\\nAllowed effects: filesystem/read\\nTerminal states: success, blocked, failed\\nReturn a contract for the bounded work unit.\",\n  \"tools\": []\n}\n"
+    },
+    {
+      "path": "agents/validate.json",
+      "semantic_id": "kiro/agent/validate",
+      "kind": "agent",
+      "mode": "0644",
+      "permissions": [],
+      "extensions": [],
+      "sha256": "8b6d287034a003720282c5999eebe61b6379c7b2d797bfe9d7ca7187c53367bb",
+      "content": "{\n  \"name\": \"validate\",\n  \"description\": \"Independently validate outcomes and evidence.\",\n  \"prompt\": \"Objective: Independently validate outcomes and evidence.\\nAllowed effects: filesystem/read\\nTerminal states: success, failed\\nReturn a contract for the bounded work unit.\",\n  \"tools\": []\n}\n"
+    },
+    {
+      "path": "steering/cortex-ia.md",
+      "semantic_id": "kiro/instruction/workflow",
+      "kind": "instruction",
+      "mode": "0644",
+      "permissions": [],
+      "extensions": [],
+      "sha256": "0a1917b9f36c4baa4a7bd68b36e0a07c3e10e119f26ddccf1fd10cb3da82d5e3",
+      "content": "# cortex-ia workflow\n\n- Workflow: `workflow/renderer-conformance`\n- Version: `1.0.0`\n- Profile: `portable-flat`\n- Generation fingerprint: `sha256:kiro-fixture`\n- Delegation: qualified direct-child only; nested delegation is forbidden.\n\n## Flat phases\n\n- `phase/apply` delegates directly to `implement`\n- `phase/verify` delegates directly to `validate`; wait for `phase/apply`\n\nDo not claim parallel, nested, isolated-write, hook, or structured-output enforcement unless it appears as a qualified capability in the generated manifests.\n"
+    }
+  ]
+}

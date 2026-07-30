@@ -1,0 +1,32 @@
+-- .windsurf/cortex-ia-manifest.json | manifest/windsurf/disclosure | fixture | 0644 |  --
+{"schema_version":"1.0.0","workflow_id":"workflow/portable-review","workflow_version":"1.0.0","target":"windsurf","profile":"portable-sequential","generation_fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","portable_semantic_ids":["effect/repository-write","evidence/verification","phase/apply","phase/verify","profile/portable-sequential","role/implement","role/validate","service/forgespec","tool/forgespec-task","workflow/portable-review"],"roles":[{"id":"role/implement","objective":"Implement one bounded vertical work unit.","allowed_effects":["effect/repository-write"],"terminal_states":["blocked","success"]},{"id":"role/validate","objective":"Independently verify contract outcomes.","evidence":["evidence/verification"],"terminal_states":["failed","success"]}],"phases":[{"id":"phase/apply","role":"role/implement"},{"id":"phase/verify","role":"role/validate","depends_on":["phase/apply"]}],"tools":[{"id":"tool/forgespec-task","required":true}],"context_trust_classes":["repository_data","trusted_policy"],"services":[{"id":"service/forgespec","version":{"minimum":"1.0.0","maximum_tested":"1.0.0"}}],"profiles":[{"id":"profile/portable-sequential","experimental":false}],"requested_permissions":["filesystem/read","filesystem/write","mcp/forgespec"],"effective_permissions":["filesystem/read","filesystem/write","mcp/forgespec"],"capabilities":[{"id":"approval/destructive","state":"advisory","substitution":"","enforcement":"prompt","guarantee":"best-effort","permission_delta":{"added":[],"removed":[]},"reason":"Windsurf can express approval only as prompt guidance"},{"id":"coordination/task-claim","state":"emulated","substitution":"service/forgespec-claim","enforcement":"mcp","guarantee":"equivalent","permission_delta":{"added":["mcp/forgespec"],"removed":[]},"reason":"ForgeSpec remains task authority"}]}
+-- .windsurf/rules/cortex-ia.md | workflow/portable-review | rule | 0644 | filesystem/read,filesystem/write,mcp/forgespec --
+# cortex-ia workflow
+
+- Target: `windsurf`
+- Profile: `portable-sequential`
+- Workflow semantic ID: `workflow/portable-review`
+
+## Portable roles
+- `role/implement`: Implement one bounded vertical work unit.
+- `role/validate`: Independently verify contract outcomes.
+
+## Portable phases
+- `phase/apply` -> `role/implement`; depends on: none
+- `phase/verify` -> `role/validate`; depends on: `phase/apply`
+
+## Semantic tools
+- `tool/forgespec-task` (required: true)
+
+## Trust boundaries
+- `repository_data`
+- `trusted_policy`
+
+## Permission ceiling
+- `filesystem/read`
+- `filesystem/write`
+- `mcp/forgespec`
+
+## Capability disclosures
+- `approval/destructive`: state=advisory; substitution=none; enforcement=prompt; guarantee=best-effort; added=none; removed=none; reason=Windsurf can express approval only as prompt guidance
+- `coordination/task-claim`: state=emulated; substitution=`service/forgespec-claim`; enforcement=mcp; guarantee=equivalent; added=`mcp/forgespec`; removed=none; reason=ForgeSpec remains task authority

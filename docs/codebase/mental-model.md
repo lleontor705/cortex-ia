@@ -45,7 +45,7 @@ How cortex-ia works end-to-end: a user selects AI coding agents and ecosystem co
 | Component package | ComponentID | MCP server? | Purpose |
 |-------------------|-------------|-------------|---------|
 | `components/cortex` | `cortex` | Yes (Go binary) | Persistent memory + knowledge graph (19 tools) |
-| `components/mailbox` | `agent-mailbox` | Yes (npm) | Messaging, A2A tasks, resource leases, DLQ (26 tools) |
+| Historical Mailbox compatibility | retired identifier only | No current provider | Legacy decode, exact migration, rollback, operator cleanup |
 | `components/forgespec` | `forgespec` | Yes (npm) | SDD contracts, task boards, file reservations (15 tools) |
 | `components/context7` | `context7` | Yes (npm/remote) | Live framework/library docs via MCP |
 | `components/sdd` | `sdd` | — | SDD orchestrator prompt + 19 skills + commands + sub-agents |
@@ -66,12 +66,12 @@ How cortex-ia works end-to-end: a user selects AI coding agents and ecosystem co
 | Component | Depends on |
 |-----------|------------|
 | `conventions` | `cortex` |
-| `sdd` | `cortex`, `forgespec`, `agent-mailbox` |
+| `sdd` | `cortex`, `forgespec` |
 | all others | none |
 
 Presets:
 - **full** — all components in `AllComponents()`.
-- **minimal** — `cortex`, `forgespec`, `context7`, `sdd` (mailbox + conventions auto-pulled via deps).
+- **minimal** — `cortex`, `forgespec`, `context7`, `sdd` (conventions auto-pulled via deps).
 
 ## Pipeline Stages
 

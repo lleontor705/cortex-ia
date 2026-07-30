@@ -1,6 +1,6 @@
 // Package mcpinject provides shared logic for injecting MCP server configs
-// into any supported agent. Each MCP component (cortex, agent-mailbox,
-// forgespec, context7) defines its own templates and delegates to this
+// into any supported agent. Each current MCP component (cortex, forgespec,
+// context7) defines its own templates and delegates to this
 // package for the actual strategy dispatch.
 package mcpinject
 
@@ -10,13 +10,15 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/services"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
 // InjectionResult describes the outcome of an MCP injection.
 type InjectionResult struct {
-	Changed bool
-	Files   []string
+	Changed       bool
+	Files         []string
+	Compatibility CompatibilityResult
 }
 
 // ServerTemplates holds the JSON/TOML templates for a single MCP server
@@ -24,6 +26,10 @@ type InjectionResult struct {
 type ServerTemplates struct {
 	// Name is the MCP server name (e.g. "cortex", "forgespec").
 	Name string
+
+	// Service is the externally owned compatibility and authority manifest for
+	// this MCP server. cortex-ia configures the service; it does not implement it.
+	Service services.ServiceContract
 
 	// SeparateFileJSON is the standalone JSON for SeparateMCPFiles strategy (Claude Code).
 	SeparateFileJSON []byte

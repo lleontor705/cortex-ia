@@ -1,11 +1,33 @@
 package forgespec
 
-import "github.com/lleontor705/cortex-ia/internal/components/mcpinject"
+import (
+	"github.com/lleontor705/cortex-ia/internal/components/mcpinject"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/services"
+)
+
+// Contract declares ForgeSpec as the sole external authority for SDD contracts
+// and task lifecycle state. The conservative tested ceiling requires newer
+// versions to be disclosed as degraded until separately qualified.
+func Contract() services.ServiceContract {
+	version := ir.MustParseVersion("1.0.0")
+	qualified := ir.MustParseVersion("1.4.0")
+	interval := ir.VersionRange{Minimum: version, MaximumTested: qualified}
+	return services.ServiceContract{
+		SchemaVersion: version, Owner: services.OwnerForgeSpec, Authority: services.AuthorityExternalService,
+		Versions: interval, ExternalDependency: true,
+		Responsibilities: []services.Responsibility{
+			services.ResponsibilityContracts, services.ResponsibilityTaskDependencies, services.ResponsibilityTaskReadiness,
+			services.ResponsibilityTaskClaim, services.ResponsibilityTaskStatus,
+		},
+		RequiredCapabilities: []services.CapabilityRequirement{{ID: "forgespec.capabilities", Versions: interval, Upstream: true}},
+	}
+}
 
 // Templates returns the MCP server templates for forgespec-mcp.
 func Templates() mcpinject.ServerTemplates {
 	return mcpinject.ServerTemplates{
-		Name: "forgespec",
+		Name: "forgespec", Service: Contract(),
 
 		SeparateFileJSON: []byte(`{
   "command": "npx",

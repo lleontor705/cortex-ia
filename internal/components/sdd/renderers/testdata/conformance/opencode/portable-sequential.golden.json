@@ -1,0 +1,55 @@
+{
+  "target": "opencode",
+  "fixture": "portable-sequential",
+  "profile": "portable-sequential",
+  "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf",
+  "portable_invariants": [
+    "1.0.0",
+    "Implement one bounded vertical work unit.",
+    "Independently validate outcomes and evidence.",
+    "blocked",
+    "contract/apply",
+    "contract/task",
+    "contract/verify",
+    "evidence/red-green-refactor",
+    "evidence/verification",
+    "failed",
+    "filesystem/read",
+    "phase/apply",
+    "phase/verify",
+    "repository_data",
+    "requirement/req-eval-001",
+    "requirement/req-gen-003",
+    "role/implement",
+    "role/validate",
+    "service/cortex",
+    "service/forgespec",
+    "success",
+    "trusted_policy",
+    "workflow/renderer-conformance"
+  ],
+  "extensions": null,
+  "degradations": [],
+  "assets": [
+    {
+      "path": "AGENTS.md",
+      "semantic_id": "asset/opencode/instruction/root",
+      "kind": "instruction",
+      "mode": "0644",
+      "permissions": [],
+      "extensions": [],
+      "sha256": "fe55fb263f7cdae16eed75fcb58d71023d73c02a2206f8264705fdc623bd5f9f",
+      "content": "# OpenCode Workflow Bundle\n\n- Workflow: `workflow/renderer-conformance`\n- Version: `1.0.0`\n- Profile: `portable-sequential`\n- Generation fingerprint: `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`\n\n## Execution\nExecute phases sequentially. Do not delegate. Complete each phase before the next.\n\n## Phases\n- `phase/apply` -\u003e `role/implement`\n- `phase/verify` -\u003e `role/validate` (after: `phase/apply`)\n"
+    },
+    {
+      "path": "commands/run-workflow.md",
+      "semantic_id": "asset/opencode/command/workflow",
+      "kind": "command",
+      "mode": "0644",
+      "permissions": [],
+      "extensions": [],
+      "sha256": "7556076ad4d69a850874da6c49f28738538c26e408331feb388be493191fb288",
+      "content": "---\ndescription: Execute workflow/renderer-conformance using portable-sequential\n---\nExecute `workflow/renderer-conformance` phase-by-phase in deterministic dependency order.\nExecute phases sequentially. Do not delegate. Complete each phase before the next.\n"
+    }
+  ]
+}

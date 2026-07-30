@@ -1,5 +1,5 @@
 ---
-description: Implement SDD tasks — delegates to @team-lead who coordinates parallel @implement sub-agents
+description: Implement SDD tasks by routing ForgeSpec-ready work directly to @implement
 agent: orchestrator
 subtask: true
 ---
@@ -20,21 +20,18 @@ WORKFLOW:
    - `mem_search(query: "sdd/$ARGUMENTS/spec")` — recommended
    - `mem_search(query: "sdd/$ARGUMENTS/design")` — recommended
 
-3. **Delegate to @team-lead**: Launch a single team-lead agent that owns the entire apply phase:
+3. **Route ready work directly**: Query `tb_unblocked`, claim each ready bounded work unit, and launch direct-child implement agents only:
    ```
-   task(@team-lead, "
-     Execute the apply phase.
-     Change: $ARGUMENTS | Project: {project} | Board: {board_id}
+   task(@implement, "
+     Implement task {task_id}.
+     Change: $ARGUMENTS | Project: {project} | Board: {board_id} | Task: {task_id}
      artifact_store.mode: {mode}
    ")
    ```
-   The team-lead handles all group coordination, parallel @implement launches, file reservations, and retries.
+   Portable sequential runs one ready task at a time. Portable flat may launch independent ready tasks as direct children when the host runtime is qualified. Never add a nested coordinator.
 
-4. **Process report**: When team-lead returns:
+4. **Process reports**: Validate each returned apply contract, update ForgeSpec status, and query readiness again until no tasks remain:
    - Validate contract: `sdd_validate(phase: "apply", agent_output: "{output}")`
    - If success → proceed to /validate
    - If partial → present failures, ask user to retry or proceed
    - If blocked → report to user
-
-SINGLE-TASK SHORTCUT:
-If only 1 task on the board, skip @team-lead and delegate directly to @implement.

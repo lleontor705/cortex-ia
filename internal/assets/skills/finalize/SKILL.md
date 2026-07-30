@@ -353,4 +353,3 @@ Before returning your contract, confirm:
 - [ ] mem_save was called for both retrospective and archive-report with correct topic_keys
 - [ ] Contract JSON has all required fields and verification_verdict is never "fail"
 </verification>
-</output>

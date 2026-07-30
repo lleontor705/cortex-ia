@@ -47,7 +47,7 @@ func TestRenderReview_ShowsComponents(t *testing.T) {
 		Resolved: []model.ComponentID{
 			model.ComponentCortex,
 			model.ComponentSDD,
-			model.ComponentMailbox,
+			model.ComponentForgeSpec,
 		},
 	}
 	output := RenderReview(data)
@@ -55,5 +55,8 @@ func TestRenderReview_ShowsComponents(t *testing.T) {
 		if !strings.Contains(output, string(id)) {
 			t.Errorf("expected component %q in output", id)
 		}
+	}
+	if strings.Contains(output, string(model.ComponentMailbox)) {
+		t.Fatal("review renders retired Mailbox as a current component")
 	}
 }

@@ -2,25 +2,36 @@
 package kiro
 
 import (
+	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/system"
 )
 
 type Adapter struct {
-	lookPath func(string) (string, error)
-	statPath func(string) (os.FileInfo, error)
+	lookPath   func(string) (string, error)
+	statPath   func(string) (os.FileInfo, error)
+	runCommand func(context.Context, string, ...string) ([]byte, error)
+	now        func() time.Time
 }
 
 func NewAdapter() *Adapter {
 	return &Adapter{
-		lookPath: exec.LookPath,
-		statPath: os.Stat,
+		lookPath:   exec.LookPath,
+		statPath:   os.Stat,
+		runCommand: runCommand,
+		now:        time.Now,
 	}
 }
 
@@ -129,11 +140,109 @@ func (a *Adapter) kiroConfigDir(homeDir string) string {
 // --- Capabilities ---
 
 func (a *Adapter) SupportsSkills() bool        { return true }
-func (a *Adapter) SupportsSystemPrompt() bool   { return true }
-func (a *Adapter) SupportsMCP() bool            { return true }
-func (a *Adapter) SupportsSlashCommands() bool  { return false }
-func (a *Adapter) CommandsDir(_ string) string  { return "" }
+func (a *Adapter) SupportsSystemPrompt() bool  { return true }
+func (a *Adapter) SupportsMCP() bool           { return true }
+func (a *Adapter) SupportsSlashCommands() bool { return false }
+func (a *Adapter) CommandsDir(_ string) string { return "" }
 
 // --- Sub-agent capabilities ---
 
 func (a *Adapter) SupportsTaskDelegation() bool { return true }
+
+// CapabilityFacts returns conservative, evidence-backed Kiro capability
+// metadata. The installed agent schema establishes the configuration surface,
+// but runtime delegation remains experimental and advisory until the explicit
+// executable probe succeeds and the operator opts in.
+func (a *Adapter) CapabilityFacts() []capability.CapabilityFact {
+	observedAt := time.Date(2026, time.March, 5, 0, 0, 0, 0, time.UTC)
+	schemaResult := "custom agents expose delegated subagent configuration"
+	schemaDigest := sha256.Sum256([]byte(schemaResult))
+	return []capability.CapabilityFact{{
+		ID:              "delegation/direct-child",
+		Mode:            capability.CapabilityAvailable,
+		Cardinality:     capability.CardinalityMany,
+		Target:          "kiro",
+		RuntimeID:       "kiro",
+		AdapterID:       string(model.AgentKiroIDE),
+		RuntimeVersions: ir.VersionRange{Minimum: ir.MustParseVersion("1.0.0"), MaximumTested: ir.MustParseVersion("1.99.99")},
+		EvidenceClass:   capability.EvidenceInstalledSchema,
+		EvidenceRef:     "https://kiro.dev/docs/chat/subagents/",
+		ObservedAt:      observedAt,
+		FreshUntil:      time.Date(2027, time.March, 5, 0, 0, 0, 0, time.UTC),
+		Confidence:      0.85,
+		Experimental:    true,
+		Current:         true,
+		Probe: &capability.ProbeRecord{
+			ID:             "probe/kiro-agent-schema",
+			Method:         capability.ProbeProtocol,
+			Protocol:       "kiro-agent-frontmatter-schema/v1",
+			Result:         schemaResult,
+			Timestamp:      observedAt,
+			EvidenceDigest: fmt.Sprintf("sha256:%x", schemaDigest),
+		},
+		Enforcement: capability.EnforcementPrompt,
+	}}
+}
+
+// CapabilityProber exposes only qualification evidence. It does not launch,
+// schedule, or otherwise manage agents.
+func (a *Adapter) CapabilityProber() capability.Prober {
+	lookPath := a.lookPath
+	if lookPath == nil {
+		lookPath = exec.LookPath
+	}
+	runner := a.runCommand
+	if runner == nil {
+		runner = runCommand
+	}
+	now := a.now
+	if now == nil {
+		now = time.Now
+	}
+	return &kiroCapabilityProber{lookPath: lookPath, runCommand: runner, now: now}
+}
+
+type kiroCapabilityProber struct {
+	lookPath   func(string) (string, error)
+	runCommand func(context.Context, string, ...string) ([]byte, error)
+	now        func() time.Time
+}
+
+func (p *kiroCapabilityProber) Probe(ctx context.Context, request capability.ProbeRequest) (capability.ProbeResult, error) {
+	if request.Base.ID != "delegation/direct-child" {
+		return capability.ProbeResult{}, fmt.Errorf("unsupported Kiro capability probe %q", request.Base.ID)
+	}
+	binary, err := p.lookPath("kiro")
+	if err != nil {
+		return capability.ProbeResult{}, fmt.Errorf("locate Kiro executable: %w", err)
+	}
+	output, err := p.runCommand(ctx, binary, "--help")
+	if err != nil {
+		return capability.ProbeResult{}, fmt.Errorf("probe Kiro subagent support: %w", err)
+	}
+	normalized := strings.ToLower(strings.TrimSpace(string(output)))
+	if !strings.Contains(normalized, "subagent") && !strings.Contains(normalized, "sub-agent") {
+		return capability.ProbeResult{}, fmt.Errorf("kiro help does not advertise subagent support")
+	}
+
+	refined := request.Base
+	refined.Mode = capability.CapabilityAvailable
+	refined.Cardinality = capability.CardinalityMany
+	refined.Enforcement = capability.EnforcementRuntime
+	digest := sha256.Sum256([]byte(normalized))
+	return capability.ProbeResult{
+		Record: capability.ProbeRecord{
+			ID:             "probe/kiro-subagent-help",
+			Method:         capability.ProbeCommand,
+			Command:        "kiro --help",
+			Result:         "subagent capability advertised",
+			Timestamp:      p.now().UTC(),
+			EvidenceDigest: fmt.Sprintf("sha256:%x", digest),
+		},
+		Refined: refined,
+	}, nil
+}
+
+func runCommand(ctx context.Context, binary string, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, binary, args...).Output()
+}

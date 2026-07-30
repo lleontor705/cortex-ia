@@ -82,7 +82,7 @@ cortex-ia profiles list
 cortex-ia profiles delete cheap
 ```
 
-Profile values may be either a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`) or a fully-qualified `provider/model` string. `apply` writes them to the real SDD agent entries in `opencode.json` (`architect`, `decompose`, `team-lead`, `implement`, etc.). The `sdd-apply` phase maps to both `team-lead` and `implement`.
+Profile values may be either a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`) or a fully-qualified `provider/model` string. `apply` writes them to direct SDD agent entries in `opencode.json` (`architect`, `decompose`, `implement`, etc.). The historical `team-lead` entry is retired and removed.
 
 ### Agent Builder
 
@@ -161,8 +161,6 @@ model-preset: balanced
 agents:
   - claude-code
   - opencode
-disabled-components:
-  - mailbox
 custom-skills:
   - path: ./skills/domain-validator
 ```
@@ -198,7 +196,7 @@ cortex-ia persists installation state at `~/.cortex-ia/state.json`:
 {
   "installed_agents": ["claude-code", "opencode"],
   "preset": "full",
-  "components": ["cortex", "forgespec", "agent-mailbox", "context7", "conventions", "sdd"],
+  "components": ["cortex", "forgespec", "context7", "conventions", "sdd", "skills"],
   "last_install": "2026-03-31T00:00:00Z",
   "last_backup_id": "20260331-000000",
   "version": "0.2.0"
@@ -256,9 +254,9 @@ Default retention is **5 unpinned backups** (`backup.DefaultRetentionCount`). `P
 Uses Kahn's algorithm (topological sort) with parallel group detection:
 
 ```
-Level 0 (parallel): cortex, forgespec, mailbox, context7, skills
+Level 0 (parallel): cortex, forgespec, context7, skills
 Level 1 (after cortex): conventions
-Level 2 (after cortex+forgespec+mailbox): sdd
+Level 2 (after cortex+forgespec): sdd
 ```
 
 ## Idempotency

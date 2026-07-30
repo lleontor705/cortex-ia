@@ -1,6 +1,8 @@
 <!-- cortex-ia:cortex-protocol -->
 ## Cortex Persistent Memory — Protocol
 
+> **IMPORTANT**: Cortex and Engram refer to the same persistent memory system. The tools (`mem_save`, `mem_search`, etc.) are identical. "Cortex" is the current name; "Engram" is a legacy alias retained for backward compatibility with existing agent configurations.
+
 You have access to Cortex, a persistent memory system with knowledge graph capabilities that survives across sessions and compactions.
 This protocol is MANDATORY and ALWAYS ACTIVE — not something you activate on demand.
 

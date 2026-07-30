@@ -44,9 +44,13 @@ func ComposePrompt(
 		sb.WriteString("## SDD integration\n")
 		switch sdd.Mode {
 		case SDDStandalone, SDDFull:
-			sb.WriteString("Standalone — the skill is loaded on its own trigger; it can ")
-			sb.WriteString("call cortex (`mem_save`, `mem_search`) and forgespec tools ")
-			sb.WriteString("(`forgespec_proposal_*`, `forgespec_spec_*`) when useful.\n\n")
+		sb.WriteString("Standalone — the skill is loaded on its own trigger; it can ")
+		sb.WriteString("call cortex memory tools (`mem_save`, `mem_search`, ")
+		sb.WriteString("`mem_get_observation`, `mem_relate`, `mem_graph`), forgespec ")
+		sb.WriteString("tools (`sdd_validate`, `sdd_save`, `sdd_list`, `sdd_get`, ")
+		sb.WriteString("`tb_create_board`, `tb_status`, `tb_claim`, `tb_update`, ")
+		sb.WriteString("`tb_get`, `tb_unblocked`, `file_reserve`, `file_release`) ")
+		sb.WriteString("when useful.\n\n")
 		case SDDPhaseSupport:
 			fmt.Fprintf(&sb,
 				"Phase-support — augments the existing SDD phase %q. "+

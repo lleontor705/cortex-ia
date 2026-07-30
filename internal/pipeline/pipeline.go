@@ -1,10 +1,12 @@
 package pipeline
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
@@ -15,13 +17,14 @@ import (
 	cortexcomp "github.com/lleontor705/cortex-ia/internal/components/cortex"
 	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
 	ggacomp "github.com/lleontor705/cortex-ia/internal/components/gga"
-	"github.com/lleontor705/cortex-ia/internal/components/mailbox"
 	"github.com/lleontor705/cortex-ia/internal/components/persona"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
+	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	skillscomp "github.com/lleontor705/cortex-ia/internal/components/skills"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/opencode"
 	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/internal/verify"
 )
 
 // validBackupID matches safe backup IDs (alphanumeric, hyphens, underscores).
@@ -33,10 +36,16 @@ type ProgressFunc func(stepID string, status string, err error)
 
 // InstallResult describes the outcome of a full installation.
 type InstallResult struct {
-	BackupID       string
-	FilesChanged   []string
-	ComponentsDone []model.ComponentID
-	Errors         []string
+	BackupID            string
+	FilesChanged        []string
+	ComponentsDone      []model.ComponentID
+	Errors              []string
+	WorkflowFingerprint string
+	WorkflowPlan        sddinstall.Plan
+	WorkflowDoctor      verify.DoctorReport
+	WorkflowReceipt     sddinstall.Receipt
+	WorkflowCutover     forgespeccomp.ForgeSpecResolution
+	WorkflowRollback    bool
 }
 
 // Repair reapplies the previously installed configuration from lock/state metadata.
@@ -104,6 +113,9 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 	}
 
 	result := InstallResult{}
+	if err := selection.ValidateCurrent(); err != nil {
+		return result, err
+	}
 
 	// Resolve profile if specified.
 	if selection.ProfileName != "" && selection.ModelAssignments == nil {
@@ -124,6 +136,28 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		components = catalog.ComponentsForPreset(selection.Preset)
 	}
 	resolved := catalog.ResolveDeps(components)
+	var preparedWorkflow PreparedWorkflowInstall
+	if slicesContainsComponent(resolved, model.ComponentSDD) {
+		adapters := make([]agents.Adapter, 0, len(selection.Agents))
+		for _, agentID := range selection.Agents {
+			adapter, getErr := registry.Get(agentID)
+			if getErr != nil {
+				return result, getErr
+			}
+			adapters = append(adapters, adapter)
+		}
+		var prepareErr error
+		preparedWorkflow, prepareErr = PrepareWorkflow(context.Background(), WorkflowRequest{
+			HomeDir: homeDir, Adapters: adapters, GeneratorVersion: version,
+		})
+		if prepareErr != nil {
+			return result, prepareErr
+		}
+		result.WorkflowFingerprint = preparedWorkflow.Fingerprint
+		result.WorkflowPlan = preparedWorkflow.Plan
+		result.WorkflowDoctor = preparedWorkflow.Doctor
+		result.WorkflowCutover = preparedWorkflow.Cutover
+	}
 
 	if dryRun {
 		if progress == nil {
@@ -160,6 +194,19 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 	}
 
 	var allComponentSteps []*componentStep
+	var workflowOnce sync.Once
+	var workflowFiles []string
+	var workflowErr error
+	applyWorkflow := func() ([]string, error) {
+		workflowOnce.Do(func() {
+			receipt, applyErr := preparedWorkflow.Apply()
+			result.WorkflowReceipt = receipt
+			result.WorkflowRollback = receipt.RestoreAvailable && receipt.BackupVerified
+			workflowFiles = append(workflowFiles, receipt.Applied...)
+			workflowErr = applyErr
+		})
+		return workflowFiles, workflowErr
+	}
 
 	// Build one sequential step chain per agent. Each chain applies
 	// components in dependency order for that agent.
@@ -174,7 +221,7 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 			fmt.Printf("\nConfiguring %s...\n", agentID)
 		}
 		var chain []Step
-		for _, inj := range buildInjectors(homeDir, adapter, selection) {
+		for _, inj := range buildInjectors(homeDir, adapter, selection, applyWorkflow, componentSet[model.ComponentSDD]) {
 			if !componentSet[inj.id] {
 				continue
 			}
@@ -314,14 +361,11 @@ type injectorEntry struct {
 }
 
 // buildInjectors returns the ordered list of component injectors for an agent.
-func buildInjectors(homeDir string, adapter agents.Adapter, selection model.Selection) []injectorEntry {
-	return []injectorEntry{
+func buildInjectors(homeDir string, adapter agents.Adapter, selection model.Selection, applyWorkflow func() ([]string, error), workflowOwnership ...bool) []injectorEntry {
+	workflowOwnsInstructions := len(workflowOwnership) != 0 && workflowOwnership[0]
+	entries := []injectorEntry{
 		{model.ComponentCortex, func() ([]string, error) {
 			r, err := cortexcomp.Inject(homeDir, adapter)
-			return r.Files, err
-		}},
-		{model.ComponentMailbox, func() ([]string, error) {
-			r, err := mailbox.Inject(homeDir, adapter)
 			return r.Files, err
 		}},
 		{model.ComponentForgeSpec, func() ([]string, error) {
@@ -332,13 +376,8 @@ func buildInjectors(homeDir string, adapter agents.Adapter, selection model.Sele
 			r, err := context7.Inject(homeDir, adapter)
 			return r.Files, err
 		}},
-		{model.ComponentConventions, func() ([]string, error) {
-			r, err := conventions.Inject(homeDir, adapter)
-			return r.Files, err
-		}},
 		{model.ComponentSDD, func() ([]string, error) {
-			r, err := sdd.Inject(homeDir, adapter, selection.ModelAssignments, selection.StrictTDD)
-			return r.Files, err
+			return applyWorkflow()
 		}},
 		{model.ComponentSkills, func() ([]string, error) {
 			r, err := skillscomp.Inject(homeDir, adapter, selection.CommunitySkills)
@@ -349,6 +388,22 @@ func buildInjectors(homeDir string, adapter agents.Adapter, selection model.Sele
 			return r.Files, err
 		}},
 	}
+	if !workflowOwnsInstructions {
+		entries = append(entries, injectorEntry{model.ComponentConventions, func() ([]string, error) {
+			r, err := conventions.Inject(homeDir, adapter)
+			return r.Files, err
+		}})
+	}
+	return entries
+}
+
+func slicesContainsComponent(components []model.ComponentID, target model.ComponentID) bool {
+	for _, component := range components {
+		if component == target {
+			return true
+		}
+	}
+	return false
 }
 
 func collectBackupPaths(homeDir string, registry *agents.Registry, agentIDs []model.AgentID, components []model.ComponentID) []string {
@@ -422,6 +477,9 @@ func selectionFromMetadata(s state.State, lock state.Lockfile) (model.Selection,
 
 	if len(selection.Agents) == 0 {
 		return model.Selection{}, fmt.Errorf("no cortex-ia installation metadata found")
+	}
+	if err := selection.ValidateCurrent(); err != nil {
+		return model.Selection{}, fmt.Errorf("repair selection: %w", err)
 	}
 
 	return selection, nil

@@ -11,8 +11,8 @@ If you read only one page: [mental-model.md](codebase/mental-model.md).
 | 1 | [mental-model.md](codebase/mental-model.md) | End-to-end data flow: selection → catalog → pipeline → injection |
 | 2 | [repository-map.md](codebase/repository-map.md) | Directory-by-directory map of the source tree |
 | 3 | [interfaces.md](codebase/interfaces.md) | Module boundaries defined by Go interfaces and types |
-| 4 | [mcp-boundaries.md](codebase/mcp-boundaries.md) | The four MCP servers (Cortex, Mailbox, ForgeSpec, Context7) |
-| 5 | [sdd-coordination.md](codebase/sdd-coordination.md) | Multi-agent SDD pipeline, messaging, A2A, file reservations |
+| 4 | [mcp-boundaries.md](codebase/mcp-boundaries.md) | ForgeSpec, Cortex, and runtime-native authority boundaries |
+| 5 | [sdd-coordination.md](codebase/sdd-coordination.md) | Direct SDD dispatch and qualified file reservations |
 | 6 | [dashboard.md](codebase/dashboard.md) | Bubbletea TUI architecture and the 28-screen router |
 | 7 | [sync-and-cloud.md](codebase/sync-and-cloud.md) | State management, backup, local sync, cloud roadmap |
 | 8 | [integrations.md](codebase/integrations.md) | GoReleaser, GitHub Actions, install scripts, Homebrew |
@@ -36,8 +36,8 @@ Newcomers should read top to bottom. Jump in anywhere if you know what you need.
 |---|------|-------------------|----------|
 | 1 | [mental-model.md](codebase/mental-model.md) | End-to-end flow: selection → catalog → pipeline → agent injection | Newcomer |
 | 2 | [repository-map.md](codebase/repository-map.md) | Directory-by-directory map of the codebase | Newcomer |
-| 3 | [mcp-boundaries.md](codebase/mcp-boundaries.md) | The four MCP servers: Cortex, Mailbox, ForgeSpec, Context7 | Newcomer, Contributor |
-| 4 | [sdd-coordination.md](codebase/sdd-coordination.md) | Multi-agent SDD pipeline, P2P messaging, A2A, file reservations | Contributor, Maintainer |
+| 3 | [mcp-boundaries.md](codebase/mcp-boundaries.md) | ForgeSpec, Cortex, and runtime transport | Newcomer, Contributor |
+| 4 | [sdd-coordination.md](codebase/sdd-coordination.md) | Direct dispatch and qualified file reservations | Contributor, Maintainer |
 | 5 | [interfaces.md](codebase/interfaces.md) | Key Go interfaces and types defining module boundaries | Contributor |
 | 6 | [sync-and-cloud.md](codebase/sync-and-cloud.md) | State management, backup, local sync, cloud roadmap | Maintainer |
 | 7 | [dashboard.md](codebase/dashboard.md) | Bubbletea TUI architecture, 28-screen router | Contributor |

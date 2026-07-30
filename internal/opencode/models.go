@@ -202,9 +202,14 @@ func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssign
 	if !ok {
 		agentSection = make(map[string]interface{})
 	}
+	delete(agentSection, "team-lead")
+	delete(agentSection, "sdd-team-lead")
 
 	// Apply model assignments to each agent
 	for agentName, assignment := range assignments {
+		if strings.TrimPrefix(agentName, "sdd-") == "team-lead" {
+			continue
+		}
 		modelStr := assignment.FormatOpenCodeModel()
 		if modelStr == "" {
 			continue

@@ -247,4 +247,3 @@ After completing a parallel dispatch, confirm all of the following:
 - [ ] Final report to user covers: what was dispatched, what each agent found, overall result
 
 </verification>
-</output>

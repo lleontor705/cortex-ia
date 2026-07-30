@@ -1,0 +1,29 @@
+--- agents/implement.json 0644 kiro/agent/implement agent
+{
+  "name": "implement",
+  "description": "Implement one bounded work unit",
+  "prompt": "Objective: Implement one bounded work unit\nAllowed effects: effect/filesystem-write\nTerminal states: success, blocked, failed\nReturn a contract for the bounded work unit.",
+  "tools": []
+}
+--- agents/validate.json 0644 kiro/agent/validate agent
+{
+  "name": "validate",
+  "description": "Independently verify contract outcomes",
+  "prompt": "Objective: Independently verify contract outcomes\nAllowed effects: effect/filesystem-read\nTerminal states: success, failed\nReturn a contract for the bounded work unit.",
+  "tools": []
+}
+--- steering/cortex-ia.md 0644 kiro/instruction/workflow instruction
+# cortex-ia workflow
+
+- Workflow: `workflow/sdd`
+- Version: `1.0.0`
+- Profile: `portable-flat`
+- Generation fingerprint: `sha256:kiro-fixture`
+- Delegation: qualified direct-child only; nested delegation is forbidden.
+
+## Flat phases
+
+- `phase/implement` delegates directly to `implement`
+- `phase/validate` delegates directly to `validate`; wait for `phase/implement`
+
+Do not claim parallel, nested, isolated-write, hook, or structured-output enforcement unless it appears as a qualified capability in the generated manifests.

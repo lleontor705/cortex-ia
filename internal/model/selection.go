@@ -12,3 +12,9 @@ type Selection struct {
 	StrictTDD        bool             // when true, enforce test-first development in SDD
 	CommunitySkills  []SkillID        // community skills selected for installation
 }
+
+// ValidateCurrent rejects compatibility-only identifiers before a selection
+// reaches dependency resolution or any mutation boundary.
+func (s Selection) ValidateCurrent() error {
+	return ValidateCurrentComponents(s.Components)
+}

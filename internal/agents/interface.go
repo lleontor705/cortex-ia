@@ -1,9 +1,18 @@
 package agents
 
 import (
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/system"
 )
+
+// CapabilityProvider is the optional capability qualification surface exposed
+// by adapters. It deliberately contains no scheduler, launcher, or runtime-
+// state API; external runtimes remain responsible for execution.
+type CapabilityProvider interface {
+	CapabilityFacts() []capability.CapabilityFact
+	CapabilityProber() capability.Prober
+}
 
 // Adapter is the core abstraction for AI agent integration. Components use
 // adapter methods instead of switch statements on AgentID, making it trivial
@@ -24,6 +33,11 @@ type Adapter interface {
 	SettingsPath(homeDir string) string
 
 	// Config strategies — HOW to inject content, not WHERE (that's paths above).
+
+	// SystemPromptStrategy returns how the agent's system prompt file should be modified.
+	// Currently, all strategies use InjectMarkdownSection (marker-based injection) which
+	// works universally with any Markdown file. The strategy field is metadata for future
+	// use if an agent requires a different injection mechanism.
 	SystemPromptStrategy() model.SystemPromptStrategy
 	MCPStrategy() model.MCPStrategy
 

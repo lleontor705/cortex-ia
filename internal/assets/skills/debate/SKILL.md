@@ -167,9 +167,11 @@ mem_save(
 )
 ```
 
-Validate and persist the contract:
-1. `sdd_validate(phase: "explore", contract: {json})` → validate debate contract
-2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+Self-check the contract before returning:
+- 2-4 positions were defined and each had a dedicated defender agent
+- 3 rounds completed; synthesis identifies surviving and debunked arguments
+- No fabricated fields; dissenting points are preserved
+- Return the contract to the caller (do NOT persist to ForgeSpec)
 </steps>
 
 <output>
@@ -178,7 +180,7 @@ Validate and persist the contract:
 ```json
 {
   "schema_version": "1.0",
-  "phase": "explore",
+  "phase": "debate",
   "change_name": "{change-name}",
   "project": "{project}",
   "status": "success",
@@ -257,16 +259,11 @@ After synthesis:
 - [ ] Synthesis identifies surviving arguments and debunked claims
 - [ ] Dissenting points are preserved in the output
 - [ ] Debate results persisted to Cortex
-- [ ] Contract validated and saved to ForgeSpec history
 - [ ] Contract JSON is valid and complete
 - [ ] SDD-CONTRACT JSON includes artifacts_saved, next_recommended, and risks fields
-- [ ] `sdd_validate()` was called and passed
-- [ ] `sdd_save()` persisted the contract to ForgeSpec history
 </verification>
 
 <mcp_integration>
 ## Contract Persistence (ForgeSpec)
-After persisting debate results:
-1. `sdd_validate(phase: "explore", contract: {json})` → validate debate contract
-2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+Debate is an optional cross-phase utility, not a standard SDD pipeline phase. Do NOT call `sdd_validate` or `sdd_save` — these would pollute the SDD phase history. The contract JSON is returned to the caller as a self-check report only; it is not persisted to ForgeSpec.
 </mcp_integration>

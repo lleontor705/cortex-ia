@@ -59,7 +59,6 @@ var markersByComponent = map[model.ComponentID][]string{
 var mcpServerNamesByComponent = map[model.ComponentID]string{
 	model.ComponentCortex:    "cortex",
 	model.ComponentForgeSpec: "forgespec",
-	model.ComponentMailbox:   "agent-mailbox",
 	model.ComponentContext7:  "context7",
 }
 

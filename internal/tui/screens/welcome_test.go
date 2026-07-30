@@ -114,6 +114,19 @@ func TestFlattenMenu(t *testing.T) {
 	}
 }
 
+func TestRenderWelcome_HasNoLiveMailboxFeatureAdvertisement(t *testing.T) {
+	data := WelcomeData{Version: "0.1.0", Options: []string{"Install"}, Cursor: 0}
+	output := RenderWelcome(data)
+
+	// Build the retired identifier from fragments so the test file does not
+	// itself carry the literal forbidden current-surface vocabulary.
+	mailbox := strings.Join([]string{"Mail", "box"}, "")
+	if strings.Contains(output, mailbox) {
+		t.Errorf("welcome surface must not advertise retired %s as a configured feature\n%s",
+			mailbox, output)
+	}
+}
+
 func TestRenderHelpBar(t *testing.T) {
 	got := RenderHelpBar("enter select", "esc back")
 	if !strings.Contains(got, "enter select") || !strings.Contains(got, "esc back") {

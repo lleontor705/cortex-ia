@@ -97,9 +97,8 @@ func TestYAMLProfile_FlowsThroughInstallToOpencodeJSON(t *testing.T) {
 	if design == nil || design["model"] != "openai/gpt-4o-mini" {
 		t.Errorf("architect.model = %v, want openai/gpt-4o-mini\n%s", design, string(data))
 	}
-	apply, _ := agentSection["team-lead"].(map[string]any)
-	if apply == nil || apply["model"] != "anthropic/claude-haiku-4-5" {
-		t.Errorf("team-lead.model = %v\n%s", apply, string(data))
+	if _, exists := agentSection["team-lead"]; exists {
+		t.Errorf("portable install must not create team-lead\n%s", string(data))
 	}
 	worker, _ := agentSection["implement"].(map[string]any)
 	if worker == nil || worker["model"] != "anthropic/claude-haiku-4-5" {

@@ -62,7 +62,7 @@ mem_session_end(id: "{session-id}", summary: "{brief}")
 - `mem_delete(id, hard_delete: true)` — permanent deletion (admin only)
 - `mem_suggest_topic_key(type, title)` — get recommended topic_key for new observations
 
-## Temporal Tools (Experimental — Cortex v0.2.1+)
+## Temporal Tools (Experimental)
 
 Available when Cortex is configured with temporal/metrics repositories:
 

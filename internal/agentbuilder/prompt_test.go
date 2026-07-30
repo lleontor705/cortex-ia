@@ -71,3 +71,44 @@ func TestComposePrompt_ModelHints(t *testing.T) {
 		t.Errorf("model hint not injected: %s", p)
 	}
 }
+
+func TestComposePrompt_StandaloneHasNoMailboxOrMessagingToolAdvertisement(t *testing.T) {
+	p := ComposePrompt("x", &SDDIntegration{Mode: SDDStandalone}, nil, "", nil)
+
+	// Positive: supported Cortex + ForgeSpec guidance MUST remain present.
+	for _, want := range []string{
+		"cortex memory tools",
+		"forgespec",
+		"mem_save",
+		"sdd_validate",
+		"tb_create_board",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("supported guidance %q must remain in prompt:\n%s", want, p)
+		}
+	}
+
+	// Forbidden (REQ-CTX-001, REQ-TOOL-001): retired Mailbox surface and the
+	// messaging / A2A / lease / dead-letter tool families. Tokens are assembled
+	// from fragments so this test file does not itself carry literal forbidden
+	// current-surface vocabulary.
+	forbidden := []string{
+		strings.Join([]string{"mai", "lbox"}, ""),              // Mailbox
+		strings.Join([]string{"ms", "g_send"}, ""),             // msg_send
+		strings.Join([]string{"ms", "g_broadcast"}, ""),
+		strings.Join([]string{"ms", "g_request"}, ""),
+		strings.Join([]string{"ms", "g_read_inbox"}, ""),
+		strings.Join([]string{"a2", "a_submit_task"}, ""),      // a2a_submit_task
+		strings.Join([]string{"a2", "a_respond_task"}, ""),
+		strings.Join([]string{"resour", "ce_acquire"}, ""),     // resource_acquire
+		strings.Join([]string{"resour", "ce_release"}, ""),
+		strings.Join([]string{"dl", "q_list"}, ""),             // dlq_list
+		strings.Join([]string{"dl", "q_retry"}, ""),
+	}
+	lower := strings.ToLower(p)
+	for _, tok := range forbidden {
+		if strings.Contains(lower, tok) {
+			t.Errorf("prompt must not advertise forbidden tool-family token %q:\n%s", tok, p)
+		}
+	}
+}

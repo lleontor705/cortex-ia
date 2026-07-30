@@ -1,0 +1,51 @@
+{
+  "target": "kiro",
+  "fixture": "portable-sequential",
+  "profile": "portable-sequential",
+  "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf",
+  "portable_invariants": [
+    "1.0.0",
+    "Implement one bounded vertical work unit.",
+    "Independently validate outcomes and evidence.",
+    "blocked",
+    "contract/apply",
+    "contract/task",
+    "contract/verify",
+    "evidence/red-green-refactor",
+    "evidence/verification",
+    "failed",
+    "filesystem/read",
+    "phase/apply",
+    "phase/verify",
+    "repository_data",
+    "requirement/req-eval-001",
+    "requirement/req-gen-003",
+    "role/implement",
+    "role/validate",
+    "service/cortex",
+    "service/forgespec",
+    "success",
+    "trusted_policy",
+    "workflow/renderer-conformance"
+  ],
+  "extensions": null,
+  "degradations": [
+    {
+      "capability": "delegation/direct-child",
+      "state": "unsupported",
+      "reason": "no qualified executable evidence"
+    }
+  ],
+  "assets": [
+    {
+      "path": "steering/cortex-ia.md",
+      "semantic_id": "kiro/instruction/workflow",
+      "kind": "instruction",
+      "mode": "0644",
+      "permissions": [],
+      "extensions": [],
+      "sha256": "c3c15ae43d8005bf9124f712e71cb5c316a55b80bdc3874feb4d7b26c4612395",
+      "content": "# cortex-ia workflow\n\n- Workflow: `workflow/renderer-conformance`\n- Version: `1.0.0`\n- Profile: `portable-sequential`\n- Generation fingerprint: `sha256:kiro-fixture`\n- Delegation: disabled; phases execute sequentially in dependency order because Kiro direct-child delegation is not qualified (no qualified executable evidence).\n\n## Sequential phases\n\n1. `phase/apply` — role `role/implement`: Implement one bounded vertical work unit.\n2. `phase/verify` — role `role/validate`: Independently validate outcomes and evidence.; depends on `phase/apply`\n\nDo not claim parallel, nested, isolated-write, hook, or structured-output enforcement unless it appears as a qualified capability in the generated manifests.\n"
+    }
+  ]
+}

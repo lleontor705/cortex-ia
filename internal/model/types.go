@@ -46,25 +46,25 @@ const (
 type SkillID string
 
 const (
-	SkillSDDInit      SkillID = "sdd-init"
-	SkillSDDExplore   SkillID = "sdd-explore"
-	SkillSDDPropose   SkillID = "sdd-propose"
-	SkillSDDSpec      SkillID = "sdd-spec"
-	SkillSDDDesign    SkillID = "sdd-design"
-	SkillSDDTasks     SkillID = "sdd-tasks"
-	SkillSDDApply     SkillID = "sdd-apply"
-	SkillSDDVerify    SkillID = "sdd-verify"
-	SkillSDDArchive   SkillID = "sdd-archive"
-	SkillTeamLead     SkillID = "team-lead"
-	SkillDebug        SkillID = "debug"
-	SkillIdeate       SkillID = "ideate"
-	SkillDebate       SkillID = "debate"
-	SkillMonitor      SkillID = "monitor"
-	SkillExecutePlan  SkillID = "execute-plan"
-	SkillOpenPR       SkillID = "open-pr"
-	SkillFileIssue    SkillID = "file-issue"
-	SkillScanRegistry SkillID = "scan-registry"
-	SkillJudgmentDay  SkillID = "judgment-day"
+	SkillSDDInit          SkillID = "sdd-init"
+	SkillSDDExplore       SkillID = "sdd-explore"
+	SkillSDDPropose       SkillID = "sdd-propose"
+	SkillSDDSpec          SkillID = "sdd-spec"
+	SkillSDDDesign        SkillID = "sdd-design"
+	SkillSDDTasks         SkillID = "sdd-tasks"
+	SkillSDDApply         SkillID = "sdd-apply"
+	SkillSDDVerify        SkillID = "sdd-verify"
+	SkillSDDArchive       SkillID = "sdd-archive"
+	SkillDebug            SkillID = "debug"
+	SkillIdeate           SkillID = "ideate"
+	SkillDebate           SkillID = "debate"
+	SkillMonitor          SkillID = "monitor"
+	SkillExecutePlan      SkillID = "execute-plan"
+	SkillOpenPR           SkillID = "open-pr"
+	SkillFileIssue        SkillID = "file-issue"
+	SkillScanRegistry     SkillID = "scan-registry"
+	SkillJudgmentDay      SkillID = "judgment-day"
+	SkillParallelDispatch SkillID = "parallel-dispatch"
 
 	// Skills ported from gentle-ai in the port-gentle-ai-patterns change.
 	SkillWorkUnitCommits SkillID = "work-unit-commits"
@@ -153,9 +153,9 @@ type Profile struct {
 
 // OpenCodeProvider represents a detected provider with its models.
 type OpenCodeProvider struct {
-	ID     string           `json:"id"`
-	Name   string           `json:"name"`
-	Models []OpenCodeModel  `json:"models"`
+	ID     string          `json:"id"`
+	Name   string          `json:"name"`
+	Models []OpenCodeModel `json:"models"`
 }
 
 // OpenCodeModel represents a model available in OpenCode.
@@ -193,7 +193,6 @@ func OpenCodeSubAgents() []string {
 		"write-specs",
 		"architect",
 		"decompose",
-		"team-lead",
 		"implement",
 		"validate",
 		"finalize",

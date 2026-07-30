@@ -1,6 +1,57 @@
 # Agent Reference
 
-cortex-ia supports 12 AI coding agents. Each agent has a dedicated adapter that knows its config paths, MCP strategy, and capabilities.
+cortex-ia supports 12 AI coding agent targets. Each adapter reports evidence-backed capability facts and renders only the profile that the compiler qualifies. Configuration surface does not by itself prove runtime enforcement.
+
+## Manifest-Backed Support Matrix
+
+This matrix mirrors `internal/components/sdd/renderers/testdata/conformance/index.golden.json`. “Tested” means the repository has a deterministic renderer/conformance fixture with the same portable semantic digest. It does not claim universal behavior across every runtime version, model, host, or account tier.
+
+| Target | Sequential | Flat | Native advanced | Qualification note |
+|--------|:----------:|:----:|:---------------:|--------------------|
+| Antigravity | ✅ | — | qualified fixture* | Experimental native requires explicit opt-in |
+| Claude Code | ✅ | ✅ | qualified fixture* | Flat proves direct-child only; native adds only manifested qualified capabilities |
+| Codex | ✅ | ✅ | qualified fixture* | Stronger profiles remain version/evidence bounded |
+| Cursor | ✅ | — | qualified fixture* | No portable-flat fixture is advertised |
+| Gemini CLI | ✅ | ✅ | qualified fixture* | Native requires its target-specific qualification |
+| Kilocode | ✅ | ✅ | — | No native fixture advertised |
+| Kimi Code | ✅ | ✅ | — | No native fixture advertised |
+| Kiro IDE | ✅ | ✅ | — | Native guarantees are not advertised |
+| OpenCode | ✅ | ✅ | qualified fixture* | Experimental native extension remains default-off |
+| Qwen Code | ✅ | ✅ | — | No native fixture advertised |
+| VS Code Copilot | ✅ | advisory only | — | Direct-child preview is documentation/prompt-backed and stays sequential |
+| Windsurf | ✅ | — | — | Sequential is the only advertised profile |
+
+Profile rules:
+
+- `portable-sequential` requires no delegation.
+- `portable-flat` requires fresh runtime-enforced direct-child evidence and never assumes nested delegation.
+- `native-advanced` requires all requested native capabilities to be qualified. Every experimental native capability additionally requires **explicit operator opt-in** and is never selected implicitly.
+- Missing, stale, documentation-only, or prompt-only evidence degrades conservatively and appears in machine/human manifests.
+
+## What the Manifests Guarantee
+
+Generated bundles expose semantic, security, and degradation information in runtime-appropriate paths. The manifests record the target/profile, schema/compiler/workflow/catalog versions, generation fingerprint, evidence freshness and experimental status, four-state resolutions, enforcement class, substitutions, requested/effective permissions, approval/isolation intent, trust boundaries, opaque secret references, external services/version intervals, hashes, validation findings, and visible degradations.
+
+Capability state and enforcement are separate:
+
+| Capability state | Meaning |
+|------------------|---------|
+| `native` | The selected binding is target-native for the qualified interval |
+| `emulated` | A named substitute preserves the declared outcome and consequence is disclosed |
+| `advisory` | Guidance exists, but cortex-ia does not claim enforcement |
+| `unsupported` | Required use blocks; optional use needs a declared degradation |
+
+Enforcement is classified as `runtime`, `hook`, `mcp`, `prompt`, or `none`. A prompt is advisory; manifest validation rejects prompt-only “enforced” claims and silent permission widening.
+
+## Service Ownership and Runtime Limits
+
+- **ForgeSpec** is the upstream authority for SDD contracts and task dependencies/readiness/claim/status. Its transactional task capability is a versioned external dependency, not cortex-ia code.
+- **Cortex** owns durable memory, evidence, provenance, and relationships.
+- The retired historical Agent Mailbox provider has no current role; provider-neutral remote A2A is unsupported and unbound.
+- External Mailbox data is never automatically mutated or deleted; cleanup is operator-controlled.
+- **cortex-ia** configures these services and compiles/installs their calls. It does not schedule tasks, launch workers, own live runs, or migrate runtime state.
+
+Runtime-native state may optimize execution but remains non-authoritative unless an explicit ForgeSpec binding maps it. Credentialed runtime qualification is opt-in, isolated, budgeted, redacted, and attributable; fewer than three valid trials or any flaky/insufficient evidence remains inconclusive.
 
 ## Claude Code
 

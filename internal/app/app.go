@@ -143,13 +143,12 @@ Usage:
   cortex-ia help             Show this help
 
 Presets:
-  full      All 8 components (default)
+  full      All 7 components (default)
   minimal   Cortex + ForgeSpec + Context7 + SDD
   custom    Select components manually (TUI)
 
 Components:
   cortex           Persistent cross-session memory (19 MCP tools)
-  agent-mailbox    Inter-agent messaging system (9 MCP tools)
   forgespec        SDD contract validation + task board (15 MCP tools)
   context7         Live framework/library documentation
   sdd              Full 9-phase SDD workflow with orchestrator

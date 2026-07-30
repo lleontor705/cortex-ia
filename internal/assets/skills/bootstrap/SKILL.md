@@ -244,4 +244,3 @@ Before returning your contract, confirm each item:
 - [ ] Contract JSON has all required fields and correct types
 - [ ] No placeholder or stub spec files were created
 </verification>
-</output>

@@ -1,0 +1,15 @@
+--- steering/cortex-ia.md 0644 kiro/instruction/workflow instruction
+# cortex-ia workflow
+
+- Workflow: `workflow/sdd`
+- Version: `1.0.0`
+- Profile: `portable-sequential`
+- Generation fingerprint: `sha256:kiro-fixture`
+- Delegation: disabled; phases execute sequentially in dependency order because Kiro direct-child delegation is not qualified (no qualified executable evidence).
+
+## Sequential phases
+
+1. `phase/implement` — role `role/implement`: Implement one bounded work unit
+2. `phase/validate` — role `role/validate`: Independently verify contract outcomes; depends on `phase/implement`
+
+Do not claim parallel, nested, isolated-write, hook, or structured-output enforcement unless it appears as a qualified capability in the generated manifests.

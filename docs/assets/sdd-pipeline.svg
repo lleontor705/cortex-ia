@@ -33,7 +33,7 @@
 
   <rect x="640" y="80" width="90" height="50" rx="7" fill="#2E7D32"/>
   <text x="685" y="102" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">apply</text>
-  <text x="685" y="118" text-anchor="middle" fill="#c8e6c9" font-size="8">team-lead</text>
+  <text x="685" y="118" text-anchor="middle" fill="#c8e6c9" font-size="8">direct implement</text>
 
   <rect x="750" y="80" width="90" height="50" rx="7" fill="#E65100"/>
   <text x="795" y="102" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">verify</text>

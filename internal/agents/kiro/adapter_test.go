@@ -1,12 +1,16 @@
 package kiro
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
+	"time"
 
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/system"
 )
@@ -90,4 +94,102 @@ func TestAgentNotInstallableError(t *testing.T) {
 	if err.Error() == "" {
 		t.Error("expected non-empty error message")
 	}
+}
+
+func TestCapabilityFactsValidateConservatively(t *testing.T) {
+	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
+	facts := NewAdapter().CapabilityFacts()
+	if len(facts) == 0 {
+		t.Fatal("CapabilityFacts() returned no facts")
+	}
+
+	catalog := capability.Catalog{
+		SchemaVersion: capability.CatalogSchema.Current,
+		Version:       capability.CatalogSchema.Current,
+		Facts:         facts,
+	}
+	if err := catalog.Validate(now); err != nil {
+		t.Fatalf("Kiro capability catalog: %v", err)
+	}
+
+	directChild := capabilityFact(t, facts, "delegation/direct-child")
+	if !directChild.Experimental {
+		t.Fatal("Kiro direct-child delegation must remain experimental until an executable probe qualifies it")
+	}
+	if directChild.EvidenceClass != capability.EvidenceInstalledSchema || directChild.Enforcement != capability.EnforcementPrompt {
+		t.Fatalf("unqualified Kiro delegation must remain advisory installed-schema evidence: %+v", directChild)
+	}
+}
+
+func TestCapabilityProbeQualifiesExperimentalDelegationOnlyAfterOptIn(t *testing.T) {
+	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
+	a := NewAdapter()
+	a.lookPath = func(name string) (string, error) {
+		if name != "kiro" {
+			t.Fatalf("lookPath(%q), want kiro", name)
+		}
+		return "/usr/local/bin/kiro", nil
+	}
+	a.runCommand = func(_ context.Context, binary string, args ...string) ([]byte, error) {
+		if binary != "/usr/local/bin/kiro" || !reflect.DeepEqual(args, []string{"--help"}) {
+			t.Fatalf("probe command = %q %v", binary, args)
+		}
+		return []byte("Tools: read write subagent\n"), nil
+	}
+	a.now = func() time.Time { return now }
+
+	base := capabilityFact(t, a.CapabilityFacts(), "delegation/direct-child")
+	request := capability.ProbeRequest{
+		Base: base,
+		Authority: capability.ProbeAuthority{
+			CapabilityID:      base.ID,
+			RuntimeVersions:   base.RuntimeVersions,
+			Modes:             []capability.CapabilityValue{capability.CapabilityAvailable},
+			Cardinalities:     []capability.Cardinality{capability.CardinalityMany},
+			Enforcement:       []capability.EnforcementClass{capability.EnforcementPrompt, capability.EnforcementRuntime},
+			ExperimentalOptIn: true,
+		},
+	}
+	result, err := a.CapabilityProber().Probe(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+	qualified, err := capability.ApplyProbeResult(request, result)
+	if err != nil {
+		t.Fatalf("ApplyProbeResult: %v", err)
+	}
+	if qualified.EvidenceClass != capability.EvidenceExecutableProbe || qualified.Probe == nil {
+		t.Fatalf("qualified fact lacks executable probe evidence: %+v", qualified)
+	}
+	if err := (capability.Catalog{
+		SchemaVersion: capability.CatalogSchema.Current,
+		Version:       capability.CatalogSchema.Current,
+		Facts:         []capability.CapabilityFact{qualified},
+	}).Validate(now); err != nil {
+		t.Fatalf("qualified Kiro catalog: %v", err)
+	}
+
+	if !qualified.Experimental || qualified.Enforcement != capability.EnforcementRuntime {
+		t.Fatalf("probe must preserve experimental opt-in while qualifying runtime enforcement: %+v", qualified)
+	}
+}
+
+func TestCapabilitySurfaceHasNoRuntimeExecutionAPI(t *testing.T) {
+	typeOfAdapter := reflect.TypeOf(NewAdapter())
+	for _, forbidden := range []string{"Run", "Resume", "Schedule", "LaunchWorker", "LaunchAgent"} {
+		if _, found := typeOfAdapter.MethodByName(forbidden); found {
+			t.Errorf("adapter exposes forbidden runtime execution method %s", forbidden)
+		}
+	}
+}
+
+func capabilityFact(t *testing.T, facts []capability.CapabilityFact, id capability.CapabilityID) capability.CapabilityFact {
+	t.Helper()
+	for _, fact := range facts {
+		if fact.ID == id {
+			return fact
+		}
+	}
+	t.Fatalf("capability fact %q not found", id)
+	return capability.CapabilityFact{}
 }

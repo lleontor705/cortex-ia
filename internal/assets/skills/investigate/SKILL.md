@@ -268,4 +268,3 @@ Before returning your contract, confirm each item:
 - [ ] Contract JSON has all required fields and correct types
 - [ ] `ready_for_proposal` is `false` only if critical information is missing (and the gap is explained in the recommendation)
 </verification>
-</output>

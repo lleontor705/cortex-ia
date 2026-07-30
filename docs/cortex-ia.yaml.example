@@ -37,10 +37,9 @@ agents:
   - opencode
 
 # Opt out of specific components even when `preset: full`.
-# Valid IDs: cortex, agent-mailbox, forgespec, sdd, skills, context7,
+# Current IDs: cortex, forgespec, sdd, skills, context7,
 #            conventions, gga, persona, permissions, theme
 disabled-components:
-  - agent-mailbox
 
 # Layer project-specific custom skills on top of the embedded set.
 # Each entry points at a directory containing a SKILL.md.

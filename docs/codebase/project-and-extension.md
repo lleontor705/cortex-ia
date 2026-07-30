@@ -118,7 +118,7 @@ Components are injectable ecosystem pieces (MCP servers, hooks, personas, themes
 
 ### Current Components (14)
 
-Registered in `catalog.ComponentMap`. Includes MCP servers (cortex, mailbox, forgespec, context7), SDD workflow, skills, conventions, GGA, persona, permissions, theme, uninstall, and others.
+Registered in `catalog.ComponentMap`. Current services include Cortex, ForgeSpec, and Context7 alongside SDD workflow, skills, conventions, GGA, persona, permissions, theme, uninstall, and others. The historical Mailbox provider is retired compatibility only.
 
 ## Adding a CLI Subcommand
 

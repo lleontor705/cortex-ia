@@ -1,6 +1,8 @@
 package backup
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -80,7 +82,25 @@ func (s Snapshotter) snapshotPath(snapshotDir string, sourcePath string) (Manife
 	entry.SnapshotPath = destination
 	entry.Existed = true
 	entry.Mode = uint32(info.Mode())
+	digest, err := fileSHA256(destination)
+	if err != nil {
+		return ManifestEntry{}, err
+	}
+	entry.SHA256 = digest
 	return entry, nil
+}
+
+func fileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open file for verification %q: %w", path, err)
+	}
+	defer func() { _ = file.Close() }()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", fmt.Errorf("hash file %q: %w", path, err)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func copyFile(source string, destination string, mode os.FileMode) error {

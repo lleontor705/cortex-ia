@@ -1,0 +1,218 @@
+[
+  {
+    "target": "antigravity",
+    "fixture": "native-advanced",
+    "profile": "native-advanced",
+    "stronger": true,
+    "golden": "testdata/conformance/antigravity/native-advanced.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "antigravity",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/antigravity/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "claude",
+    "fixture": "native-advanced",
+    "profile": "native-advanced",
+    "stronger": true,
+    "golden": "testdata/conformance/claude/native-advanced.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "claude",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/claude/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "claude",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/claude/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "codex",
+    "fixture": "native-advanced",
+    "profile": "native-advanced",
+    "stronger": true,
+    "golden": "testdata/conformance/codex/native-advanced.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "codex",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/codex/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "codex",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/codex/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "cursor",
+    "fixture": "native-advanced",
+    "profile": "native-advanced",
+    "stronger": true,
+    "golden": "testdata/conformance/cursor/native-advanced.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "cursor",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/cursor/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "gemini",
+    "fixture": "native-advanced",
+    "profile": "native-advanced",
+    "stronger": true,
+    "golden": "testdata/conformance/gemini/native-advanced.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "gemini",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/gemini/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "gemini",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/gemini/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "kilocode",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/kilocode/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "kilocode",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/kilocode/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "kimi",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/kimi/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "kimi",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/kimi/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "kiro",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/kiro/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "kiro",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/kiro/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "opencode",
+    "fixture": "native-advanced",
+    "profile": "native-advanced",
+    "stronger": true,
+    "golden": "testdata/conformance/opencode/native-advanced.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "opencode",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/opencode/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "opencode",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/opencode/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "qwen",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/qwen/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "qwen",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/qwen/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "vscode",
+    "fixture": "advertised-direct-child",
+    "profile": "portable-sequential",
+    "stronger": true,
+    "golden": "testdata/conformance/vscode/advertised-direct-child.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "vscode",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/vscode/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "windsurf",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/windsurf/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  }
+]

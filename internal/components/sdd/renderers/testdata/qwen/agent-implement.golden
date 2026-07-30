@@ -1,0 +1,20 @@
+---
+name: implement
+description: "Implement one bounded work unit."
+model: inherit
+---
+
+# Objective
+
+Implement one bounded work unit.
+
+## Canonical contract
+
+- Semantic role: `role/implement`
+- Inputs: `contract/task` (required, schema 1.0.0)
+- Outputs: `contract/progress` (required, schema 1.0.0)
+- Allowed effects: `effect/filesystem-write`
+- Evidence: `evidence/red-green-refactor`
+- Terminal states: `blocked`, `success`
+
+Follow `QWEN.md`. Do not widen permissions or delegate recursively.

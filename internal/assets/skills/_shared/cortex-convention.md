@@ -2,9 +2,28 @@
 
 Shared protocol for all SDD agents. Reference this file instead of duplicating these patterns in individual skills.
 
+## Common Rules (Single Source of Truth)
+
+> **Do not duplicate these rules in skill files.** Reference this section instead.
+
+### File Locks vs Resource Locks
+- Use `file_reserve` / `file_release` for **file conflicts** between agents working on the same codebase
+- Use `resource_acquire` / `resource_release` for **external resources** (deploy targets, CI, API endpoints)
+- Do NOT use `resource_acquire` for file conflicts
+
+### Two-Step Memory Retrieval
+- `mem_search` returns 300-char previews only
+- ALWAYS follow with `mem_get_observation(id)` to get full content
+- Working with truncated search results leads to wrong conclusions
+
+### TDD Mode Detection
+- The orchestrator checks `mem_search(query: "sdd-init/{project}")` for `strict_tdd: true`
+- If found, all implement/validate agents receive the TDD directive
+- If not found, agents use Standard Mode
+
 ## Persistence Modes
 
-The orchestrator sets `artifact_store.mode` per session. Default: `cortex` when Cortex MCP is available, else `none`.
+The orchestrator sets `artifact_store.mode` per session. Default: `cortex` when Cortex MCP is available, else `none`. Note: "engram" is a legacy alias for "cortex" mode. Both refer to the same MCP-based memory backend.
 
 | Mode | Read from | Write to |
 |------|-----------|----------|
@@ -49,6 +68,50 @@ Exception: bootstrap uses `bootstrap/{project-name}`.
 | verify | validate | `verify-report` | `sdd/add-auth/verify-report` |
 | archive | finalize | `archive-report` | `sdd/add-auth/archive-report` |
 | archive | finalize | `retrospective` | `sdd/add-auth/retrospective` |
+
+## Phase Read/Write Matrix
+
+| Phase | Reads (required) | Reads (optional) | Writes |
+|-------|------------------|------------------|--------|
+| bootstrap | nothing | — | `bootstrap/{project}` |
+| investigate | nothing | — | `sdd/{change}/explore` |
+| draft-proposal | nothing | explore | `sdd/{change}/proposal` |
+| write-specs | proposal | explore | `sdd/{change}/spec` |
+| architect | proposal | explore | `sdd/{change}/design` |
+| decompose | spec + design | proposal | `sdd/{change}/tasks` |
+| implement | tasks + spec + design | task-scoped apply-progress | `sdd/{change}/apply-progress/{task-id}` |
+| implement | tasks | spec + design + apply-progress | (via `tb_update` only) |
+| validate | spec + tasks | apply-progress | `sdd/{change}/verify-report` |
+| finalize | verify-report | all others | `sdd/{change}/archive-report` |
+
+For phases with required dependencies, the sub-agent retrieves full content itself from Cortex using the two-step retrieval protocol. The orchestrator passes artifact references (topic keys), NOT the content.
+
+## Apply-Progress Continuity
+
+The apply phase may run in batches. Progress is tracked in `sdd/{change}/apply-progress`:
+
+- **First batch**: sub-agent creates the artifact.
+- **Subsequent batches**: sub-agent MUST read the existing apply-progress first, MERGE new progress with existing progress, then save the combined result. Do NOT overwrite — MERGE.
+
+The orchestrator reads task-scoped apply evidence and authoritative ForgeSpec status before consolidating progress. Workers never overwrite peer evidence.
+
+## Phase Name Aliasing
+
+Each SDD phase has a canonical name (the skill directory name), an SDD-command alias, and a short alias. Always use the canonical name in code and configs.
+
+| Canonical (skill dir) | SDD-Command | Short | Phase # |
+|----------------------|-------------|-------|---------|
+| bootstrap | sdd-init | init | 0 |
+| investigate | sdd-explore | explore | 1 |
+| draft-proposal | sdd-propose | propose | 2 |
+| write-specs | sdd-spec | spec | 3 |
+| architect | sdd-design | design | 4 |
+| decompose | sdd-tasks | tasks | 5 |
+| implement | sdd-apply | apply | 6 |
+| validate | sdd-verify | verify | 7 |
+| finalize | sdd-archive | archive | 8 |
+
+Init (phase 0) is a prerequisite, not part of the main pipeline. The main pipeline is phases 1-8.
 
 ## mem_save Parameters
 
@@ -95,19 +158,30 @@ Supported relations:
 
 ## Delegation Boundary
 
-All SDD agents work directly with their own tools. Only three coordinator skills (team-lead, debate, parallel-dispatch) may delegate.
+All SDD agents work directly with their own tools. Only the `debate` and `parallel-dispatch` coordinator skills may delegate.
 
 **If your SKILL.md does NOT contain a `<delegation>` section: you are a LEAF agent.**
 
 Leaf agent rules:
 1. Do all work directly using your own tools (read, write, edit, bash, grep, glob, MCP tools)
-2. Return results to the caller — orchestrator or team-lead handles coordination
+2. Return results to the caller — the orchestrator handles phase and ready-work routing
 3. Each agent runs once per delegation
 
 **Only these skills may delegate:**
-- `team-lead` → launches `@implement` sub-agents
 - `debate` → launches `@investigate` defender agents
 - `parallel-dispatch` → launches domain-specific agents
+
+## Sub-Agent Context Protocol
+
+SDD phase sub-agents run with a fresh context and NO memory. The orchestrator controls what each sub-agent can see:
+
+| Aspect | Rule |
+|--------|------|
+| Read context | Orchestrator passes artifact references (topic keys or file paths), NOT content. Sub-agent retrieves content itself. |
+| Write context | Sub-agent persists its artifact via `mem_save` BEFORE returning. Full detail belongs in Cortex, not in the return message. |
+| Memory access | Sub-agent does NOT search Cortex for prior context on its own (unless explicitly instructed to read a specific artifact). |
+
+This isolation makes phases composable and compaction-safe: each delegation is self-contained.
 
 ## Skill Loading Protocol (Canonical Version)
 
@@ -220,6 +294,10 @@ After generating your phase contract, self-validate and persist:
    Common validation errors: `status` must be one of the 4 values (NOT "complete"), `risks` items need `description` + `level` (NOT `risk` + `severity`), `confidence` must be 0-1 number.
 2. `sdd_save(contract: {validated_json_string})` — persist to ForgeSpec store
 If validation fails: read the error paths, fix the contract fields, and re-validate (max 2 retries before returning with status: "blocked").
+
+## Status Contract Reference
+
+Every phase returns a structured status contract that the orchestrator uses to decide next steps. See `sdd-status-contract.md` (in this directory) for the full field definitions and decision logic.
 
 ## Standard Pre-Return Checklist
 

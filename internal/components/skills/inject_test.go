@@ -13,9 +13,11 @@ type mockAdapter struct {
 	skillsDir      string
 }
 
-func (m *mockAdapter) Agent() model.AgentID                               { return "test-agent" }
-func (m *mockAdapter) Tier() model.SupportTier                            { return model.TierFull }
-func (m *mockAdapter) Detect(_ string) (bool, string, string, bool, error) { return false, "", "", false, nil }
+func (m *mockAdapter) Agent() model.AgentID    { return "test-agent" }
+func (m *mockAdapter) Tier() model.SupportTier { return model.TierFull }
+func (m *mockAdapter) Detect(_ string) (bool, string, string, bool, error) {
+	return false, "", "", false, nil
+}
 func (m *mockAdapter) GlobalConfigDir(_ string) string                     { return "" }
 func (m *mockAdapter) SystemPromptDir(_ string) string                     { return "" }
 func (m *mockAdapter) SystemPromptFile(_ string) string                    { return "" }
@@ -42,7 +44,7 @@ func (m *mockAdapter) InstallCommands(_ system.PlatformProfile) [][]string { ret
 func TestIsSDDSkill_True(t *testing.T) {
 	sddSkills := []model.SkillID{
 		"bootstrap", "investigate", "draft-proposal", "write-specs",
-		"architect", "decompose", "team-lead", "implement",
+		"architect", "decompose", "implement",
 		"validate", "finalize", "debate", "debug",
 		"execute-plan", "ideate", "monitor", "open-pr",
 		"file-issue", "parallel-dispatch", "scan-registry",

@@ -1,0 +1,71 @@
+{
+  "target": "windsurf",
+  "fixture": "portable-sequential",
+  "profile": "portable-sequential",
+  "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf",
+  "portable_invariants": [
+    "1.0.0",
+    "Implement one bounded vertical work unit.",
+    "Independently validate outcomes and evidence.",
+    "blocked",
+    "contract/apply",
+    "contract/task",
+    "contract/verify",
+    "evidence/red-green-refactor",
+    "evidence/verification",
+    "failed",
+    "filesystem/read",
+    "phase/apply",
+    "phase/verify",
+    "repository_data",
+    "requirement/req-eval-001",
+    "requirement/req-gen-003",
+    "role/implement",
+    "role/validate",
+    "service/cortex",
+    "service/forgespec",
+    "success",
+    "trusted_policy",
+    "workflow/renderer-conformance"
+  ],
+  "extensions": null,
+  "degradations": [
+    {
+      "capability": "approval/destructive",
+      "state": "advisory",
+      "reason": "Windsurf can express approval only as prompt guidance"
+    },
+    {
+      "capability": "coordination/task-claim",
+      "state": "emulated",
+      "substitution": "service/forgespec-claim",
+      "reason": "ForgeSpec remains task authority"
+    }
+  ],
+  "assets": [
+    {
+      "path": ".windsurf/cortex-ia-manifest.json",
+      "semantic_id": "manifest/windsurf/disclosure",
+      "kind": "fixture",
+      "mode": "0644",
+      "permissions": [],
+      "extensions": [],
+      "sha256": "7ae9387c6dd46c0bb75fdc624cae5ece8aefe62319aacdc3f1093585ce3fecfa",
+      "content": "{\"schema_version\":\"1.0.0\",\"workflow_id\":\"workflow/renderer-conformance\",\"workflow_version\":\"1.0.0\",\"target\":\"windsurf\",\"profile\":\"portable-sequential\",\"generation_fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"portable_semantic_ids\":[\"contract/apply\",\"contract/task\",\"contract/verify\",\"evidence/red-green-refactor\",\"evidence/verification\",\"filesystem/read\",\"phase/apply\",\"phase/verify\",\"requirement/req-eval-001\",\"requirement/req-gen-003\",\"role/implement\",\"role/validate\",\"service/cortex\",\"service/forgespec\",\"tool/filesystem\",\"workflow/renderer-conformance\"],\"roles\":[{\"id\":\"role/implement\",\"objective\":\"Implement one bounded vertical work unit.\",\"inputs\":[{\"id\":\"contract/task\",\"schema_version\":\"1.0.0\",\"required\":true}],\"outputs\":[{\"id\":\"contract/apply\",\"schema_version\":\"1.0.0\",\"required\":true}],\"non_goals\":[\"expand task authority\"],\"allowed_effects\":[\"filesystem/read\"],\"evidence\":[\"evidence/red-green-refactor\",\"requirement/req-gen-003\"],\"terminal_states\":[\"blocked\",\"failed\",\"success\"]},{\"id\":\"role/validate\",\"objective\":\"Independently validate outcomes and evidence.\",\"inputs\":[{\"id\":\"contract/apply\",\"schema_version\":\"1.0.0\",\"required\":true}],\"outputs\":[{\"id\":\"contract/verify\",\"schema_version\":\"1.0.0\",\"required\":true}],\"non_goals\":[\"change production code\"],\"allowed_effects\":[\"filesystem/read\"],\"evidence\":[\"evidence/verification\",\"requirement/req-eval-001\"],\"terminal_states\":[\"failed\",\"success\"]}],\"phases\":[{\"id\":\"phase/apply\",\"role\":\"role/implement\"},{\"id\":\"phase/verify\",\"role\":\"role/validate\",\"depends_on\":[\"phase/apply\"]}],\"tools\":[{\"id\":\"tool/filesystem\",\"required\":true}],\"context_trust_classes\":[\"repository_data\",\"trusted_policy\"],\"services\":[{\"id\":\"service/cortex\",\"version\":{\"minimum\":\"1.0.0\",\"maximum_tested\":\"1.0.0\"}},{\"id\":\"service/forgespec\",\"version\":{\"minimum\":\"1.0.0\",\"maximum_tested\":\"1.0.0\"}}],\"profiles\":null,\"requested_permissions\":[\"filesystem/read\",\"filesystem/write\",\"mcp/forgespec\"],\"effective_permissions\":[\"filesystem/read\",\"filesystem/write\",\"mcp/forgespec\"],\"capabilities\":[{\"id\":\"approval/destructive\",\"state\":\"advisory\",\"substitution\":\"\",\"enforcement\":\"prompt\",\"guarantee\":\"best-effort\",\"permission_delta\":{\"added\":[],\"removed\":[]},\"reason\":\"Windsurf can express approval only as prompt guidance\"},{\"id\":\"coordination/task-claim\",\"state\":\"emulated\",\"substitution\":\"service/forgespec-claim\",\"enforcement\":\"mcp\",\"guarantee\":\"equivalent\",\"permission_delta\":{\"added\":[\"mcp/forgespec\"],\"removed\":[]},\"reason\":\"ForgeSpec remains task authority\"}]}\n"
+    },
+    {
+      "path": ".windsurf/rules/cortex-ia.md",
+      "semantic_id": "workflow/renderer-conformance",
+      "kind": "rule",
+      "mode": "0644",
+      "permissions": [
+        "filesystem/read",
+        "filesystem/write",
+        "mcp/forgespec"
+      ],
+      "extensions": [],
+      "sha256": "9ed38ca1d8dedeb0be870c4cbea7f3d5afa0637fd60cbbb32c12cd0351ec3707",
+      "content": "# cortex-ia workflow\n\n- Target: `windsurf`\n- Profile: `portable-sequential`\n- Workflow semantic ID: `workflow/renderer-conformance`\n\n## Portable roles\n- `role/implement`: Implement one bounded vertical work unit.\n- `role/validate`: Independently validate outcomes and evidence.\n\n## Portable phases\n- `phase/apply` -\u003e `role/implement`; depends on: none\n- `phase/verify` -\u003e `role/validate`; depends on: `phase/apply`\n\n## Semantic tools\n- `tool/filesystem` (required: true)\n\n## Trust boundaries\n- `repository_data`\n- `trusted_policy`\n\n## Permission ceiling\n- `filesystem/read`\n- `filesystem/write`\n- `mcp/forgespec`\n\n## Capability disclosures\n- `approval/destructive`: state=advisory; substitution=none; enforcement=prompt; guarantee=best-effort; added=none; removed=none; reason=Windsurf can express approval only as prompt guidance\n- `coordination/task-claim`: state=emulated; substitution=`service/forgespec-claim`; enforcement=mcp; guarantee=equivalent; added=`mcp/forgespec`; removed=none; reason=ForgeSpec remains task authority\n"
+    }
+  ]
+}

@@ -154,10 +154,9 @@ After the user explicitly approves the full design:
 ## Step 7: Validate and Return Contract
 
 1. Build the SDD-CONTRACT JSON (see `<output>` for schema).
-2. Validate: `sdd_validate(phase: "explore", contract: {json})`
-3. Persist: `sdd_save(contract: {validated_json}, project: "{project}")`
-4. Return the contract to the caller.
-5. Recommend: "To move this design into the SDD pipeline, run `/new-change {topic-slug}`."
+2. Self-check the contract: required fields present, no fabricated data, reflects the user-approved design.
+3. Return the contract to the caller.
+4. Recommend: "To move this design into the SDD pipeline, run `/new-change {topic-slug}`."
 
 </steps>
 
@@ -196,7 +195,7 @@ After the user explicitly approves the full design:
 ```json
 {
   "schema_version": "1.0",
-  "phase": "explore",
+  "phase": "ideate",
   "change_name": "{topic-slug}",
   "project": "{project}",
   "status": "success",
@@ -277,9 +276,7 @@ After design approval, persist the artifact:
 - `mem_relate(from: {ideation_id}, to: {bootstrap_id}, relation: "references")`
 
 ## Contract Persistence (ForgeSpec)
-After persisting the design:
-1. `sdd_validate(phase: "explore", contract: {json})` → validate contract
-2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+Ideate is a pre-pipeline utility, not a standard SDD pipeline phase. Do NOT call `sdd_validate` or `sdd_save` — these would pollute the SDD phase history. The contract JSON is returned to the caller as a self-check report only; it is not persisted to ForgeSpec.
 
 ## Library Docs (Context7)
 If the design involves unfamiliar libraries:
@@ -310,8 +307,6 @@ Before completing this skill, confirm:
 - [ ] The design was persisted to Cortex with `topic_key: "sdd/{topic-slug}/ideation"`.
 - [ ] `mem_relate()` connected ideation to bootstrap context.
 - [ ] SDD-CONTRACT JSON includes all required fields.
-- [ ] `sdd_validate()` was called and passed.
-- [ ] `sdd_save()` persisted the contract to ForgeSpec history.
 - [ ] No filesystem writes were made for design artifacts.
 - [ ] No implementation occurred before approval.
 - [ ] User was recommended to run `/new-change` to enter the SDD pipeline.

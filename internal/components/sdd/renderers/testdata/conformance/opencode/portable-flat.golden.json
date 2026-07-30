@@ -1,0 +1,79 @@
+{
+  "target": "opencode",
+  "fixture": "portable-flat",
+  "profile": "portable-flat",
+  "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf",
+  "portable_invariants": [
+    "1.0.0",
+    "Implement one bounded vertical work unit.",
+    "Independently validate outcomes and evidence.",
+    "blocked",
+    "contract/apply",
+    "contract/task",
+    "contract/verify",
+    "evidence/red-green-refactor",
+    "evidence/verification",
+    "failed",
+    "filesystem/read",
+    "phase/apply",
+    "phase/verify",
+    "repository_data",
+    "requirement/req-eval-001",
+    "requirement/req-gen-003",
+    "role/implement",
+    "role/validate",
+    "service/cortex",
+    "service/forgespec",
+    "success",
+    "trusted_policy",
+    "workflow/renderer-conformance"
+  ],
+  "extensions": null,
+  "degradations": [],
+  "assets": [
+    {
+      "path": "AGENTS.md",
+      "semantic_id": "asset/opencode/instruction/root",
+      "kind": "instruction",
+      "mode": "0644",
+      "permissions": [],
+      "extensions": [],
+      "sha256": "f6878db492bb9ef5311684d93858bc4eea277100af97f8fa56de4ae6b9a8bd07",
+      "content": "# OpenCode Workflow Bundle\n\n- Workflow: `workflow/renderer-conformance`\n- Version: `1.0.0`\n- Profile: `portable-flat`\n- Generation fingerprint: `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`\n\n## Execution\nDelegate each ready phase directly to its role agent. Do not request nested delegation.\n\n## Phases\n- `phase/apply` -\u003e `role/implement`\n- `phase/verify` -\u003e `role/validate` (after: `phase/apply`)\n"
+    },
+    {
+      "path": "agents/implement.md",
+      "semantic_id": "asset/opencode/agent/implement",
+      "kind": "agent",
+      "mode": "0644",
+      "permissions": [
+        "filesystem/read"
+      ],
+      "extensions": [],
+      "sha256": "e1121b16ce63dbbfd3fd054d68dd9ab730c456ba07f1d93daa2dc5d6d8d7d83e",
+      "content": "---\ndescription: \"Implement one bounded vertical work unit.\"\nmode: subagent\n---\n\n# role/implement\n\nImplement one bounded vertical work unit.\n"
+    },
+    {
+      "path": "agents/validate.md",
+      "semantic_id": "asset/opencode/agent/validate",
+      "kind": "agent",
+      "mode": "0644",
+      "permissions": [
+        "filesystem/read"
+      ],
+      "extensions": [],
+      "sha256": "2ed3ab854c3b58434b2620dddbe05dacd7341a88cfb5a8afcf798af21fbf9cc2",
+      "content": "---\ndescription: \"Independently validate outcomes and evidence.\"\nmode: subagent\n---\n\n# role/validate\n\nIndependently validate outcomes and evidence.\n"
+    },
+    {
+      "path": "commands/run-workflow.md",
+      "semantic_id": "asset/opencode/command/workflow",
+      "kind": "command",
+      "mode": "0644",
+      "permissions": [],
+      "extensions": [],
+      "sha256": "67ba688f22c743e022df4f0ba2ecec1cc4acd3a7fbae5c62cad380753e035067",
+      "content": "---\ndescription: Execute workflow/renderer-conformance using portable-flat\n---\nExecute `workflow/renderer-conformance` phase-by-phase in deterministic dependency order.\nDelegate each ready phase directly to its role agent. Do not request nested delegation.\n"
+    }
+  ]
+}

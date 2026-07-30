@@ -8,10 +8,156 @@ package sdd
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
+	"time"
 
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/compiler"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
+
+// WorkflowProfile is the capability-aware lowering profile selected for a
+// generated workflow bundle.
+type WorkflowProfile string
+
+const (
+	ProfilePortableSequential WorkflowProfile = "portable-sequential"
+	ProfilePortableFlat       WorkflowProfile = "portable-flat"
+	ProfileNativeAdvanced     WorkflowProfile = "native-advanced"
+
+	directChildDelegation capability.CapabilityID = "delegation/direct-child"
+)
+
+// ProfileSelectionInput contains only caller-supplied evidence and policy.
+// Now is explicit so identical inputs always produce identical output.
+type ProfileSelectionInput struct {
+	Now                time.Time
+	Facts              []capability.CapabilityFact
+	NativeCapabilities []capability.CapabilityID
+	ExperimentalOptIns []capability.CapabilityID
+}
+
+// ProfileSelection records both the selected profile and conservative
+// degradation reasons for capabilities that could not qualify it.
+type ProfileSelection struct {
+	Profile               WorkflowProfile           `json:"profile"`
+	QualifiedCapabilities []capability.CapabilityID `json:"qualified_capabilities"`
+	Degradations          []string                  `json:"degradations"`
+}
+
+// SelectWorkflowProfile chooses the strongest qualified profile. Sequential is
+// always available without delegation; flat requires proven direct-child
+// delegation; native additionally requires every requested native capability.
+func SelectWorkflowProfile(input ProfileSelectionInput) ProfileSelection {
+	selection := ProfileSelection{
+		Profile:               ProfilePortableSequential,
+		QualifiedCapabilities: []capability.CapabilityID{},
+		Degradations:          []string{},
+	}
+	optIns := capabilitySet(input.ExperimentalOptIns)
+
+	qualified, reason := qualifyProfileCapability(directChildDelegation, input.Facts, input.Now, optIns)
+	if !qualified {
+		selection.Degradations = append(selection.Degradations, capabilityDegradation(directChildDelegation, reason))
+		return selection
+	}
+	selection.Profile = ProfilePortableFlat
+	selection.QualifiedCapabilities = append(selection.QualifiedCapabilities, directChildDelegation)
+
+	for _, id := range sortedCapabilityIDs(input.NativeCapabilities) {
+		if id == directChildDelegation {
+			continue
+		}
+		qualified, reason = qualifyProfileCapability(id, input.Facts, input.Now, optIns)
+		if !qualified {
+			selection.Degradations = append(selection.Degradations, capabilityDegradation(id, reason))
+			continue
+		}
+		selection.QualifiedCapabilities = append(selection.QualifiedCapabilities, id)
+	}
+
+	if len(selection.Degradations) == 0 && len(selection.QualifiedCapabilities) > 1 {
+		selection.Profile = ProfileNativeAdvanced
+	}
+	return selection
+}
+
+// SelectCompiledWorkflowProfile derives profile selection from the normalized
+// compiler snapshot and rejects a snapshot whose recorded profile disagrees.
+// This prevents injection from consulting mutable runtime state after compile.
+func SelectCompiledWorkflowProfile(compiled compiler.Result, nativeCapabilities, experimentalOptIns []capability.CapabilityID) (ProfileSelection, error) {
+	evaluationTime, err := time.Parse(time.RFC3339Nano, compiled.Normalized.EvaluationTime)
+	if err != nil {
+		return ProfileSelection{}, fmt.Errorf("compiled evaluation time: %w", err)
+	}
+	selection := SelectWorkflowProfile(ProfileSelectionInput{
+		Now:                evaluationTime,
+		Facts:              compiled.Normalized.Catalog.Facts,
+		NativeCapabilities: nativeCapabilities,
+		ExperimentalOptIns: experimentalOptIns,
+	})
+	if compiled.Normalized.Profile != string(selection.Profile) {
+		return ProfileSelection{}, fmt.Errorf("compiled profile %q does not match deterministic selection %q", compiled.Normalized.Profile, selection.Profile)
+	}
+	return selection, nil
+}
+
+func qualifyProfileCapability(id capability.CapabilityID, facts []capability.CapabilityFact, now time.Time, optIns map[capability.CapabilityID]struct{}) (bool, string) {
+	experimentalQualified := false
+	for _, fact := range facts {
+		if fact.ID != id || !isProvenFreshFact(fact, now) {
+			continue
+		}
+		if !fact.Experimental {
+			return true, ""
+		}
+		experimentalQualified = true
+		if _, optedIn := optIns[id]; optedIn {
+			return true, ""
+		}
+	}
+	if experimentalQualified {
+		return false, "experimental capability requires explicit opt-in"
+	}
+	return false, "no fresh proven capability fact"
+}
+
+func isProvenFreshFact(fact capability.CapabilityFact, now time.Time) bool {
+	if fact.Mode != capability.CapabilityAvailable || fact.Cardinality == capability.CardinalityNone || !fact.Current {
+		return false
+	}
+	if fact.ObservedAt.IsZero() || fact.ObservedAt.After(now) || !fact.FreshUntil.After(now) {
+		return false
+	}
+	if strings.TrimSpace(fact.EvidenceRef) == "" || fact.Confidence <= 0 || fact.Confidence > 1 {
+		return false
+	}
+	if fact.Enforcement != capability.EnforcementRuntime {
+		return false
+	}
+	return fact.EvidenceClass == capability.EvidenceInstalledSchema ||
+		fact.EvidenceClass == capability.EvidenceExecutableProbe ||
+		fact.EvidenceClass == capability.EvidenceRuntimeObserved
+}
+
+func capabilitySet(ids []capability.CapabilityID) map[capability.CapabilityID]struct{} {
+	result := make(map[capability.CapabilityID]struct{}, len(ids))
+	for _, id := range ids {
+		result[id] = struct{}{}
+	}
+	return result
+}
+
+func sortedCapabilityIDs(ids []capability.CapabilityID) []capability.CapabilityID {
+	result := slices.Clone(ids)
+	slices.Sort(result)
+	return slices.Compact(result)
+}
+
+func capabilityDegradation(id capability.CapabilityID, reason string) string {
+	return string(id) + ": " + reason
+}
 
 // ProfilePhaseOrder is the canonical SDD phase order used everywhere a profile
 // needs to enumerate phases (TUI listing, --profile-phase parser, validation).
@@ -180,8 +326,8 @@ func profileKeyToOpenCodeAgents(key string) []string {
 	case "sdd-tasks", "tasks", "decompose":
 		return []string{"decompose"}
 	case "sdd-apply", "apply":
-		return []string{"team-lead", "implement"}
-	case "team-lead", "implement":
+		return []string{"implement"}
+	case "implement":
 		return []string{normalized}
 	case "sdd-verify", "verify", "validate":
 		return []string{"validate"}

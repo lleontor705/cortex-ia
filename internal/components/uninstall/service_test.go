@@ -219,3 +219,28 @@ func TestService_Apply_NoStateNoAgents(t *testing.T) {
 		t.Fatal("expected error when no state and no explicit agents")
 	}
 }
+
+func TestServiceAllDoesNotDeleteLegacyMailboxByName(t *testing.T) {
+	home := t.TempDir()
+	writeStateWithAgents(t, home, model.AgentClaudeCode)
+	legacy := filepath.Join(home, ".claude", "mcp", "agent-mailbox.json")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte(`{"command":"external-mailbox"}`)
+	if err := os.WriteFile(legacy, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewServiceWithRegistry(home, newTestRegistry(t))
+	if _, err := svc.Apply(Selection{All: true}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(legacy)
+	if err != nil {
+		t.Fatalf("legacy external registration was deleted: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Fatalf("legacy external registration changed: %q", got)
+	}
+}

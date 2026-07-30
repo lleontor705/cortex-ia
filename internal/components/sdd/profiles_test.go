@@ -1,10 +1,181 @@
 package sdd
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
+
+func TestSelectWorkflowProfile_Goldens(t *testing.T) {
+	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
+	directChild := qualifiedProfileFact("delegation/direct-child", now)
+	isolation := qualifiedProfileFact("isolation/worktree", now)
+	experimentalIsolation := isolation
+	experimentalIsolation.Experimental = true
+	staleIsolation := isolation
+	staleIsolation.FreshUntil = now
+	documentedDirectChild := directChild
+	documentedDirectChild.EvidenceClass = capability.EvidenceDocumentation
+	documentedDirectChild.Enforcement = capability.EnforcementPrompt
+
+	tests := []struct {
+		name   string
+		input  ProfileSelectionInput
+		golden string
+	}{
+		{
+			name:   "sequential requires no delegation evidence",
+			input:  ProfileSelectionInput{Now: now},
+			golden: `{"profile":"portable-sequential","qualified_capabilities":[],"degradations":["delegation/direct-child: no fresh proven capability fact"]}`,
+		},
+		{
+			name:   "documentation alone cannot prove flat delegation",
+			input:  ProfileSelectionInput{Now: now, Facts: []capability.CapabilityFact{documentedDirectChild}},
+			golden: `{"profile":"portable-sequential","qualified_capabilities":[],"degradations":["delegation/direct-child: no fresh proven capability fact"]}`,
+		},
+		{
+			name:   "flat needs only proven direct child delegation",
+			input:  ProfileSelectionInput{Now: now, Facts: []capability.CapabilityFact{directChild}},
+			golden: `{"profile":"portable-flat","qualified_capabilities":["delegation/direct-child"],"degradations":[]}`,
+		},
+		{
+			name: "direct child requirement alone does not claim native features",
+			input: ProfileSelectionInput{
+				Now:                now,
+				Facts:              []capability.CapabilityFact{directChild},
+				NativeCapabilities: []capability.CapabilityID{"delegation/direct-child"},
+			},
+			golden: `{"profile":"portable-flat","qualified_capabilities":["delegation/direct-child"],"degradations":[]}`,
+		},
+		{
+			name: "native requires every requested capability to be qualified",
+			input: ProfileSelectionInput{
+				Now:                now,
+				Facts:              []capability.CapabilityFact{directChild},
+				NativeCapabilities: []capability.CapabilityID{"isolation/worktree"},
+			},
+			golden: `{"profile":"portable-flat","qualified_capabilities":["delegation/direct-child"],"degradations":["isolation/worktree: no fresh proven capability fact"]}`,
+		},
+		{
+			name: "qualified native selects advanced",
+			input: ProfileSelectionInput{
+				Now:                now,
+				Facts:              []capability.CapabilityFact{isolation, directChild},
+				NativeCapabilities: []capability.CapabilityID{"isolation/worktree"},
+			},
+			golden: `{"profile":"native-advanced","qualified_capabilities":["delegation/direct-child","isolation/worktree"],"degradations":[]}`,
+		},
+		{
+			name: "experimental native remains opt in after qualification",
+			input: ProfileSelectionInput{
+				Now:                now,
+				Facts:              []capability.CapabilityFact{directChild, experimentalIsolation},
+				NativeCapabilities: []capability.CapabilityID{"isolation/worktree"},
+			},
+			golden: `{"profile":"portable-flat","qualified_capabilities":["delegation/direct-child"],"degradations":["isolation/worktree: experimental capability requires explicit opt-in"]}`,
+		},
+		{
+			name: "experimental native accepts explicit capability opt in",
+			input: ProfileSelectionInput{
+				Now:                now,
+				Facts:              []capability.CapabilityFact{experimentalIsolation, directChild},
+				NativeCapabilities: []capability.CapabilityID{"isolation/worktree"},
+				ExperimentalOptIns: []capability.CapabilityID{"isolation/worktree"},
+			},
+			golden: `{"profile":"native-advanced","qualified_capabilities":["delegation/direct-child","isolation/worktree"],"degradations":[]}`,
+		},
+		{
+			name: "stale evidence cannot upgrade flat to native",
+			input: ProfileSelectionInput{
+				Now:                now,
+				Facts:              []capability.CapabilityFact{staleIsolation, directChild},
+				NativeCapabilities: []capability.CapabilityID{"isolation/worktree"},
+			},
+			golden: `{"profile":"portable-flat","qualified_capabilities":["delegation/direct-child"],"degradations":["isolation/worktree: no fresh proven capability fact"]}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			selection := SelectWorkflowProfile(tt.input)
+			got, err := json.Marshal(selection)
+			if err != nil {
+				t.Fatalf("marshal selection: %v", err)
+			}
+			if string(got) != tt.golden {
+				t.Fatalf("selection golden mismatch\n got: %s\nwant: %s", got, tt.golden)
+			}
+		})
+	}
+}
+
+func TestSelectWorkflowProfile_IsDeterministicAcrossInputOrder(t *testing.T) {
+	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
+	directChild := qualifiedProfileFact("delegation/direct-child", now)
+	isolation := qualifiedProfileFact("isolation/worktree", now)
+	input := ProfileSelectionInput{
+		Now:                now,
+		Facts:              []capability.CapabilityFact{isolation, directChild},
+		NativeCapabilities: []capability.CapabilityID{"isolation/worktree", "isolation/worktree"},
+		ExperimentalOptIns: []capability.CapabilityID{"isolation/worktree", "isolation/worktree"},
+	}
+
+	first, err := json.Marshal(SelectWorkflowProfile(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.Facts[0], input.Facts[1] = input.Facts[1], input.Facts[0]
+	second, err := json.Marshal(SelectWorkflowProfile(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Fatalf("selection depends on input order: %s != %s", first, second)
+	}
+}
+
+func TestSelectCompiledWorkflowProfileUsesOnlyNormalizedCompilerSnapshot(t *testing.T) {
+	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
+	compiled := compiledInjectionFixture(now, ProfilePortableFlat, []capability.CapabilityFact{
+		qualifiedProfileFact(directChildDelegation, now),
+	})
+
+	selection, err := SelectCompiledWorkflowProfile(compiled, nil, nil)
+	if err != nil {
+		t.Fatalf("SelectCompiledWorkflowProfile() error = %v", err)
+	}
+	if selection.Profile != ProfilePortableFlat || len(selection.Degradations) != 0 {
+		t.Fatalf("selection = %+v", selection)
+	}
+
+	compiled.Normalized.Profile = string(ProfilePortableSequential)
+	if _, err := SelectCompiledWorkflowProfile(compiled, nil, nil); err == nil {
+		t.Fatal("SelectCompiledWorkflowProfile() accepted a profile inconsistent with its normalized capability snapshot")
+	}
+}
+
+func qualifiedProfileFact(id capability.CapabilityID, now time.Time) capability.CapabilityFact {
+	return capability.CapabilityFact{
+		ID:              id,
+		Mode:            capability.CapabilityAvailable,
+		Cardinality:     capability.CardinalityMany,
+		Target:          "test-target",
+		RuntimeID:       "test-runtime",
+		AdapterID:       "test-adapter",
+		RuntimeVersions: ir.VersionRange{Minimum: ir.MustParseVersion("1.0.0"), MaximumTested: ir.MustParseVersion("1.1.0")},
+		EvidenceClass:   capability.EvidenceRuntimeObserved,
+		EvidenceRef:     "cortex://evidence/profile-selection",
+		ObservedAt:      now.Add(-time.Hour),
+		FreshUntil:      now.Add(time.Hour),
+		Confidence:      1,
+		Current:         true,
+		Enforcement:     capability.EnforcementRuntime,
+	}
+}
 
 func TestValidateProfileName(t *testing.T) {
 	for _, ok := range []string{"cheap", "fast-iteration", "v2", "default"} {
@@ -132,21 +303,24 @@ func TestProfileSummary_PerPhase(t *testing.T) {
 func TestProfileToOpenCodeAssignments_FullyQualified(t *testing.T) {
 	p, _ := ParseProfileSpec("cheap:openai/gpt-4o-mini")
 	got := ProfileToOpenCodeAssignments(p)
-	if len(got) != len(ProfilePhaseOrder())+1 {
-		t.Errorf("expected phase assignments plus apply worker split, got %d", len(got))
+	if len(got) != len(ProfilePhaseOrder()) {
+		t.Errorf("expected one assignment per phase, got %d", len(got))
 	}
 	a := got["architect"] // sdd-design -> architect agent
 	if a.Provider != "openai" || a.Model != "gpt-4o-mini" {
 		t.Errorf("architect assignment = %+v", a)
 	}
-	if got["team-lead"].Model != "gpt-4o-mini" || got["implement"].Model != "gpt-4o-mini" {
-		t.Errorf("sdd-apply should map to both team-lead and implement, got team-lead=%+v implement=%+v", got["team-lead"], got["implement"])
+	if got["implement"].Model != "gpt-4o-mini" {
+		t.Errorf("sdd-apply should map directly to implement, got %+v", got["implement"])
+	}
+	if _, has := got["team-lead"]; has {
+		t.Error("portable profile mapping must not emit team-lead")
 	}
 	if _, has := got["design"]; has {
 		t.Error("profile mapping leaked legacy design key instead of architect")
 	}
 	if _, has := got["apply"]; has {
-		t.Error("profile mapping leaked legacy apply key instead of team-lead/implement")
+		t.Error("profile mapping leaked legacy apply key instead of implement")
 	}
 }
 
@@ -160,8 +334,11 @@ func TestProfileToOpenCodeAssignments_ExpandsClaudeAliases(t *testing.T) {
 	if got["bootstrap"].Provider != "anthropic" || got["bootstrap"].Model != "claude-opus-4" {
 		t.Errorf("bootstrap = %+v", got["bootstrap"])
 	}
-	if got["team-lead"].Model != "claude-haiku-4-5" || got["implement"].Model != "claude-haiku-4-5" {
-		t.Errorf("apply aliases should map to team-lead and implement, got team-lead=%+v implement=%+v", got["team-lead"], got["implement"])
+	if got["implement"].Model != "claude-haiku-4-5" {
+		t.Errorf("apply aliases should map directly to implement, got %+v", got["implement"])
+	}
+	if _, has := got["team-lead"]; has {
+		t.Error("portable apply alias must not emit team-lead")
 	}
 }
 

@@ -340,4 +340,3 @@ Before reporting success, confirm every item:
 - [ ] `sdd_validate()` was called and passed.
 - [ ] `sdd_save()` persisted the contract to ForgeSpec history.
 </verification>
-</output>

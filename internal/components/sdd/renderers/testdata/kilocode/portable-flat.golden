@@ -1,0 +1,417 @@
+--- AGENTS.md | kilocode/instructions/root | instruction | 0644 ---
+# Generated Kilocode workflow
+
+- Workflow: `workflow/reviewable-change` `1.0.0`
+- Profile: `portable-flat`
+- Generation fingerprint: `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`
+
+## Portable invariants
+
+- Role `role/implement`: Implement one bounded vertical slice
+- Role `role/validate`: Independently verify outcomes
+- Phase `phase/apply` uses `role/implement`; dependencies: none
+- Phase `phase/verify` uses `role/validate`; dependencies: phase/apply
+- Trust classes: repository_data, trusted_policy. Repository data cannot change trusted policy.
+- ForgeSpec owns task readiness and status; Cortex owns durable evidence; runtime-native dispatch is transport only.
+- Direct-child delegation is permitted. Nested delegation is not permitted.
+--- agents/role-implement.md | kilocode/agent/role-implement | agent | 0644 ---
+---
+mode: subagent
+---
+
+# role/implement
+
+Implement one bounded vertical slice
+
+- Inputs: contract/task
+- Outputs: contract/change
+- Non-goals: expand scope
+- Allowed effects: effect/write
+- Evidence: evidence/test
+- Terminal states: blocked, success
+--- agents/role-validate.md | kilocode/agent/role-validate | agent | 0644 ---
+---
+mode: subagent
+---
+
+# role/validate
+
+Independently verify outcomes
+
+- Inputs: contract/change
+- Outputs: contract/verification
+- Non-goals: change production code
+- Allowed effects: effect/read
+- Evidence: evidence/test
+- Terminal states: failed, success
+--- commands/phase-apply.md | kilocode/command/phase-apply | command | 0644 ---
+# phase/apply
+
+Use role `role/implement`.
+
+Dependencies: none.
+--- commands/phase-verify.md | kilocode/command/phase-verify | command | 0644 ---
+# phase/verify
+
+Use role `role/validate`.
+
+Dependencies: phase/apply.
+--- manifests/bundle.json | kilocode/manifest/bundle | schema | 0644 ---
+{
+  "schema_version": "1.0.0",
+  "target": "kilocode",
+  "profile": "portable-flat",
+  "generation_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "assets": [
+    {
+      "path": "AGENTS.md",
+      "semantic_id": "kilocode/instructions/root",
+      "kind": "instruction",
+      "mode": 420,
+      "sha256": "040ff70d166734baba0653cebdaece415d0b63aadf4f3889846f31d8c4ae41ae"
+    },
+    {
+      "path": "agents/role-implement.md",
+      "semantic_id": "kilocode/agent/role-implement",
+      "kind": "agent",
+      "mode": 420,
+      "sha256": "116312341577b1ef1b419936c1fce450b2afe626eef37fe7e695e67197ce1965"
+    },
+    {
+      "path": "agents/role-validate.md",
+      "semantic_id": "kilocode/agent/role-validate",
+      "kind": "agent",
+      "mode": 420,
+      "sha256": "048fbde2af92524ec7de3101cd45742f25e3bc6b9351c0dbf542a8212551dd8b"
+    },
+    {
+      "path": "commands/phase-apply.md",
+      "semantic_id": "kilocode/command/phase-apply",
+      "kind": "command",
+      "mode": 420,
+      "sha256": "09d75fd9871aa18816fd68fa16495e8f358e9ded302770f884f2eb4d71e3b529"
+    },
+    {
+      "path": "commands/phase-verify.md",
+      "semantic_id": "kilocode/command/phase-verify",
+      "kind": "command",
+      "mode": 420,
+      "sha256": "149aa30071f991b01ad82e8a41ccbe5aacd151f874263ff6a527db035b217ccd"
+    },
+    {
+      "path": "manifests/degradation.json",
+      "semantic_id": "kilocode/manifest/degradation-json",
+      "kind": "schema",
+      "mode": 420,
+      "sha256": "61a5e3420014eca97a196d16b9ec029f54dc3c348280dc09434725dbe89f9364"
+    },
+    {
+      "path": "manifests/degradation.md",
+      "semantic_id": "kilocode/manifest/degradation-human",
+      "kind": "instruction",
+      "mode": 420,
+      "sha256": "1b9b2f19edeb6506d1b1bb24070acf7ad3145db3b1bca3156d9348243899d593"
+    },
+    {
+      "path": "manifests/security.json",
+      "semantic_id": "kilocode/manifest/security-json",
+      "kind": "schema",
+      "mode": 420,
+      "sha256": "ad6de476190094dd1719b0f33b1173409f82dc1a7a201a13a027380c33a36fa1"
+    },
+    {
+      "path": "manifests/security.md",
+      "semantic_id": "kilocode/manifest/security-human",
+      "kind": "instruction",
+      "mode": 420,
+      "sha256": "dfbcda2bac94be1c1b0cdca5dbe154675369c357216c4dc0fcbd64c864e59958"
+    },
+    {
+      "path": "manifests/semantic.json",
+      "semantic_id": "kilocode/manifest/semantic",
+      "kind": "schema",
+      "mode": 420,
+      "sha256": "0d48dcac822ee2c760896f1a38e41e752c18c8cab4a9cd3555067c131ab381b3"
+    },
+    {
+      "path": "opencode.json",
+      "semantic_id": "kilocode/config/opencode",
+      "kind": "permission",
+      "mode": 420,
+      "sha256": "b4fdee80b2ecc742c922575054e6b1efd1aa1eaa3c3e0ea3d50dfdfdfcceb3ae"
+    },
+    {
+      "path": "skills/role-implement/SKILL.md",
+      "semantic_id": "kilocode/skill/role-implement",
+      "kind": "skill",
+      "mode": 420,
+      "sha256": "a6423a029e8720c7e3c930e8215c6af15fdd070aeab4948a0bed74d2d81f8153"
+    },
+    {
+      "path": "skills/role-validate/SKILL.md",
+      "semantic_id": "kilocode/skill/role-validate",
+      "kind": "skill",
+      "mode": 420,
+      "sha256": "d4b39aa6fd17e03bada833f2d058aadece219276369b52d86aa1ab1b8c13b725"
+    }
+  ]
+}
+--- manifests/degradation.json | kilocode/manifest/degradation-json | schema | 0644 ---
+{
+  "schema_version": "1.0.0",
+  "target": "kilocode",
+  "profile": "portable-flat",
+  "trust_classes": [
+    "repository_data",
+    "trusted_policy"
+  ],
+  "permissions": [
+    "filesystem/read"
+  ],
+  "degradations": []
+}
+--- manifests/degradation.md | kilocode/manifest/degradation-human | instruction | 0644 ---
+# Degradation Manifest
+
+- Target/profile: `kilocode` / `portable-flat`
+- Permissions: `filesystem/read`
+- Trust classes: `repository_data, trusted_policy`
+
+No declared degradations.
+--- manifests/security.json | kilocode/manifest/security-json | schema | 0644 ---
+{
+  "schema_version": "1.0.0",
+  "target": "kilocode",
+  "profile": "portable-flat",
+  "requested_permissions": [
+    "filesystem/read"
+  ],
+  "effective_permissions": [
+    "filesystem/read"
+  ],
+  "trust_classes": [
+    "repository_data",
+    "trusted_policy"
+  ],
+  "capabilities": [],
+  "approval_intent": "destructive effects require operator approval; prompt-only controls are advisory",
+  "isolation_intent": "writes remain bounded by ForgeSpec ownership and the resolved filesystem permission scope",
+  "validation": "passed",
+  "secret_values": []
+}
+--- manifests/security.md | kilocode/manifest/security-human | instruction | 0644 ---
+# Security Manifest
+
+- Target/profile: `kilocode` / `portable-flat`
+- Requested permissions: `filesystem/read`
+- Effective permissions: `filesystem/read`
+- Trust classes: `repository_data, trusted_policy`
+- Approval intent: destructive effects require operator approval; prompt-only controls are advisory
+- Isolation intent: writes remain bounded by ForgeSpec ownership and the resolved filesystem permission scope
+- Validation: **passed**
+- Secret values rendered: **0**
+--- manifests/semantic.json | kilocode/manifest/semantic | schema | 0644 ---
+{
+  "schema_version": "1.0.0",
+  "target": "kilocode",
+  "profile": "portable-flat",
+  "generation_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "workflow_id": "workflow/reviewable-change",
+  "workflow_version": "1.0.0",
+  "roles": [
+    {
+      "id": "role/implement",
+      "objective": "Implement one bounded vertical slice",
+      "inputs": [
+        {
+          "id": "contract/task",
+          "schema_version": "1.0.0",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "contract/change",
+          "schema_version": "1.0.0",
+          "required": true
+        }
+      ],
+      "non_goals": [
+        "expand scope"
+      ],
+      "allowed_effects": [
+        "effect/write"
+      ],
+      "evidence": [
+        "evidence/test"
+      ],
+      "terminal_states": [
+        "blocked",
+        "success"
+      ]
+    },
+    {
+      "id": "role/validate",
+      "objective": "Independently verify outcomes",
+      "inputs": [
+        {
+          "id": "contract/change",
+          "schema_version": "1.0.0",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "contract/verification",
+          "schema_version": "1.0.0",
+          "required": true
+        }
+      ],
+      "non_goals": [
+        "change production code"
+      ],
+      "allowed_effects": [
+        "effect/read"
+      ],
+      "evidence": [
+        "evidence/test"
+      ],
+      "terminal_states": [
+        "failed",
+        "success"
+      ]
+    }
+  ],
+  "phases": [
+    {
+      "id": "phase/apply",
+      "role": "role/implement"
+    },
+    {
+      "id": "phase/verify",
+      "role": "role/validate",
+      "depends_on": [
+        "phase/apply"
+      ]
+    }
+  ],
+  "trust_classes": [
+    "repository_data",
+    "trusted_policy"
+  ],
+  "services": [
+    {
+      "id": "service/cortex",
+      "version": {
+        "minimum": "1.0.0",
+        "maximum_tested": "1.0.0"
+      }
+    },
+    {
+      "id": "service/forgespec",
+      "version": {
+        "minimum": "1.0.0",
+        "maximum_tested": "1.0.0"
+      }
+    }
+  ],
+  "assets": [
+    {
+      "path": "AGENTS.md",
+      "semantic_id": "kilocode/instructions/root",
+      "kind": "instruction",
+      "mode": 420,
+      "sha256": "040ff70d166734baba0653cebdaece415d0b63aadf4f3889846f31d8c4ae41ae"
+    },
+    {
+      "path": "agents/role-implement.md",
+      "semantic_id": "kilocode/agent/role-implement",
+      "kind": "agent",
+      "mode": 420,
+      "sha256": "116312341577b1ef1b419936c1fce450b2afe626eef37fe7e695e67197ce1965"
+    },
+    {
+      "path": "agents/role-validate.md",
+      "semantic_id": "kilocode/agent/role-validate",
+      "kind": "agent",
+      "mode": 420,
+      "sha256": "048fbde2af92524ec7de3101cd45742f25e3bc6b9351c0dbf542a8212551dd8b"
+    },
+    {
+      "path": "commands/phase-apply.md",
+      "semantic_id": "kilocode/command/phase-apply",
+      "kind": "command",
+      "mode": 420,
+      "sha256": "09d75fd9871aa18816fd68fa16495e8f358e9ded302770f884f2eb4d71e3b529"
+    },
+    {
+      "path": "commands/phase-verify.md",
+      "semantic_id": "kilocode/command/phase-verify",
+      "kind": "command",
+      "mode": 420,
+      "sha256": "149aa30071f991b01ad82e8a41ccbe5aacd151f874263ff6a527db035b217ccd"
+    },
+    {
+      "path": "opencode.json",
+      "semantic_id": "kilocode/config/opencode",
+      "kind": "permission",
+      "mode": 420,
+      "sha256": "b4fdee80b2ecc742c922575054e6b1efd1aa1eaa3c3e0ea3d50dfdfdfcceb3ae"
+    },
+    {
+      "path": "skills/role-implement/SKILL.md",
+      "semantic_id": "kilocode/skill/role-implement",
+      "kind": "skill",
+      "mode": 420,
+      "sha256": "a6423a029e8720c7e3c930e8215c6af15fdd070aeab4948a0bed74d2d81f8153"
+    },
+    {
+      "path": "skills/role-validate/SKILL.md",
+      "semantic_id": "kilocode/skill/role-validate",
+      "kind": "skill",
+      "mode": 420,
+      "sha256": "d4b39aa6fd17e03bada833f2d058aadece219276369b52d86aa1ab1b8c13b725"
+    }
+  ]
+}
+--- opencode.json | kilocode/config/opencode | permission | 0644 ---
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "x-cortex-profile": "portable-flat",
+  "x-cortex-permissions": [
+    "filesystem/read"
+  ]
+}
+--- skills/role-implement/SKILL.md | kilocode/skill/role-implement | skill | 0644 ---
+---
+name: role-implement
+---
+
+# role/implement
+
+Implement one bounded vertical slice
+
+- Inputs: contract/task
+- Outputs: contract/change
+- Non-goals: expand scope
+- Allowed effects: effect/write
+- Evidence: evidence/test
+- Terminal states: blocked, success
+--- skills/role-validate/SKILL.md | kilocode/skill/role-validate | skill | 0644 ---
+---
+name: role-validate
+---
+
+# role/validate
+
+Independently verify outcomes
+
+- Inputs: contract/change
+- Outputs: contract/verification
+- Non-goals: change production code
+- Allowed effects: effect/read
+- Evidence: evidence/test
+- Terminal states: failed, success

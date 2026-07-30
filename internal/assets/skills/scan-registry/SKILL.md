@@ -176,8 +176,8 @@ Only when `artifact_store.mode` is `openspec` or `hybrid`:
 ## Step 5: Validate and Return Contract
 
 1. Build the SDD-CONTRACT JSON (see `<output>` for schema).
-2. Validate: `sdd_validate(phase: "init", contract: {json})`
-3. Persist: `sdd_save(contract: {validated_json}, project: "{project}")`
+2. Validate: `sdd_validate(contract: "{JSON contract containing the phase field}")`
+3. Persist: `sdd_save(contract: "{validated_json containing the project field}")`
 4. Present the summary to the user (see `<output>` for format).
 
 </steps>
@@ -313,8 +313,8 @@ Persist the registry for cross-session discovery:
 
 ## Contract Persistence (ForgeSpec)
 After persisting the registry:
-1. `sdd_validate(phase: "init", contract: {json})` → validate contract
-2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+1. `sdd_validate(contract: "{JSON contract containing the phase field}")` → validate contract
+2. `sdd_save(contract: "{validated_json containing the project field}")` → persist to ForgeSpec history
 
 </mcp_integration>
 

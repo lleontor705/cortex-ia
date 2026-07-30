@@ -27,6 +27,15 @@ func injectSkillFiles(homeDir string) (InjectionResult, error) {
 
 	files := make([]string, 0)
 	changed := false
+	legacySkill := filepath.Join(sharedSkillsDir, "team-lead", "SKILL.md")
+	removed, err := removeLegacyPortableAsset(filepath.Dir(legacySkill))
+	if err != nil {
+		return InjectionResult{}, fmt.Errorf("remove legacy portable team-lead skill: %w", err)
+	}
+	if removed {
+		changed = true
+		files = append(files, legacySkill)
+	}
 
 	// Convention file is written by the conventions component — compute the
 	// absolute path here so fixConventionRefs can rewrite relative references.
@@ -118,7 +127,7 @@ func fixConventionRefs(content, absolutePath string) string {
 // embedded assets to ~/.config/opencode/skills/. Sub-agent skills live in the
 // global shared directory and are referenced from opencode.json.
 //
-// For other agents: copies all 19 skills from the shared directory
+// For other agents: copies all skills in sddSkillIDs from the shared directory
 // (~/.cortex-ia/skills/) to the agent-local directory (e.g. ~/.claude/skills/).
 func copySkillsToAgent(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 	agentSkillsDir := adapter.SkillsDir(homeDir)
@@ -128,6 +137,15 @@ func copySkillsToAgent(homeDir string, adapter agents.Adapter) (InjectionResult,
 
 	files := make([]string, 0)
 	changed := false
+	legacySkill := filepath.Join(agentSkillsDir, "team-lead", "SKILL.md")
+	removed, err := removeLegacyPortableAsset(filepath.Dir(legacySkill))
+	if err != nil {
+		return InjectionResult{}, fmt.Errorf("remove legacy portable team-lead agent skill: %w", err)
+	}
+	if removed {
+		changed = true
+		files = append(files, legacySkill)
+	}
 
 	if adapter.Agent() == model.AgentOpenCode {
 		// OpenCode: only utility skills belong in the local dir.
@@ -165,7 +183,7 @@ func copySkillsToAgent(homeDir string, adapter agents.Adapter) (InjectionResult,
 		return InjectionResult{Changed: changed, Files: files}, nil
 	}
 
-	// Other agents: write all 19 skills + convention from embedded assets.
+	// Other agents: write all skills in sddSkillIDs + convention from embedded assets.
 	sharedConventionPath := filepath.ToSlash(filepath.Join(
 		state.SharedSkillsDir(homeDir), "_shared", "cortex-convention.md"))
 
@@ -246,7 +264,7 @@ func injectCommands(homeDir string, adapter agents.Adapter) (InjectionResult, er
 // These are written to the global shared directory (~/.cortex-ia/skills/).
 var openCodeSubAgents = []string{
 	"bootstrap", "investigate", "draft-proposal", "write-specs",
-	"architect", "decompose", "team-lead", "implement", "validate", "finalize",
+	"architect", "decompose", "implement", "validate", "finalize",
 	"parallel-dispatch",
 }
 
@@ -256,6 +274,9 @@ var openCodeSubAgents = []string{
 var openCodeLocalSkills = []string{
 	"debate", "debug", "execute-plan", "file-issue",
 	"ideate", "monitor", "open-pr", "scan-registry",
+	"judgment-day", "onboard", "chained-pr", "cognitive-doc-design",
+	"comment-writer", "go-testing", "skill-creator", "skill-improver",
+	"work-unit-commits",
 }
 
 // injectSubAgents registers SDD sub-agents with the host agent.
@@ -268,6 +289,17 @@ var openCodeLocalSkills = []string{
 func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 	files := make([]string, 0)
 	changed := false
+	if subAgentsDir := adapter.SubAgentsDir(homeDir); subAgentsDir != "" {
+		legacyStub := filepath.Join(subAgentsDir, "team-lead.md")
+		removed, err := removeLegacyPortableAsset(legacyStub)
+		if err != nil {
+			return InjectionResult{}, fmt.Errorf("remove legacy portable team-lead sub-agent: %w", err)
+		}
+		if removed {
+			changed = true
+			files = append(files, legacyStub)
+		}
+	}
 
 	if adapter.Agent() == model.AgentOpenCode {
 		// OpenCode: merge full agent configs into opencode.json. No .md stubs.
@@ -288,6 +320,10 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 		baseJSON, err := os.ReadFile(settingsPath)
 		if err != nil && !os.IsNotExist(err) {
 			return InjectionResult{}, fmt.Errorf("read agent settings: %w", err)
+		}
+		baseJSON, err = removeLegacyPortableTeamLead(baseJSON)
+		if err != nil {
+			return InjectionResult{}, fmt.Errorf("remove legacy portable team-lead config: %w", err)
 		}
 		merged, err := filemerge.MergeJSONObjects(baseJSON, overlay)
 		if err != nil {
@@ -326,6 +362,38 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 	return InjectionResult{Changed: changed, Files: files}, nil
 }
 
+func removeLegacyPortableTeamLead(data []byte) ([]byte, error) {
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return data, nil
+	}
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+	agents, ok := config["agent"].(map[string]any)
+	if !ok {
+		return data, nil
+	}
+	if _, exists := agents["team-lead"]; !exists {
+		return data, nil
+	}
+	delete(agents, "team-lead")
+	return json.Marshal(config)
+}
+
+func removeLegacyPortableAsset(path string) (bool, error) {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := os.RemoveAll(path); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // buildAgentOverlay builds a full JSON overlay for all SDD agents in opencode.json,
 // including:
 //   - orchestrator (primary agent referencing prompts/orchestrator.md)
@@ -347,8 +415,9 @@ func buildAgentOverlay(skillIDs []string, skillsDir, promptsDir string) []byte {
 		},
 		"tools": map[string]any{
 			"bash": false, "read": false, "glob": false, "grep": false, "list": false,
-			"question": true, "engram_*": true, "sdd_*": true, "msg_*": true,
-			"tb_*": true, "skill": true, "task": true,
+			"question": true, "cortex_*": true, "forgespec_sdd_*": true,
+			"forgespec_tb_*": true,
+			"skill":          true, "task": true,
 			"todoread": true, "todowrite": true,
 			"edit": false, "write": false, "patch": false, "lsp": false,
 			"webfetch": false, "websearch": false, "playwright_*": false,
@@ -373,19 +442,7 @@ func buildAgentOverlay(skillIDs []string, skillsDir, promptsDir string) []byte {
 			"tools":       toolsForRole(role),
 		}
 
-		// team-lead has a specialized prompt and task permission.
-		if id == "team-lead" {
-			agent["prompt"] = fmt.Sprintf(
-				"You are the **team-lead** agent. Read your skill file at %s and follow its instructions exactly. "+
-					"You are a COORDINATOR — you NEVER write code. You own the task board and execute all groups, "+
-					"launching @implement sub-agents via the task tool for each task.",
-				skillPath)
-			agent["permission"] = map[string]any{
-				"task": map[string]any{"*": "allow"},
-			}
-		} else {
-			agent["prompt"] = agentPrompt(id, skillPath)
-		}
+		agent["prompt"] = agentPrompt(id, skillPath)
 
 		agentMap[id] = agent
 	}
@@ -394,7 +451,7 @@ func buildAgentOverlay(skillIDs []string, skillsDir, promptsDir string) []byte {
 	return data
 }
 
-// agentPrompt builds the system prompt for a non-team-lead SDD sub-agent.
+// agentPrompt builds the system prompt for an SDD sub-agent.
 func agentPrompt(id, skillPath string) string {
 	return fmt.Sprintf(
 		"You are the **%s** agent. Read your skill file at %s and follow its instructions exactly.",

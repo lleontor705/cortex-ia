@@ -84,7 +84,7 @@ Read `internal/assets/skills/_shared/skill-style-guide.md` in full. This is the 
 Read 2-3 existing cortex-ia skills that are structurally similar to the one you are creating:
 - For a pipeline-phase skill: read `implement`, `validate`, or `finalize`
 - For a utility skill: read `debug`, `ideate`, or `monitor`
-- For a coordinator skill: read `team-lead`, `debate`, or `parallel-dispatch`
+- For a coordinator skill: read `debate` or `parallel-dispatch`
 Note the tags they use, their nesting patterns, and how they reference the convention file.
 
 **Step 3: Determine the Skill Name**

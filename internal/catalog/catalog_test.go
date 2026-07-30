@@ -8,9 +8,10 @@ import (
 
 func TestComponentsForPresetFull(t *testing.T) {
 	ids := ComponentsForPreset(model.PresetFull)
-	if len(ids) != 8 {
-		t.Errorf("expected 8 components for full preset, got %d", len(ids))
+	if len(ids) != 7 {
+		t.Errorf("expected 7 current components for full preset, got %d", len(ids))
 	}
+	assertComponentAbsent(t, ids, model.ComponentMailbox)
 }
 
 func TestComponentsForPresetMinimal(t *testing.T) {
@@ -34,8 +35,8 @@ func TestResolveDeps_SDDPullsDeps(t *testing.T) {
 	if !has[model.ComponentForgeSpec] {
 		t.Error("SDD should pull forgespec as dependency")
 	}
-	if !has[model.ComponentMailbox] {
-		t.Error("SDD should pull agent-mailbox as dependency")
+	if has[model.ComponentMailbox] {
+		t.Error("SDD must not pull retired agent-mailbox as dependency")
 	}
 	if !has[model.ComponentSDD] {
 		t.Error("SDD should be in resolved list")
@@ -85,9 +86,16 @@ func TestResolveDeps_MinimalPreset(t *testing.T) {
 		has[id] = true
 	}
 
-	// Minimal selects cortex, forgespec, context7, sdd
-	// SDD deps pull in mailbox
-	if !has[model.ComponentMailbox] {
-		t.Error("minimal preset should auto-pull mailbox via SDD deps")
+	if has[model.ComponentMailbox] {
+		t.Error("minimal preset must not contain retired Mailbox")
+	}
+}
+
+func assertComponentAbsent(t *testing.T, components []model.ComponentID, unwanted model.ComponentID) {
+	t.Helper()
+	for _, component := range components {
+		if component == unwanted {
+			t.Fatalf("retired component %q is still current", unwanted)
+		}
 	}
 }

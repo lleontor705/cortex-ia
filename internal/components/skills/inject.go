@@ -21,7 +21,7 @@ func isSDDSkill(id model.SkillID) bool {
 	sddNames := map[string]bool{
 		"bootstrap": true, "investigate": true, "draft-proposal": true,
 		"write-specs": true, "architect": true, "decompose": true,
-		"team-lead": true, "implement": true, "validate": true, "finalize": true,
+		"implement": true, "validate": true, "finalize": true,
 		"debate": true, "debug": true, "execute-plan": true, "ideate": true,
 		"monitor": true, "open-pr": true, "file-issue": true,
 		"parallel-dispatch": true, "scan-registry": true,

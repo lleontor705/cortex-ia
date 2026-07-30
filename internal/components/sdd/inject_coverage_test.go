@@ -9,6 +9,7 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
+	"github.com/lleontor705/cortex-ia/internal/assets"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/system"
 )
@@ -28,26 +29,59 @@ type stubAdapter struct {
 	settingsPathVal    string
 }
 
-func (s *stubAdapter) Agent() model.AgentID                               { return s.agentID }
-func (s *stubAdapter) Tier() model.SupportTier                            { return model.TierFull }
-func (s *stubAdapter) Detect(string) (bool, string, string, bool, error)  { return false, "", "", false, nil }
-func (s *stubAdapter) GlobalConfigDir(string) string                      { return "" }
-func (s *stubAdapter) SystemPromptDir(string) string                      { return "" }
-func (s *stubAdapter) SystemPromptFile(string) string                     { return s.promptFileVal }
-func (s *stubAdapter) SkillsDir(string) string                            { return s.skillsDirVal }
-func (s *stubAdapter) SettingsPath(string) string                         { return s.settingsPathVal }
-func (s *stubAdapter) SystemPromptStrategy() model.SystemPromptStrategy   { return model.StrategyMarkdownSections }
-func (s *stubAdapter) MCPStrategy() model.MCPStrategy                     { return 0 }
-func (s *stubAdapter) MCPConfigPath(string, string) string                { return "" }
-func (s *stubAdapter) SupportsSkills() bool                               { return s.supportsSkills }
-func (s *stubAdapter) SupportsSystemPrompt() bool                         { return s.supportsPrompt }
-func (s *stubAdapter) SupportsMCP() bool                                  { return false }
-func (s *stubAdapter) SupportsSlashCommands() bool                        { return s.supportsCommands }
-func (s *stubAdapter) CommandsDir(string) string                          { return s.commandsDirVal }
-func (s *stubAdapter) SupportsTaskDelegation() bool                       { return s.supportsDelegation }
-func (s *stubAdapter) SupportsSubAgents() bool                            { return s.supportsSubAgents }
-func (s *stubAdapter) SubAgentsDir(string) string                         { return s.subAgentsDirVal }
-func (s *stubAdapter) SupportsAutoInstall() bool                          { return false }
+func TestCurrentOrchestratorAssetsContainNoRetiredCoordinationSurface(t *testing.T) {
+	for _, path := range []string{
+		"generic/sdd-orchestrator.md",
+		"generic/sdd-orchestrator-single.md",
+		"generic/sdd-orchestrator-reference.md",
+	} {
+		content, err := assets.Read(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lower := strings.ToLower(content)
+		for _, forbidden := range []string{"team-lead", "mailbox", "msg_", "a2a_", "resource_", "dlq_", "nested coordinator"} {
+			if strings.Contains(lower, forbidden) {
+				t.Errorf("%s contains retired coordination surface %q", path, forbidden)
+			}
+		}
+	}
+}
+
+func TestCurrentAgentOverlayGrantsNoRetiredCoordinationTools(t *testing.T) {
+	overlay := buildAgentOverlay([]string{"implement", "validate"}, "/skills", "/prompts")
+	lower := strings.ToLower(string(overlay))
+	for _, forbidden := range []string{"team-lead", "agent-mailbox", "msg_", "a2a_", "resource_", "dlq_"} {
+		if strings.Contains(lower, forbidden) {
+			t.Errorf("agent overlay contains retired coordination surface %q", forbidden)
+		}
+	}
+}
+
+func (s *stubAdapter) Agent() model.AgentID    { return s.agentID }
+func (s *stubAdapter) Tier() model.SupportTier { return model.TierFull }
+func (s *stubAdapter) Detect(string) (bool, string, string, bool, error) {
+	return false, "", "", false, nil
+}
+func (s *stubAdapter) GlobalConfigDir(string) string  { return "" }
+func (s *stubAdapter) SystemPromptDir(string) string  { return "" }
+func (s *stubAdapter) SystemPromptFile(string) string { return s.promptFileVal }
+func (s *stubAdapter) SkillsDir(string) string        { return s.skillsDirVal }
+func (s *stubAdapter) SettingsPath(string) string     { return s.settingsPathVal }
+func (s *stubAdapter) SystemPromptStrategy() model.SystemPromptStrategy {
+	return model.StrategyMarkdownSections
+}
+func (s *stubAdapter) MCPStrategy() model.MCPStrategy                      { return 0 }
+func (s *stubAdapter) MCPConfigPath(string, string) string                 { return "" }
+func (s *stubAdapter) SupportsSkills() bool                                { return s.supportsSkills }
+func (s *stubAdapter) SupportsSystemPrompt() bool                          { return s.supportsPrompt }
+func (s *stubAdapter) SupportsMCP() bool                                   { return false }
+func (s *stubAdapter) SupportsSlashCommands() bool                         { return s.supportsCommands }
+func (s *stubAdapter) CommandsDir(string) string                           { return s.commandsDirVal }
+func (s *stubAdapter) SupportsTaskDelegation() bool                        { return s.supportsDelegation }
+func (s *stubAdapter) SupportsSubAgents() bool                             { return s.supportsSubAgents }
+func (s *stubAdapter) SubAgentsDir(string) string                          { return s.subAgentsDirVal }
+func (s *stubAdapter) SupportsAutoInstall() bool                           { return false }
 func (s *stubAdapter) InstallCommands(_ system.PlatformProfile) [][]string { return nil }
 
 // ---------------------------------------------------------------------------
@@ -208,10 +242,8 @@ func TestInjectSDD_OpenCode(t *testing.T) {
 		}
 	}
 
-	// team-lead must have permission block.
-	tl, _ := agentSection["team-lead"].(map[string]any)
-	if tl["permission"] == nil {
-		t.Error("team-lead should have permission block")
+	if _, exists := agentSection["team-lead"]; exists {
+		t.Error("portable OpenCode overlay must not contain team-lead")
 	}
 }
 
@@ -229,6 +261,39 @@ func TestInjectSDD_OpenCode_Idempotent(t *testing.T) {
 	}
 	if second.Changed {
 		t.Error("expected second inject to be idempotent")
+	}
+}
+
+func TestInjectSDD_OpenCode_RemovesLegacyPortableTeamLeadConfig(t *testing.T) {
+	ResetSharedWrite()
+	homeDir := t.TempDir()
+	adapter := opencode.NewAdapter()
+	settingsPath := adapter.SettingsPath(homeDir)
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"agent":{"team-lead":{"mode":"subagent","prompt":"legacy portable scheduler"},"custom":{"mode":"subagent"}}}`
+	if err := os.WriteFile(settingsPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Inject(homeDir, adapter, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatal(err)
+	}
+	agents := config["agent"].(map[string]any)
+	if _, exists := agents["team-lead"]; exists {
+		t.Fatal("legacy portable team-lead config must be removed during cutover")
+	}
+	if _, exists := agents["custom"]; !exists {
+		t.Fatal("unrelated user agent config must be preserved")
 	}
 }
 
@@ -294,6 +359,30 @@ func TestInjectSkillFiles_WritesSkills(t *testing.T) {
 	bootstrapSkill := filepath.Join(tmpDir, ".cortex-ia", "skills", "bootstrap", "SKILL.md")
 	if _, err := os.Stat(bootstrapSkill); os.IsNotExist(err) {
 		t.Error("expected bootstrap skill to be written")
+	}
+}
+
+func TestInjectSkillFiles_RemovesLegacyPortableTeamLeadSkill(t *testing.T) {
+	homeDir := t.TempDir()
+	legacyDir := filepath.Join(homeDir, ".cortex-ia", "skills", "team-lead")
+	customDir := filepath.Join(homeDir, ".cortex-ia", "skills", "custom")
+	for _, dir := range []string{legacyDir, customDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("legacy"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := injectSkillFiles(homeDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(legacyDir); !os.IsNotExist(err) {
+		t.Fatalf("legacy portable team-lead skill directory must be removed, stat error = %v", err)
+	}
+	if _, err := os.Stat(customDir); err != nil {
+		t.Fatalf("unrelated custom skill must be preserved: %v", err)
 	}
 }
 
@@ -418,7 +507,7 @@ func TestFixConventionRefs(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBuildAgentOverlay_ValidJSON(t *testing.T) {
-	overlay := buildAgentOverlay([]string{"bootstrap", "investigate", "implement", "team-lead"}, "/test/skills", "/test/prompts")
+	overlay := buildAgentOverlay([]string{"bootstrap", "investigate", "implement"}, "/test/skills", "/test/prompts")
 
 	var parsed map[string]any
 	if err := json.Unmarshal(overlay, &parsed); err != nil {
@@ -428,9 +517,9 @@ func TestBuildAgentOverlay_ValidJSON(t *testing.T) {
 	if !ok {
 		t.Fatal("expected 'agent' key")
 	}
-	// 4 sub-agents + orchestrator + build (disabled) + plan (disabled) = 7
-	if len(agents) != 7 {
-		t.Errorf("expected 7 agents, got %d", len(agents))
+	// 3 sub-agents + orchestrator + build (disabled) + plan (disabled) = 6
+	if len(agents) != 6 {
+		t.Errorf("expected 6 agents, got %d", len(agents))
 	}
 
 	// Verify disabled built-in agents.
@@ -452,7 +541,7 @@ func TestBuildAgentOverlay_ValidJSON(t *testing.T) {
 	}
 
 	// Every sub-agent must have full config.
-	for _, id := range []string{"bootstrap", "investigate", "implement", "team-lead"} {
+	for _, id := range []string{"bootstrap", "investigate", "implement"} {
 		entry, _ := agents[id].(map[string]any)
 		for _, field := range []string{"color", "prompt", "description", "steps", "temperature", "tools", "mode"} {
 			if entry[field] == nil {
@@ -470,10 +559,8 @@ func TestBuildAgentOverlay_ValidJSON(t *testing.T) {
 		}
 	}
 
-	// team-lead should have permission block.
-	tl, _ := agents["team-lead"].(map[string]any)
-	if tl["permission"] == nil {
-		t.Error("team-lead should have permission block")
+	if _, exists := agents["team-lead"]; exists {
+		t.Error("portable agent overlay must not contain team-lead")
 	}
 }
 
@@ -495,11 +582,13 @@ func TestBuildAgentOverlay_Empty(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCoordinatorSkills(t *testing.T) {
-	// Only 3 agents are coordinators.
-	for _, id := range []string{"team-lead", "debate", "parallel-dispatch"} {
+	for _, id := range []string{"debate", "parallel-dispatch"} {
 		if !isCoordinator(id) {
 			t.Errorf("%q should be a coordinator", id)
 		}
+	}
+	if isCoordinator("team-lead") {
+		t.Error("portable team-lead must not remain a coordinator")
 	}
 	// Leaf agents are NOT coordinators.
 	for _, leaf := range []string{"implement", "validate", "bootstrap", "investigate", "architect"} {
@@ -519,6 +608,7 @@ func TestFilesToBackup_WithCommands(t *testing.T) {
 
 	hasCommand := false
 	hasSharedSkill := false
+	hasLegacyTeamLeadBackup := false
 	hasPrompt := false
 	for _, p := range paths {
 		normalized := filepath.ToSlash(p)
@@ -527,6 +617,9 @@ func TestFilesToBackup_WithCommands(t *testing.T) {
 		}
 		if strings.Contains(normalized, ".cortex-ia/skills/bootstrap") {
 			hasSharedSkill = true
+		}
+		if strings.Contains(normalized, ".cortex-ia/skills/team-lead/SKILL.md") {
+			hasLegacyTeamLeadBackup = true
 		}
 		if strings.Contains(normalized, "prompts/orchestrator.md") {
 			hasPrompt = true
@@ -537,6 +630,9 @@ func TestFilesToBackup_WithCommands(t *testing.T) {
 	}
 	if !hasSharedSkill {
 		t.Error("expected shared skill files")
+	}
+	if !hasLegacyTeamLeadBackup {
+		t.Error("expected legacy team-lead skill in rollback backup scope")
 	}
 	if !hasPrompt {
 		t.Error("expected shared orchestrator prompt")

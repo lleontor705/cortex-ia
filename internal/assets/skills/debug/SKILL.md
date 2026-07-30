@@ -227,10 +227,13 @@ If N >= 3:
      content: "**Root cause**: {cause}\n**Fix**: {fix}\n**Files**: {affected-files}"
    )
    ```
-2. Build the SDD-CONTRACT JSON.
-3. Validate: `sdd_validate(phase: "explore", contract: {json})`
-4. Persist: `sdd_save(contract: {validated_json}, project: "{project}")`
-5. Return the contract and debugging report to the caller.
+2. Build the contract JSON (see output section).
+3. Self-check the contract before returning:
+   - Root cause is specific (file:line) and backed by evidence
+   - Fix description matches what was actually changed
+   - Verification fields reflect real test runs
+   - No fabricated fields
+4. Return the contract and debugging report to the caller.
 
 </steps>
 
@@ -257,12 +260,12 @@ When reporting debugging results, use this structure:
 - [path/to/file.ts] -- [what changed and why]
 ```
 
-## SDD-CONTRACT
+## Debug Contract
 
 ```json
 {
   "schema_version": "1.0",
-  "phase": "explore",
+  "phase": "debug",
   "change_name": "debug-{bug-slug}",
   "project": "{project}",
   "status": "success|blocked",
@@ -377,9 +380,7 @@ After identifying root cause and fix:
 (Why: future debug sessions can find this fix instantly via mem_search)
 
 ## Contract Persistence (ForgeSpec)
-After completing debugging:
-1. `sdd_validate(phase: "explore", contract: {json})` → validate contract
-2. `sdd_save(contract: {validated_json}, project: "{project}")` → persist to ForgeSpec history
+Debug is a standalone utility, not an SDD pipeline phase. Do NOT call `sdd_validate` or `sdd_save` — these would pollute the SDD phase history. The contract JSON is returned to the caller as a self-check report only; it is not persisted to ForgeSpec.
 </mcp_integration>
 
 <self_check>
@@ -404,8 +405,7 @@ After completing a debugging session, confirm all of the following:
 - [ ] Full test suite passes after the fix (no regressions)
 - [ ] If 3+ fixes failed, architecture was questioned instead of attempting fix #4
 - [ ] Debugging report persisted to Cortex with bugfix topic_key
-- [ ] SDD-CONTRACT JSON includes all required fields
-- [ ] `sdd_validate()` was called and passed
-- [ ] `sdd_save()` persisted the contract to ForgeSpec history
+- [ ] Contract JSON includes all required fields and reflects real evidence
+- [ ] Self-check completed: no fabricated fields, root cause is specific
 
 </verification>

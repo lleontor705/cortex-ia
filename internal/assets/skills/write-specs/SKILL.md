@@ -275,4 +275,3 @@ Before returning, confirm every item:
 ## Contract Persistence (ForgeSpec)
 Follow "Contract Persistence Protocol" from cortex-convention.md. Phase: "spec".
 </mcp_integration>
-</output>

@@ -6,10 +6,10 @@ description: >
   and re-judges until both pass or escalates after 2 iterations.
   Trigger: When user says "judgment day", "judgment-day", "review adversarial", "dual review",
   "doble review", "juzgar", "que lo juzguen".
-license: Apache-2.0
+license: MIT
 metadata:
   author: cortex-ia
-  version: "1.4"
+  version: "1.4.0"
 ---
 
 ## When to Use
@@ -26,7 +26,7 @@ metadata:
 
 Follow the **Cortex Convention** (`_shared/cortex-convention.md`) before launching ANY sub-agent:
 
-1. Obtain the skill registry: search Cortex MCP (`mem_search(query: "skill-registry", project: "{project}")`) → fallback to `.cortex/skill-registry.md` from the project root → skip if none
+1. Obtain the skill registry: search Cortex MCP (`mem_search(query: "skill-registry", project: "{project}")`) → fallback to `.sdd/skill-registry.md` from the project root → skip if none
 2. Identify the target files/scope — what code will the judges review?
 3. Match relevant skills from the registry's **Compact Rules** by:
    - **Code context**: file extensions/paths of the target (e.g., `.go` → go-testing; `.tsx` → react, typescript)
@@ -78,7 +78,7 @@ WARNING (theoretical) → Requires a contrived scenario, corrupted input, or con
 
 1. If **confirmed CRITICALs or real WARNINGs** exist → delegate a **Fix Agent** (separate delegation)
 2. After Fix Agent completes → re-launch **both judges in parallel** (same blind protocol, fresh delegates)
-3. **After 2 fix iterations**, if issues remain → present findings to user and ASK: "¿Querés que siga iterando? / Should I continue iterating?" If YES → continue fix+judge cycle. If NO → JUDGMENT: ESCALATED.
+3. **After 2 fix iterations**, if issues remain → present findings to user and ASK: "¿Quieres que continúe iterando? / Should I continue iterating?" If YES → continue fix+judge cycle. If NO → JUDGMENT: ESCALATED.
 4. If both judges return clean → JUDGMENT: APPROVED ✅
 
 ### Pattern 5: Convergence Threshold
@@ -120,7 +120,7 @@ Synthesize verdict
 ├── Issues found (confirmed, suspect, or contradictions)?
 │   └── Present verdict table to user
 │       ▼
-│       ASK: "¿Arreglo los issues confirmados? / Fix confirmed issues?"
+│       ASK: "¿Corrijo los problemas confirmados? / Fix confirmed issues?"
 │       ▼
 │       ├── User says YES → Delegate Fix Agent with confirmed issues list
 │       ├── User says NO → JUDGMENT: ESCALATED (user chose not to fix)
@@ -299,7 +299,7 @@ This is a self-correction mechanism. Do NOT ignore fallback reports.
 
 ## Language
 
-- **Spanish input → Rioplatense**: "Juicio iniciado", "Los jueces están trabajando en paralelo...", "Los jueces coinciden", "Juicio terminado — Aprobado", "Escalado — necesita revisión humana"
+- **Spanish input → Neutral Spanish**: "Juicio iniciado", "Los jueces están trabajando en paralelo...", "Los jueces coinciden", "Juicio terminado — Aprobado", "Escalado — necesita revisión humana"
 - **English input**: "Judgment initiated", "Both judges are working in parallel...", "Both judges agree", "Judgment complete — Approved", "Escalated — requires human review"
 
 ---

@@ -166,6 +166,42 @@ func TestApplyToOpenCodeConfig(t *testing.T) {
 	}
 }
 
+func TestApplyToOpenCodeConfig_DropsLegacyPortableTeamLead(t *testing.T) {
+	homeDir := t.TempDir()
+	configDir := filepath.Join(homeDir, ".config", "opencode")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "opencode.json")
+	legacy := `{"agent":{"team-lead":{"model":"legacy"},"implement":{"mode":"subagent"}}}`
+	if err := os.WriteFile(configPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assignments := model.OpenCodeModelAssignments{
+		"team-lead": {Provider: "anthropic", Model: "claude-sonnet"},
+		"implement": {Provider: "anthropic", Model: "claude-sonnet"},
+	}
+
+	if err := ApplyToOpenCodeConfig(homeDir, assignments); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatal(err)
+	}
+	agents := config["agent"].(map[string]any)
+	if _, exists := agents["team-lead"]; exists {
+		t.Fatal("legacy portable team-lead config must not be restored by model assignment")
+	}
+	if agents["implement"].(map[string]any)["model"] != "anthropic/claude-sonnet" {
+		t.Fatal("replacement implement model assignment was not applied")
+	}
+}
+
 func TestApplyToOpenCodeConfig_PreservesLegacyAgentWhenOnlyLegacyExists(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, ".config", "opencode")

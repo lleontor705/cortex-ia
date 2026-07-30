@@ -23,7 +23,6 @@ var allSkills = []Skill{
 	{ID: model.SkillSDDApply, Name: "sdd-apply", Category: "sdd", Priority: 4},
 	{ID: model.SkillSDDVerify, Name: "sdd-verify", Category: "sdd", Priority: 5},
 	{ID: model.SkillSDDArchive, Name: "sdd-archive", Category: "sdd", Priority: 5},
-	{ID: model.SkillTeamLead, Name: "team-lead", Category: "sdd", Priority: 4},
 	{ID: model.SkillOnboard, Name: "onboard", Category: "sdd", Priority: 5},
 
 	// --- Review skill ---
@@ -43,6 +42,8 @@ var allSkills = []Skill{
 	{ID: model.SkillCommentWriter, Name: "comment-writer", Category: "utility", Priority: 3},
 	{ID: model.SkillGoTesting, Name: "go-testing", Category: "utility", Priority: 3},
 	{ID: model.SkillCognitiveDoc, Name: "cognitive-doc-design", Category: "utility", Priority: 4},
+
+	{ID: model.SkillParallelDispatch, Name: "parallel-dispatch", Category: "utility", Priority: 3},
 
 	// --- Meta skills ---
 	{ID: model.SkillSkillCreator, Name: "skill-creator", Category: "meta", Priority: 4},

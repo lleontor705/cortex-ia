@@ -1,6 +1,6 @@
 # SDD Workflow
 
-Spec-Driven Development (SDD) is a structured 9-phase pipeline for substantial software changes. It enforces typed contracts, tracks dependencies, and provides artifact persistence across sessions.
+Spec-Driven Development (SDD) is a structured 9-phase pipeline (Phase 0 init prerequisite + 8 main phases, 1-8) for substantial software changes. ForgeSpec owns contracts and authoritative task state, Cortex owns durable evidence, and runtime-native dispatch owns child transport only. cortex-ia compiles and installs workflow assets but does not schedule or execute the pipeline.
 
 ## Pipeline
 
@@ -20,47 +20,47 @@ Spec and design depend on the proposal but are independent of each other.
 
 ## Phases
 
-### 1. Init (`/sdd-init`)
+### 0. Init (`/sdd-init`) — prerequisite
 **Agent**: bootstrap | **Confidence threshold**: 0.5
 
 Detects project stack (languages, frameworks, test runners), bootstraps persistence mode (cortex/openspec/hybrid/none), builds skill registry.
 
-### 2. Explore (`/sdd-explore <topic>`)
+### 1. Explore (`/sdd-explore <topic>`)
 **Agent**: investigate | **Confidence threshold**: 0.5
 
 Reads codebase, compares approaches, rates effort/risk. Uses Context7 for library docs and `mem_timeline` for temporal context. No files created.
 
-### 3. Propose (`/sdd-new <change>`)
+### 2. Propose (`/sdd-new <change>`)
 **Agent**: draft-proposal | **Confidence threshold**: 0.7
 
 Creates change proposal with intent, scope, approach, affected areas, risks, rollback plan, success criteria. Uses Skeleton-of-Thought: outline → validate → expand.
 
-### 4. Spec (`/sdd-continue`)
+### 3. Spec (`/sdd-continue`)
 **Agent**: write-specs | **Confidence threshold**: 0.8
 
 Writes delta specifications (ADDED/MODIFIED/REMOVED) with Given/When/Then scenarios. Uses RFC 2119 keywords.
 
-### 5. Design (`/sdd-continue`)
+### 4. Design (`/sdd-continue`)
 **Agent**: architect | **Confidence threshold**: 0.7
 
 Technical design with architecture decisions, data flow, file changes, interfaces. Uses Extended Thinking with explicit trade-off analysis of 2+ alternatives.
 
-### 6. Tasks (`/sdd-continue`)
+### 5. Tasks (`/sdd-continue`)
 **Agent**: decompose | **Confidence threshold**: 0.8
 
 Breaks specs + design into phased, dependency-ordered tasks. Identifies parallel groups and integration points.
 
-### 7. Apply (`/sdd-implement`)
-**Agent**: team-lead → implement | **Confidence threshold**: 0.6
+### 6. Apply (`/sdd-implement`)
+**Agent**: implement | **Confidence threshold**: 0.6
 
-Team-lead coordinates parallel @implement agents via task board. Uses `file_reserve(check_only: true)` → `file_reserve()` to prevent conflicts. Each implement agent uses Constitutional Self-Critique before submitting.
+The orchestrator routes a ForgeSpec-ready task directly to `implement`. The implement agent reserves only its files, owns one bounded vertical work unit, verifies it, reports status, and releases reservations. The historical `team-lead` role is retired and removed from every current profile.
 
-### 8. Verify (`/sdd-validate`)
+### 7. Verify (`/sdd-validate`)
 **Agent**: validate | **Confidence threshold**: 0.9
 
 Validates implementation against specs. Runs tests, generates compliance matrix. Uses Chain-of-Verification: list claims → verify independently → correct.
 
-### 9. Archive (`/sdd-finalize`)
+### 8. Archive (`/sdd-finalize`)
 **Agent**: finalize | **Confidence threshold**: 0.9
 
 Merges delta specs, closes change cycle, generates retrospective. Cleans up obsolete Cortex observations via `mem_archive`.
@@ -87,7 +87,7 @@ Merges delta specs, closes change cycle, generates retrospective. Cleans up obso
 
 ## Contract Validation
 
-Every phase produces a JSON contract validated by ForgeSpec:
+Every phase produces a JSON contract validated by the external ForgeSpec service. ForgeSpec is an explicit upstream dependency; cortex-ia configures the binding and does not implement a local substitute:
 
 ```json
 {
@@ -127,6 +127,7 @@ sdd/{change-name}/{artifact-type}
 | apply | `sdd/{change}/apply-progress` | `sdd/add-auth/apply-progress` |
 | verify | `sdd/{change}/verify-report` | `sdd/add-auth/verify-report` |
 | archive | `sdd/{change}/archive-report` | `sdd/add-auth/archive-report` |
+| retrospective | `sdd/{change}/retrospective` | `sdd/add-auth/retrospective` |
 
 ### Two-Step Read (Critical)
 `mem_search` returns 300-char previews only. Always follow with:
@@ -135,57 +136,46 @@ sdd/{change-name}/{artifact-type}
 2. mem_get_observation(id: {id}) → full content
 ```
 
+## Capability Profiles
+
+| Profile | Minimum qualified capability | Scheduling assumption |
+|---------|------------------------------|-----------------------|
+| `portable-sequential` | None | One agent follows dependency order; no delegation required |
+| `portable-flat` | Fresh proven direct-child delegation | Direct children only; no nesting or runtime DAG assumption |
+| `native-advanced` | Every requested native capability; explicit opt-in for each experimental capability | Only the target-specific behavior recorded in its manifest |
+
+Experimental native behavior is always opt-in, even after qualification. Stale facts, documentation-only evidence, or prompt-only guidance cannot upgrade a profile. The generated security and degradation manifests show the selected profile, capability states (`native|emulated|advisory|unsupported`), enforcement (`runtime|hook|mcp|prompt|none`), substitutions, evidence, permissions, service requirements, and findings before installation.
+
 ## Apply Phase
 
-<p align="center">
-  <img src="assets/apply-phase-workflow.svg" alt="Apply Phase Workflow" width="100%" />
-</p>
+1. ForgeSpec determines task dependencies/readiness and owns claim/status state.
+2. The orchestrator selects a ready task reference and dispatches `implement` directly.
+3. `implement` reserves its exact files, completes one bounded work unit, and records evidence/status.
+4. `validate` independently checks the resulting behavior and evidence.
 
-## Agent Coordination Tools
+Runtime-native dispatch is non-authoritative transport. Provider-neutral remote A2A is unsupported and unbound.
+
+## Direct Coordination
 
 <p align="center">
   <img src="assets/agent-coordination.svg" alt="Agent Coordination" width="100%" />
 </p>
 
-### Messaging vs A2A Tasks
+ForgeSpec `direct-v1` is selected only from fresh compatible P0 capability evidence. ForgeSpec 1.2.x may run visibly as `legacy-sequential`; missing or stale required evidence blocks. Optional file-reservation capability may degrade to sequential/no-concurrent-write execution. No local scheduler, message bus, inbox, dead-letter queue, or lease engine is created.
 
-| Need | Tool | Notes |
-|------|------|-------|
-| Quick message | `msg_send` / `msg_request` | Synchronous or fire-and-forget |
-| Broadcast | `msg_broadcast` | Completion notifications |
-| Formal delegation | `a2a_submit_task` | Status tracking lifecycle |
-| Structured response | `a2a_respond_task` | Machine-parseable results |
-| Audit trail | `a2a_list_tasks` | Full history per agent |
-| Cancel stalled work | `a2a_cancel_task` | Replaces timeout heuristics |
+The retired historical Agent Mailbox database, WAL/SHM files, caches, archives, and repository checkout are never automatically mutated or deleted. Any cleanup is operator-controlled after preservation checks.
 
-### File Locks vs Resource Locks
+## Quality Policy
 
-| Concern | Tool | Source |
-|---------|------|--------|
-| Concurrent file edits | `file_reserve` / `file_release` | ForgeSpec |
-| Deploy/CI/APIs | `resource_acquire` / `resource_release` | Agent Mailbox |
+Planning depth depends on change type, observable behavior, risk, reversibility, trust boundary, dependency breadth, migration impact, and required evidence—not model confidence alone. Behavior-changing work uses vertical RED/GREEN/REFACTOR only when a deterministic focused runner, writable tests, and baseline evidence are available; otherwise it records an explicit recognized exception with compensating evidence.
 
-**Rule**: `file_reserve` for file glob patterns. `resource_acquire` for everything else (deploy, CI, APIs, DB).
+Use Gherkin selectively for stakeholder-visible generation, installation, diagnostic, degradation, or rollback behavior. Use unit, contract, property, fuzz, or golden tests for schemas and internal invariants. Mutation is conditional and budgeted; property/fuzz tests require meaningful invariants or untrusted input surfaces. Timeout, flakes, missing capability, cancellation, insufficient trials, and exhausted budgets remain inconclusive or degraded and must never be converted to pass.
 
-### Dead-Letter Queue
+## Installation, Migration, and Rollback
 
-Failed deliveries go to DLQ. Check after compaction, timeouts, or unexplained message loss.
-Tools: `dlq_list()`, `dlq_retry(dlq_id)`, `dlq_purge()`
+The compiler emits deterministic target assets and semantic/security/degradation manifests. Dry-run and apply share the same immutable install plan. Doctor must qualify the planned profile, service versions, evidence freshness, bindings, permissions, hashes, ownership, and manifests before mutation. Installation creates a verified backup, preserves content outside managed regions, uses three-way merge for managed customization, and blocks conflicts.
 
-## Orchestrator Variants
-
-<p align="center">
-  <img src="assets/multi-agent-orchestration.svg" alt="Multi-Agent Orchestration" width="100%" />
-</p>
-
-### Multi-Agent (Claude Code, OpenCode)
-The orchestrator is a pure coordinator — delegates ALL work to sub-agents via Task tool. Uses:
-- `agent_register` for P2P discovery
-- `mem_capture_passive` for automatic learning extraction
-- `tb_list_boards` for board recovery after compaction
-
-### Single-Agent (Gemini, Codex, Windsurf, Cursor, VS Code, Antigravity)
-The agent executes all 9 phases sequentially itself. Uses the same Cortex, ForgeSpec, and Mailbox tools but without delegation.
+Major cutover migrates generated assets and configuration only. It does **not** migrate live sessions, in-flight tasks, attempts, leases, scheduler state, or runtime telemetry. Rollback requires an explicitly selected backup, restores managed bytes and compatibility metadata, preserves conflict-free unmanaged changes, reports conflicts, and re-runs doctor against the restored bundle.
 
 ## Prompting Techniques
 

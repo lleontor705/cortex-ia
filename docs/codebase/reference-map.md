@@ -83,7 +83,7 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | Server | Binary | Purpose | Injection |
 |--------|--------|---------|-----------|
 | Cortex | `cortex` | Persistent memory + knowledge graph | `internal/components/cortex/` |
-| Mailbox | (npm) | Agent messaging + A2A task protocol | `internal/components/mailbox/` |
+| Historical Mailbox compatibility | none | Retired decode/migration/rollback only | `internal/components/mcpinject/removal.go` |
 | ForgeSpec | (npm) | SDD contracts + task boards + file reservations | `internal/components/forgespec/` |
 | Context7 | (npm/remote) | Library documentation lookup | `internal/components/context7/` |
 

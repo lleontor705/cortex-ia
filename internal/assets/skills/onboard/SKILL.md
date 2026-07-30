@@ -5,7 +5,7 @@ description: >
   Walks a new user through every phase — bootstrap, explore, propose, spec, design, tasks, apply,
   verify, archive — with actual commands, real artifacts, and live Cortex persistence.
   Trigger: When user says "onboard", "walkthrough", "guide me through SDD", "show me how SDD works",
-  "ensename SDD", "guiame por SDD".
+  "enséñame SDD", "guíame por SDD".
 license: MIT
 metadata:
   author: lleontor705
@@ -265,7 +265,7 @@ Run the implement skill to write the actual production code.
 
 **What to do:**
 - For a single-task change: the orchestrator delegates directly to the implement agent
-- For a multi-task change: the orchestrator delegates to team-lead, who launches implement agents per task
+- For a multi-task change: the orchestrator routes each ForgeSpec-ready bounded work unit directly to an implement agent
 - In strict TDD mode: each task follows RED (write failing test) → GREEN (write code to pass) → REFACTOR (clean up)
 
 **What to verify after apply:**
@@ -356,7 +356,7 @@ Summarize what the user just accomplished:
 
 Suggest next steps:
 - Try a larger change using the same pipeline
-- Explore parallel multi-agent flows (team-lead + multiple implement agents)
+- Explore qualified direct-child multi-agent flows with independent implement agents
 - Run `/debate` to adversarially evaluate a design decision
 - Run judgment-day for dual-review before merging
 
@@ -491,4 +491,3 @@ Before returning the walkthrough log, confirm:
 - [ ] Next steps were suggested for independent SDD usage
 
 </verification>
-</output>
