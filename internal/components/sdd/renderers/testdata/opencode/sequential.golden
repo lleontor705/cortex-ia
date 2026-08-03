@@ -1,0 +1,18 @@
+[
+  {
+    "path": "AGENTS.md",
+    "semantic_id": "asset/opencode/instruction/root",
+    "kind": "instruction",
+    "mode": "0644",
+    "extensions": [],
+    "content": "# OpenCode Workflow Bundle\n\n- Workflow: `workflow/review`\n- Version: `1.0.0`\n- Profile: `portable-sequential`\n- Generation fingerprint: `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`\n\n## Execution\nExecute phases sequentially. Do not delegate. Complete each phase before the next.\n\n## Phases\n- `phase/apply` -\u003e `role/implement`\n- `phase/verify` -\u003e `role/validate` (after: `phase/apply`)\n"
+  },
+  {
+    "path": "commands/run-workflow.md",
+    "semantic_id": "asset/opencode/command/workflow",
+    "kind": "command",
+    "mode": "0644",
+    "extensions": [],
+    "content": "---\ndescription: Execute workflow/review using portable-sequential\n---\nExecute `workflow/review` phase-by-phase in deterministic dependency order.\nExecute phases sequentially. Do not delegate. Complete each phase before the next.\n"
+  }
+]

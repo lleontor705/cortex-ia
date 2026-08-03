@@ -49,7 +49,7 @@ Agents: `claude-code`, `opencode`, `vscode-copilot`, `codex`. Registry preserves
 | `internal/components/mcpinject/` | Shared MCP injection engine. Per-strategy `ServerTemplates` + dispatch. | `mcpinject.go` |
 | `internal/components/filemerge/` | File-operation primitives used by all injectors. | `section.go`, `json_merge.go`, `toml.go`, `writer.go` |
 | `internal/components/cortex/` | Cortex MCP server injection (Go binary). | — |
-| `internal/components/mailbox/` | Agent Mailbox MCP server injection (npm). | — |
+| `internal/components/mcpinject/removal.go` | Retired historical Mailbox registration migration only. | — |
 | `internal/components/forgespec/` | ForgeSpec MCP server injection (npm). | — |
 | `internal/components/context7/` | Context7 MCP server injection (npm/remote). | `config.go`, `inject.go` |
 | `internal/components/sdd/` | SDD workflow injection: orchestrator prompt + 19 skills + commands + sub-agents. | `inject.go` |

@@ -9,8 +9,9 @@ import (
 func TestComponentsForPresetFull(t *testing.T) {
 	ids := ComponentsForPreset(model.PresetFull)
 	if len(ids) != 7 {
-		t.Errorf("expected 7 components for full preset, got %d", len(ids))
+		t.Errorf("expected 7 current components for full preset, got %d", len(ids))
 	}
+	assertComponentPresent(t, ids, model.ComponentMailbox)
 }
 
 func TestComponentsForPresetMinimal(t *testing.T) {
@@ -85,9 +86,17 @@ func TestResolveDeps_MinimalPreset(t *testing.T) {
 		has[id] = true
 	}
 
-	// Minimal selects cortex, forgespec, context7, sdd
-	// SDD deps pull in mailbox
 	if !has[model.ComponentMailbox] {
-		t.Error("minimal preset should auto-pull mailbox via SDD deps")
+		t.Error("minimal preset should contain Mailbox through SDD dependencies")
 	}
+}
+
+func assertComponentPresent(t *testing.T, components []model.ComponentID, wanted model.ComponentID) {
+	t.Helper()
+	for _, component := range components {
+		if component == wanted {
+			return
+		}
+	}
+	t.Fatalf("current component %q is missing", wanted)
 }

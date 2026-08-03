@@ -26,7 +26,7 @@ How to extend cortex-ia: adding a new agent adapter, a new skill, a new componen
 
 ## Adding an Agent Adapter
 
-Cortex-ia supports 12 agents. To add a 13th:
+Cortex-ia officially supports four agents. Adding another requires an explicit support decision plus a complete adapter, renderer, capability profile, conformance corpus, and documentation update:
 
 ### Files
 
@@ -62,9 +62,9 @@ The `Adapter` interface (`internal/agents/interface.go`) defines 23 methods cove
 8. Run make check — all tests must pass
 ```
 
-### Current Agents (12)
+### Current Agents (4)
 
-`claude-code`, `opencode`, `vscode-copilot`, `codex`.
+`claude-code`, `opencode`, `vscode-copilot`, and `codex`.
 
 ## Adding a Skill
 
@@ -95,7 +95,7 @@ Skills are markdown `SKILL.md` files embedded into the binary.
 
 ## Adding a Component
 
-Components are injectable ecosystem pieces (MCP servers, hooks, personas, themes, etc.). 14 components exist in `catalog.ComponentMap`.
+Components are injectable ecosystem pieces. Seven current components exist in `catalog.ComponentMap`.
 
 ### Files
 
@@ -116,9 +116,9 @@ Components are injectable ecosystem pieces (MCP servers, hooks, personas, themes
 6. Run make check
 ```
 
-### Current Components (14)
+### Current Components (7)
 
-Registered in `catalog.ComponentMap`. Includes MCP servers (cortex, mailbox, forgespec, context7), SDD workflow, skills, conventions, persona, permissions, theme, uninstall, and others.
+Registered in `catalog.ComponentMap`: Cortex, Agent Mailbox, ForgeSpec, Context7, conventions, SDD workflow, and extra skills.
 
 ## Adding a CLI Subcommand
 

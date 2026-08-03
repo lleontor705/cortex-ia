@@ -4,57 +4,53 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/lleontor705/cortex-ia/internal/modelroute"
 )
 
-// ModelsForPreset returns the model assignments for a named preset.
-func ModelsForPreset(preset ModelPreset) ModelAssignments {
+// RoutesForPreset returns provider-neutral route requests. Presets select
+// semantics only; provider/model resolution remains an explicit configuration
+// concern.
+func RoutesForPreset(preset ModelPreset) RouteAssignments {
+	if preset != ModelPresetBalanced && preset != ModelPresetPerformance && preset != ModelPresetEconomy {
+		return nil
+	}
+	name := "workflow"
 	switch preset {
 	case ModelPresetPerformance:
-		return ModelAssignments{
-			"orchestrator":    ModelOpus,
-			"investigate":     ModelSonnet,
-			"draft-proposal":  ModelOpus,
-			"write-specs":     ModelSonnet,
-			"architect":       ModelOpus,
-			"decompose":       ModelSonnet,
-			"team-lead":       ModelSonnet,
-			"implement":       ModelSonnet,
-			"validate":        ModelOpus,
-			"finalize":        ModelHaiku,
-		}
+		name = "performance"
 	case ModelPresetEconomy:
-		return ModelAssignments{
-			"orchestrator":    ModelSonnet,
-			"investigate":     ModelSonnet,
-			"draft-proposal":  ModelSonnet,
-			"write-specs":     ModelSonnet,
-			"architect":       ModelSonnet,
-			"decompose":       ModelHaiku,
-			"team-lead":       ModelHaiku,
-			"implement":       ModelSonnet,
-			"validate":        ModelSonnet,
-			"finalize":        ModelHaiku,
-		}
-	default: // balanced
-		return ModelAssignments{
-			"orchestrator":    ModelOpus,
-			"investigate":     ModelSonnet,
-			"draft-proposal":  ModelSonnet,
-			"write-specs":     ModelSonnet,
-			"architect":       ModelOpus,
-			"decompose":       ModelHaiku,
-			"team-lead":       ModelSonnet,
-			"implement":       ModelSonnet,
-			"validate":        ModelOpus,
-			"finalize":        ModelHaiku,
-		}
+		name = "economy"
 	}
+	route, err := modelroute.NewRouteID("route/v1/" + name)
+	if err != nil {
+		return nil
+	}
+	assignments := RouteAssignments{}
+	for _, phase := range []string{"orchestrator", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize"} {
+		assignments[phase] = modelroute.RouteRequest{RouteID: route}
+	}
+	return assignments
+}
+
+// ModelsForPreset returns semantic route names for compatibility with older
+// callers. It never returns provider/model identifiers or a concrete default.
+func ModelsForPreset(preset ModelPreset) ModelAssignments {
+	routes := RoutesForPreset(preset)
+	if routes == nil {
+		return nil
+	}
+	assignments := ModelAssignments{}
+	for phase, request := range routes {
+		assignments[phase] = string(request.RouteID)
+	}
+	return assignments
 }
 
 // FormatModelAssignments returns a markdown table for prompt injection.
 func FormatModelAssignments(m ModelAssignments) string {
 	if len(m) == 0 {
-		return "No model assignments configured — use default model for all phases."
+		return "No route assignments configured."
 	}
 
 	keys := make([]string, 0, len(m))

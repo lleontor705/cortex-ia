@@ -12,7 +12,7 @@
 
 ---
 
-cortex-ia detects your installed AI coding agents and configures them with a complete development ecosystem: persistent memory, SDD workflow, inter-agent messaging, and live documentation — all via a single Go binary with an interactive TUI.
+cortex-ia detects installed AI coding agents and compiles compatible workflow assets for them: persistent memory, SDD contracts, service bindings, prompts, skills, and diagnostics — all via a single Go binary with an interactive TUI. The external agent runtime executes those assets; cortex-ia is not a workflow scheduler.
 
 ## Quick Start
 
@@ -57,10 +57,9 @@ cortex-ia detect
 cortex-ia uninstall --component persona --component cortex
 cortex-ia uninstall --all --dry-run
 
-
-# OpenCode SDD profiles (per-phase model assignment)
+# OpenCode SDD profiles (per-phase semantic route assignment)
 cortex-ia profiles create cheap:openai/gpt-4o-mini
-cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
+cortex-ia profiles set cheap:sdd-design:route/v1/architecture
 cortex-ia profiles list
 
 # Build a custom skill via an installed AI engine
@@ -73,13 +72,13 @@ cortex-ia agent-builder list
 
 ## What It Configures
 
-cortex-ia injects **4 MCP servers** + **19 SDD skills** + **orchestrator prompts** into any supported agent:
+cortex-ia configures **4 current MCP services** plus direct SDD skills and orchestrator prompts:
 
 | Component | MCP Tools | What It Does |
 |-----------|:---------:|-------------|
 | [**Cortex**](https://github.com/lleontor705/cortex) | 31 | Persistent memory with knowledge graph, FTS5, revision history, temporal tracking |
-| [**ForgeSpec**](https://npmjs.com/package/forgespec-mcp) | 15 | SDD contract validation (Zod), task board with inline creation, file reservation |
-| [**Agent Mailbox**](https://npmjs.com/package/agent-mailbox-mcp) | 21 | Messaging, A2A task delegation, resource locks, dead-letter queue, registry |
+| **Agent Mailbox** | 21 | Optional inter-agent messaging, A2A transport, resource coordination, and dead-letter handling |
+| [**ForgeSpec**](https://github.com/lleontor705/forgespec-mcp) | 15 | SDD contract validation (Zod), task board with inline creation, file reservation |
 | [**Context7**](https://github.com/upstash/context7) | 2 | Live framework and library documentation via MCP |
 
 Plus **3 content components**:
@@ -90,25 +89,27 @@ Plus **3 content components**:
 | **Conventions** | Shared cortex memory protocol + naming conventions for all agents |
 | **Extra Skills** | Non-SDD utility skills (injected separately from SDD) |
 
-**Total: 69 MCP tools across 3 MCPs + Context7**, all documented in skills and orchestrator prompts.
+Tool counts are derived from installed service schemas; documentation does not hard-code a combined count.
 
-## Supported Agents
+## Supported Agents and Tested Profiles
 
-| Agent | MCP Config | Prompt Strategy | Task Delegation | Sub-Agents | Slash Commands |
-|-------|-----------|----------------|:-:|:-:|:-:|
-| **Claude Code** | Separate JSON files | Markdown sections | ✅ | — | — |
-| **OpenCode** | Merge into settings | File replace | ✅ | ✅ | ✅ |
-| **VS Code Copilot** | MCP config file | File replace | ✅ | — | — |
-| **Codex** | TOML file | File replace | — | — | — |
+Every target has a `portable-sequential` conformance golden. Stronger profiles are emitted only when the compiler has fresh qualifying evidence. A golden proves deterministic lowering and manifest equivalence; it is **not** a universal claim about every runtime version, model, or environment.
 
-Agents with **Task Delegation** get a multi-agent orchestrator that delegates work to sub-agents. Others get a single-agent prompt that executes SDD phases sequentially.
+| Agent target | MCP config | Tested profile fixtures |
+|--------------|------------|-------------------------|
+| **Claude Code** | Separate JSON files | sequential, flat, native-qualified* |
+| **OpenCode** | Merge into settings | sequential, flat, native-qualified* |
+| **VS Code Copilot** | MCP config file | sequential; direct-child remains advisory |
+| **Codex** | TOML file | sequential, flat, native-qualified* |
+
+`sequential` means no delegation is required. `flat` requires qualified direct-child delegation and never assumes nesting. `native-qualified*` means the repository has a `native-advanced` fixture; selection still requires fresh target-specific qualification. Any experimental native capability additionally requires **explicit operator opt-in** and is never selected implicitly. See [Agents](docs/agents.md) for the manifest-backed matrix.
 
 ## Presets
 
 | Preset | Components | Use Case |
 |--------|-----------|----------|
-| **full** | All 7 components | Complete ecosystem (default) |
-| **minimal** | Cortex + ForgeSpec + Context7 + SDD | Essential SDD workflow (auto-pulls Mailbox via deps) |
+| **full** | All current components | Complete ecosystem (default) |
+| **minimal** | Cortex + ForgeSpec + Context7 + SDD | Essential direct SDD workflow |
 | **custom** | User-selected via TUI | Pick exactly what you need |
 
 ## SDD Pipeline
@@ -129,18 +130,11 @@ Spec-Driven Development structures substantial changes through 9 phases:
 | spec | `write-specs` | Write delta specs with Given/When/Then scenarios |
 | design | `architect` | Technical design with architecture decisions |
 | tasks | `decompose` | Break specs + design into dependency-ordered tasks |
-| apply | `team-lead` | Coordinate parallel @implement agents |
-| apply | `implement` | Write production code satisfying specs |
+| apply | `implement` | Own one bounded work unit and write code satisfying specs |
 | verify | `validate` | Run tests, generate spec compliance matrix |
 | archive | `finalize` | Merge specs, close change, generate retrospective |
 
 **Utility Skills**: `debug`, `ideate`, `debate`, `monitor`, `execute-plan`, `open-pr`, `file-issue`, `parallel-dispatch`, `scan-registry`
-
-## Multi-Agent Orchestration
-
-<p align="center">
-  <img src="docs/assets/multi-agent-orchestration.svg" alt="Multi-Agent Orchestration" width="100%" />
-</p>
 
 ## Task Routing
 
@@ -150,35 +144,15 @@ Spec-Driven Development structures substantial changes through 9 phases:
 
 ## Apply Phase Workflow
 
-The apply phase is the heart of the system — where parallel team-leads coordinate implement agents to write code:
+ForgeSpec is authoritative for task readiness, claims, status, contracts, and negotiated file reservations. The orchestrator routes a ready task directly to `implement`; no current profile includes the retired historical `team-lead` role. Runtime-native dispatch is transport only.
 
-<p align="center">
-  <img src="docs/assets/apply-phase-workflow.svg" alt="Apply Phase Workflow" width="100%" />
-</p>
-
-1. **Decompose** creates the task board directly via `tb_create_board` with inline tasks; **Orchestrator** reads `board_id` and launches all team-leads in a single turn
-2. **Independent team-leads** reserve files, launch @implement agents in parallel, release locks on completion
-3. **Dependent team-leads** wait for upstream groups via `msg_read_inbox` polling (with `dlq_list` fallback on timeout)
-4. **Implement agents** write code, acquire resource locks for deploy/CI tasks, report status via `tb_update`
-5. **Completion broadcasts** (`msg_broadcast`) unblock downstream team-leads
-6. **A2A responses** (`a2a_respond_task`) provide structured results back to orchestrator
-
-## Agent Coordination
-
-21 tools across 4 categories for inter-agent communication:
+## Direct Coordination
 
 <p align="center">
   <img src="docs/assets/agent-coordination.svg" alt="Agent Coordination" width="100%" />
 </p>
 
-| Need | Tool | Category |
-|------|------|----------|
-| Quick clarification | `msg_request` | Messaging |
-| Broadcast to all | `msg_broadcast` | Messaging |
-| Formal delegation with tracking | `a2a_submit_task` → `a2a_respond_task` | A2A Tasks |
-| Deploy/CI/API lock | `resource_acquire` → `resource_release` | Resources |
-| File conflict prevention | `file_reserve` → `file_release` | ForgeSpec |
-| Lost message recovery | `dlq_list` → `dlq_retry` | Dead-Letter Queue |
+The orchestrator reads ForgeSpec readiness and dispatches one bounded reference through the runtime-native child-agent primitive. Cortex stores durable evidence. File reservations are used only when ForgeSpec advertises the qualified capability; otherwise execution is sequential with no concurrent writes. Provider-neutral remote A2A remains **unsupported and unbound**.
 
 ### Modern Prompting Techniques
 
@@ -194,45 +168,41 @@ Skills incorporate research-backed techniques for better AI performance:
 | **Step-Back Prompting** | architect | Abstract principles before specific design |
 | **Inline WHY** | orchestrator, all rules | Motivation on every rule improves compliance |
 
-## Per-Phase Model Routing
+## Provider-Neutral Route Resolution
 
-Assign different Claude model tiers to SDD phases for cost/quality optimization:
+Phase configuration selects versioned semantic routes and typed capability requirements. Concrete provider/model references are resolved only from explicit user/provider configuration or fresh qualified discovery evidence.
 
 ```bash
-cortex-ia install --model-preset economy    # Sonnet everywhere, Haiku for archive
-cortex-ia install --model-preset balanced   # Opus for design+validate, Sonnet for apply
-cortex-ia install --model-preset performance # Opus for critical phases, Sonnet for rest
+cortex-ia profiles set default:sdd-design:route/v1/architecture
+cortex-ia profiles set default:sdd-apply:route/v1/implementation
+cortex-ia install --profile default
 ```
 
-| Preset | Orchestrator | Investigate | Architect | Implement | Validate | Finalize |
-|--------|:-:|:-:|:-:|:-:|:-:|:-:|
-| **balanced** | opus | sonnet | opus | sonnet | opus | haiku |
-| **performance** | opus | sonnet | opus | sonnet | opus | haiku |
-| **economy** | sonnet | sonnet | sonnet | sonnet | sonnet | haiku |
+The resolver records provenance, freshness, capability evidence, and fallback/degradation reason. Missing or ineligible configuration fails closed before generation; there is no phase-to-provider assignment table or implicit model preset.
 
 ## OpenCode SDD Profiles
 
-For OpenCode users who want per-phase models from any provider (not just Claude), profiles let you save named bundles of `provider/model` assignments and apply them to `opencode.json` automatically.
+For OpenCode users who want per-phase routing, profiles save named bundles of semantic route assignments and apply configuration-backed resolutions to `opencode.json` automatically.
 
 ```bash
-# Create a profile that maps every SDD phase to one model
-cortex-ia profiles create cheap:openai/gpt-4o-mini
+# Create a profile with a semantic route
+cortex-ia profiles create default:route/v1/implementation
 
-# Override specific phases
-cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
-cortex-ia profiles set cheap:sdd-apply:anthropic/claude-haiku-4-5
+# Override specific phases with semantic routes
+cortex-ia profiles set default:sdd-design:route/v1/architecture
+cortex-ia profiles set default:sdd-apply:route/v1/implementation
 
 # Use the profile during install — auto-applied to opencode.json
-cortex-ia install --profile cheap
+cortex-ia install --profile default
 
 # Or apply to an existing install without re-injecting everything
-cortex-ia profiles apply cheap
+cortex-ia profiles apply default
 
 cortex-ia profiles list
-cortex-ia profiles delete cheap
+cortex-ia profiles delete default
 ```
 
-Values can be either a fully-qualified `provider/model` (e.g. `openai/gpt-4o-mini`) or a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`). Profiles persist in `~/.cortex-ia/profiles.json` and the active one is recorded in `state.json` so `cortex-ia sync` keeps using it.
+Values are versioned semantic route IDs. Provider/model mappings may be supplied separately through explicit provider configuration and are never invented by profile selection. Profiles persist in `~/.cortex-ia/profiles.json` and the active one is recorded in `state.json` so `cortex-ia sync` keeps using it.
 
 ## Persona System
 
@@ -267,8 +237,6 @@ strict-tdd: false       # optional: enforce TDD across SDD apply/verify
 agents:
   - claude-code
   - opencode
-disabled-components:
-  - agent-mailbox       # optional: opt-out per project
 custom-skills:
   - path: ./skills/domain-validator
 ```
@@ -312,6 +280,20 @@ cortex-ia install
 - **Idempotent**: Running install twice produces identical results with zero file changes.
 - **Adapter pattern**: Each agent implements an interface. Adding a new agent requires zero changes to components.
 - **Strategy dispatch**: MCP injection is template-based — adding a new MCP server is one file.
+
+### Compiler and Installer Boundary
+
+The capability-aware compiler resolves each requested semantic capability as `native`, `emulated`, `advisory`, or `unsupported`, then emits target assets plus semantic, security, and degradation manifests. Enforcement is separately classified as `runtime`, `hook`, `mcp`, `prompt`, or `none`; prompt text is advisory and is never described as enforced.
+
+Installation consumes the immutable compiled bundle. Dry-run and apply use the same plan; doctor must qualify the selected profile before mutation. Managed assets are backed up, ownership-tracked, and three-way merged. Rollback restores a selected prior asset/configuration bundle and reports customization conflicts. This process migrates generated assets and configuration only—there is **no runtime-session or in-flight task-state migration**.
+
+Service authority remains external:
+
+- **ForgeSpec** owns SDD contracts and task dependency/readiness/claim/status. Transactional task capability is an explicit upstream ForgeSpec version dependency.
+- **Cortex** owns durable memory, evidence, provenance, and relationships.
+- **Agent Mailbox** provides optional transport and coordination tools but never replaces ForgeSpec task authority. Its user data is never automatically deleted.
+- Provider-neutral remote A2A is unsupported and unbound.
+- **cortex-ia** compiles, configures, validates, installs, backs up, and restores assets; it does not duplicate those mutable authorities.
 
 ## CLI Commands
 
@@ -360,9 +342,9 @@ cortex-ia update             Check for available updates
 ## Prerequisites
 
 - **Go 1.22+** — for building cortex-ia
-- **Node.js 18+** with `npx` — for npm-based MCP servers (forgespec, mailbox, context7)
+- **Node.js 18+** with `npx` — for npm-based MCP servers (ForgeSpec and Context7)
 - **Cortex binary** — `go install github.com/lleontor705/cortex/cmd/cortex@latest` or `brew install lleontor705/tap/cortex`
-- At least one [supported agent](#supported-agents) installed
+- At least one [supported agent](#supported-agents-and-tested-profiles) installed
 
 ## Related Projects
 
@@ -370,7 +352,7 @@ cortex-ia update             Check for available updates
 |---------|-------------|
 | [cortex](https://github.com/lleontor705/cortex) | Persistent memory MCP server (Go binary) |
 | [forgespec-mcp](https://github.com/lleontor705/forgespec-mcp) | SDD contracts + task board + file reservation |
-| [agent-mailbox-mcp](https://github.com/lleontor705/agent-mailbox-mcp) | Inter-agent messaging system |
+| Historical Agent Mailbox provider | Retired from built-ins; external data cleanup remains operator-controlled |
 
 
 ## License

@@ -1,0 +1,1408 @@
+[
+  {
+    "adapter": "claude",
+    "profile": "portable-sequential",
+    "assets": [
+      {
+        "semantic_id": "asset/contract/phase-envelope",
+        "scope": "workflow-root",
+        "path": ".claude/contracts/phase-envelope.json",
+        "sha256": "6d3395f3698400ec3bacb255f8e53712fcadc4abffcc430cb01e4de710999e3c"
+      },
+      {
+        "semantic_id": "asset/contract/phase-schema",
+        "scope": "workflow-root",
+        "path": ".claude/contracts/phase-schema.json",
+        "sha256": "02f09afbe6667dcadb0a62022d60c7c9be28d4b91245590ba186fd4344c19564"
+      },
+      {
+        "semantic_id": "asset/contract/policy",
+        "scope": "workflow-root",
+        "path": ".claude/contracts/policy.json",
+        "sha256": "abbe57eeb9e713e9dfce5632c7f2eadcb1affe7a03d013c07a670a25d4a36134"
+      },
+      {
+        "semantic_id": "asset/contract/status-vocabulary",
+        "scope": "workflow-root",
+        "path": ".claude/contracts/status-vocabulary.json",
+        "sha256": "fd583d9fa3b8b212f7f3c2876989dae479f895bbbacf01b526dde1794046b2c6"
+      },
+      {
+        "semantic_id": "asset/manifest/model-routes",
+        "scope": "manifest",
+        "path": ".claude/.cortex-ia/generated/asset/manifest/model-routes.json",
+        "sha256": "dcfaf20c33c71eeef170c568eb7d538274a30c55b1a1c4b7182e59a8110de6bd"
+      },
+      {
+        "semantic_id": "asset/manifest/receipt-inventory",
+        "scope": "workflow-root",
+        "path": ".claude/.cortex-ia/generated/asset/manifest/receipt-inventory.json",
+        "sha256": "4be55f8063298a83ffa4dd01cb8feda5ebb880d403d1c3c7b0151fc850e10a34"
+      },
+      {
+        "semantic_id": "asset/manifest/security",
+        "scope": "manifest",
+        "path": ".claude/.cortex-ia/generated/asset/manifest/security.json",
+        "sha256": "604dbca48ca432af4925056937d233d882d9733248c374e7a424889b79e72cd3"
+      },
+      {
+        "semantic_id": "asset/profile-overlay/portable-sequential",
+        "scope": "workflow-root",
+        "path": ".claude/overlays/generic/profiles/portable-sequential.md",
+        "sha256": "e5b1ad3b70cd2954c77560d1ee55640c7f5ba17af6e7b49cc2625bb02d971ac5"
+      },
+      {
+        "semantic_id": "asset/quality-template",
+        "scope": "workflow-root",
+        "path": ".claude/generated/quality-plan-template.md",
+        "sha256": "8537b38d23f43f17accbfb834b623958a2459f5839f57a9a29812533715b9ee6"
+      },
+      {
+        "semantic_id": "asset/role/apply",
+        "scope": "workflow-root",
+        "path": ".claude/agents/generated/roles/apply.md",
+        "sha256": "bb1195c8f59ce1a3ac3b2e48ed6ab211ea4aab8214d37c5f47a6ac27e985af2e"
+      },
+      {
+        "semantic_id": "asset/role/architect/binding",
+        "scope": "workflow-root",
+        "path": ".claude/agents/.claude/roles/architect.md",
+        "sha256": "dc3b5de44012874419d6e97a0463d00dbc81a892abae61371b3367731a625bca"
+      },
+      {
+        "semantic_id": "asset/role/archive",
+        "scope": "workflow-root",
+        "path": ".claude/agents/generated/roles/archive.md",
+        "sha256": "3a83d522734a4de5625cd741d2e3556e1fc3204719f03f1251ad12e31417426c"
+      },
+      {
+        "semantic_id": "asset/role/bootstrap",
+        "scope": "workflow-root",
+        "path": ".claude/agents/generated/roles/bootstrap.md",
+        "sha256": "94db39e1dcf9ad161c7478f398c35ca930ad6b1c356ddff7accc0be80237daf9"
+      },
+      {
+        "semantic_id": "asset/role/bootstrap/binding",
+        "scope": "workflow-root",
+        "path": ".claude/agents/.claude/roles/bootstrap.md",
+        "sha256": "2095a1b4d6e263fd265aadf3b70452dff6a1407e94db37454e0776d8569c45b5",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/decompose/binding",
+        "scope": "workflow-root",
+        "path": ".claude/agents/.claude/roles/decompose.md",
+        "sha256": "18d83b5bbd13af616546da7aee8d1373694d368210588ea3d87f4bf1c9e86e7b"
+      },
+      {
+        "semantic_id": "asset/role/design",
+        "scope": "workflow-root",
+        "path": ".claude/agents/generated/roles/design.md",
+        "sha256": "6977a903b90ffa648f6bb36f883faa36e122f757d0533646beb2692d7f59ddac"
+      },
+      {
+        "semantic_id": "asset/role/draft-proposal/binding",
+        "scope": "workflow-root",
+        "path": ".claude/agents/.claude/roles/draft-proposal.md",
+        "sha256": "6a67e652bc2f92e25d3ee8f2c74b9d958b2eff685dd931a99c535699c6affca1"
+      },
+      {
+        "semantic_id": "asset/role/explore",
+        "scope": "workflow-root",
+        "path": ".claude/agents/generated/roles/explore.md",
+        "sha256": "467c1aecc31cafdc7060e3aba2f95936a84e43199aff93d82389a6d7c5e37049"
+      },
+      {
+        "semantic_id": "asset/role/finalize/binding",
+        "scope": "workflow-root",
+        "path": ".claude/agents/.claude/roles/finalize.md",
+        "sha256": "f68e9b82d14c23467f98b6d0f0904e6c8ae8fc46a1bd76398a0811fd87420110",
+        "permissions": [
+          "filesystem/write"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/implement/binding",
+        "scope": "workflow-root",
+        "path": ".claude/agents/.claude/roles/implement.md",
+        "sha256": "39f8608f175fbec2a40f43aa483fd4525f06c9d2243a633516ce95fd08138aeb",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "process/execute"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/investigate/binding",
+        "scope": "workflow-root",
+        "path": ".claude/agents/.claude/roles/investigate.md",
+        "sha256": "1c7b94cf20a9ecab475ca31066bf9e52901b8d773ed4604d73f7436337869d3c",
+        "permissions": [
+          "filesystem/read"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/proposal",
+        "scope": "workflow-root",
+        "path": ".claude/agents/generated/roles/proposal.md",
+        "sha256": "93051cdf194a5644abdce92892397d0015c79dbabf3e371ea7642183837add4a"
+      },
+      {
+        "semantic_id": "asset/role/spec",
+        "scope": "workflow-root",
+        "path": ".claude/agents/generated/roles/spec.md",
+        "sha256": "76c2b6c072a8c15f71d0384355fd8370a95c10bb9a6da1a8c505b24f6d0df0bd"
+      },
+      {
+        "semantic_id": "asset/role/tasks",
+        "scope": "workflow-root",
+        "path": ".claude/agents/generated/roles/tasks.md",
+        "sha256": "71cba0639c7ab2015d16dc7fa1befb61584a8b9bc2079f455bf5c1ca6a35c421"
+      },
+      {
+        "semantic_id": "asset/role/validate/binding",
+        "scope": "workflow-root",
+        "path": ".claude/agents/.claude/roles/validate.md",
+        "sha256": "4404f10094b52fc257c737e5dc3577315d6524be9f2a23a70a5fd8c67c403f57",
+        "permissions": [
+          "filesystem/read",
+          "process/execute"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/verify",
+        "scope": "workflow-root",
+        "path": ".claude/agents/generated/roles/verify.md",
+        "sha256": "98090fde04f6655150617e6bfbdbe297ddd80af98589563d9972f8d5be210eff"
+      },
+      {
+        "semantic_id": "asset/role/write-specs/binding",
+        "scope": "workflow-root",
+        "path": ".claude/agents/.claude/roles/write-specs.md",
+        "sha256": "f1ce4602e02af9e1bdab43d758b2f64a5ada03d7fbb71b75962529a36ec8598f"
+      },
+      {
+        "semantic_id": "asset/root-index",
+        "scope": "workflow-root",
+        "path": ".claude/generic/sdd-orchestrator-root-index.md",
+        "sha256": "76c75bb10335afd5056be927af3f9896516a15800f6367068a755beec4c06ff0"
+      },
+      {
+        "semantic_id": "asset/root-module/contracts-and-thresholds",
+        "scope": "workflow-root",
+        "path": ".claude/generic/sdd-root/contracts-and-thresholds.md",
+        "sha256": "18db201830a6c285ee4d94bf28b03cb98eadafb2144906ad79322ab7144d7554"
+      },
+      {
+        "semantic_id": "asset/root-module/memory-and-state",
+        "scope": "workflow-root",
+        "path": ".claude/generic/sdd-root/memory-and-state.md",
+        "sha256": "033cd662d314c06182babb11621a3f996d557f045eb6799647e4faff78c0fdb8"
+      },
+      {
+        "semantic_id": "asset/root-module/model-routing",
+        "scope": "manifest",
+        "path": ".claude/generic/sdd-root/model-routing.md",
+        "sha256": "dc8b20abc3d9c18bb46f1d27e500cf9853554805ed390b4ac2a29f52a6c57b12"
+      },
+      {
+        "semantic_id": "asset/root-module/parallel-apply",
+        "scope": "workflow-root",
+        "path": ".claude/generic/sdd-root/parallel-apply.md",
+        "sha256": "176963a4bb5cb38a86d4aa843bd6abf814d645a770574a991be4378b9369d48f"
+      },
+      {
+        "semantic_id": "asset/root-module/recovery-and-reflection",
+        "scope": "workflow-root",
+        "path": ".claude/generic/sdd-root/recovery-and-reflection.md",
+        "sha256": "3556b8e3b8e680f79a9e5bbadb4044d7e4e94771ed188baab8a29bc0594d4105"
+      },
+      {
+        "semantic_id": "asset/root-module/routing-and-risk",
+        "scope": "workflow-root",
+        "path": ".claude/generic/sdd-root/routing-and-risk.md",
+        "sha256": "fc5f55d7126122c5819b971d6f6ac6c7d5604ed0cff07eb1c5c845a6b2594769"
+      },
+      {
+        "semantic_id": "asset/root/policy",
+        "scope": "workflow-root",
+        "path": ".claude/root/policy.md",
+        "sha256": "e897ffa89d8f2f78ac98b9a3f397fdc78a5920a08a8d59b3bea9a9f41361b79a"
+      },
+      {
+        "semantic_id": "asset/shared-contract",
+        "scope": "workflow-root",
+        "path": ".claude/_shared/sdd-phase-contract.md",
+        "sha256": "d08f410bbe9b4f03625a348255371db209f12810cfa50902df0dd9ab3b050ae4"
+      },
+      {
+        "semantic_id": "asset/skill/architect",
+        "scope": "workflow-root",
+        "path": ".claude/skills/architect/SKILL.md",
+        "sha256": "fe70e43e83cfc87aff77be273310849b4e1fd640d0ebc81d4e5075f1f9c23fa9"
+      },
+      {
+        "semantic_id": "asset/skill/bootstrap",
+        "scope": "workflow-root",
+        "path": ".claude/skills/bootstrap/SKILL.md",
+        "sha256": "6837cbea4df5f1b70e8889b550cbb8ae456874648aec7f449d491d9f26b61f40"
+      },
+      {
+        "semantic_id": "asset/skill/decompose",
+        "scope": "workflow-root",
+        "path": ".claude/skills/decompose/SKILL.md",
+        "sha256": "b9f2bae9d9a1cf15d05852e62505fcea589ab7e4fdf8b0f6f7abeb7eca5a8db0"
+      },
+      {
+        "semantic_id": "asset/skill/draft-proposal",
+        "scope": "workflow-root",
+        "path": ".claude/skills/draft-proposal/SKILL.md",
+        "sha256": "c60fd0af8ea0322fbcb22b3de7cac87856c91e50d489e3e5d333c8e72d2e0789"
+      },
+      {
+        "semantic_id": "asset/skill/finalize",
+        "scope": "workflow-root",
+        "path": ".claude/skills/finalize/SKILL.md",
+        "sha256": "1e1182a693374d3ee2f046cb7029ed7f13a6589d195d027741fa415f2f395f0d"
+      },
+      {
+        "semantic_id": "asset/skill/implement",
+        "scope": "workflow-root",
+        "path": ".claude/skills/implement/SKILL.md",
+        "sha256": "1da2f357fd890aa62b63592503992e71704a0c24507dec28b69eb8f74c8e90c5"
+      },
+      {
+        "semantic_id": "asset/skill/investigate",
+        "scope": "workflow-root",
+        "path": ".claude/skills/investigate/SKILL.md",
+        "sha256": "ba46bec718509634217255608f44d1d588fbb8010d6b7fc2cae4ab1164ee0d2d"
+      },
+      {
+        "semantic_id": "asset/skill/validate",
+        "scope": "workflow-root",
+        "path": ".claude/skills/validate/SKILL.md",
+        "sha256": "e1f88c876b0418b4054274c14857e7b74eb29602d3e55dd0140915beedd94149"
+      },
+      {
+        "semantic_id": "asset/skill/write-specs",
+        "scope": "workflow-root",
+        "path": ".claude/skills/write-specs/SKILL.md",
+        "sha256": "a6f9cb5d50d031d43b3999efe62e836a6c2f39b5666b1e3debff161d589d1082"
+      },
+      {
+        "semantic_id": "claude/composition",
+        "scope": "workflow-root",
+        "path": ".claude/.cortex-ia/composition.json",
+        "sha256": "809d96f00e0ab050bbb679c9c8a63f843fc0d475f86419c78e9af06806eb7b72"
+      },
+      {
+        "semantic_id": "claude/instruction/root",
+        "scope": "workflow-root",
+        "path": ".claude/CLAUDE.md",
+        "sha256": "fceffdb1e5bd3275091aef377f96f5b607a4086cbc265bca25dc95af516b449c"
+      },
+      {
+        "semantic_id": "claude/manifest/degradation-json",
+        "scope": "manifest",
+        "path": ".claude/.cortex-ia/degradation-manifest.json",
+        "sha256": "68a1c1cd82a74339f9169414a200a61d938e97775e77f9d441a20c83767322ae"
+      },
+      {
+        "semantic_id": "claude/manifest/degradation-markdown",
+        "scope": "manifest",
+        "path": ".claude/.cortex-ia/degradation-manifest.md",
+        "sha256": "199044e53ca7c370fb3225a93c94476a24c06b6e71a2cbb21b7c5d18e0308dc1"
+      },
+      {
+        "semantic_id": "claude/manifest/security-json",
+        "scope": "manifest",
+        "path": ".claude/.cortex-ia/security-manifest.json",
+        "sha256": "1af3e084b4596fa26a2a2d0a646a98ccb948cf708f795aba4e104a155b2d260f"
+      },
+      {
+        "semantic_id": "claude/manifest/security-markdown",
+        "scope": "manifest",
+        "path": ".claude/.cortex-ia/security-manifest.md",
+        "sha256": "4bb6b19b2f60c337ed5b92c37d499b4f4aed0b921fd3c35d1cc6d60d5d9e9413"
+      },
+      {
+        "semantic_id": "claude/manifest/semantic",
+        "scope": "workflow-root",
+        "path": ".claude/.cortex-ia/semantic-manifest.json",
+        "sha256": "4a71648bb5a3fef0db76d57f08c7e8f65810fa031ed0e6f5eabb8e2ff064ab92"
+      }
+    ],
+    "digest": "sha256:892df58013158017039b5c142bdbf4f11234e86bd95c638bada7d23445ed635b"
+  },
+  {
+    "adapter": "codex",
+    "profile": "portable-sequential",
+    "assets": [
+      {
+        "semantic_id": "asset/contract/phase-envelope",
+        "scope": "workflow-root",
+        "path": ".codex/contracts/phase-envelope.json",
+        "sha256": "6d3395f3698400ec3bacb255f8e53712fcadc4abffcc430cb01e4de710999e3c"
+      },
+      {
+        "semantic_id": "asset/contract/phase-schema",
+        "scope": "workflow-root",
+        "path": ".codex/contracts/phase-schema.json",
+        "sha256": "02f09afbe6667dcadb0a62022d60c7c9be28d4b91245590ba186fd4344c19564"
+      },
+      {
+        "semantic_id": "asset/contract/policy",
+        "scope": "workflow-root",
+        "path": ".codex/contracts/policy.json",
+        "sha256": "abbe57eeb9e713e9dfce5632c7f2eadcb1affe7a03d013c07a670a25d4a36134"
+      },
+      {
+        "semantic_id": "asset/contract/status-vocabulary",
+        "scope": "workflow-root",
+        "path": ".codex/contracts/status-vocabulary.json",
+        "sha256": "fd583d9fa3b8b212f7f3c2876989dae479f895bbbacf01b526dde1794046b2c6"
+      },
+      {
+        "semantic_id": "asset/manifest/model-routes",
+        "scope": "manifest",
+        "path": ".codex/.cortex-ia/generated/asset/manifest/model-routes.json",
+        "sha256": "dcfaf20c33c71eeef170c568eb7d538274a30c55b1a1c4b7182e59a8110de6bd"
+      },
+      {
+        "semantic_id": "asset/manifest/receipt-inventory",
+        "scope": "workflow-root",
+        "path": ".codex/.cortex-ia/generated/asset/manifest/receipt-inventory.json",
+        "sha256": "4be55f8063298a83ffa4dd01cb8feda5ebb880d403d1c3c7b0151fc850e10a34"
+      },
+      {
+        "semantic_id": "asset/manifest/security",
+        "scope": "manifest",
+        "path": ".codex/.cortex-ia/generated/asset/manifest/security.json",
+        "sha256": "604dbca48ca432af4925056937d233d882d9733248c374e7a424889b79e72cd3"
+      },
+      {
+        "semantic_id": "asset/profile-overlay/portable-sequential",
+        "scope": "workflow-root",
+        "path": ".codex/overlays/generic/profiles/portable-sequential.md",
+        "sha256": "e5b1ad3b70cd2954c77560d1ee55640c7f5ba17af6e7b49cc2625bb02d971ac5"
+      },
+      {
+        "semantic_id": "asset/quality-template",
+        "scope": "workflow-root",
+        "path": ".codex/generated/quality-plan-template.md",
+        "sha256": "8537b38d23f43f17accbfb834b623958a2459f5839f57a9a29812533715b9ee6"
+      },
+      {
+        "semantic_id": "asset/role/apply",
+        "scope": "workflow-root",
+        "path": ".codex/agents/generated/roles/apply.md",
+        "sha256": "bb1195c8f59ce1a3ac3b2e48ed6ab211ea4aab8214d37c5f47a6ac27e985af2e"
+      },
+      {
+        "semantic_id": "asset/role/architect/binding",
+        "scope": "workflow-root",
+        "path": ".codex/agents/.codex/roles/architect.md",
+        "sha256": "01aca33f039aefcd675d0990384810eeb6d1134bc0c1208d145da20183eb5ff8"
+      },
+      {
+        "semantic_id": "asset/role/archive",
+        "scope": "workflow-root",
+        "path": ".codex/agents/generated/roles/archive.md",
+        "sha256": "3a83d522734a4de5625cd741d2e3556e1fc3204719f03f1251ad12e31417426c"
+      },
+      {
+        "semantic_id": "asset/role/bootstrap",
+        "scope": "workflow-root",
+        "path": ".codex/agents/generated/roles/bootstrap.md",
+        "sha256": "94db39e1dcf9ad161c7478f398c35ca930ad6b1c356ddff7accc0be80237daf9"
+      },
+      {
+        "semantic_id": "asset/role/bootstrap/binding",
+        "scope": "workflow-root",
+        "path": ".codex/agents/.codex/roles/bootstrap.md",
+        "sha256": "af2f46de7b17bdabe45834ca60fbeec6cd848c5f21aa0a2737fb182c78408cb8",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/decompose/binding",
+        "scope": "workflow-root",
+        "path": ".codex/agents/.codex/roles/decompose.md",
+        "sha256": "bcbb95054622cd73b7b5803543ae495f6cf5b10665a23ab8792ce5986783e727"
+      },
+      {
+        "semantic_id": "asset/role/design",
+        "scope": "workflow-root",
+        "path": ".codex/agents/generated/roles/design.md",
+        "sha256": "6977a903b90ffa648f6bb36f883faa36e122f757d0533646beb2692d7f59ddac"
+      },
+      {
+        "semantic_id": "asset/role/draft-proposal/binding",
+        "scope": "workflow-root",
+        "path": ".codex/agents/.codex/roles/draft-proposal.md",
+        "sha256": "e89804cf219c30063d532a697967285eb8b286adadb34aae790fdd695fb8a434"
+      },
+      {
+        "semantic_id": "asset/role/explore",
+        "scope": "workflow-root",
+        "path": ".codex/agents/generated/roles/explore.md",
+        "sha256": "467c1aecc31cafdc7060e3aba2f95936a84e43199aff93d82389a6d7c5e37049"
+      },
+      {
+        "semantic_id": "asset/role/finalize/binding",
+        "scope": "workflow-root",
+        "path": ".codex/agents/.codex/roles/finalize.md",
+        "sha256": "3a39754b67d7b5258d602ac29228b92a40d9035729541949e3b9a2489c1d9bd8",
+        "permissions": [
+          "filesystem/write"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/implement/binding",
+        "scope": "workflow-root",
+        "path": ".codex/agents/.codex/roles/implement.md",
+        "sha256": "8d9b9b08328feed81f406762a087cdd89fcca455a1ad912b5b203a3ddbf8668d",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "process/execute"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/investigate/binding",
+        "scope": "workflow-root",
+        "path": ".codex/agents/.codex/roles/investigate.md",
+        "sha256": "721c4234822d92fd37218e1763382d682befe6d5d073c71e6f9d408b8c3ed9e3",
+        "permissions": [
+          "filesystem/read"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/proposal",
+        "scope": "workflow-root",
+        "path": ".codex/agents/generated/roles/proposal.md",
+        "sha256": "93051cdf194a5644abdce92892397d0015c79dbabf3e371ea7642183837add4a"
+      },
+      {
+        "semantic_id": "asset/role/spec",
+        "scope": "workflow-root",
+        "path": ".codex/agents/generated/roles/spec.md",
+        "sha256": "76c2b6c072a8c15f71d0384355fd8370a95c10bb9a6da1a8c505b24f6d0df0bd"
+      },
+      {
+        "semantic_id": "asset/role/tasks",
+        "scope": "workflow-root",
+        "path": ".codex/agents/generated/roles/tasks.md",
+        "sha256": "71cba0639c7ab2015d16dc7fa1befb61584a8b9bc2079f455bf5c1ca6a35c421"
+      },
+      {
+        "semantic_id": "asset/role/validate/binding",
+        "scope": "workflow-root",
+        "path": ".codex/agents/.codex/roles/validate.md",
+        "sha256": "6cb730e9fbb936851b7a394e51f353071e5f01d384114199e3baca5d08b93c86",
+        "permissions": [
+          "filesystem/read",
+          "process/execute"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/verify",
+        "scope": "workflow-root",
+        "path": ".codex/agents/generated/roles/verify.md",
+        "sha256": "98090fde04f6655150617e6bfbdbe297ddd80af98589563d9972f8d5be210eff"
+      },
+      {
+        "semantic_id": "asset/role/write-specs/binding",
+        "scope": "workflow-root",
+        "path": ".codex/agents/.codex/roles/write-specs.md",
+        "sha256": "6e73928feff3912305daca89d14b2aa8ac6284b8430fcab3b3e21a62e50cf92c"
+      },
+      {
+        "semantic_id": "asset/root-index",
+        "scope": "workflow-root",
+        "path": ".codex/generic/sdd-orchestrator-root-index.md",
+        "sha256": "76c75bb10335afd5056be927af3f9896516a15800f6367068a755beec4c06ff0"
+      },
+      {
+        "semantic_id": "asset/root-module/contracts-and-thresholds",
+        "scope": "workflow-root",
+        "path": ".codex/generic/sdd-root/contracts-and-thresholds.md",
+        "sha256": "18db201830a6c285ee4d94bf28b03cb98eadafb2144906ad79322ab7144d7554"
+      },
+      {
+        "semantic_id": "asset/root-module/memory-and-state",
+        "scope": "workflow-root",
+        "path": ".codex/generic/sdd-root/memory-and-state.md",
+        "sha256": "033cd662d314c06182babb11621a3f996d557f045eb6799647e4faff78c0fdb8"
+      },
+      {
+        "semantic_id": "asset/root-module/model-routing",
+        "scope": "manifest",
+        "path": ".codex/generic/sdd-root/model-routing.md",
+        "sha256": "dc8b20abc3d9c18bb46f1d27e500cf9853554805ed390b4ac2a29f52a6c57b12"
+      },
+      {
+        "semantic_id": "asset/root-module/parallel-apply",
+        "scope": "workflow-root",
+        "path": ".codex/generic/sdd-root/parallel-apply.md",
+        "sha256": "176963a4bb5cb38a86d4aa843bd6abf814d645a770574a991be4378b9369d48f"
+      },
+      {
+        "semantic_id": "asset/root-module/recovery-and-reflection",
+        "scope": "workflow-root",
+        "path": ".codex/generic/sdd-root/recovery-and-reflection.md",
+        "sha256": "3556b8e3b8e680f79a9e5bbadb4044d7e4e94771ed188baab8a29bc0594d4105"
+      },
+      {
+        "semantic_id": "asset/root-module/routing-and-risk",
+        "scope": "workflow-root",
+        "path": ".codex/generic/sdd-root/routing-and-risk.md",
+        "sha256": "fc5f55d7126122c5819b971d6f6ac6c7d5604ed0cff07eb1c5c845a6b2594769"
+      },
+      {
+        "semantic_id": "asset/root/policy",
+        "scope": "workflow-root",
+        "path": ".codex/root/policy.md",
+        "sha256": "e897ffa89d8f2f78ac98b9a3f397fdc78a5920a08a8d59b3bea9a9f41361b79a"
+      },
+      {
+        "semantic_id": "asset/shared-contract",
+        "scope": "workflow-root",
+        "path": ".codex/_shared/sdd-phase-contract.md",
+        "sha256": "d08f410bbe9b4f03625a348255371db209f12810cfa50902df0dd9ab3b050ae4"
+      },
+      {
+        "semantic_id": "asset/skill/architect",
+        "scope": "workflow-root",
+        "path": ".codex/skills/architect/SKILL.md",
+        "sha256": "fe70e43e83cfc87aff77be273310849b4e1fd640d0ebc81d4e5075f1f9c23fa9"
+      },
+      {
+        "semantic_id": "asset/skill/bootstrap",
+        "scope": "workflow-root",
+        "path": ".codex/skills/bootstrap/SKILL.md",
+        "sha256": "6837cbea4df5f1b70e8889b550cbb8ae456874648aec7f449d491d9f26b61f40"
+      },
+      {
+        "semantic_id": "asset/skill/decompose",
+        "scope": "workflow-root",
+        "path": ".codex/skills/decompose/SKILL.md",
+        "sha256": "b9f2bae9d9a1cf15d05852e62505fcea589ab7e4fdf8b0f6f7abeb7eca5a8db0"
+      },
+      {
+        "semantic_id": "asset/skill/draft-proposal",
+        "scope": "workflow-root",
+        "path": ".codex/skills/draft-proposal/SKILL.md",
+        "sha256": "c60fd0af8ea0322fbcb22b3de7cac87856c91e50d489e3e5d333c8e72d2e0789"
+      },
+      {
+        "semantic_id": "asset/skill/finalize",
+        "scope": "workflow-root",
+        "path": ".codex/skills/finalize/SKILL.md",
+        "sha256": "1e1182a693374d3ee2f046cb7029ed7f13a6589d195d027741fa415f2f395f0d"
+      },
+      {
+        "semantic_id": "asset/skill/implement",
+        "scope": "workflow-root",
+        "path": ".codex/skills/implement/SKILL.md",
+        "sha256": "1da2f357fd890aa62b63592503992e71704a0c24507dec28b69eb8f74c8e90c5"
+      },
+      {
+        "semantic_id": "asset/skill/investigate",
+        "scope": "workflow-root",
+        "path": ".codex/skills/investigate/SKILL.md",
+        "sha256": "ba46bec718509634217255608f44d1d588fbb8010d6b7fc2cae4ab1164ee0d2d"
+      },
+      {
+        "semantic_id": "asset/skill/validate",
+        "scope": "workflow-root",
+        "path": ".codex/skills/validate/SKILL.md",
+        "sha256": "e1f88c876b0418b4054274c14857e7b74eb29602d3e55dd0140915beedd94149"
+      },
+      {
+        "semantic_id": "asset/skill/write-specs",
+        "scope": "workflow-root",
+        "path": ".codex/skills/write-specs/SKILL.md",
+        "sha256": "a6f9cb5d50d031d43b3999efe62e836a6c2f39b5666b1e3debff161d589d1082"
+      },
+      {
+        "semantic_id": "codex/composition",
+        "scope": "workflow-root",
+        "path": ".codex/.cortex-ia/composition.json",
+        "sha256": "b02522b1e7b9f14781ee8191d2c7feb185c65b5f97ca1940a3fdc92a35c845ce"
+      },
+      {
+        "semantic_id": "codex/instruction/root",
+        "scope": "workflow-root",
+        "path": ".codex/AGENTS.md",
+        "sha256": "9707a056e50f032f08e538f6ac23853f4cf69e8096283f142789dec59c9ec6a5",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "mcp/cortex",
+          "mcp/forgespec",
+          "process/execute",
+          "tool/read",
+          "tool/search"
+        ]
+      },
+      {
+        "semantic_id": "codex/manifest/bundle",
+        "scope": "workflow-root",
+        "path": ".codex/manifests/bundle.json",
+        "sha256": "71d7fd1f7ba40665bb814eac4af992a47875671ea2ee382b1ebbe096bfa2228c",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "mcp/cortex",
+          "mcp/forgespec",
+          "process/execute",
+          "tool/read",
+          "tool/search"
+        ]
+      },
+      {
+        "semantic_id": "codex/manifest/degradation-json",
+        "scope": "manifest",
+        "path": ".codex/manifests/degradation.json",
+        "sha256": "fe3796bd8eec84c46ba2e59ffd70b036393ffba3c7263217d6fd87dc7df4aed4",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "mcp/cortex",
+          "mcp/forgespec",
+          "process/execute",
+          "tool/read",
+          "tool/search"
+        ]
+      },
+      {
+        "semantic_id": "codex/manifest/degradation-markdown",
+        "scope": "manifest",
+        "path": ".codex/manifests/degradation.md",
+        "sha256": "92be929d6f03679a130e060688953fbd85accc42f486f0d3b04b0a83512f75fa",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "mcp/cortex",
+          "mcp/forgespec",
+          "process/execute",
+          "tool/read",
+          "tool/search"
+        ]
+      },
+      {
+        "semantic_id": "codex/manifest/security-json",
+        "scope": "manifest",
+        "path": ".codex/manifests/security.json",
+        "sha256": "cf4d17df40a59649e730b04f0f06d442f9202a8bb37cfc6bb8eceee8d0eea590",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "mcp/cortex",
+          "mcp/forgespec",
+          "process/execute",
+          "tool/read",
+          "tool/search"
+        ]
+      },
+      {
+        "semantic_id": "codex/manifest/security-markdown",
+        "scope": "manifest",
+        "path": ".codex/manifests/security.md",
+        "sha256": "0b5411c4cf4886a35e5df5c5f83e6ccd2695d92c610c72ec9a69b0c0e7e689b0",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "mcp/cortex",
+          "mcp/forgespec",
+          "process/execute",
+          "tool/read",
+          "tool/search"
+        ]
+      },
+      {
+        "semantic_id": "codex/manifest/semantic",
+        "scope": "workflow-root",
+        "path": ".codex/manifests/semantic.json",
+        "sha256": "275f8dd538be6048e2ac9c08663bf234ec9c07c84770c846456f42a92b50b11b",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "mcp/cortex",
+          "mcp/forgespec",
+          "process/execute",
+          "tool/read",
+          "tool/search"
+        ]
+      }
+    ],
+    "digest": "sha256:b2688ac5476ac7efc1df9da5f3fb2786531c23748b39c9a29ec5aeda1ea56bae"
+  },
+  {
+    "adapter": "opencode",
+    "profile": "portable-sequential",
+    "assets": [
+      {
+        "semantic_id": "asset/contract/phase-envelope",
+        "scope": "workflow-root",
+        "path": ".config/opencode/contracts/phase-envelope.json",
+        "sha256": "6d3395f3698400ec3bacb255f8e53712fcadc4abffcc430cb01e4de710999e3c"
+      },
+      {
+        "semantic_id": "asset/contract/phase-schema",
+        "scope": "workflow-root",
+        "path": ".config/opencode/contracts/phase-schema.json",
+        "sha256": "02f09afbe6667dcadb0a62022d60c7c9be28d4b91245590ba186fd4344c19564"
+      },
+      {
+        "semantic_id": "asset/contract/policy",
+        "scope": "workflow-root",
+        "path": ".config/opencode/contracts/policy.json",
+        "sha256": "abbe57eeb9e713e9dfce5632c7f2eadcb1affe7a03d013c07a670a25d4a36134"
+      },
+      {
+        "semantic_id": "asset/contract/status-vocabulary",
+        "scope": "workflow-root",
+        "path": ".config/opencode/contracts/status-vocabulary.json",
+        "sha256": "fd583d9fa3b8b212f7f3c2876989dae479f895bbbacf01b526dde1794046b2c6"
+      },
+      {
+        "semantic_id": "asset/manifest/model-routes",
+        "scope": "manifest",
+        "path": ".config/opencode/.cortex-ia/generated/asset/manifest/model-routes.json",
+        "sha256": "dcfaf20c33c71eeef170c568eb7d538274a30c55b1a1c4b7182e59a8110de6bd"
+      },
+      {
+        "semantic_id": "asset/manifest/receipt-inventory",
+        "scope": "workflow-root",
+        "path": ".config/opencode/.cortex-ia/generated/asset/manifest/receipt-inventory.json",
+        "sha256": "4be55f8063298a83ffa4dd01cb8feda5ebb880d403d1c3c7b0151fc850e10a34"
+      },
+      {
+        "semantic_id": "asset/manifest/security",
+        "scope": "manifest",
+        "path": ".config/opencode/.cortex-ia/generated/asset/manifest/security.json",
+        "sha256": "604dbca48ca432af4925056937d233d882d9733248c374e7a424889b79e72cd3"
+      },
+      {
+        "semantic_id": "asset/opencode/command/workflow",
+        "scope": "workflow-root",
+        "path": ".config/opencode/commands/run-workflow.md",
+        "sha256": "3651d09c0d3093c034b67e1a40395b1ab821ed6ad14a3e5f080f968d141292b6"
+      },
+      {
+        "semantic_id": "asset/opencode/instruction/root",
+        "scope": "workflow-root",
+        "path": ".config/opencode/AGENTS.md",
+        "sha256": "545f2decd4370a697c5cd75932982b431ed76ce33d3341e5d3ce39dc11ab2cd5"
+      },
+      {
+        "semantic_id": "asset/profile-overlay/portable-sequential",
+        "scope": "workflow-root",
+        "path": ".config/opencode/overlays/generic/profiles/portable-sequential.md",
+        "sha256": "e5b1ad3b70cd2954c77560d1ee55640c7f5ba17af6e7b49cc2625bb02d971ac5"
+      },
+      {
+        "semantic_id": "asset/quality-template",
+        "scope": "workflow-root",
+        "path": ".config/opencode/generated/quality-plan-template.md",
+        "sha256": "8537b38d23f43f17accbfb834b623958a2459f5839f57a9a29812533715b9ee6"
+      },
+      {
+        "semantic_id": "asset/role/apply",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/generated/roles/apply.md",
+        "sha256": "bb1195c8f59ce1a3ac3b2e48ed6ab211ea4aab8214d37c5f47a6ac27e985af2e"
+      },
+      {
+        "semantic_id": "asset/role/architect/binding",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/.config/opencode/roles/architect.md",
+        "sha256": "3e82fec25a205030ff075aa8281febb7ff640cf6620b7c880ca577669e06463b"
+      },
+      {
+        "semantic_id": "asset/role/archive",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/generated/roles/archive.md",
+        "sha256": "3a83d522734a4de5625cd741d2e3556e1fc3204719f03f1251ad12e31417426c"
+      },
+      {
+        "semantic_id": "asset/role/bootstrap",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/generated/roles/bootstrap.md",
+        "sha256": "94db39e1dcf9ad161c7478f398c35ca930ad6b1c356ddff7accc0be80237daf9"
+      },
+      {
+        "semantic_id": "asset/role/bootstrap/binding",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/.config/opencode/roles/bootstrap.md",
+        "sha256": "e14d2b68a8ca33c655e985c69bfe9d6b43f35fa45f6c61837a7221dc84efbbac",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/decompose/binding",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/.config/opencode/roles/decompose.md",
+        "sha256": "3423b975ce318e39bad5fa1123377024a84a90a2159c4711d803b39d6585c5ba"
+      },
+      {
+        "semantic_id": "asset/role/design",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/generated/roles/design.md",
+        "sha256": "6977a903b90ffa648f6bb36f883faa36e122f757d0533646beb2692d7f59ddac"
+      },
+      {
+        "semantic_id": "asset/role/draft-proposal/binding",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/.config/opencode/roles/draft-proposal.md",
+        "sha256": "c7027b9912020d69571a8aaa6443e2d613ae08bad0984d1c77a41251dacf8191"
+      },
+      {
+        "semantic_id": "asset/role/explore",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/generated/roles/explore.md",
+        "sha256": "467c1aecc31cafdc7060e3aba2f95936a84e43199aff93d82389a6d7c5e37049"
+      },
+      {
+        "semantic_id": "asset/role/finalize/binding",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/.config/opencode/roles/finalize.md",
+        "sha256": "952d7f3a4053d2a970ccd02ad423ed0aa128e471a3db06a784fa2f1df90624fd",
+        "permissions": [
+          "filesystem/write"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/implement/binding",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/.config/opencode/roles/implement.md",
+        "sha256": "ec30267a235d84bf32eefc7fe02f3c8cd59e70c8f3fa7eba6f1c5e22df8694e1",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "process/execute"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/investigate/binding",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/.config/opencode/roles/investigate.md",
+        "sha256": "ceb9d1e84479c1e41919222c5af03162cde77d50149c39d193029177a6ca5d90",
+        "permissions": [
+          "filesystem/read"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/proposal",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/generated/roles/proposal.md",
+        "sha256": "93051cdf194a5644abdce92892397d0015c79dbabf3e371ea7642183837add4a"
+      },
+      {
+        "semantic_id": "asset/role/spec",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/generated/roles/spec.md",
+        "sha256": "76c2b6c072a8c15f71d0384355fd8370a95c10bb9a6da1a8c505b24f6d0df0bd"
+      },
+      {
+        "semantic_id": "asset/role/tasks",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/generated/roles/tasks.md",
+        "sha256": "71cba0639c7ab2015d16dc7fa1befb61584a8b9bc2079f455bf5c1ca6a35c421"
+      },
+      {
+        "semantic_id": "asset/role/validate/binding",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/.config/opencode/roles/validate.md",
+        "sha256": "7c2c6ed4e3b2cca7dfc85f8fd12a4adb9006f00a09eb201bc1c97f64e4f0f3d3",
+        "permissions": [
+          "filesystem/read",
+          "process/execute"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/verify",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/generated/roles/verify.md",
+        "sha256": "98090fde04f6655150617e6bfbdbe297ddd80af98589563d9972f8d5be210eff"
+      },
+      {
+        "semantic_id": "asset/role/write-specs/binding",
+        "scope": "workflow-root",
+        "path": ".config/opencode/agents/.config/opencode/roles/write-specs.md",
+        "sha256": "ce6c4d15cfb15f421b2fe6bbbab0c191645098645c805ed6975f62feea9979a4"
+      },
+      {
+        "semantic_id": "asset/root-index",
+        "scope": "workflow-root",
+        "path": ".config/opencode/generic/sdd-orchestrator-root-index.md",
+        "sha256": "76c75bb10335afd5056be927af3f9896516a15800f6367068a755beec4c06ff0"
+      },
+      {
+        "semantic_id": "asset/root-module/contracts-and-thresholds",
+        "scope": "workflow-root",
+        "path": ".config/opencode/generic/sdd-root/contracts-and-thresholds.md",
+        "sha256": "18db201830a6c285ee4d94bf28b03cb98eadafb2144906ad79322ab7144d7554"
+      },
+      {
+        "semantic_id": "asset/root-module/memory-and-state",
+        "scope": "workflow-root",
+        "path": ".config/opencode/generic/sdd-root/memory-and-state.md",
+        "sha256": "033cd662d314c06182babb11621a3f996d557f045eb6799647e4faff78c0fdb8"
+      },
+      {
+        "semantic_id": "asset/root-module/model-routing",
+        "scope": "manifest",
+        "path": ".config/opencode/generic/sdd-root/model-routing.md",
+        "sha256": "dc8b20abc3d9c18bb46f1d27e500cf9853554805ed390b4ac2a29f52a6c57b12"
+      },
+      {
+        "semantic_id": "asset/root-module/parallel-apply",
+        "scope": "workflow-root",
+        "path": ".config/opencode/generic/sdd-root/parallel-apply.md",
+        "sha256": "176963a4bb5cb38a86d4aa843bd6abf814d645a770574a991be4378b9369d48f"
+      },
+      {
+        "semantic_id": "asset/root-module/recovery-and-reflection",
+        "scope": "workflow-root",
+        "path": ".config/opencode/generic/sdd-root/recovery-and-reflection.md",
+        "sha256": "3556b8e3b8e680f79a9e5bbadb4044d7e4e94771ed188baab8a29bc0594d4105"
+      },
+      {
+        "semantic_id": "asset/root-module/routing-and-risk",
+        "scope": "workflow-root",
+        "path": ".config/opencode/generic/sdd-root/routing-and-risk.md",
+        "sha256": "fc5f55d7126122c5819b971d6f6ac6c7d5604ed0cff07eb1c5c845a6b2594769"
+      },
+      {
+        "semantic_id": "asset/root/policy",
+        "scope": "workflow-root",
+        "path": ".config/opencode/root/policy.md",
+        "sha256": "e897ffa89d8f2f78ac98b9a3f397fdc78a5920a08a8d59b3bea9a9f41361b79a"
+      },
+      {
+        "semantic_id": "asset/shared-contract",
+        "scope": "workflow-root",
+        "path": ".config/opencode/_shared/sdd-phase-contract.md",
+        "sha256": "d08f410bbe9b4f03625a348255371db209f12810cfa50902df0dd9ab3b050ae4"
+      },
+      {
+        "semantic_id": "asset/skill/architect",
+        "scope": "workflow-root",
+        "path": ".config/opencode/skills/architect/SKILL.md",
+        "sha256": "fe70e43e83cfc87aff77be273310849b4e1fd640d0ebc81d4e5075f1f9c23fa9"
+      },
+      {
+        "semantic_id": "asset/skill/bootstrap",
+        "scope": "workflow-root",
+        "path": ".config/opencode/skills/bootstrap/SKILL.md",
+        "sha256": "6837cbea4df5f1b70e8889b550cbb8ae456874648aec7f449d491d9f26b61f40"
+      },
+      {
+        "semantic_id": "asset/skill/decompose",
+        "scope": "workflow-root",
+        "path": ".config/opencode/skills/decompose/SKILL.md",
+        "sha256": "b9f2bae9d9a1cf15d05852e62505fcea589ab7e4fdf8b0f6f7abeb7eca5a8db0"
+      },
+      {
+        "semantic_id": "asset/skill/draft-proposal",
+        "scope": "workflow-root",
+        "path": ".config/opencode/skills/draft-proposal/SKILL.md",
+        "sha256": "c60fd0af8ea0322fbcb22b3de7cac87856c91e50d489e3e5d333c8e72d2e0789"
+      },
+      {
+        "semantic_id": "asset/skill/finalize",
+        "scope": "workflow-root",
+        "path": ".config/opencode/skills/finalize/SKILL.md",
+        "sha256": "1e1182a693374d3ee2f046cb7029ed7f13a6589d195d027741fa415f2f395f0d"
+      },
+      {
+        "semantic_id": "asset/skill/implement",
+        "scope": "workflow-root",
+        "path": ".config/opencode/skills/implement/SKILL.md",
+        "sha256": "1da2f357fd890aa62b63592503992e71704a0c24507dec28b69eb8f74c8e90c5"
+      },
+      {
+        "semantic_id": "asset/skill/investigate",
+        "scope": "workflow-root",
+        "path": ".config/opencode/skills/investigate/SKILL.md",
+        "sha256": "ba46bec718509634217255608f44d1d588fbb8010d6b7fc2cae4ab1164ee0d2d"
+      },
+      {
+        "semantic_id": "asset/skill/validate",
+        "scope": "workflow-root",
+        "path": ".config/opencode/skills/validate/SKILL.md",
+        "sha256": "e1f88c876b0418b4054274c14857e7b74eb29602d3e55dd0140915beedd94149"
+      },
+      {
+        "semantic_id": "asset/skill/write-specs",
+        "scope": "workflow-root",
+        "path": ".config/opencode/skills/write-specs/SKILL.md",
+        "sha256": "a6f9cb5d50d031d43b3999efe62e836a6c2f39b5666b1e3debff161d589d1082"
+      },
+      {
+        "semantic_id": "opencode/composition",
+        "scope": "workflow-root",
+        "path": ".config/opencode/.cortex-ia/composition.json",
+        "sha256": "19667a165bbbce5afb4484e07c6ba02257dde78fdaa469aa5ee91fdf28e4be5c"
+      }
+    ],
+    "digest": "sha256:542a39b093f21ea8153ba3130277360e14770ca338e674aebe1f9afffb228c99"
+  },
+  {
+    "adapter": "vscode",
+    "profile": "portable-sequential",
+    "assets": [
+      {
+        "semantic_id": "asset/contract/phase-envelope",
+        "scope": "workflow-root",
+        "path": ".copilot/contracts/phase-envelope.json",
+        "sha256": "6d3395f3698400ec3bacb255f8e53712fcadc4abffcc430cb01e4de710999e3c"
+      },
+      {
+        "semantic_id": "asset/contract/phase-schema",
+        "scope": "workflow-root",
+        "path": ".copilot/contracts/phase-schema.json",
+        "sha256": "02f09afbe6667dcadb0a62022d60c7c9be28d4b91245590ba186fd4344c19564"
+      },
+      {
+        "semantic_id": "asset/contract/policy",
+        "scope": "workflow-root",
+        "path": ".copilot/contracts/policy.json",
+        "sha256": "abbe57eeb9e713e9dfce5632c7f2eadcb1affe7a03d013c07a670a25d4a36134"
+      },
+      {
+        "semantic_id": "asset/contract/status-vocabulary",
+        "scope": "workflow-root",
+        "path": ".copilot/contracts/status-vocabulary.json",
+        "sha256": "fd583d9fa3b8b212f7f3c2876989dae479f895bbbacf01b526dde1794046b2c6"
+      },
+      {
+        "semantic_id": "asset/manifest/model-routes",
+        "scope": "manifest",
+        "path": ".copilot/.cortex-ia/generated/asset/manifest/model-routes.json",
+        "sha256": "dcfaf20c33c71eeef170c568eb7d538274a30c55b1a1c4b7182e59a8110de6bd"
+      },
+      {
+        "semantic_id": "asset/manifest/receipt-inventory",
+        "scope": "workflow-root",
+        "path": ".copilot/.cortex-ia/generated/asset/manifest/receipt-inventory.json",
+        "sha256": "4be55f8063298a83ffa4dd01cb8feda5ebb880d403d1c3c7b0151fc850e10a34"
+      },
+      {
+        "semantic_id": "asset/manifest/security",
+        "scope": "manifest",
+        "path": ".copilot/.cortex-ia/generated/asset/manifest/security.json",
+        "sha256": "604dbca48ca432af4925056937d233d882d9733248c374e7a424889b79e72cd3"
+      },
+      {
+        "semantic_id": "asset/profile-overlay/portable-sequential",
+        "scope": "workflow-root",
+        "path": ".copilot/overlays/generic/profiles/portable-sequential.md",
+        "sha256": "e5b1ad3b70cd2954c77560d1ee55640c7f5ba17af6e7b49cc2625bb02d971ac5"
+      },
+      {
+        "semantic_id": "asset/quality-template",
+        "scope": "workflow-root",
+        "path": ".copilot/generated/quality-plan-template.md",
+        "sha256": "8537b38d23f43f17accbfb834b623958a2459f5839f57a9a29812533715b9ee6"
+      },
+      {
+        "semantic_id": "asset/role/apply",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/generated/roles/apply.md",
+        "sha256": "bb1195c8f59ce1a3ac3b2e48ed6ab211ea4aab8214d37c5f47a6ac27e985af2e"
+      },
+      {
+        "semantic_id": "asset/role/architect/binding",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/.copilot/roles/architect.md",
+        "sha256": "f04e7e1463ebfe5fcf4d05040ae30ef2de2d5616971940c11aa3c0dd267365da"
+      },
+      {
+        "semantic_id": "asset/role/archive",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/generated/roles/archive.md",
+        "sha256": "3a83d522734a4de5625cd741d2e3556e1fc3204719f03f1251ad12e31417426c"
+      },
+      {
+        "semantic_id": "asset/role/bootstrap",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/generated/roles/bootstrap.md",
+        "sha256": "94db39e1dcf9ad161c7478f398c35ca930ad6b1c356ddff7accc0be80237daf9"
+      },
+      {
+        "semantic_id": "asset/role/bootstrap/binding",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/.copilot/roles/bootstrap.md",
+        "sha256": "fc323e0ecc077aedb93e7943d4f3bfb1f46356ad638b7c2b8b4d2941fcf1d3de",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/decompose/binding",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/.copilot/roles/decompose.md",
+        "sha256": "522ef7eb5a8bdeffdd7b31e825c1982220dee02f1309ccecab25dcbf3fa72714"
+      },
+      {
+        "semantic_id": "asset/role/design",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/generated/roles/design.md",
+        "sha256": "6977a903b90ffa648f6bb36f883faa36e122f757d0533646beb2692d7f59ddac"
+      },
+      {
+        "semantic_id": "asset/role/draft-proposal/binding",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/.copilot/roles/draft-proposal.md",
+        "sha256": "249729774ef1e00222294820504c6ba55dd5c92d5cc6e73bfc8100587f6d90e0"
+      },
+      {
+        "semantic_id": "asset/role/explore",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/generated/roles/explore.md",
+        "sha256": "467c1aecc31cafdc7060e3aba2f95936a84e43199aff93d82389a6d7c5e37049"
+      },
+      {
+        "semantic_id": "asset/role/finalize/binding",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/.copilot/roles/finalize.md",
+        "sha256": "b27e4e64276899ee7829e78047dab2e44f4d908ef51ad7e03b376699dbd63364",
+        "permissions": [
+          "filesystem/write"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/implement/binding",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/.copilot/roles/implement.md",
+        "sha256": "986be8d623c67577451d1a80d7d1cc0292d858f136b427b04d6f1e73dc840291",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "process/execute"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/investigate/binding",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/.copilot/roles/investigate.md",
+        "sha256": "e78b8b80bd303d0f9f1f9e36fe2caa9ba26b22c0b1b7349f9442cfd9af87bb83",
+        "permissions": [
+          "filesystem/read"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/proposal",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/generated/roles/proposal.md",
+        "sha256": "93051cdf194a5644abdce92892397d0015c79dbabf3e371ea7642183837add4a"
+      },
+      {
+        "semantic_id": "asset/role/spec",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/generated/roles/spec.md",
+        "sha256": "76c2b6c072a8c15f71d0384355fd8370a95c10bb9a6da1a8c505b24f6d0df0bd"
+      },
+      {
+        "semantic_id": "asset/role/tasks",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/generated/roles/tasks.md",
+        "sha256": "71cba0639c7ab2015d16dc7fa1befb61584a8b9bc2079f455bf5c1ca6a35c421"
+      },
+      {
+        "semantic_id": "asset/role/validate/binding",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/.copilot/roles/validate.md",
+        "sha256": "13a948a7774e9c0776747cf8e2dcc96ca20aa8c816d007840720d73d9acffde5",
+        "permissions": [
+          "filesystem/read",
+          "process/execute"
+        ]
+      },
+      {
+        "semantic_id": "asset/role/verify",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/generated/roles/verify.md",
+        "sha256": "98090fde04f6655150617e6bfbdbe297ddd80af98589563d9972f8d5be210eff"
+      },
+      {
+        "semantic_id": "asset/role/write-specs/binding",
+        "scope": "workflow-root",
+        "path": ".copilot/agents/.copilot/roles/write-specs.md",
+        "sha256": "898d64c84e5f64ee3898a9a132ef768f481864dbe734b54f43d07e64f91fafbb"
+      },
+      {
+        "semantic_id": "asset/root-index",
+        "scope": "workflow-root",
+        "path": ".copilot/generic/sdd-orchestrator-root-index.md",
+        "sha256": "76c75bb10335afd5056be927af3f9896516a15800f6367068a755beec4c06ff0"
+      },
+      {
+        "semantic_id": "asset/root-module/contracts-and-thresholds",
+        "scope": "workflow-root",
+        "path": ".copilot/generic/sdd-root/contracts-and-thresholds.md",
+        "sha256": "18db201830a6c285ee4d94bf28b03cb98eadafb2144906ad79322ab7144d7554"
+      },
+      {
+        "semantic_id": "asset/root-module/memory-and-state",
+        "scope": "workflow-root",
+        "path": ".copilot/generic/sdd-root/memory-and-state.md",
+        "sha256": "033cd662d314c06182babb11621a3f996d557f045eb6799647e4faff78c0fdb8"
+      },
+      {
+        "semantic_id": "asset/root-module/model-routing",
+        "scope": "manifest",
+        "path": ".copilot/generic/sdd-root/model-routing.md",
+        "sha256": "dc8b20abc3d9c18bb46f1d27e500cf9853554805ed390b4ac2a29f52a6c57b12"
+      },
+      {
+        "semantic_id": "asset/root-module/parallel-apply",
+        "scope": "workflow-root",
+        "path": ".copilot/generic/sdd-root/parallel-apply.md",
+        "sha256": "176963a4bb5cb38a86d4aa843bd6abf814d645a770574a991be4378b9369d48f"
+      },
+      {
+        "semantic_id": "asset/root-module/recovery-and-reflection",
+        "scope": "workflow-root",
+        "path": ".copilot/generic/sdd-root/recovery-and-reflection.md",
+        "sha256": "3556b8e3b8e680f79a9e5bbadb4044d7e4e94771ed188baab8a29bc0594d4105"
+      },
+      {
+        "semantic_id": "asset/root-module/routing-and-risk",
+        "scope": "workflow-root",
+        "path": ".copilot/generic/sdd-root/routing-and-risk.md",
+        "sha256": "fc5f55d7126122c5819b971d6f6ac6c7d5604ed0cff07eb1c5c845a6b2594769"
+      },
+      {
+        "semantic_id": "asset/root/policy",
+        "scope": "workflow-root",
+        "path": ".copilot/root/policy.md",
+        "sha256": "e897ffa89d8f2f78ac98b9a3f397fdc78a5920a08a8d59b3bea9a9f41361b79a"
+      },
+      {
+        "semantic_id": "asset/shared-contract",
+        "scope": "workflow-root",
+        "path": ".copilot/_shared/sdd-phase-contract.md",
+        "sha256": "d08f410bbe9b4f03625a348255371db209f12810cfa50902df0dd9ab3b050ae4"
+      },
+      {
+        "semantic_id": "asset/skill/architect",
+        "scope": "workflow-root",
+        "path": ".copilot/skills/architect/SKILL.md",
+        "sha256": "fe70e43e83cfc87aff77be273310849b4e1fd640d0ebc81d4e5075f1f9c23fa9"
+      },
+      {
+        "semantic_id": "asset/skill/bootstrap",
+        "scope": "workflow-root",
+        "path": ".copilot/skills/bootstrap/SKILL.md",
+        "sha256": "6837cbea4df5f1b70e8889b550cbb8ae456874648aec7f449d491d9f26b61f40"
+      },
+      {
+        "semantic_id": "asset/skill/decompose",
+        "scope": "workflow-root",
+        "path": ".copilot/skills/decompose/SKILL.md",
+        "sha256": "b9f2bae9d9a1cf15d05852e62505fcea589ab7e4fdf8b0f6f7abeb7eca5a8db0"
+      },
+      {
+        "semantic_id": "asset/skill/draft-proposal",
+        "scope": "workflow-root",
+        "path": ".copilot/skills/draft-proposal/SKILL.md",
+        "sha256": "c60fd0af8ea0322fbcb22b3de7cac87856c91e50d489e3e5d333c8e72d2e0789"
+      },
+      {
+        "semantic_id": "asset/skill/finalize",
+        "scope": "workflow-root",
+        "path": ".copilot/skills/finalize/SKILL.md",
+        "sha256": "1e1182a693374d3ee2f046cb7029ed7f13a6589d195d027741fa415f2f395f0d"
+      },
+      {
+        "semantic_id": "asset/skill/implement",
+        "scope": "workflow-root",
+        "path": ".copilot/skills/implement/SKILL.md",
+        "sha256": "1da2f357fd890aa62b63592503992e71704a0c24507dec28b69eb8f74c8e90c5"
+      },
+      {
+        "semantic_id": "asset/skill/investigate",
+        "scope": "workflow-root",
+        "path": ".copilot/skills/investigate/SKILL.md",
+        "sha256": "ba46bec718509634217255608f44d1d588fbb8010d6b7fc2cae4ab1164ee0d2d"
+      },
+      {
+        "semantic_id": "asset/skill/validate",
+        "scope": "workflow-root",
+        "path": ".copilot/skills/validate/SKILL.md",
+        "sha256": "e1f88c876b0418b4054274c14857e7b74eb29602d3e55dd0140915beedd94149"
+      },
+      {
+        "semantic_id": "asset/skill/write-specs",
+        "scope": "workflow-root",
+        "path": ".copilot/skills/write-specs/SKILL.md",
+        "sha256": "a6f9cb5d50d031d43b3999efe62e836a6c2f39b5666b1e3debff161d589d1082"
+      },
+      {
+        "semantic_id": "asset/vscode/instructions",
+        "scope": "workflow-root",
+        "path": ".copilot/.github/copilot-instructions.md",
+        "sha256": "aa02589d0e5e9f8993cec7c0341509385d33a165cd1688e9603c3f4f6419eba1",
+        "permissions": [
+          "filesystem/read",
+          "filesystem/write",
+          "mcp/cortex",
+          "mcp/forgespec",
+          "process/execute",
+          "tool/read",
+          "tool/search"
+        ]
+      },
+      {
+        "semantic_id": "manifest/vscode/degradation-human",
+        "scope": "manifest",
+        "path": ".copilot/manifests/degradation.md",
+        "sha256": "ecbd4bfddf38e1e347ff2937840553f7ab4bcbaa8bf77ba0dabdddd9425d1eaa"
+      },
+      {
+        "semantic_id": "manifest/vscode/degradation-json",
+        "scope": "manifest",
+        "path": ".copilot/manifests/degradation.json",
+        "sha256": "e1684449187db964511430be180f9a2d0026157e71d11c3d2b60489e925b0f13"
+      },
+      {
+        "semantic_id": "manifest/vscode/security-human",
+        "scope": "manifest",
+        "path": ".copilot/manifests/security.md",
+        "sha256": "7298b891afc465277fc4c650b1be1d83f11728dc1056286649c8104b27b77b39"
+      },
+      {
+        "semantic_id": "manifest/vscode/security-json",
+        "scope": "manifest",
+        "path": ".copilot/manifests/security.json",
+        "sha256": "8d7de537d6cad9be243fb13d018965333a86cb146459aba926e837367a6a0a07"
+      },
+      {
+        "semantic_id": "manifest/vscode/semantic",
+        "scope": "workflow-root",
+        "path": ".copilot/manifests/semantic.json",
+        "sha256": "3bc9d63da59b9367ffbe2fb4647c69f262cc38de4db127ef707b1ffdba7d1a03"
+      },
+      {
+        "semantic_id": "vscode/composition",
+        "scope": "workflow-root",
+        "path": ".copilot/.cortex-ia/composition.json",
+        "sha256": "34c2c7f6e338f44d139c28341a833b1a95469a385c49faf094f3549f2741721c"
+      }
+    ],
+    "digest": "sha256:b50ea80459964aca76c80a08996a3796ed1c49bffdb835bf3130c3532d786396"
+  }
+]

@@ -29,7 +29,7 @@ cortex-ia help                         # Show usage
 |------|-------------|---------|
 | `--agent <id>` | Target specific agent (repeatable) | `--agent claude-code --agent opencode` |
 | `--preset <id>` | Installation preset | `--preset minimal` |
-| `--model-preset <id>` | Per-phase model routing | `--model-preset economy` |
+| `--profile <id>` | Apply a configured semantic route bundle | `--profile default` |
 | `--persona <id>` | Communication style | `--persona mentor` |
 | `--local` | Load project .cortex-ia.yaml config | `--local` |
 | `--dry-run` | Preview without making changes | `--dry-run` |
@@ -56,20 +56,20 @@ A snapshot tagged `BackupSourceUninstall` is taken before any change so rollback
 ### OpenCode SDD Profiles
 
 ```bash
-# Create a profile that maps every SDD phase to one model
-cortex-ia profiles create cheap:openai/gpt-4o-mini
+# Create a profile with a semantic route
+cortex-ia profiles create default:route/v1/implementation
 
-# Override one phase
-cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
+# Override one phase with a semantic route
+cortex-ia profiles set default:sdd-design:route/v1/architecture
 
-# Write the profile's per-phase models into ~/.config/opencode/opencode.json
-cortex-ia profiles apply cheap
+# Resolve configured routes into ~/.config/opencode/opencode.json
+cortex-ia profiles apply default
 
 cortex-ia profiles list
-cortex-ia profiles delete cheap
+cortex-ia profiles delete default
 ```
 
-Profile values may be either a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`) or a fully-qualified `provider/model` string. `apply` writes them to the real SDD agent entries in `opencode.json` (`architect`, `decompose`, `team-lead`, `implement`, etc.). The `sdd-apply` phase maps to both `team-lead` and `implement`.
+Profile values are versioned semantic route IDs. `apply` resolves them only from explicit user/provider configuration or fresh qualified discovery evidence, then writes the resulting evidence-backed assignments to direct SDD agent entries in `opencode.json` (`architect`, `decompose`, `implement`, etc.). Unresolved routes fail closed before mutation.
 
 ### Agent Builder
 
@@ -101,21 +101,16 @@ When run without arguments, cortex-ia launches an 8-screen interactive installer
 
 Navigation: `Esc` goes back, `q` quits, `Enter` confirms.
 
-## Per-Phase Model Routing
+## Provider-Neutral Route Resolution
 
-Assign Claude model tiers (opus/sonnet/haiku) to SDD phases for cost/quality optimization:
-
-| Preset | Orchestrator | Architect | Implement | Validate | Finalize |
-|--------|:-:|:-:|:-:|:-:|:-:|
-| **balanced** (default) | opus | opus | sonnet | opus | haiku |
-| **performance** | opus | opus | sonnet | opus | haiku |
-| **economy** | sonnet | sonnet | sonnet | sonnet | haiku |
+Assign versioned semantic routes and typed capability requirements to SDD phases. Provider/model values are resolved only from explicit configuration with provenance, freshness, and qualification evidence.
 
 ```bash
-cortex-ia install --model-preset economy
+cortex-ia profiles set default:sdd-design:route/v1/architecture
+cortex-ia profiles set default:sdd-apply:route/v1/implementation
 ```
 
-For OpenCode, these assignments are written to each agent's `model` field in `opencode.json`; the orchestrator no longer passes model names as text in delegation prompts.
+There is no phase-to-provider assignment table and no implicit model preset. Missing or ineligible mappings fail closed before generation or installation.
 
 ## Persona System
 
@@ -148,8 +143,6 @@ model-preset: balanced
 agents:
   - claude-code
   - opencode
-disabled-components:
-  - mailbox
 custom-skills:
   - path: ./skills/domain-validator
 ```
@@ -185,7 +178,7 @@ cortex-ia persists installation state at `~/.cortex-ia/state.json`:
 {
   "installed_agents": ["claude-code", "opencode"],
   "preset": "full",
-  "components": ["cortex", "forgespec", "agent-mailbox", "context7", "conventions", "sdd"],
+  "components": ["cortex", "forgespec", "context7", "conventions", "sdd", "skills"],
   "last_install": "2026-03-31T00:00:00Z",
   "last_backup_id": "20260331-000000",
   "version": "0.2.0"
@@ -243,9 +236,9 @@ Default retention is **5 unpinned backups** (`backup.DefaultRetentionCount`). `P
 Uses Kahn's algorithm (topological sort) with parallel group detection:
 
 ```
-Level 0 (parallel): cortex, forgespec, mailbox, context7, skills
+Level 0 (parallel): cortex, forgespec, context7, skills
 Level 1 (after cortex): conventions
-Level 2 (after cortex+forgespec+mailbox): sdd
+Level 2 (after cortex+forgespec): sdd
 ```
 
 ## Idempotency

@@ -1,0 +1,22 @@
+{
+  "attribution": {
+    "runtime": "example-runtime",
+    "runtime_version": "1.2.3",
+    "adapter": "example-adapter",
+    "model": "example-model",
+    "workflow_version": "2.0.0",
+    "schema_version": "1.0.0",
+    "profile": "portable-sequential",
+    "capability_evidence": "sha256:example-evidence"
+  },
+  "scenario": "contract-clean-qualification",
+  "trials": 3,
+  "budget": {
+    "wall_time": 30000000000,
+    "cost": 1,
+    "tokens": 10000,
+    "tool_calls": 50,
+    "retries": 5,
+    "cases": 3
+  }
+}

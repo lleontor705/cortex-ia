@@ -47,10 +47,57 @@ jobs:
         with:
           version: v2.11.4
 
+  race-qualification:
+    name: Linux amd64 CGO Race Qualification
+    runs-on: ubuntu-latest
+    env:
+      GOOS: linux
+      GOARCH: amd64
+      CGO_ENABLED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Capture toolchain facts
+        shell: bash
+        run: |
+          mkdir -p qualification-evidence
+          {
+            echo "goos=$GOOS"
+            echo "goarch=$GOARCH"
+            echo "cgo_enabled=$CGO_ENABLED"
+            echo "command=CGO_ENABLED=1 go test -race -count=1 ./..."
+            echo "go_version=$(go version)"
+            echo "compiler=$(gcc --version | head -n 1)"
+            echo "retry_budget=0"
+          } > qualification-evidence/race.txt
+
+      - name: Run pinned race qualification
+        shell: bash
+        run: |
+          set +e
+          CGO_ENABLED=1 go test -race -count=1 ./... 2>&1 | tee qualification-evidence/race-output.txt
+          status=${PIPESTATUS[0]}
+          echo "exit_code=$status" >> qualification-evidence/race.txt
+          exit "$status"
+
+      - name: Upload race qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64-cgo-race-evidence
+          path: qualification-evidence/
+          if-no-files-found: error
+
   approve-release:
     name: Approve Release
     runs-on: ubuntu-latest
-    needs: [unit-tests, lint]
+    needs: [unit-tests, lint, race-qualification]
     environment: production
     steps:
       - name: Approval confirmed

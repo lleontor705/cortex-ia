@@ -9,13 +9,12 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/conventions"
 	"github.com/lleontor705/cortex-ia/internal/components/cortex"
 	"github.com/lleontor705/cortex-ia/internal/components/forgespec"
-	"github.com/lleontor705/cortex-ia/internal/components/mailbox"
 	"github.com/lleontor705/cortex-ia/internal/components/persona"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
 // ---------------------------------------------------------------------------
-// MCP-component golden tests (cortex / forgespec / mailbox / context7)
+// MCP-component golden tests (cortex / forgespec / context7)
 //
 // Each test runs the real injector against a temp $HOME and snapshots the
 // resulting agent config file. Adapters use distinct paths/strategies:
@@ -45,10 +44,6 @@ func cortexInject(home string, adapter agents.Adapter) error {
 }
 func forgespecInject(home string, adapter agents.Adapter) error {
 	_, err := forgespec.Inject(home, adapter)
-	return err
-}
-func mailboxInject(home string, adapter agents.Adapter) error {
-	_, err := mailbox.Inject(home, adapter)
 	return err
 }
 func context7Inject(home string, adapter agents.Adapter) error {
@@ -86,22 +81,6 @@ func TestGoldenForgespec_OpenCode(t *testing.T) {
 	home := runMCP(t, forgespecInject, opencodeAdapter())
 	got := readTestFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
 	assertGolden(t, "forgespec-opencode-settings.golden", got)
-}
-
-// ---------------------------------------------------------------------------
-// mailbox
-// ---------------------------------------------------------------------------
-
-func TestGoldenMailbox_Claude(t *testing.T) {
-	home := runMCP(t, mailboxInject, claudeAdapter())
-	got := readTestFile(t, filepath.Join(home, ".claude", "mcp", "agent-mailbox.json"))
-	assertGolden(t, "mailbox-claude-mcp.golden", got)
-}
-
-func TestGoldenMailbox_OpenCode(t *testing.T) {
-	home := runMCP(t, mailboxInject, opencodeAdapter())
-	got := readTestFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
-	assertGolden(t, "mailbox-opencode-settings.golden", got)
 }
 
 // ---------------------------------------------------------------------------

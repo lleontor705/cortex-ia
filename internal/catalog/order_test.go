@@ -28,7 +28,7 @@ func TestTopoSort_FullPreset(t *testing.T) {
 		}
 	}
 
-	// SDD should be in a later level (depends on cortex, forgespec, mailbox).
+	// SDD should be in a later level (depends on cortex and forgespec).
 	flat := groups.Flatten()
 	sddIdx := -1
 	cortexIdx := -1
@@ -53,8 +53,8 @@ func TestTopoSort_MinimalPreset(t *testing.T) {
 	}
 
 	flat := groups.Flatten()
-	if len(flat) < 5 {
-		t.Errorf("expected at least 5 components (with deps), got %d", len(flat))
+	if len(flat) < 4 {
+		t.Errorf("expected at least 4 components (with deps), got %d", len(flat))
 	}
 }
 
@@ -80,7 +80,7 @@ func TestTopoSort_Empty(t *testing.T) {
 
 func TestParallelGroups_Flatten(t *testing.T) {
 	groups := ParallelGroups{
-		{model.ComponentCortex, model.ComponentMailbox},
+		{model.ComponentCortex, model.ComponentForgeSpec},
 		{model.ComponentConventions},
 		{model.ComponentSDD},
 	}

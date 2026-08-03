@@ -8,10 +8,157 @@ package sdd
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
+	"time"
 
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/compiler"
 	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/modelroute"
 )
+
+// WorkflowProfile is the capability-aware lowering profile selected for a
+// generated workflow bundle.
+type WorkflowProfile string
+
+const (
+	ProfilePortableSequential WorkflowProfile = "portable-sequential"
+	ProfilePortableFlat       WorkflowProfile = "portable-flat"
+	ProfileNativeAdvanced     WorkflowProfile = "native-advanced"
+
+	directChildDelegation capability.CapabilityID = "delegation/direct-child"
+)
+
+// ProfileSelectionInput contains only caller-supplied evidence and policy.
+// Now is explicit so identical inputs always produce identical output.
+type ProfileSelectionInput struct {
+	Now                time.Time
+	Facts              []capability.CapabilityFact
+	NativeCapabilities []capability.CapabilityID
+	ExperimentalOptIns []capability.CapabilityID
+}
+
+// ProfileSelection records both the selected profile and conservative
+// degradation reasons for capabilities that could not qualify it.
+type ProfileSelection struct {
+	Profile               WorkflowProfile           `json:"profile"`
+	QualifiedCapabilities []capability.CapabilityID `json:"qualified_capabilities"`
+	Degradations          []string                  `json:"degradations"`
+}
+
+// SelectWorkflowProfile chooses the strongest qualified profile. Sequential is
+// always available without delegation; flat requires proven direct-child
+// delegation; native additionally requires every requested native capability.
+func SelectWorkflowProfile(input ProfileSelectionInput) ProfileSelection {
+	selection := ProfileSelection{
+		Profile:               ProfilePortableSequential,
+		QualifiedCapabilities: []capability.CapabilityID{},
+		Degradations:          []string{},
+	}
+	optIns := capabilitySet(input.ExperimentalOptIns)
+
+	qualified, reason := qualifyProfileCapability(directChildDelegation, input.Facts, input.Now, optIns)
+	if !qualified {
+		selection.Degradations = append(selection.Degradations, capabilityDegradation(directChildDelegation, reason))
+		return selection
+	}
+	selection.Profile = ProfilePortableFlat
+	selection.QualifiedCapabilities = append(selection.QualifiedCapabilities, directChildDelegation)
+
+	for _, id := range sortedCapabilityIDs(input.NativeCapabilities) {
+		if id == directChildDelegation {
+			continue
+		}
+		qualified, reason = qualifyProfileCapability(id, input.Facts, input.Now, optIns)
+		if !qualified {
+			selection.Degradations = append(selection.Degradations, capabilityDegradation(id, reason))
+			continue
+		}
+		selection.QualifiedCapabilities = append(selection.QualifiedCapabilities, id)
+	}
+
+	if len(selection.Degradations) == 0 && len(selection.QualifiedCapabilities) > 1 {
+		selection.Profile = ProfileNativeAdvanced
+	}
+	return selection
+}
+
+// SelectCompiledWorkflowProfile derives profile selection from the normalized
+// compiler snapshot and rejects a snapshot whose recorded profile disagrees.
+// This prevents injection from consulting mutable runtime state after compile.
+func SelectCompiledWorkflowProfile(compiled compiler.Result, nativeCapabilities, experimentalOptIns []capability.CapabilityID) (ProfileSelection, error) {
+	evaluationTime, err := time.Parse(time.RFC3339Nano, compiled.Normalized.EvaluationTime)
+	if err != nil {
+		return ProfileSelection{}, fmt.Errorf("compiled evaluation time: %w", err)
+	}
+	selection := SelectWorkflowProfile(ProfileSelectionInput{
+		Now:                evaluationTime,
+		Facts:              compiled.Normalized.Catalog.Facts,
+		NativeCapabilities: nativeCapabilities,
+		ExperimentalOptIns: experimentalOptIns,
+	})
+	if compiled.Normalized.Profile != string(selection.Profile) {
+		return ProfileSelection{}, fmt.Errorf("compiled profile %q does not match deterministic selection %q", compiled.Normalized.Profile, selection.Profile)
+	}
+	return selection, nil
+}
+
+func qualifyProfileCapability(id capability.CapabilityID, facts []capability.CapabilityFact, now time.Time, optIns map[capability.CapabilityID]struct{}) (bool, string) {
+	experimentalQualified := false
+	for _, fact := range facts {
+		if fact.ID != id || !isProvenFreshFact(fact, now) {
+			continue
+		}
+		if !fact.Experimental {
+			return true, ""
+		}
+		experimentalQualified = true
+		if _, optedIn := optIns[id]; optedIn {
+			return true, ""
+		}
+	}
+	if experimentalQualified {
+		return false, "experimental capability requires explicit opt-in"
+	}
+	return false, "no fresh proven capability fact"
+}
+
+func isProvenFreshFact(fact capability.CapabilityFact, now time.Time) bool {
+	if fact.Mode != capability.CapabilityAvailable || fact.Cardinality == capability.CardinalityNone || !fact.Current {
+		return false
+	}
+	if fact.ObservedAt.IsZero() || fact.ObservedAt.After(now) || !fact.FreshUntil.After(now) {
+		return false
+	}
+	if strings.TrimSpace(fact.EvidenceRef) == "" || fact.Confidence <= 0 || fact.Confidence > 1 {
+		return false
+	}
+	if fact.Enforcement != capability.EnforcementRuntime {
+		return false
+	}
+	return fact.EvidenceClass == capability.EvidenceInstalledSchema ||
+		fact.EvidenceClass == capability.EvidenceExecutableProbe ||
+		fact.EvidenceClass == capability.EvidenceRuntimeObserved
+}
+
+func capabilitySet(ids []capability.CapabilityID) map[capability.CapabilityID]struct{} {
+	result := make(map[capability.CapabilityID]struct{}, len(ids))
+	for _, id := range ids {
+		result[id] = struct{}{}
+	}
+	return result
+}
+
+func sortedCapabilityIDs(ids []capability.CapabilityID) []capability.CapabilityID {
+	result := slices.Clone(ids)
+	slices.Sort(result)
+	return slices.Compact(result)
+}
+
+func capabilityDegradation(id capability.CapabilityID, reason string) string {
+	return string(id) + ": " + reason
+}
 
 // ProfilePhaseOrder is the canonical SDD phase order used everywhere a profile
 // needs to enumerate phases (TUI listing, --profile-phase parser, validation).
@@ -65,17 +212,24 @@ func ParseProfileSpec(spec string) (model.Profile, error) {
 		return model.Profile{}, fmt.Errorf("invalid provider/model %q: expected provider/model", providerModel)
 	}
 
-	assignments := make(map[string]model.ClaudeModelAlias, len(ProfilePhaseOrder()))
+	p := model.Profile{Name: name, ConfiguredAssignments: make(map[string]model.OpenCodeModelAssignment, len(ProfilePhaseOrder()))}
 	for _, phase := range ProfilePhaseOrder() {
-		assignments[phase] = model.ClaudeModelAlias(provider + "/" + modelID)
+		p.ConfiguredAssignments[phase] = model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
 	}
-	return model.Profile{Name: name, ModelAssignments: assignments}, nil
+	if route, routeErr := modelroute.NewRouteID(providerModel); routeErr == nil {
+		p.Routes = make(map[string]modelroute.RouteRequest, len(ProfilePhaseOrder()))
+		p.ConfiguredAssignments = nil
+		for _, phase := range ProfilePhaseOrder() {
+			p.Routes[phase] = modelroute.RouteRequest{RouteID: route}
+		}
+	}
+	return p, nil
 }
 
 // ParseProfilePhaseSpec parses `name:phase:provider/model` and returns the
 // phase + assignment so callers can update an existing profile in place.
 //
-// Example: "cheap:sdd-design:anthropic/claude-opus-4" → ("cheap", "sdd-design", "anthropic/claude-opus-4", nil)
+// Example: "cheap:sdd-design:provider-test/model-test" → ("cheap", "sdd-design", "provider-test/model-test", nil)
 func ParseProfilePhaseSpec(spec string) (profileName, phase, providerModel string, err error) {
 	parts := strings.SplitN(spec, ":", 3)
 	if len(parts) != 3 {
@@ -121,12 +275,23 @@ func UpsertProfile(profiles []model.Profile, p model.Profile) []model.Profile {
 func SetProfilePhase(profiles []model.Profile, profileName, phase, providerModel string) []model.Profile {
 	existing, ok := FindProfile(profiles, profileName)
 	if !ok {
-		existing = model.Profile{Name: profileName, ModelAssignments: map[string]model.ClaudeModelAlias{}}
+		existing = model.Profile{Name: profileName, ModelAssignments: map[string]string{}}
 	}
-	if existing.ModelAssignments == nil {
-		existing.ModelAssignments = map[string]model.ClaudeModelAlias{}
+	if route, err := modelroute.NewRouteID(providerModel); err == nil {
+		if existing.Routes == nil {
+			existing.Routes = map[string]modelroute.RouteRequest{}
+		}
+		existing.Routes[phase] = modelroute.RouteRequest{RouteID: route}
+	} else {
+		provider, modelID, ok := strings.Cut(strings.TrimSpace(providerModel), "/")
+		if !ok || provider == "" || modelID == "" {
+			return profiles
+		}
+		if existing.ConfiguredAssignments == nil {
+			existing.ConfiguredAssignments = map[string]model.OpenCodeModelAssignment{}
+		}
+		existing.ConfiguredAssignments[phase] = model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
 	}
-	existing.ModelAssignments[phase] = model.ClaudeModelAlias(providerModel)
 	return UpsertProfile(profiles, existing)
 }
 
@@ -144,16 +309,15 @@ func RemoveProfile(profiles []model.Profile, name string) ([]model.Profile, bool
 // ProfileToOpenCodeAssignments converts a saved Profile into the
 // OpenCodeModelAssignments shape consumed by opencode.ApplyToOpenCodeConfig.
 //
-// Profile.ModelAssignments stores values either as a Claude alias
-// ("opus" / "sonnet" / "haiku") or as a fully-qualified "provider/model"
-// (what ParseProfileSpec emits). Both shapes are normalised here.
+// Profile.ModelAssignments stores explicit provider/model values or semantic
+// route identifiers. Both shapes are normalised here.
 //
 // Phase keys lose their "sdd-" prefix because ApplyToOpenCodeConfig re-adds it
 // when looking up agents in opencode.json.
 func ProfileToOpenCodeAssignments(p model.Profile) model.OpenCodeModelAssignments {
 	out := make(model.OpenCodeModelAssignments, len(p.ModelAssignments))
-	for phase, value := range p.ModelAssignments {
-		assignment := parseProfileValue(string(value))
+	for phase, value := range p.ConfiguredAssignments {
+		assignment := value
 		if assignment.Provider == "" || assignment.Model == "" {
 			continue
 		}
@@ -180,8 +344,8 @@ func profileKeyToOpenCodeAgents(key string) []string {
 	case "sdd-tasks", "tasks", "decompose":
 		return []string{"decompose"}
 	case "sdd-apply", "apply":
-		return []string{"team-lead", "implement"}
-	case "team-lead", "implement":
+		return []string{"implement"}
+	case "implement":
 		return []string{normalized}
 	case "sdd-verify", "verify", "validate":
 		return []string{"validate"}
@@ -194,35 +358,13 @@ func profileKeyToOpenCodeAgents(key string) []string {
 	}
 }
 
-// parseProfileValue handles both shapes profiles can store:
-//   - "anthropic/claude-opus-4"      → split into provider + model
-//   - "opus" / "sonnet" / "haiku"    → expand to anthropic/claude-<alias>-N
-//   - anything else                  → zero assignment (caller filters out)
-func parseProfileValue(value string) model.OpenCodeModelAssignment {
-	v := strings.TrimSpace(value)
-	if v == "" {
-		return model.OpenCodeModelAssignment{}
-	}
-
-	if provider, modelID, ok := strings.Cut(v, "/"); ok {
-		return model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
-	}
-
-	switch v {
-	case string(model.ModelOpus):
-		return model.OpenCodeModelAssignment{Provider: "anthropic", Model: "claude-opus-4"}
-	case string(model.ModelSonnet):
-		return model.OpenCodeModelAssignment{Provider: "anthropic", Model: "claude-sonnet-4-6"}
-	case string(model.ModelHaiku):
-		return model.OpenCodeModelAssignment{Provider: "anthropic", Model: "claude-haiku-4-5"}
-	default:
-		return model.OpenCodeModelAssignment{}
-	}
-}
-
 // ProfileSummary renders a one-line description of a profile for CLI listing.
 func ProfileSummary(p model.Profile) string {
-	if len(p.ModelAssignments) == 0 {
+	assignments := p.ConfiguredAssignments
+	if len(assignments) == 0 {
+		assignments = map[string]model.OpenCodeModelAssignment{}
+	}
+	if len(p.Routes) == 0 && len(assignments) == 0 {
 		return fmt.Sprintf("%-20s (no phase assignments)", p.Name)
 	}
 	// Identify the dominant model — if every phase shares the same value,
@@ -230,21 +372,21 @@ func ProfileSummary(p model.Profile) string {
 	var seen string
 	uniform := true
 	for _, phase := range ProfilePhaseOrder() {
-		v, ok := p.ModelAssignments[phase]
+		v, ok := assignments[phase]
 		if !ok {
 			uniform = false
 			continue
 		}
 		if seen == "" {
-			seen = string(v)
+			seen = v.FormatOpenCodeModel()
 			continue
 		}
-		if string(v) != seen {
+		if v.FormatOpenCodeModel() != seen {
 			uniform = false
 		}
 	}
 	if uniform && seen != "" {
 		return fmt.Sprintf("%-20s → %s (all phases)", p.Name, seen)
 	}
-	return fmt.Sprintf("%-20s %d phase(s) configured", p.Name, len(p.ModelAssignments))
+	return fmt.Sprintf("%-20s %d phase(s) configured", p.Name, len(assignments)+len(p.Routes))
 }

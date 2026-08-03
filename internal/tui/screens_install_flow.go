@@ -1,6 +1,6 @@
 package tui
 
-// Install flow screens: Claude Model Picker, SDD Mode, Strict TDD,
+// Install flow screens: model route picker, SDD Mode, Strict TDD,
 // Dependency Tree, Skill Picker.
 
 import (
@@ -14,10 +14,10 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
 
-// --- Claude Model Picker ---
+// --- Model Route Picker ---
 
 func (m Model) updateClaudeModelPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	models := []model.ClaudeModelAlias{model.ModelOpus, model.ModelSonnet, model.ModelHaiku}
+	models := []string{"route/v1/performance", "route/v1/workflow", "route/v1/economy"}
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "up", "k":
@@ -38,7 +38,7 @@ func (m Model) updateClaudeModelPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ModelAssignments = model.ModelsForPreset(m.ModelPreset)
 			if m.ModelConfigMode {
 				m.ModelConfigMode = false
-				m.ActiveToast = Toast{Text: "Model preset updated: " + string(m.ModelPreset), Visible: true}
+				m.ActiveToast = Toast{Text: "Model route preset updated: " + string(m.ModelPreset), Visible: true}
 				m.setScreen(ScreenWelcome)
 				return m, dismissToastAfter(3 * time.Second)
 			}
@@ -57,16 +57,16 @@ func (m Model) updateClaudeModelPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) viewClaudeModelPicker() string {
 	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Select Claude Model"))
+	sb.WriteString(styles.Title.Render("Select Model Route"))
 	sb.WriteString("\n\n")
 
 	models := []struct {
-		alias model.ClaudeModelAlias
+		alias string
 		desc  string
 	}{
-		{model.ModelOpus, "Most capable — deep reasoning, complex tasks"},
-		{model.ModelSonnet, "Balanced — fast and capable (recommended)"},
-		{model.ModelHaiku, "Fastest — simple tasks, low latency"},
+		{"route/v1/performance", "Deep reasoning and complex tasks"},
+		{"route/v1/workflow", "Balanced workflow capabilities"},
+		{"route/v1/economy", "Fast, lower-cost workflow"},
 	}
 
 	for i, m2 := range models {

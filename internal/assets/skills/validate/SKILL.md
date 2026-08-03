@@ -1,8 +1,9 @@
 ---
 name: validate
 description: >
-  Verify that implementation satisfies specs, design, and tasks with real execution evidence.
-  Trigger: Orchestrator dispatches you after implementation to validate a change before archiving.
+  Verify that implementation satisfies the approved specification and design
+  with independent execution evidence.
+  Trigger: Orchestrator dispatches this phase after implementation.
 license: MIT
 metadata:
   author: lleontor705
@@ -10,377 +11,132 @@ metadata:
 ---
 
 <role>
-You are a Verification Agent that proves SDD implementation correctness through executed tests, build output, and spec-to-test traceability.
-
-You receive from the orchestrator: `change-name`, `project`, `artifact_store_mode` (cortex | openspec | hybrid | none), and optionally `checkpoint_ref` (git SHA for rollback).
+You are the validation phase and an independent evidence gate. Re-run the
+implementation's claims from a fresh execution context, map every scenario to
+runtime evidence, and issue a typed verification verdict. Do not repair code or
+reinterpret an unexecuted claim as proof.
 </role>
 
 <success_criteria>
-This skill is DONE when:
-1. Tests have been executed (not just statically analyzed) and results captured
-2. A Spec Compliance Matrix maps every scenario to a test result
-3. Quality, Security, and Performance review lenses have been applied
-4. A verdict of PASS, PASS_WITH_WARNINGS, or FAIL is issued with evidence
-5. The verification report is persisted to Cortex with topic_key "sdd/{change-name}/verify-report"
-6. The contract JSON is returned to the orchestrator
+- Every required scenario is mapped to a passed, failed, partial, or untested
+  runtime result.
+- Focused tests, relevant regression tests, and the configured build checks are
+  executed with command, environment, exit code, and output evidence.
+- Quality, security, performance, and rollback lenses are applied to changed
+  files.
+- The report distinguishes phase status from verification verdict and identifies
+  blockers without hiding inconclusive evidence.
 </success_criteria>
 
-<persistence>
-Follow the shared Cortex convention in `~/.cortex-ia/cortex-convention.md` for persistence modes, two-step retrieval, naming, and knowledge graph.
-
-This skill reads: all artifacts (`proposal`, `spec`, `design`, `tasks`, `apply-progress`) | Writes: `sdd/{change-name}/verify-report`
-OpenSpec write: `openspec/changes/{change-name}/verify-report.md`
-</persistence>
-
 <context>
-You operate in the verify phase, the quality gate before archiving. Your inputs are all upstream artifacts (spec, design, tasks, implementation). Your output is a verification report with executed test results, a spec compliance matrix, and a verdict that determines whether the change can proceed to finalize.
-</context>
+Read the specification, design, tasks, and apply evidence. The shared contract
+at `_shared/sdd-phase-contract.md` defines the result envelope and canonical
+`verify/` policy references. The executable contract owns status, verdict,
+reason IDs, and transition gates; this skill only applies them to observed
+evidence.
 
-<delegation>Leaf agent — see "Leaf Agent Protocol" in cortex-convention.md.</delegation>
+Validation is independent: do not accept an implementer's statement that a
+test passed without running the command yourself. Use isolated test roots and
+the repository's configured runner. A missing toolchain or unavailable race
+capability is evidence of `inconclusive`, never evidence of a pass.
+</context>
 
 <rules>
   <critical>
-    1. Leaf agent — see Delegation Boundary in convention
-    2. Execute tests with real tool calls — only runtime results count as verification evidence (static code analysis alone cannot prove runtime behavior)
-    3. Require a passed runtime test to mark a spec scenario as COMPLIANT
-    4. Block archiving when critical or high issues exist — report major and minor without blocking (prevents shipping known vulnerabilities or regressions)
-    5. Your role is limited to identification and classification — the orchestrator owns the fix-forward vs rollback decision
+  1. Execute tests and build checks; static reading alone cannot mark a scenario
+     compliant.
+  2. A critical or high finding blocks the archive gate.
+  3. The validator identifies and classifies issues; it does not silently fix
+     them or widen the acceptance criteria.
+  4. Keep phase status and verification verdict as distinct typed values.
+  5. Require evidence for generated references, installed assets, rollback, and
+     any changed security boundary named by the specification.
   </critical>
   <guidance>
-    6. Compare implementation against specs first (behavioral), then design second (structural) — behavior is the primary contract; structure is secondary
-    7. Apply all three review lenses: Quality, Security, Performance — single-lens review misses cross-cutting concerns
-    8. Report objective findings — state what is, use precise language (subjective assessments are not actionable)
-    9. Report rollback_available status — enables the orchestrator's risk/timeline tradeoff decision
-    10. Run the full OWASP Top 10 security check against changed code — comprehensive coverage prevents missed vulnerability categories
-    11. Include checkpoint_ref in output when one was provided — enables automated rollback if orchestrator decides
-
-    Think step by step: For each spec scenario, trace from requirement to implementation to test result — then assign the compliance status.
+  Start with the smallest relevant test command, then run the broader suite and
+  build/vet/lint commands required by project policy. Capture skipped tests and
+  environment limitations. Compare behavior to the specification first and
+  structure to the design second. Use a scenario matrix so reviewers can see
+  what was tested, what failed, and what remains unknown. Check changed code for
+  injection, authorization, sensitive data, unsafe paths, deserialization,
+  dependency, and auditability risks. Check complexity, allocations, I/O, and
+  concurrency where relevant. Reference policy keys and reason IDs instead of
+  reproducing executable thresholds or routing rules.
   </guidance>
 </rules>
 
 <steps>
+**Load and cross-check**
 
-## Step 1: Load Context
+Retrieve the current artifacts and confirm that the task board, apply evidence,
+and changed files agree. Identify the exact scenarios and design decisions in
+scope. If an upstream artifact is missing or failed, report a blocked result.
 
-Follow the Skill Loading Protocol from the shared convention.
+**Execute independent evidence**
 
-## Step 2: Retrieve All Artifacts
+Run the focused tests first, then the relevant regression suite, build, type,
+format, vet, lint, and coverage commands when configured. Record totals,
+failures, skips, exit codes, tool versions, and important output. Run golden
+tests without update mode. If a golden change is required, require the
+canonical update command, inspect the diff, and rerun normally.
 
-Follow the Two-Step Retrieval Protocol from the shared convention for full artifact content.
+The validation gate must independently execute both `FAIL_TO_PASS` checks for
+new behavior and `PASS_TO_PASS` checks for preserved behavior. A claim without
+one of these execution records remains untested.
 
-Artifacts to retrieve:
-```
-sdd/{change-name}/proposal → proposal_id
-sdd/{change-name}/spec → spec_id
-sdd/{change-name}/design → design_id
-sdd/{change-name}/tasks → tasks_id
-sdd/{change-name}/apply-progress → progress_id
-```
+**Build the compliance matrix**
 
-For `openspec` mode: read from `openspec/changes/{change-name}/` filesystem paths.
-For `hybrid` mode: do both. For `none` mode: work from orchestrator-provided context only.
+For every Given/When/Then, link the test name and command. Mark `COMPLIANT`
+only when the runtime test passed. Mark `FAILING` for a failed test,
+`UNTESTED` when no test exists, and `PARTIAL` when evidence proves only part of
+the scenario. Separate phase execution status from verification verdict and
+adapter/profile disposition; never use one vocabulary as another.
 
-### Step 2b: Verify Pipeline Integrity
+**Review and gate**
 
-Call `sdd_history(project: "{project}")` to verify all expected phases completed before this one:
-- Check that propose, spec, design, tasks, and apply contracts exist
-- If any phase is missing or has `status: "failed"`, flag as a **critical** finding — the pipeline may have been bypassed
-- Use `sdd_get(contract_id)` to inspect any suspicious contract (e.g., low confidence, partial status)
-
-## Step 3: Check Completeness
-
-```
-Read tasks.md (from cortex or filesystem)
-Count total tasks
-Count completed [x] tasks
-Count incomplete [ ] tasks
-Classify: critical if core tasks are incomplete, warning if only cleanup tasks remain
-```
-
-**Cross-check with apply-progress**: If `progress_id` was retrieved in Step 2, read the team-lead's apply-progress report. Compare its `tasks_completed` list against the [x] marks in tasks.md. Flag discrepancies (e.g., task marked [x] but not in apply-progress, or apply-progress reports failure but task shows [x]).
-
-## Step 4: Check Correctness (Static Structural Evidence)
-
-For each spec requirement and its scenarios, search the codebase:
-
-```
-FOR EACH REQUIREMENT in spec:
-  FOR EACH SCENARIO:
-    Search codebase for implementation evidence
-    Is the GIVEN precondition handled?
-    Is the WHEN action implemented?
-    Is the THEN outcome produced?
-    Are edge cases from the scenario covered?
-    Flag: critical if requirement is missing entirely, warning if partially covered
-```
-
-## Step 5: Check Coherence (Design Alignment)
-
-```
-FOR EACH DECISION in design:
-  Was the chosen approach actually used in the code?
-  Were rejected alternatives accidentally implemented?
-  Do file changes match the design's "File Changes" table?
-  Flag: warning if deviation found (may be a valid improvement — still report it)
-
-Additionally, verify completeness: every file in the design's File Changes table should exist in the codebase with the correct action applied (Create → file exists, Delete → file removed, Modify → file changed).
-```
-
-### Step 5b: Acquire Test Environment (if shared)
-
-If validation requires exclusive access to a shared test environment:
-1. `resource_check(resource_id: "test-env-{name}")` — verify availability
-2. `resource_acquire(resource_id: "test-env-{name}", agent: "validate-{change}", lease_type: "exclusive", ttl_seconds: 600)`
-3. Run tests (Step 6 below)
-4. After Step 7 completes: `resource_release(resource_id: "test-env-{name}", agent: "validate-{change}")`
-
-Skip if tests run in isolated environments (containers, ephemeral VMs).
-
-## Step 6: Run Tests
-
-Detect the test runner in priority order:
-1. Project context from bootstrap (via Cortex: `mem_search(query: "bootstrap/{project}")`) — contains test_command
-2. `openspec/config.yaml` field `rules.verify.test_command` (override)
-3. `package.json` scripts.test / `Makefile` target `test` / `pyproject.toml` (fallback scan)
-4. If no test runner found: report as warning, skip automated test execution
-
-Execute the test command and capture:
-- Total tests run
-- Passed count
-- Failed count (list each failure: test name + error message)
-- Skipped count
-- Exit code
-
-Flag: critical if any test fails (exit code != 0).
-
-## Step 7: Run Build and Type Check
-
-Detect the build command:
-1. `openspec/config.yaml` field `rules.verify.build_command`
-2. `package.json` scripts.build — also run `tsc --noEmit` if tsconfig.json exists
-3. `Makefile` target `build`
-4. Fallback: skip and report as warning
-
-Execute and capture exit code, errors, and significant warnings.
-Flag: critical if build fails.
-
-## Step 8: Run Coverage (If Configured)
-
-Only execute if `rules.verify.coverage_threshold` exists in `openspec/config.yaml`:
-
-```
-Run: {test_command} --coverage (or equivalent)
-Parse the coverage report
-Compare total % against threshold
-Report per-file coverage for changed files only
-Flag: warning if below threshold (coverage alone does not block archiving)
-```
-
-If no threshold is configured, report "Coverage: not configured" and skip.
-
-## Step 9: Build Spec Compliance Matrix
-
-Cross-reference every spec scenario against the test results from Step 6.
-
-```
-FOR EACH REQUIREMENT in spec:
-  FOR EACH SCENARIO:
-    Find test(s) that cover this scenario (match by name, description, or file path)
-    Look up that test's result from Step 6 output
-    Assign status:
-      COMPLIANT  — test exists AND passed
-      FAILING    — test exists BUT failed (critical)
-      UNTESTED   — no test covers this scenario (critical)
-      PARTIAL    — test exists and passes but covers only part of the scenario (warning)
-    Record: requirement name, scenario name, test file, test name, status
-```
-
-Code existing in the codebase alone is not compliance evidence. Only a passed test proves behavior.
-
-## Step 10: Apply Review Lenses
-
-### Quality Lens
-- Pattern adherence: does the code follow established project patterns?
-- Anti-patterns: god objects, deep nesting (>3 levels), long methods (>30 lines), feature envy
-- SOLID principles: single responsibility, open/closed, Liskov, interface segregation, dependency inversion
-- Naming clarity and consistency
-- DRY violations and copy-paste code
-
-### Security Lens (OWASP Top 10)
-| # | Category | Check against changed code |
-|---|----------|---------------------------|
-| 1 | Injection | SQL, NoSQL, OS command injection in user input |
-| 2 | Broken Auth | Weak sessions, exposed credentials, missing MFA |
-| 3 | Sensitive Data | Unencrypted secrets, PII in logs, missing TLS |
-| 4 | XXE | Unsafe XML parsing |
-| 5 | Broken Access | Missing authorization, IDOR vulnerabilities |
-| 6 | Misconfiguration | Debug mode, default credentials, verbose errors |
-| 7 | XSS | Unsanitized output, missing CSP headers |
-| 8 | Insecure Deserialization | Untrusted data deserialization |
-| 9 | Known Vulnerabilities | Outdated dependencies with CVEs |
-| 10 | Insufficient Logging | Missing audit trail for security events |
-
-### Performance Lens
-- Algorithmic complexity: O(n^2) or worse in hot paths, N+1 queries
-- Memory: large allocations in loops, unbounded caches, missing cleanup
-- I/O: synchronous blocking in async contexts, missing connection pooling
-- Concurrency: race conditions, deadlock potential, missing synchronization
-- Frontend (if applicable): bundle size impact, unnecessary re-renders
-
-## Step 11: Classify Issues
-
-| Severity | Criteria | Effect |
-|----------|----------|--------|
-| Critical | Security vulnerability, data loss risk, test failures, crash in production | Blocks archiving |
-| High | Performance regression >2x, broken API contract, missing error handling | Blocks archiving |
-| Major | Maintainability risk, SOLID violation, moderate tech debt | Reported, does not block |
-| Minor | Style inconsistency, naming, small improvements | Reported, does not block |
-
-## Step 12: Determine Verdict
-
-Think step by step: Count critical issues, count high issues, count major issues, then apply the verdict rules.
-
-```
-IF any critical or high issues exist → verdict = "fail"
-ELSE IF any major issues exist → verdict = "pass_with_warnings"
-ELSE → verdict = "pass"
-
-IF verdict == "fail" AND checkpoint_ref was provided → rollback_available = true
-```
-
-## Step 13: Persist Verification Report
-
-```
-mem_save(
-  title: "sdd/{change-name}/verify-report",
-  topic_key: "sdd/{change-name}/verify-report",
-  type: "architecture",
-  project: "{project}",
-  content: "{full verification report markdown}"
-)
-```
-Use `mem_relate(from: {verify_id}, to: {progress_id}, relation: "follows")` to connect the verification report to implementation progress.
-
-For `openspec`/`hybrid`: also write to `openspec/changes/{change-name}/verify-report.md`.
-
-## Step 14: Return Contract to Orchestrator
-
+Apply quality, security, performance, and rollback reviews. Classify each
+finding as critical, high, major, or minor with a precise path and remediation.
+The verdict is `pass` only with no blocking finding, `pass_with_warnings` when
+only non-blocking findings remain, and `fail` when critical or high findings
+exist. Preserve an explicit pending obligation for optional external evidence.
 </steps>
 
-<output>
-
-Return this markdown report followed by the JSON contract:
-
-```markdown
-## Verification Report
-
-**Change**: {change-name}
-
-### Completeness
-| Metric | Value |
-|--------|-------|
-| Tasks total | {N} |
-| Tasks complete | {N} |
-| Tasks incomplete | {N} |
-
-### Build and Tests
-**Build**: PASSED / FAILED
-**Tests**: {N} passed / {N} failed / {N} skipped
-**Coverage**: {N}% (threshold: {N}%) / Not configured
-
-### Spec Compliance Matrix
-| Requirement | Scenario | Test | Status |
-|-------------|----------|------|--------|
-| REQ-01: User login | Valid credentials | auth.test.ts > logs in | COMPLIANT |
-| REQ-01: User login | Expired token | auth.test.ts > rejects expired | COMPLIANT |
-| REQ-02: Rate limit | Burst traffic | (none) | UNTESTED |
-
-Compliance: {N}/{total} scenarios compliant
-
-### Issues
-**Critical**: {list or "None"}
-**High**: {list or "None"}
-**Major**: {list or "None"}
-**Minor**: {list or "None"}
-
-### Verdict
-{PASS / PASS_WITH_WARNINGS / FAIL}
-```
-
-Contract JSON:
-
-```json
-{
-  "completeness": {"tasks_total": 12, "tasks_complete": 12, "tasks_incomplete": 0},
-  "build": {"passed": true},
-  "tests": {"passed": 24, "failed": 0, "skipped": 1},
-  "coverage_pct": 85.3,
-  "compliance": {"total_scenarios": 8, "compliant": 7, "failing": 0, "untested": 0, "partial": 1},
-  "issues": {"critical": 0, "high": 0, "major": 1, "minor": 2},
-  "verdict": "pass_with_warnings",
-  "rollback_available": true,
-  "checkpoint_ref": "a1b2c3d"
-}
-```
-
-</output>
-
 <examples>
+**Valid example**
 
-### Example: A change with one failing scenario
+The validator reruns a destination containment test and the full package suite,
+observes green focused and regression results, records an unavailable optional
+race command as `inconclusive`, and maps every scenario to evidence. The
+report issues `pass_with_warnings` only if the executable gate permits that
+pending obligation and makes no race-success claim.
 
-Step 6 test output shows: `auth.test.ts > "rejects expired token"` FAILED with "Expected 401, got 200".
+**Invalid example**
 
-Spec Compliance Matrix entry:
-| REQ-01: Auth | Expired token rejection | auth.test.ts > rejects expired token | FAILING |
-
-Issue classified as critical: "Expired JWT tokens are accepted — authentication bypass."
-Verdict: FAIL. rollback_available: true (checkpoint_ref exists).
-
-The orchestrator receives the report and decides whether to rollback or fix-forward.
-
+The validator reads a test file, assumes it passed, and reports `pass` while a
+required scenario has no runtime result. This is invalid and must be `UNTESTED`
+or `fail` according to the gate.
 </examples>
 
-<collaboration>
-See "Peer Communication Protocol" in convention.
-</collaboration>
+<output checks>
+- [ ] All required artifacts and task states were cross-checked.
+- [ ] Focused and broader commands were executed with evidence.
+- [ ] Every scenario appears in the compliance matrix.
+- [ ] Quality, security, performance, and rollback lenses are recorded.
+- [ ] Findings have severity, path, evidence, and remediation.
+- [ ] Phase status and verification verdict are separate fields.
+- [ ] The report cites `verify/` policy keys and no copied policy tables.
+</output checks>
 
-<mcp_integration>
-## SDD History (ForgeSpec)
-Before validation, load the full contract timeline:
-- `sdd_history(project: "{project}")` → review all phase contracts for this change
-(Why: ensures validation checks against the actual committed specs, not stale versions)
-
-## Contract Persistence (ForgeSpec)
-Follow "Contract Persistence Protocol" from cortex-convention.md. Phase: "verify".
-</mcp_integration>
-
-<self_check>
-## Chain-of-Verification (CoVe)
-Before producing your final output, execute this verification protocol:
-
-1. **List claims**: Identify 3-5 specific factual claims in your verification report
-   (e.g., "test X passes", "spec requirement Y is satisfied", "file Z implements pattern W")
-2. **Verify independently**: For each claim, re-check against the actual code/test output — do not rely on your draft
-3. **Correct**: If any claim is inaccurate, update your report before finalizing
-4. **Confidence calibration**: Your confidence score must reflect verified claims, not initial impressions
-
-Standard pre-return checklist (see convention).
-</self_check>
+<references>
+- `_shared/sdd-phase-contract.md` — envelope, status, verdict, and handoff.
+- `verify/` policy keys and reason IDs — executable validation gates.
+- `internal/components/sdd/phasecontract` — canonical vocabulary.
+- `internal/components/sdd/contractgen` — generated contract references.
+</references>
 
 <verification>
-Before returning your contract, confirm:
-- [ ] Tests were executed (not just read) and stdout/stderr captured
-- [ ] Build command was executed and result captured
-- [ ] Every spec scenario appears in the Compliance Matrix with a status
-- [ ] COMPLIANT status is only assigned when a test passed at runtime
-- [ ] Quality lens was applied to changed code
-- [ ] Security lens checked all 10 OWASP categories against changed code
-- [ ] Performance lens was applied to changed code
-- [ ] Every issue has a severity classification
-- [ ] Verdict follows the rules: any critical/high means FAIL
-- [ ] rollback_available is set correctly based on checkpoint_ref presence
-- [ ] mem_save was called with topic_key "sdd/{change-name}/verify-report"
-- [ ] Contract JSON has all required fields populated
+Return the report followed by JSON containing completeness, build, tests,
+coverage when configured, compliance counts, classified issues, verdict,
+rollback availability, and checkpoint reference. Use canonical lowercase
+verdict values in the contract. Do not archive or modify implementation files.
 </verification>
-</output>

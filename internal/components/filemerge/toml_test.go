@@ -61,9 +61,9 @@ func TestUpsertTopLevelTOMLString(t *testing.T) {
 	content := `[mcp_servers.cortex]
 command = "cortex"
 `
-	result := UpsertTopLevelTOMLString(content, "model", "claude-sonnet-4-20250514")
+	result := UpsertTopLevelTOMLString(content, "model", "provider-test/model-test")
 
-	if !strings.Contains(result, `model = "claude-sonnet-4-20250514"`) {
+	if !strings.Contains(result, `model = "provider-test/model-test"`) {
 		t.Error("expected model key to be inserted")
 	}
 

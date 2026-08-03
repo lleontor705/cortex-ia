@@ -1,0 +1,90 @@
+[
+  {
+    "target": "claude",
+    "fixture": "native-advanced",
+    "profile": "native-advanced",
+    "stronger": true,
+    "golden": "testdata/conformance/claude/native-advanced.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "claude",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/claude/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "claude",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/claude/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "codex",
+    "fixture": "native-advanced",
+    "profile": "native-advanced",
+    "stronger": true,
+    "golden": "testdata/conformance/codex/native-advanced.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "codex",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/codex/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "codex",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/codex/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "opencode",
+    "fixture": "native-advanced",
+    "profile": "native-advanced",
+    "stronger": true,
+    "golden": "testdata/conformance/opencode/native-advanced.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "opencode",
+    "fixture": "portable-flat",
+    "profile": "portable-flat",
+    "stronger": true,
+    "golden": "testdata/conformance/opencode/portable-flat.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "opencode",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/opencode/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "vscode",
+    "fixture": "advertised-direct-child",
+    "profile": "portable-sequential",
+    "stronger": true,
+    "golden": "testdata/conformance/vscode/advertised-direct-child.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  },
+  {
+    "target": "vscode",
+    "fixture": "portable-sequential",
+    "profile": "portable-sequential",
+    "stronger": false,
+    "golden": "testdata/conformance/vscode/portable-sequential.golden.json",
+    "portable_digest": "sha256:af7c0cf52e355f96659642c50f8eae7f07580b20f98dcb0f3d8bc32e5188b2bf"
+  }
+]

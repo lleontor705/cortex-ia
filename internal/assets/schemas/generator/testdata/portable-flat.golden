@@ -1,0 +1,206 @@
+=== opencode/commands/apply.md [asset/command/apply] ===
+---
+description: Execute canonical phase phase/apply
+agent: orchestrator
+subtask: true
+---
+
+- Semantic ID: `phase/apply`
+- Workflow: `workflow/sdd`@`1.2.0`
+- IR version: `1.2.0`
+- Profile: `portable-flat`
+
+Load `{{HOME}}/.config/opencode/skills/apply/SKILL.md` and execute `phase/apply` exactly as defined there. Return its generated contract without restating or replacing the skill contract.
+=== opencode/commands/verify.md [asset/command/verify] ===
+---
+description: Execute canonical phase phase/verify
+agent: orchestrator
+subtask: true
+---
+
+- Semantic ID: `phase/verify`
+- Workflow: `workflow/sdd`@`1.2.0`
+- IR version: `1.2.0`
+- Profile: `portable-flat`
+
+Load `{{HOME}}/.config/opencode/skills/verify/SKILL.md` and execute `phase/verify` exactly as defined there. Return its generated contract without restating or replacing the skill contract.
+=== schemas/fixtures/apply.json [asset/fixture/apply] ===
+{
+  "workflow_id": "workflow/sdd",
+  "workflow_version": "1.2.0",
+  "ir_version": "1.2.0",
+  "profile": "portable-flat",
+  "phase_id": "phase/apply",
+  "role_id": "role/implement",
+  "depends_on": null,
+  "inputs": [
+    "contract/task"
+  ],
+  "outputs": [
+    "contract/apply"
+  ]
+}
+=== schemas/fixtures/verify.json [asset/fixture/verify] ===
+{
+  "workflow_id": "workflow/sdd",
+  "workflow_version": "1.2.0",
+  "ir_version": "1.2.0",
+  "profile": "portable-flat",
+  "phase_id": "phase/verify",
+  "role_id": "role/validate",
+  "depends_on": [
+    "phase/apply"
+  ],
+  "inputs": [
+    "contract/apply"
+  ],
+  "outputs": [
+    "contract/verify"
+  ]
+}
+=== schemas/apply.schema.json [asset/schema/apply] ===
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contract/apply",
+  "title": "Generated contract contract/apply",
+  "type": "object",
+  "additionalProperties": false,
+  "x-workflow-id": "workflow/sdd",
+  "x-workflow-version": "1.2.0",
+  "x-ir-version": "1.2.0",
+  "x-contract-version": "1.2.0",
+  "x-semantic-id": "contract/apply",
+  "required": [
+    "semantic_id",
+    "status"
+  ],
+  "properties": {
+    "semantic_id": {
+      "const": "contract/apply"
+    },
+    "status": {
+      "enum": [
+        "success",
+        "partial",
+        "failed",
+        "blocked"
+      ],
+      "type": "string"
+    }
+  }
+}
+=== schemas/verify.schema.json [asset/schema/verify] ===
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contract/verify",
+  "title": "Generated contract contract/verify",
+  "type": "object",
+  "additionalProperties": false,
+  "x-workflow-id": "workflow/sdd",
+  "x-workflow-version": "1.2.0",
+  "x-ir-version": "1.2.0",
+  "x-contract-version": "1.2.0",
+  "x-semantic-id": "contract/verify",
+  "required": [
+    "semantic_id",
+    "status"
+  ],
+  "properties": {
+    "semantic_id": {
+      "const": "contract/verify"
+    },
+    "status": {
+      "enum": [
+        "success",
+        "partial",
+        "failed",
+        "blocked"
+      ],
+      "type": "string"
+    }
+  }
+}
+=== skills/apply/SKILL.md [asset/skill/apply] ===
+---
+name: apply
+description: "Implement one bounded vertical work unit."
+---
+
+# Generated Phase Skill: apply
+
+- Semantic ID: `phase/apply`
+- Workflow: `workflow/sdd`@`1.2.0`
+- IR version: `1.2.0`
+- Profile: `portable-flat`
+
+## Objective
+
+Implement one bounded vertical work unit.
+
+## Canonical Role
+
+- `role/implement`
+
+## Inputs
+
+- `contract/task` schema `1.2.0` (required: true)
+
+## Outputs
+
+- `contract/apply` schema `1.2.0` (required: true)
+
+## Dependencies
+
+- None.
+
+## Required Evidence
+
+- `evidence/red-green-refactor`
+
+## Terminal States
+
+- `blocked`
+- `failed`
+- `success`
+=== skills/verify/SKILL.md [asset/skill/verify] ===
+---
+name: verify
+description: "Independently validate outcomes and evidence."
+---
+
+# Generated Phase Skill: verify
+
+- Semantic ID: `phase/verify`
+- Workflow: `workflow/sdd`@`1.2.0`
+- IR version: `1.2.0`
+- Profile: `portable-flat`
+
+## Objective
+
+Independently validate outcomes and evidence.
+
+## Canonical Role
+
+- `role/validate`
+
+## Inputs
+
+- `contract/apply` schema `1.2.0` (required: true)
+
+## Outputs
+
+- `contract/verify` schema `1.2.0` (required: true)
+
+## Dependencies
+
+- `phase/apply`
+
+## Required Evidence
+
+- `evidence/verification`
+
+## Terminal States
+
+- `blocked`
+- `failed`
+- `success`

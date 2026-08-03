@@ -185,3 +185,82 @@ func TestCheckInstallStatus_Complete(t *testing.T) {
 		t.Errorf("expected pass for complete status, got: %v", err)
 	}
 }
+
+func TestDoctorFindingsAreStableAndActionable(t *testing.T) {
+	tests := []struct {
+		name        string
+		observation Observation
+		code        FindingCode
+		severity    Severity
+		blocking    bool
+	}{
+		{name: "runtime beyond tested", observation: Observation{Kind: CheckRuntimeVersion, State: StateBeyondTested, Target: "opencode", Path: "runtime.version", Observed: "2.0.0", Expected: "<= 1.9.0", Evidence: "probe runtime-version: sha256:01", Remediation: "upgrade the adapter or run a qualifying probe"}, code: FindingRuntimeVersion, severity: SeverityWarning, blocking: true},
+		{name: "catalog evidence stale", observation: Observation{Kind: CheckEvidenceFreshness, State: StateStale, Target: "opencode", Path: "catalog.delegate", Observed: "fresh-until 2026-07-01", Expected: "fresh at 2026-07-26", Evidence: "catalog digest sha256:02", Remediation: "refresh the capability probe"}, code: FindingEvidenceStale, severity: SeverityWarning, blocking: true},
+		{name: "schema incompatible", observation: Observation{Kind: CheckSchemaInterval, State: StateMismatch, Target: "bundle", Path: "manifest.schema_version", Observed: "2.0.0", Expected: ">=1.0.0 <2.0.0", Evidence: "manifest digest sha256:03", Remediation: "regenerate with a supported schema"}, code: FindingSchemaInterval, severity: SeverityError, blocking: true},
+		{name: "hash drift", observation: Observation{Kind: CheckAssetHash, State: StateCorrupt, Target: "claude", Path: ".claude/agents/implement.md", Observed: "sha256:04", Expected: "sha256:05", Evidence: "install-state asset implement", Remediation: "restore from backup or reinstall"}, code: FindingAssetHash, severity: SeverityError, blocking: true},
+		{name: "ownership unknown", observation: Observation{Kind: CheckOwnership, State: StateUnknown, Target: "codex", Path: "AGENTS.md", Observed: "no marker", Expected: "owner cortex-ia", Evidence: "ownership sidecar absent", Remediation: "review dry-run and explicitly approve takeover"}, code: FindingOwnership, severity: SeverityError, blocking: true},
+		{name: "permission widened", observation: Observation{Kind: CheckPermissions, State: StateMismatch, Target: "unsupported-target", Path: "permissions.network", Observed: "*", Expected: "api.example.test", Evidence: "security manifest", Remediation: "regenerate without permission widening"}, code: FindingPermissions, severity: SeverityError, blocking: true},
+		{name: "secret rendered", observation: Observation{Kind: CheckSecrets, State: StatePresent, Target: "unsupported-target", Path: "mcp.env.API_KEY", Observed: "literal secret", Expected: "opaque secret reference", Evidence: "redacted digest sha256:06", Remediation: "remove the value, rotate it, and regenerate"}, code: FindingSecret, severity: SeverityError, blocking: true},
+		{name: "service unsupported", observation: Observation{Kind: CheckServiceVersion, State: StateUnsupported, Target: "forgespec", Path: "services.forgespec.version", Observed: "0.8.0", Expected: ">=1.0.0 <2.0.0", Evidence: "service compatibility manifest", Remediation: "upgrade ForgeSpec"}, code: FindingServiceVersion, severity: SeverityError, blocking: true},
+		{name: "binding unresolved", observation: Observation{Kind: CheckBinding, State: StateUnresolved, Target: "mailbox", Path: "bindings.message.send", Observed: "unresolved", Expected: "provider binding", Evidence: "semantic binding manifest", Remediation: "configure a compatible provider"}, code: FindingBinding, severity: SeverityError, blocking: true},
+		{name: "manifest inconsistent", observation: Observation{Kind: CheckManifest, State: StateMismatch, Target: "bundle", Path: "semantic_digest", Observed: "sha256:07", Expected: "sha256:08", Evidence: "machine and human manifests", Remediation: "regenerate the bundle"}, code: FindingManifest, severity: SeverityError, blocking: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			report := Diagnose("native-advanced", []Observation{tt.observation})
+			if report.Qualified {
+				t.Fatal("unhealthy installation must not be qualified")
+			}
+			if len(report.Findings) != 1 {
+				t.Fatalf("expected one finding, got %d", len(report.Findings))
+			}
+			finding := report.Findings[0]
+			if finding.Code != tt.code || finding.Severity != tt.severity || finding.Blocking != tt.blocking {
+				t.Fatalf("unexpected finding policy: %+v", finding)
+			}
+			if finding.Target == "" || finding.Path == "" || finding.Observed == "" || finding.Expected == "" || finding.Evidence == "" || finding.Remediation == "" {
+				t.Fatalf("finding is not actionable: %+v", finding)
+			}
+		})
+	}
+}
+
+func TestDoctorHealthyInstallationHasZeroBlockers(t *testing.T) {
+	observations := make([]Observation, 0, len(AllDoctorCheckKinds()))
+	for _, kind := range AllDoctorCheckKinds() {
+		observations = append(observations, Observation{
+			Kind: kind, State: StateHealthy, Target: "opencode", Path: string(kind),
+			Observed: "verified", Expected: "verified", Evidence: "fixture evidence", Remediation: "none",
+		})
+	}
+
+	report := Diagnose("portable-sequential", observations)
+	if !report.Qualified {
+		t.Fatalf("healthy installation should be qualified: %+v", report.Findings)
+	}
+	if report.Profile != "portable-sequential" || len(report.Findings) != 0 || report.Blockers() != 0 {
+		t.Fatalf("expected selected profile and zero findings/blockers: %+v", report)
+	}
+}
+
+func TestDoctorStaleAndBeyondTestedNeverQualify(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		kind  CheckKind
+		state CheckState
+	}{
+		{name: "stale evidence", kind: CheckEvidenceFreshness, state: StateStale},
+		{name: "runtime beyond tested", kind: CheckRuntimeVersion, state: StateBeyondTested},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			report := Diagnose("native-advanced", []Observation{{
+				Kind: tt.kind, State: tt.state, Target: "runtime", Path: "qualification",
+				Observed: string(tt.state), Expected: "qualified", Evidence: "fixture", Remediation: "run qualification",
+			}})
+			if report.Qualified || report.Blockers() == 0 {
+				t.Fatalf("%s must block qualification: %+v", tt.state, report)
+			}
+		})
+	}
+}

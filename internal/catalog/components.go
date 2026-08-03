@@ -47,7 +47,7 @@ func ComponentsForPreset(preset model.PresetID) []model.ComponentID {
 			model.ComponentForgeSpec,
 			model.ComponentContext7,
 			model.ComponentSDD,
-			// SDD auto-pulls mailbox and conventions via deps
+			// SDD auto-pulls mailbox and conventions via deps.
 		}
 	default:
 		return nil

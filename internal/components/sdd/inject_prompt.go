@@ -13,10 +13,10 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
-// strictTDDDirective is appended to the orchestrator prompt when Strict TDD mode is enabled.
-const strictTDDDirective = `
-
-## Strict TDD Mode
+// strictTDDDirective is the body of the Strict TDD section injected into the
+// orchestrator prompt when Strict TDD mode is enabled. It is managed as a
+// marked section via InjectMarkdownSection so re-injection is idempotent.
+const strictTDDDirective = `## Strict TDD Mode
 
 All implementation tasks MUST follow strict Test-Driven Development:
 1. Write failing tests FIRST — no production code before tests exist
@@ -24,8 +24,7 @@ All implementation tasks MUST follow strict Test-Driven Development:
 3. Write minimal production code to pass the tests
 4. Refactor while keeping tests green
 
-Sub-agents in the implement phase MUST produce test files before source files.
-`
+Sub-agents in the implement phase MUST produce test files before source files.`
 
 // buildPromptContent reads an orchestrator asset and applies template substitutions.
 func buildPromptContent(assetPath, homeDir string, assignments model.ModelAssignments, strictTDD bool) (string, error) {
@@ -39,7 +38,7 @@ func buildPromptContent(assetPath, homeDir string, assignments model.ModelAssign
 	}
 	content = strings.ReplaceAll(content, "{{MODEL_ASSIGNMENTS}}", model.FormatModelAssignments(assignments))
 	if strictTDD {
-		content += strictTDDDirective
+		content = filemerge.InjectMarkdownSection(content, "strict-tdd", strictTDDDirective)
 	}
 	return content, nil
 }

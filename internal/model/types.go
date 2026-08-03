@@ -1,5 +1,7 @@
 package model
 
+import "github.com/lleontor705/cortex-ia/internal/modelroute"
+
 // AgentID identifies a supported AI coding agent.
 type AgentID string
 
@@ -37,25 +39,25 @@ const (
 type SkillID string
 
 const (
-	SkillSDDInit      SkillID = "sdd-init"
-	SkillSDDExplore   SkillID = "sdd-explore"
-	SkillSDDPropose   SkillID = "sdd-propose"
-	SkillSDDSpec      SkillID = "sdd-spec"
-	SkillSDDDesign    SkillID = "sdd-design"
-	SkillSDDTasks     SkillID = "sdd-tasks"
-	SkillSDDApply     SkillID = "sdd-apply"
-	SkillSDDVerify    SkillID = "sdd-verify"
-	SkillSDDArchive   SkillID = "sdd-archive"
-	SkillTeamLead     SkillID = "team-lead"
-	SkillDebug        SkillID = "debug"
-	SkillIdeate       SkillID = "ideate"
-	SkillDebate       SkillID = "debate"
-	SkillMonitor      SkillID = "monitor"
-	SkillExecutePlan  SkillID = "execute-plan"
-	SkillOpenPR       SkillID = "open-pr"
-	SkillFileIssue    SkillID = "file-issue"
-	SkillScanRegistry SkillID = "scan-registry"
-	SkillJudgmentDay  SkillID = "judgment-day"
+	SkillSDDInit          SkillID = "sdd-init"
+	SkillSDDExplore       SkillID = "sdd-explore"
+	SkillSDDPropose       SkillID = "sdd-propose"
+	SkillSDDSpec          SkillID = "sdd-spec"
+	SkillSDDDesign        SkillID = "sdd-design"
+	SkillSDDTasks         SkillID = "sdd-tasks"
+	SkillSDDApply         SkillID = "sdd-apply"
+	SkillSDDVerify        SkillID = "sdd-verify"
+	SkillSDDArchive       SkillID = "sdd-archive"
+	SkillDebug            SkillID = "debug"
+	SkillIdeate           SkillID = "ideate"
+	SkillDebate           SkillID = "debate"
+	SkillMonitor          SkillID = "monitor"
+	SkillExecutePlan      SkillID = "execute-plan"
+	SkillOpenPR           SkillID = "open-pr"
+	SkillFileIssue        SkillID = "file-issue"
+	SkillScanRegistry     SkillID = "scan-registry"
+	SkillJudgmentDay      SkillID = "judgment-day"
+	SkillParallelDispatch SkillID = "parallel-dispatch"
 
 	// Skills ported from gentle-ai in the port-gentle-ai-patterns change.
 	SkillWorkUnitCommits SkillID = "work-unit-commits"
@@ -113,15 +115,6 @@ const (
 	PersonaMinimal      PersonaID = "minimal"
 )
 
-// ClaudeModelAlias identifies a Claude model tier for per-phase routing.
-type ClaudeModelAlias string
-
-const (
-	ModelOpus   ClaudeModelAlias = "opus"
-	ModelSonnet ClaudeModelAlias = "sonnet"
-	ModelHaiku  ClaudeModelAlias = "haiku"
-)
-
 // ModelPreset identifies a predefined model assignment strategy.
 type ModelPreset string
 
@@ -131,13 +124,22 @@ const (
 	ModelPresetEconomy     ModelPreset = "economy"
 )
 
-// ModelAssignments maps SDD skill names to Claude model aliases.
-type ModelAssignments map[string]ClaudeModelAlias
+// ModelAssignments maps SDD skill names to explicit configured provider/model
+// values or opaque semantic route identifiers.
+type ModelAssignments map[string]string
 
-// Profile stores a named set of model assignments for reuse.
+// RouteAssignments stores semantic phase routes. It deliberately has no
+// provider/model values; those are carried separately as explicit config.
+type RouteAssignments map[string]modelroute.RouteRequest
+
+// Profile stores a named set of semantic routes and explicit configured
+// provider/model values for reuse. ModelAssignments is retained only as an
+// in-memory source-compatibility field and is never serialized.
 type Profile struct {
-	Name             string                      `json:"name"`
-	ModelAssignments map[string]ClaudeModelAlias `json:"model_assignments,omitempty"`
+	Name                  string                             `json:"name"`
+	Routes                RouteAssignments                   `json:"routes,omitempty"`
+	ConfiguredAssignments map[string]OpenCodeModelAssignment `json:"configured_assignments,omitempty"`
+	ModelAssignments      map[string]string                  `json:"-"`
 }
 
 // --- OpenCode model types ---
@@ -184,7 +186,6 @@ func OpenCodeSubAgents() []string {
 		"write-specs",
 		"architect",
 		"decompose",
-		"team-lead",
 		"implement",
 		"validate",
 		"finalize",

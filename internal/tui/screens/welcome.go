@@ -35,7 +35,6 @@ func RenderWelcome(data WelcomeData) string {
 	sb.WriteString("Configure your AI coding agents with:\n")
 	sb.WriteString(styles.StatusOK.Render("  ● Cortex") + "       — Persistent memory + knowledge graph\n")
 	sb.WriteString(styles.StatusOK.Render("  ● ForgeSpec") + "    — SDD contracts + task board\n")
-	sb.WriteString(styles.StatusOK.Render("  ● Mailbox") + "      — Inter-agent messaging\n")
 	sb.WriteString(styles.StatusOK.Render("  ● Context7") + "     — Live documentation\n")
 	sb.WriteString(styles.StatusOK.Render("  ● SDD") + "          — 9-phase development workflow\n")
 	sb.WriteString("\n")

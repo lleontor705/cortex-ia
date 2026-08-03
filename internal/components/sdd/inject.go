@@ -31,8 +31,11 @@ func ResetSharedWrite() {
 
 // InjectionResult describes the outcome of SDD injection.
 type InjectionResult struct {
-	Changed bool
-	Files   []string
+	Changed      bool
+	Files        []string
+	Profile      WorkflowProfile
+	Degradations []string
+	Fingerprint  string
 }
 
 // Inject injects the full SDD workflow into the given agent:
@@ -106,7 +109,7 @@ func Inject(homeDir string, adapter agents.Adapter, assignments model.ModelAssig
 
 	// 3. Copy/write skills to the agent-local skills directory.
 	// For OpenCode: writes utility skills (not sub-agents) to ~/.config/opencode/skills/.
-	// For other agents: copies all 19 skills from shared to agent-local.
+	// For other agents: copies all skills in sddSkillIDs from shared to agent-local.
 	if adapter.SupportsSkills() {
 		result, err := copySkillsToAgent(homeDir, adapter)
 		if err != nil {
@@ -154,6 +157,7 @@ func FilesToBackup(homeDir string, adapter agents.Adapter) []string {
 	// Shared skills directory (~/.cortex-ia/skills/) — only sub-agent skills.
 	// Convention file is owned by the conventions component.
 	sharedSkillsDir := state.SharedSkillsDir(homeDir)
+	paths = append(paths, filepath.Join(sharedSkillsDir, "team-lead", "SKILL.md"))
 	for _, id := range openCodeSubAgents {
 		paths = append(paths, filepath.Join(sharedSkillsDir, id, "SKILL.md"))
 	}
@@ -162,6 +166,7 @@ func FilesToBackup(homeDir string, adapter agents.Adapter) []string {
 	if adapter.SupportsSkills() {
 		agentSkillsDir := adapter.SkillsDir(homeDir)
 		if agentSkillsDir != "" {
+			paths = append(paths, filepath.Join(agentSkillsDir, "team-lead", "SKILL.md"))
 			if adapter.Agent() == model.AgentOpenCode {
 				// OpenCode: only utility skills in local dir.
 				for _, id := range openCodeLocalSkills {
@@ -175,6 +180,9 @@ func FilesToBackup(homeDir string, adapter agents.Adapter) []string {
 				}
 			}
 		}
+	}
+	if subAgentsDir := adapter.SubAgentsDir(homeDir); subAgentsDir != "" {
+		paths = append(paths, filepath.Join(subAgentsDir, "team-lead.md"))
 	}
 
 	// Shared orchestrator prompt and reference file.

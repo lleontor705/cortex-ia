@@ -1,8 +1,9 @@
 ---
 name: cortex-ia-branch-pr
 description: >
-  PR creation workflow for cortex-ia following the issue-first enforcement system.
-  Trigger: When creating a pull request, opening a PR, or preparing changes for review.
+  Repo-specific PR creation for the cortex-ia repository.
+  Complements the generic open-pr builtin skill with cortex-ia specific CI checks and templates.
+  Use this for cortex-ia development; use open-pr for other projects.
 license: Apache-2.0
 metadata:
   author: cortex-ia

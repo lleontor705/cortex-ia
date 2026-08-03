@@ -21,14 +21,17 @@ func TestRenderPreset_ShowsPresetNames(t *testing.T) {
 	}
 }
 
-func TestRenderPreset_ShowsDescriptions(t *testing.T) {
+func TestRenderPreset_ShowsCurrentComponentCount(t *testing.T) {
 	data := PresetData{
 		Presets: []model.PresetID{model.PresetFull, model.PresetMinimal},
 		Cursor:  0,
 	}
 	output := RenderPreset(data)
 	if !strings.Contains(output, "All 7 components") {
-		t.Error("expected 'All 7 components' in output")
+		t.Errorf("expected current seven-component full preset description, got:\n%s", output)
+	}
+	if strings.Contains(output, "All 8 components") {
+		t.Errorf("preset must not advertise the retired eight-component count\n%s", output)
 	}
 	if !strings.Contains(output, "Cortex + ForgeSpec + Context7 + SDD") {
 		t.Error("expected minimal preset description in output")

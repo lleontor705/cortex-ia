@@ -1,97 +1,21 @@
 # Components
 
-cortex-ia configures 7 components. Each is independently selectable (with automatic dependency resolution).
+cortex-ia exposes seven current components: Cortex, Agent Mailbox, ForgeSpec, Context7, conventions, direct SDD workflow assets, and extra skills. Component and tool counts are derived from the catalog and negotiated service schemas rather than duplicated in documentation.
 
-## MCP Server Components
+## Current service boundaries
 
-### Cortex (31 MCP tools)
+| Service | Authority |
+|---|---|
+| ForgeSpec | Versioned SDD contracts, task DAG/readiness/claim/status, and file reservations when negotiated |
+| Cortex | Durable evidence, provenance, memory, and relationships |
+| Agent Mailbox | Optional messaging, A2A transport, resource coordination, and dead-letter handling; never SDD task authority |
+| Runtime-native dispatch | Bounded child execution transport only |
+| cortex-ia | Compile, diagnose, install, back up, receipt, and restore generated assets |
 
-Persistent cross-session memory with knowledge graph.
+ForgeSpec `direct-v1` requires fresh compatible P0 evidence. ForgeSpec 1.2.x may run only as visible `legacy-sequential`. Optional P1 omissions are disclosed and may force sequential/no-concurrent-write execution.
 
-**Core** (9): `mem_save`, `mem_search`, `mem_get_observation`, `mem_context`, `mem_session_summary`, `mem_update`, `mem_capture_passive`, `mem_save_prompt`, `mem_suggest_topic_key`
-**Session** (4): `mem_session_start`, `mem_session_end`, `mem_stats`, `mem_delete`
-**Knowledge graph** (8): `mem_relate`, `mem_graph`, `mem_score`, `mem_search_hybrid`, `mem_archive`, `mem_timeline`, `mem_revision_history`, `mem_merge_projects`
-**Temporal** (10): `temporal_create_edge`, `temporal_get_edges`, `temporal_get_relevant`, `temporal_create_snapshot`, `temporal_record_operation`, `temporal_evaluate_quality`, `temporal_system_metrics`, `temporal_health_check`, `temporal_evolution_path`, `temporal_fact_state`
+## Presets and dependencies
 
-**What gets injected**: MCP server config pointing to `cortex mcp` binary.
+The full preset contains all seven components. The minimal preset selects Cortex, ForgeSpec, Context7, and SDD; dependency resolution also includes Agent Mailbox because SDD uses its optional coordination transport. Conventions depend on Cortex.
 
-**Dependency**: None (but required by SDD and Conventions).
-
-### ForgeSpec (15 MCP tools)
-
-SDD contract validation with task board and file reservation.
-
-**Contract tools** (5): `sdd_validate`, `sdd_save`, `sdd_get`, `sdd_list`, `sdd_history`
-**Task board** (8): `tb_create_board`, `tb_add_task`, `tb_status`, `tb_claim`, `tb_update`, `tb_unblocked`, `tb_get`, `tb_list_boards`
-**File locks** (2): `file_reserve` (use `check_only: true` to check conflicts), `file_release`
-
-**What gets injected**: MCP server config pointing to `npx -y forgespec-mcp`.
-
-### Agent Mailbox (21 MCP tools)
-
-Inter-agent messaging, A2A task delegation, resource coordination, and dead-letter queue.
-
-**Messaging** (6): `msg_send`, `msg_read_inbox`, `msg_broadcast`, `msg_search`, `msg_request`, `msg_count`
-**Threads & agents** (4): `msg_list_threads`, `msg_activity_feed`, `msg_list_agents`, `agent_register`
-**A2A Tasks** (5): `a2a_submit_task`, `a2a_get_task`, `a2a_cancel_task`, `a2a_list_tasks`, `a2a_respond_task`
-**Resources** (3): `resource_acquire`, `resource_release`, `resource_check`
-**Dead-Letter Queue** (3): `dlq_list`, `dlq_retry`, `dlq_purge`
-
-**What gets injected**: MCP server config pointing to `npx -y agent-mailbox-mcp`.
-
-### Context7 (2 MCP tools)
-
-Live framework and library documentation.
-
-**Tools**: `resolve-library-id`, `get-library-docs`
-
-**What gets injected**: MCP server config. Uses remote HTTP for OpenCode/VS Code, npx for others.
-
-## Content Components
-
-### SDD Workflow
-
-The largest component. Injects:
-1. **Orchestrator prompt** — Multi-agent (Claude/OpenCode) or single-agent (others)
-2. **19 skill files** — One SKILL.md per SDD phase + utility skills
-3. **Shared conventions** — `_shared/cortex-convention.md`
-4. **Slash commands** — 10 command files (OpenCode only)
-5. **Sub-agent definitions** — Agent config files (OpenCode)
-
-**Dependencies**: Cortex, ForgeSpec, Agent Mailbox.
-
-### Conventions
-
-Injects cortex memory protocol and naming conventions:
-1. `cortex-convention.md` → skills/_shared/ directory
-2. `cortex-protocol.md` → system prompt (markdown section or append)
-
-**Dependency**: Cortex.
-
-### Extra Skills
-
-Non-SDD utility skills. Injected separately to avoid conflicts with SDD component.
-
-## Dependency Graph
-
-```
-cortex ─────────┐
-agent-mailbox ──┤
-forgespec ──────┤
-context7        │
-                ├──▶ sdd (requires cortex + forgespec + mailbox)
-conventions ◄────── cortex
-skills          (no deps)
-```
-
-## Preset Resolution
-
-### Full Preset
-All 7 components: cortex, agent-mailbox, forgespec, context7, conventions, sdd, skills.
-
-### Minimal Preset
-Selected: cortex, forgespec, context7, sdd.
-After dependency resolution: **+ agent-mailbox** (pulled by SDD).
-
-### Custom Preset
-User selects via TUI. Dependencies auto-resolved.
+Installation updates only managed configuration and assets. It never deletes user Mailbox data, WAL/SHM files, caches, archives, or repository checkouts.

@@ -7,7 +7,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
-func TestSelectionFromMetadataPrefersLockComponents(t *testing.T) {
+func TestSelectionFromMetadataAcceptsCurrentMailboxComponent(t *testing.T) {
 	s := state.State{
 		InstalledAgents: []model.AgentID{model.AgentCodex},
 		Preset:          model.PresetFull,
@@ -21,24 +21,25 @@ func TestSelectionFromMetadataPrefersLockComponents(t *testing.T) {
 
 	selection, err := selectionFromMetadata(s, lock)
 	if err != nil {
-		t.Fatalf("selectionFromMetadata() error = %v", err)
+		t.Fatalf("selectionFromMetadata() rejected current Mailbox component: %v", err)
 	}
+	found := false
+	for _, component := range selection.Components {
+		found = found || component == model.ComponentMailbox
+	}
+	if !found {
+		t.Fatal("selectionFromMetadata() dropped current Mailbox component")
+	}
+}
 
-	if selection.Preset != model.PresetMinimal {
-		t.Fatalf("selectionFromMetadata() preset = %q, want %q", selection.Preset, model.PresetMinimal)
+func TestBuildInjectorsIncludesMailboxProvider(t *testing.T) {
+	entries := buildInjectors("", nil, model.Selection{}, func() ([]string, error) { return nil, nil })
+	for _, entry := range entries {
+		if entry.id == model.ComponentMailbox {
+			return
+		}
 	}
-
-	if len(selection.Agents) != 1 || selection.Agents[0] != model.AgentCodex {
-		t.Fatalf("selectionFromMetadata() agents = %v, want [%s]", selection.Agents, model.AgentCodex)
-	}
-
-	if len(selection.Components) != 3 {
-		t.Fatalf("selectionFromMetadata() components = %v, want 3 entries", selection.Components)
-	}
-
-	if selection.Components[0] != model.ComponentCortex || selection.Components[1] != model.ComponentSDD || selection.Components[2] != model.ComponentMailbox {
-		t.Fatalf("selectionFromMetadata() component order = %v, want lock components first then state-only components", selection.Components)
-	}
+	t.Fatal("pipeline omitted the current Mailbox injector")
 }
 
 func TestSelectionFromMetadataRequiresAgents(t *testing.T) {

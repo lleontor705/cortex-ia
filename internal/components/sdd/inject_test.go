@@ -56,16 +56,17 @@ func TestInjectSDD_ClaudeCode(t *testing.T) {
 		t.Error("expected implement skill in shared dir")
 	}
 
-	// Verify convention refs replaced with absolute path (not inlined).
+	// Verify the current shared phase-contract reference is preserved.
 	implContent, err := os.ReadFile(implementSkill)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(implContent), "../_shared/cortex-convention.md") {
-		t.Error("expected relative convention references to be replaced with absolute path")
+	implText := string(implContent)
+	if !strings.Contains(implText, "_shared/sdd-phase-contract.md") {
+		t.Error("expected shared phase-contract reference in implement skill")
 	}
-	if !strings.Contains(string(implContent), ".cortex-ia/skills/_shared/cortex-convention.md") {
-		t.Error("expected absolute convention path in implement skill")
+	if strings.Contains(implText, "cortex-convention.md") {
+		t.Error("expected stale convention references to be absent from implement skill")
 	}
 
 }

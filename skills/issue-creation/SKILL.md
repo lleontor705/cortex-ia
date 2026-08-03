@@ -1,8 +1,9 @@
 ---
 name: cortex-ia-issue-creation
 description: >
-  Issue creation workflow for cortex-ia following the issue-first enforcement system.
-  Trigger: When creating a GitHub issue, reporting a bug, or requesting a feature.
+  Repo-specific issue creation for the cortex-ia repository.
+  Complements the generic file-issue builtin skill with cortex-ia specific templates and labels.
+  Use this for cortex-ia development; use file-issue for other projects.
 license: Apache-2.0
 metadata:
   author: cortex-ia

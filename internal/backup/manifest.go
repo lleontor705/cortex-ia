@@ -83,6 +83,7 @@ type ManifestEntry struct {
 	SnapshotPath string `json:"snapshot_path"`
 	Existed      bool   `json:"existed"`
 	Mode         uint32 `json:"mode,omitempty"`
+	SHA256       string `json:"sha256,omitempty"`
 }
 
 func WriteManifest(path string, manifest Manifest) error {

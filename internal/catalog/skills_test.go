@@ -38,7 +38,7 @@ func TestAllSkills_ContainsExistingSkillIDs(t *testing.T) {
 		model.SkillSDDInit, model.SkillSDDExplore, model.SkillSDDPropose,
 		model.SkillSDDSpec, model.SkillSDDDesign, model.SkillSDDTasks,
 		model.SkillSDDApply, model.SkillSDDVerify, model.SkillSDDArchive,
-		model.SkillTeamLead, model.SkillDebug, model.SkillIdeate,
+		model.SkillDebug, model.SkillIdeate,
 		model.SkillDebate, model.SkillMonitor, model.SkillExecutePlan,
 		model.SkillOpenPR, model.SkillFileIssue, model.SkillScanRegistry,
 	}
@@ -52,6 +52,14 @@ func TestAllSkills_ContainsExistingSkillIDs(t *testing.T) {
 	for _, id := range existing {
 		if !idSet[id] {
 			t.Errorf("existing skill %q missing from AllSkills()", id)
+		}
+	}
+}
+
+func TestAllSkills_OmitsPortableTeamLead(t *testing.T) {
+	for _, skill := range AllSkills() {
+		if skill.ID == model.SkillID("team-lead") {
+			t.Fatal("portable team-lead must not be present in the install catalog")
 		}
 	}
 }

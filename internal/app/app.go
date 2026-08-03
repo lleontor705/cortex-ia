@@ -144,7 +144,6 @@ Presets:
 
 Components:
   cortex           Persistent cross-session memory (19 MCP tools)
-  agent-mailbox    Inter-agent messaging system (9 MCP tools)
   forgespec        SDD contract validation + task board (15 MCP tools)
   context7         Live framework/library documentation
   sdd              Full 9-phase SDD workflow with orchestrator

@@ -36,10 +36,11 @@ func TestSkillIDConstants_NoDuplicates(t *testing.T) {
 		SkillSDDInit, SkillSDDExplore, SkillSDDPropose,
 		SkillSDDSpec, SkillSDDDesign, SkillSDDTasks,
 		SkillSDDApply, SkillSDDVerify, SkillSDDArchive,
-		SkillTeamLead, SkillDebug, SkillIdeate,
+		SkillDebug, SkillIdeate,
 		SkillDebate, SkillMonitor, SkillExecutePlan,
 		SkillOpenPR, SkillFileIssue, SkillScanRegistry,
 		SkillJudgmentDay,
+		SkillParallelDispatch,
 		// New constants:
 		SkillWorkUnitCommits, SkillChainedPR, SkillCognitiveDoc,
 		SkillCommentWriter, SkillGoTesting, SkillSkillCreator,

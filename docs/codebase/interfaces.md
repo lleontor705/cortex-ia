@@ -65,7 +65,7 @@ The Go interfaces and types that define module boundaries in cortex-ia. This pag
 | Function | Package | Purpose | Consumers |
 |----------|---------|---------|-----------|
 | `cortexcomp.Inject(homeDir, adapter)` | `internal/components/cortex` | Inject Cortex MCP config | `pipeline.buildInjectors` |
-| `mailbox.Inject(homeDir, adapter)` | `internal/components/mailbox` | Inject Mailbox MCP config | `pipeline.buildInjectors` |
+| `mcpinject.PlanRetirement(...)` | `internal/components/mcpinject` | Plan exact retired historical Mailbox registration removal | workflow composer |
 | `forgespeccomp.Inject(homeDir, adapter)` | `internal/components/forgespec` | Inject ForgeSpec MCP config | `pipeline.buildInjectors` |
 | `context7.Inject(homeDir, adapter)` | `internal/components/context7` | Inject Context7 MCP config | `pipeline.buildInjectors` |
 | `sdd.Inject(homeDir, adapter, assignments, strictTDD)` | `internal/components/sdd` | Inject orchestrator prompt + skills + commands + sub-agents | `pipeline.buildInjectors` |

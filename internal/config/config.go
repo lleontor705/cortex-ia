@@ -91,7 +91,7 @@ model-preset: balanced # balanced | performance | economy
 
 # Opt out of specific components for this project.
 # disabled-components:
-#   - agent-mailbox
+#   - skills
 
 # Layer project-specific custom skills on top of the embedded set.
 # custom-skills:

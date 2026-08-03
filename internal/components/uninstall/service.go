@@ -43,7 +43,6 @@ var allManagedComponents = []model.ComponentID{
 	model.ComponentSDD,
 	model.ComponentCortex,
 	model.ComponentForgeSpec,
-	model.ComponentMailbox,
 	model.ComponentContext7,
 	model.ComponentSkills,
 }

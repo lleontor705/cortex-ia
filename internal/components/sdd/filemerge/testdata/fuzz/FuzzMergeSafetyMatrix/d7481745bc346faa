@@ -1,0 +1,6 @@
+go test fuzz v1
+[]byte("one: base\ntwo: base\n")
+[]byte("one: user\ntwo: base\n")
+[]byte("one: base\ntwo: generated\n")
+[]byte("custom-before\r\n")
+[]byte("\x00custom-after\xff")

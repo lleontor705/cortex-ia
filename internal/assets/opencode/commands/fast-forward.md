@@ -1,35 +1,11 @@
 ---
-description: Fast-forward all SDD planning phases — proposal through tasks
+description: Activate requested SDD planning dispatch
 agent: orchestrator
 subtask: false
 ---
 
-Follow the SDD orchestrator workflow to fast-forward all planning phases for change "$ARGUMENTS".
+Activate planning dispatch for the named change. Capture the working directory, project, change name, artifact store, and user context.
 
-PRE-FLIGHT CHECK:
-If the change was already evaluated as TRIVIAL or SIMPLE by /new-change, skip this command entirely:
-- **Trivial**: Tell the user "This change was evaluated as trivial — no planning phases needed. Use /implement directly."
-- **Simple**: Tell the user "This change was evaluated as simple — only a proposal is needed (already created by /new-change). Use /implement directly."
+Reference the executable planning-dispatch handler. It reads authoritative change state, selects eligible planning work, and returns canonical dispatch instructions, evidence, and recommendations. This command does not copy complexity thresholds, dependency rules, parallelism policy, or task-board procedures.
 
-WORKFLOW (Normal/Complex track only):
-Run sub-agents respecting the dependency graph — parallelize where possible:
-
-1. draft-proposal — create the proposal (skip if proposal already exists in Cortex)
-2. write-specs AND architect — launch BOTH simultaneously (both read the proposal output, neither depends on the other). Wait for both to complete before proceeding.
-3. decompose — break down into implementation tasks (depends on specs + design). After decompose completes, use tb_create_board to initialize the task board from the decomposed tasks for parallel execution tracking.
-
-Present a combined summary after ALL phases complete (not between each one).
-
-PARALLEL EXECUTION NOTE:
-Use the `task` tool to launch write-specs and architect concurrently after draft-proposal finishes. Do NOT wait for one before starting the other — they are independent consumers of the proposal artifact.
-
-CONTEXT:
-- Working directory: !`echo -n "$(pwd)"`
-- Current project: !`echo -n "$(basename $(pwd))"`
-- Change name: $ARGUMENTS
-- Artifact store mode: {determined by orchestrator — default: cortex if Cortex MCP available, else none}
-
-CORTEX NOTE:
-Sub-agents handle persistence automatically. Each phase saves its artifact to Cortex with topic_key "sdd/$ARGUMENTS/{type}" where type is: proposal, spec, design, tasks.
-
-Read the orchestrator instructions to coordinate this workflow. Do NOT execute phase work inline — delegate to sub-agents.
+If a human gate is requested, present the handler's evidence-backed question and wait for explicit approval. Dispatch only after approval, then return the canonical status and references unchanged.
