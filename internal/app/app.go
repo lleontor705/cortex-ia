@@ -120,7 +120,7 @@ Usage:
   cortex-ia repair           Re-apply managed files from lockfile/state
   cortex-ia rollback         Restore managed files from the last backup
   cortex-ia agent-builder list                              List custom skills built via the Agent Builder
-  cortex-ia agent-builder create --engine claude --purpose "review go diffs" --target claude-code
+  cortex-ia agent-builder create --engine claude-code --purpose "review go diffs" --target claude-code
   cortex-ia agent-builder remove <name>                     Remove a custom skill from the registry
   cortex-ia profiles list                                   List saved OpenCode SDD profiles
   cortex-ia profiles create <name>:<provider>/<model>       Create a profile that maps every SDD phase to one model

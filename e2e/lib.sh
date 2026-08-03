@@ -67,8 +67,9 @@ cleanup_test_env() {
     rm -rf "$HOME/.config/cortex-ia" 2>/dev/null || true
     rm -rf "$HOME/.claude" 2>/dev/null || true
     rm -rf "$HOME/.codex" 2>/dev/null || true
+    rm -rf "$HOME/.copilot" 2>/dev/null || true
+    rm -rf "$HOME/.config/Code/User" 2>/dev/null || true
     rm -rf "$HOME/.cortex-ia" 2>/dev/null || true
-    rm -rf "$HOME/.codeium" 2>/dev/null || true
     mkdir -p "$HOME/.config"
 }
 

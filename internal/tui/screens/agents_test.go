@@ -9,7 +9,7 @@ func TestRenderAgents_ShowsAgentNames(t *testing.T) {
 	data := AgentsData{
 		Agents: []AgentData{
 			{Name: "claude-code", Binary: "claude", Selected: false},
-			{Name: "gemini-cli", Binary: "gemini", Selected: false},
+			{Name: "vscode-copilot", Binary: "code", Selected: false},
 		},
 		Cursor: 0,
 	}

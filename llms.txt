@@ -1,6 +1,6 @@
 # cortex-ia
 
-cortex-ia compiles and safely installs evidence-backed workflow assets for 12 coding-agent targets.
+cortex-ia compiles and safely installs evidence-backed workflow assets for four coding-agent targets.
 
 - ForgeSpec: authoritative contracts, task DAG/readiness/claim/status, qualified file reservations.
 - Cortex: durable evidence, provenance, memory, and relationships.
