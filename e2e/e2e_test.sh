@@ -102,12 +102,6 @@ run_cmd "list-skills" "$CORTEX_IA list skills"
 # --- New CLI commands smoke ---
 log_test "New CLI commands"
 
-# GGA switcher: --list and --provider must exit 0 and update the config file.
-run_cmd "gga-list" "$CORTEX_IA gga --list | grep -q anthropic"
-run_cmd "gga-set-anthropic" "$CORTEX_IA gga --provider anthropic"
-assert_file_exists "$HOME/.config/gga/config" "gga config file"
-assert_file_contains "$HOME/.config/gga/config" 'PROVIDER="anthropic"' "gga config has anthropic provider"
-
 # Profiles: list when empty, then create + apply round-trip.
 run_cmd "profiles-list-empty" "$CORTEX_IA profiles list"
 run_cmd "profiles-create" "$CORTEX_IA profiles create cheap:openai/gpt-4o-mini"

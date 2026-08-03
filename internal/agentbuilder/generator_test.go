@@ -38,7 +38,7 @@ func TestGenerate_FullSDD(t *testing.T) {
 
 func TestGenerate_PhaseSDD(t *testing.T) {
 	spec := AgentSpec{
-		Engine:   model.AgentGeminiCLI,
+		Engine:   model.AgentClaudeCode,
 		Purpose:  "Security scanner",
 		SDDMode:  SDDPhase,
 		SDDPhase: "verify",

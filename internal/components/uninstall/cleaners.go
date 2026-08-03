@@ -137,7 +137,7 @@ func componentOperations(homeDir string, adapter agents.Adapter, component model
 // named MCP server lives, per-adapter.
 func mcpKeyForAgent(agent model.AgentID, serverName string) []string {
 	switch agent {
-	case model.AgentOpenCode, model.AgentKilocode:
+	case model.AgentOpenCode:
 		return []string{"mcp", serverName}
 	case model.AgentVSCodeCopilot:
 		return []string{"servers", serverName}

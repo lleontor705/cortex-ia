@@ -29,7 +29,6 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | `cortex-ia repair` | Repair a crashed/incomplete installation |
 | `cortex-ia rollback` | Restore files from a backup snapshot |
 | `cortex-ia uninstall` | Remove cortex-ia managed files |
-| `cortex-ia gga` | Guardian Angel pre-commit review config |
 | `cortex-ia profiles` | Manage named preset profiles |
 | `cortex-ia agent-builder` | Build a custom agent adapter |
 | `cortex-ia update` | Self-update to latest release |

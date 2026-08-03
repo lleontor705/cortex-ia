@@ -4,7 +4,6 @@
 
 cortex-ia configures 4 MCP (Model Context Protocol) servers into supported agents. This page documents which servers exist, what each owns, and when each is used at runtime. It does not cover the injection mechanics (see [repository-map.md](repository-map.md)) or the multi-agent coordination protocols built on top of them (see [sdd-coordination.md](sdd-coordination.md)).
 
-> **Correction note:** GGA is documented here as the Guardian Angel pre-commit hook, NOT as an MCP server. The 4 MCP servers cortex-ia integrates with are Cortex, Agent Mailbox, ForgeSpec, and Context7. GGA has no MCP transport — it writes a config file and an `AGENTS.md` review template.
 
 ## MCP Server Overview
 
@@ -93,7 +92,6 @@ Ownership boundaries:
 ## Invariants
 
 - Exactly 4 MCP servers are supported: Cortex, Agent Mailbox, ForgeSpec, Context7.
-- GGA is a pre-commit hook component, NOT an MCP server — it writes config + templates, no MCP transport.
 - MCP server selection is adapter-driven via `MCPStrategy()`; components never switch on `AgentID`.
 - File-reservation ownership belongs exclusively to ForgeSpec; resource-lease ownership belongs exclusively to Mailbox. Do not cross them.
 - Context7 is read-only and stateless; never treat it as a persistence layer.

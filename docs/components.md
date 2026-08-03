@@ -56,7 +56,7 @@ The largest component. Injects:
 2. **19 skill files** — One SKILL.md per SDD phase + utility skills
 3. **Shared conventions** — `_shared/cortex-convention.md`
 4. **Slash commands** — 10 command files (OpenCode only)
-5. **Sub-agent definitions** — Agent config files (OpenCode, Cursor)
+5. **Sub-agent definitions** — Agent config files (OpenCode)
 
 **Dependencies**: Cortex, ForgeSpec, Agent Mailbox.
 

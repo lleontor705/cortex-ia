@@ -15,9 +15,8 @@ func TestNewEngine(t *testing.T) {
 	}{
 		{model.AgentClaudeCode, true},
 		{model.AgentOpenCode, true},
-		{model.AgentGeminiCLI, true},
 		{model.AgentCodex, true},
-		{model.AgentCursor, false},
+		{model.AgentVSCodeCopilot, false},
 		{"made-up", false},
 	}
 	for _, tc := range cases {

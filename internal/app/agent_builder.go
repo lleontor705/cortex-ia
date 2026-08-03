@@ -43,7 +43,7 @@ func printAgentBuilderUsage() error {
 	fmt.Println("  cortex-ia agent-builder remove <name>")
 	fmt.Println()
 	fmt.Println("Flags for create:")
-	fmt.Println("  --engine <id>            claude|opencode|gemini|codex (required)")
+	fmt.Println("  --engine <id>            claude|opencode|codex (required)")
 	fmt.Println("  --purpose <text>         natural-language description of the skill (required)")
 	fmt.Println("  --sdd <mode>             standalone|phase-support|new-phase  (default: standalone)")
 	fmt.Println("  --phase <id>             SDD phase id; required when --sdd is phase-support|new-phase")
@@ -104,14 +104,14 @@ func agentBuilderRemove(name string) error {
 
 func agentBuilderCreate(args []string) error {
 	cfg := struct {
-		engineID  string
-		purpose   string
-		sddMode   string
-		sddPhase  string
-		targets   []string
-		persona   string
-		timeoutS  int
-		dryRun    bool
+		engineID string
+		purpose  string
+		sddMode  string
+		sddPhase string
+		targets  []string
+		persona  string
+		timeoutS int
+		dryRun   bool
 	}{
 		sddMode:  "standalone",
 		persona:  string(model.PersonaProfessional),
@@ -154,7 +154,7 @@ func agentBuilderCreate(args []string) error {
 	}
 
 	if cfg.engineID == "" {
-		return fmt.Errorf("--engine is required (claude|opencode|gemini|codex)")
+		return fmt.Errorf("--engine is required (claude|opencode|codex)")
 	}
 	if strings.TrimSpace(cfg.purpose) == "" {
 		return fmt.Errorf("--purpose is required")

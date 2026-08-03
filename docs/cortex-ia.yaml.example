@@ -30,8 +30,7 @@ strict-tdd: false
 
 # Restrict cortex-ia to these agents on this project. Omit (or leave empty)
 # to apply to every detected agent.
-# Supported IDs: claude-code, opencode, gemini-cli, cursor, vscode-copilot,
-#                codex, windsurf, antigravity, kilocode, kimi, kiro-ide, qwen-code
+# Supported IDs: claude-code, opencode, vscode-copilot, codex
 agents:
   - claude-code
   - opencode

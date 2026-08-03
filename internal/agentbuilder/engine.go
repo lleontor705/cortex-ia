@@ -24,8 +24,6 @@ func NewEngine(agentID model.AgentID) GenerationEngine {
 		return &ClaudeEngine{}
 	case model.AgentOpenCode:
 		return &OpenCodeEngine{}
-	case model.AgentGeminiCLI:
-		return &GeminiEngine{}
 	case model.AgentCodex:
 		return &CodexEngine{}
 	default:
@@ -55,18 +53,6 @@ func (e *OpenCodeEngine) Available() bool {
 }
 func (e *OpenCodeEngine) Generate(ctx context.Context, prompt string) (string, error) {
 	return runEngineCmd(ctx, "opencode", "run", prompt)
-}
-
-// GeminiEngine drives Gemini CLI via `gemini -p "{prompt}"`.
-type GeminiEngine struct{}
-
-func (e *GeminiEngine) Agent() model.AgentID { return model.AgentGeminiCLI }
-func (e *GeminiEngine) Available() bool {
-	_, err := exec.LookPath("gemini")
-	return err == nil
-}
-func (e *GeminiEngine) Generate(ctx context.Context, prompt string) (string, error) {
-	return runEngineCmd(ctx, "gemini", "-p", prompt)
 }
 
 // CodexEngine drives Codex via `codex exec "{prompt}"`.

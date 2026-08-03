@@ -38,7 +38,6 @@ func RenderWelcome(data WelcomeData) string {
 	sb.WriteString(styles.StatusOK.Render("  ● Mailbox") + "      — Inter-agent messaging\n")
 	sb.WriteString(styles.StatusOK.Render("  ● Context7") + "     — Live documentation\n")
 	sb.WriteString(styles.StatusOK.Render("  ● SDD") + "          — 9-phase development workflow\n")
-	sb.WriteString(styles.StatusOK.Render("  ● GGA") + "          — AI-powered pre-commit code review\n")
 	sb.WriteString("\n")
 
 	sb.WriteString(styles.Subtitle.Render("What would you like to do?"))

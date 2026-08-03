@@ -1,6 +1,6 @@
 # Contributing to cortex-ia
 
-Thank you for your interest in contributing to **cortex-ia** — a Go CLI/TUI ecosystem configurator that supercharges AI coding agents (Claude Code, OpenCode, Gemini CLI, Codex, Cursor, VS Code, Windsurf, Antigravity) with persistent memory (Cortex), spec-driven development (SDD) skills, MCP servers, personas, and permissions.
+Thank you for your interest in contributing to **cortex-ia** — a Go CLI/TUI ecosystem configurator that supercharges Claude Code, OpenCode, VS Code Copilot, and Codex with persistent memory (Cortex), spec-driven development (SDD) skills, MCP servers, personas, and permissions.
 
 Before you dive in, please read this guide fully. We have a structured workflow to keep the project organized and maintainable.
 
@@ -76,7 +76,7 @@ cortex-ia uses a **2-stage installation pipeline** (Prepare → Apply with rollb
 
 ### Supported Agents (8)
 
-`claude`, `opencode`, `cursor`, `gemini`, `vscode`, `codex`, `windsurf`, `antigravity`. Each agent has its own adapter under `internal/agents/<id>/`.
+`claude-code`, `opencode`, `vscode-copilot`, `codex`. Each agent has its own adapter under `internal/agents/<id>/`.
 
 ### Components
 
@@ -91,7 +91,6 @@ cortex-ia uses a **2-stage installation pipeline** (Prepare → Apply with rollb
 - **`sdd`** — Spec-Driven Development workflow injection (roles, skills, prompts).
 - **`skills`** — 19 SDD skills loader (embedded + community + project layers).
 - **`theme`** — Per-agent theme overlay.
-- **`gga`** — AI provider switcher (Anthropic / OpenAI / Google / Ollama).
 
 ### Healthchecks (`cortex-ia doctor`)
 

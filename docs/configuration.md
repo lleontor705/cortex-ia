@@ -17,7 +17,6 @@ cortex-ia repair [--dry-run]           # Re-apply from state
 cortex-ia rollback [--backup ID]       # Restore from backup
 cortex-ia update                       # Check for updates
 cortex-ia uninstall [flags]            # Reverse cortex-ia injections (with snapshot)
-cortex-ia gga --provider <id>          # Switch GGA provider
 cortex-ia profiles list|create|set|apply|delete   # OpenCode SDD profiles
 cortex-ia agent-builder list|create|remove        # AI-generated custom skills
 cortex-ia version                      # Show version
@@ -39,7 +38,7 @@ If no `--agent` is specified, cortex-ia auto-detects all installed agents.
 
 If no `--preset` is specified, defaults to `full`.
 
-Valid `--agent` values: `claude-code`, `opencode`, `gemini-cli`, `cursor`, `vscode-copilot`, `codex`, `windsurf`, `antigravity`, `kilocode`, `kimi`, `kiro-ide`, `qwen-code`.
+Valid `--agent` values: `claude-code`, `opencode`, `vscode-copilot`, `codex`.
 
 ### Uninstall Flags
 
@@ -53,18 +52,6 @@ Valid `--agent` values: `claude-code`, `opencode`, `gemini-cli`, `cursor`, `vsco
 | `--no-backup` | Skip the pre-uninstall snapshot (not recommended) |
 
 A snapshot tagged `BackupSourceUninstall` is taken before any change so rollback works exactly like an install rollback.
-
-### GGA Switcher
-
-```bash
-cortex-ia gga --provider anthropic    # Anthropic API directly
-cortex-ia gga --provider ollama       # Local Ollama (sets API_BASE)
-cortex-ia gga --provider claude       # Route via Claude Code (default)
-cortex-ia gga --list                  # List supported providers
-cortex-ia gga --show                  # Print current ~/.config/gga/config
-```
-
-Direct-LLM providers (`anthropic`, `openai`, `google`, `ollama`) emit a `MODEL=` line; agent-routed providers (`claude`, `opencode`, `gemini`, `codex`) do not.
 
 ### OpenCode SDD Profiles
 
@@ -97,7 +84,7 @@ cortex-ia agent-builder list
 cortex-ia agent-builder remove <name>
 ```
 
-Supported `--engine` values: `claude-code`, `opencode`, `gemini-cli`, `codex`. The engine binary must be on `PATH`. The default `--timeout` is 120 s; `--dry-run` prints the prompt that would be sent to the engine. The persisted registry lives at `~/.cortex-ia/agentbuilder/registry.json`.
+Supported `--engine` values: `claude-code`, `opencode`, `codex`. The engine binary must be on `PATH`. The default `--timeout` is 120 s; `--dry-run` prints the prompt that would be sent to the engine. The persisted registry lives at `~/.cortex-ia/agentbuilder/registry.json`.
 
 ## Interactive TUI
 

@@ -6,16 +6,8 @@ type AgentID string
 const (
 	AgentClaudeCode    AgentID = "claude-code"
 	AgentOpenCode      AgentID = "opencode"
-	AgentGeminiCLI     AgentID = "gemini-cli"
-	AgentCursor        AgentID = "cursor"
 	AgentVSCodeCopilot AgentID = "vscode-copilot"
 	AgentCodex         AgentID = "codex"
-	AgentAntigravity   AgentID = "antigravity"
-	AgentWindsurf      AgentID = "windsurf"
-	AgentKilocode      AgentID = "kilocode"
-	AgentKimi          AgentID = "kimi"
-	AgentKiroIDE       AgentID = "kiro-ide"
-	AgentQwenCode      AgentID = "qwen-code"
 )
 
 // SupportTier indicates how fully an agent supports the cortex-ia ecosystem.
@@ -36,7 +28,6 @@ const (
 	ComponentSkills      ComponentID = "skills"
 	ComponentContext7    ComponentID = "context7"
 	ComponentConventions ComponentID = "conventions"
-	ComponentGGA         ComponentID = "gga"
 	ComponentPersona     ComponentID = "persona"
 	ComponentPermissions ComponentID = "permissions"
 	ComponentTheme       ComponentID = "theme"
@@ -153,9 +144,9 @@ type Profile struct {
 
 // OpenCodeProvider represents a detected provider with its models.
 type OpenCodeProvider struct {
-	ID     string           `json:"id"`
-	Name   string           `json:"name"`
-	Models []OpenCodeModel  `json:"models"`
+	ID     string          `json:"id"`
+	Name   string          `json:"name"`
+	Models []OpenCodeModel `json:"models"`
 }
 
 // OpenCodeModel represents a model available in OpenCode.

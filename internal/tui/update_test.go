@@ -309,7 +309,7 @@ func TestUpdateAgents_SpaceToggle(t *testing.T) {
 	m.Screen = ScreenAgents
 	m.Agents = []AgentItem{
 		{ID: model.AgentClaudeCode, Selected: true},
-		{ID: model.AgentGeminiCLI, Selected: false},
+		{ID: model.AgentOpenCode, Selected: false},
 	}
 	m.Cursor = 0
 
@@ -402,4 +402,3 @@ func TestUpdateComplete_Enter(t *testing.T) {
 		t.Error("Quitting should be false — enter returns to welcome")
 	}
 }
-

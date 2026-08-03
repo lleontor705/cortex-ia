@@ -93,13 +93,10 @@ Glob for `*/SKILL.md` files across all of the following paths. Check every path 
 - `~/.cortex-ia/skills/`
 - `~/.claude/skills/`
 - `~/.config/opencode/skills/`
-- `~/.gemini/skills/`
-- `~/.cursor/skills/`
 
 **Project-level (workspace skills):**
 - `{project-root}/.claude/skills/`
 - `{project-root}/.opencode/skills/`
-- `{project-root}/.gemini/skills/`
 - `{project-root}/.agent/skills/`
 - `{project-root}/skills/`
 
@@ -116,7 +113,6 @@ For each `SKILL.md` found:
 Check the project root for convention files:
 - `agents.md` or `AGENTS.md`
 - `CLAUDE.md` (project-level only, not `~/.claude/CLAUDE.md`)
-- `.cursorrules`
 - `GEMINI.md`
 - `copilot-instructions.md`
 
@@ -125,7 +121,7 @@ For index files (`agents.md`, `AGENTS.md`):
 2. Extract all referenced file paths.
 3. Include both the index file and every path it references in the registry.
 
-For standalone files (`.cursorrules`, `CLAUDE.md`, etc.):
+For standalone files (`CLAUDE.md`, `AGENTS.md`, etc.):
 1. Record the file path directly.
 
 ## Step 3: Build Registry Markdown

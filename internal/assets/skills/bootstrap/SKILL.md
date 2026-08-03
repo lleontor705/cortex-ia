@@ -117,13 +117,10 @@ Scan for skills in this order:
 **User-level directories** (glob `*/SKILL.md` in each):
 - `~/.claude/skills/`
 - `~/.config/opencode/skills/`
-- `~/.gemini/skills/`
-- `~/.cursor/skills/`
 - `~/.copilot/skills/`
 
 **Project-level directories** (glob `*/SKILL.md` in each):
 - `.claude/skills/`
-- `.gemini/skills/`
 - `.agent/skills/`
 - `skills/`
 
@@ -135,7 +132,7 @@ For each found `SKILL.md`:
 **Deduplicate**: If a skill name appears at both user and project level, keep the project-level version.
 
 **Scan for convention files** in the project root:
-- `agents.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `GEMINI.md`, `copilot-instructions.md`
+- `agents.md`, `AGENTS.md`, `CLAUDE.md`, `copilot-instructions.md`
 - If an index file is found, read it and extract all referenced file paths
 
 **Write the registry** to `.sdd/skill-registry.md` (create `.sdd/` if needed) as a markdown file with two tables: Skills (Name, Source, Path, Trigger) and Convention Files (File, Path). Include an ISO timestamp.

@@ -64,7 +64,7 @@ The `Adapter` interface (`internal/agents/interface.go`) defines 23 methods cove
 
 ### Current Agents (12)
 
-`claude`, `opencode`, `gemini`, `cursor`, `vscode`, `codex`, `windsurf`, `antigravity`, `kilocode`, `kimi`, `kiro`, `qwen`.
+`claude-code`, `opencode`, `vscode-copilot`, `codex`.
 
 ## Adding a Skill
 
@@ -118,7 +118,7 @@ Components are injectable ecosystem pieces (MCP servers, hooks, personas, themes
 
 ### Current Components (14)
 
-Registered in `catalog.ComponentMap`. Includes MCP servers (cortex, mailbox, forgespec, context7), SDD workflow, skills, conventions, GGA, persona, permissions, theme, uninstall, and others.
+Registered in `catalog.ComponentMap`. Includes MCP servers (cortex, mailbox, forgespec, context7), SDD workflow, skills, conventions, persona, permissions, theme, uninstall, and others.
 
 ## Adding a CLI Subcommand
 
@@ -132,7 +132,7 @@ Registered in `catalog.ComponentMap`. Includes MCP servers (cortex, mailbox, for
 
 ### Existing Subcommands
 
-`install`, `sync`, `detect`, `doctor`/`verify`, `repair`, `rollback`, `uninstall`, `gga`, `profiles`, `agent-builder`, `update`, `config`, `list`, `init`, `skill`, `auto-install` (+ help/version).
+`install`, `sync`, `detect`, `doctor`/`verify`, `repair`, `rollback`, `uninstall`, `profiles`, `agent-builder`, `update`, `config`, `list`, `init`, `skill`, `auto-install` (+ help/version).
 
 ### Recipe
 

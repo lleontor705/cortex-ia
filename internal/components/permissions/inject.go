@@ -34,8 +34,7 @@ func Inject(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 		return injectClaudePermissions(homeDir, adapter)
 	case model.AgentOpenCode:
 		return injectJSONPermissions(homeDir, adapter, buildOpenCodeOverlay())
-	case model.AgentCodex, model.AgentGeminiCLI, model.AgentCursor,
-		model.AgentVSCodeCopilot, model.AgentWindsurf, model.AgentAntigravity:
+	case model.AgentCodex, model.AgentVSCodeCopilot:
 		return injectPromptPermissions(homeDir, adapter)
 	default:
 		return InjectionResult{}, nil

@@ -81,14 +81,13 @@ cortex-ia install --dry-run
 ### Windows
 
 - Uses `winget` as package manager
-- Agent config paths use `%APPDATA%` for VS Code and Windsurf
+- VS Code agent config paths use `%APPDATA%` on Windows
 - Cortex data stored in `~/.cortex/`
 
 ### macOS
 
 - Uses `brew` as package manager
 - VS Code config at `~/Library/Application Support/Code/User/`
-- Windsurf config at `~/Library/Application Support/Windsurf/User/`
 
 ### Linux
 

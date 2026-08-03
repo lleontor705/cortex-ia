@@ -17,7 +17,7 @@ func Templates() mcpinject.ServerTemplates {
 }
 `),
 
-		// Cursor, Windsurf, Gemini: mcpServers overlay
+		// Default mcpServers overlay
 		DefaultOverlayJSON: []byte(`{
   "mcpServers": {
     "cortex": {
@@ -58,9 +58,6 @@ func Templates() mcpinject.ServerTemplates {
   }
 }
 `),
-
-		// Antigravity: uses mcpServers (same as default)
-		AntigravityOverlayJSON: nil,
 
 		// Codex: TOML format
 		TOMLCommand: "cortex",

@@ -19,7 +19,7 @@ func Templates() mcpinject.ServerTemplates {
 }
 `),
 
-		// Cursor, Windsurf, Gemini: mcpServers overlay
+		// Default mcpServers overlay
 		DefaultOverlayJSON: []byte(`{
   "mcpServers": {
     "context7": {
@@ -51,16 +51,6 @@ func Templates() mcpinject.ServerTemplates {
     "context7": {
       "type": "http",
       "url": "https://mcp.context7.com/mcp"
-    }
-  }
-}
-`),
-
-		// Antigravity: uses serverUrl for HTTP remote
-		AntigravityOverlayJSON: []byte(`{
-  "mcpServers": {
-    "context7": {
-      "serverUrl": "https://mcp.context7.com/mcp"
     }
   }
 }

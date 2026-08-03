@@ -44,8 +44,8 @@ Generated: 2026-06-24T00:00:00Z
 - UI/tooling stack: Bubbletea v1.3.10, bubbles v1.0.0, lipgloss v1.1.0, yaml.v3.
 - Architecture: cmd/cortex-ia entrypoint, internal/ packages (agents, agentbuilder, app, assets, backup, catalog, components, config, model, opencode, pipeline, state, system, tui, update, verify).
 - Pipeline: 2-stage (Prepare -> Apply) with rollback via lockfile + manifest snapshots.
-- Agents: 12 supported adapters (claude, opencode, gemini, cursor, vscode, codex, windsurf, antigravity, kilocode, kimi, kiro, qwen).
-- Components: 14 granular injectors (context7, conventions, cortex, filemerge, forgespec, gga, mailbox, mcpinject, permissions, persona, sdd, skills, theme, uninstall).
+- Agents: 4 supported adapters (claude-code, opencode, vscode-copilot, codex).
+- Components: 13 granular injectors (context7, conventions, cortex, filemerge, forgespec, mailbox, mcpinject, permissions, persona, sdd, skills, theme, uninstall).
 - Test pattern: Go package tests with co-located `*_test.go`; strict TDD required (AGENTS.md).
 - Test command: `go test -v ./...` (or `make test`).
 - Coverage: `go test -v -coverprofile=coverage/coverage.out -covermode=atomic ./...`.

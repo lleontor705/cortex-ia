@@ -17,7 +17,7 @@ Directory-by-directory map of the cortex-ia codebase. This page is a navigationa
 |------|---------|-----------|
 | `internal/app/` | CLI dispatch + TUI launch. Routes subcommands to handlers. | `app.go`, `version.go` |
 
-CLI subcommands: `install`, `sync`, `detect`, `doctor`/`verify`, `repair`, `rollback`, `uninstall`, `gga`, `profiles`, `agent-builder`, `update`, `config`, `list`, `init`, `skill`, `auto-install`.
+CLI subcommands: `install`, `sync`, `detect`, `doctor`/`verify`, `repair`, `rollback`, `uninstall`, `profiles`, `agent-builder`, `update`, `config`, `list`, `init`, `skill`, `auto-install`.
 
 ## internal/model
 
@@ -34,7 +34,7 @@ Defines: `AgentID`, `ComponentID`, `SkillID`, `MCPStrategy`, `SystemPromptStrate
 | `internal/agents/` | Adapter interface + registry + per-agent implementations. | `interface.go`, `registry.go`, `factory.go`, `errors.go` |
 | `internal/agents/<name>/` | One package per agent (12 total). | `<name>/adapter.go` |
 
-Agents: `claude`, `opencode`, `gemini`, `cursor`, `vscode`, `codex`, `windsurf`, `antigravity`, `kilocode`, `kimi`, `kiro`, `qwen`. Registry preserves insertion order; `factory.go` builds the default registry.
+Agents: `claude-code`, `opencode`, `vscode-copilot`, `codex`. Registry preserves insertion order; `factory.go` builds the default registry.
 
 ## internal/catalog
 
@@ -55,7 +55,6 @@ Agents: `claude`, `opencode`, `gemini`, `cursor`, `vscode`, `codex`, `windsurf`,
 | `internal/components/sdd/` | SDD workflow injection: orchestrator prompt + 19 skills + commands + sub-agents. | `inject.go` |
 | `internal/components/skills/` | Non-SDD utility skills injection (with SDD-skip logic). | `inject.go` |
 | `internal/components/conventions/` | Cortex convention + memory protocol injection. | `inject.go` |
-| `internal/components/gga/` | Guardian Angel pre-commit code review hook config + provider switcher. | `config.go` |
 | `internal/components/persona/` | Communication-style persona injection. | — |
 | `internal/components/permissions/` | Permissions component. | — |
 | `internal/components/theme/` | Terminal theme component. | — |
@@ -75,9 +74,7 @@ Agents: `claude`, `opencode`, `gemini`, `cursor`, `vscode`, `codex`, `windsurf`,
 | `internal/assets/skills/` | 19+ `SKILL.md` files + `_shared/` conventions. | `skills/<skill>/SKILL.md` |
 | `internal/assets/generic/` | Orchestrator prompts + cortex protocol. | `generic/sdd-orchestrator.md`, `generic/sdd-orchestrator-reference.md` |
 | `internal/assets/opencode/` | OpenCode slash commands. | `opencode/commands/*.md` |
-| `internal/assets/gga/` | GGA review templates. | — |
-
-Embed directive: `//go:embed all:skills all:generic all:opencode all:gga`.
+Embed directive: `//go:embed all:skills all:generic all:opencode`.
 
 ## Supporting packages
 

@@ -39,10 +39,6 @@ type ServerTemplates struct {
 	// If nil, DefaultOverlayJSON is used.
 	VSCodeOverlayJSON []byte
 
-	// AntigravityOverlayJSON is the Antigravity-specific overlay.
-	// If nil, DefaultOverlayJSON is used.
-	AntigravityOverlayJSON []byte
-
 	// TOMLCommand is the command for TOML-based agents (Codex).
 	TOMLCommand string
 	// TOMLArgs are the arguments for TOML-based agents.
@@ -105,9 +101,6 @@ func injectMCPConfigFile(homeDir string, adapter agents.Adapter, tmpl ServerTemp
 	overlay := tmpl.DefaultOverlayJSON
 	if adapter.Agent() == model.AgentVSCodeCopilot && tmpl.VSCodeOverlayJSON != nil {
 		overlay = tmpl.VSCodeOverlayJSON
-	}
-	if adapter.Agent() == model.AgentAntigravity && tmpl.AntigravityOverlayJSON != nil {
-		overlay = tmpl.AntigravityOverlayJSON
 	}
 
 	wr, err := mergeJSONFile(path, overlay)

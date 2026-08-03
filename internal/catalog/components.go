@@ -20,7 +20,6 @@ func AllComponents() []ComponentInfo {
 		{ID: model.ComponentConventions, Name: "Conventions", Description: "Shared cortex conventions and memory protocol", Deps: []model.ComponentID{model.ComponentCortex}},
 		{ID: model.ComponentSDD, Name: "SDD Workflow", Description: "Full 9-phase Spec-Driven Development with orchestrator + 19 skills", Deps: []model.ComponentID{model.ComponentCortex, model.ComponentForgeSpec, model.ComponentMailbox}},
 		{ID: model.ComponentSkills, Name: "Extra Skills", Description: "Additional utility skills (non-SDD)", Deps: nil},
-		{ID: model.ComponentGGA, Name: "GGA", Description: "Guardian Angel — AI-powered pre-commit code review hook", Deps: nil},
 	}
 }
 

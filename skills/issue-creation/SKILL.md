@@ -61,9 +61,9 @@ Load this skill whenever you need to:
 | Steps to Reproduce | Numbered steps to reproduce the behavior |
 | Expected Behavior | What should happen |
 | Actual Behavior | What actually happens |
-| cortex-ia Version | Output of `gga version` |
+| cortex-ia Version | Output of `cortex-ia version` |
 | Operating System | macOS / Linux distro / Windows / WSL |
-| AI Agent / Client | Claude Code / OpenCode / Gemini CLI / Cursor / Windsurf / Other |
+| AI Agent / Client | Claude Code / OpenCode / VS Code Copilot / Codex / Other |
 | Affected Area | See area list below |
 
 ### Affected Areas
@@ -189,7 +189,7 @@ PR opened with `Closes #<N>`
 Do you have a question or idea to discuss?
 ├── YES → GitHub Discussions (NOT issues)
 │         https://github.com/lleontor705/cortex-ia/discussions
-└── NO  → Is it a defect in gga?
+└── NO  → Is it a defect in cortex-ia?
           ├── YES → Bug Report template
           └── NO  → Feature Request template
                     │

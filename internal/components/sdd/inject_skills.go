@@ -264,7 +264,7 @@ var openCodeLocalSkills = []string{
 // including the orchestrator (primary), disabled built-in agents, and SDD sub-agents.
 // Skills are referenced from the agent-local skills directory.
 //
-// For Cursor and other agents: sub-agent .md stubs are written to the SubAgentsDir.
+// For agents without native sub-agents: .md stubs are written to SubAgentsDir.
 func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 	files := make([]string, 0)
 	changed := false
@@ -300,7 +300,7 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 		changed = changed || wr.Changed
 		files = append(files, settingsPath)
 	} else {
-		// Cursor and others: write .md stubs to SubAgentsDir.
+		// Write .md stubs to SubAgentsDir.
 		skillsDir := filepath.ToSlash(state.SharedSkillsDir(homeDir))
 		subAgentsDir := adapter.SubAgentsDir(homeDir)
 		if subAgentsDir == "" {

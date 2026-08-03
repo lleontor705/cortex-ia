@@ -46,7 +46,6 @@ var allManagedComponents = []model.ComponentID{
 	model.ComponentMailbox,
 	model.ComponentContext7,
 	model.ComponentSkills,
-	model.ComponentGGA,
 }
 
 // Service plans and executes an uninstall against a registry of agents.

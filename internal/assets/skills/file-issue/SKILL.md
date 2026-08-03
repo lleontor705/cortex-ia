@@ -102,7 +102,7 @@ Collect the following required fields:
 | Expected Behavior     | What should happen                                       |
 | Actual Behavior       | What happens instead, including errors or logs           |
 | Operating System      | macOS, Linux variant, Windows, or WSL                    |
-| Agent / Client        | Claude Code, OpenCode, Gemini CLI, Cursor, Windsurf, Codex, or Other |
+| Agent / Client        | Claude Code, OpenCode, VS Code Copilot, Codex, or Other |
 | Shell                 | bash, zsh, fish, or Other                                |
 
 Optional fields: Relevant Logs, Additional Context.

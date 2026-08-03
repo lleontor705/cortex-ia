@@ -8,8 +8,8 @@ import (
 
 func TestComponentsForPresetFull(t *testing.T) {
 	ids := ComponentsForPreset(model.PresetFull)
-	if len(ids) != 8 {
-		t.Errorf("expected 8 components for full preset, got %d", len(ids))
+	if len(ids) != 7 {
+		t.Errorf("expected 7 components for full preset, got %d", len(ids))
 	}
 }
 

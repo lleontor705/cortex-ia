@@ -99,12 +99,10 @@ body:
       options:
         - Claude Code
         - OpenCode
-        - Gemini CLI
         - Codex
-        - Cursor
         - VS Code (Copilot)
-        - Windsurf
-        - Antigravity
+        - VS Code Copilot
+        - Codex
         - Other
     validations:
       required: true

@@ -1,6 +1,6 @@
 # cortex-ia
 
-> AI Agent Ecosystem Configurator — configures 8 AI coding agents with 5 MCP servers, 19 SDD skills, and orchestrator prompts via a single Go binary. Supports Claude Code, OpenCode, Gemini CLI, Cursor, VS Code Copilot, Codex, Windsurf, and Antigravity.
+> AI Agent Ecosystem Configurator — configures four AI coding agents (Claude Code, OpenCode, VS Code Copilot, and Codex) with MCP servers, SDD skills, and orchestrator prompts via a single Go binary.
 
 ## Docs
 

@@ -22,7 +22,7 @@ func RenderPreset(data PresetData) string {
 	sb.WriteString("\n\n")
 
 	descs := map[model.PresetID]string{
-		model.PresetFull:    "All 8 components — full ecosystem",
+		model.PresetFull:    "All 7 components — full ecosystem",
 		model.PresetMinimal: "Cortex + ForgeSpec + Context7 + SDD",
 	}
 

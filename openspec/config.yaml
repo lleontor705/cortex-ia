@@ -7,11 +7,10 @@ context: |
     (agents, agentbuilder, app, assets, backup, catalog, components, config,
      model, opencode, pipeline, state, system, tui, update, verify)
   Pipeline: 2-stage (Prepare → Apply) with rollback via lockfile + manifest snapshots
-  Agents: 12 supported adapters (claude, opencode, gemini, cursor, vscode,
-          codex, windsurf, antigravity, kilocode, kimi, kiro, qwen)
-  Components: 13 granular injectors
+  Agents: 4 supported adapters (claude-code, opencode, vscode-copilot, codex)
+  Components: 12 granular injectors
     (cortex, agent-mailbox, forgespec, sdd, skills, context7, conventions,
-     mcpinject, persona, permissions, theme, gga, filemerge)
+      mcpinject, persona, permissions, theme, filemerge)
   Cortex memory: persisted via the cortex MCP server (31 tools)
   Project config: .cortex-ia.yaml with preset / persona / model-preset / agents / disabled-components
   Build: goreleaser (.goreleaser.yaml), CI: GitHub Actions (ci.yml, pr-check.yml, release.yml, stale.yml)

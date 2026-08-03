@@ -13,25 +13,15 @@ cortex-ia/
 │   ├── model/
 │   │   ├── types.go               # AgentID, ComponentID, SkillID, strategies
 │   │   └── selection.go           # User selection struct
-│   ├── agents/                    # 12 agent adapters (claude, opencode, gemini,
-│   │   │                          # cursor, vscode, codex, windsurf, antigravity,
-│   │   │                          # kilocode, kimi, kiro, qwen)
+│   ├── agents/                    # 4 agent adapters (claude, opencode, vscode, codex)
 │   │   ├── interface.go           # Adapter interface (23 methods)
 │   │   ├── registry.go            # Registry with insertion order
 │   │   ├── factory.go             # Default registry builder
 │   │   ├── errors.go              # Sentinel errors
 │   │   ├── claude/adapter.go
 │   │   ├── opencode/adapter.go
-│   │   ├── gemini/adapter.go
-│   │   ├── cursor/adapter.go
 │   │   ├── vscode/adapter.go
 │   │   ├── codex/adapter.go
-│   │   ├── windsurf/adapter.go
-│   │   ├── antigravity/adapter.go
-│   │   ├── kilocode/adapter.go
-│   │   ├── kimi/adapter.go
-│   │   ├── kiro/adapter.go
-│   │   └── qwen/adapter.go
 │   ├── catalog/
 │   │   ├── components.go          # Component definitions, presets, ResolveDeps()
 │   │   └── skills.go              # Skill ID lists
@@ -114,7 +104,7 @@ MCP injection uses `ServerTemplates` to define per-strategy JSON/TOML templates:
 type ServerTemplates struct {
     Name                   string
     SeparateFileJSON       []byte  // Claude Code
-    DefaultOverlayJSON     []byte  // Cursor, Windsurf, Gemini
+    DefaultOverlayJSON     []byte  // Default overlay for supported agents
     OpenCodeOverlayJSON    []byte  // OpenCode (different key structure)
     VSCodeOverlayJSON      []byte  // VS Code (uses "servers" key)
     TOMLCommand, TOMLArgs  string, []string  // Codex

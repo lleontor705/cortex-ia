@@ -184,7 +184,7 @@ The orchestrator is a pure coordinator — delegates ALL work to sub-agents via 
 - `mem_capture_passive` for automatic learning extraction
 - `tb_list_boards` for board recovery after compaction
 
-### Single-Agent (Gemini, Codex, Windsurf, Cursor, VS Code, Antigravity)
+### Single-Agent (Codex, VS Code Copilot)
 The agent executes all 9 phases sequentially itself. Uses the same Cortex, ForgeSpec, and Mailbox tools but without delegation.
 
 ## Prompting Techniques

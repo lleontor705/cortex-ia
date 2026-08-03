@@ -14,7 +14,6 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/conventions"
 	cortexcomp "github.com/lleontor705/cortex-ia/internal/components/cortex"
 	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
-	ggacomp "github.com/lleontor705/cortex-ia/internal/components/gga"
 	"github.com/lleontor705/cortex-ia/internal/components/mailbox"
 	"github.com/lleontor705/cortex-ia/internal/components/persona"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
@@ -342,10 +341,6 @@ func buildInjectors(homeDir string, adapter agents.Adapter, selection model.Sele
 		}},
 		{model.ComponentSkills, func() ([]string, error) {
 			r, err := skillscomp.Inject(homeDir, adapter, selection.CommunitySkills)
-			return r.Files, err
-		}},
-		{model.ComponentGGA, func() ([]string, error) {
-			r, err := ggacomp.Inject(homeDir, selection.Agents)
 			return r.Files, err
 		}},
 	}

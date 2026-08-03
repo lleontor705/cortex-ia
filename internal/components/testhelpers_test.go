@@ -4,21 +4,18 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
-	"github.com/lleontor705/cortex-ia/internal/agents/antigravity"
 	"github.com/lleontor705/cortex-ia/internal/agents/claude"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
-	"github.com/lleontor705/cortex-ia/internal/agents/windsurf"
 )
 
 var update = flag.Bool("update", false, "update golden files")
 
-func claudeAdapter() agents.Adapter      { return claude.NewAdapter() }
-func opencodeAdapter() agents.Adapter    { return opencode.NewAdapter() }
-func antigravityAdapter() agents.Adapter { return antigravity.NewAdapter() }
-func windsurfAdapter() agents.Adapter    { return windsurf.NewAdapter() }
+func claudeAdapter() agents.Adapter   { return claude.NewAdapter() }
+func opencodeAdapter() agents.Adapter { return opencode.NewAdapter() }
 
 func goldenDir(t *testing.T) string {
 	t.Helper()
@@ -54,18 +51,20 @@ func assertGolden(t *testing.T, name string, actual []byte) {
 		t.Fatalf("ReadFile(%q) error = %v\n\nRun with -update to generate golden files:\n  go test ./internal/components/ -run %s -update", goldenPath, err, t.Name())
 	}
 
-	if string(actual) != string(expected) {
-		diffIdx := firstDiffIndex(string(expected), string(actual))
+	actualText := strings.ReplaceAll(string(actual), "\r\n", "\n")
+	expectedText := strings.ReplaceAll(string(expected), "\r\n", "\n")
+	if actualText != expectedText {
+		diffIdx := firstDiffIndex(expectedText, actualText)
 		const ctxLen = 80
 		start := diffIdx - ctxLen
 		if start < 0 {
 			start = 0
 		}
 		end := diffIdx + ctxLen
-		if end > len(expected) {
-			end = len(expected)
+		if end > len(expectedText) {
+			end = len(expectedText)
 		}
-		t.Fatalf("golden mismatch for %s\nFirst diff at byte %d.\n\nExpected (around diff):\n%s\n\nActual (around diff):\n%s\n\nRun with -update to regenerate.", name, diffIdx, string(expected)[start:end], string(actual)[start:end])
+		t.Fatalf("golden mismatch for %s\nFirst diff at byte %d.\n\nExpected (around diff):\n%s\n\nActual (around diff):\n%s\n\nRun with -update to regenerate.", name, diffIdx, expectedText[start:end], actualText[start:end])
 	}
 }
 

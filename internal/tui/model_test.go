@@ -71,7 +71,7 @@ func TestSelectedAgentIDs_NoneSelected(t *testing.T) {
 	m := New(nil, "/tmp", "1.0.0")
 	m.Agents = []AgentItem{
 		{ID: model.AgentClaudeCode, Selected: false},
-		{ID: model.AgentGeminiCLI, Selected: false},
+		{ID: model.AgentOpenCode, Selected: false},
 	}
 	ids := m.SelectedAgentIDs()
 	if ids != nil {
@@ -83,7 +83,7 @@ func TestSelectedAgentIDs_SomeSelected(t *testing.T) {
 	m := New(nil, "/tmp", "1.0.0")
 	m.Agents = []AgentItem{
 		{ID: model.AgentClaudeCode, Selected: true},
-		{ID: model.AgentGeminiCLI, Selected: false},
+		{ID: model.AgentOpenCode, Selected: false},
 		{ID: model.AgentCodex, Selected: true},
 	}
 	ids := m.SelectedAgentIDs()
@@ -102,7 +102,7 @@ func TestHasSelectedAgents_True(t *testing.T) {
 	m := New(nil, "/tmp", "1.0.0")
 	m.Agents = []AgentItem{
 		{ID: model.AgentClaudeCode, Selected: false},
-		{ID: model.AgentGeminiCLI, Selected: true},
+		{ID: model.AgentOpenCode, Selected: true},
 	}
 	if !m.HasSelectedAgents() {
 		t.Error("HasSelectedAgents should be true when at least one agent is selected")

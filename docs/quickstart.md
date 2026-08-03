@@ -16,7 +16,7 @@ Or grab a release binary from [GitHub Releases](https://github.com/lleontor705/c
 cortex-ia detect
 ```
 
-Lists every supported agent (12 today: `claude-code`, `opencode`, `cursor`, `gemini-cli`, `vscode-copilot`, `codex`, `windsurf`, `antigravity`, `kilocode`, `kimi`, `kiro-ide`, `qwen-code`) and reports which ones have their config dirs and binaries on disk. Also reports runtime deps (`node`/`npx`, `git`, `cortex` MCP).
+Lists the four supported agents (`claude-code`, `opencode`, `vscode-copilot`, `codex`) and reports which ones have their config dirs and binaries on disk. Also reports runtime deps (`node`/`npx`, `git`, `cortex` MCP).
 
 ## 3. Install the ecosystem
 

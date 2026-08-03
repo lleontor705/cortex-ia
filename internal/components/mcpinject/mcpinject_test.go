@@ -20,39 +20,41 @@ type testAdapter struct {
 	settingsPath    string
 }
 
-func (a *testAdapter) Agent() model.AgentID                               { return a.agent }
-func (a *testAdapter) Tier() model.SupportTier                            { return model.TierFull }
-func (a *testAdapter) Detect(_ string) (bool, string, string, bool, error) { return false, "", "", false, nil }
-func (a *testAdapter) GlobalConfigDir(_ string) string                     { return a.globalConfigDir }
-func (a *testAdapter) SystemPromptDir(_ string) string                     { return "" }
-func (a *testAdapter) SystemPromptFile(_ string) string                    { return "" }
-func (a *testAdapter) SkillsDir(_ string) string                           { return "" }
-func (a *testAdapter) SettingsPath(_ string) string                        { return a.settingsPath }
-func (a *testAdapter) SystemPromptStrategy() model.SystemPromptStrategy    { return 0 }
-func (a *testAdapter) MCPStrategy() model.MCPStrategy                      { return a.mcpStrategy }
+func (a *testAdapter) Agent() model.AgentID    { return a.agent }
+func (a *testAdapter) Tier() model.SupportTier { return model.TierFull }
+func (a *testAdapter) Detect(_ string) (bool, string, string, bool, error) {
+	return false, "", "", false, nil
+}
+func (a *testAdapter) GlobalConfigDir(_ string) string                  { return a.globalConfigDir }
+func (a *testAdapter) SystemPromptDir(_ string) string                  { return "" }
+func (a *testAdapter) SystemPromptFile(_ string) string                 { return "" }
+func (a *testAdapter) SkillsDir(_ string) string                        { return "" }
+func (a *testAdapter) SettingsPath(_ string) string                     { return a.settingsPath }
+func (a *testAdapter) SystemPromptStrategy() model.SystemPromptStrategy { return 0 }
+func (a *testAdapter) MCPStrategy() model.MCPStrategy                   { return a.mcpStrategy }
 func (a *testAdapter) MCPConfigPath(homeDir string, serverName string) string {
 	return filepath.Join(a.globalConfigDir, "mcp", serverName+".json")
 }
-func (a *testAdapter) SupportsSkills() bool        { return false }
-func (a *testAdapter) SupportsSystemPrompt() bool   { return false }
-func (a *testAdapter) SupportsMCP() bool            { return a.supportsMCP }
-func (a *testAdapter) SupportsSlashCommands() bool  { return false }
-func (a *testAdapter) CommandsDir(_ string) string  { return "" }
-func (a *testAdapter) SupportsTaskDelegation() bool { return false }
-func (a *testAdapter) SupportsSubAgents() bool      { return false }
-func (a *testAdapter) SubAgentsDir(_ string) string                         { return "" }
-func (a *testAdapter) SupportsAutoInstall() bool                            { return false }
-func (a *testAdapter) InstallCommands(_ system.PlatformProfile) [][]string  { return nil }
+func (a *testAdapter) SupportsSkills() bool                                { return false }
+func (a *testAdapter) SupportsSystemPrompt() bool                          { return false }
+func (a *testAdapter) SupportsMCP() bool                                   { return a.supportsMCP }
+func (a *testAdapter) SupportsSlashCommands() bool                         { return false }
+func (a *testAdapter) CommandsDir(_ string) string                         { return "" }
+func (a *testAdapter) SupportsTaskDelegation() bool                        { return false }
+func (a *testAdapter) SupportsSubAgents() bool                             { return false }
+func (a *testAdapter) SubAgentsDir(_ string) string                        { return "" }
+func (a *testAdapter) SupportsAutoInstall() bool                           { return false }
+func (a *testAdapter) InstallCommands(_ system.PlatformProfile) [][]string { return nil }
 
 func testTemplates() ServerTemplates {
 	return ServerTemplates{
-		Name:             "test-server",
-		SeparateFileJSON: []byte(`{"command": "test-cmd", "args": ["serve"]}` + "\n"),
-		DefaultOverlayJSON: []byte(`{"mcpServers": {"test-server": {"command": "test-cmd", "args": ["serve"]}}}` + "\n"),
+		Name:                "test-server",
+		SeparateFileJSON:    []byte(`{"command": "test-cmd", "args": ["serve"]}` + "\n"),
+		DefaultOverlayJSON:  []byte(`{"mcpServers": {"test-server": {"command": "test-cmd", "args": ["serve"]}}}` + "\n"),
 		OpenCodeOverlayJSON: []byte(`{"mcp": {"test-server": {"type": "local", "command": ["test-cmd", "serve"], "enabled": true}}}` + "\n"),
-		VSCodeOverlayJSON: []byte(`{"servers": {"test-server": {"type": "stdio", "command": "test-cmd", "args": ["serve"]}}}` + "\n"),
-		TOMLCommand: "test-cmd",
-		TOMLArgs:    []string{"serve"},
+		VSCodeOverlayJSON:   []byte(`{"servers": {"test-server": {"type": "stdio", "command": "test-cmd", "args": ["serve"]}}}` + "\n"),
+		TOMLCommand:         "test-cmd",
+		TOMLArgs:            []string{"serve"},
 	}
 }
 
@@ -108,7 +110,7 @@ func TestInject_MergeIntoSettings_NewFile(t *testing.T) {
 	settingsPath := filepath.Join(tmpDir, "settings.json")
 
 	adapter := &testAdapter{
-		agent:        model.AgentGeminiCLI,
+		agent:        model.AgentClaudeCode,
 		mcpStrategy:  model.StrategyMergeIntoSettings,
 		supportsMCP:  true,
 		settingsPath: settingsPath,
@@ -181,40 +183,6 @@ func TestInject_MergeIntoSettings_OpenCode(t *testing.T) {
 	server := mcp["test-server"].(map[string]any)
 	if server["type"] != "local" {
 		t.Errorf("type = %v, want local", server["type"])
-	}
-}
-
-func TestInject_MCPConfigFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, ".cursor")
-
-	adapter := &testAdapter{
-		agent:           model.AgentCursor,
-		mcpStrategy:     model.StrategyMCPConfigFile,
-		supportsMCP:     true,
-		globalConfigDir: configDir,
-	}
-
-	result, err := Inject(tmpDir, adapter, testTemplates())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.Changed {
-		t.Error("expected Changed=true")
-	}
-
-	content, err := os.ReadFile(result.Files[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var m map[string]any
-	if err := json.Unmarshal(content, &m); err != nil {
-		t.Fatal(err)
-	}
-	servers := m["mcpServers"].(map[string]any)
-	if servers["test-server"] == nil {
-		t.Error("expected test-server")
 	}
 }
 

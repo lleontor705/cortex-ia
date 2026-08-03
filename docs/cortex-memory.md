@@ -30,10 +30,9 @@ The `cortex` cortex-ia component (`internal/components/cortex/`) emits per-agent
 |---|---|---|
 | Claude Code | `StrategySeparateMCPFiles` | `~/.claude/mcp/cortex.json` |
 | OpenCode | `StrategyMergeIntoSettings` | `~/.config/opencode/opencode.json` (`mcp.cortex` block) |
-| Cursor / Windsurf / Antigravity / Kiro | `StrategyMCPConfigFile` | `mcp.json` (`mcpServers.cortex`) |
+| VS Code Copilot | `StrategyMCPConfigFile` | `mcp.json` (`servers.cortex`) |
 | VS Code Copilot | `StrategyMCPConfigFile` (vscode overlay) | `mcp.json` (`servers.cortex`, `type: stdio`) |
 | Codex | `StrategyTOMLFile` | `config.toml` (`[[mcp_servers]]`) |
-| Gemini CLI / Qwen / Kilocode / Kimi | `StrategyMergeIntoSettings` | per-agent settings file |
 
 In every case the command is `cortex mcp` (the binary stays on `PATH`, no `npx` indirection).
 

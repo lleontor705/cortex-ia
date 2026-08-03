@@ -27,8 +27,8 @@ func TestRenderPreset_ShowsDescriptions(t *testing.T) {
 		Cursor:  0,
 	}
 	output := RenderPreset(data)
-	if !strings.Contains(output, "All 8 components") {
-		t.Error("expected 'All 8 components' in output")
+	if !strings.Contains(output, "All 7 components") {
+		t.Error("expected 'All 7 components' in output")
 	}
 	if !strings.Contains(output, "Cortex + ForgeSpec + Context7 + SDD") {
 		t.Error("expected minimal preset description in output")

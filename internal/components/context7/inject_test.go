@@ -48,7 +48,4 @@ func TestTemplates_Context7Name(t *testing.T) {
 	if tmpl.OpenCodeOverlayJSON == nil {
 		t.Error("expected OpenCode remote overlay")
 	}
-	if tmpl.AntigravityOverlayJSON == nil {
-		t.Error("expected Antigravity overlay")
-	}
 }

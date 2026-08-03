@@ -1,21 +1,17 @@
 # cortex-ia
 
-> AI Agent Ecosystem Configurator — configures 8 AI coding agents with 5 MCP servers (70 tools), 19 SDD skills, and orchestrator prompts. One Go binary, interactive TUI, full backup/restore.
+> AI Agent Ecosystem Configurator — configures four AI coding agents with MCP servers (70 tools), 19 SDD skills, and orchestrator prompts. One Go binary, interactive TUI, full backup/restore.
 
 ## What It Does
 
 cortex-ia detects installed AI coding agents and configures them with a complete development ecosystem: persistent memory (Cortex, 31 tools), SDD contract validation (ForgeSpec, 19 tools), inter-agent messaging (Agent Mailbox, 14 tools), multi-CLI orchestration (CLI Orchestrator, 4 tools), and live documentation (Context7).
 
-## Supported Agents (8)
+## Supported Agents (4)
 
 - Claude Code — markdown sections, separate MCP JSON, task delegation
 - OpenCode — file replace, merge into settings, sub-agents, slash commands
-- Gemini CLI — file replace, merge into settings
-- Cursor — file replace, MCP config file, native subagents
 - VS Code Copilot — file replace, MCP config file, task delegation
 - Codex — file replace, TOML config
-- Windsurf — append to file, MCP config file
-- Antigravity — append to file, MCP config file
 
 ## MCP Servers (5, 70 tools total)
 
@@ -76,7 +72,7 @@ cortex-ia update             Check for available updates
 
 ## Presets
 
-- full: All 8 components (default)
+- full: All 7 components (default)
 - minimal: Cortex + ForgeSpec + Context7 + SDD (auto-pulls Mailbox)
 - custom: User-selected via TUI
 

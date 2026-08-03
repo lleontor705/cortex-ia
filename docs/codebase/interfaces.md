@@ -71,7 +71,6 @@ The Go interfaces and types that define module boundaries in cortex-ia. This pag
 | `sdd.Inject(homeDir, adapter, assignments, strictTDD)` | `internal/components/sdd` | Inject orchestrator prompt + skills + commands + sub-agents | `pipeline.buildInjectors` |
 | `skillscomp.Inject(homeDir, adapter, communitySkills)` | `internal/components/skills` | Inject non-SDD utility skills | `pipeline.buildInjectors` |
 | `conventions.Inject(homeDir, adapter)` | `internal/components/conventions` | Inject cortex convention + protocol | `pipeline.buildInjectors` |
-| `ggacomp.Inject(homeDir, agents)` | `internal/components/gga` | Inject GGA pre-commit hook config | `pipeline.buildInjectors` |
 | `persona.Inject(homeDir, adapter, personaID)` | `internal/components/persona` | Inject communication-style persona | `pipeline.Install` (separate from component chain) |
 
 Each injector returns a `{ Files []string; Changed bool; ... }`-shaped result. `pipeline` reads `Files` for change tracking.
@@ -96,7 +95,7 @@ Each injector returns a `{ Files []string; Changed bool; ... }`-shaped result. `
 
 | Function | Package | Purpose | Consumers |
 |----------|---------|---------|-----------|
-| `assets.FS` | `internal/assets` | `embed.FS` for `skills`, `generic`, `opencode`, `gga` | `sdd`, `conventions`, `gga`, `skills` |
+| `assets.FS` | `internal/assets` | `embed.FS` for `skills`, `generic`, `opencode` | `sdd`, `conventions`, `skills` |
 | `assets.Read(path)` | `internal/assets` | Read embedded asset as string | injectors |
 | `assets.ReadBytes(path)` | `internal/assets` | Read embedded asset as bytes | injectors |
 | `assets.ListDir(path)` | `internal/assets` | List embedded directory entries | `sdd.FilesToBackup` |

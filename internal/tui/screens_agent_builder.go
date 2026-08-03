@@ -44,12 +44,7 @@ func (m Model) availableEngines() []model.AgentID {
 	return []model.AgentID{
 		model.AgentClaudeCode,
 		model.AgentOpenCode,
-		model.AgentGeminiCLI,
-		model.AgentCursor,
-		model.AgentVSCodeCopilot,
 		model.AgentCodex,
-		model.AgentWindsurf,
-		model.AgentAntigravity,
 	}
 }
 
@@ -60,18 +55,8 @@ func engineDescription(engine model.AgentID) string {
 		return "Anthropic's CLI coding agent"
 	case model.AgentOpenCode:
 		return "Open-source terminal coding agent"
-	case model.AgentGeminiCLI:
-		return "Google's Gemini CLI agent"
-	case model.AgentCursor:
-		return "AI-powered code editor"
-	case model.AgentVSCodeCopilot:
-		return "GitHub Copilot in VS Code"
 	case model.AgentCodex:
 		return "OpenAI's Codex CLI agent"
-	case model.AgentWindsurf:
-		return "Codeium's AI code editor"
-	case model.AgentAntigravity:
-		return "Antigravity AI agent"
 	}
 	return ""
 }

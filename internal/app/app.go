@@ -43,9 +43,6 @@ func runCLI(args []string) error {
 	case "uninstall":
 		return runUninstall(args[1:])
 
-	case "gga":
-		return runGGA(args[1:])
-
 	case "profiles":
 		return runProfiles(args[1:])
 
@@ -122,8 +119,6 @@ Usage:
   cortex-ia verify           Alias of doctor
   cortex-ia repair           Re-apply managed files from lockfile/state
   cortex-ia rollback         Restore managed files from the last backup
-  cortex-ia gga --provider <id>  Switch GGA provider (anthropic|openai|google|ollama|claude|opencode|gemini|codex)
-  cortex-ia gga --list           List supported GGA providers
   cortex-ia agent-builder list                              List custom skills built via the Agent Builder
   cortex-ia agent-builder create --engine claude --purpose "review go diffs" --target claude-code
   cortex-ia agent-builder remove <name>                     Remove a custom skill from the registry
@@ -143,7 +138,7 @@ Usage:
   cortex-ia help             Show this help
 
 Presets:
-  full      All 8 components (default)
+  full      All 7 components (default)
   minimal   Cortex + ForgeSpec + Context7 + SDD
   custom    Select components manually (TUI)
 
@@ -155,7 +150,5 @@ Components:
   sdd              Full 9-phase SDD workflow with orchestrator
   skills           Utility skills (non-SDD)
   conventions      Shared cortex conventions and memory protocol
-  gga              Guardian Angel — AI-powered pre-commit code review
-
 `, Version)
 }

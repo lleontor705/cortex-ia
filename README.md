@@ -57,8 +57,6 @@ cortex-ia detect
 cortex-ia uninstall --component persona --component cortex
 cortex-ia uninstall --all --dry-run
 
-# Switch GGA provider (anthropic, openai, google, ollama, claude, opencode, gemini, codex)
-cortex-ia gga --provider ollama
 
 # OpenCode SDD profiles (per-phase model assignment)
 cortex-ia profiles create cheap:openai/gpt-4o-mini
@@ -100,16 +98,8 @@ Plus **3 content components**:
 |-------|-----------|----------------|:-:|:-:|:-:|
 | **Claude Code** | Separate JSON files | Markdown sections | ✅ | — | — |
 | **OpenCode** | Merge into settings | File replace | ✅ | ✅ | ✅ |
-| **Gemini CLI** | Merge into settings | File replace | — | — | — |
-| **Cursor** | MCP config file | File replace (.mdc) | — | ✅ | — |
 | **VS Code Copilot** | MCP config file | File replace | ✅ | — | — |
 | **Codex** | TOML file | File replace | — | — | — |
-| **Windsurf** | MCP config file | Append to file | — | — | — |
-| **Antigravity** | MCP config file | Append to file | — | — | — |
-| **Kilocode** | Merge into settings | File replace | — | — | ✅ |
-| **Kimi** | MCP config file | File replace | ✅ | ✅ | — |
-| **Kiro IDE** | MCP config file | File replace (steering) | ✅ | ✅ | — |
-| **Qwen Code** | Merge into settings | File replace | — | — | ✅ |
 
 Agents with **Task Delegation** get a multi-agent orchestrator that delegates work to sub-agents. Others get a single-agent prompt that executes SDD phases sequentially.
 
@@ -307,7 +297,7 @@ cortex-ia install
     │   │   ├─ Inject permissions & security guardrails
     │   │   ├─ Inject persona (professional / mentor / minimal)
     │   │   ├─ Inject theme overlay
-    │   │   └─ Write sub-agent definitions (OpenCode, Cursor)
+    │   │   └─ Write sub-agent definitions (OpenCode)
     │   ├─ Write SDD skills to shared dir (~/.cortex-ia/skills/)
     │   ├─ Write convention + orchestrator prompt to shared dir
     │   └─ Load community skills (~/.cortex-ia/skills-community/)
@@ -343,7 +333,6 @@ cortex-ia doctor             Run 6 health checks against installation
 cortex-ia repair             Re-apply from lockfile/state
 cortex-ia rollback           Restore from backup
 cortex-ia uninstall          Reverse cortex-ia injections (with pre-uninstall snapshot)
-cortex-ia gga --provider <id>      Switch GGA provider (anthropic, openai, google, ollama, claude, opencode, gemini, codex)
 cortex-ia profiles list|create|set|apply|delete   Manage OpenCode SDD profiles
 cortex-ia agent-builder list|create|remove        Generate custom skills via an installed AI engine
 cortex-ia update             Check for available updates
@@ -365,8 +354,6 @@ cortex-ia update             Check for available updates
 | [Rollback](docs/rollback.md) | Backups, retention, dedup, pinning, uninstall snapshots |
 | [Non-interactive](docs/non-interactive.md) | CLI-only recipes for CI |
 | [Docker E2E](docs/docker-e2e-testing.md) | Three-distro test harness (ubuntu/fedora/arch) |
-| [PRD](PRD.md) | Project requirements + relationship to gentle-ai |
-| [PRD Agent Builder](PRD-AGENT-BUILDER.md) | Agent Builder design contract |
 | [Changelog](CHANGELOG.md) | Version history (v0.1.0 → v0.3.0) |
 | [llms.txt](llms.txt) | LLM-readable project index |
 

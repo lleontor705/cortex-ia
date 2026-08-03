@@ -7,7 +7,6 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/agents/claude"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
-	"github.com/lleontor705/cortex-ia/internal/agents/windsurf"
 )
 
 func TestInject_Claude(t *testing.T) {
@@ -51,20 +50,6 @@ func TestInject_OpenCode(t *testing.T) {
 	}
 	if !result.Changed {
 		t.Error("expected Changed=true")
-	}
-}
-
-func TestInject_NoSettingsPath(t *testing.T) {
-	tmpDir := t.TempDir()
-	adapter := windsurf.NewAdapter()
-
-	// Windsurf returns empty SettingsPath → should skip.
-	result, err := Inject(tmpDir, adapter, ThemeCortex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Changed {
-		t.Error("expected no change for agent without settings")
 	}
 }
 

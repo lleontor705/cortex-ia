@@ -21,14 +21,11 @@ import (
 // resulting agent config file. Adapters use distinct paths/strategies:
 //   - claude          → ~/.claude/mcp/<name>.json (separate file)
 //   - opencode        → ~/.config/opencode/opencode.json (merged "mcp" key)
-//   - windsurf        → ~/.codeium/windsurf/mcp_config.json (overlay)
-//   - antigravity     → ~/.antigravity/mcp_config.json (overlay)
 //   - vscode          → ~/.vscode/settings.json (servers key)
-//   - cursor          → ~/.cursor/mcp.json (overlay)
 //   - codex           → ~/.codex/config.toml (TOML)
 //
-// We cover claude + opencode + windsurf + antigravity for each MCP component
-// to lock the four most-used per-strategy outputs.
+// We cover claude and opencode for each MCP component to lock the supported
+// per-strategy outputs.
 // ---------------------------------------------------------------------------
 
 type mcpInjector func(home string, adapter agents.Adapter) error
@@ -73,22 +70,6 @@ func TestGoldenCortex_OpenCode(t *testing.T) {
 	home := runMCP(t, cortexInject, opencodeAdapter())
 	got := readTestFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
 	assertGolden(t, "cortex-opencode-settings.golden", got)
-}
-
-func TestGoldenCortex_Windsurf(t *testing.T) {
-	adapter := windsurfAdapter()
-	home := runMCP(t, cortexInject, adapter)
-	cfg := adapter.MCPConfigPath(home, "cortex")
-	got := readTestFile(t, cfg)
-	assertGolden(t, "cortex-windsurf-mcp.golden", got)
-}
-
-func TestGoldenCortex_Antigravity(t *testing.T) {
-	adapter := antigravityAdapter()
-	home := runMCP(t, cortexInject, adapter)
-	cfg := adapter.MCPConfigPath(home, "cortex")
-	got := readTestFile(t, cfg)
-	assertGolden(t, "cortex-antigravity-mcp.golden", got)
 }
 
 // ---------------------------------------------------------------------------

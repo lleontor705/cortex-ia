@@ -51,7 +51,6 @@ How cortex-ia works end-to-end: a user selects AI coding agents and ecosystem co
 | `components/sdd` | `sdd` | — | SDD orchestrator prompt + 19 skills + commands + sub-agents |
 | `components/skills` | `skills` | — | Non-SDD utility skills injection |
 | `components/conventions` | `conventions` | — | Cortex convention + memory protocol |
-| `components/gga` | `gga` | — | Guardian Angel pre-commit code review hook |
 | `components/persona` | `persona` | — | Communication-style persona injection |
 | `components/permissions` | `permissions` | — | Permissions component |
 | `components/theme` | `theme` | — | Terminal theme |
