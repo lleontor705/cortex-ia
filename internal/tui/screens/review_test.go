@@ -9,7 +9,7 @@ import (
 
 func TestRenderReview_ShowsAgents(t *testing.T) {
 	data := ReviewData{
-		Agents:   []ReviewAgent{{Name: "claude-code"}, {Name: "gemini-cli"}},
+		Agents:   []ReviewAgent{{Name: "claude-code"}, {Name: "vscode-copilot"}},
 		Preset:   model.PresetFull,
 		Persona:  model.PersonaProfessional,
 		Resolved: []model.ComponentID{model.ComponentCortex},
@@ -18,8 +18,8 @@ func TestRenderReview_ShowsAgents(t *testing.T) {
 	if !strings.Contains(output, "claude-code") {
 		t.Error("expected 'claude-code' in output")
 	}
-	if !strings.Contains(output, "gemini-cli") {
-		t.Error("expected 'gemini-cli' in output")
+	if !strings.Contains(output, "vscode-copilot") {
+		t.Error("expected 'vscode-copilot' in output")
 	}
 }
 
