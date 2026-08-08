@@ -47,8 +47,8 @@ func buildSkillContent(name string, spec AgentSpec) string {
 		sb.WriteString("### Workflow\n\n")
 		sb.WriteString("1. Respond to orchestrator delegations for any SDD phase.\n")
 		sb.WriteString("2. Follow the SDD contract format: return `{ status, executive_summary, artifacts, next_recommended, risks }`.\n")
-		sb.WriteString("3. Persist artifacts via `mem_save` with the appropriate `sdd/{change-name}/{phase}` topic key.\n")
-		sb.WriteString("4. Use `mem_relate` to connect your output to upstream artifacts.\n\n")
+		sb.WriteString("3. Persist artifacts via `cortex_save` with the appropriate `sdd/{change-name}/{phase}` topic key.\n")
+		sb.WriteString("4. Use `cortex_relate` to connect your output to upstream artifacts.\n\n")
 
 	case SDDPhase:
 		fmt.Fprintf(&sb, "## SDD Integration (Phase: %s)\n\n", spec.SDDPhase)
@@ -57,7 +57,7 @@ func buildSkillContent(name string, spec AgentSpec) string {
 		fmt.Fprintf(&sb, "1. Activate when the orchestrator delegates the `%s` phase.\n", spec.SDDPhase)
 		sb.WriteString("2. Read upstream artifacts required by this phase.\n")
 		sb.WriteString("3. Produce the phase artifact following the SDD contract format.\n")
-		fmt.Fprintf(&sb, "4. Persist output via `mem_save` with topic key `sdd/{change-name}/%s`.\n\n", spec.SDDPhase)
+		fmt.Fprintf(&sb, "4. Persist output via `cortex_save` with topic key `sdd/{change-name}/%s`.\n\n", spec.SDDPhase)
 
 	case SDDNone:
 		sb.WriteString("## Standalone Agent\n\n")
@@ -71,7 +71,7 @@ func buildSkillContent(name string, spec AgentSpec) string {
 	// Rules section
 	sb.WriteString("## Rules\n\n")
 	sb.WriteString("- Follow all instructions precisely.\n")
-	sb.WriteString("- Persist significant decisions via `mem_save`.\n")
+	sb.WriteString("- Persist significant decisions via `cortex_save`.\n")
 	sb.WriteString("- Report blockers immediately rather than guessing.\n")
 
 	return sb.String()

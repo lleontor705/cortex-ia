@@ -137,26 +137,9 @@ func injectTOML(homeDir string, adapter agents.Adapter, tmpl ServerTemplates) (I
 }
 
 func mergeJSONFile(path string, overlay []byte) (filemerge.WriteResult, error) {
-	baseJSON, err := readFileOrEmpty(path)
+	result, err := filemerge.MutateJSONFile(path, filemerge.JSONMutation{Overlay: overlay})
 	if err != nil {
 		return filemerge.WriteResult{}, err
 	}
-
-	merged, err := filemerge.MergeJSONObjects(baseJSON, overlay)
-	if err != nil {
-		return filemerge.WriteResult{}, err
-	}
-
-	return filemerge.WriteFileAtomic(path, merged, 0o644)
-}
-
-func readFileOrEmpty(path string) ([]byte, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("read file %q: %w", path, err)
-	}
-	return content, nil
+	return result.WriteResult, nil
 }

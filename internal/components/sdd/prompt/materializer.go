@@ -145,11 +145,19 @@ func Materialize(input MaterializerInput) ([]MaterializedAsset, []string, error)
 			continue
 		}
 		content := input.Contents[spec.ID]
+		assetPath := spec.SourcePath
+		if spec.Class == ir.AssetCommand {
+			var err error
+			assetPath, err = input.Adapter.ExpandPath(input.Adapter.CommandRoot, strings.TrimPrefix(string(spec.ID), "command/")+".md")
+			if err != nil {
+				return nil, nil, fmt.Errorf("expand command path for %q: %w", spec.ID, err)
+			}
+		}
 		degradation := ""
 		if spec.Class == ir.AssetCommand && !input.Adapter.SupportsSlashCommands {
 			degradation = "unsupported native slash-command form"
 		}
-		if err := add(spec.ID, spec.Class, spec.SourcePath, content, input.Adapter.SkillLoadMode(), nil, ModelRoute{}, degradation); err != nil {
+		if err := add(spec.ID, spec.Class, assetPath, content, input.Adapter.SkillLoadMode(), nil, ModelRoute{}, degradation); err != nil {
 			return nil, nil, err
 		}
 	}

@@ -26,8 +26,9 @@ import (
 type SkillLoadMode string
 
 const (
-	SkillModeNativePreload SkillLoadMode = "native-preload"
-	SkillModeFallbackRead  SkillLoadMode = "fallback-read"
+	SkillModeNativePreload  SkillLoadMode = "native-preload"
+	SkillModeNativeOnDemand SkillLoadMode = "native-on-demand"
+	SkillModeFallbackRead   SkillLoadMode = "fallback-read"
 )
 
 // AdapterPromptContract captures one adapter's destination and qualified native
@@ -41,6 +42,7 @@ type AdapterPromptContract struct {
 	CommandRoot             string
 	SupportsSlashCommands   bool
 	NativeSkillPreload      bool
+	NativeSkillOnDemand     bool
 	NativeModelField        bool
 	NativeWorktreeIsolation bool
 	ExpandPath              func(root, relative string) (string, error)
@@ -74,6 +76,9 @@ func (c AdapterPromptContract) Validate() error {
 // native preload; otherwise the first action must read the installed skill
 // (fallback-read). This implements REQ-INST-003's preload-vs-fallback rule.
 func (c AdapterPromptContract) SkillLoadMode() SkillLoadMode {
+	if c.NativeSkillOnDemand {
+		return SkillModeNativeOnDemand
+	}
 	if c.NativeSkillPreload {
 		return SkillModeNativePreload
 	}
@@ -100,6 +105,11 @@ var canonicalPhaseRoleBindings = []PhaseRoleBinding{
 	{Phase: "phase/apply", Role: "role/implement", Agent: "agent/implement", Skill: "skill/implement"},
 	{Phase: "phase/verify", Role: "role/validate", Agent: "agent/validate", Skill: "skill/validate"},
 	{Phase: "phase/archive", Role: "role/finalize", Agent: "agent/finalize", Skill: "skill/finalize"},
+}
+
+var canonicalRoles = []ir.SemanticID{
+	"role/bootstrap", "role/investigate", "role/draft-proposal", "role/write-specs",
+	"role/architect", "role/decompose", "role/implement", "role/validate", "role/finalize",
 }
 
 // CanonicalPhaseRoleBindings returns a clone so callers cannot change the
@@ -165,6 +175,12 @@ var canonicalSkillForRole = func() map[ir.SemanticID]ir.SemanticID {
 	} {
 		result[alias] = result[role]
 	}
+	// Utility and coordinator roles are not phase authorities and therefore do
+	// not belong to the nine-binding inventory. They retain deterministic skills
+	// so legacy compositions can materialize their existing role stubs.
+	result["role/orchestrator"] = "skill/orchestrator"
+	result["role/debate"] = "skill/debate"
+	result["role/parallel-dispatch"] = "skill/parallel-dispatch"
 	return result
 }()
 
@@ -217,7 +233,7 @@ func NewSkillBinding(role ir.SemanticID, contract AdapterPromptContract) (SkillB
 	if err := contract.Validate(); err != nil {
 		return SkillBinding{}, fmt.Errorf("skill binding contract: %w", err)
 	}
-	relative := string(skill) + "/SKILL.md"
+	relative := strings.TrimPrefix(string(skill), "skill/") + "/SKILL.md"
 	skillPath, err := contract.ExpandPath(contract.SkillRoot, relative)
 	if err != nil {
 		return SkillBinding{}, fmt.Errorf("expand skill path for %q: %w", role, err)

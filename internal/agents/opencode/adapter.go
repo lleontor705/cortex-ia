@@ -65,7 +65,18 @@ func (a *Adapter) SkillsDir(homeDir string) string {
 }
 
 func (a *Adapter) SettingsPath(homeDir string) string {
-	return filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+	return GlobalConfigPath(homeDir)
+}
+
+// GlobalConfigPath follows OpenCode's global load precedence: JSONC is loaded
+// after JSON and therefore owns conflicting keys when both files exist.
+func GlobalConfigPath(homeDir string) string {
+	dir := filepath.Join(homeDir, ".config", "opencode")
+	jsonc := filepath.Join(dir, "opencode.jsonc")
+	if _, err := os.Stat(jsonc); err == nil || !os.IsNotExist(err) {
+		return jsonc
+	}
+	return filepath.Join(dir, "opencode.json")
 }
 
 func (a *Adapter) SystemPromptStrategy() model.SystemPromptStrategy {
@@ -77,7 +88,7 @@ func (a *Adapter) MCPStrategy() model.MCPStrategy {
 }
 
 func (a *Adapter) MCPConfigPath(homeDir string, _ string) string {
-	return filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+	return GlobalConfigPath(homeDir)
 }
 
 func (a *Adapter) SupportsSkills() bool        { return true }
@@ -96,9 +107,9 @@ func (a *Adapter) SubAgentsDir(homeDir string) string {
 
 var (
 	openCodeMinimumQualified = ir.MustParseVersion("1.18.0")
-	openCodeMaximumTested    = ir.MustParseVersion("1.18.5")
-	openCodeObservedAt       = time.Date(2026, time.July, 26, 0, 0, 0, 0, time.UTC)
-	openCodeFreshUntil       = time.Date(2026, time.October, 26, 0, 0, 0, 0, time.UTC)
+	openCodeMaximumTested    = ir.MustParseVersion("1.18.11")
+	openCodeObservedAt       = time.Date(2026, time.August, 7, 0, 0, 0, 0, time.UTC)
+	openCodeFreshUntil       = time.Date(2026, time.November, 7, 0, 0, 0, 0, time.UTC)
 	openCodeVersionPattern   = regexp.MustCompile(`(?m)opencode version:\s*v?(\d+\.\d+\.\d+)`)
 )
 
@@ -134,13 +145,13 @@ func (a *Adapter) CapabilityFacts() []capability.CapabilityFact {
 
 	directChild := base
 	directChild.ID = directChildCapabilityID
-	directChild.EvidenceRef = "qualification/opencode/1.18.5/direct-child/2026-07-26"
+	directChild.EvidenceRef = "qualification/opencode/1.18.11/direct-child/2026-08-07"
 	directChild.Probe = qualificationProbeRecord("probe/opencode/direct-child", openCodeObservedAt)
 
 	nested := base
 	nested.ID = nestedDelegationCapabilityID
 	nested.Experimental = true
-	nested.EvidenceRef = "qualification/opencode/1.18.5/nested-delegation/2026-07-26"
+	nested.EvidenceRef = "qualification/opencode/1.18.11/nested-delegation/2026-08-07"
 	nested.Probe = qualificationProbeRecord("probe/opencode/nested-delegation", openCodeObservedAt)
 
 	return []capability.CapabilityFact{directChild, nested}
@@ -151,9 +162,9 @@ func qualificationProbeRecord(id ir.SemanticID, observedAt time.Time) *capabilit
 		ID:             id,
 		Method:         capability.ProbeCommand,
 		Command:        "opencode debug info",
-		Result:         "qualified-version:1.18.5;available:many",
+		Result:         "qualified-version:1.18.11;available:many",
 		Timestamp:      observedAt,
-		EvidenceDigest: "sha256:594cfb135a77a266de9da844236a6062fce1be14e856976c9cb7069370a50af3",
+		EvidenceDigest: "sha256:c5d32363bcc4f432c5e8a71201ac42fc00265f32dd8b227a48bc2524629a7a76",
 	}
 }
 

@@ -67,6 +67,15 @@ func TestCortexConventionHasOneCommonAuthorityAndProgressiveModule(t *testing.T)
 	if got := cortexTokens(string(convention)); got < 700 || got > 1000 {
 		t.Fatalf("Cortex convention budget: got %d tokens, want 700..1000", got)
 	}
+	text := string(convention)
+	for _, required := range []string{"cortex_save", "cortex_search", "cortex_get_observation", "cortex_session_summary", "transport"} {
+		if !strings.Contains(strings.ToLower(text), required) {
+			t.Errorf("Cortex convention missing current contract marker %q", required)
+		}
+	}
+	if strings.Contains(text, "mem_") {
+		t.Error("Cortex convention contains legacy mem_* namespace")
+	}
 	if len(advanced) == 1 {
 		module, err := os.ReadFile(filepath.Join(sharedDir, advanced[0]))
 		if err != nil {

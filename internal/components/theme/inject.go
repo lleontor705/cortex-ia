@@ -7,6 +7,7 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
 // InjectionResult describes the outcome of theme injection.
@@ -54,6 +55,13 @@ func Inject(homeDir string, adapter agents.Adapter, theme ThemeID) (InjectionRes
 	overlay, ok := themeOverlays[theme]
 	if !ok {
 		return InjectionResult{}, fmt.Errorf("unknown theme: %q", theme)
+	}
+	if adapter.Agent() == model.AgentOpenCode {
+		result, err := filemerge.MutateJSONFile(settingsPath, filemerge.JSONMutation{Overlay: overlay})
+		if err != nil {
+			return InjectionResult{}, fmt.Errorf("patch OpenCode theme: %w", err)
+		}
+		return InjectionResult{Changed: result.Changed, Files: []string{settingsPath}}, nil
 	}
 
 	baseJSON, err := os.ReadFile(settingsPath)

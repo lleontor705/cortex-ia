@@ -35,8 +35,8 @@ func TestInjectCortex_ClaudeCode(t *testing.T) {
 		t.Errorf("command = %v, want cortex", m["command"])
 	}
 	args := m["args"].([]any)
-	if len(args) != 1 || args[0] != "mcp" {
-		t.Errorf("args = %v, want [mcp]", args)
+	if len(args) != 2 || args[0] != "mcp" || args[1] != "--tools=agent" {
+		t.Errorf("args = %v, want [mcp --tools=agent]", args)
 	}
 }
 
@@ -47,5 +47,8 @@ func TestTemplates_CortexIsGoBinary(t *testing.T) {
 	}
 	if tmpl.TOMLCommand != "cortex" {
 		t.Errorf("TOMLCommand = %s, want cortex (Go binary, not npx)", tmpl.TOMLCommand)
+	}
+	if len(tmpl.TOMLArgs) != 2 || tmpl.TOMLArgs[0] != "mcp" || tmpl.TOMLArgs[1] != "--tools=agent" {
+		t.Errorf("TOMLArgs = %v, want [mcp --tools=agent]", tmpl.TOMLArgs)
 	}
 }

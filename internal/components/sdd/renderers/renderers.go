@@ -65,12 +65,15 @@ type ResolvedWorkflow struct {
 	// Composition carries the prompt-layer composition result that renderers
 	// lower into adapter-specific assets. It contains the root index path,
 	// module paths, shared contract path, profile overlay path, quality
-	// template path, and SkillBindings for all nine roles.
+	// template path, and SkillBindings for all workflow roles.
 	Composition Composition `json:"composition,omitempty"`
 	// NativeSkillPreload controls whether the adapter can preload skills
 	// (native-preload) or must read them as a mandatory first action
 	// (fallback-read). Determined by adapter qualification evidence.
 	NativeSkillPreload bool `json:"native_skill_preload,omitempty"`
+	// NativeSkillOnDemand controls whether the adapter discovers installed
+	// skills and invokes them through a native skill tool when required.
+	NativeSkillOnDemand bool `json:"native_skill_on_demand,omitempty"`
 	// NativeModelField controls whether the adapter supports a native model
 	// field in its agent/role configuration.
 	NativeModelField bool `json:"native_model_field,omitempty"`
@@ -84,6 +87,9 @@ type ResolvedWorkflow struct {
 // (fallback-read). This implements REQ-INST-003's preload-vs-fallback rule at
 // the renderer boundary.
 func (r ResolvedWorkflow) SkillLoadMode() SkillLoadMode {
+	if r.NativeSkillOnDemand {
+		return SkillModeNativeOnDemand
+	}
 	if r.NativeSkillPreload {
 		return SkillModeNativePreload
 	}
@@ -121,8 +127,9 @@ type Bundle struct {
 type SkillLoadMode string
 
 const (
-	SkillModeNativePreload SkillLoadMode = "native-preload"
-	SkillModeFallbackRead  SkillLoadMode = "fallback-read"
+	SkillModeNativePreload  SkillLoadMode = "native-preload"
+	SkillModeNativeOnDemand SkillLoadMode = "native-on-demand"
+	SkillModeFallbackRead   SkillLoadMode = "fallback-read"
 )
 
 // SkillBinding is the renderer-visible binding of exactly one role to one
@@ -141,7 +148,7 @@ type SkillBinding struct {
 // Composition is the renderer's view of the prompt composition result. It
 // carries the fully expanded paths for every composed asset (root index,
 // modules, shared contract, profile overlay, quality template) plus the
-// SkillBindings for all nine roles. Renderers lower this into adapter-specific
+// SkillBindings for all workflow roles. Renderers lower this into adapter-specific
 // destinations. It is defined in the renderers package (not the prompt package)
 // to avoid a circular import: prompt already depends on renderers.TargetID.
 type Composition struct {
@@ -184,16 +191,35 @@ type compositionManifestData struct {
 	QualityPlan     quality.QualityPlan `json:"quality_plan"`
 	ModelRoutes     []ModelRoute        `json:"model_routes,omitempty"`
 	NativePreload   bool                `json:"native_skill_preload"`
+	NativeOnDemand  bool                `json:"native_skill_on_demand"`
 	NativeModel     bool                `json:"native_model_field"`
 	Worktree        bool                `json:"native_worktree_isolation"`
 	Metadata        json.RawMessage     `json:"metadata,omitempty"`
 }
 
 var canonicalCompositionSkills = map[ir.SemanticID]ir.SemanticID{
-	"role/bootstrap": "skill/bootstrap", "role/explore": "skill/investigate", "role/proposal": "skill/draft-proposal",
+	"role/orchestrator": "skill/orchestrator",
+	"role/bootstrap":    "skill/bootstrap", "role/explore": "skill/investigate", "role/proposal": "skill/draft-proposal",
 	"role/spec": "skill/write-specs", "role/design": "skill/architect", "role/tasks": "skill/decompose",
 	"role/apply": "skill/implement", "role/verify": "skill/validate", "role/archive": "skill/finalize",
-	"role/implement": "skill/implement", "role/validate": "skill/validate",
+	"role/investigate": "skill/investigate", "role/draft-proposal": "skill/draft-proposal", "role/write-specs": "skill/write-specs",
+	"role/architect": "skill/architect", "role/decompose": "skill/decompose", "role/implement": "skill/implement",
+	"role/validate": "skill/validate", "role/finalize": "skill/finalize", "role/debate": "skill/debate",
+	"role/parallel-dispatch": "skill/parallel-dispatch",
+}
+
+func compositionSkillBinding(composition Composition, role ir.SemanticID) (SkillBinding, bool) {
+	aliases := map[ir.SemanticID]ir.SemanticID{
+		"role/investigate": "role/explore", "role/draft-proposal": "role/proposal", "role/write-specs": "role/spec",
+		"role/architect": "role/design", "role/decompose": "role/tasks", "role/implement": "role/apply",
+		"role/validate": "role/verify", "role/finalize": "role/archive",
+	}
+	for _, binding := range composition.SkillBindings {
+		if binding.Role == role || binding.Role == aliases[role] {
+			return binding, true
+		}
+	}
+	return SkillBinding{}, false
 }
 
 func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset, error) {
@@ -247,9 +273,12 @@ func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset,
 	bindings := slices.Clone(composition.SkillBindings)
 	slices.SortFunc(bindings, func(left, right SkillBinding) int { return strings.Compare(string(left.Role), string(right.Role)) })
 	for index := range bindings {
-		if bindings[index].Mode == SkillModeNativePreload {
+		switch bindings[index].Mode {
+		case SkillModeNativeOnDemand:
+			bindings[index].FirstAction = "skill:" + string(bindings[index].Skill)
+		case SkillModeNativePreload:
 			bindings[index].FirstAction = "preload:" + string(bindings[index].Skill)
-		} else {
+		default:
 			bindings[index].FirstAction = "read:" + bindings[index].Path
 		}
 	}
@@ -275,7 +304,7 @@ func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset,
 			return nil, fmt.Errorf("composition quality plan: %w", err)
 		}
 	}
-	data, err := json.Marshal(compositionManifestData{RootIndex: composition.RootIndex, Modules: modules, SkillBindings: bindings, SharedContract: composition.SharedContract, ProfileOverlay: composition.ProfileOverlay, QualityTemplate: composition.QualityTemplate, QualityPlan: composition.QualityPlan, ModelRoutes: routes, NativePreload: resolved.NativeSkillPreload, NativeModel: resolved.NativeModelField, Worktree: resolved.NativeWorktreeIsolation, Metadata: slices.Clone(resolved.Metadata)})
+	data, err := json.Marshal(compositionManifestData{RootIndex: composition.RootIndex, Modules: modules, SkillBindings: bindings, SharedContract: composition.SharedContract, ProfileOverlay: composition.ProfileOverlay, QualityTemplate: composition.QualityTemplate, QualityPlan: composition.QualityPlan, ModelRoutes: routes, NativePreload: resolved.NativeSkillPreload, NativeOnDemand: resolved.NativeSkillOnDemand, NativeModel: resolved.NativeModelField, Worktree: resolved.NativeWorktreeIsolation, Metadata: slices.Clone(resolved.Metadata)})
 	if err != nil {
 		return nil, fmt.Errorf("marshal composition manifest: %w", err)
 	}

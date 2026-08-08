@@ -198,7 +198,7 @@ func TestCompileIntegratesCompleteAssetCatalogCompositionAndQuality(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Composition.SkillBindings) != 9 || result.Composition.RootIndex == "" {
+	if len(result.Composition.SkillBindings) != len(result.Normalized.Workflow.Roles) || result.Composition.RootIndex == "" {
 		t.Fatalf("composition did not include complete role/assets output: %+v", result.Composition)
 	}
 	if result.QualityPolicyIR.PolicySHA256 == "" || result.QualityTemplate.PolicySHA256 == "" {

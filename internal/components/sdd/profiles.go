@@ -351,7 +351,7 @@ func profileKeyToOpenCodeAgents(key string) []string {
 		return []string{"validate"}
 	case "sdd-archive", "archive", "finalize":
 		return []string{"finalize"}
-	case "orchestrator", "parallel-dispatch":
+	case "orchestrator", "debate", "parallel-dispatch":
 		return []string{normalized}
 	default:
 		return nil

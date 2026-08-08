@@ -100,7 +100,7 @@ func TestMaterializeMakesMappedSkillTheFirstPhaseAction(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				expectedPath := "internal/assets/skills/" + string(skill) + "/SKILL.md"
+				expectedPath := "internal/assets/skills/" + strings.TrimPrefix(string(skill), "skill/") + "/SKILL.md"
 				content := string(asset.Content)
 				firstAction := strings.Index(content, "First phase action:")
 				if firstAction < 0 || !strings.HasPrefix(content[firstAction:], tt.expected) {

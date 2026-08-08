@@ -88,6 +88,7 @@ var promptStalePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\b(?:mailbox|team[- ]lead)\b`),
 	regexp.MustCompile(`(?i)\b(?:msg|resource|dlq)_(?:send|request|broadcast|acquire|release|check|list|retry|purge)`),
 	regexp.MustCompile(`(?i)\b(?:gpt-4|claude-3|gemini-pro)\b`),
+	regexp.MustCompile(`(?i)\bmem_[a-z_]+\b`),
 }
 
 var terminalStatus = regexp.MustCompile(`(?i)\b(?:phase\s+)?status\s*[:=]\s*(?:pass|fail|inconclusive|success|partial|blocked|done|completed)\b`)
@@ -169,7 +170,7 @@ func checkCommand(asset PromptAsset, report *PromptGovernanceReport) {
 		report.Violations = append(report.Violations, PromptViolation{Code: ViolationBudget, Path: asset.Path, Detail: "command must contain 60..140 words"})
 	}
 	lower := strings.ToLower(body)
-	for _, forbidden := range []string{"pre-flight", "workflow:", "mem_search", "tb_", "sub-agent", "delegate", "pipeline", "run sub-agents"} {
+	for _, forbidden := range []string{"pre-flight", "workflow:", "cortex_search", "mem_search", "tb_", "sub-agent", "delegate", "pipeline", "run sub-agents"} {
 		if strings.Contains(lower, forbidden) {
 			report.Violations = append(report.Violations, PromptViolation{Code: ViolationCommandStructure, Path: asset.Path, Detail: "command contains orchestration policy: " + forbidden})
 		}

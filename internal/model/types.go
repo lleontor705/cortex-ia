@@ -191,6 +191,7 @@ func OpenCodeSubAgents() []string {
 		"implement",
 		"validate",
 		"finalize",
+		"debate",
 		"parallel-dispatch",
 	}
 }

@@ -221,6 +221,46 @@ func TestRemoveJSONKey_NoOp_MissingFile(t *testing.T) {
 	}
 }
 
+func TestRemoveJSONKey_JSONCPreservesComments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "opencode.jsonc")
+	before := []byte("{\n  \"mcp\": {\n    \"cortex\": { \"enabled\": true },\n    \"user\": { \"enabled\": true },\n  },\n  // Keep user configuration.\n  \"share\": \"disabled\",\n}\n")
+	if err := os.WriteFile(path, before, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := removeJSONKey(path, []string{"mcp", "cortex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected JSONC uninstall mutation")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(after), `"cortex"`) || !strings.Contains(string(after), `"user"`) || !strings.Contains(string(after), "// Keep user configuration.") {
+		t.Fatalf("JSONC uninstall changed user content:\n%s", after)
+	}
+}
+
+func TestRemoveJSONKey_InvalidJSONReturnsErrorWithoutMutation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "opencode.jsonc")
+	before := []byte(`{"mcp":`)
+	if err := os.WriteFile(path, before, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := removeJSONKey(path, []string{"mcp", "cortex"}); err == nil {
+		t.Fatal("invalid JSONC uninstall unexpectedly succeeded")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("invalid JSONC changed: %s", after)
+	}
+}
+
 func TestDedupeOperations(t *testing.T) {
 	ops := []operation{
 		{typeID: opRemoveFile, path: "/x"},

@@ -46,7 +46,7 @@ The list of artifacts this phase persisted. Each entry records where the artifac
 | Field | Values |
 |-------|--------|
 | `topic_key` | The Cortex topic key (e.g., `sdd/add-auth/spec`) or filesystem path for openspec |
-| `type` | `cortex` (persisted via `mem_save`), `openspec` (written to filesystem), `inline` (returned in message only) |
+| `type` | `cortex` (persisted via `cortex_save`), `openspec` (written to filesystem), `inline` (returned in message only) |
 
 If the phase produced no persistable artifact (e.g., a pure investigation), this array may be empty.
 

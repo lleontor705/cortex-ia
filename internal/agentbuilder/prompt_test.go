@@ -97,7 +97,7 @@ func TestComposePrompt_StandaloneHasNoMailboxOrMessagingToolAdvertisement(t *tes
 	for _, want := range []string{
 		"cortex memory tools",
 		"forgespec",
-		"mem_save",
+		"cortex_save",
 		"sdd_validate",
 		"tb_create_board",
 	} {

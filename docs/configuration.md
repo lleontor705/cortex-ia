@@ -62,14 +62,14 @@ cortex-ia profiles create default:route/v1/implementation
 # Override one phase with a semantic route
 cortex-ia profiles set default:sdd-design:route/v1/architecture
 
-# Resolve configured routes into ~/.config/opencode/opencode.json
+# Resolve configured routes into the effective global OpenCode config
 cortex-ia profiles apply default
 
 cortex-ia profiles list
 cortex-ia profiles delete default
 ```
 
-Profile values are versioned semantic route IDs. `apply` resolves them only from explicit user/provider configuration or fresh qualified discovery evidence, then writes the resulting evidence-backed assignments to direct SDD agent entries in `opencode.json` (`architect`, `decompose`, `implement`, etc.). Unresolved routes fail closed before mutation.
+Profile values are versioned semantic route IDs. `apply` resolves them only from explicit user/provider configuration or fresh qualified discovery evidence, then writes the resulting evidence-backed assignments to direct SDD agent entries (`architect`, `decompose`, `implement`, etc.). If `opencode.jsonc` exists it is patched in place because OpenCode loads it after `opencode.json`; otherwise cortex-ia uses or creates `opencode.json`. Comments and trailing commas in JSONC are preserved, and unresolved routes fail closed before mutation.
 
 ### Agent Builder
 

@@ -29,6 +29,8 @@ func OpenCodeSubAgentDescription(name string) string {
 		return "Verifies correctness"
 	case "finalize":
 		return "Archives and documents"
+	case "debate":
+		return "Tests competing approaches with independent defenders"
 	case "parallel-dispatch":
 		return "Runs independent tasks concurrently"
 	}

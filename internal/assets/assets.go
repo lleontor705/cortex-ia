@@ -25,8 +25,8 @@ var commandAssetSpecs = []ir.AssetSpec{
 	{ID: "command/implement", Class: ir.AssetCommand, SourcePath: "opencode/commands/implement.md", Required: true, MaxTokens: 300},
 	{ID: "command/validate", Class: ir.AssetCommand, SourcePath: "opencode/commands/validate.md", Required: true, MaxTokens: 300},
 	{ID: "command/finalize", Class: ir.AssetCommand, SourcePath: "opencode/commands/finalize.md", Required: true, MaxTokens: 300},
-	{ID: "command/debate", Class: ir.AssetCommand, SourcePath: "opencode/commands/debate.md", Required: false, MaxTokens: 300},
-	{ID: "command/monitor", Class: ir.AssetCommand, SourcePath: "opencode/commands/monitor.md", Required: false, MaxTokens: 300},
+	{ID: "command/debate", Class: ir.AssetCommand, SourcePath: "opencode/commands/debate.md", Required: true, MaxTokens: 300},
+	{ID: "command/monitor", Class: ir.AssetCommand, SourcePath: "opencode/commands/monitor.md", Required: true, MaxTokens: 300},
 }
 
 // CommandAssetSpecs returns the typed AssetSpec entries for every retained

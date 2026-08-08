@@ -9,7 +9,7 @@ import (
 // Contract declares Cortex as the sole external authority for durable memory
 // and evidence. cortex-ia only renders and checks its MCP configuration.
 func Contract() services.ServiceContract {
-	version := ir.MustParseVersion("1.0.0")
+	version := ir.MustParseVersion("2.0.0")
 	return services.ServiceContract{
 		SchemaVersion: version, Owner: services.OwnerCortex, Authority: services.AuthorityExternalService,
 		Versions: ir.VersionRange{Minimum: version, MaximumTested: version}, ExternalDependency: true,
@@ -29,7 +29,8 @@ func Templates() mcpinject.ServerTemplates {
 		SeparateFileJSON: []byte(`{
   "command": "cortex",
   "args": [
-    "mcp"
+    "mcp",
+    "--tools=agent"
   ]
 }
 `),
@@ -40,7 +41,8 @@ func Templates() mcpinject.ServerTemplates {
     "cortex": {
       "command": "cortex",
       "args": [
-        "mcp"
+        "mcp",
+        "--tools=agent"
       ]
     }
   }
@@ -54,7 +56,8 @@ func Templates() mcpinject.ServerTemplates {
       "type": "local",
       "command": [
         "cortex",
-        "mcp"
+        "mcp",
+        "--tools=agent"
       ],
       "enabled": true
     }
@@ -69,7 +72,8 @@ func Templates() mcpinject.ServerTemplates {
       "type": "stdio",
       "command": "cortex",
       "args": [
-        "mcp"
+        "mcp",
+        "--tools=agent"
       ]
     }
   }
@@ -78,6 +82,6 @@ func Templates() mcpinject.ServerTemplates {
 
 		// Codex: TOML format
 		TOMLCommand: "cortex",
-		TOMLArgs:    []string{"mcp"},
+		TOMLArgs:    []string{"mcp", "--tools=agent"},
 	}
 }

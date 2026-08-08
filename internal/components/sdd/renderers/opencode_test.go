@@ -94,7 +94,7 @@ func TestOpenCodeRendererRejectsUnqualifiedNative(t *testing.T) {
 func TestOpenCodeRendererCoreV2RolesLoadMappedSkillsFirst(t *testing.T) {
 	for _, profile := range []string{"portable-flat", "native-advanced"} {
 		t.Run(profile, func(t *testing.T) {
-			resolved := canonicalOpenCodeWorkflow(profile)
+			resolved := canonicalOpenCodeResolvedWorkflow(profile)
 			bundle, err := NewOpenCodeRenderer().Render(context.Background(), resolved)
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
@@ -122,7 +122,7 @@ func TestOpenCodeRendererCoreV2RolesLoadMappedSkillsFirst(t *testing.T) {
 func TestOpenCodeRendererBootstrapQuestionPermissionOnly(t *testing.T) {
 	for _, profile := range []string{"portable-flat", "native-advanced"} {
 		t.Run(profile, func(t *testing.T) {
-			bundle, err := NewOpenCodeRenderer().Render(context.Background(), canonicalOpenCodeWorkflow(profile))
+			bundle, err := NewOpenCodeRenderer().Render(context.Background(), canonicalOpenCodeResolvedWorkflow(profile))
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}
@@ -143,7 +143,7 @@ func TestOpenCodeRendererBootstrapQuestionPermissionOnly(t *testing.T) {
 	}
 }
 
-func canonicalOpenCodeWorkflow(profile string) ResolvedWorkflow {
+func canonicalOpenCodeResolvedWorkflow(profile string) ResolvedWorkflow {
 	roles := make([]ir.Role, 0, len(canonicalOpenCodeSkills))
 	bindings := make([]SkillBinding, 0, len(canonicalOpenCodeSkills))
 	for role, skill := range canonicalOpenCodeSkills {

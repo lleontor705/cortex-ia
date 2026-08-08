@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/canonical"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/quality"
 )
@@ -43,7 +44,7 @@ func testCatalog() ir.AssetCatalog {
 
 func validCompositionInput() CompositionInput {
 	return CompositionInput{
-		Workflow: ir.WorkflowIR{SchemaVersion: ir.WorkflowSchema.Current, ID: "workflow/sdd"},
+		Workflow: canonical.Workflow(),
 		Catalog:  testCatalog(),
 		Adapter:  validAdapterContract(),
 		Profile:  quality.ProfilePlan{ProfileID: "profile/portable-sequential"},
@@ -58,13 +59,13 @@ func validCompositionInput() CompositionInput {
 	}
 }
 
-func TestComposeProducesSkillBindingsForAllNineRoles(t *testing.T) {
+func TestComposeProducesSkillBindingsForAllTwelveRoles(t *testing.T) {
 	result, err := Compose(validCompositionInput())
 	if err != nil {
 		t.Fatalf("Compose error = %v", err)
 	}
-	if len(result.SkillBindings) != 9 {
-		t.Fatalf("Compose produced %d skill bindings, want 9", len(result.SkillBindings))
+	if len(result.SkillBindings) != 12 {
+		t.Fatalf("Compose produced %d skill bindings, want 12", len(result.SkillBindings))
 	}
 	for _, binding := range result.SkillBindings {
 		if err := binding.Validate(); err != nil {
@@ -82,12 +83,9 @@ func TestComposeProducesExactlyOneBindingPerRole(t *testing.T) {
 	for _, b := range result.SkillBindings {
 		seen[b.Role]++
 	}
-	for _, role := range []ir.SemanticID{
-		"role/bootstrap", "role/explore", "role/proposal", "role/spec",
-		"role/design", "role/tasks", "role/apply", "role/verify", "role/archive",
-	} {
-		if seen[role] != 1 {
-			t.Fatalf("role %q has %d bindings, want 1", role, seen[role])
+	for _, role := range canonical.Workflow().Roles {
+		if seen[role.ID] != 1 {
+			t.Fatalf("role %q has %d bindings, want 1", role.ID, seen[role.ID])
 		}
 	}
 }

@@ -68,7 +68,8 @@ The Go interfaces and types that define module boundaries in cortex-ia. This pag
 | `mcpinject.PlanRetirement(...)` | `internal/components/mcpinject` | Plan exact retired historical Mailbox registration removal | workflow composer |
 | `forgespeccomp.Inject(homeDir, adapter)` | `internal/components/forgespec` | Inject ForgeSpec MCP config | `pipeline.buildInjectors` |
 | `context7.Inject(homeDir, adapter)` | `internal/components/context7` | Inject Context7 MCP config | `pipeline.buildInjectors` |
-| `sdd.Inject(homeDir, adapter, assignments, strictTDD)` | `internal/components/sdd` | Inject orchestrator prompt + skills + commands + sub-agents | `pipeline.buildInjectors` |
+| `sdd.CompileInjectionBundle(ctx, input)` | `internal/components/sdd` | Compile typed SDD bundle from normalized workflow | `pipeline.PrepareWorkflow` |
+| `sdd.FilesToBackup(homeDir, adapter)` | `internal/components/sdd` | Enumerate SDD-managed paths for backup snapshots | `pipeline.collectBackupPaths` |
 | `skillscomp.Inject(homeDir, adapter, communitySkills)` | `internal/components/skills` | Inject non-SDD utility skills | `pipeline.buildInjectors` |
 | `conventions.Inject(homeDir, adapter)` | `internal/components/conventions` | Inject cortex convention + protocol | `pipeline.buildInjectors` |
 | `persona.Inject(homeDir, adapter, personaID)` | `internal/components/persona` | Inject communication-style persona | `pipeline.Install` (separate from component chain) |
@@ -87,6 +88,7 @@ Each injector returns a `{ Files []string; Changed bool; ... }`-shaped result. `
 | Function | Package | Purpose | Consumers |
 |----------|---------|---------|-----------|
 | `filemerge.WriteFileAtomic(path, data, mode)` | `internal/components/filemerge` | Temp-write + rename (atomic) | All injectors |
+| `filemerge.MutateJSONFile(path, mutation)` | `internal/components/filemerge` | Validated atomic JSON/JSONC overlay and path removal with trivia preservation | OpenCode config writers and uninstall |
 | `filemerge.InjectSection(...)` | `internal/components/filemerge` | Marker-based markdown section injection | `sdd`, `conventions` |
 | JSON deep-merge | `internal/components/filemerge` | `json_merge.go` with comment stripping | MCP components |
 | TOML block upsert | `internal/components/filemerge` | `toml.go` | Codex MCP injection |

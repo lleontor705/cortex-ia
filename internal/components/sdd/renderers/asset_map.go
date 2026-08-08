@@ -16,6 +16,7 @@ type AdapterAssetMap struct {
 	WorkflowRoot       string
 	SkillsRoot         string
 	AgentsRoot         string
+	RoleRoot           string
 	CommandsRoot       string
 	OverlayRoot        string
 	QualityRoot        string
@@ -60,7 +61,8 @@ func (m AdapterAssetMap) Map(id ir.SemanticID, class ir.AssetClass, relative str
 	// Common materialization may already carry the adapter root. Strip it once
 	// so a second lowering cannot produce a double-root destination.
 	clean = strings.TrimPrefix(clean, strings.TrimSuffix(root, "/")+"/")
-	for _, prefix := range []string{"skills/", "agents/", "commands/", "overlays/", "quality/", "manifests/", "steering/"} {
+	clean = strings.TrimPrefix(clean, strings.TrimSuffix(m.WorkflowRoot, "/")+"/")
+	for _, prefix := range []string{"skills/", "agents/", "roles/", "commands/", "overlays/", "quality/", "manifests/", "steering/"} {
 		if strings.HasPrefix(clean, prefix) {
 			clean = strings.TrimPrefix(clean, prefix)
 			break
@@ -96,7 +98,7 @@ func (m AdapterAssetMap) rootFor(class ir.AssetClass) string {
 		}
 		return m.WorkflowRoot
 	case ir.AssetRoleStub:
-		return m.AgentsRoot
+		return m.RoleRoot
 	case ir.AssetProfileOverlay:
 		return m.OverlayRoot
 	case ir.AssetQualityTemplate:
@@ -109,10 +111,10 @@ func (m AdapterAssetMap) rootFor(class ir.AssetClass) string {
 }
 
 var adapterAssetMaps = map[TargetID]AdapterAssetMap{
-	"claude":   {Target: "claude", WorkflowRoot: ".claude", SkillsRoot: ".claude/skills", AgentsRoot: ".claude/agents", OverlayRoot: ".claude/overlays", QualityRoot: ".claude/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
-	"opencode": {Target: "opencode", WorkflowRoot: ".config/opencode", SkillsRoot: ".config/opencode/skills", AgentsRoot: ".config/opencode/agents", CommandsRoot: ".config/opencode/commands", OverlayRoot: ".config/opencode/overlays", QualityRoot: ".config/opencode/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", SlashCommands: true, NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
-	"vscode":   {Target: "vscode", WorkflowRoot: ".copilot", SkillsRoot: ".copilot/skills", AgentsRoot: ".copilot/agents", OverlayRoot: ".copilot/overlays", QualityRoot: ".copilot/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
-	"codex":    {Target: "codex", WorkflowRoot: ".codex", SkillsRoot: ".codex/skills", AgentsRoot: ".codex/agents", OverlayRoot: ".codex/overlays", QualityRoot: ".codex/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
+	"claude":   {Target: "claude", WorkflowRoot: ".claude", SkillsRoot: ".claude/skills", AgentsRoot: ".claude/agents", RoleRoot: ".claude/.cortex-ia/roles", OverlayRoot: ".claude/overlays", QualityRoot: ".claude/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
+	"opencode": {Target: "opencode", WorkflowRoot: ".config/opencode", SkillsRoot: ".config/opencode/skills", AgentsRoot: ".config/opencode/agents", RoleRoot: ".config/opencode/.cortex-ia/roles", CommandsRoot: ".config/opencode/commands", OverlayRoot: ".config/opencode/overlays", QualityRoot: ".config/opencode/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", SlashCommands: true, NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
+	"vscode":   {Target: "vscode", WorkflowRoot: ".copilot", SkillsRoot: ".copilot/skills", AgentsRoot: ".copilot/agents", RoleRoot: ".copilot/.cortex-ia/roles", OverlayRoot: ".copilot/overlays", QualityRoot: ".copilot/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
+	"codex":    {Target: "codex", WorkflowRoot: ".codex", SkillsRoot: ".codex/skills", AgentsRoot: ".codex/agents", RoleRoot: ".codex/.cortex-ia/roles", OverlayRoot: ".codex/overlays", QualityRoot: ".codex/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
 }
 
 func AdapterAssetMapFor(target TargetID) (AdapterAssetMap, error) {

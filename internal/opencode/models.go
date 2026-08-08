@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	agentopencode "github.com/lleontor705/cortex-ia/internal/agents/opencode"
+	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
@@ -230,18 +231,44 @@ type ConfigReceipt struct {
 	BeforeDigest   string `json:"before_digest"`
 	AfterDigest    string `json:"after_digest"`
 	EvidenceDigest string `json:"evidence_digest"`
+	Created        bool   `json:"created"`
 	Before         []byte `json:"-"`
 }
 
-func (r ConfigReceipt) Rollback() error {
-	if len(r.Before) == 0 {
-		return os.Remove(r.ConfigPath)
-	}
-	return os.WriteFile(r.ConfigPath, r.Before, 0o644)
+// GlobalConfigPath returns the effective mutable OpenCode global config.
+func GlobalConfigPath(homeDir string) string {
+	return agentopencode.GlobalConfigPath(homeDir)
 }
 
-// ApplyToOpenCodeConfig reads opencode.json, sets "model" field on each agent, and writes back.
-func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssignments) error {
+func (r ConfigReceipt) Rollback() error {
+	current, err := os.ReadFile(r.ConfigPath)
+	if err != nil {
+		if !r.Created || !os.IsNotExist(err) {
+			return err
+		}
+		current = nil
+	}
+	if digestBytes(current) != r.AfterDigest {
+		return fmt.Errorf("OpenCode config changed after apply; refusing rollback")
+	}
+	if r.Created {
+		err = os.Remove(r.ConfigPath)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	mode := os.FileMode(0o644)
+	if info, statErr := os.Stat(r.ConfigPath); statErr == nil {
+		mode = info.Mode().Perm()
+	}
+	_, err = filemerge.WriteFileAtomic(r.ConfigPath, r.Before, mode)
+	return err
+}
+
+// ApplyToOpenCodeConfig patches model fields in the effective global config
+// and returns a receipt that can restore the exact pre-mutation bytes.
+func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssignments) (ConfigReceipt, error) {
 	now := time.Now().UTC()
 	resolved := make(map[string]ResolvedAssignment, len(assignments))
 	for name, assignment := range assignments {
@@ -250,32 +277,12 @@ func ApplyToOpenCodeConfig(homeDir string, assignments model.OpenCodeModelAssign
 			Evidence:   DiscoveryEvidence{Source: SourceConfig, ObservedAt: now, FreshUntil: now.Add(discoveryFreshness), Qualified: true},
 		}
 	}
-	_, err := ApplyToOpenCodeConfigResolved(homeDir, resolved)
-	return err
+	return ApplyToOpenCodeConfigResolved(homeDir, resolved)
 }
 
 // ApplyToOpenCodeConfigResolved writes only explicitly resolved assignments.
 // It returns a receipt that can restore the exact pre-mutation bytes.
 func ApplyToOpenCodeConfigResolved(homeDir string, assignments map[string]ResolvedAssignment) (receipt ConfigReceipt, err error) {
-	configPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
-
-	// Read existing config
-	var config map[string]interface{}
-	var before []byte
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			config = make(map[string]interface{})
-		} else {
-			return ConfigReceipt{}, fmt.Errorf("read opencode.json: %w", err)
-		}
-	} else {
-		before = append([]byte(nil), data...)
-		if err := json.Unmarshal(data, &config); err != nil {
-			return ConfigReceipt{}, fmt.Errorf("parse opencode.json: %w", err)
-		}
-	}
-
 	for agentName, resolved := range assignments {
 		if resolved.Assignment.Provider == "" || resolved.Assignment.Model == "" {
 			return ConfigReceipt{}, fmt.Errorf("%s: %s", ReasonAssignmentUnresolved, agentName)
@@ -283,6 +290,15 @@ func ApplyToOpenCodeConfigResolved(homeDir string, assignments map[string]Resolv
 		if !resolved.Evidence.Qualified || resolved.Evidence.FreshUntil.IsZero() || !resolved.Evidence.FreshUntil.After(time.Now().UTC()) {
 			return ConfigReceipt{}, fmt.Errorf("%s: %s", ReasonAssignmentStale, agentName)
 		}
+	}
+	configPath := GlobalConfigPath(homeDir)
+	data, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return ConfigReceipt{}, fmt.Errorf("read OpenCode config: %w", err)
+	}
+	config, err := filemerge.DecodeJSONObject(data)
+	if err != nil {
+		return ConfigReceipt{}, fmt.Errorf("parse OpenCode config: %w", err)
 	}
 
 	// Get or create agent section
@@ -292,6 +308,7 @@ func ApplyToOpenCodeConfigResolved(homeDir string, assignments map[string]Resolv
 	}
 	delete(agentSection, "team-lead")
 	delete(agentSection, "sdd-team-lead")
+	agentOverlay := make(map[string]any, len(assignments))
 
 	// Apply model assignments to each agent
 	var evidenceDigest string
@@ -309,55 +326,27 @@ func ApplyToOpenCodeConfigResolved(homeDir string, assignments map[string]Resolv
 
 		configName := resolveOpenCodeAgentConfigName(agentSection, agentName)
 
-		agentConf, ok := agentSection[configName].(map[string]interface{})
-		if !ok {
-			agentConf = make(map[string]interface{})
-		}
-		agentConf["model"] = modelStr
-		agentSection[configName] = agentConf
+		agentOverlay[configName] = map[string]any{"model": modelStr}
 	}
 
-	config["agent"] = agentSection
-
-	// Write back
-	out, err := json.MarshalIndent(config, "", "  ")
+	overlay, err := json.Marshal(map[string]any{"agent": agentOverlay})
 	if err != nil {
-		return ConfigReceipt{}, fmt.Errorf("marshal opencode.json: %w", err)
+		return ConfigReceipt{}, fmt.Errorf("marshal OpenCode model overlay: %w", err)
 	}
-
-	dir := filepath.Dir(configPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return ConfigReceipt{}, fmt.Errorf("create config dir: %w", err)
-	}
-	tmp, err := os.CreateTemp(dir, ".opencode.json.*.tmp")
+	result, err := filemerge.MutateJSONFile(configPath, filemerge.JSONMutation{
+		Overlay: overlay,
+		RemovePaths: [][]string{
+			{"agent", "team-lead"},
+			{"agent", "sdd-team-lead"},
+		},
+	})
 	if err != nil {
-		return ConfigReceipt{}, fmt.Errorf("create config temp: %w", err)
+		return ConfigReceipt{}, err
 	}
-	tmpName := tmp.Name()
-	removeTemp := true
-	defer func() {
-		if !removeTemp {
-			return
-		}
-		if removeErr := os.Remove(tmpName); removeErr != nil && !os.IsNotExist(removeErr) {
-			err = errors.Join(err, fmt.Errorf("remove config temp: %w", removeErr))
-			receipt = ConfigReceipt{}
-		}
-	}()
-	if err := tmp.Chmod(0o644); err != nil {
-		return ConfigReceipt{}, errors.Join(fmt.Errorf("chmod config temp: %w", err), tmp.Close())
-	}
-	if _, err := tmp.Write(out); err != nil {
-		return ConfigReceipt{}, errors.Join(fmt.Errorf("write config temp: %w", err), tmp.Close())
-	}
-	if err := tmp.Close(); err != nil {
-		return ConfigReceipt{}, fmt.Errorf("close config temp: %w", err)
-	}
-	if err := os.Rename(tmpName, configPath); err != nil {
-		return ConfigReceipt{}, fmt.Errorf("replace opencode.json: %w", err)
-	}
-	removeTemp = false
-	return ConfigReceipt{ConfigPath: configPath, BeforeDigest: digestBytes(before), AfterDigest: digestBytes(out), EvidenceDigest: evidenceDigest, Before: before}, nil
+	return ConfigReceipt{
+		ConfigPath: configPath, BeforeDigest: digestBytes(result.Before), AfterDigest: digestBytes(result.After),
+		EvidenceDigest: evidenceDigest, Created: result.Created, Before: result.Before,
+	}, nil
 }
 
 func digestBytes(data []byte) string {
