@@ -12,7 +12,7 @@ import (
 // semantics only; provider/model resolution remains an explicit configuration
 // concern.
 func RoutesForPreset(preset ModelPreset) RouteAssignments {
-	if preset != ModelPresetBalanced && preset != ModelPresetPerformance && preset != ModelPresetEconomy {
+	if preset != ModelPresetBalanced && preset != ModelPresetPerformance && preset != ModelPresetEconomy && preset != ModelPresetFast && preset != ModelPresetCodex {
 		return nil
 	}
 	name := "workflow"
@@ -21,6 +21,10 @@ func RoutesForPreset(preset ModelPreset) RouteAssignments {
 		name = "performance"
 	case ModelPresetEconomy:
 		name = "economy"
+	case ModelPresetFast:
+		name = "fast"
+	case ModelPresetCodex:
+		name = "codex"
 	}
 	route, err := modelroute.NewRouteID("route/v1/" + name)
 	if err != nil {

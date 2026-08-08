@@ -571,7 +571,7 @@ func collectBackupPaths(homeDir string, registry *agents.Registry, agentIDs []mo
 			paths = append(paths, f)
 		}
 		// MCP config files.
-		for _, name := range []string{"cortex", "agent-mailbox", "forgespec", "context7"} {
+		for _, name := range []string{"cortex", "forgespec", "context7"} {
 			if f := adapter.MCPConfigPath(homeDir, name); f != "" {
 				if _, err := os.Stat(f); err == nil {
 					paths = append(paths, f)

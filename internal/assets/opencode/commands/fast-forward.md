@@ -4,8 +4,19 @@ agent: orchestrator
 subtask: false
 ---
 
-Activate planning dispatch for the named change. Capture the working directory, project, change name, artifact store, and user context.
-
-Reference the executable planning-dispatch handler. It reads authoritative change state, selects eligible planning work, and returns canonical dispatch instructions, evidence, and recommendations. This command does not copy complexity thresholds, dependency rules, parallelism policy, or task-board procedures.
-
-If a human gate is requested, present the handler's evidence-backed question and wait for explicit approval. Dispatch only after approval, then return the canonical status and references unchanged.
+<command_dispatch>
+  <instruction>
+    Activate planning dispatch. Capture working directory, project, change, and context.
+    Target Arguments: "$ARGUMENTS"
+  </instruction>
+  <execution_flow>
+    1. Read authoritative change state from ForgeSpec and Cortex memory.
+    2. Select eligible planning work across spec and design phases.
+    3. Dispatch ready planning artifacts in dependency order.
+    4. Emit canonical dispatch instructions and evidence references.
+  </execution_flow>
+  <error_handling>
+    - If predecessor phase incomplete: block downstream planning work.
+    - If human gate requested: present decision and wait for approval.
+  </error_handling>
+</command_dispatch>

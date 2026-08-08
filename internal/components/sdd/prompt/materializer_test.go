@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,6 +63,95 @@ func TestMaterializeResolvesTypedTemplateContext(t *testing.T) {
 	if got := string(assets[0].Content); got != "Skills root: internal/assets/skills\nHome: .claude" {
 		t.Fatalf("typed template materialization = %q", got)
 	}
+}
+
+func TestMaterializeMakesMappedSkillTheFirstPhaseAction(t *testing.T) {
+	catalog := ir.AssetCatalog{SchemaVersion: ir.AssetCatalogSchema.Current, Assets: []ir.AssetSpec{{ID: "asset/root", Class: ir.AssetRootIndex, SourcePath: "root.md", Required: true, SHA256: "hash"}}}
+	workflow := ir.WorkflowIR{Roles: make([]ir.Role, 0, len(canonicalRoles))}
+	for _, role := range canonicalRoles {
+		workflow.Roles = append(workflow.Roles, ir.Role{ID: role, Objective: string(role)})
+	}
+
+	for _, tt := range []struct {
+		name     string
+		native   bool
+		expected string
+	}{
+		{name: "native preload", native: true, expected: "First phase action: load native skill preload"},
+		{name: "mandatory fallback read", expected: "First phase action: read the required fallback skill"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			adapter := validAdapterContract()
+			adapter.NativeSkillPreload = tt.native
+			assets, _, err := Materialize(MaterializerInput{Catalog: catalog, Contents: map[ir.SemanticID][]byte{"asset/root": []byte("root")}, Workflow: workflow, Adapter: adapter, AllowedPermissions: []string{"filesystem/read"}, Models: ModelTable{Routes: allModelRoutes()}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, role := range canonicalRoles {
+				assetID := ir.SemanticID("asset/role/" + strings.TrimPrefix(string(role), "role/") + "/binding")
+				asset, ok := materializedAssetByID(assets, assetID)
+				if !ok {
+					t.Fatalf("missing materialized asset %q", assetID)
+				}
+				if asset.Route.Role != role {
+					t.Fatalf("%q route role = %q, want preserved role identity", role, asset.Route.Role)
+				}
+				skill, err := CanonicalSkillForRole(role)
+				if err != nil {
+					t.Fatal(err)
+				}
+				expectedPath := "internal/assets/skills/" + string(skill) + "/SKILL.md"
+				content := string(asset.Content)
+				firstAction := strings.Index(content, "First phase action:")
+				if firstAction < 0 || !strings.HasPrefix(content[firstAction:], tt.expected) {
+					t.Fatalf("%q first action = %q, want prefix %q", role, content, tt.expected)
+				}
+				if !strings.Contains(content[firstAction:], "`"+expectedPath+"`") {
+					t.Fatalf("%q first action does not load mapped skill %q: %s", role, expectedPath, content)
+				}
+				for _, otherRole := range canonicalRoles {
+					otherSkill, err := CanonicalSkillForRole(otherRole)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if otherSkill != skill && strings.Contains(content, "/"+string(otherSkill)+"/SKILL.md") {
+						t.Fatalf("%q loads another phase skill %q: %s", role, otherSkill, content)
+					}
+				}
+				if strings.Contains(content[firstAction:], "Continue phase work") && strings.Index(content[firstAction:], "Continue phase work") < strings.Index(content[firstAction:], "`"+expectedPath+"`") {
+					t.Fatalf("%q permits phase work before its mapped skill: %s", role, content)
+				}
+			}
+		})
+	}
+}
+
+func TestMaterializeRejectsMalformedCanonicalBindingsBeforeOutput(t *testing.T) {
+	original := canonicalPhaseRoleBindings
+	t.Cleanup(func() { canonicalPhaseRoleBindings = original })
+	canonicalPhaseRoleBindings = append([]PhaseRoleBinding(nil), original...)
+	canonicalPhaseRoleBindings[0].Skill = "skill/implement"
+
+	catalog := ir.AssetCatalog{SchemaVersion: ir.AssetCatalogSchema.Current, Assets: []ir.AssetSpec{{ID: "asset/root", Class: ir.AssetRootIndex, SourcePath: "root.md", Required: true, SHA256: "hash"}}}
+	assets, degradations, err := Materialize(MaterializerInput{Catalog: catalog, Contents: map[ir.SemanticID][]byte{"asset/root": []byte("root")}, Adapter: validAdapterContract(), AllowedPermissions: []string{"filesystem/read"}, Models: ModelTable{Routes: allModelRoutes()}})
+	if err == nil {
+		t.Fatal("Materialize accepted crossed canonical bindings")
+	}
+	if len(assets) != 0 || len(degradations) != 0 {
+		t.Fatalf("Materialize emitted output for malformed bindings: assets=%v degradations=%v", assets, degradations)
+	}
+	if !strings.Contains(err.Error(), "canonical phase-role binding") {
+		t.Fatalf("Materialize error = %v, want canonical binding failure", err)
+	}
+}
+
+func materializedAssetByID(assets []MaterializedAsset, id ir.SemanticID) (MaterializedAsset, bool) {
+	for _, asset := range assets {
+		if asset.ID == id {
+			return asset, true
+		}
+	}
+	return MaterializedAsset{}, false
 }
 
 func allModelRoutes() []ModelRoute {

@@ -80,30 +80,93 @@ func (c AdapterPromptContract) SkillLoadMode() SkillLoadMode {
 	return SkillModeFallbackRead
 }
 
-// canonicalSkillForRole is the deterministic one-to-one mapping from each of the
-// nine phase roles to its single canonical skill. Exactly one skill per role is
-// required by REQ-INST-003; ambiguity or absence blocks before phase effects.
-var canonicalSkillForRole = map[ir.SemanticID]ir.SemanticID{
-	"role/bootstrap": "skill/bootstrap",
-	"role/explore":   "skill/investigate",
-	"role/proposal":  "skill/draft-proposal",
-	"role/spec":      "skill/write-specs",
-	"role/design":    "skill/architect",
-	"role/tasks":     "skill/decompose",
-	"role/apply":     "skill/implement",
-	"role/verify":    "skill/validate",
-	"role/archive":   "skill/finalize",
-	// The canonical IR retained these adapter-facing names; they are aliases
-	// for the nine phase roles and must resolve to the same skill exactly once.
-	"role/investigate":    "skill/investigate",
-	"role/draft-proposal": "skill/draft-proposal",
-	"role/write-specs":    "skill/write-specs",
-	"role/architect":      "skill/architect",
-	"role/decompose":      "skill/decompose",
-	"role/implement":      "skill/implement",
-	"role/validate":       "skill/validate",
-	"role/finalize":       "skill/finalize",
+// PhaseRoleBinding is one canonical SDD phase's role, installed agent, and
+// required skill. The canonical inventory deliberately excludes utility and
+// coordinator agents because they do not own an SDD phase.
+type PhaseRoleBinding struct {
+	Phase ir.SemanticID
+	Role  ir.SemanticID
+	Agent ir.SemanticID
+	Skill ir.SemanticID
 }
+
+var canonicalPhaseRoleBindings = []PhaseRoleBinding{
+	{Phase: "phase/init", Role: "role/bootstrap", Agent: "agent/bootstrap", Skill: "skill/bootstrap"},
+	{Phase: "phase/explore", Role: "role/investigate", Agent: "agent/investigate", Skill: "skill/investigate"},
+	{Phase: "phase/propose", Role: "role/draft-proposal", Agent: "agent/draft-proposal", Skill: "skill/draft-proposal"},
+	{Phase: "phase/spec", Role: "role/write-specs", Agent: "agent/write-specs", Skill: "skill/write-specs"},
+	{Phase: "phase/design", Role: "role/architect", Agent: "agent/architect", Skill: "skill/architect"},
+	{Phase: "phase/tasks", Role: "role/decompose", Agent: "agent/decompose", Skill: "skill/decompose"},
+	{Phase: "phase/apply", Role: "role/implement", Agent: "agent/implement", Skill: "skill/implement"},
+	{Phase: "phase/verify", Role: "role/validate", Agent: "agent/validate", Skill: "skill/validate"},
+	{Phase: "phase/archive", Role: "role/finalize", Agent: "agent/finalize", Skill: "skill/finalize"},
+}
+
+// CanonicalPhaseRoleBindings returns a clone so callers cannot change the
+// authority inventory used to validate rendering and installation.
+func CanonicalPhaseRoleBindings() []PhaseRoleBinding {
+	return append([]PhaseRoleBinding(nil), canonicalPhaseRoleBindings...)
+}
+
+// ValidatePhaseRoleBindings rejects an incomplete, duplicate, or cross-phase
+// inventory before a renderer can emit any phase-agent definition.
+func ValidatePhaseRoleBindings(bindings []PhaseRoleBinding) error {
+	if len(bindings) != len(canonicalPhaseRoleBindings) {
+		return fmt.Errorf("canonical phase-role bindings = %d, want %d", len(bindings), len(canonicalPhaseRoleBindings))
+	}
+	byPhase := make(map[ir.SemanticID]PhaseRoleBinding, len(bindings))
+	seenRoles := make(map[ir.SemanticID]struct{}, len(bindings))
+	seenAgents := make(map[ir.SemanticID]struct{}, len(bindings))
+	seenSkills := make(map[ir.SemanticID]struct{}, len(bindings))
+	for _, binding := range bindings {
+		if binding.Phase == "" || binding.Role == "" || binding.Agent == "" || binding.Skill == "" {
+			return fmt.Errorf("canonical phase-role binding contains an empty field")
+		}
+		if _, exists := byPhase[binding.Phase]; exists {
+			return fmt.Errorf("canonical phase-role bindings duplicate phase %q", binding.Phase)
+		}
+		if _, exists := seenRoles[binding.Role]; exists {
+			return fmt.Errorf("canonical phase-role bindings duplicate role %q", binding.Role)
+		}
+		if _, exists := seenAgents[binding.Agent]; exists {
+			return fmt.Errorf("canonical phase-role bindings duplicate agent %q", binding.Agent)
+		}
+		if _, exists := seenSkills[binding.Skill]; exists {
+			return fmt.Errorf("canonical phase-role bindings duplicate skill %q", binding.Skill)
+		}
+		byPhase[binding.Phase] = binding
+		seenRoles[binding.Role] = struct{}{}
+		seenAgents[binding.Agent] = struct{}{}
+		seenSkills[binding.Skill] = struct{}{}
+	}
+	for _, want := range canonicalPhaseRoleBindings {
+		if got, ok := byPhase[want.Phase]; !ok || got != want {
+			return fmt.Errorf("canonical phase-role binding for %q is missing or crossed", want.Phase)
+		}
+	}
+	return nil
+}
+
+// canonicalSkillForRole retains compatibility aliases while deriving canonical
+// phase-role skills exclusively from the validated nine-binding inventory.
+var canonicalSkillForRole = func() map[ir.SemanticID]ir.SemanticID {
+	bindings := CanonicalPhaseRoleBindings()
+	if err := ValidatePhaseRoleBindings(bindings); err != nil {
+		panic(err)
+	}
+	result := make(map[ir.SemanticID]ir.SemanticID, len(bindings)+8)
+	for _, binding := range bindings {
+		result[binding.Role] = binding.Skill
+	}
+	for alias, role := range map[ir.SemanticID]ir.SemanticID{
+		"role/explore": "role/investigate", "role/proposal": "role/draft-proposal", "role/spec": "role/write-specs",
+		"role/design": "role/architect", "role/tasks": "role/decompose", "role/apply": "role/implement",
+		"role/verify": "role/validate", "role/archive": "role/finalize",
+	} {
+		result[alias] = result[role]
+	}
+	return result
+}()
 
 // CanonicalSkillForRole resolves a phase role to its single canonical skill
 // deterministically. An unknown or ambiguous role returns an error so that no

@@ -4,8 +4,19 @@ agent: orchestrator
 subtask: true
 ---
 
-Activate validation for the named change. Capture the working directory, project, artifact store, and user context.
-
-Read the canonical validation skill before dispatch. Reference the executable verification handler, which evaluates specifications, design, tasks, tests, quality evidence, and typed verdicts. This command only activates and contextualizes; it does not inspect artifacts, run checks, or convert verification verdict into phase status.
-
-If a human gate is requested, present the evidence-backed question and wait for explicit approval. Return the handler's canonical status, verdict, findings, and references unchanged.
+<command_dispatch>
+  <instruction>
+    Activate SDD validation. Capture working directory, project, change, and context.
+    Target Arguments: "$ARGUMENTS"
+  </instruction>
+  <execution_flow>
+    1. Read canonical validation skill before running tests.
+    2. Execute independent test commands (`FAIL_TO_PASS` and `PASS_TO_PASS`).
+    3. Construct compliance matrix mapping requirements to proof.
+    4. Emit typed verification verdict and quality findings.
+  </execution_flow>
+  <error_handling>
+    - If regression or critical defect occurs: verdict is fail.
+    - If human gate requested: present findings and wait for decision.
+  </error_handling>
+</command_dispatch>

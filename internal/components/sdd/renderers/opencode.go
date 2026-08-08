@@ -68,6 +68,14 @@ func (OpenCodeRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bu
 		},
 	}
 
+	if resolved.Profile != "portable-sequential" && hasCanonicalOpenCodeCoreV2Composition(resolved) {
+		agents, agentErr := renderOpenCodeCoreV2Agents(resolved)
+		if agentErr != nil {
+			return Bundle{}, agentErr
+		}
+		assets = append(assets, agents...)
+		return Bundle{Assets: assets}, nil
+	}
 	if resolved.Profile != "portable-sequential" {
 		roles := slices.Clone(resolved.Workflow.Roles)
 		slices.SortFunc(roles, func(left, right ir.Role) int {
@@ -80,12 +88,8 @@ func (OpenCodeRenderer) Render(_ context.Context, resolved ResolvedWorkflow) (Bu
 				permissions = append(permissions, string(effect))
 			}
 			assets = append(assets, Asset{
-				Path:        "agents/" + name + ".md",
-				SemanticID:  ir.SemanticID("asset/opencode/agent/" + name),
-				Kind:        AssetAgent,
-				Content:     renderOpenCodeAgent(role),
-				Mode:        0o644,
-				Permissions: permissions,
+				Path: "agents/" + name + ".md", SemanticID: ir.SemanticID("asset/opencode/agent/" + name), Kind: AssetAgent,
+				Content: renderOpenCodeCompatibilityAgent(role), Mode: 0o644, Permissions: permissions,
 			})
 		}
 	}
@@ -235,14 +239,97 @@ func renderOpenCodeCommand(resolved ResolvedWorkflow) []byte {
 	return []byte(output.String())
 }
 
-func renderOpenCodeAgent(role ir.Role) []byte {
+var canonicalOpenCodeSkills = map[ir.SemanticID]ir.SemanticID{
+	"role/bootstrap": "skill/bootstrap", "role/investigate": "skill/investigate", "role/draft-proposal": "skill/draft-proposal",
+	"role/write-specs": "skill/write-specs", "role/architect": "skill/architect", "role/decompose": "skill/decompose",
+	"role/implement": "skill/implement", "role/validate": "skill/validate", "role/finalize": "skill/finalize",
+}
+
+// renderOpenCodeCoreV2Agents is the sole Core V2 role producer. It lowers the
+// nine composition bindings directly, rather than emitting objective-only role
+// files alongside the composition stubs.
+func renderOpenCodeCoreV2Agents(resolved ResolvedWorkflow) ([]Asset, error) {
+	if len(resolved.Workflow.Roles) != len(canonicalOpenCodeSkills) || len(resolved.Composition.SkillBindings) != len(canonicalOpenCodeSkills) {
+		return nil, fmt.Errorf("OpenCode Core V2 requires exactly %d canonical role bindings", len(canonicalOpenCodeSkills))
+	}
+	roles := make(map[ir.SemanticID]ir.Role, len(resolved.Workflow.Roles))
+	for _, role := range resolved.Workflow.Roles {
+		if _, exists := canonicalOpenCodeSkills[role.ID]; !exists {
+			return nil, fmt.Errorf("OpenCode Core V2 role %q is not canonical", role.ID)
+		}
+		roles[role.ID] = role
+	}
+	bindings := make(map[ir.SemanticID]SkillBinding, len(resolved.Composition.SkillBindings))
+	for _, binding := range resolved.Composition.SkillBindings {
+		if want, ok := canonicalOpenCodeSkills[binding.Role]; !ok || binding.Skill != want || binding.Path == "" {
+			return nil, fmt.Errorf("OpenCode Core V2 role %q has an invalid canonical skill binding", binding.Role)
+		}
+		if _, exists := bindings[binding.Role]; exists {
+			return nil, fmt.Errorf("OpenCode Core V2 role %q has duplicate skill bindings", binding.Role)
+		}
+		bindings[binding.Role] = binding
+	}
+
+	roleIDs := make([]ir.SemanticID, 0, len(canonicalOpenCodeSkills))
+	for roleID := range canonicalOpenCodeSkills {
+		if _, ok := roles[roleID]; !ok {
+			return nil, fmt.Errorf("OpenCode Core V2 is missing canonical role %q", roleID)
+		}
+		if _, ok := bindings[roleID]; !ok {
+			return nil, fmt.Errorf("OpenCode Core V2 is missing canonical skill binding for %q", roleID)
+		}
+		roleIDs = append(roleIDs, roleID)
+	}
+	slices.Sort(roleIDs)
+	agents := make([]Asset, 0, len(roleIDs))
+	for _, roleID := range roleIDs {
+		role := roles[roleID]
+		name := openCodeSemanticName(roleID)
+		permissions := make([]string, 0, len(role.AllowedEffects))
+		for _, effect := range role.AllowedEffects {
+			permissions = append(permissions, string(effect))
+		}
+		agents = append(agents, Asset{
+			Path: "agents/" + name + ".md", SemanticID: ir.SemanticID("asset/opencode/agent/" + name), Kind: AssetAgent,
+			Content: renderOpenCodeCoreV2Agent(role, bindings[roleID]), Mode: 0o644, Permissions: permissions,
+		})
+	}
+	return agents, nil
+}
+
+func hasCanonicalOpenCodeCoreV2Composition(resolved ResolvedWorkflow) bool {
+	return len(resolved.Workflow.Roles) == len(canonicalOpenCodeSkills) && len(resolved.Composition.SkillBindings) == len(canonicalOpenCodeSkills)
+}
+
+func renderOpenCodeCoreV2Agent(role ir.Role, binding SkillBinding) []byte {
+	var output strings.Builder
+	fmt.Fprintln(&output, "---")
+	fmt.Fprintf(&output, "description: %s\n", strconv.Quote(role.Objective))
+	fmt.Fprintln(&output, "mode: subagent")
+	if role.ID == "role/bootstrap" {
+		fmt.Fprintln(&output, "tools:")
+		fmt.Fprintln(&output, "  question: true")
+		fmt.Fprintln(&output, "permission:")
+		fmt.Fprintln(&output, "  question: allow")
+	}
+	fmt.Fprintln(&output, "---")
+	fmt.Fprintln(&output)
+	name := openCodeSemanticName(role.ID)
+	fmt.Fprintf(&output, "# %s\n\n## First action\n\nLoad the mapped skill `%s` before any phase work.\n\n%s\n", name, binding.Skill, role.Objective)
+	return []byte(output.String())
+}
+
+// renderOpenCodeCompatibilityAgent retains support for incomplete historical
+// fixtures. A complete canonical composition always takes the Core V2 path.
+func renderOpenCodeCompatibilityAgent(role ir.Role) []byte {
 	var output strings.Builder
 	fmt.Fprintln(&output, "---")
 	fmt.Fprintf(&output, "description: %s\n", strconv.Quote(role.Objective))
 	fmt.Fprintln(&output, "mode: subagent")
 	fmt.Fprintln(&output, "---")
 	fmt.Fprintln(&output)
-	fmt.Fprintf(&output, "# %s\n\n%s\n", role.ID, role.Objective)
+	name := openCodeSemanticName(role.ID)
+	fmt.Fprintf(&output, "# %s\n\n%s\n", name, role.Objective)
 	return []byte(output.String())
 }
 

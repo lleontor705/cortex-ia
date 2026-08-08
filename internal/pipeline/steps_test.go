@@ -15,30 +15,30 @@ type mockAdapter struct {
 	agentID model.AgentID
 }
 
-func (m *mockAdapter) Agent() model.AgentID                         { return m.agentID }
-func (m *mockAdapter) Tier() model.SupportTier                      { return model.TierFull }
+func (m *mockAdapter) Agent() model.AgentID    { return m.agentID }
+func (m *mockAdapter) Tier() model.SupportTier { return model.TierFull }
 func (m *mockAdapter) Detect(string) (bool, string, string, bool, error) {
 	return false, "", "", false, nil
 }
-func (m *mockAdapter) GlobalConfigDir(string) string                { return "" }
-func (m *mockAdapter) SystemPromptDir(string) string                { return "" }
-func (m *mockAdapter) SystemPromptFile(string) string               { return "" }
-func (m *mockAdapter) SkillsDir(string) string                      { return "" }
-func (m *mockAdapter) SettingsPath(string) string                   { return "" }
+func (m *mockAdapter) GlobalConfigDir(string) string  { return "" }
+func (m *mockAdapter) SystemPromptDir(string) string  { return "" }
+func (m *mockAdapter) SystemPromptFile(string) string { return "" }
+func (m *mockAdapter) SkillsDir(string) string        { return "" }
+func (m *mockAdapter) SettingsPath(string) string     { return "" }
 func (m *mockAdapter) SystemPromptStrategy() model.SystemPromptStrategy {
 	return model.StrategyMarkdownSections
 }
-func (m *mockAdapter) MCPStrategy() model.MCPStrategy               { return model.StrategySeparateMCPFiles }
-func (m *mockAdapter) MCPConfigPath(string, string) string          { return "" }
-func (m *mockAdapter) SupportsSkills() bool                         { return false }
-func (m *mockAdapter) SupportsSystemPrompt() bool                   { return false }
-func (m *mockAdapter) SupportsMCP() bool                            { return false }
-func (m *mockAdapter) SupportsSlashCommands() bool                  { return false }
-func (m *mockAdapter) CommandsDir(string) string                    { return "" }
-func (m *mockAdapter) SupportsTaskDelegation() bool                 { return false }
-func (m *mockAdapter) SupportsSubAgents() bool                      { return false }
-func (m *mockAdapter) SubAgentsDir(string) string                   { return "" }
-func (m *mockAdapter) SupportsAutoInstall() bool                    { return false }
+func (m *mockAdapter) MCPStrategy() model.MCPStrategy                      { return model.StrategySeparateMCPFiles }
+func (m *mockAdapter) MCPConfigPath(string, string) string                 { return "" }
+func (m *mockAdapter) SupportsSkills() bool                                { return false }
+func (m *mockAdapter) SupportsSystemPrompt() bool                          { return false }
+func (m *mockAdapter) SupportsMCP() bool                                   { return false }
+func (m *mockAdapter) SupportsSlashCommands() bool                         { return false }
+func (m *mockAdapter) CommandsDir(string) string                           { return "" }
+func (m *mockAdapter) SupportsTaskDelegation() bool                        { return false }
+func (m *mockAdapter) SupportsSubAgents() bool                             { return false }
+func (m *mockAdapter) SubAgentsDir(string) string                          { return "" }
+func (m *mockAdapter) SupportsAutoInstall() bool                           { return false }
 func (m *mockAdapter) InstallCommands(_ system.PlatformProfile) [][]string { return nil }
 
 // --- validateStep tests ---

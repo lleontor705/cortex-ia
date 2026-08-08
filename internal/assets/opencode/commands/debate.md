@@ -4,8 +4,19 @@ description: Activate debate for an SDD topic
 subtask: false
 ---
 
-Activate debate for the supplied topic. Capture the working directory, project, artifact store, requested positions, and all user context.
-
-Reference the executable debate-dispatch handler. It selects the declared evidence-backed method, records independent findings, and returns a canonical decision package. This command does not define debate rounds, agent counts, task-board operations, tie-breakers, or persistence policy.
-
-If a human gate is requested, present the handler's evidence and decision question, then wait for explicit approval or correction. Dispatch only after approval and return the canonical status and references unchanged.
+<command_dispatch>
+  <instruction>
+    Activate multi-position debate. Capture working directory, project, and context.
+    Target Arguments: "$ARGUMENTS"
+  </instruction>
+  <execution_flow>
+    1. Read canonical debate skill and identify conflicting positions.
+    2. Formulate position arguments with evidence and trade-offs.
+    3. Synthesize consensus recommendations.
+    4. Emit canonical decision package for downstream design.
+  </execution_flow>
+  <error_handling>
+    - If positions lack technical grounding: return blocked.
+    - If human gate requested: present alternatives and wait for approval.
+  </error_handling>
+</command_dispatch>

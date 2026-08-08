@@ -40,6 +40,7 @@ func buildPromptContent(assetPath, homeDir string, assignments model.ModelAssign
 	if strictTDD {
 		content = filemerge.InjectMarkdownSection(content, "strict-tdd", strictTDDDirective)
 	}
+	content = InjectOrganicRouting(content)
 	return content, nil
 }
 

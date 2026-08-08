@@ -55,20 +55,31 @@ func TestClaudeModelPicker_UpDown(t *testing.T) {
 		t.Errorf("after second down: cursor = %d, want 2", m.ClaudeModelCursor)
 	}
 
-	// Should stay at 2 (max index for 3 models)
 	m = updateModel(t, m, "down")
-	if m.ClaudeModelCursor != 2 {
-		t.Errorf("after third down: cursor = %d, want 2 (clamped)", m.ClaudeModelCursor)
+	if m.ClaudeModelCursor != 3 {
+		t.Errorf("after third down: cursor = %d, want 3", m.ClaudeModelCursor)
+	}
+
+	m = updateModel(t, m, "down")
+	if m.ClaudeModelCursor != 4 {
+		t.Errorf("after fourth down: cursor = %d, want 4", m.ClaudeModelCursor)
+	}
+
+	// Should stay at 4 (max index for 5 models)
+	m = updateModel(t, m, "down")
+	if m.ClaudeModelCursor != 4 {
+		t.Errorf("after fifth down: cursor = %d, want 4 (clamped)", m.ClaudeModelCursor)
 	}
 
 	m = updateModel(t, m, "up")
-	if m.ClaudeModelCursor != 1 {
-		t.Errorf("after up: cursor = %d, want 1", m.ClaudeModelCursor)
+	if m.ClaudeModelCursor != 3 {
+		t.Errorf("after up: cursor = %d, want 3", m.ClaudeModelCursor)
 	}
 
 	// Move to 0, then try going below 0
-	m = updateModel(t, m, "up")
-	m = updateModel(t, m, "up")
+	for range 5 {
+		m = updateModel(t, m, "up")
+	}
 	if m.ClaudeModelCursor != 0 {
 		t.Errorf("after multiple ups: cursor = %d, want 0 (clamped)", m.ClaudeModelCursor)
 	}
@@ -92,6 +103,8 @@ func TestClaudeModelPicker_Enter_MapsPresetFromCursor(t *testing.T) {
 		{0, model.ModelPresetPerformance},
 		{1, model.ModelPresetBalanced},
 		{2, model.ModelPresetEconomy},
+		{3, model.ModelPresetFast},
+		{4, model.ModelPresetCodex},
 	}
 	for _, tt := range tests {
 		m := New(nil, "/tmp", "test")

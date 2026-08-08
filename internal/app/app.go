@@ -79,6 +79,12 @@ func runCLI(args []string) error {
 	case "auto-install":
 		return runAutoInstall(args[1:])
 
+	case "memory":
+		return runMemory(args[1:])
+
+	case "rdd":
+		return runRDD(args[1:])
+
 	case "help", "--help", "-h":
 		printHelp()
 		return nil

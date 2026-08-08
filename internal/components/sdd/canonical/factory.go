@@ -46,24 +46,71 @@ func (Factory) Create(input FactoryInput) (Product, error) {
 		return Product{}, fmt.Errorf("unsupported %s renderer version %s; supported interval is >=1.0.0, <2.0.0", input.Target, input.RuntimeVersion)
 	}
 
+	workflow := Workflow()
+	allowedPermissions := []string{
+		"filesystem/read", "filesystem/write", "mcp/cortex", "mcp/forgespec",
+		"process/execute", "tool/read", "tool/search", "tool/question",
+	}
+	if err := validateQuestionAuthorization(workflow, allowedPermissions); err != nil {
+		return Product{}, err
+	}
+
 	renderer, err := rendererFor(input.Target, input.ForgeSpecMode, input.CapabilitySnapshotSHA256)
 	if err != nil {
 		return Product{}, err
 	}
 	return Product{
-		Workflow: Workflow(), Renderer: renderer,
+		Workflow: workflow, Renderer: renderer,
 		AllowedAssetKinds: []renderers.AssetKind{
 			renderers.AssetInstruction, renderers.AssetRule, renderers.AssetSkill,
 			renderers.AssetCommand, renderers.AssetAgent, renderers.AssetPermission,
 			renderers.AssetHook, renderers.AssetMCP, renderers.AssetModel,
 			renderers.AssetSchema, renderers.AssetFixture,
 		},
-		AllowedPermissions: []string{
-			"filesystem/read", "filesystem/write", "mcp/cortex", "mcp/forgespec",
-			"process/execute", "tool/read", "tool/search",
-		},
-		PhaseSchemas: phasecontract.PhaseSchemas,
+		AllowedPermissions: allowedPermissions,
+		PhaseSchemas:       phasecontract.PhaseSchemas,
 	}, nil
+}
+
+// validateQuestionAuthorization prevents a tools-only Bootstrap definition from
+// reaching renderer or installation preparation. Question access requires
+// Bootstrap's role effect and the explicit permission ceiling.
+func validateQuestionAuthorization(workflow ir.WorkflowIR, allowedPermissions []string) error {
+	permissionAllowed := false
+	for _, permission := range allowedPermissions {
+		if permission == "tool/question" {
+			permissionAllowed = true
+			break
+		}
+	}
+	if !permissionAllowed {
+		return fmt.Errorf("Bootstrap question authorization requires explicit tool/question allow permission")
+	}
+
+	bootstrapFound := false
+	for _, role := range workflow.Roles {
+		questionEnabled := false
+		for _, effect := range role.AllowedEffects {
+			if effect == "tool/question" {
+				questionEnabled = true
+				break
+			}
+		}
+		if role.ID == "role/bootstrap" {
+			bootstrapFound = true
+			if !questionEnabled {
+				return fmt.Errorf("Bootstrap question authorization requires tool/question enablement")
+			}
+			continue
+		}
+		if questionEnabled {
+			return fmt.Errorf("question authorization is limited to Bootstrap, found %q", role.ID)
+		}
+	}
+	if !bootstrapFound {
+		return fmt.Errorf("Bootstrap question authorization requires role/bootstrap")
+	}
+	return nil
 }
 
 func rendererFor(target renderers.TargetID, mode manifest.CoordinationMode, capabilityDigest string) (renderers.Renderer, error) {

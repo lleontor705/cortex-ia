@@ -86,6 +86,9 @@ func RenderTypedTemplate(content []byte, context TemplateContext) ([]byte, error
 // Materialize lowers required catalog entries into one deterministic common
 // semantic set. Missing required bytes and duplicate IDs fail before mutation.
 func Materialize(input MaterializerInput) ([]MaterializedAsset, []string, error) {
+	if err := ValidatePhaseRoleBindings(CanonicalPhaseRoleBindings()); err != nil {
+		return nil, nil, fmt.Errorf("materialize canonical phase-role bindings: %w", err)
+	}
 	if err := input.Catalog.Validate(); err != nil {
 		return nil, nil, err
 	}
@@ -155,20 +158,19 @@ func Materialize(input MaterializerInput) ([]MaterializedAsset, []string, error)
 	}
 	for _, role := range input.Workflow.Roles {
 		name := strings.TrimPrefix(string(role.ID), "role/")
-		skill, err := CanonicalSkillForRole(role.ID)
+		binding, err := NewSkillBinding(role.ID, input.Adapter)
 		if err != nil {
 			return nil, nil, err
 		}
-		bindingPath, err := input.Adapter.ExpandPath(input.Adapter.SkillRoot, string(skill)+"/SKILL.md")
-		if err != nil {
-			return nil, nil, fmt.Errorf("expand skill binding for %q: %w", role.ID, err)
+		if err := binding.Validate(); err != nil {
+			return nil, nil, fmt.Errorf("validate skill binding for %q: %w", role.ID, err)
 		}
 		route, err := routeForRole(input.Models, role.ID)
 		if err != nil {
 			return nil, nil, err
 		}
 		fallback := fallbackModelRef(route)
-		content := []byte(fmt.Sprintf("# Role %s\n\nCanonical skill: `%s`\nLoad mode: `%s`\nModel: `%s` (fallback `%s`)\nLoad exactly one canonical skill before decisions.\n", role.ID, bindingPath, input.Adapter.SkillLoadMode(), route.Primary.Model, fallback))
+		content := materializedRoleContent(role.ID, binding, string(route.Primary.Model), fallback)
 		permissions := make([]string, 0, len(role.AllowedEffects))
 		for _, effect := range role.AllowedEffects {
 			permissions = append(permissions, string(effect))
@@ -189,6 +191,14 @@ func Materialize(input MaterializerInput) ([]MaterializedAsset, []string, error)
 	}
 	slices.SortFunc(assets, func(a, b MaterializedAsset) int { return strings.Compare(string(a.ID), string(b.ID)) })
 	return assets, degradations, nil
+}
+
+func materializedRoleContent(role ir.SemanticID, binding SkillBinding, primary, fallback string) []byte {
+	firstAction := fmt.Sprintf("First phase action: read the required fallback skill `%s` before any phase work.", binding.Path)
+	if binding.Mode == SkillModeNativePreload {
+		firstAction = fmt.Sprintf("First phase action: load native skill preload `%s` before any phase work.", binding.Path)
+	}
+	return []byte(fmt.Sprintf("# Role %s\n\nCanonical skill: `%s`\nLoad mode: `%s`\nModel: `%s` (fallback `%s`)\n\n%s\nContinue phase work only after the mapped skill is loaded.\n", role, binding.Path, binding.Mode, primary, fallback, firstAction))
 }
 
 func routeForRole(models ModelTable, role ir.SemanticID) (ModelRoute, error) {

@@ -17,12 +17,12 @@ type SystemInfo struct {
 
 // ToolsInfo holds detected tool versions and availability.
 type ToolsInfo struct {
-	NodeVersion   string // e.g. "v20.11.0" or "" if not found
-	NpxAvailable  bool
-	GitVersion    string // e.g. "2.43.0" or ""
-	GoVersion     string // e.g. "go1.26.1" or ""
-	CortexFound   bool
-	Shell         string // "bash", "zsh", "powershell", etc.
+	NodeVersion  string // e.g. "v20.11.0" or "" if not found
+	NpxAvailable bool
+	GitVersion   string // e.g. "2.43.0" or ""
+	GoVersion    string // e.g. "go1.26.1" or ""
+	CortexFound  bool
+	Shell        string // "bash", "zsh", "powershell", etc.
 }
 
 // PlatformProfile describes the platform for install command resolution.

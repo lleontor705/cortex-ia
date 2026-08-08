@@ -122,6 +122,8 @@ const (
 	ModelPresetBalanced    ModelPreset = "balanced"
 	ModelPresetPerformance ModelPreset = "performance"
 	ModelPresetEconomy     ModelPreset = "economy"
+	ModelPresetFast        ModelPreset = "fast"
+	ModelPresetCodex       ModelPreset = "codex"
 )
 
 // ModelAssignments maps SDD skill names to explicit configured provider/model

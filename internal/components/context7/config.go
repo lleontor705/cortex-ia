@@ -33,13 +33,17 @@ func Templates() mcpinject.ServerTemplates {
 }
 `),
 
-		// OpenCode: uses remote MCP (no npx needed)
+		// OpenCode: uses local MCP via npx
 		OpenCodeOverlayJSON: []byte(`{
   "mcp": {
     "context7": {
-      "type": "remote",
-      "url": "https://mcp.context7.com/mcp",
-      "enabled": true
+      "command": [
+        "npx",
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "enabled": true,
+      "type": "local"
     }
   }
 }

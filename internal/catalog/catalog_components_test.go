@@ -8,8 +8,8 @@ import (
 
 func TestAllComponents_Count(t *testing.T) {
 	components := AllComponents()
-	if len(components) != 7 {
-		t.Errorf("expected 7 current components, got %d", len(components))
+	if len(components) != 6 {
+		t.Errorf("expected 6 current components, got %d", len(components))
 	}
 }
 
@@ -41,13 +41,11 @@ func TestComponentMap_LookupByID(t *testing.T) {
 	cmap := ComponentMap()
 	ids := []model.ComponentID{
 		model.ComponentCortex,
-		model.ComponentMailbox,
 		model.ComponentForgeSpec,
 		model.ComponentSDD,
 		model.ComponentSkills,
 		model.ComponentContext7,
 		model.ComponentConventions,
-		model.ComponentMailbox,
 	}
 	for _, id := range ids {
 		info, ok := cmap[id]

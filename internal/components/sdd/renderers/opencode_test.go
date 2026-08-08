@@ -91,6 +91,98 @@ func TestOpenCodeRendererRejectsUnqualifiedNative(t *testing.T) {
 	}
 }
 
+func TestOpenCodeRendererCoreV2RolesLoadMappedSkillsFirst(t *testing.T) {
+	for _, profile := range []string{"portable-flat", "native-advanced"} {
+		t.Run(profile, func(t *testing.T) {
+			resolved := canonicalOpenCodeWorkflow(profile)
+			bundle, err := NewOpenCodeRenderer().Render(context.Background(), resolved)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+
+			agents := openCodeAgentAssets(bundle)
+			if len(agents) != 9 {
+				t.Fatalf("Core V2 agent count = %d, want 9", len(agents))
+			}
+			for role, skill := range canonicalOpenCodeSkills {
+				content, ok := agents[openCodeSemanticName(role)]
+				if !ok {
+					t.Errorf("missing agent for %q", role)
+					continue
+				}
+				firstAction := "Load the mapped skill `" + string(skill) + "` before any phase work."
+				if !strings.Contains(content, firstAction) {
+					t.Errorf("%q does not load mapped skill first:\n%s", role, content)
+				}
+			}
+		})
+	}
+}
+
+func TestOpenCodeRendererBootstrapQuestionPermissionOnly(t *testing.T) {
+	for _, profile := range []string{"portable-flat", "native-advanced"} {
+		t.Run(profile, func(t *testing.T) {
+			bundle, err := NewOpenCodeRenderer().Render(context.Background(), canonicalOpenCodeWorkflow(profile))
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			for name, content := range openCodeAgentAssets(bundle) {
+				hasTool := strings.Contains(content, "tools:\n  question: true\n")
+				hasPermission := strings.Contains(content, "permission:\n  question: allow\n")
+				if name == "bootstrap" {
+					if !hasTool || !hasPermission {
+						t.Fatalf("Bootstrap question authorization = %q", content)
+					}
+					continue
+				}
+				if hasTool || hasPermission {
+					t.Errorf("non-Bootstrap agent %q received question authorization:\n%s", name, content)
+				}
+			}
+		})
+	}
+}
+
+func canonicalOpenCodeWorkflow(profile string) ResolvedWorkflow {
+	roles := make([]ir.Role, 0, len(canonicalOpenCodeSkills))
+	bindings := make([]SkillBinding, 0, len(canonicalOpenCodeSkills))
+	for role, skill := range canonicalOpenCodeSkills {
+		roles = append(roles, ir.Role{ID: role, Objective: "Execute " + string(role) + "."})
+		bindings = append(bindings, SkillBinding{Role: role, Skill: skill, Mode: SkillModeFallbackRead, Path: "skills/" + openCodeSemanticName(skill) + "/SKILL.md", Hash: "hash-" + openCodeSemanticName(skill)})
+	}
+	return ResolvedWorkflow{
+		Target: "opencode", Profile: profile, GenerationFingerprint: strings.Repeat("b", 64),
+		Capabilities: qualifiedOpenCodeProfile(profile), AllowedAssetKinds: []AssetKind{AssetInstruction, AssetCommand, AssetAgent},
+		AllowedPermissions: []string{"tool/question"}, Extensions: openCodeExtensions(profile),
+		Workflow:    ir.WorkflowIR{SchemaVersion: ir.MustParseVersion("1.0.0"), ID: "workflow/sdd", Version: ir.MustParseVersion("1.0.0"), Roles: roles},
+		Composition: Composition{RootIndex: "sdd-root/index.md", Modules: []string{"sdd-root/contracts.md"}, SkillBindings: bindings, SharedContract: "skills/_shared/contract.md", ProfileOverlay: "profiles/" + profile + ".md", QualityTemplate: "quality/plan-template.json"},
+	}
+}
+
+func qualifiedOpenCodeProfile(profile string) []resolution.Resolution {
+	if profile == "native-advanced" {
+		return qualifiedNative()
+	}
+	return qualifiedDirectChild()
+}
+
+func openCodeExtensions(profile string) []ExtensionDeclaration {
+	if profile == "native-advanced" {
+		return []ExtensionDeclaration{{ID: openCodeNativeExtension, Optional: true}}
+	}
+	return nil
+}
+
+func openCodeAgentAssets(bundle Bundle) map[string]string {
+	agents := make(map[string]string)
+	for _, asset := range bundle.Assets {
+		if asset.Kind == AssetAgent && strings.HasPrefix(asset.Path, "agents/") {
+			agents[strings.TrimSuffix(strings.TrimPrefix(asset.Path, "agents/"), ".md")] = string(asset.Content)
+		}
+	}
+	return agents
+}
+
 func openCodeWorkflow(profile string, resolved []resolution.Resolution, extensions []ExtensionDeclaration) ResolvedWorkflow {
 	return ResolvedWorkflow{
 		Target:                "opencode",

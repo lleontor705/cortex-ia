@@ -1,9 +1,13 @@
 {
   "mcp": {
     "context7": {
+      "command": [
+        "npx",
+        "-y",
+        "@upstash/context7-mcp"
+      ],
       "enabled": true,
-      "type": "remote",
-      "url": "https://mcp.context7.com/mcp"
+      "type": "local"
     }
   }
 }

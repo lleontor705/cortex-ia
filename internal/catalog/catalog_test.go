@@ -8,10 +8,10 @@ import (
 
 func TestComponentsForPresetFull(t *testing.T) {
 	ids := ComponentsForPreset(model.PresetFull)
-	if len(ids) != 7 {
-		t.Errorf("expected 7 current components for full preset, got %d", len(ids))
+	if len(ids) != 6 {
+		t.Errorf("expected 6 current components for full preset, got %d", len(ids))
 	}
-	assertComponentPresent(t, ids, model.ComponentMailbox)
+	assertComponentPresent(t, ids, model.ComponentCortex)
 }
 
 func TestComponentsForPresetMinimal(t *testing.T) {
@@ -34,9 +34,6 @@ func TestResolveDeps_SDDPullsDeps(t *testing.T) {
 	}
 	if !has[model.ComponentForgeSpec] {
 		t.Error("SDD should pull forgespec as dependency")
-	}
-	if !has[model.ComponentMailbox] {
-		t.Error("SDD should pull agent-mailbox as dependency")
 	}
 	if !has[model.ComponentSDD] {
 		t.Error("SDD should be in resolved list")
@@ -86,8 +83,8 @@ func TestResolveDeps_MinimalPreset(t *testing.T) {
 		has[id] = true
 	}
 
-	if !has[model.ComponentMailbox] {
-		t.Error("minimal preset should contain Mailbox through SDD dependencies")
+	if !has[model.ComponentForgeSpec] {
+		t.Error("minimal preset should contain ForgeSpec through SDD dependencies")
 	}
 }
 

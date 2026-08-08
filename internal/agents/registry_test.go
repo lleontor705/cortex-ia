@@ -11,9 +11,11 @@ type mockAdapter struct {
 	id model.AgentID
 }
 
-func (m *mockAdapter) Agent() model.AgentID                               { return m.id }
-func (m *mockAdapter) Tier() model.SupportTier                            { return model.TierFull }
-func (m *mockAdapter) Detect(_ string) (bool, string, string, bool, error) { return false, "", "", false, nil }
+func (m *mockAdapter) Agent() model.AgentID    { return m.id }
+func (m *mockAdapter) Tier() model.SupportTier { return model.TierFull }
+func (m *mockAdapter) Detect(_ string) (bool, string, string, bool, error) {
+	return false, "", "", false, nil
+}
 func (m *mockAdapter) GlobalConfigDir(_ string) string                     { return "" }
 func (m *mockAdapter) SystemPromptDir(_ string) string                     { return "" }
 func (m *mockAdapter) SystemPromptFile(_ string) string                    { return "" }

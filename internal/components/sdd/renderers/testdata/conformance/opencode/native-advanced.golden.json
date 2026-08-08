@@ -55,8 +55,8 @@
         "filesystem/read"
       ],
       "extensions": [],
-      "sha256": "e1121b16ce63dbbfd3fd054d68dd9ab730c456ba07f1d93daa2dc5d6d8d7d83e",
-      "content": "---\ndescription: \"Implement one bounded vertical work unit.\"\nmode: subagent\n---\n\n# role/implement\n\nImplement one bounded vertical work unit.\n"
+      "sha256": "642bfe1cb59fd2bc114204ba65a12c644388d2a3ea9b71d5f2ebbcf30633e9d7",
+      "content": "---\ndescription: \"Implement one bounded vertical work unit.\"\nmode: subagent\n---\n\n# implement\n\nImplement one bounded vertical work unit.\n"
     },
     {
       "path": "agents/validate.md",
@@ -67,8 +67,8 @@
         "filesystem/read"
       ],
       "extensions": [],
-      "sha256": "2ed3ab854c3b58434b2620dddbe05dacd7341a88cfb5a8afcf798af21fbf9cc2",
-      "content": "---\ndescription: \"Independently validate outcomes and evidence.\"\nmode: subagent\n---\n\n# role/validate\n\nIndependently validate outcomes and evidence.\n"
+      "sha256": "8fbd3626ed8c01f01bb2ad20769946b2d91ec8d94d55010718c6a5339c26fe3d",
+      "content": "---\ndescription: \"Independently validate outcomes and evidence.\"\nmode: subagent\n---\n\n# validate\n\nIndependently validate outcomes and evidence.\n"
     },
     {
       "path": "commands/run-workflow.md",

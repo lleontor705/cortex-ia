@@ -4,8 +4,19 @@ agent: orchestrator
 subtask: false
 ---
 
-Activate a new SDD change named by the user. Capture the working directory, project, change name, artifact store, and all supplied context.
-
-Reference the executable change-dispatch handler. It evaluates investigation evidence, selects the dependency route, and returns the canonical next action. This command does not copy thresholds, choose phases, launch work, or write artifacts.
-
-When the handler requests a human gate, present its question, explain the recorded evidence references, and wait for explicit approval or correction. Dispatch only after that decision. Return the canonical status, route, and references exactly as emitted.
+<command_dispatch>
+  <instruction>
+    Activate new SDD change. Capture working directory, project, change, and context.
+    Target Arguments: "$ARGUMENTS"
+  </instruction>
+  <execution_flow>
+    1. Read canonical proposal skill and review exploration evidence.
+    2. Draft change proposal with bounded scope and rollback plan.
+    3. Select dependency route and map requirement candidates.
+    4. Emit canonical proposal contract for specification phase.
+  </execution_flow>
+  <error_handling>
+    - If proposal contradicts repository stack: return blocked.
+    - When human gate requested: present scope and wait for approval.
+  </error_handling>
+</command_dispatch>

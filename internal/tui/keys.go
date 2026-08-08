@@ -7,14 +7,14 @@ import (
 
 // KeyMap defines key bindings for the TUI with integrated help text.
 type KeyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Enter    key.Binding
-	Esc      key.Binding
-	Quit     key.Binding
-	Space    key.Binding
-	All      key.Binding
-	Help     key.Binding
+	Up      key.Binding
+	Down    key.Binding
+	Enter   key.Binding
+	Esc     key.Binding
+	Quit    key.Binding
+	Space   key.Binding
+	All     key.Binding
+	Help    key.Binding
 	Restore key.Binding
 	Delete  key.Binding
 	Rename  key.Binding

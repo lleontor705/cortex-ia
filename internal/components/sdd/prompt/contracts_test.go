@@ -1,11 +1,90 @@
 package prompt
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/quality"
 )
+
+func TestCanonicalNineRoleSkillBindingsBothAuthorities(t *testing.T) {
+	want := []PhaseRoleBinding{
+		{Phase: "phase/init", Role: "role/bootstrap", Agent: "agent/bootstrap", Skill: "skill/bootstrap"},
+		{Phase: "phase/explore", Role: "role/investigate", Agent: "agent/investigate", Skill: "skill/investigate"},
+		{Phase: "phase/propose", Role: "role/draft-proposal", Agent: "agent/draft-proposal", Skill: "skill/draft-proposal"},
+		{Phase: "phase/spec", Role: "role/write-specs", Agent: "agent/write-specs", Skill: "skill/write-specs"},
+		{Phase: "phase/design", Role: "role/architect", Agent: "agent/architect", Skill: "skill/architect"},
+		{Phase: "phase/tasks", Role: "role/decompose", Agent: "agent/decompose", Skill: "skill/decompose"},
+		{Phase: "phase/apply", Role: "role/implement", Agent: "agent/implement", Skill: "skill/implement"},
+		{Phase: "phase/verify", Role: "role/validate", Agent: "agent/validate", Skill: "skill/validate"},
+		{Phase: "phase/archive", Role: "role/finalize", Agent: "agent/finalize", Skill: "skill/finalize"},
+	}
+
+	got := CanonicalPhaseRoleBindings()
+	if err := ValidatePhaseRoleBindings(got); err != nil {
+		t.Fatalf("ValidatePhaseRoleBindings(canonical) error = %v", err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("canonical bindings = %d, want %d", len(got), len(want))
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Errorf("canonical binding %d = %+v, want %+v", index, got[index], want[index])
+		}
+	}
+}
+
+func TestCanonicalPhaseRoleBindingsReturnsClone(t *testing.T) {
+	bindings := CanonicalPhaseRoleBindings()
+	bindings[0].Skill = "skill/unexpected"
+	if got := CanonicalPhaseRoleBindings()[0].Skill; got != "skill/bootstrap" {
+		t.Fatalf("canonical inventory was mutated: first skill = %q", got)
+	}
+}
+
+func TestCanonicalRoleAuditExcludesUtilityAgents(t *testing.T) {
+	for _, binding := range CanonicalPhaseRoleBindings() {
+		if strings.Contains(string(binding.Agent), "utility") || strings.Contains(string(binding.Agent), "coordinator") {
+			t.Errorf("canonical inventory includes utility agent %q", binding.Agent)
+		}
+	}
+}
+
+func TestCanonicalRoleBindingDriftRejectedNoMutation(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func([]PhaseRoleBinding) []PhaseRoleBinding
+	}{
+		{
+			name: "missing binding",
+			mutate: func(bindings []PhaseRoleBinding) []PhaseRoleBinding {
+				return bindings[:len(bindings)-1]
+			},
+		},
+		{
+			name: "duplicate role",
+			mutate: func(bindings []PhaseRoleBinding) []PhaseRoleBinding {
+				bindings[1].Role = bindings[0].Role
+				return bindings
+			},
+		},
+		{
+			name: "cross phase skill",
+			mutate: func(bindings []PhaseRoleBinding) []PhaseRoleBinding {
+				bindings[0].Skill = bindings[1].Skill
+				return bindings
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidatePhaseRoleBindings(tt.mutate(CanonicalPhaseRoleBindings())); err == nil {
+				t.Fatal("ValidatePhaseRoleBindings() error = nil, want rejection")
+			}
+		})
+	}
+}
 
 func TestAdapterPromptContractHasAllDesignFields(t *testing.T) {
 	contract := validAdapterContract()

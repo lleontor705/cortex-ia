@@ -1,11 +1,22 @@
 ---
-description: Activate SDD bootstrap for the current project
+description: Activate SDD bootstrap for current project
 agent: orchestrator
 subtask: true
 ---
 
-Activate the bootstrap phase for the requested project. Capture the working directory, project name, requested artifact store, and user context supplied after the command.
-
-Read the canonical bootstrap skill before acting. Dispatch the executable bootstrap handler for stack detection, conventions, architecture context, persistence selection, and contract emission. The handler owns validation and evidence; this command does not duplicate policy or perform phase work.
-
-If the handler requests a human gate, present the request and wait for an explicit decision. Return the handler's canonical status and references without renaming fields.
+<command_dispatch>
+  <instruction>
+    Activate SDD bootstrap. Capture working directory, project, artifact store, and context.
+    Target Arguments: "$ARGUMENTS"
+  </instruction>
+  <execution_flow>
+    1. Inspect manifest files (`go.mod`, `package.json`, `pyproject.toml`) with citations.
+    2. Detect test runners, linters, and CI workflows with executable proof.
+    3. Inventory phase skills, conventions, and contract gates.
+    4. Emit project context with evidence freshness and confidence.
+  </execution_flow>
+  <error_handling>
+    - If manifest or test runner is missing: return blocked.
+    - If human gate requested: present findings and wait for decision.
+  </error_handling>
+</command_dispatch>

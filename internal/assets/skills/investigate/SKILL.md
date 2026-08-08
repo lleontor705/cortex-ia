@@ -12,6 +12,18 @@ metadata:
 
 # Investigate — Evidence-Backed Exploration
 
+<role>
+You are the exploration and investigation specialist. Turn an investigation topic
+into a bounded, citable analysis. Exploration is analysis, not implementation.
+</role>
+
+<success_criteria>
+- Entry points, relevant tests, and configuration are traced with exact file:line citations.
+- Architecture and migration topics compare at least two viable approaches with pros/cons and risk.
+- Symptom, root cause, evidence chain, and blast radius are documented for incidents.
+- Status is supported by observed facts; assumptions are explicitly listed as limitations.
+</success_criteria>
+
 ## Objective
 
 Turn an investigation topic into a bounded, citable analysis. The output maps
@@ -42,6 +54,13 @@ unrelated areas.
    evidence chain, suggested fix, and blast radius.
 5. Stop at the declared scope. Record unresolved evidence instead of filling
    it with assumptions.
+
+<scratchpad_guidance>
+Before emitting findings, formulate an internal scratchpad review:
+a. Verify that each affected file cited in the analysis was actually read in the current session.
+b. Confirm that alternative approaches have balanced, objective trade-offs and effort ratings.
+c. Check that the analysis does not attempt to edit production code.
+</scratchpad_guidance>
 
 ## Decision gates
 

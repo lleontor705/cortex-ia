@@ -46,9 +46,9 @@ func TestRenderReview_ShowsComponents(t *testing.T) {
 		Persona: model.PersonaProfessional,
 		Resolved: []model.ComponentID{
 			model.ComponentCortex,
-			model.ComponentMailbox,
-			model.ComponentSDD,
 			model.ComponentForgeSpec,
+			model.ComponentSDD,
+			model.ComponentContext7,
 		},
 	}
 	output := RenderReview(data)

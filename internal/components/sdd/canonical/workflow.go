@@ -37,7 +37,7 @@ func Workflow() ir.WorkflowIR {
 			role("role/bootstrap", "Detect project capabilities and initialize SDD context.",
 				[]ir.Contract{contract("contract/bootstrap-request")},
 				[]ir.Contract{contract("contract/bootstrap-context")},
-				"filesystem/read", "filesystem/write"),
+				"filesystem/read", "filesystem/write", "tool/question"),
 			role("role/investigate", "Investigate the codebase and produce grounded exploration evidence.",
 				[]ir.Contract{contract("contract/investigation-request"), contract("contract/bootstrap-context")},
 				[]ir.Contract{contract("contract/exploration")},

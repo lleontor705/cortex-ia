@@ -112,7 +112,11 @@ func checkInstallStatus(ctx *Context) error {
 func checkFilesExist(ctx *Context) error {
 	var missing []string
 	for _, path := range ctx.Lock.Files {
-		if _, err := os.Stat(path); err != nil && os.IsNotExist(err) {
+		fullPath := path
+		if !filepath.IsAbs(fullPath) {
+			fullPath = filepath.Join(ctx.HomeDir, fullPath)
+		}
+		if _, err := os.Stat(fullPath); err != nil && os.IsNotExist(err) {
 			missing = append(missing, filepath.Clean(path))
 		}
 	}
@@ -148,8 +152,19 @@ func checkSkillsPresent(ctx *Context) error {
 	expected := []string{"bootstrap", "implement", "validate", "architect", "investigate"}
 	var missing []string
 	for _, id := range expected {
-		path := filepath.Join(skillsDir, id, "SKILL.md")
-		if _, err := os.Stat(path); os.IsNotExist(err) {
+		found := false
+		if _, err := os.Stat(filepath.Join(skillsDir, id, "SKILL.md")); err == nil {
+			found = true
+		}
+		if !found {
+			for _, a := range ctx.Lock.InstalledAgents {
+				if _, err := os.Stat(filepath.Join(ctx.HomeDir, ".config", string(a), "skills", id, "SKILL.md")); err == nil {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
 			missing = append(missing, id)
 		}
 	}
@@ -161,10 +176,15 @@ func checkSkillsPresent(ctx *Context) error {
 
 func checkConventionPresent(ctx *Context) error {
 	path := filepath.Join(state.SharedSkillsDir(ctx.HomeDir), "_shared", "cortex-convention.md")
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return fmt.Errorf("cortex-convention.md not found at %s", path)
+	if _, err := os.Stat(path); err == nil {
+		return nil
 	}
-	return nil
+	for _, a := range ctx.Lock.InstalledAgents {
+		if _, err := os.Stat(filepath.Join(ctx.HomeDir, ".config", string(a), "_shared", "cortex-convention.md")); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("cortex-convention.md not found at %s", path)
 }
 
 func checkStateLockConsistent(ctx *Context) error {

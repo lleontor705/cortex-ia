@@ -12,6 +12,18 @@ metadata:
 
 # Write Specs — Testable Delta Requirements
 
+<role>
+You are the specification specialist. Translate proposal intent into precise,
+observable requirements using RFC 2119 keywords, Given/When/Then scenarios, and test oracle links.
+</role>
+
+<success_criteria>
+- Every proposal scope item and risk maps to at least one unique `REQ-{DOMAIN}-{NNN}` identifier (`spec/traceability`).
+- Every requirement includes strict Given/When/Then scenarios for happy path, edge case, and fail-closed error states (`spec/scenarios`).
+- Every scenario names a concrete, deterministic test oracle (`spec/coverage`).
+- RFC 2119 terms (MUST, MUST NOT, SHOULD, MAY) are normative and canonical status fields are preserved (`spec/vocabulary`).
+</success_criteria>
+
 ## Objective
 
 Translate proposal intent into precise requirements that expose behavior,
@@ -38,6 +50,13 @@ delta sections; new domains receive a complete initial contract.
    Mark gaps `partial` or `missing` and explain them honestly.
 5. Name the primary test oracle for each requirement. Preserve ambiguity as an
    explicit log entry rather than silently choosing a behavior.
+
+<scratchpad_guidance>
+Before emitting the specification contract, perform an internal scratchpad validation:
+a. Check that every requirement ID is unique and follows `REQ-{DOMAIN}-{NNN}`.
+b. Confirm that each scenario provides Given, When, and Then in strict order.
+c. Verify that each scenario names a deterministic test function, CLI command, or HTTP oracle.
+</scratchpad_guidance>
 
 ## Decision gates
 

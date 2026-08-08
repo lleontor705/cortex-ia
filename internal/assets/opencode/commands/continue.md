@@ -1,11 +1,22 @@
 ---
-description: Activate the next SDD phase
+description: Resume in-flight SDD execution
 agent: orchestrator
-subtask: false
+subtask: true
 ---
 
-Activate continuation for the named change. Capture the working directory, project, change name, artifact store, and user context.
-
-Reference the executable readiness-and-dispatch handler. It reads authoritative dependency state, selects exactly one ready phase or reports a blocked gate, and returns canonical evidence references. This command does not inspect artifacts, infer readiness, or implement phase policy.
-
-If a human gate is required, present the handler's decision request and wait for explicit approval. Dispatch only after approval, then return the handler's canonical status and next recommendation unchanged.
+<command_dispatch>
+  <instruction>
+    Activate SDD execution resume. Capture working directory, project context, change, and active session state.
+    Target Arguments: "$ARGUMENTS"
+  </instruction>
+  <execution_flow>
+    1. Read authoritative change state and context from ForgeSpec and Cortex.
+    2. Locate ready bounded work units on the active task board.
+    3. Execute planning dispatch to route tasks through implementation.
+    4. Validate progress and record session summary before exiting.
+  </execution_flow>
+  <error_handling>
+    - If active change state is corrupted: halt and block resume gate.
+    - If all work units complete: route dispatch directly to validation.
+  </error_handling>
+</command_dispatch>

@@ -5,6 +5,7 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/phasecontract"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/renderers"
 )
 
 func TestCanonicalWorkflowHasNineRoles(t *testing.T) {
@@ -150,6 +151,46 @@ func TestFactoryProductCarriesCorrectedPhaseSchemas(t *testing.T) {
 	}
 }
 
+func TestBootstrapQuestionPermissionEffectiveModes(t *testing.T) {
+	for _, target := range []string{"claude", "opencode"} {
+		t.Run(target, func(t *testing.T) {
+			product, err := NewFactory().Create(FactoryInput{
+				Target:         renderers.TargetID(target),
+				RuntimeVersion: ir.MustParseVersion("1.0.0"),
+			})
+			if err != nil {
+				t.Fatalf("Create() error = %v", err)
+			}
+			if !contains(effectIDs(findRole(t, product.Workflow, "role/bootstrap").AllowedEffects), "tool/question") {
+				t.Fatal("Bootstrap question effect is not enabled")
+			}
+			if !contains(product.AllowedPermissions, "tool/question") {
+				t.Fatal("Bootstrap question permission is not explicitly allowed")
+			}
+		})
+	}
+}
+
+func TestQuestionPermissionBootstrapOnly(t *testing.T) {
+	workflow := Workflow()
+	for _, role := range workflow.Roles {
+		hasQuestion := contains(effectIDs(role.AllowedEffects), "tool/question")
+		if role.ID == "role/bootstrap" && !hasQuestion {
+			t.Fatal("Bootstrap lacks the question effect")
+		}
+		if role.ID != "role/bootstrap" && hasQuestion {
+			t.Fatalf("non-Bootstrap role %q has the question effect", role.ID)
+		}
+	}
+}
+
+func TestQuestionToolsOnlyRejectedBeforeProductCreation(t *testing.T) {
+	workflow := Workflow()
+	if err := validateQuestionAuthorization(workflow, []string{}); err == nil {
+		t.Fatal("tools-only question authorization was accepted")
+	}
+}
+
 // --- helpers ---
 
 func findRole(t *testing.T, w ir.WorkflowIR, id ir.SemanticID) ir.Role {
@@ -200,4 +241,12 @@ func containsSemantic(slice []ir.SemanticID, want ir.SemanticID) bool {
 		}
 	}
 	return false
+}
+
+func effectIDs(effects []ir.Effect) []string {
+	result := make([]string, len(effects))
+	for i, effect := range effects {
+		result[i] = string(effect)
+	}
+	return result
 }

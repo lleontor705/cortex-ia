@@ -41,17 +41,17 @@ func TestDetect_ValidArch(t *testing.T) {
 	info := Detect()
 
 	validArch := map[string]bool{
-		"amd64":   true,
-		"arm64":   true,
-		"arm":     true,
-		"386":     true,
-		"ppc64":   true,
-		"ppc64le": true,
-		"s390x":   true,
-		"riscv64": true,
-		"mips":    true,
-		"mipsle":  true,
-		"mips64":  true,
+		"amd64":    true,
+		"arm64":    true,
+		"arm":      true,
+		"386":      true,
+		"ppc64":    true,
+		"ppc64le":  true,
+		"s390x":    true,
+		"riscv64":  true,
+		"mips":     true,
+		"mipsle":   true,
+		"mips64":   true,
 		"mips64le": true,
 	}
 

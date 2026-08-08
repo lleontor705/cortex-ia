@@ -260,7 +260,7 @@ func (m Model) viewOpenCodeModelPicker() string {
 				if lastProvider != "" {
 					sb.WriteString("\n")
 				}
-				sb.WriteString(styles.Subtitle.Render("  "+provider))
+				sb.WriteString(styles.Subtitle.Render("  " + provider))
 				sb.WriteString("\n")
 				lastProvider = provider
 			}

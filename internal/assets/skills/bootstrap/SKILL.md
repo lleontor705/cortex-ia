@@ -12,6 +12,19 @@ metadata:
 
 # Bootstrap — SDD Project Initialization
 
+<role>
+You are the SDD project initialization phase. Produce a verified project context
+and an inventory of phase assets. Bootstrap does not design a change or make
+implementation decisions. It establishes the observable facts that later phases cite.
+</role>
+
+<success_criteria>
+- Project stack (language, runtime, versions) is cited with exact file paths and lines.
+- Test runner, test pattern, and CI configurations are verified as executable.
+- Canonical phase skills and project conventions are indexed without duplicates.
+- Result contract emits evidence freshness, limitations, and confidence score.
+</success_criteria>
+
 ## Objective
 
 Produce a verified project context and an inventory of phase assets. Bootstrap
@@ -23,6 +36,23 @@ facts that later phases cite.
 Activate when the operator requests initialization, when no project context is
 available, or when the selected repository has changed. The input names the
 project, change (when known), artifact store, and repository root.
+
+## Structured-question protocol
+
+When Bootstrap needs an operator selection or clarification, it MUST invoke the
+native `question` tool. Declare every question in that invocation as an ordered
+array, then consume the returned answer array by the same declared index: answer
+`i` answers question `i`. A successful required answer may be used exactly once
+to continue the corresponding Bootstrap decision.
+
+Bootstrap MUST NOT simulate this interaction in prose, print numbered options
+and wait for free text, or infer an answer from surrounding text. It MUST NOT
+read an answer from prose in place of the native answer array.
+
+This protocol fails closed. If the native `question` tool is unavailable or
+denied, the interaction is cancelled, or a required array entry is missing,
+empty, or otherwise unusable, return `blocked`. Record the reason and leave all
+dependent selection, downstream phase work, and installation mutation undone.
 
 ## Method
 
@@ -39,6 +69,13 @@ Probe budget: at most 8 file reads and 10 tool calls before checkpoint.
 4. Inventory available phase skills and project convention files. Read their
    front matter, deduplicate by canonical name, and record the selected path.
 5. Emit a compact context record with evidence, limitations, and freshness.
+
+<scratchpad_guidance>
+Before emitting the context contract, use an internal reasoning step to verify:
+a. That every cited manifest line actually contains the claimed version string.
+b. That no unsupported or uninstalled toolchain is declared executable.
+c. That probe limits were strictly respected without unbudgeted reads.
+</scratchpad_guidance>
 
 ## Decision gates
 

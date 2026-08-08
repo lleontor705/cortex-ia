@@ -13,9 +13,9 @@ const installStatusFile = "install-status.json"
 // If the process crashes or a component fails mid-way, the status
 // remains "in-progress" so that doctor/repair can detect it.
 type InstallStatus struct {
-	Status    string `json:"status"`               // "in-progress" or "complete"
-	StartedAt string `json:"started_at"`            // RFC3339 timestamp
-	BackupID  string `json:"backup_id,omitempty"`   // backup created before this install
+	Status    string `json:"status"`              // "in-progress" or "complete"
+	StartedAt string `json:"started_at"`          // RFC3339 timestamp
+	BackupID  string `json:"backup_id,omitempty"` // backup created before this install
 }
 
 // InstallStatusPath returns the path to the install status file.

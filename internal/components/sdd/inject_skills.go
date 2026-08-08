@@ -302,11 +302,17 @@ func injectSubAgents(homeDir string, adapter agents.Adapter) (InjectionResult, e
 	}
 
 	if adapter.Agent() == model.AgentOpenCode {
-		// OpenCode: merge full agent configs into opencode.json. No .md stubs.
-		// Clean up .md stubs from prior installations if SubAgentsDir exists.
+		// OpenCode: merge full agent configs into opencode.json.
+		// Clean up nested directories and legacy stubs from SubAgentsDir.
 		if subAgentsDir := adapter.SubAgentsDir(homeDir); subAgentsDir != "" {
-			if _, err := os.Stat(subAgentsDir); err == nil {
-				_ = os.RemoveAll(subAgentsDir)
+			_ = os.RemoveAll(filepath.Join(subAgentsDir, ".config"))
+			_ = os.RemoveAll(filepath.Join(subAgentsDir, "generated"))
+			if entries, err := os.ReadDir(subAgentsDir); err == nil {
+				for _, entry := range entries {
+					if entry.IsDir() {
+						_ = os.RemoveAll(filepath.Join(subAgentsDir, entry.Name()))
+					}
+				}
 			}
 		}
 

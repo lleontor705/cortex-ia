@@ -13,7 +13,7 @@
     "kind": "agent",
     "mode": "0644",
     "extensions": [],
-    "content": "---\ndescription: \"Implement one bounded vertical work unit.\"\nmode: subagent\n---\n\n# role/implement\n\nImplement one bounded vertical work unit.\n"
+    "content": "---\ndescription: \"Implement one bounded vertical work unit.\"\nmode: subagent\n---\n\n# implement\n\nImplement one bounded vertical work unit.\n"
   },
   {
     "path": "agents/validate.md",
@@ -21,7 +21,7 @@
     "kind": "agent",
     "mode": "0644",
     "extensions": [],
-    "content": "---\ndescription: \"Independently verify the implementation.\"\nmode: subagent\n---\n\n# role/validate\n\nIndependently verify the implementation.\n"
+    "content": "---\ndescription: \"Independently verify the implementation.\"\nmode: subagent\n---\n\n# validate\n\nIndependently verify the implementation.\n"
   },
   {
     "path": "commands/run-workflow.md",

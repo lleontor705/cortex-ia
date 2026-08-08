@@ -17,7 +17,7 @@ import (
 // --- Model Route Picker ---
 
 func (m Model) updateClaudeModelPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	models := []string{"route/v1/performance", "route/v1/workflow", "route/v1/economy"}
+	models := []string{"route/v1/performance", "route/v1/workflow", "route/v1/economy", "route/v1/fast", "route/v1/codex"}
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "up", "k":
@@ -29,7 +29,7 @@ func (m Model) updateClaudeModelPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ClaudeModelCursor++
 			}
 		case "enter":
-			presets := []model.ModelPreset{model.ModelPresetPerformance, model.ModelPresetBalanced, model.ModelPresetEconomy}
+			presets := []model.ModelPreset{model.ModelPresetPerformance, model.ModelPresetBalanced, model.ModelPresetEconomy, model.ModelPresetFast, model.ModelPresetCodex}
 			if m.ClaudeModelCursor < len(presets) {
 				m.ModelPreset = presets[m.ClaudeModelCursor]
 			} else {
@@ -64,9 +64,11 @@ func (m Model) viewClaudeModelPicker() string {
 		alias string
 		desc  string
 	}{
-		{"route/v1/performance", "Deep reasoning and complex tasks"},
-		{"route/v1/workflow", "Balanced workflow capabilities"},
-		{"route/v1/economy", "Fast, lower-cost workflow"},
+		{"route/v1/performance", "GPT-5.6-Sol / Deep reasoning & architecture"},
+		{"route/v1/workflow", "GPT-5.6-Terra / Balanced workhorse TDD"},
+		{"route/v1/economy", "GPT-5.6-Luna & GPT-5.4-Mini / Low-cost triage"},
+		{"route/v1/fast", "GPT-5.6-Fast variants / Low latency"},
+		{"route/v1/codex", "GPT-5.3-Codex-Spark / High-throughput coding"},
 	}
 
 	for i, m2 := range models {
