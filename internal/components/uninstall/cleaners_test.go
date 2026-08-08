@@ -1,11 +1,16 @@
 package uninstall
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lleontor705/cortex-ia/internal/model"
+	"github.com/lleontor705/cortex-ia/internal/system"
 )
 
 func TestRewriteMarkdownSection_Removes(t *testing.T) {
@@ -259,6 +264,181 @@ func TestRemoveJSONKey_InvalidJSONReturnsErrorWithoutMutation(t *testing.T) {
 	if string(after) != string(before) {
 		t.Fatalf("invalid JSONC changed: %s", after)
 	}
+}
+
+func TestRemoveTOMLRegion_OwnedAndLegacyCortexOnly(t *testing.T) {
+	owned := ownedCortexTOML(t, "\r\n")
+	legacy := "[mcp_servers.cortex]\ncommand = \"cortex\"\nargs = [\"mcp\", \"--tools=agent\"]\n"
+	tests := []struct {
+		name   string
+		before string
+		want   string
+	}{
+		{
+			name:   "current ownership preserves CRLF siblings comments order and whitespace",
+			before: "# user header\r\n# user keeps this separator\r\n\r\n" + owned + "\r\n[mcp_servers.user]\r\n# user table comment\r\ncommand = \"user\"\r\nargs = [\"serve\"]\r\n",
+			want:   "# user header\r\n# user keeps this separator\r\n\r\n[mcp_servers.user]\r\n# user table comment\r\ncommand = \"user\"\r\nargs = [\"serve\"]\r\n",
+		},
+		{
+			name:   "finite exact legacy cortex region",
+			before: legacy,
+			want:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(path, []byte(tt.before), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			changed, err := removeTOMLRegion(path, "cortex")
+			if err != nil || !changed {
+				t.Fatalf("removeTOMLRegion() = changed %v, err %v", changed, err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := string(after); got != tt.want {
+				t.Fatalf("after = %q, want %q", got, tt.want)
+			}
+			changed, err = removeTOMLRegion(path, "cortex")
+			if err != nil || changed {
+				t.Fatalf("repeat removal = changed %v, err %v, want no-op", changed, err)
+			}
+		})
+	}
+}
+
+func TestRemoveTOMLRegion_RefusesUnsafeCortexRegionsWithoutMutation(t *testing.T) {
+	owned := ownedCortexTOML(t, "\n")
+	tests := []struct {
+		name   string
+		before string
+	}{
+		{name: "customized command", before: strings.Replace(owned, `command = "cortex"`, `command = "custom"`, 1)},
+		{name: "missing ownership is not legacy", before: "[mcp_servers.cortex]\ncommand = \"cortex\"\nargs = [\"mcp\", \"--tools=agent\"]\n# user note\n"},
+		{name: "stale ownership", before: strings.Replace(owned, `"base_sha256":"`, `"base_sha256":"stale`, 1)},
+		{name: "contradictory ownership", before: strings.Replace(owned, `"semantic_id":"mcp/codex/cortex"`, `"semantic_id":"mcp/codex/other"`, 1)},
+		{name: "malformed TOML", before: "[mcp_servers.cortex\ncommand = \"cortex\"\nargs = [\"mcp\", \"--tools=agent\"]\n"},
+		{name: "ambiguous descendant", before: owned + "[mcp_servers.cortex.extra]\nenabled = true\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			before := []byte(tt.before)
+			if err := os.WriteFile(path, before, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if changed, err := removeTOMLRegion(path, "cortex"); err == nil || changed {
+				t.Fatalf("removeTOMLRegion() = changed %v, err %v, want refusal", changed, err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(before) {
+				t.Fatalf("refusal mutated config:\n got %q\nwant %q", after, before)
+			}
+		})
+	}
+}
+
+func TestRemoveTOMLRegion_AcceptsCurrentOwnershipWithResolvedCommand(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	before := ownedTOML(t, "cortex", `C:\Program Files\Cortex\cortex.exe`, []string{"mcp", "--tools=agent"}, "\n")
+	if err := os.WriteFile(path, []byte(before), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := removeTOMLRegion(path, "cortex")
+	if err != nil || !changed {
+		t.Fatalf("removeTOMLRegion() = changed %v, err %v", changed, err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 0 {
+		t.Fatalf("after = %q, want empty", after)
+	}
+}
+
+func TestComponentOperations_TOMLUsesTOMLRegionOperation(t *testing.T) {
+	adapter := &cleanerTestAdapter{agent: model.AgentCodex, strategy: model.StrategyTOMLFile, settings: filepath.Join(t.TempDir(), "config.toml")}
+	ops := componentOperations("", adapter, model.ComponentCortex)
+	if len(ops) != 1 || ops[0].typeID != opRemoveTOMLRegion || ops[0].path != adapter.settings || ops[0].tomlServer != "cortex" {
+		t.Fatalf("TOML operations = %#v, want one TOML region operation", ops)
+	}
+}
+
+type cleanerTestAdapter struct {
+	agent    model.AgentID
+	strategy model.MCPStrategy
+	settings string
+}
+
+func (a *cleanerTestAdapter) Agent() model.AgentID    { return a.agent }
+func (a *cleanerTestAdapter) Tier() model.SupportTier { return model.TierFull }
+func (a *cleanerTestAdapter) Detect(string) (bool, string, string, bool, error) {
+	return false, "", "", false, nil
+}
+func (a *cleanerTestAdapter) GlobalConfigDir(string) string                     { return "" }
+func (a *cleanerTestAdapter) SystemPromptDir(string) string                     { return "" }
+func (a *cleanerTestAdapter) SystemPromptFile(string) string                    { return "" }
+func (a *cleanerTestAdapter) SkillsDir(string) string                           { return "" }
+func (a *cleanerTestAdapter) SettingsPath(string) string                        { return a.settings }
+func (a *cleanerTestAdapter) SystemPromptStrategy() model.SystemPromptStrategy  { return 0 }
+func (a *cleanerTestAdapter) MCPStrategy() model.MCPStrategy                    { return a.strategy }
+func (a *cleanerTestAdapter) MCPConfigPath(string, string) string               { return a.settings }
+func (a *cleanerTestAdapter) SupportsSkills() bool                              { return false }
+func (a *cleanerTestAdapter) SupportsSystemPrompt() bool                        { return false }
+func (a *cleanerTestAdapter) SupportsMCP() bool                                 { return true }
+func (a *cleanerTestAdapter) SupportsSlashCommands() bool                       { return false }
+func (a *cleanerTestAdapter) CommandsDir(string) string                         { return "" }
+func (a *cleanerTestAdapter) SupportsTaskDelegation() bool                      { return false }
+func (a *cleanerTestAdapter) SupportsSubAgents() bool                           { return false }
+func (a *cleanerTestAdapter) SubAgentsDir(string) string                        { return "" }
+func (a *cleanerTestAdapter) SupportsAutoInstall() bool                         { return false }
+func (a *cleanerTestAdapter) InstallCommands(system.PlatformProfile) [][]string { return nil }
+
+func ownedCortexTOML(t *testing.T, newline string) string {
+	return ownedTOML(t, "cortex", "cortex", []string{"mcp", "--tools=agent"}, newline)
+}
+
+func ownedTOML(t *testing.T, server, command string, args []string, newline string) string {
+	t.Helper()
+	var argsTOML []string
+	for _, arg := range args {
+		argsTOML = append(argsTOML, fmt.Sprintf("%q", arg))
+	}
+	base := []byte(fmt.Sprintf("[mcp_servers.%s]\ncommand = %q\nargs = [%s]\n", server, command, strings.Join(argsTOML, ", ")))
+	baseSHA := fmt.Sprintf("%x", sha256.Sum256(base))
+	commandVector := append([]string{command}, args...)
+	values := append([]string{"cortex-ia", "mcp/codex/" + server, "mcp_servers", server}, commandVector...)
+	values = append(values, baseSHA)
+	ownership := map[string]any{
+		"owner":            "cortex-ia",
+		"semantic_id":      "mcp/codex/" + server,
+		"table_path":       []string{"mcp_servers", server},
+		"command":          commandVector,
+		"base_sha256":      baseSHA,
+		"ownership_sha256": "",
+	}
+	ownership["ownership_sha256"] = fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(values, "\x00"))))
+	encoded, err := json.Marshal(ownership)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join([]string{
+		"[mcp_servers." + server + "]",
+		"# cortex-ia:toml-ownership " + string(encoded),
+		fmt.Sprintf("command = %q", command),
+		"args = [" + strings.Join(argsTOML, ", ") + "]",
+		"",
+	}, newline)
 }
 
 func TestDedupeOperations(t *testing.T) {

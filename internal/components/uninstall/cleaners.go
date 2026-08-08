@@ -4,7 +4,10 @@
 package uninstall
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -19,22 +22,24 @@ import (
 type opType int
 
 const (
-	opRewriteFile   opType = iota // strip a marker section from a file
-	opRemoveFile                  // delete a single file
-	opRemoveTree                  // recursively delete a directory
-	opRemoveIfEmpty               // remove a directory only if it is empty
-	opRemoveJSONKey               // delete a top-level key from a JSON file
+	opRewriteFile      opType = iota // strip a marker section from a file
+	opRemoveFile                     // delete a single file
+	opRemoveTree                     // recursively delete a directory
+	opRemoveIfEmpty                  // remove a directory only if it is empty
+	opRemoveJSONKey                  // delete a top-level key from a JSON file
+	opRemoveTOMLRegion               // delete one ownership-proven TOML MCP table
 )
 
 // operation is a single planned mutation. SectionID is used by opRewriteFile;
-// JSONPath is used by opRemoveJSONKey.
+// JSONPath is used by opRemoveJSONKey; TOMLServer is used by opRemoveTOMLRegion.
 type operation struct {
-	typeID    opType
-	path      string
-	sectionID string
-	jsonPath  []string
-	component model.ComponentID
-	agent     model.AgentID
+	typeID     opType
+	path       string
+	sectionID  string
+	jsonPath   []string
+	tomlServer string
+	component  model.ComponentID
+	agent      model.AgentID
 }
 
 // markersByComponent enumerates the cortex-ia: marker section IDs each
@@ -102,9 +107,9 @@ func componentOperations(homeDir string, adapter agents.Adapter, component model
 				ops = append(ops, operation{typeID: opRemoveJSONKey, path: path, jsonPath: key, component: component, agent: agent})
 			}
 		case model.StrategyTOMLFile:
-			// TOML upserts are append-style; safest to leave the user's TOML alone
-			// and surface the section name as a manual action.
-			ops = append(ops, operation{typeID: opRemoveJSONKey, path: adapter.SettingsPath(homeDir), jsonPath: []string{"mcp_servers", name}, component: component, agent: agent})
+			if path := adapter.SettingsPath(homeDir); path != "" {
+				ops = append(ops, operation{typeID: opRemoveTOMLRegion, path: path, tomlServer: name, component: component, agent: agent})
+			}
 		}
 	}
 
@@ -159,6 +164,8 @@ func applyOperation(op operation) (changed bool, err error) {
 		return removeIfEmpty(op.path)
 	case opRemoveJSONKey:
 		return removeJSONKey(op.path, op.jsonPath)
+	case opRemoveTOMLRegion:
+		return removeTOMLRegion(op.path, op.tomlServer)
 	default:
 		return false, fmt.Errorf("uninstall: unknown op type %d", op.typeID)
 	}
@@ -270,6 +277,184 @@ func removeJSONKey(path string, keyPath []string) (bool, error) {
 	return result.Changed, nil
 }
 
+const tomlOwnershipMarkerPrefix = "# cortex-ia:toml-ownership "
+
+type tomlServerDefinition struct {
+	command string
+	args    []string
+}
+
+var tomlServersByName = map[string]tomlServerDefinition{
+	"cortex":    {command: "cortex", args: []string{"mcp", "--tools=agent"}},
+	"forgespec": {command: "npx", args: []string{"-y", "forgespec-mcp"}},
+	"context7":  {command: "npx", args: []string{"-y", "@upstash/context7-mcp"}},
+}
+
+type tomlRegionOwnership struct {
+	Owner        string   `json:"owner"`
+	SemanticID   string   `json:"semantic_id"`
+	TablePath    []string `json:"table_path"`
+	Command      []string `json:"command"`
+	BaseSHA256   string   `json:"base_sha256"`
+	OwnershipSHA string   `json:"ownership_sha256"`
+}
+
+// removeTOMLRegion removes a single MCP table only after the semantic planner
+// has accepted its exact command vector and either current ownership evidence
+// or the one finite pre-evidence Cortex output proves it is ours.
+func removeTOMLRegion(path, server string) (bool, error) {
+	definition, ok := tomlServersByName[server]
+	if !ok {
+		return false, fmt.Errorf("TOML removal: unknown managed server %q", server)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read %q: %w", path, err)
+	}
+	if ownership, found, err := tomlOwnershipCandidate(content, server); err != nil {
+		return false, err
+	} else if found {
+		definition = tomlServerDefinition{command: ownership.Command[0], args: ownership.Command[1:]}
+	}
+	request := filemerge.TOMLRegionRequest{
+		TablePath:       []string{"mcp_servers", server},
+		ExpectedCommand: definition.command,
+		ExpectedArgs:    definition.args,
+	}
+	plan, err := filemerge.PlanTOMLRegionRemoval(content, request)
+	if err != nil {
+		return false, err
+	}
+	if plan.Decision == "not_found" {
+		return false, nil
+	}
+	region := content[plan.SpanStart:plan.SpanEnd]
+	if err := validateTOMLRegionOwnership(region, server, definition); err != nil {
+		if server != "cortex" || !isExactLegacyCortexRegion(region) {
+			return false, err
+		}
+	}
+	return writeFileAtomic(path, plan.After)
+}
+
+// tomlOwnershipCandidate reads evidence only from the canonical header emitted
+// by the injector. The planner still parses the complete document before any
+// mutation, so this preliminary scan cannot authorize malformed TOML.
+func tomlOwnershipCandidate(content []byte, server string) (tomlRegionOwnership, bool, error) {
+	header := "[mcp_servers." + server + "]"
+	inTarget := false
+	var marker string
+	for _, line := range strings.Split(string(content), "\n") {
+		trimmed := strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if strings.HasPrefix(trimmed, "[") {
+			inTarget = trimmed == header
+			continue
+		}
+		if !inTarget || !strings.HasPrefix(trimmed, tomlOwnershipMarkerPrefix) {
+			continue
+		}
+		if marker != "" {
+			return tomlRegionOwnership{}, false, fmt.Errorf("TOML removal: ambiguous ownership evidence")
+		}
+		marker = strings.TrimPrefix(trimmed, tomlOwnershipMarkerPrefix)
+	}
+	if marker == "" {
+		return tomlRegionOwnership{}, false, nil
+	}
+	ownership, err := decodeTOMLOwnership(marker)
+	if err != nil {
+		return tomlRegionOwnership{}, false, err
+	}
+	if len(ownership.Command) == 0 || ownership.Owner != "cortex-ia" || ownership.SemanticID != "mcp/codex/"+server || !sameStringSlice(ownership.TablePath, []string{"mcp_servers", server}) {
+		return tomlRegionOwnership{}, false, fmt.Errorf("TOML removal: contradictory ownership evidence")
+	}
+	definition := tomlServerDefinition{command: ownership.Command[0], args: ownership.Command[1:]}
+	if ownership.BaseSHA256 != tomlRegionBaseSHA256(server, definition) || ownership.OwnershipSHA != tomlOwnershipDigest(ownership) {
+		return tomlRegionOwnership{}, false, fmt.Errorf("TOML removal: stale ownership evidence")
+	}
+	return ownership, true, nil
+}
+
+func validateTOMLRegionOwnership(region []byte, server string, definition tomlServerDefinition) error {
+	var marker string
+	for _, line := range strings.Split(string(region), "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if strings.HasPrefix(line, tomlOwnershipMarkerPrefix) {
+			if marker != "" {
+				return fmt.Errorf("TOML removal: ambiguous ownership evidence")
+			}
+			marker = strings.TrimPrefix(line, tomlOwnershipMarkerPrefix)
+		}
+	}
+	if marker == "" {
+		return fmt.Errorf("TOML removal: ownership evidence is missing")
+	}
+	ownership, err := decodeTOMLOwnership(marker)
+	if err != nil {
+		return err
+	}
+	expectedCommand := append([]string{definition.command}, definition.args...)
+	expectedPath := []string{"mcp_servers", server}
+	if ownership.Owner != "cortex-ia" || ownership.SemanticID != "mcp/codex/"+server || !sameStringSlice(ownership.TablePath, expectedPath) || !sameStringSlice(ownership.Command, expectedCommand) {
+		return fmt.Errorf("TOML removal: contradictory ownership evidence")
+	}
+	if ownership.BaseSHA256 != tomlRegionBaseSHA256(server, definition) || ownership.OwnershipSHA != tomlOwnershipDigest(ownership) {
+		return fmt.Errorf("TOML removal: stale ownership evidence")
+	}
+	return nil
+}
+
+func decodeTOMLOwnership(marker string) (tomlRegionOwnership, error) {
+	decoder := json.NewDecoder(strings.NewReader(marker))
+	decoder.DisallowUnknownFields()
+	var ownership tomlRegionOwnership
+	if err := decoder.Decode(&ownership); err != nil {
+		return tomlRegionOwnership{}, fmt.Errorf("TOML removal: malformed ownership evidence: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return tomlRegionOwnership{}, fmt.Errorf("TOML removal: malformed ownership evidence")
+	}
+	return ownership, nil
+}
+
+func isExactLegacyCortexRegion(region []byte) bool {
+	return string(region) == "[mcp_servers.cortex]\ncommand = \"cortex\"\nargs = [\"mcp\", \"--tools=agent\"]\n"
+}
+
+func tomlRegionBaseSHA256(server string, definition tomlServerDefinition) string {
+	base := "[mcp_servers." + server + "]\ncommand = " + fmt.Sprintf("%q", definition.command) + "\nargs = ["
+	for i, arg := range definition.args {
+		if i > 0 {
+			base += ", "
+		}
+		base += fmt.Sprintf("%q", arg)
+	}
+	base += "]\n"
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(base)))
+}
+
+func tomlOwnershipDigest(ownership tomlRegionOwnership) string {
+	values := append([]string{ownership.Owner, ownership.SemanticID}, ownership.TablePath...)
+	values = append(values, ownership.Command...)
+	values = append(values, ownership.BaseSHA256)
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(values, "\x00"))))
+}
+
+func sameStringSlice(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // writeFileAtomic writes via filemerge.WriteFileAtomic and reports whether the
 // content actually changed.
 func writeFileAtomic(path string, data []byte) (bool, error) {
@@ -287,7 +472,7 @@ func dedupeOperations(ops []operation) []operation {
 	seen := make(map[string]struct{}, len(ops))
 	out := make([]operation, 0, len(ops))
 	for _, op := range ops {
-		key := fmt.Sprintf("%d|%s|%s|%s", op.typeID, op.path, op.sectionID, joinPath(op.jsonPath))
+		key := fmt.Sprintf("%d|%s|%s|%s|%s", op.typeID, op.path, op.sectionID, joinPath(op.jsonPath), op.tomlServer)
 		if _, ok := seen[key]; ok {
 			continue
 		}

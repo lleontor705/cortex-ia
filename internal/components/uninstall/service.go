@@ -3,6 +3,7 @@ package uninstall
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -16,8 +17,20 @@ type Result struct {
 	RemovedFiles     []string
 	RemovedDirs      []string
 	SkippedNonEmpty  []string
+	RetainedItems    []RetainedItem
 	AgentsRemoved    []model.AgentID
 	ComponentsScoped []model.ComponentID
+}
+
+// RetainedItem records managed content intentionally left untouched because
+// removal could not be proven safe. Disposition is either "refusal" or
+// "collision"; Reason is a stable, operator-facing summary.
+type RetainedItem struct {
+	Path        string
+	Agent       model.AgentID
+	Component   model.ComponentID
+	Disposition string
+	Reason      string
 }
 
 // Selection describes the scope of an uninstall: which agents and which
@@ -108,6 +121,9 @@ func (s *Service) Apply(sel Selection) (Result, error) {
 		}
 		changed, err := applyOperation(op)
 		if err != nil {
+			if retained, ok := retainedTOMLItem(op, err); ok {
+				res.RetainedItems = append(res.RetainedItems, retained)
+			}
 			return res, fmt.Errorf("uninstall %s/%s: %w", op.agent, op.component, err)
 		}
 		if !changed {
@@ -132,6 +148,39 @@ func (s *Service) Apply(sel Selection) (Result, error) {
 		}
 	}
 	return res, nil
+}
+
+func retainedTOMLItem(op operation, err error) (RetainedItem, bool) {
+	if op.typeID != opRemoveTOMLRegion || op.agent != model.AgentCodex {
+		return RetainedItem{}, false
+	}
+
+	reason, disposition := classifyTOMLRetention(err)
+	return RetainedItem{
+		Path:        op.path,
+		Agent:       op.agent,
+		Component:   op.component,
+		Disposition: disposition,
+		Reason:      reason,
+	}, true
+}
+
+func classifyTOMLRetention(err error) (reason, disposition string) {
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "customized"):
+		return "customized Codex TOML content", "refusal"
+	case strings.Contains(message, "ownership evidence is missing"):
+		return "unowned Codex TOML content", "refusal"
+	case strings.Contains(message, "ambiguous"),
+		strings.Contains(message, "duplicate"),
+		strings.Contains(message, "descendant"),
+		strings.Contains(message, "contradictory ownership"),
+		strings.Contains(message, "stale ownership"):
+		return "ambiguous Codex TOML ownership", "collision"
+	default:
+		return "malformed Codex TOML", "refusal"
+	}
 }
 
 // PathsToBackup returns every file the planned uninstall would touch. Used by

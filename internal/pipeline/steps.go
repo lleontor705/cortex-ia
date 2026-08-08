@@ -1,9 +1,11 @@
 package pipeline
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
@@ -73,6 +75,7 @@ type componentStep struct {
 	componentID model.ComponentID
 	injectorFn  func() ([]string, error)
 	progress    ProgressFunc
+	writer      *preparedWriter
 
 	// Output: files written.
 	Files []string
@@ -86,7 +89,18 @@ func (s *componentStep) Run() error {
 	if s.progress != nil {
 		s.progress(s.Name(), "running", nil)
 	}
-	files, err := s.injectorFn()
+	var files []string
+	run := func() error {
+		var err error
+		files, err = s.injectorFn()
+		return err
+	}
+	var err error
+	if s.writer != nil {
+		err = s.writer.run(run)
+	} else {
+		err = run()
+	}
 	if err != nil {
 		if s.progress != nil {
 			s.progress(s.Name(), "failed", err)
@@ -106,6 +120,102 @@ func (s *componentStep) Run() error {
 	return nil
 }
 
+// preparedWriter wraps a post-backup mutation. Its targets are relative to the
+// journal root and must already have been captured by the InstallJournal. It
+// records each target's terminal postimage even when the wrapped writer fails.
+// Pipeline assembly uses this wrapper for component, persona, and metadata
+// writers; it deliberately contains no agent-specific policy.
+type preparedWriter struct {
+	targets              []ManagedTarget
+	journal              *InstallJournal
+	recordJournalOutcome func(*InstallJournal, MutationOutcome) error
+}
+
+// newPreparedWriter freezes a writer's target inventory before the caller
+// begins journal capture. The same generic wrapper serves component, persona,
+// and configuration writers without selecting behavior by agent ID.
+func newPreparedWriter(targets []ManagedTarget) *preparedWriter {
+	inventory := append([]ManagedTarget(nil), targets...)
+	sort.Slice(inventory, func(i, j int) bool {
+		if inventory[i].Path != inventory[j].Path {
+			return inventory[i].Path < inventory[j].Path
+		}
+		if inventory[i].Kind != inventory[j].Kind {
+			return inventory[i].Kind < inventory[j].Kind
+		}
+		return inventory[i].Owner < inventory[j].Owner
+	})
+	return &preparedWriter{targets: inventory}
+}
+
+// ManagedTargets returns an immutable copy of the declared target inventory.
+func (w *preparedWriter) ManagedTargets() []ManagedTarget {
+	if w == nil {
+		return nil
+	}
+	return append([]ManagedTarget(nil), w.targets...)
+}
+
+// bindJournal attaches the already captured journal immediately before the
+// writer enters its post-backup phase.
+func (w *preparedWriter) bindJournal(journal *InstallJournal) {
+	w.journal = journal
+}
+
+func (w *preparedWriter) run(run func() error) error {
+	if err := w.beforeRun(); err != nil {
+		return err
+	}
+
+	err := run()
+	if recordErr := w.recordAttempt(err); recordErr != nil {
+		return errors.Join(err, fmt.Errorf("record writer outcome: %w", recordErr))
+	}
+	return err
+}
+
+func (w *preparedWriter) beforeRun() error {
+	if w == nil || w.journal == nil {
+		return errors.New("prepared writer requires a captured install journal")
+	}
+	if len(w.targets) == 0 {
+		return errors.New("prepared writer requires declared targets")
+	}
+	for _, target := range w.targets {
+		kind, declared := w.journal.targetKind(target.Path)
+		if !declared || kind != target.Kind {
+			return fmt.Errorf("prepared writer target %q was not captured", target.Path)
+		}
+	}
+	return nil
+}
+
+func (w *preparedWriter) recordAttempt(writeErr error) error {
+	targets := append([]ManagedTarget(nil), w.targets...)
+	sort.Slice(targets, func(i, j int) bool { return targets[i].Path < targets[j].Path })
+	for _, target := range targets {
+		path, err := journalPath(w.journal.TargetRoot, target.Path)
+		if err != nil {
+			return err
+		}
+		outcome, err := inspectPath(path, target.Path)
+		if err != nil {
+			return err
+		}
+		if writeErr != nil {
+			outcome.Error = writeErr.Error()
+		}
+		record := w.recordJournalOutcome
+		if record == nil {
+			record = func(journal *InstallJournal, outcome MutationOutcome) error { return journal.Record(outcome) }
+		}
+		if err := record(w.journal, outcome); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Ensure backupStep output dir can be cleaned up on rollback.
 func (s *backupStep) Rollback() error {
 	if s.BackupDir != "" {
@@ -121,11 +231,19 @@ func (s *backupStep) Rollback() error {
 type installStatusStep struct {
 	homeDir  string
 	backupID string // set by the caller after backupStep.Run()
+	writer   *preparedWriter
 }
 
 func (s *installStatusStep) Name() string { return "install-status" }
 
 func (s *installStatusStep) Run() error {
+	if s.writer != nil {
+		return s.writer.run(s.writeStatus)
+	}
+	return s.writeStatus()
+}
+
+func (s *installStatusStep) writeStatus() error {
 	status := state.InstallStatus{
 		Status:    "in-progress",
 		StartedAt: time.Now().UTC().Format(time.RFC3339),

@@ -3,11 +3,21 @@ package state
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 )
 
 const installStatusFile = "install-status.json"
+
+var writeInstallStatusFile = func(path string, data []byte, perm fs.FileMode) error {
+	_, err := filemerge.WriteFileAtomic(path, data, perm)
+	return err
+}
+
+var removeInstallStatusFile = os.Remove
 
 // InstallStatus tracks whether an installation completed cleanly.
 // If the process crashes or a component fails mid-way, the status
@@ -45,11 +55,6 @@ func LoadInstallStatus(homeDir string) (*InstallStatus, error) {
 // SaveInstallStatus writes the install status file.
 func SaveInstallStatus(homeDir string, status InstallStatus) error {
 	path := InstallStatusPath(homeDir)
-	dir := filepath.Dir(path)
-
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create install status directory: %w", err)
-	}
 
 	data, err := json.MarshalIndent(status, "", "  ")
 	if err != nil {
@@ -57,7 +62,7 @@ func SaveInstallStatus(homeDir string, status InstallStatus) error {
 	}
 	data = append(data, '\n')
 
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := writeInstallStatusFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write install status: %w", err)
 	}
 	return nil
@@ -66,7 +71,7 @@ func SaveInstallStatus(homeDir string, status InstallStatus) error {
 // ClearInstallStatus removes the install status file, indicating a clean state.
 func ClearInstallStatus(homeDir string) error {
 	path := InstallStatusPath(homeDir)
-	err := os.Remove(path)
+	err := removeInstallStatusFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove install status: %w", err)
 	}

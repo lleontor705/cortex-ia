@@ -3,12 +3,10 @@ package app
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
-	"github.com/lleontor705/cortex-ia/internal/components/sdd"
 	"github.com/lleontor705/cortex-ia/internal/config"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
@@ -85,29 +83,22 @@ func runInstall(args []string) error {
 			}
 			i++
 			selection.Preset = model.PresetID(args[i])
-		case "--model-preset":
-			if i+1 >= len(args) {
-				return fmt.Errorf("flag --model-preset requires a value (balanced, performance, economy)")
-			}
-			i++
-			selection.ModelAssignments = model.ModelsForPreset(model.ModelPreset(args[i]))
 		case "--persona":
 			if i+1 >= len(args) {
 				return fmt.Errorf("flag --persona requires a value (professional, mentor, minimal)")
 			}
 			i++
 			selection.Persona = model.PersonaID(args[i])
-		case "--profile":
-			if i+1 >= len(args) {
-				return fmt.Errorf("flag --profile requires a value")
-			}
-			i++
-			selection.ProfileName = args[i]
 		case "--local":
 			cwd, _ := os.Getwd()
-			cfg, _, _ := config.FindProjectConfig(cwd)
+			cfg, _, err := config.FindProjectConfig(cwd)
+			if err != nil {
+				return fmt.Errorf("load project config: %w", err)
+			}
 			if cfg != nil {
-				config.ApplyToSelection(cfg, &selection)
+				if err := config.ApplyToSelection(cfg, &selection); err != nil {
+					return fmt.Errorf("apply project config: %w", err)
+				}
 				fmt.Println("Loaded project config from .cortex-ia.yaml")
 			} else {
 				fmt.Println("No .cortex-ia.yaml found. Run 'cortex-ia init' first.")
@@ -264,12 +255,6 @@ func runSync(args []string) error {
 			}
 			i++
 			sel.Persona = model.PersonaID(args[i])
-		case "--profile":
-			if i+1 >= len(args) {
-				return fmt.Errorf("flag --profile requires a value")
-			}
-			i++
-			sel.ProfileName = args[i]
 		}
 	}
 
@@ -374,20 +359,6 @@ func runList(what string) error {
 			}
 		}
 
-	case "profiles":
-		profs, err := state.LoadProfiles(homeDir)
-		if err != nil {
-			return err
-		}
-		if len(profs) == 0 {
-			fmt.Println("No profiles saved. Create one with `cortex-ia profiles create <name>:<provider>/<model>`.")
-			return nil
-		}
-		fmt.Printf("Saved profiles (%d):\n", len(profs))
-		for _, p := range profs {
-			fmt.Printf("  %s\n", sdd.ProfileSummary(p))
-		}
-
 	case "skills":
 		fmt.Println("Community skills:")
 		for _, name := range state.ListCommunitySkills(homeDir) {
@@ -395,10 +366,10 @@ func runList(what string) error {
 		}
 
 	case "all":
-		fmt.Println("Usage: cortex-ia list <agents|components|backups|profiles|skills>")
+		fmt.Println("Usage: cortex-ia list <agents|components|backups|skills>")
 
 	default:
-		return fmt.Errorf("unknown list target: %s (use: agents, components, backups, profiles, skills)", what)
+		return fmt.Errorf("unknown list target: %s (use: agents, components, backups, skills)", what)
 	}
 	return nil
 }
@@ -487,72 +458,6 @@ func runInit() error {
 	fmt.Printf("Created %s\n", path)
 	fmt.Println("Edit this file to customize cortex-ia for your project.")
 	fmt.Println("Then run: cortex-ia install --local")
-	return nil
-}
-
-func runAutoInstall(args []string) error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("cannot determine home directory: %w", err)
-	}
-
-	sysInfo := system.Detect()
-	registry := agents.NewDefaultRegistry()
-
-	dryRun := false
-	for _, arg := range args {
-		if arg == "--dry-run" {
-			dryRun = true
-		}
-	}
-
-	fmt.Println("Auto-installing missing agents...")
-	installed := 0
-
-	for _, adapter := range registry.All() {
-		isInstalled, _, _, _, _ := adapter.Detect(homeDir)
-		if isInstalled {
-			fmt.Printf("  [+] %-18s already installed\n", adapter.Agent())
-			continue
-		}
-
-		if !adapter.SupportsAutoInstall() {
-			fmt.Printf("  [-] %-18s no auto-install available (desktop app)\n", adapter.Agent())
-			continue
-		}
-
-		commands := adapter.InstallCommands(sysInfo.Profile)
-		if len(commands) == 0 {
-			fmt.Printf("  [-] %-18s no install commands for %s\n", adapter.Agent(), sysInfo.Profile.PackageManager)
-			continue
-		}
-
-		if dryRun {
-			for _, cmd := range commands {
-				fmt.Printf("  [~] %-18s would run: %s\n", adapter.Agent(), strings.Join(cmd, " "))
-			}
-			continue
-		}
-
-		fmt.Printf("  [*] %-18s installing...\n", adapter.Agent())
-		for _, cmd := range commands {
-			fmt.Printf("      $ %s\n", strings.Join(cmd, " "))
-			proc := exec.Command(cmd[0], cmd[1:]...)
-			proc.Stdout = os.Stdout
-			proc.Stderr = os.Stderr
-			if err := proc.Run(); err != nil {
-				fmt.Printf("  [!] %-18s install failed: %v\n", adapter.Agent(), err)
-				break
-			}
-		}
-		installed++
-	}
-
-	if dryRun {
-		fmt.Println("\n(dry-run — no changes made)")
-	} else {
-		fmt.Printf("\n%d agent(s) installed.\n", installed)
-	}
 	return nil
 }
 

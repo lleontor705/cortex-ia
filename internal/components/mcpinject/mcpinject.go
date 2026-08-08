@@ -5,8 +5,11 @@
 package mcpinject
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
@@ -49,6 +52,20 @@ type ServerTemplates struct {
 	TOMLCommand string
 	// TOMLArgs are the arguments for TOML-based agents.
 	TOMLArgs []string
+}
+
+const tomlOwnershipMarkerPrefix = "# cortex-ia:toml-ownership "
+
+// tomlRegionOwnership is durable evidence for one cortex-ia-managed TOML
+// table. It is embedded in that table so config and evidence share the same
+// atomic replacement boundary.
+type tomlRegionOwnership struct {
+	Owner        string   `json:"owner"`
+	SemanticID   string   `json:"semantic_id"`
+	TablePath    []string `json:"table_path"`
+	Command      []string `json:"command"`
+	BaseSHA256   string   `json:"base_sha256"`
+	OwnershipSHA string   `json:"ownership_sha256"`
 }
 
 // Inject injects the MCP server config into the agent using the appropriate strategy.
@@ -127,13 +144,60 @@ func injectTOML(homeDir string, adapter agents.Adapter, tmpl ServerTemplates) (I
 	}
 
 	existing, _ := os.ReadFile(settingsPath)
-	updated := filemerge.UpsertMCPServerTOML(string(existing), tmpl.Name, tmpl.TOMLCommand, tmpl.TOMLArgs)
+	updated, err := upsertOwnedTOMLServer(string(existing), tmpl)
+	if err != nil {
+		return InjectionResult{}, err
+	}
 
 	wr, err := filemerge.WriteFileAtomic(settingsPath, []byte(updated), 0o644)
 	if err != nil {
 		return InjectionResult{}, err
 	}
 	return InjectionResult{Changed: wr.Changed, Files: []string{settingsPath}}, nil
+}
+
+func upsertOwnedTOMLServer(content string, tmpl ServerTemplates) (string, error) {
+	tablePath := []string{"mcp_servers", tmpl.Name}
+	section := strings.Join(tablePath, ".")
+	block := tomlMCPServerBlock(tmpl.TOMLCommand, tmpl.TOMLArgs)
+	base := []byte("[" + section + "]\n" + block)
+	command := append([]string{tmpl.TOMLCommand}, tmpl.TOMLArgs...)
+	ownership := tomlRegionOwnership{
+		Owner:      "cortex-ia",
+		SemanticID: "mcp/codex/" + tmpl.Name,
+		TablePath:  tablePath,
+		Command:    command,
+		BaseSHA256: fmt.Sprintf("%x", sha256.Sum256(base)),
+	}
+	ownership.OwnershipSHA = tomlOwnershipDigest(ownership)
+	encoded, err := json.Marshal(ownership)
+	if err != nil {
+		return "", fmt.Errorf("marshal TOML ownership evidence: %w", err)
+	}
+	return filemerge.UpsertTOMLBlock(content, section, tomlOwnershipMarkerPrefix+string(encoded)+"\n"+block), nil
+}
+
+func tomlMCPServerBlock(command string, args []string) string {
+	var block strings.Builder
+	fmt.Fprintf(&block, "command = %q\n", command)
+	if len(args) > 0 {
+		block.WriteString("args = [")
+		for i, arg := range args {
+			if i > 0 {
+				block.WriteString(", ")
+			}
+			fmt.Fprintf(&block, "%q", arg)
+		}
+		block.WriteString("]\n")
+	}
+	return block.String()
+}
+
+func tomlOwnershipDigest(ownership tomlRegionOwnership) string {
+	values := append([]string{ownership.Owner, ownership.SemanticID}, ownership.TablePath...)
+	values = append(values, ownership.Command...)
+	values = append(values, ownership.BaseSHA256)
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(values, "\x00"))))
 }
 
 func mergeJSONFile(path string, overlay []byte) (filemerge.WriteResult, error) {

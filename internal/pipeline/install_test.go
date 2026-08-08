@@ -3,28 +3,22 @@ package pipeline
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
-	"github.com/lleontor705/cortex-ia/internal/components/forgespec"
-	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
-	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
@@ -36,22 +30,6 @@ func newTestRegistry() *agents.Registry {
 	return r
 }
 
-func explicitTestModelAssignments(providerModel string) model.ModelAssignments {
-	assignments := model.ModelAssignments{}
-	for _, phase := range []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize", "orchestrator"} {
-		assignments[phase] = providerModel
-	}
-	return assignments
-}
-
-func explicitTestProfile(name, providerModel string) model.Profile {
-	assignments := model.OpenCodeModelAssignments{}
-	for _, phase := range []string{"sdd-init", "sdd-explore", "sdd-propose", "sdd-spec", "sdd-design", "sdd-tasks", "sdd-apply", "sdd-verify", "sdd-archive"} {
-		assignments[phase] = model.OpenCodeModelAssignment{Provider: strings.SplitN(providerModel, "/", 2)[0], Model: strings.SplitN(providerModel, "/", 2)[1]}
-	}
-	return model.Profile{Name: name, ConfiguredAssignments: assignments}
-}
-
 // ---------------------------------------------------------------------------
 // Install
 // ---------------------------------------------------------------------------
@@ -60,9 +38,8 @@ func TestInstall_Full(t *testing.T) {
 	homeDir := t.TempDir()
 	registry := newTestRegistry()
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Preset:           model.PresetFull,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}
 
 	result, err := Install(homeDir, registry, selection, "test-v1", false)
@@ -109,9 +86,8 @@ func TestInstall_Minimal(t *testing.T) {
 	homeDir := t.TempDir()
 	registry := newTestRegistry()
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Preset:           model.PresetMinimal,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}
 
 	result, err := Install(homeDir, registry, selection, "test-v1", false)
@@ -129,9 +105,8 @@ func TestInstall_DryRun(t *testing.T) {
 	homeDir := t.TempDir()
 	registry := newTestRegistry()
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Preset:           model.PresetMinimal,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}
 
 	result, err := Install(homeDir, registry, selection, "test-v1", true)
@@ -150,23 +125,9 @@ func TestInstall_DryRun(t *testing.T) {
 	}
 }
 
-func TestInstallDryRunComposesProbedWorkflowWithoutMutation(t *testing.T) {
+func TestInstallDryRunWithSupportedComponentsDoesNotMutate(t *testing.T) {
 	homeDir := t.TempDir()
 	registry := newTestRegistry()
-	now := time.Now().UTC().Truncate(time.Second)
-	snapshot := qualifiedForgeSpecSnapshot(now)
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/capabilities" {
-			http.NotFound(writer, request)
-			return
-		}
-		_ = json.NewEncoder(writer).Encode(snapshot)
-	}))
-	defer server.Close()
-	t.Setenv("CORTEX_IA_FORGESPEC_CAPABILITIES_URL", server.URL)
-	// Keep the mutation sentinel outside the managed workflow target. Placing
-	// operator bytes in AGENTS.md correctly creates an ownership blocker and is
-	// not a valid healthy-doctor fixture.
 	sentinel := filepath.Join(homeDir, ".codex", "operator-sentinel.txt")
 	if err := os.MkdirAll(filepath.Dir(sentinel), 0o755); err != nil {
 		t.Fatal(err)
@@ -177,9 +138,8 @@ func TestInstallDryRunComposesProbedWorkflowWithoutMutation(t *testing.T) {
 
 	before := testTreeDigest(t, homeDir)
 	result, err := Install(homeDir, registry, model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Components:       []model.ComponentID{model.ComponentSDD},
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}, "test-v1", true)
 	if err != nil {
 		t.Fatalf("Install() dry-run error = %v", err)
@@ -189,16 +149,7 @@ func TestInstallDryRunComposesProbedWorkflowWithoutMutation(t *testing.T) {
 		t.Fatalf("dry-run mutated target tree: before=%s after=%s", before, after)
 	}
 
-	if result.WorkflowCutover.Mode != forgespec.CoordinationDirectV1 {
-		t.Fatalf("workflow mode = %q, want probed direct-v1", result.WorkflowCutover.Mode)
-	}
-	if result.WorkflowDoctor.Profile == "" || !result.WorkflowDoctor.Qualified {
-		t.Fatalf("workflow doctor = %+v, want qualified production report", result.WorkflowDoctor)
-	}
-	if result.WorkflowFingerprint == "" || result.WorkflowFingerprint != result.WorkflowPlan.Fingerprint {
-		t.Fatalf("workflow fingerprints = result %q plan %q", result.WorkflowFingerprint, result.WorkflowPlan.Fingerprint)
-	}
-	if result.WorkflowReceipt.ID != "" || result.WorkflowRollback {
+	if result.WorkflowFingerprint != "" || result.WorkflowReceipt.ID != "" || result.WorkflowRollback {
 		t.Fatalf("dry-run produced mutation evidence: receipt=%+v rollback=%t", result.WorkflowReceipt, result.WorkflowRollback)
 	}
 }
@@ -274,25 +225,6 @@ func TestPrepareWorkflowPreservesCurrentMailboxRegistration(t *testing.T) {
 	}
 }
 
-func qualifiedForgeSpecSnapshot(now time.Time) forgespec.CapabilitySnapshot {
-	requirements := forgespec.RequiredP0Capabilities()
-	capabilities := make([]forgespec.NegotiatedCapability, 0, len(requirements))
-	for _, requirement := range requirements {
-		capabilities = append(capabilities, forgespec.NegotiatedCapability{
-			ID: requirement.ID, Version: ir.MustParseVersion("1.0.0"), Provider: "forgespec",
-			ProviderVersion: ir.MustParseVersion("2.0.0"), Interval: requirement.Versions,
-			EvidenceClass: capability.EvidenceExecutableProbe, EvidenceRef: "probe://forgespec/capabilities",
-			ObservedAt: now.Add(-time.Minute), FreshUntil: now.Add(time.Hour), Confidence: 1,
-			ProbeID: "probe/forgespec/capabilities", Enforcement: capability.EnforcementMCP,
-		})
-	}
-	return forgespec.CapabilitySnapshot{
-		SchemaVersion: ir.MustParseVersion("1.0.0"), ServerVersion: ir.MustParseVersion("2.0.0"),
-		ProtocolVersion: ir.MustParseVersion("1.0.0"), ProbeStatus: forgespec.ProbeQualified,
-		Capabilities: capabilities,
-	}
-}
-
 func TestPrepareWorkflowBuildsOneDeterministicHomeRelativePlan(t *testing.T) {
 	homeDir := t.TempDir()
 	adapter, err := newTestRegistry().Get(model.AgentCodex)
@@ -339,17 +271,17 @@ func TestPrepareWorkflowBuildsOneDeterministicHomeRelativePlan(t *testing.T) {
 	}
 }
 
-func TestInstallDryRunExposesCanonicalWorkflowFingerprintWithoutMutation(t *testing.T) {
+func TestInstallDryRunWithoutWorkflowDoesNotMutate(t *testing.T) {
 	homeDir := t.TempDir()
 	before := testTreeDigest(t, homeDir)
 	result, err := Install(homeDir, newTestRegistry(), model.Selection{
-		Agents: []model.AgentID{model.AgentCodex}, Components: []model.ComponentID{model.ComponentSDD}, ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents: []model.AgentID{model.AgentCodex}, Components: []model.ComponentID{model.ComponentCortex},
 	}, "test-v1", true)
 	if err != nil {
 		t.Fatalf("Install() error = %v", err)
 	}
-	if result.WorkflowFingerprint == "" {
-		t.Fatal("shipped pipeline did not expose canonical workflow fingerprint")
+	if result.WorkflowFingerprint != "" {
+		t.Fatalf("non-workflow install reported a workflow fingerprint: %q", result.WorkflowFingerprint)
 	}
 	if got := testTreeDigest(t, homeDir); got != before {
 		t.Fatalf("dry-run mutated target: before=%s after=%s", before, got)
@@ -388,9 +320,8 @@ func TestInstall_WithInvalidAgent(t *testing.T) {
 	homeDir := t.TempDir()
 	registry := newTestRegistry()
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex, "nonexistent-agent"},
-		Preset:           model.PresetMinimal,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex, "nonexistent-agent"},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}
 
 	// Validate step catches invalid agent in prepare stage → immediate error.
@@ -411,9 +342,8 @@ func TestInstall_ComponentError(t *testing.T) {
 	}
 
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Preset:           model.PresetMinimal,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}
 
 	// Component injection fails → apply stage reports error.
@@ -427,9 +357,8 @@ func TestInstall_ExplicitComponents(t *testing.T) {
 	homeDir := t.TempDir()
 	registry := newTestRegistry()
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Components:       []model.ComponentID{model.ComponentCortex, model.ComponentSDD},
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex, model.ComponentForgeSpec},
 	}
 
 	result, err := Install(homeDir, registry, selection, "test-v1", false)
@@ -441,140 +370,447 @@ func TestInstall_ExplicitComponents(t *testing.T) {
 	}
 }
 
-func TestInstall_WithProfileName(t *testing.T) {
+func TestInstall_RetiredSelectionsFailClosedWithoutMutation(t *testing.T) {
+	tests := []struct {
+		name          string
+		selection     model.Selection
+		wantErrorPart string
+	}{
+		{
+			name: "profile name",
+			selection: model.Selection{
+				Agents: []model.AgentID{model.AgentCodex}, Preset: model.PresetFull, ProfileName: "retired-profile",
+			},
+			wantErrorPart: `retired selection field "profile"`,
+		},
+		{
+			name: "model assignments",
+			selection: model.Selection{
+				Agents: []model.AgentID{model.AgentCodex}, Preset: model.PresetFull, ModelAssignments: model.ModelAssignments{"implement": "provider-test/model-test"},
+			},
+			wantErrorPart: `retired selection field "model-assignment"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			homeDir := t.TempDir()
+			before := testTreeDigest(t, homeDir)
+
+			result, err := Install(homeDir, newTestRegistry(), tt.selection, "test-v1", false)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErrorPart) {
+				t.Fatalf("Install() error = %v, want %q", err, tt.wantErrorPart)
+			}
+			if got := testTreeDigest(t, homeDir); got != before {
+				t.Fatalf("retired selection mutated target tree: before=%s after=%s", before, got)
+			}
+			if result.BackupID != "" || len(result.FilesChanged) != 0 || len(result.ComponentsDone) != 0 || len(result.Errors) != 0 || result.WorkflowReceipt.ID != "" {
+				t.Fatalf("retired selection produced install evidence: %+v", result)
+			}
+		})
+	}
+}
+
+func TestInstallCanonicalClientsAreExactAndGeminiFailsClosed(t *testing.T) {
+	registry := agents.NewDefaultRegistry()
+	wantClients := []model.AgentID{
+		model.AgentClaudeCode,
+		model.AgentOpenCode,
+		model.AgentVSCodeCopilot,
+		model.AgentCodex,
+	}
+	if got := registry.IDs(); !reflect.DeepEqual(got, wantClients) {
+		t.Fatalf("default registry clients = %v, want exactly %v", got, wantClients)
+	}
+
 	homeDir := t.TempDir()
+	before := testTreeDigest(t, homeDir)
+	result, err := Install(homeDir, registry, model.Selection{
+		Agents:     []model.AgentID{"gemini"},
+		Components: []model.ComponentID{model.ComponentCortex},
+	}, "test-v1", false)
+	if err == nil || !strings.Contains(err.Error(), "unknown agent") {
+		t.Fatalf("Install() error = %v, want Gemini rejection", err)
+	}
+	if got := testTreeDigest(t, homeDir); got != before {
+		t.Fatalf("Gemini rejection mutated target tree: before=%s after=%s", before, got)
+	}
+	if result.BackupID != "" || len(result.FilesChanged) != 0 || len(result.Errors) != 0 {
+		t.Fatalf("Gemini rejection produced install evidence: %+v", result)
+	}
+}
+
+func TestInstallIdempotentCortexOnlyDoesNotCreateModelOrPackageFiles(t *testing.T) {
+	homeDir := t.TempDir()
+	selection := model.Selection{
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
+	}
 	registry := newTestRegistry()
 
-	// Create a profile with model assignments.
-	profiles := []model.Profile{explicitTestProfile("premium", "provider-test/model-test")}
-	if err := state.SaveProfiles(homeDir, profiles); err != nil {
-		t.Fatalf("SaveProfiles() error = %v", err)
+	if _, err := Install(homeDir, registry, selection, "test-v1", false); err != nil {
+		t.Fatalf("first Install() error = %v", err)
 	}
-
-	selection := model.Selection{
-		Agents:      []model.AgentID{model.AgentCodex},
-		Preset:      model.PresetFull,
-		ProfileName: "premium",
-	}
-
-	result, err := Install(homeDir, registry, selection, "test-v1", false)
-	if err != nil {
-		t.Fatalf("Install() error = %v\nErrors: %v", err, result.Errors)
-	}
-
-	if len(result.ComponentsDone) == 0 {
-		t.Error("expected components done")
-	}
-
-	// Verify state saved the profile name.
-	s, err := state.Load(homeDir)
+	configPath := filepath.Join(homeDir, ".codex", "config.toml")
+	firstConfig, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.LastProfile != "premium" {
-		t.Errorf("state.LastProfile = %q, want %q", s.LastProfile, "premium")
+	if strings.Contains(string(firstConfig), "model") || strings.Contains(string(firstConfig), "package") {
+		t.Fatalf("Cortex-only install wrote retired model/package configuration:\n%s", firstConfig)
+	}
+
+	if _, err := Install(homeDir, registry, selection, "test-v1", false); err != nil {
+		t.Fatalf("second Install() error = %v", err)
+	}
+	secondConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(secondConfig) != string(firstConfig) {
+		t.Fatalf("repeat install changed Cortex config:\nfirst=%s\nsecond=%s", firstConfig, secondConfig)
+	}
+	for _, forbidden := range []string{
+		filepath.Join(homeDir, ".cortex-ia", "models.json"),
+		filepath.Join(homeDir, ".cortex-ia", "packages.json"),
+	} {
+		if _, err := os.Stat(forbidden); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("Cortex-only install created forbidden model/package artifact %q: %v", forbidden, err)
+		}
 	}
 }
 
-// TestInstall_ProfileAutoAppliesToOpenCodeJSON verifies that when an OpenCode
-// adapter is in the selection AND a profile is resolved, the per-phase model
-// assignments are written to opencode.json without requiring `profiles apply`.
-func TestInstall_ProfileAutoAppliesToOpenCodeJSON(t *testing.T) {
+func TestInstallPostBackupStatusTargetConflictPreservesConfigAndMetadata(t *testing.T) {
 	homeDir := t.TempDir()
-	registry := newTestRegistry()
-
-	cheap := explicitTestProfile("cheap", "openai/gpt-4o-mini")
-	cheap.ConfiguredAssignments["sdd-apply"] = model.OpenCodeModelAssignment{Provider: "provider-test", Model: "model-test"}
-	profiles := []model.Profile{cheap}
-	if err := state.SaveProfiles(homeDir, profiles); err != nil {
-		t.Fatalf("SaveProfiles: %v", err)
+	configPath := filepath.Join(homeDir, ".codex", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("# operator configuration\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(homeDir, state.State{Version: "before-state"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SaveLock(homeDir, state.Lockfile{Version: "before-lock"}); err != nil {
+		t.Fatal(err)
+	}
+	statusPath := state.InstallStatusPath(homeDir)
+	if err := os.MkdirAll(statusPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(statusPath, "operator-sentinel"), []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
-	selection := model.Selection{
-		Agents:      []model.AgentID{model.AgentOpenCode},
-		Preset:      model.PresetFull,
-		ProfileName: "cheap",
-	}
-	if _, err := Install(homeDir, registry, selection, "test-v1", false); err != nil {
-		t.Fatalf("Install: %v", err)
+	protected := map[string]string{}
+	for _, path := range []string{configPath, state.StatePath(homeDir), state.LockPath(homeDir), filepath.Join(statusPath, "operator-sentinel")} {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		protected[path] = string(content)
 	}
 
-	cfgPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
-	data, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatalf("ReadFile opencode.json: %v", err)
+	result, err := Install(homeDir, newTestRegistry(), model.Selection{
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
+	}, "test-v1", false)
+	if err == nil || !strings.Contains(err.Error(), "install-status.json\" has incompatible existing type") {
+		t.Fatalf("Install() error = %v, want install-status target conflict", err)
 	}
-	var parsed map[string]any
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("Unmarshal: %v\n%s", err, string(data))
+	if result.BackupID == "" {
+		t.Fatal("post-backup target conflict did not retain backup evidence")
 	}
-	agentSection, ok := parsed["agent"].(map[string]any)
-	if !ok {
-		t.Fatalf("agent section missing in opencode.json: %s", string(data))
-	}
-	design, ok := agentSection["architect"].(map[string]any)
-	if !ok {
-		t.Fatalf("architect entry missing: %v", agentSection)
-	}
-	if design["model"] != "openai/gpt-4o-mini" {
-		t.Errorf("architect.model = %v, want openai/gpt-4o-mini", design["model"])
-	}
-	if _, exists := agentSection["team-lead"]; exists {
-		t.Fatal("portable install must not create a team-lead entry")
-	}
-	worker, ok := agentSection["implement"].(map[string]any)
-	if !ok {
-		t.Fatalf("implement entry missing")
-	}
-	if worker["model"] != "provider-test/model-test" {
-		t.Errorf("implement.model = %v", worker["model"])
-	}
-	if _, hasLegacy := agentSection["sdd-apply"]; hasLegacy {
-		t.Error("profile auto-apply should not create legacy sdd-apply entry")
+	for path, want := range protected {
+		got, readErr := os.ReadFile(path)
+		if readErr != nil || string(got) != want {
+			t.Fatalf("protected target %q = %q, %v; want %q", path, got, readErr, want)
+		}
 	}
 }
 
-func TestInstall_ModelAssignmentsAutoApplyToOpenCodeJSON(t *testing.T) {
+func TestInstallPostBackupFailuresRestoreExactPreimages(t *testing.T) {
+	boom := errors.New("injected post-backup failure")
+	for _, failure := range []struct {
+		name   string
+		inject func(installDependencies) installDependencies
+	}{
+		{
+			name: "status start",
+			inject: func(deps installDependencies) installDependencies {
+				deps.saveInstallStatus = func(home string, status state.InstallStatus) error {
+					if err := state.SaveInstallStatus(home, status); err != nil {
+						return err
+					}
+					return boom
+				}
+				return deps
+			},
+		},
+		{
+			name: "component",
+			inject: func(deps installDependencies) installDependencies {
+				deps.invokeComponent = func(_ model.ComponentID, invoke func() ([]string, error)) ([]string, error) {
+					files, err := invoke()
+					if err != nil {
+						return files, err
+					}
+					return files, boom
+				}
+				return deps
+			},
+		},
+		{
+			name: "persona",
+			inject: func(deps installDependencies) installDependencies {
+				deps.invokePersona = func(invoke func() ([]string, error)) ([]string, error) {
+					files, err := invoke()
+					if err != nil {
+						return files, err
+					}
+					return files, boom
+				}
+				return deps
+			},
+		},
+		{
+			name: "state",
+			inject: func(deps installDependencies) installDependencies {
+				deps.saveState = func(home string, value state.State) error {
+					if err := state.Save(home, value); err != nil {
+						return err
+					}
+					return boom
+				}
+				return deps
+			},
+		},
+		{
+			name: "lock",
+			inject: func(deps installDependencies) installDependencies {
+				deps.saveLock = func(home string, value state.Lockfile) error {
+					if err := state.SaveLock(home, value); err != nil {
+						return err
+					}
+					return boom
+				}
+				return deps
+			},
+		},
+		{
+			name: "status clear",
+			inject: func(deps installDependencies) installDependencies {
+				deps.clearInstallStatus = func(home string) error {
+					if err := state.ClearInstallStatus(home); err != nil {
+						return err
+					}
+					return boom
+				}
+				return deps
+			},
+		},
+		{
+			name: "checkpoint",
+			inject: func(deps installDependencies) installDependencies {
+				deps.recordJournalOutcome = func(*InstallJournal, MutationOutcome) error { return boom }
+				return deps
+			},
+		},
+		{
+			name: "commit",
+			inject: func(deps installDependencies) installDependencies {
+				deps.commitJournal = func(*InstallJournal) error { return boom }
+				return deps
+			},
+		},
+	} {
+		t.Run(failure.name, func(t *testing.T) {
+			homeDir, before := installCoordinatorPreimages(t, "existing")
+			selection := model.Selection{Agents: []model.AgentID{model.AgentCodex}, Components: []model.ComponentID{model.ComponentCortex}, Persona: model.PersonaProfessional}
+			if failure.name == "component" {
+				selection.Persona = ""
+			}
+			result, err := installWithDependencies(homeDir, newTestRegistry(), selection, "test-v1", false, failure.inject(defaultInstallDependencies()))
+			if !errors.Is(err, boom) {
+				t.Fatalf("Install() error = %v, want injected failure", err)
+			}
+			if result.BackupID == "" {
+				t.Fatal("post-backup failure lost backup evidence")
+			}
+			assertInstallCoordinatorPreimages(t, before)
+		})
+	}
+}
+
+func TestInstallReceiptFailureRestoresWorkflowPreimage(t *testing.T) {
+	homeDir, before := installCoordinatorPreimages(t, "existing")
+	workflowPath := filepath.Join(homeDir, "workflow.md")
+	if err := os.WriteFile(workflowPath, []byte("workflow before\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	before[workflowPath] = captureInstallTestFile(t, workflowPath)
+	boom := errors.New("injected workflow apply failure")
+	deps := defaultInstallDependencies()
+	deps.prepareWorkflow = func(context.Context, WorkflowRequest) (PreparedWorkflowInstall, error) {
+		return PreparedWorkflowInstall{Plan: sddinstall.Plan{Updates: []sddinstall.Effect{{Path: "workflow.md"}}}}, nil
+	}
+	deps.applyWorkflow = func(PreparedWorkflowInstall) (sddinstall.Receipt, error) {
+		if err := os.WriteFile(workflowPath, []byte("workflow after\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return sddinstall.Receipt{ID: "workflow-receipt", Applied: []string{"workflow.md"}}, boom
+	}
+
+	result, err := installWithDependencies(homeDir, newTestRegistry(), model.Selection{
+		Agents: []model.AgentID{model.AgentCodex}, Components: []model.ComponentID{model.ComponentSDD},
+	}, "test-v1", false, deps)
+	if !errors.Is(err, boom) || result.BackupID == "" {
+		t.Fatalf("Install() = (%+v, %v), want workflow failure with backup evidence", result, err)
+	}
+	assertInstallCoordinatorPreimages(t, before)
+}
+
+func TestInstallChainWaitsForPeerBeforeRestoring(t *testing.T) {
+	homeDir, before := installCoordinatorPreimages(t, "absent")
+	boom := errors.New("first chain failure")
+	deps := defaultInstallDependencies()
+	var calls atomic.Int32
+	peerStarted := make(chan struct{})
+	releasePeer := make(chan struct{})
+	deps.invokeComponent = func(_ model.ComponentID, invoke func() ([]string, error)) ([]string, error) {
+		files, err := invoke()
+		if err != nil {
+			return files, err
+		}
+		if calls.Add(1) == 1 {
+			return files, boom
+		}
+		close(peerStarted)
+		<-releasePeer
+		return files, nil
+	}
+	resultCh := make(chan struct {
+		result InstallResult
+		err    error
+	}, 1)
+	go func() {
+		result, err := installWithDependencies(homeDir, agents.NewDefaultRegistry(), model.Selection{
+			Agents: []model.AgentID{model.AgentCodex, model.AgentOpenCode}, Components: []model.ComponentID{model.ComponentCortex},
+		}, "test-v1", false, deps)
+		resultCh <- struct {
+			result InstallResult
+			err    error
+		}{result, err}
+	}()
+	<-peerStarted
+	select {
+	case got := <-resultCh:
+		t.Fatalf("Install returned before peer joined: %+v", got)
+	default:
+	}
+	close(releasePeer)
+	got := <-resultCh
+	if !errors.Is(got.err, boom) || got.result.BackupID == "" {
+		t.Fatalf("Install() = (%+v, %v), want first-chain failure after join", got.result, got.err)
+	}
+	assertInstallCoordinatorPreimages(t, before)
+}
+
+func TestInstallRestoreFailureAndVerificationAreReported(t *testing.T) {
+	for _, name := range []string{"restore", "verification"} {
+		t.Run(name, func(t *testing.T) {
+			homeDir, before := installCoordinatorPreimages(t, "empty")
+			primary := errors.New("injected component failure")
+			recovery := fmt.Errorf("injected %s failure", name)
+			deps := defaultInstallDependencies()
+			deps.invokeComponent = func(_ model.ComponentID, invoke func() ([]string, error)) ([]string, error) {
+				files, err := invoke()
+				if err != nil {
+					return files, err
+				}
+				return files, primary
+			}
+			deps.restoreAndVerify = func(journal *InstallJournal) error {
+				if err := journal.RestoreAndVerify(); err != nil {
+					return err
+				}
+				return recovery
+			}
+			_, err := installWithDependencies(homeDir, newTestRegistry(), model.Selection{
+				Agents: []model.AgentID{model.AgentCodex}, Components: []model.ComponentID{model.ComponentCortex},
+			}, "test-v1", false, deps)
+			if !errors.Is(err, primary) || !strings.Contains(err.Error(), recovery.Error()) {
+				t.Fatalf("Install() error = %v, want primary and %s evidence", err, name)
+			}
+			assertInstallCoordinatorPreimages(t, before)
+		})
+	}
+}
+
+type installTestFile struct {
+	present bool
+	mode    os.FileMode
+	content []byte
+}
+
+func installCoordinatorPreimages(t *testing.T, configState string) (string, map[string]installTestFile) {
+	t.Helper()
 	homeDir := t.TempDir()
-	registry := newTestRegistry()
-
-	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentOpenCode},
-		Preset:           model.PresetFull,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+	configPath := filepath.Join(homeDir, ".codex", "config.toml")
+	if configState != "absent" {
+		if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		content := []byte("# existing config\n")
+		if configState == "empty" {
+			content = nil
+		}
+		if err := os.WriteFile(configPath, content, 0o640); err != nil {
+			t.Fatal(err)
+		}
 	}
-	selection.ModelAssignments["architect"] = "provider-test/architect-model"
-	selection.ModelAssignments["implement"] = "provider-test/implement-model"
-	if _, err := Install(homeDir, registry, selection, "test-v1", false); err != nil {
-		t.Fatalf("Install: %v", err)
+	if err := state.Save(homeDir, state.State{Version: "before-state"}); err != nil {
+		t.Fatal(err)
 	}
+	if err := state.SaveLock(homeDir, state.Lockfile{Version: "before-lock"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SaveInstallStatus(homeDir, state.InstallStatus{Status: "before", BackupID: "before"}); err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{configPath, state.StatePath(homeDir), state.LockPath(homeDir), state.InstallStatusPath(homeDir)}
+	before := make(map[string]installTestFile, len(paths))
+	for _, path := range paths {
+		before[path] = captureInstallTestFile(t, path)
+	}
+	return homeDir, before
+}
 
-	cfgPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
-	data, err := os.ReadFile(cfgPath)
+func captureInstallTestFile(t *testing.T, path string) installTestFile {
+	t.Helper()
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return installTestFile{}
+	}
 	if err != nil {
-		t.Fatalf("ReadFile opencode.json: %v", err)
+		t.Fatal(err)
 	}
-	var parsed map[string]any
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("Unmarshal: %v\n%s", err, string(data))
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	agentSection, ok := parsed["agent"].(map[string]any)
-	if !ok {
-		t.Fatalf("agent section missing in opencode.json: %s", string(data))
-	}
-	assertAgentModel := func(agent, want string) {
-		t.Helper()
-		entry, _ := agentSection[agent].(map[string]any)
-		if entry == nil {
-			t.Fatalf("%s entry missing", agent)
-		}
-		if entry["model"] != want {
-			t.Errorf("%s.model = %v, want %s", agent, entry["model"], want)
+	return installTestFile{present: true, mode: info.Mode().Perm(), content: content}
+}
+
+func assertInstallCoordinatorPreimages(t *testing.T, want map[string]installTestFile) {
+	t.Helper()
+	for path, image := range want {
+		got := captureInstallTestFile(t, path)
+		if got.present != image.present || got.mode != image.mode || string(got.content) != string(image.content) {
+			t.Fatalf("restored %q = %+v, want %+v", path, got, image)
 		}
 	}
-	assertAgentModel("architect", "provider-test/architect-model")
-	assertAgentModel("implement", "provider-test/implement-model")
-	assertAgentModel("orchestrator", "provider-test/model-test")
 }
 
 func TestInstall_OpenCodeCoexistenceMutatesOnlyJSONC(t *testing.T) {
@@ -594,9 +830,8 @@ func TestInstall_OpenCodeCoexistenceMutatesOnlyJSONC(t *testing.T) {
 		t.Fatal(err)
 	}
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentOpenCode},
-		Preset:           model.PresetFull,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentOpenCode},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}
 	if _, err := Install(homeDir, newTestRegistry(), selection, "test-v1", false); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -619,86 +854,8 @@ func TestInstall_OpenCodeCoexistenceMutatesOnlyJSONC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	agents, ok := config["agent"].(map[string]any)
-	if !ok || agents["orchestrator"].(map[string]any)["model"] != "provider-test/model-test" {
-		t.Fatalf("model assignments missing from effective JSONC: %#v", config["agent"])
-	}
-}
-
-func TestInstall_OpenCodeModelApplyFailurePropagatesError(t *testing.T) {
-	homeDir := t.TempDir()
-	configDir := filepath.Join(homeDir, ".config", "opencode")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	jsoncPath := filepath.Join(configDir, "opencode.jsonc")
-	if err := os.WriteFile(jsoncPath, []byte(`{"agent":`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentOpenCode},
-		Preset:           model.PresetFull,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
-	}
-	result, err := Install(homeDir, newTestRegistry(), selection, "test-v1", false)
-	if err == nil {
-		t.Fatal("expected error when config is invalid, got nil")
-	}
-	if result.BackupID == "" {
-		t.Fatal("expected backup ID even on failure")
-	}
-}
-
-func TestInstall_OpenCodeModelApplyRecordsConfigPath(t *testing.T) {
-	homeDir := t.TempDir()
-	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentOpenCode},
-		Preset:           model.PresetFull,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
-	}
-	result, err := Install(homeDir, newTestRegistry(), selection, "test-v1", false)
-	if err != nil {
-		t.Fatalf("Install: %v", err)
-	}
-	configPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
-	found := false
-	for _, f := range result.FilesChanged {
-		if filepath.Clean(f) == filepath.Clean(configPath) {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("model-affected config path %q not in FilesChanged: %v", configPath, result.FilesChanged)
-	}
-}
-
-func TestInstall_ProfileNameDoesNotOverrideExplicitAssignments(t *testing.T) {
-	homeDir := t.TempDir()
-	registry := newTestRegistry()
-
-	// Create a profile.
-	profiles := []model.Profile{explicitTestProfile("economy", "provider-test/profile-model")}
-	if err := state.SaveProfiles(homeDir, profiles); err != nil {
-		t.Fatalf("SaveProfiles() error = %v", err)
-	}
-
-	// Selection already has explicit ModelAssignments — profile should NOT override.
-	explicit := explicitTestModelAssignments("provider-test/explicit-model")
-	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Preset:           model.PresetFull,
-		ProfileName:      "economy",
-		ModelAssignments: explicit,
-	}
-
-	result, err := Install(homeDir, registry, selection, "test-v1", false)
-	if err != nil {
-		t.Fatalf("Install() error = %v\nErrors: %v", err, result.Errors)
-	}
-	// The explicit assignments should have been preserved (not overridden by profile).
-	// We can't directly inspect selection inside Install, but the test confirms no panic/error.
-	if len(result.ComponentsDone) == 0 {
-		t.Error("expected components done")
+	if config["share"] != "disabled" {
+		t.Fatalf("effective JSONC lost user setting: %#v", config)
 	}
 }
 
@@ -710,9 +867,8 @@ func TestRepair_Basic(t *testing.T) {
 	homeDir := t.TempDir()
 	registry := newTestRegistry()
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Preset:           model.PresetMinimal,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}
 
 	// First install.
@@ -741,9 +897,8 @@ func TestRepair_DryRun(t *testing.T) {
 	homeDir := t.TempDir()
 	registry := newTestRegistry()
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Preset:           model.PresetMinimal,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}
 
 	if _, err := Install(homeDir, registry, selection, "test-v1", false); err != nil {
@@ -1014,23 +1169,12 @@ func TestInstall_StateSaveError(t *testing.T) {
 	os.MkdirAll(filepath.Join(homeDir, ".cortex-ia", "state.json"), 0o755)
 
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Preset:           model.PresetMinimal,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}
-	result, err := Install(homeDir, registry, selection, "v1", false)
-	if err == nil {
-		t.Fatal("expected error when state save fails")
-	}
-
-	hasStateErr := false
-	for _, e := range result.Errors {
-		if strings.Contains(e, "save state") {
-			hasStateErr = true
-		}
-	}
-	if !hasStateErr {
-		t.Errorf("expected 'save state' in errors, got: %v", result.Errors)
+	_, err := Install(homeDir, registry, selection, "v1", false)
+	if err == nil || !strings.Contains(err.Error(), "state.json\" has incompatible existing type") {
+		t.Fatalf("Install() error = %v, want incompatible state target error", err)
 	}
 }
 
@@ -1042,23 +1186,12 @@ func TestInstall_LockSaveError(t *testing.T) {
 	os.MkdirAll(filepath.Join(homeDir, ".cortex-ia", "cortex-ia.lock"), 0o755)
 
 	selection := model.Selection{
-		Agents:           []model.AgentID{model.AgentCodex},
-		Preset:           model.PresetMinimal,
-		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentCortex},
 	}
-	result, err := Install(homeDir, registry, selection, "v1", false)
-	if err == nil {
-		t.Fatal("expected error when lock save fails")
-	}
-
-	hasLockErr := false
-	for _, e := range result.Errors {
-		if strings.Contains(e, "save lock") {
-			hasLockErr = true
-		}
-	}
-	if !hasLockErr {
-		t.Errorf("expected 'save lock' in errors, got: %v", result.Errors)
+	_, err := Install(homeDir, registry, selection, "v1", false)
+	if err == nil || !strings.Contains(err.Error(), "cortex-ia.lock\" has incompatible existing type") {
+		t.Fatalf("Install() error = %v, want incompatible lock target error", err)
 	}
 }
 

@@ -1,7 +1,11 @@
 package state
 
 import (
+	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -16,6 +20,14 @@ func TestSaveAndLoadInstallStatus(t *testing.T) {
 
 	if err := SaveInstallStatus(homeDir, status); err != nil {
 		t.Fatalf("SaveInstallStatus() error: %v", err)
+	}
+	data, err := os.ReadFile(InstallStatusPath(homeDir))
+	if err != nil {
+		t.Fatalf("read install status: %v", err)
+	}
+	const wantFormat = "{\n  \"status\": \"in-progress\",\n  \"started_at\": \"2026-04-10T12:00:00Z\",\n  \"backup_id\": \"20260410-120000\"\n}\n"
+	if string(data) != wantFormat {
+		t.Fatalf("install status format = %q, want %q", data, wantFormat)
 	}
 
 	loaded, err := LoadInstallStatus(homeDir)
@@ -108,5 +120,65 @@ func TestSaveInstallStatus_OverwritesExisting(t *testing.T) {
 	}
 	if loaded.Status != "complete" {
 		t.Errorf("Status = %q, want %q after overwrite", loaded.Status, "complete")
+	}
+}
+
+func TestSaveInstallStatus_WriteFailureReturnsErrorWithoutTornFile(t *testing.T) {
+	homeDir := t.TempDir()
+	initial := InstallStatus{Status: "in-progress", StartedAt: "2026-04-10T12:00:00Z"}
+	if err := SaveInstallStatus(homeDir, initial); err != nil {
+		t.Fatalf("SaveInstallStatus() initial error: %v", err)
+	}
+
+	path := InstallStatusPath(homeDir)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read initial status: %v", err)
+	}
+
+	writer := writeInstallStatusFile
+	writeInstallStatusFile = func(string, []byte, fs.FileMode) error {
+		return errors.New("injected write failure")
+	}
+	t.Cleanup(func() { writeInstallStatusFile = writer })
+
+	err = SaveInstallStatus(homeDir, InstallStatus{Status: "complete", StartedAt: initial.StartedAt})
+	if err == nil || !strings.Contains(err.Error(), "injected write failure") {
+		t.Fatalf("SaveInstallStatus() error = %v, want injected write failure", err)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read status after failed save: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("status file changed after failed save:\nbefore: %s\nafter: %s", before, after)
+	}
+}
+
+func TestClearInstallStatus_RemoveFailureReturnsErrorAndPreservesStatus(t *testing.T) {
+	homeDir := t.TempDir()
+	status := InstallStatus{Status: "in-progress", StartedAt: "2026-04-10T12:00:00Z"}
+	if err := SaveInstallStatus(homeDir, status); err != nil {
+		t.Fatalf("SaveInstallStatus() error: %v", err)
+	}
+
+	remover := removeInstallStatusFile
+	removeInstallStatusFile = func(string) error {
+		return errors.New("injected remove failure")
+	}
+	t.Cleanup(func() { removeInstallStatusFile = remover })
+
+	err := ClearInstallStatus(homeDir)
+	if err == nil || !strings.Contains(err.Error(), "injected remove failure") {
+		t.Fatalf("ClearInstallStatus() error = %v, want injected remove failure", err)
+	}
+
+	loaded, err := LoadInstallStatus(homeDir)
+	if err != nil {
+		t.Fatalf("LoadInstallStatus() after failed clear error: %v", err)
+	}
+	if loaded == nil || *loaded != status {
+		t.Fatalf("LoadInstallStatus() after failed clear = %+v, want %+v", loaded, status)
 	}
 }

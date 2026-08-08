@@ -4,12 +4,9 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/lleontor705/cortex-ia/internal/agentbuilder"
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -97,16 +94,6 @@ type SyncDoneMsg struct {
 	Err          error
 }
 
-// AgentBuilderGeneratedMsg is sent when agent generation completes.
-type AgentBuilderGeneratedMsg struct {
-	Err error
-}
-
-// AgentBuilderInstallDoneMsg is sent when agent installation completes.
-type AgentBuilderInstallDoneMsg struct {
-	Err error
-}
-
 // --- Function type signatures for dependency injection ---
 
 // ExecuteFunc runs the installation pipeline.
@@ -130,9 +117,10 @@ type ListBackupsFn func() ([]backup.Manifest, []string)
 // UpgradeFunc performs tool upgrades.
 type UpgradeFunc func(results []update.CheckResult) error
 
-// SyncFunc syncs managed configuration files.
-// profileName is the name of a saved profile whose model assignments to apply.
-type SyncFunc func(profileName string) (int, error)
+// SyncFunc syncs managed configuration files. The variadic form preserves
+// source compatibility for unreachable retired screens while supported callers
+// invoke it without a profile or model selection.
+type SyncFunc func(...string) (int, error)
 
 // --- Agent item ---
 
@@ -175,19 +163,11 @@ const (
 // grouping (SETUP / CUSTOMIZE / MAINTAIN) is the new contract.
 func welcomeOptions() []WelcomeOption {
 	return []WelcomeOption{
-		// SETUP
 		WelcomeInstall,
 		WelcomeSync,
-		// CUSTOMIZE
-		WelcomeModelConfig,
-		WelcomeProfiles,
-		WelcomeAgentBuilder,
-		WelcomeOpenCodeModels,
-		// MAINTAIN
 		WelcomeBackups,
 		WelcomeUpgrade,
 		WelcomeUpgradeSync,
-		// EXIT
 		WelcomeQuit,
 	}
 }
@@ -203,20 +183,23 @@ func welcomeLabel(opt WelcomeOption) string {
 		return "Sync configs"
 	case WelcomeUpgradeSync:
 		return "Upgrade + Sync"
-	case WelcomeModelConfig:
-		return "Configure models"
-	case WelcomeAgentBuilder:
-		return "Create your own Agent"
-	case WelcomeProfiles:
-		return "Manage profiles"
 	case WelcomeBackups:
 		return "Manage backups"
-	case WelcomeOpenCodeModels:
-		return "OpenCode models"
 	case WelcomeQuit:
 		return "Quit"
 	}
 	return ""
+}
+
+// RetiredSelectionError reports an obsolete TUI route or model/profile input.
+// It is terminal so stale persisted or injected state cannot be translated
+// into a supported install request.
+type RetiredSelectionError struct {
+	Selection string
+}
+
+func (e *RetiredSelectionError) Error() string {
+	return "unsupported retired TUI selection: " + e.Selection
 }
 
 // --- System info cache ---
@@ -267,15 +250,11 @@ type Model struct {
 	Resolved []model.ComponentID
 	SysInfo  *SysInfoCache
 
-	// Model selection
-	ModelPreset       model.ModelPreset
-	ModelAssignments  model.ModelAssignments
-	ClaudeModelCursor int
-	SDDEnabled        bool
-	StrictTDDEnabled  bool
-	SkillSelection    []model.SkillID
-	AvailableSkills   []SkillItem
-	SkillCursor       int
+	SDDEnabled       bool
+	StrictTDDEnabled bool
+	SkillSelection   []model.SkillID
+	AvailableSkills  []SkillItem
+	SkillCursor      int
 
 	// Installation
 	Progress   ProgressState
@@ -300,32 +279,9 @@ type Model struct {
 	UpgradeErr       error
 	UpgradeSyncPhase string // "", "checking", "syncing", "done"
 
-	// Model config mode
-	ModelConfigMode bool
-
-	// Profiles
+	// Compatibility-only state allows persisted retired selections to fail closed.
 	Profiles        []model.Profile
 	SelectedProfile string
-	ProfileInput    textinput.Model
-	ProfileErr      error
-
-	// Agent builder
-	AgentBuilderEngine    model.AgentID
-	AgentBuilderTextArea  textarea.Model
-	AgentBuilderSDDMode   string
-	AgentBuilderSDDPhase  string
-	AgentBuilderErr       error
-	AgentBuilderViewport  viewport.Model
-	AgentBuilderGenerated *agentbuilder.GeneratedAgent
-
-	// OpenCode model configuration
-	OpenCodeAssignments model.OpenCodeModelAssignments
-	OpenCodeProviders   []model.OpenCodeProvider
-	OCFlatModels        []string // flat "provider/model" list for picker
-	OCModelCursor       int
-	OCModelFilter       FilterInput
-	OCSelectedAgent     string
-	OCErr               error
 
 	// Pipeline tracking
 	PipelineRunning  bool
@@ -354,17 +310,6 @@ func newTextInput(placeholder string) textinput.Model {
 	return ti
 }
 
-// newTextArea creates a styled textarea.Model with sensible defaults.
-func newTextArea(placeholder string) textarea.Model {
-	ta := textarea.New()
-	ta.Placeholder = placeholder
-	ta.ShowLineNumbers = false
-	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
-	ta.SetWidth(60)
-	ta.SetHeight(5)
-	return ta
-}
-
 // New creates a new TUI model with default values.
 func New(registry *agents.Registry, homeDir, version string) Model {
 	// Spinner
@@ -386,38 +331,22 @@ func New(registry *agents.Registry, homeDir, version string) Model {
 	h.Styles.FullDesc = lipgloss.NewStyle().Foreground(styles.Muted)
 
 	return Model{
-		Screen:               ScreenWelcome,
-		Registry:             registry,
-		HomeDir:              homeDir,
-		Version:              version,
-		Presets:              []model.PresetID{model.PresetFull, model.PresetMinimal},
-		Personas:             []model.PersonaID{model.PersonaProfessional, model.PersonaMentor, model.PersonaMinimal},
-		Persona:              model.PersonaProfessional,
-		SDDEnabled:           true,
-		Spinner:              sp,
-		ProgressBar:          pb,
-		Help:                 h,
-		Keys:                 DefaultKeyMap(),
-		AgentFilter:          NewFilterInput(),
-		SkillFilter:          NewFilterInput(),
-		OCModelFilter:        NewFilterInput(),
-		BackupRenameInput:    newTextInput("Enter description..."),
-		ProfileInput:         newTextInput("Enter profile name..."),
-		AgentBuilderTextArea: newTextArea("Describe what this agent should do..."),
-		AgentBuilderViewport: viewport.New(70, 20),
+		Screen:            ScreenWelcome,
+		Registry:          registry,
+		HomeDir:           homeDir,
+		Version:           version,
+		Presets:           []model.PresetID{model.PresetFull, model.PresetMinimal},
+		Personas:          []model.PersonaID{model.PersonaProfessional, model.PersonaMentor, model.PersonaMinimal},
+		Persona:           model.PersonaProfessional,
+		SDDEnabled:        true,
+		Spinner:           sp,
+		ProgressBar:       pb,
+		Help:              h,
+		Keys:              DefaultKeyMap(),
+		AgentFilter:       NewFilterInput(),
+		SkillFilter:       NewFilterInput(),
+		BackupRenameInput: newTextInput("Enter description..."),
 	}
-}
-
-// resetAgentBuilder clears all agent builder state for a fresh flow.
-func (m *Model) resetAgentBuilder() {
-	m.AgentBuilderEngine = ""
-	m.AgentBuilderTextArea.Reset()
-	m.AgentBuilderSDDMode = ""
-	m.AgentBuilderSDDPhase = ""
-	m.AgentBuilderErr = nil
-	m.AgentBuilderGenerated = nil
-	m.AgentBuilderViewport.SetContent("")
-	m.AgentBuilderViewport.GotoTop()
 }
 
 // setScreen transitions to a new screen, saving the previous screen for back navigation.

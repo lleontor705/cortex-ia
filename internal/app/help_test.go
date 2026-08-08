@@ -47,3 +47,18 @@ func TestPrintHelp_AdvertisesExactlySevenCurrentComponents(t *testing.T) {
 		t.Errorf("help must not advertise the retired eight-component full preset\n%s", out)
 	}
 }
+
+func TestPrintHelpOmitsRetiredSurfaces(t *testing.T) {
+	out := captureStdout(t, printHelp)
+
+	for _, retired := range []string{"agent-builder", "auto-install", "profiles", "--profile", "--model-preset"} {
+		if strings.Contains(out, retired) {
+			t.Errorf("help contains retired surface %q:\n%s", retired, out)
+		}
+	}
+	for _, supported := range []string{"cortex-ia install", "cortex-ia sync", "cortex-ia doctor", "cortex-ia uninstall"} {
+		if !strings.Contains(out, supported) {
+			t.Errorf("help omits supported lifecycle command %q:\n%s", supported, out)
+		}
+	}
+}

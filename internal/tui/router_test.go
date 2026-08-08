@@ -9,7 +9,6 @@ func TestNextScreen_MainFlow(t *testing.T) {
 		ScreenAgents,
 		ScreenPersona,
 		ScreenPreset,
-		ScreenClaudeModelPicker,
 		ScreenSDDMode,
 		ScreenStrictTDD,
 	}
@@ -51,8 +50,7 @@ func TestPreviousScreen_MainFlow(t *testing.T) {
 		{ScreenAgents, ScreenDetection},
 		{ScreenPersona, ScreenAgents},
 		{ScreenPreset, ScreenPersona},
-		{ScreenClaudeModelPicker, ScreenPreset},
-		{ScreenSDDMode, ScreenClaudeModelPicker},
+		{ScreenSDDMode, ScreenPreset},
 		{ScreenStrictTDD, ScreenSDDMode},
 		{ScreenDependencyTree, ScreenStrictTDD},
 		{ScreenSkillPicker, ScreenDependencyTree},
@@ -107,44 +105,6 @@ func TestBackupRoutes(t *testing.T) {
 		}
 		if got != tt.want {
 			t.Errorf("PreviousScreen(%d) = %d, want %d", tt.screen, got, tt.want)
-		}
-	}
-}
-
-func TestAgentBuilderRoutes(t *testing.T) {
-	// Forward chain
-	got, ok := NextScreen(ScreenAgentBuilderPrompt)
-	if !ok || got != ScreenAgentBuilderSDD {
-		t.Errorf("NextScreen(AgentBuilderPrompt) = %d, %v; want %d, true",
-			got, ok, ScreenAgentBuilderSDD)
-	}
-
-	got, ok = NextScreen(ScreenAgentBuilderInstalling)
-	if !ok || got != ScreenAgentBuilderComplete {
-		t.Errorf("NextScreen(AgentBuilderInstalling) = %d, %v; want %d, true",
-			got, ok, ScreenAgentBuilderComplete)
-	}
-
-	// Backward chain
-	backTests := []struct {
-		from, want Screen
-	}{
-		{ScreenAgentBuilderEngine, ScreenWelcome},
-		{ScreenAgentBuilderPrompt, ScreenAgentBuilderEngine},
-		{ScreenAgentBuilderSDD, ScreenAgentBuilderPrompt},
-		{ScreenAgentBuilderSDDPhase, ScreenAgentBuilderSDD},
-		{ScreenAgentBuilderGenerating, ScreenAgentBuilderPrompt},
-		{ScreenAgentBuilderPreview, ScreenAgentBuilderPrompt},
-		{ScreenAgentBuilderComplete, ScreenWelcome},
-	}
-
-	for _, tt := range backTests {
-		got, ok := PreviousScreen(tt.from)
-		if !ok {
-			t.Fatalf("PreviousScreen(%d) returned ok=false", tt.from)
-		}
-		if got != tt.want {
-			t.Errorf("PreviousScreen(%d) = %d, want %d", tt.from, got, tt.want)
 		}
 	}
 }

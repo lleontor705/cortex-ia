@@ -261,7 +261,7 @@
         "semantic_id": "asset/root-module/routing-and-risk",
         "scope": "workflow-root",
         "path": ".claude/generic/sdd-root/routing-and-risk.md",
-        "sha256": "1c694039884e19888f3d01c30a6307860af1f680b069ff73b85fa32006dcd46b"
+        "sha256": "5f3c4571aa6037fd2ab8ddfda98682d3f1218060ef618d90e37e8889886289cb"
       },
       {
         "semantic_id": "asset/root/policy",
@@ -339,7 +339,7 @@
         "semantic_id": "asset/skill/shared/cortex-advanced",
         "scope": "workflow-root",
         "path": ".claude/skills/_shared/cortex-advanced.md",
-        "sha256": "9196611e3f92a3642ce2deffd5e5d4b38cad76d87577feb6964b54d3cd7c94d9"
+        "sha256": "bf121700667c7434c8ee2c85cd72affcd3c81b803d4f65c2601f51edd9f8912b"
       },
       {
         "semantic_id": "asset/skill/shared/cortex-convention",
@@ -375,34 +375,34 @@
         "semantic_id": "claude/manifest/degradation-json",
         "scope": "manifest",
         "path": ".claude/.cortex-ia/degradation-manifest.json",
-        "sha256": "16299e4acb9f380281c29070cb9297d5a898ea4f444875d8acccdca9efa8cc2a"
+        "sha256": "a17ca701de6616f2a34b6f10c1ec79d9babc305885923c3da44bd9432d71dfdd"
       },
       {
         "semantic_id": "claude/manifest/degradation-markdown",
         "scope": "manifest",
         "path": ".claude/.cortex-ia/degradation-manifest.md",
-        "sha256": "584f3d4184d6b3636674547bdd9f65519a183595a92f4cc3536e6e9b0dba9514"
+        "sha256": "1c087aa3fdf7dcca7e5a3516c1d529a64b33ee1dfe249386e164afc04cee7636"
       },
       {
         "semantic_id": "claude/manifest/security-json",
         "scope": "manifest",
         "path": ".claude/.cortex-ia/security-manifest.json",
-        "sha256": "2b27acdeed1b66579bdf59960aa7e640c2e6959c8c2455dc2c5b0184fcbfa9d6"
+        "sha256": "2007731090aa166018266eb37eaa4a4f3201d61795b97e736f98502bab9735f0"
       },
       {
         "semantic_id": "claude/manifest/security-markdown",
         "scope": "manifest",
         "path": ".claude/.cortex-ia/security-manifest.md",
-        "sha256": "ec04a9f8e9a6faa0b73ca1fd0943cd32c156b5a06c89ae4bdb01bf733ef5689f"
+        "sha256": "e3a780bfdd1ed20661687e3b3329b2c2397116ddd2e847d583a27c1dc534d341"
       },
       {
         "semantic_id": "claude/manifest/semantic",
         "scope": "workflow-root",
         "path": ".claude/.cortex-ia/semantic-manifest.json",
-        "sha256": "9babce065aa45c2f415ea8823adbbb0487e1739ecd0045500ccf706b507ce4c9"
+        "sha256": "9a419242106d0a8342699b480de7567455f5c333b95c7f6fdbb69d1bfc8c25dc"
       }
     ],
-    "digest": "sha256:64f1e4cb513343cc8674c04523bdf796b0b535fb3b434a7d4f8111da1826d30b"
+    "digest": "sha256:7ef7de66328bd1c06d9e5476e6e1eb1cab1d98f92d74a3656d03ef603f4b3cea"
   },
   {
     "adapter": "codex",
@@ -666,7 +666,7 @@
         "semantic_id": "asset/root-module/routing-and-risk",
         "scope": "workflow-root",
         "path": ".codex/generic/sdd-root/routing-and-risk.md",
-        "sha256": "1c694039884e19888f3d01c30a6307860af1f680b069ff73b85fa32006dcd46b"
+        "sha256": "5f3c4571aa6037fd2ab8ddfda98682d3f1218060ef618d90e37e8889886289cb"
       },
       {
         "semantic_id": "asset/root/policy",
@@ -744,7 +744,7 @@
         "semantic_id": "asset/skill/shared/cortex-advanced",
         "scope": "workflow-root",
         "path": ".codex/skills/_shared/cortex-advanced.md",
-        "sha256": "9196611e3f92a3642ce2deffd5e5d4b38cad76d87577feb6964b54d3cd7c94d9"
+        "sha256": "bf121700667c7434c8ee2c85cd72affcd3c81b803d4f65c2601f51edd9f8912b"
       },
       {
         "semantic_id": "asset/skill/shared/cortex-convention",
@@ -774,7 +774,7 @@
         "semantic_id": "codex/instruction/root",
         "scope": "workflow-root",
         "path": ".codex/AGENTS.md",
-        "sha256": "9c4dcad67bccb5ef8cc4704c58b089f50e41927272a69dbf9f9e6eeba1094ec4",
+        "sha256": "d676ff1538d222e00e121cfeaeacbee262cd643929e9d6d7efc13168c7445b90",
         "permissions": [
           "filesystem/read",
           "filesystem/write",
@@ -790,7 +790,7 @@
         "semantic_id": "codex/manifest/bundle",
         "scope": "workflow-root",
         "path": ".codex/manifests/bundle.json",
-        "sha256": "91e1d834b0a562497278924eef27f840ebe487096e8cd58b0add344604a3dd36",
+        "sha256": "ab0f423ff8dad787026a123bbf150ef4bbbd73b290fe3bf6098fd4866d7b8191",
         "permissions": [
           "filesystem/read",
           "filesystem/write",
@@ -870,7 +870,7 @@
         "semantic_id": "codex/manifest/semantic",
         "scope": "workflow-root",
         "path": ".codex/manifests/semantic.json",
-        "sha256": "207851e71e78d0c6182841107bd362ab705b61f5fda732c129d7851103b4ed4c",
+        "sha256": "fb908735c6400d62a94540838a9dc2f713237dc8b33a04cc6b952b023b0a2215",
         "permissions": [
           "filesystem/read",
           "filesystem/write",
@@ -883,7 +883,7 @@
         ]
       }
     ],
-    "digest": "sha256:c45885e873d441990a1c269ba3fa1596633fd0d4466709e92b7cafdfeeb5c7f7"
+    "digest": "sha256:14a38e0df4c694f0133b3a38d44a0974fb66802f2fc967409a19954e711979f6"
   },
   {
     "adapter": "opencode",
@@ -1027,7 +1027,7 @@
         "semantic_id": "asset/opencode/instruction/root",
         "scope": "workflow-root",
         "path": ".config/opencode/AGENTS.md",
-        "sha256": "88a2beeb366b56be899f4557e0abcc6985c684e5daa40fe3aa74e963bba3244c"
+        "sha256": "ebf9ebaa9a80c2989bad3f3042c10c7a55baa3755d56c4bf2b621f3fd2a52268"
       },
       {
         "semantic_id": "asset/profile-overlay/portable-sequential",
@@ -1245,7 +1245,7 @@
         "semantic_id": "asset/root-module/routing-and-risk",
         "scope": "workflow-root",
         "path": ".config/opencode/generic/sdd-root/routing-and-risk.md",
-        "sha256": "1c694039884e19888f3d01c30a6307860af1f680b069ff73b85fa32006dcd46b"
+        "sha256": "5f3c4571aa6037fd2ab8ddfda98682d3f1218060ef618d90e37e8889886289cb"
       },
       {
         "semantic_id": "asset/root/policy",
@@ -1323,7 +1323,7 @@
         "semantic_id": "asset/skill/shared/cortex-advanced",
         "scope": "workflow-root",
         "path": ".config/opencode/skills/_shared/cortex-advanced.md",
-        "sha256": "9196611e3f92a3642ce2deffd5e5d4b38cad76d87577feb6964b54d3cd7c94d9"
+        "sha256": "bf121700667c7434c8ee2c85cd72affcd3c81b803d4f65c2601f51edd9f8912b"
       },
       {
         "semantic_id": "asset/skill/shared/cortex-convention",
@@ -1410,7 +1410,7 @@
         "sha256": "5f6112f6d16212c8b07e13af181e856436e4261f6adb2c2cf658e20525bdfffb"
       }
     ],
-    "digest": "sha256:7f5305785635b1fde399da110de0680826b5aaffe37bc2df7734ff89e1c5f8b3"
+    "digest": "sha256:666838fcec2fae29db14ad648ac08c017878bd51d2558efa741b970650c25256"
   },
   {
     "adapter": "vscode",
@@ -1674,7 +1674,7 @@
         "semantic_id": "asset/root-module/routing-and-risk",
         "scope": "workflow-root",
         "path": ".copilot/generic/sdd-root/routing-and-risk.md",
-        "sha256": "1c694039884e19888f3d01c30a6307860af1f680b069ff73b85fa32006dcd46b"
+        "sha256": "5f3c4571aa6037fd2ab8ddfda98682d3f1218060ef618d90e37e8889886289cb"
       },
       {
         "semantic_id": "asset/root/policy",
@@ -1752,7 +1752,7 @@
         "semantic_id": "asset/skill/shared/cortex-advanced",
         "scope": "workflow-root",
         "path": ".copilot/skills/_shared/cortex-advanced.md",
-        "sha256": "9196611e3f92a3642ce2deffd5e5d4b38cad76d87577feb6964b54d3cd7c94d9"
+        "sha256": "bf121700667c7434c8ee2c85cd72affcd3c81b803d4f65c2601f51edd9f8912b"
       },
       {
         "semantic_id": "asset/skill/shared/cortex-convention",
@@ -1810,13 +1810,13 @@
         "semantic_id": "manifest/vscode/security-json",
         "scope": "manifest",
         "path": ".copilot/manifests/security.json",
-        "sha256": "767d87d78365408c4c6c4609b5fc316ef0ae81aa49428f555c78c35a2121deea"
+        "sha256": "ed82bf7472c448d8446420c98c55d27a573d6860a299e1cb493929d50013d20a"
       },
       {
         "semantic_id": "manifest/vscode/semantic",
         "scope": "workflow-root",
         "path": ".copilot/manifests/semantic.json",
-        "sha256": "1e7fc35dbd32f60a46601d9edc2c14bf4a564a3dfb4bb82bfde47ab2c33198b4"
+        "sha256": "532a2046da4b4470369b6eb81c067eedd818bb01b3f8c4f3f2f726de7a6c2ad0"
       },
       {
         "semantic_id": "vscode/composition",
@@ -1825,6 +1825,6 @@
         "sha256": "5a468cffa9f23057624244965171f5bf7054ec4e4215ac0cea03a87f7a69b5fd"
       }
     ],
-    "digest": "sha256:69792f1a1bb0be3957762263c34722c489078ddafa3b2742f4eb0a9ad4369869"
+    "digest": "sha256:7141e74d6d1416d358d72f073bf86dc6700f6c66a74973cc1a44cf4014f16d5e"
   }
 ]

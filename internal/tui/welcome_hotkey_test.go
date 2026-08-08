@@ -41,13 +41,41 @@ func TestWelcome_HotkeyQuit(t *testing.T) {
 	}
 }
 
-// TestWelcome_HotkeyJumpsToBackups verifies the MAINTAIN-group hotkey (7).
-func TestWelcome_HotkeyJumpsToBackups(t *testing.T) {
+func TestWelcome_RetiredHotkeyCannotRouteAction(t *testing.T) {
 	m := newWelcomeTestModel()
-	result, _ := m.Update(keyMsg("7"))
+	result, cmd := m.Update(keyMsg("7"))
 	rm := result.(Model)
-	if rm.Screen != ScreenBackups {
-		t.Errorf("after pressing '7', screen = %v, want ScreenBackups", rm.Screen)
+	if cmd != nil {
+		t.Error("retired hotkey returned a command")
+	}
+	if rm.Screen != ScreenWelcome {
+		t.Errorf("after pressing '7', screen = %v, want ScreenWelcome", rm.Screen)
+	}
+	if rm.Cursor != 0 {
+		t.Errorf("after pressing '7', cursor = %d, want 0", rm.Cursor)
+	}
+}
+
+func TestWelcome_SupportedLifecycleHotkeys(t *testing.T) {
+	tests := []struct {
+		key  string
+		want Screen
+	}{
+		{key: "2", want: ScreenSync},
+		{key: "3", want: ScreenBackups},
+		{key: "4", want: ScreenUpgrade},
+		{key: "5", want: ScreenUpgradeSync},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			m := newWelcomeTestModel()
+			result, _ := m.Update(keyMsg(tt.key))
+			rm := result.(Model)
+			if rm.Screen != tt.want {
+				t.Errorf("after pressing %q, screen = %v, want %v", tt.key, rm.Screen, tt.want)
+			}
+		})
 	}
 }
 

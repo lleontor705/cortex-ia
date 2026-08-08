@@ -6,15 +6,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
-	"github.com/lleontor705/cortex-ia/internal/model"
-	"github.com/lleontor705/cortex-ia/internal/modelroute"
-	"github.com/lleontor705/cortex-ia/internal/state"
 	"github.com/lleontor705/cortex-ia/internal/verify"
 )
 
@@ -221,29 +219,72 @@ func TestCLIInstallDryRunPreservesTargetAtShippedBoundary(t *testing.T) {
 	if err := os.WriteFile(target, want, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.SaveProfiles(homeDir, []model.Profile{explicitTestProfile()}); err != nil {
-		t.Fatal(err)
-	}
 
-	if err := runInstall([]string{"--agent", "codex", "--profile", "explicit-test", "--dry-run"}); err != nil {
-		t.Fatalf("runInstall() dry-run error = %v", err)
-	}
-	got, err := os.ReadFile(target)
+	t.Run("retired profile fails closed before mutation", func(t *testing.T) {
+		before := snapshotTree(t, homeDir)
+		err := runCLI([]string{"install", "--agent", "codex", "--profile", "explicit-test", "--dry-run"})
+		var retired RetiredSurfaceError
+		if !errors.As(err, &retired) {
+			t.Fatalf("runCLI() error = %v, want RetiredSurfaceError", err)
+		}
+		if retired.Surface != "--profile" {
+			t.Fatalf("retired surface = %q, want --profile", retired.Surface)
+		}
+		if strings.Contains(err.Error(), "ModelRoutes") {
+			t.Fatalf("retired profile was translated to ModelRoutes validation: %v", err)
+		}
+		if after := snapshotTree(t, homeDir); !reflect.DeepEqual(after, before) {
+			t.Fatalf("retired CLI invocation mutated home: got %#v want %#v", after, before)
+		}
+		got, readErr := os.ReadFile(target)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("retired CLI invocation mutated target: got %q want %q", got, want)
+		}
+	})
+
+	t.Run("supported invocation has no retired selector", func(t *testing.T) {
+		err := runCLI([]string{"install", "--agent", "codex", "--dry-run"})
+		var retired RetiredSurfaceError
+		if errors.As(err, &retired) {
+			t.Fatalf("supported invocation returned RetiredSurfaceError: %v", err)
+		}
+		got, readErr := os.ReadFile(target)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("supported CLI dry-run mutated target: got %q want %q", got, want)
+		}
+	})
+}
+
+func snapshotTree(t *testing.T, root string) map[string][]byte {
+	t.Helper()
+	snapshot := make(map[string][]byte)
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			snapshot[relative] = nil
+			return nil
+		}
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		snapshot[relative] = contents
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(got, want) {
-		t.Fatalf("shipped CLI dry-run mutated target: got %q want %q", got, want)
-	}
-}
-
-func explicitTestProfile() model.Profile {
-	routes := model.RouteAssignments{}
-	assignments := map[string]model.OpenCodeModelAssignment{}
-	for _, phase := range []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize"} {
-		route, _ := modelroute.NewRouteID("route/v1/" + phase)
-		routes[phase] = modelroute.RouteRequest{RouteID: route}
-		assignments[phase] = model.OpenCodeModelAssignment{Provider: "provider-test", Model: "model-test"}
-	}
-	return model.Profile{Name: "explicit-test", Routes: routes, ConfiguredAssignments: assignments}
+	return snapshot
 }

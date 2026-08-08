@@ -2,11 +2,19 @@ package cortex
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/agents/claude"
+	"github.com/lleontor705/cortex-ia/internal/agents/codex"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
+	"github.com/lleontor705/cortex-ia/internal/agents/vscode"
+	"github.com/lleontor705/cortex-ia/internal/components/mcpinject"
+	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
 func TestInjectCortex_ClaudeCode(t *testing.T) {
@@ -51,4 +59,146 @@ func TestTemplates_CortexIsGoBinary(t *testing.T) {
 	if len(tmpl.TOMLArgs) != 2 || tmpl.TOMLArgs[0] != "mcp" || tmpl.TOMLArgs[1] != "--tools=agent" {
 		t.Errorf("TOMLArgs = %v, want [mcp --tools=agent]", tmpl.TOMLArgs)
 	}
+}
+
+func TestCortexCommandVectorPathRoundTripAllClients(t *testing.T) {
+	const executable = `C:\Program Files\Cortex Tools\cortex.exe`
+	for _, tc := range []struct {
+		name    string
+		adapter func() agents.Adapter
+	}{
+		{name: "claude-code", adapter: func() agents.Adapter { return claude.NewAdapter() }},
+		{name: "opencode", adapter: func() agents.Adapter { return opencode.NewAdapter() }},
+		{name: "vscode-copilot", adapter: func() agents.Adapter { return vscode.NewAdapter() }},
+		{name: "codex", adapter: func() agents.Adapter { return codex.NewAdapter() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("APPDATA", filepath.Join(tmpDir, "App Data"))
+			result, err := mcpinject.Inject(tmpDir, tc.adapter(), cortexTemplatesForExecutable(t, executable))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Files) != 1 {
+				t.Fatalf("injected files = %v, want exactly one", result.Files)
+			}
+			content, err := os.ReadFile(result.Files[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			vector, err := decodedCortexCommandVector(tc.adapter().Agent(), content)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := requireExactCortexCommandVector(vector, executable); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestExactCortexCommandVectorRejectsDrift(t *testing.T) {
+	const executable = `C:\Program Files\Cortex Tools\cortex.exe`
+	for _, vector := range [][]string{
+		{executable + " mcp --tools=agent"},
+		{executable, "mcp", "--tools=agent", "--profile=default"},
+		{executable, "mcp", "--tools=agent", "--model=gpt-5"},
+		{"npx", "cortex", "mcp", "--tools=agent"},
+		{"npm", "exec", "cortex", "mcp", "--tools=agent"},
+	} {
+		if err := requireExactCortexCommandVector(vector, executable); err == nil {
+			t.Errorf("requireExactCortexCommandVector(%q) succeeded", vector)
+		}
+	}
+}
+
+func cortexTemplatesForExecutable(t *testing.T, executable string) mcpinject.ServerTemplates {
+	t.Helper()
+	template := Templates()
+	encode := func(value any) []byte {
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	template.SeparateFileJSON = encode(map[string]any{"command": executable, "args": []string{"mcp", "--tools=agent"}})
+	template.DefaultOverlayJSON = encode(map[string]any{"mcpServers": map[string]any{"cortex": map[string]any{"command": executable, "args": []string{"mcp", "--tools=agent"}}}})
+	template.OpenCodeOverlayJSON = encode(map[string]any{"mcp": map[string]any{"cortex": map[string]any{"type": "local", "command": []string{executable, "mcp", "--tools=agent"}, "enabled": true}}})
+	template.VSCodeOverlayJSON = encode(map[string]any{"servers": map[string]any{"cortex": map[string]any{"type": "stdio", "command": executable, "args": []string{"mcp", "--tools=agent"}}}})
+	template.TOMLCommand = executable
+	template.TOMLArgs = []string{"mcp", "--tools=agent"}
+	return template
+}
+
+func decodedCortexCommandVector(agentID model.AgentID, content []byte) ([]string, error) {
+	if agentID == model.AgentCodex {
+		var command string
+		var args []string
+		for _, line := range strings.Split(string(content), "\n") {
+			switch {
+			case strings.HasPrefix(line, "command = "):
+				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "command = ")), &command); err != nil {
+					return nil, fmt.Errorf("decode Codex command: %w", err)
+				}
+			case strings.HasPrefix(line, "args = "):
+				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "args = ")), &args); err != nil {
+					return nil, fmt.Errorf("decode Codex args: %w", err)
+				}
+			}
+		}
+		if command == "" || args == nil {
+			return nil, fmt.Errorf("decode Codex command vector from %q", content)
+		}
+		return append([]string{command}, args...), nil
+	}
+
+	var document map[string]any
+	if err := json.Unmarshal(content, &document); err != nil {
+		return nil, err
+	}
+	var server map[string]any
+	switch agentID {
+	case model.AgentClaudeCode:
+		server = document
+	case model.AgentOpenCode:
+		server = document["mcp"].(map[string]any)["cortex"].(map[string]any)
+	case model.AgentVSCodeCopilot:
+		server = document["servers"].(map[string]any)["cortex"].(map[string]any)
+	default:
+		return nil, fmt.Errorf("unsupported agent %q", agentID)
+	}
+	if command, ok := server["command"].([]any); ok {
+		return stringsFromAny(command)
+	}
+	args, err := stringsFromAny(server["args"].([]any))
+	if err != nil {
+		return nil, err
+	}
+	return append([]string{server["command"].(string)}, args...), nil
+}
+
+func stringsFromAny(values []any) ([]string, error) {
+	result := make([]string, len(values))
+	for i, value := range values {
+		stringValue, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("command element %d = %T, want string", i, value)
+		}
+		result[i] = stringValue
+	}
+	return result, nil
+}
+
+func requireExactCortexCommandVector(vector []string, executable string) error {
+	want := []string{executable, "mcp", "--tools=agent"}
+	if len(vector) != len(want) {
+		return fmt.Errorf("command vector = %q, want exactly %q", vector, want)
+	}
+	for i := range want {
+		if vector[i] != want[i] {
+			return fmt.Errorf("command vector = %q, want exactly %q", vector, want)
+		}
+	}
+	return nil
 }

@@ -21,3 +21,36 @@ func TestWelcomeGroupsUseProviderNeutralRouteLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestWelcomeOptionsExposeOnlySupportedLifecycleActions(t *testing.T) {
+	got := welcomeOptions()
+	want := []WelcomeOption{
+		WelcomeInstall,
+		WelcomeSync,
+		WelcomeBackups,
+		WelcomeUpgrade,
+		WelcomeUpgradeSync,
+		WelcomeQuit,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("len(welcomeOptions()) = %d, want %d", len(got), len(want))
+	}
+	for i, option := range want {
+		if got[i] != option {
+			t.Errorf("welcomeOptions()[%d] = %v, want %v", i, got[i], option)
+		}
+	}
+
+	for _, retired := range []WelcomeOption{
+		WelcomeModelConfig,
+		WelcomeProfiles,
+		WelcomeAgentBuilder,
+		WelcomeOpenCodeModels,
+	} {
+		for _, option := range got {
+			if option == retired {
+				t.Errorf("retired welcome option %v is reachable", retired)
+			}
+		}
+	}
+}

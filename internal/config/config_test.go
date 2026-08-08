@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -30,7 +32,6 @@ func TestLoadFile(t *testing.T) {
 	os.WriteFile(path, []byte(`
 preset: minimal
 persona: mentor
-model-preset: economy
 agents:
   - claude-code
   - opencode
@@ -95,23 +96,21 @@ func TestFindProjectConfig_NotFound(t *testing.T) {
 
 func TestApplyToSelection(t *testing.T) {
 	cfg := &ProjectConfig{
-		Preset:      "minimal",
-		Persona:     "mentor",
-		ModelPreset: "economy",
-		Agents:      []string{"claude-code"},
+		Preset:  "minimal",
+		Persona: "mentor",
+		Agents:  []string{"claude-code"},
 	}
 
 	sel := model.Selection{}
-	ApplyToSelection(cfg, &sel)
+	if err := ApplyToSelection(cfg, &sel); err != nil {
+		t.Fatal(err)
+	}
 
 	if sel.Preset != "minimal" {
 		t.Errorf("preset = %q, want minimal", sel.Preset)
 	}
 	if sel.Persona != "mentor" {
 		t.Errorf("persona = %q, want mentor", sel.Persona)
-	}
-	if sel.ModelAssignments == nil {
-		t.Error("expected model assignments")
 	}
 	if len(sel.Agents) != 1 {
 		t.Errorf("agents = %d, want 1", len(sel.Agents))
@@ -120,7 +119,9 @@ func TestApplyToSelection(t *testing.T) {
 
 func TestApplyToSelection_NilConfig(t *testing.T) {
 	sel := model.Selection{Preset: "full"}
-	ApplyToSelection(nil, &sel)
+	if err := ApplyToSelection(nil, &sel); err != nil {
+		t.Fatal(err)
+	}
 	if sel.Preset != "full" {
 		t.Error("nil config should not modify selection")
 	}
@@ -130,32 +131,61 @@ func TestApplyToSelection_NoOverride(t *testing.T) {
 	cfg := &ProjectConfig{Preset: "minimal"}
 	sel := model.Selection{Preset: "full"} // already set
 
-	ApplyToSelection(cfg, &sel)
+	if err := ApplyToSelection(cfg, &sel); err != nil {
+		t.Fatal(err)
+	}
 	if sel.Preset != "full" {
 		t.Error("should not override existing selection values")
 	}
 }
 
-func TestApplyToSelection_ProfileAndStrictTDD(t *testing.T) {
-	cfg := &ProjectConfig{
-		Profile:   "cheap",
-		StrictTDD: true,
-	}
-	sel := model.Selection{}
-	ApplyToSelection(cfg, &sel)
-	if sel.ProfileName != "cheap" {
-		t.Errorf("ProfileName = %q, want cheap", sel.ProfileName)
-	}
-	if !sel.StrictTDD {
-		t.Error("StrictTDD = false, want true")
+func TestRetiredProjectFieldsFailBeforeSelectionMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		yaml string
+	}{
+		{name: "profile", yaml: "profile: cheap\n"},
+		{name: "empty profile", yaml: "profile: \"\"\n"},
+		{name: "model preset", yaml: "model-preset: economy\n"},
+		{name: "model assignment", yaml: "model-assignment:\n  implement: provider/model\n"},
+		{name: "package install", yaml: "package-install: true\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), FileName)
+			if err := os.WriteFile(path, []byte(tc.yaml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := LoadFile(path)
+			var retired *RetiredProjectFieldError
+			if !errors.As(err, &retired) {
+				t.Fatalf("LoadFile error = %v, want RetiredProjectFieldError", err)
+			}
+		})
 	}
 }
 
-func TestApplyToSelection_ProfileDoesNotOverride(t *testing.T) {
+func TestApplyToSelectionRejectsRetiredDataWithoutMutation(t *testing.T) {
 	cfg := &ProjectConfig{Profile: "cheap"}
-	sel := model.Selection{ProfileName: "premium"} // CLI flag wins
-	ApplyToSelection(cfg, &sel)
-	if sel.ProfileName != "premium" {
-		t.Errorf("explicit ProfileName overridden by yaml: got %q", sel.ProfileName)
+	sel := model.Selection{Preset: model.PresetFull}
+
+	err := ApplyToSelection(cfg, &sel)
+	var retired *RetiredProjectFieldError
+	if !errors.As(err, &retired) {
+		t.Fatalf("ApplyToSelection error = %v, want RetiredProjectFieldError", err)
+	}
+	if !reflect.DeepEqual(sel, model.Selection{Preset: model.PresetFull}) {
+		t.Fatalf("selection mutated after retired config rejection: %#v", sel)
+	}
+}
+
+func TestSelectionRejectsRetiredRouting(t *testing.T) {
+	for _, selection := range []model.Selection{
+		{ProfileName: "cheap"},
+		{ModelAssignments: model.ModelAssignments{"implement": "provider/model"}},
+	} {
+		if err := selection.ValidateCurrent(); err == nil {
+			t.Fatalf("ValidateCurrent accepted retired routing: %#v", selection)
+		}
 	}
 }

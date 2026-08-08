@@ -51,6 +51,52 @@ func TestCanonicalRoleAuditExcludesUtilityAgents(t *testing.T) {
 	}
 }
 
+func TestCanonicalBindingsMaterializeOnlyMappedFirstPhaseActions(t *testing.T) {
+	bindings := CanonicalPhaseRoleBindings()
+	workflow := ir.WorkflowIR{Roles: make([]ir.Role, 0, len(bindings))}
+	for _, binding := range bindings {
+		workflow.Roles = append(workflow.Roles, ir.Role{ID: binding.Role, Objective: string(binding.Role)})
+	}
+	catalog := ir.AssetCatalog{SchemaVersion: ir.AssetCatalogSchema.Current, Assets: []ir.AssetSpec{{
+		ID: "asset/root", Class: ir.AssetRootIndex, SourcePath: "root.md", Required: true, SHA256: "hash",
+	}}}
+	assets, _, err := Materialize(MaterializerInput{
+		Catalog: catalog, Contents: map[ir.SemanticID][]byte{"asset/root": []byte("root")},
+		Workflow: workflow, Adapter: validAdapterContract(), AllowedPermissions: []string{"filesystem/read"},
+		Models: ModelTable{Routes: allModelRoutes()},
+	})
+	if err != nil {
+		t.Fatalf("Materialize() error = %v", err)
+	}
+
+	roleAssets := 0
+	for _, asset := range assets {
+		if !strings.HasPrefix(string(asset.ID), "asset/role/") {
+			continue
+		}
+		roleAssets++
+		matched := false
+		for _, binding := range bindings {
+			if asset.Route.Role != binding.Role {
+				continue
+			}
+			matched = true
+			wantSkillPath := "internal/assets/skills/" + strings.TrimPrefix(string(binding.Skill), "skill/") + "/SKILL.md"
+			firstAction := strings.Index(string(asset.Content), "First phase action:")
+			if firstAction < 0 || !strings.Contains(string(asset.Content[firstAction:]), "`"+wantSkillPath+"`") {
+				t.Fatalf("%q first action does not load mapped skill %q: %s", binding.Role, wantSkillPath, asset.Content)
+			}
+			break
+		}
+		if !matched {
+			t.Fatalf("materialized phase asset %q has non-canonical role %q", asset.ID, asset.Route.Role)
+		}
+	}
+	if roleAssets != len(bindings) {
+		t.Fatalf("materialized phase assets = %d, want exactly %d", roleAssets, len(bindings))
+	}
+}
+
 func TestCanonicalRoleBindingDriftRejectedNoMutation(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -7,12 +7,20 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
 const stateDir = ".cortex-ia"
 const stateFile = "state.json"
 const lockFile = "cortex-ia.lock"
+
+// writeFileAtomic is replaceable by package tests to exercise metadata commit
+// failures without risking a partially written state or lock file.
+var writeFileAtomic = func(path string, data []byte, perm os.FileMode) error {
+	_, err := filemerge.WriteFileAtomic(path, data, perm)
+	return err
+}
 
 // SharedSkillsDir returns the shared skills directory for all agents (~/.cortex-ia/skills/).
 func SharedSkillsDir(homeDir string) string {
@@ -98,11 +106,6 @@ func Load(homeDir string) (State, error) {
 // Save writes the state file.
 func Save(homeDir string, s State) error {
 	path := StatePath(homeDir)
-	dir := filepath.Dir(path)
-
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create state directory: %w", err)
-	}
 
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -110,7 +113,7 @@ func Save(homeDir string, s State) error {
 	}
 	data = append(data, '\n')
 
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := writeFileAtomic(path, data, 0o644); err != nil {
 		return fmt.Errorf("write state: %w", err)
 	}
 	return nil
@@ -137,11 +140,6 @@ func LoadLock(homeDir string) (Lockfile, error) {
 // SaveLock writes the lock file.
 func SaveLock(homeDir string, lock Lockfile) error {
 	path := LockPath(homeDir)
-	dir := filepath.Dir(path)
-
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create lock directory: %w", err)
-	}
 
 	data, err := json.MarshalIndent(lock, "", "  ")
 	if err != nil {
@@ -149,7 +147,7 @@ func SaveLock(homeDir string, lock Lockfile) error {
 	}
 	data = append(data, '\n')
 
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := writeFileAtomic(path, data, 0o644); err != nil {
 		return fmt.Errorf("write lock: %w", err)
 	}
 	return nil

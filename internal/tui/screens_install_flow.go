@@ -6,84 +6,12 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
-
-// --- Model Route Picker ---
-
-func (m Model) updateClaudeModelPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	models := []string{"route/v1/performance", "route/v1/workflow", "route/v1/economy", "route/v1/fast", "route/v1/codex"}
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "up", "k":
-			if m.ClaudeModelCursor > 0 {
-				m.ClaudeModelCursor--
-			}
-		case "down", "j":
-			if m.ClaudeModelCursor < len(models)-1 {
-				m.ClaudeModelCursor++
-			}
-		case "enter":
-			presets := []model.ModelPreset{model.ModelPresetPerformance, model.ModelPresetBalanced, model.ModelPresetEconomy, model.ModelPresetFast, model.ModelPresetCodex}
-			if m.ClaudeModelCursor < len(presets) {
-				m.ModelPreset = presets[m.ClaudeModelCursor]
-			} else {
-				m.ModelPreset = model.ModelPresetBalanced
-			}
-			m.ModelAssignments = model.ModelsForPreset(m.ModelPreset)
-			if m.ModelConfigMode {
-				m.ModelConfigMode = false
-				m.ActiveToast = Toast{Text: "Model route preset updated: " + string(m.ModelPreset), Visible: true}
-				m.setScreen(ScreenWelcome)
-				return m, dismissToastAfter(3 * time.Second)
-			}
-			m.setScreen(ScreenSDDMode)
-		case "esc":
-			if m.ModelConfigMode {
-				m.ModelConfigMode = false
-				m.setScreen(ScreenWelcome)
-			} else {
-				m.setScreen(ScreenPreset)
-			}
-		}
-	}
-	return m, nil
-}
-
-func (m Model) viewClaudeModelPicker() string {
-	var sb strings.Builder
-	sb.WriteString(styles.Title.Render("Select Model Route"))
-	sb.WriteString("\n\n")
-
-	models := []struct {
-		alias string
-		desc  string
-	}{
-		{"route/v1/performance", "GPT-5.6-Sol / Deep reasoning & architecture"},
-		{"route/v1/workflow", "GPT-5.6-Terra / Balanced workhorse TDD"},
-		{"route/v1/economy", "GPT-5.6-Luna & GPT-5.4-Mini / Low-cost triage"},
-		{"route/v1/fast", "GPT-5.6-Fast variants / Low latency"},
-		{"route/v1/codex", "GPT-5.3-Codex-Spark / High-throughput coding"},
-	}
-
-	for i, m2 := range models {
-		cursor := "  "
-		if i == m.ClaudeModelCursor {
-			cursor = styles.Cursor.Render("> ")
-		}
-		name := styles.Subtitle.Render(string(m2.alias))
-		desc := styles.Description.Render(" — " + m2.desc)
-		fmt.Fprintf(&sb, "%s%s%s\n", cursor, name, desc)
-	}
-
-	// help rendered centrally
-	return sb.String()
-}
 
 // --- SDD Mode ---
 
@@ -95,7 +23,7 @@ func (m Model) updateSDDMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			m.setScreen(ScreenStrictTDD)
 		case "esc":
-			m.setScreen(ScreenClaudeModelPicker)
+			m.setScreen(ScreenPreset)
 		}
 	}
 	return m, nil

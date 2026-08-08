@@ -1,11 +1,89 @@
 package state
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
+
+func TestStateAndLockWriteFailuresPreservePreimages(t *testing.T) {
+	writeErr := errors.New("injected atomic write failure")
+
+	tests := []struct {
+		name     string
+		path     func(string) string
+		save     func(string) error
+		preimage []byte
+	}{
+		{
+			name: "state absent",
+			path: StatePath,
+			save: func(home string) error {
+				return Save(home, State{Version: "v1"})
+			},
+		},
+		{
+			name:     "state empty",
+			path:     StatePath,
+			preimage: []byte{},
+			save: func(home string) error {
+				return Save(home, State{Version: "v1"})
+			},
+		},
+		{
+			name:     "lock existing",
+			path:     LockPath,
+			preimage: []byte(`{"version":"old"}\n`),
+			save: func(home string) error {
+				return SaveLock(home, Lockfile{Version: "v1"})
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			path := tt.path(home)
+			if tt.preimage != nil {
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, tt.preimage, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			previousWriter := writeFileAtomic
+			writeFileAtomic = func(string, []byte, os.FileMode) error {
+				return writeErr
+			}
+			t.Cleanup(func() { writeFileAtomic = previousWriter })
+
+			err := tt.save(home)
+			if !errors.Is(err, writeErr) {
+				t.Fatalf("Save error = %v, want wrapped %v", err, writeErr)
+			}
+
+			got, readErr := os.ReadFile(path)
+			if tt.preimage == nil {
+				if !os.IsNotExist(readErr) {
+					t.Fatalf("metadata exists after failed write: data=%q, error=%v", got, readErr)
+				}
+				return
+			}
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(got) != string(tt.preimage) {
+				t.Fatalf("metadata changed after failed write: got %q, want %q", got, tt.preimage)
+			}
+		})
+	}
+}
 
 func TestSaveAndLoad(t *testing.T) {
 	tmpDir := t.TempDir()

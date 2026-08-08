@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -371,7 +372,7 @@ func TestUpdatePersona_Enter(t *testing.T) {
 	}
 }
 
-func TestUpdatePreset_Enter(t *testing.T) {
+func TestUpdatePreset_EnterSkipsRetiredModelPicker(t *testing.T) {
 	m := newTestModel()
 	m.Screen = ScreenPreset
 	m.Cursor = 0 // PresetFull (index 0 in default Presets)
@@ -384,8 +385,41 @@ func TestUpdatePreset_Enter(t *testing.T) {
 	if rm.Resolved == nil {
 		t.Error("Resolved should be populated after preset selection")
 	}
-	if rm.Screen != ScreenClaudeModelPicker {
-		t.Errorf("Screen = %v, want ScreenClaudeModelPicker", rm.Screen)
+	if rm.Screen != ScreenSDDMode {
+		t.Errorf("Screen = %v, want ScreenSDDMode", rm.Screen)
+	}
+}
+
+func TestSelectedSupportedAgentIDs_AcceptsCanonicalFourAndRejectsGemini(t *testing.T) {
+	canonical := []model.AgentID{
+		model.AgentClaudeCode,
+		model.AgentOpenCode,
+		model.AgentVSCodeCopilot,
+		model.AgentCodex,
+	}
+	m := newTestModel()
+	for _, id := range canonical {
+		m.Agents = append(m.Agents, AgentItem{ID: id, Selected: true})
+	}
+
+	got, err := m.selectedSupportedAgentIDs()
+	if err != nil {
+		t.Fatalf("selectedSupportedAgentIDs() error = %v", err)
+	}
+	if len(got) != len(canonical) {
+		t.Fatalf("len(selected agents) = %d, want %d", len(got), len(canonical))
+	}
+	for i, id := range canonical {
+		if got[i] != id {
+			t.Errorf("selected agent[%d] = %q, want %q", i, got[i], id)
+		}
+	}
+
+	m.Agents = append(m.Agents, AgentItem{ID: model.AgentID("gemini"), Selected: true})
+	_, err = m.selectedSupportedAgentIDs()
+	var retired *RetiredSelectionError
+	if !errors.As(err, &retired) {
+		t.Errorf("selectedSupportedAgentIDs() error = %v, want RetiredSelectionError for Gemini", err)
 	}
 }
 

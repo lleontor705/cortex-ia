@@ -23,7 +23,12 @@ import (
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-
+	if m.hasRetiredSelection() {
+		return m.rejectRetiredSelection("persisted selection")
+	}
+	if isRetiredScreen(m.Screen) {
+		return m.rejectRetiredSelection("retired route")
+	}
 	// Handle dialog overlay first — intercept all key events when dialog is active
 	if m.ActiveDialog.Type != DialogNone {
 		if key, ok := msg.(tea.KeyMsg); ok {
@@ -50,13 +55,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						return BackupDeleteMsg{Err: fmt.Errorf("delete not available")}
 					}
-				case DialogProfileDelete:
-					m.ActiveDialog = Dialog{}
-					if m.Cursor < len(m.Profiles) {
-						m.Profiles = append(m.Profiles[:m.Cursor], m.Profiles[m.Cursor+1:]...)
-						m.saveProfilesToDisk()
-					}
-					return m, nil
 				}
 			case "n", "esc":
 				m.ActiveDialog = Dialog{}
@@ -72,8 +70,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Height = msg.Height
 		m.Help.Width = msg.Width
 		m.ProgressBar.Width = min(msg.Width-10, 40)
-		m.AgentBuilderViewport.Width = min(msg.Width-4, 76)
-		m.AgentBuilderViewport.Height = max(msg.Height-12, 10)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -88,9 +84,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "?":
 			// Toggle full help on screens that are not text input
-			if m.Screen != ScreenAgentBuilderPrompt &&
-				m.Screen != ScreenRenameBackup &&
-				m.Screen != ScreenProfileCreate {
+			if m.Screen != ScreenRenameBackup {
 				m.Keys.ShowFullHelp = !m.Keys.ShowFullHelp
 				m.Help.ShowAll = m.Keys.ShowFullHelp
 				return m, nil
@@ -106,10 +100,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "t":
 			// Toggle dark/light theme on non-input screens
-			if m.Screen != ScreenAgentBuilderPrompt &&
-				m.Screen != ScreenRenameBackup &&
-				m.Screen != ScreenProfileCreate &&
-				!m.AgentFilter.Active && !m.SkillFilter.Active && !m.OCModelFilter.Active {
+			if m.Screen != ScreenRenameBackup &&
+				!m.AgentFilter.Active && !m.SkillFilter.Active {
 				styles.ToggleTheme()
 				return m, nil
 			}
@@ -206,9 +198,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.Screen == ScreenUpgradeSync && m.UpgradeSyncPhase == "checking" {
 			m.UpgradeSyncPhase = "syncing"
 			m.OperationRunning = true
-			profileName := m.SelectedProfile
 			return m, func() tea.Msg {
-				changed, err := m.SyncFn(profileName)
+				changed, err := m.SyncFn()
 				return SyncDoneMsg{FilesChanged: changed, Err: err}
 			}
 		}
@@ -216,6 +207,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Screen-specific update handling
+	if m.Screen == ScreenPreset {
+		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "enter" {
+			m.Preset = m.Presets[m.Cursor]
+			m.Resolved = catalog.ResolveDeps(catalog.ComponentsForPreset(m.Preset))
+			m.setScreen(ScreenSDDMode)
+			return m, nil
+		}
+	}
 	switch m.Screen {
 	case ScreenWelcome:
 		return m.updateWelcome(msg)
@@ -227,8 +226,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updatePersona(msg)
 	case ScreenPreset:
 		return m.updatePreset(msg)
-	case ScreenClaudeModelPicker:
-		return m.updateClaudeModelPicker(msg)
 	case ScreenSDDMode:
 		return m.updateSDDMode(msg)
 	case ScreenStrictTDD:
@@ -253,30 +250,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSync(msg)
 	case ScreenUpgradeSync:
 		return m.updateUpgradeSync(msg)
-	case ScreenProfiles:
-		return m.updateProfiles(msg)
-	case ScreenProfileCreate:
-		return m.updateProfileCreate(msg)
-	case ScreenAgentBuilderEngine:
-		return m.updateAgentBuilderEngine(msg)
-	case ScreenAgentBuilderPrompt:
-		return m.updateAgentBuilderPrompt(msg)
-	case ScreenAgentBuilderSDD:
-		return m.updateAgentBuilderSDD(msg)
-	case ScreenAgentBuilderSDDPhase:
-		return m.updateAgentBuilderSDDPhase(msg)
-	case ScreenAgentBuilderGenerating:
-		return m.updateAgentBuilderGenerating(msg)
-	case ScreenAgentBuilderPreview:
-		return m.updateAgentBuilderPreview(msg)
-	case ScreenAgentBuilderInstalling:
-		return m.updateAgentBuilderInstalling(msg)
-	case ScreenAgentBuilderComplete:
-		return m.updateAgentBuilderComplete(msg)
-	case ScreenOpenCodeModels:
-		return m.updateOpenCodeModels(msg)
-	case ScreenOpenCodeModelPicker:
-		return m.updateOpenCodeModelPicker(msg)
 	}
 	return m, nil
 }
@@ -299,8 +272,6 @@ func (m Model) View() string {
 		content = m.viewPersona()
 	case ScreenPreset:
 		content = m.viewPreset()
-	case ScreenClaudeModelPicker:
-		content = m.viewClaudeModelPicker()
 	case ScreenSDDMode:
 		content = m.viewSDDMode()
 	case ScreenStrictTDD:
@@ -325,30 +296,6 @@ func (m Model) View() string {
 		content = m.viewSync()
 	case ScreenUpgradeSync:
 		content = m.viewUpgradeSync()
-	case ScreenProfiles:
-		content = m.viewProfiles()
-	case ScreenProfileCreate:
-		content = m.viewProfileCreate()
-	case ScreenAgentBuilderEngine:
-		content = m.viewAgentBuilderEngine()
-	case ScreenAgentBuilderPrompt:
-		content = m.viewAgentBuilderPrompt()
-	case ScreenAgentBuilderSDD:
-		content = m.viewAgentBuilderSDD()
-	case ScreenAgentBuilderSDDPhase:
-		content = m.viewAgentBuilderSDDPhase()
-	case ScreenAgentBuilderGenerating:
-		content = m.viewAgentBuilderGenerating()
-	case ScreenAgentBuilderPreview:
-		content = m.viewAgentBuilderPreview()
-	case ScreenAgentBuilderInstalling:
-		content = m.viewAgentBuilderInstalling()
-	case ScreenAgentBuilderComplete:
-		content = m.viewAgentBuilderComplete()
-	case ScreenOpenCodeModels:
-		content = m.viewOpenCodeModels()
-	case ScreenOpenCodeModelPicker:
-		content = m.viewOpenCodeModelPicker()
 	}
 
 	// Add breadcrumb and help
@@ -444,28 +391,12 @@ func (m Model) dispatchWelcome(opt WelcomeOption) (tea.Model, tea.Cmd) {
 	case WelcomeSync:
 		m.SyncErr = nil
 		m.SyncFilesChanged = 0
-		m.loadProfilesFromDisk()
 		m.setScreen(ScreenSync)
 	case WelcomeUpgradeSync:
 		m.UpgradeSyncPhase = ""
 		m.SyncErr = nil
 		m.UpgradeErr = nil
 		m.setScreen(ScreenUpgradeSync)
-	case WelcomeModelConfig:
-		m.ModelConfigMode = true
-		m.ClaudeModelCursor = 0
-		m.setScreen(ScreenClaudeModelPicker)
-	case WelcomeProfiles:
-		m.loadProfilesFromDisk()
-		m.ProfileErr = nil
-		m.setScreen(ScreenProfiles)
-	case WelcomeAgentBuilder:
-		m.resetAgentBuilder()
-		m.setScreen(ScreenAgentBuilderEngine)
-	case WelcomeOpenCodeModels:
-		m.loadOpenCodeModels()
-		m.OCErr = nil
-		m.setScreen(ScreenOpenCodeModels)
 	case WelcomeBackups:
 		if m.ListBackupsFn != nil {
 			m.Backups, m.BackupWarnings = m.ListBackupsFn()
@@ -477,6 +408,8 @@ func (m Model) dispatchWelcome(opt WelcomeOption) (tea.Model, tea.Cmd) {
 	case WelcomeQuit:
 		m.Quitting = true
 		return m, tea.Quit
+	default:
+		return m.rejectRetiredSelection("retired welcome action")
 	}
 	return m, nil
 }
@@ -489,10 +422,9 @@ func (m Model) viewWelcome() string {
 	})
 }
 
-// welcomeGroups builds the hub menu as three semantic groups:
+// welcomeGroups builds the hub menu as two semantic groups:
 //
 //	SETUP      — first-time and routine installation paths
-//	CUSTOMIZE  — model routing, profiles, custom skills
 //	MAINTAIN   — backups, upgrades
 //
 // Order MUST match welcomeOptions() so the cursor stays in sync. The
@@ -518,20 +450,11 @@ func (m Model) welcomeGroups() []screens.MenuGroup {
 			},
 		},
 		{
-			Title: "CUSTOMIZE",
-			Items: []screens.MenuItem{
-				{Hotkey: "3", Label: "Configure routes", Hint: "Per-phase provider-neutral route configuration"},
-				{Hotkey: "4", Label: "Manage profiles", Hint: "Saved OpenCode SDD profiles"},
-				{Hotkey: "5", Label: "Create custom agent", Hint: "AI-generated skills via Agent Builder"},
-				{Hotkey: "6", Label: "OpenCode routes", Hint: "Pick configured provider/model per OpenCode sub-agent"},
-			},
-		},
-		{
 			Title: "MAINTAIN",
 			Items: []screens.MenuItem{
-				{Hotkey: "7", Label: "Manage backups", Hint: "Browse, pin, restore snapshots"},
-				{Hotkey: "8", Label: "Upgrade tools", Hint: "Update agent binaries", Badge: updatesBadge},
-				{Hotkey: "9", Label: "Upgrade + Sync", Hint: "Run upgrade then refresh configs", Badge: updatesBadge},
+				{Hotkey: "3", Label: "Manage backups", Hint: "Browse, pin, restore snapshots"},
+				{Hotkey: "4", Label: "Upgrade tools", Hint: "Update agent binaries", Badge: updatesBadge},
+				{Hotkey: "5", Label: "Upgrade + Sync", Hint: "Run upgrade then refresh configs", Badge: updatesBadge},
 			},
 		},
 		{
@@ -710,7 +633,7 @@ func (m Model) updatePreset(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Preset = m.Presets[m.Cursor]
 			components := catalog.ComponentsForPreset(m.Preset)
 			m.Resolved = catalog.ResolveDeps(components)
-			m.setScreen(ScreenClaudeModelPicker)
+			m.setScreen(ScreenSDDMode)
 		case "esc":
 			m.setScreen(ScreenPersona)
 		}
@@ -789,6 +712,11 @@ func listenProgress(ch <-chan StepProgressMsg) tea.Cmd {
 
 func (m Model) runInstallWithProgress(ch chan StepProgressMsg) tea.Cmd {
 	return func() tea.Msg {
+		agents, err := m.selectedSupportedAgentIDs()
+		if err != nil {
+			close(ch)
+			return PipelineDoneMsg{Err: err}
+		}
 		components := m.Resolved
 		if !m.SDDEnabled {
 			filtered := make([]model.ComponentID, 0, len(components))
@@ -801,13 +729,12 @@ func (m Model) runInstallWithProgress(ch chan StepProgressMsg) tea.Cmd {
 		}
 
 		selection := model.Selection{
-			Agents:           m.SelectedAgentIDs(),
-			Preset:           m.Preset,
-			Persona:          m.Persona,
-			Components:       components,
-			ModelAssignments: m.ModelAssignments,
-			StrictTDD:        m.StrictTDDEnabled,
-			CommunitySkills:  m.SkillSelection,
+			Agents:          agents,
+			Preset:          m.Preset,
+			Persona:         m.Persona,
+			Components:      components,
+			StrictTDD:       m.StrictTDDEnabled,
+			CommunitySkills: m.SkillSelection,
 		}
 
 		onProgress := func(stepID, status string, err error) {
@@ -918,7 +845,7 @@ func Run(version string) error {
 	}
 
 	// Inject SyncFn — re-runs install from saved state
-	m.SyncFn = func(profileName string) (int, error) {
+	m.SyncFn = func(_ ...string) (int, error) {
 		s, err := state.Load(homeDir)
 		if err != nil {
 			return 0, err
@@ -931,9 +858,6 @@ func Run(version string) error {
 		if err != nil {
 			return 0, err
 		}
-		if profileName != "" {
-			sel.ProfileName = profileName
-		}
 		result, err := pipeline.Install(homeDir, registry, sel, version, false)
 		return len(result.FilesChanged), err
 	}
@@ -941,4 +865,45 @@ func Run(version string) error {
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err = p.Run()
 	return err
+}
+
+func isRetiredScreen(screen Screen) bool {
+	switch screen {
+	case ScreenClaudeModelPicker,
+		ScreenProfiles, ScreenProfileCreate,
+		ScreenAgentBuilderEngine, ScreenAgentBuilderPrompt, ScreenAgentBuilderSDD,
+		ScreenAgentBuilderSDDPhase, ScreenAgentBuilderGenerating, ScreenAgentBuilderPreview,
+		ScreenAgentBuilderInstalling, ScreenAgentBuilderComplete,
+		ScreenOpenCodeModels, ScreenOpenCodeModelPicker:
+		return true
+	}
+	return false
+}
+
+func (m Model) hasRetiredSelection() bool {
+	return m.SelectedProfile != ""
+}
+
+func (m Model) selectedSupportedAgentIDs() ([]model.AgentID, error) {
+	for _, agent := range m.Agents {
+		if !agent.Selected {
+			continue
+		}
+		switch agent.ID {
+		case model.AgentClaudeCode, model.AgentOpenCode, model.AgentVSCodeCopilot, model.AgentCodex:
+		default:
+			return nil, &RetiredSelectionError{Selection: string(agent.ID)}
+		}
+	}
+	return m.SelectedAgentIDs(), nil
+}
+
+func (m Model) rejectRetiredSelection(selection string) (tea.Model, tea.Cmd) {
+	err := &RetiredSelectionError{Selection: selection}
+	m.InstallErr = err
+	m.PipelineRunning = false
+	m.OperationRunning = false
+	m.ActiveToast = Toast{Text: err.Error(), IsError: true, Visible: true}
+	m.setScreen(ScreenComplete)
+	return m, nil
 }

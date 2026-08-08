@@ -19,8 +19,6 @@ func screenName(s Screen) string {
 		return "Persona"
 	case ScreenPreset:
 		return "Preset"
-	case ScreenClaudeModelPicker:
-		return "Model"
 	case ScreenSDDMode:
 		return "SDD"
 	case ScreenStrictTDD:
@@ -45,30 +43,6 @@ func screenName(s Screen) string {
 		return "Sync"
 	case ScreenUpgradeSync:
 		return "Upgrade+Sync"
-	case ScreenProfiles:
-		return "Profiles"
-	case ScreenProfileCreate:
-		return "Create"
-	case ScreenAgentBuilderEngine:
-		return "Engine"
-	case ScreenAgentBuilderPrompt:
-		return "Purpose"
-	case ScreenAgentBuilderSDD:
-		return "SDD"
-	case ScreenAgentBuilderSDDPhase:
-		return "Phase"
-	case ScreenAgentBuilderGenerating:
-		return "Generating"
-	case ScreenAgentBuilderPreview:
-		return "Preview"
-	case ScreenAgentBuilderInstalling:
-		return "Installing"
-	case ScreenAgentBuilderComplete:
-		return "Done"
-	case ScreenOpenCodeModels:
-		return "OpenCode Models"
-	case ScreenOpenCodeModelPicker:
-		return "Model"
 	}
 	return ""
 }
@@ -76,7 +50,7 @@ func screenName(s Screen) string {
 // installFlowScreens defines the ordered screens in the main install flow.
 var installFlowScreens = []Screen{
 	ScreenDetection, ScreenAgents, ScreenPersona, ScreenPreset,
-	ScreenClaudeModelPicker, ScreenSDDMode, ScreenStrictTDD,
+	ScreenSDDMode, ScreenStrictTDD,
 	ScreenDependencyTree, ScreenSkillPicker, ScreenReview,
 	ScreenInstalling, ScreenComplete,
 }

@@ -2,6 +2,8 @@ package pipeline
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
@@ -141,6 +143,86 @@ func TestComponentStep_RunError(t *testing.T) {
 	}
 	if step.Files != nil {
 		t.Errorf("Files should be nil on error, got %v", step.Files)
+	}
+}
+
+func TestComponentStep_PreparedWriterRejectsUndeclaredTargetBeforeRun(t *testing.T) {
+	homeDir := t.TempDir()
+	journal, err := BeginInstallJournal(homeDir, filepath.Join(homeDir, ".journal"), []ManagedTarget{{Path: "declared", Kind: TargetFile}})
+	if err != nil {
+		t.Fatalf("BeginInstallJournal() error: %v", err)
+	}
+
+	ran := false
+	step := &componentStep{
+		adapter:     &mockAdapter{agentID: "test-agent"},
+		componentID: "test-component",
+		injectorFn: func() ([]string, error) {
+			ran = true
+			return nil, nil
+		},
+		writer: &preparedWriter{
+			journal: journal,
+			targets: []ManagedTarget{{Path: "undeclared", Kind: TargetFile}},
+		},
+	}
+
+	err = step.Run()
+	if err == nil {
+		t.Fatal("Run() error = nil, want undeclared target error")
+	}
+	if ran {
+		t.Fatal("injector ran before its targets were captured")
+	}
+}
+
+func TestComponentStep_PreparedWriterRecordsAttemptOnError(t *testing.T) {
+	homeDir := t.TempDir()
+	journal, err := BeginInstallJournal(homeDir, filepath.Join(homeDir, ".journal"), []ManagedTarget{{Path: "config", Kind: TargetFile}})
+	if err != nil {
+		t.Fatalf("BeginInstallJournal() error: %v", err)
+	}
+	injectErr := errors.New("injection failed after write")
+	step := &componentStep{
+		adapter:     &mockAdapter{agentID: "test-agent"},
+		componentID: "test-component",
+		injectorFn: func() ([]string, error) {
+			if err := os.WriteFile(filepath.Join(homeDir, "config"), []byte("changed"), 0o600); err != nil {
+				return nil, err
+			}
+			return nil, injectErr
+		},
+		writer: &preparedWriter{
+			journal: journal,
+			targets: []ManagedTarget{{Path: "config", Kind: TargetFile}},
+		},
+	}
+
+	err = step.Run()
+	if !errors.Is(err, injectErr) {
+		t.Fatalf("Run() error = %v, want %v", err, injectErr)
+	}
+	if len(journal.Outcomes) != 1 {
+		t.Fatalf("journal outcomes = %d, want 1", len(journal.Outcomes))
+	}
+	if got := journal.Outcomes[0]; got.Path != "config" || got.Error != injectErr.Error() || got.Presence != PresenceRegularFile {
+		t.Errorf("journal outcome = %+v, want recorded failed config write", got)
+	}
+}
+
+func TestPreparedWriter_TargetsAreDeterministic(t *testing.T) {
+	writer := newPreparedWriter([]ManagedTarget{
+		{Path: "z/config", Kind: TargetFile, Owner: "config"},
+		{Path: "a/persona", Kind: TargetFile, Owner: "persona"},
+	})
+
+	targets := writer.ManagedTargets()
+	if len(targets) != 2 || targets[0].Path != "a/persona" || targets[1].Path != "z/config" {
+		t.Fatalf("ManagedTargets() = %#v, want path-sorted deterministic targets", targets)
+	}
+	targets[0].Path = "mutated"
+	if got := writer.ManagedTargets()[0].Path; got != "a/persona" {
+		t.Errorf("ManagedTargets() exposed mutable inventory: got %q", got)
 	}
 }
 
@@ -286,6 +368,43 @@ func TestInstallStatusStep_Run(t *testing.T) {
 	}
 	if status.StartedAt == "" {
 		t.Error("StartedAt should not be empty")
+	}
+}
+
+func TestInstallStatusStep_PreparedWriterRejectsMissingJournalBeforeRun(t *testing.T) {
+	homeDir := t.TempDir()
+	step := &installStatusStep{
+		homeDir:  homeDir,
+		backupID: "bk-123",
+		writer: &preparedWriter{
+			targets: []ManagedTarget{{Path: filepath.Join(".cortex-ia", "install-status.json"), Kind: TargetFile}},
+		},
+	}
+
+	if err := step.Run(); err == nil {
+		t.Fatal("Run() error = nil, want missing journal error")
+	}
+	if status, err := state.LoadInstallStatus(homeDir); err != nil || status != nil {
+		t.Fatalf("status after blocked Run() = %#v, %v; want nil, nil", status, err)
+	}
+}
+
+func TestInstallStatusStep_PreparedWriterRecordsStatusOutcome(t *testing.T) {
+	homeDir := t.TempDir()
+	target := filepath.Join(".cortex-ia", "install-status.json")
+	journal, err := BeginInstallJournal(homeDir, filepath.Join(homeDir, ".journal"), []ManagedTarget{{Path: target, Kind: TargetFile, Owner: "install-status"}})
+	if err != nil {
+		t.Fatalf("BeginInstallJournal() error: %v", err)
+	}
+	writer := newPreparedWriter([]ManagedTarget{{Path: target, Kind: TargetFile, Owner: "install-status"}})
+	writer.bindJournal(journal)
+	step := &installStatusStep{homeDir: homeDir, backupID: "bk-123", writer: writer}
+
+	if err := step.Run(); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if len(journal.Outcomes) != 1 || journal.Outcomes[0].Path != target || journal.Outcomes[0].Presence != PresenceRegularFile {
+		t.Errorf("journal outcomes = %#v, want recorded install-status file", journal.Outcomes)
 	}
 }
 

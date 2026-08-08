@@ -54,24 +54,6 @@ func TestScreenKeyMap_Backups(t *testing.T) {
 	}
 }
 
-func TestScreenKeyMap_Profiles(t *testing.T) {
-	m := New(nil, "/tmp", "1.0.0")
-	m.Screen = ScreenProfiles
-	km := m.screenKeyMap()
-	if _, ok := km.(ProfileKeyMap); !ok {
-		t.Errorf("Profiles should return ProfileKeyMap, got %T", km)
-	}
-}
-
-func TestScreenKeyMap_AgentBuilderPrompt(t *testing.T) {
-	m := New(nil, "/tmp", "1.0.0")
-	m.Screen = ScreenAgentBuilderPrompt
-	km := m.screenKeyMap()
-	if _, ok := km.(InputKeyMap); !ok {
-		t.Errorf("AgentBuilderPrompt should return InputKeyMap, got %T", km)
-	}
-}
-
 func TestScreenKeyMap_DefaultScreen(t *testing.T) {
 	m := New(nil, "/tmp", "1.0.0")
 	m.Screen = ScreenDetection

@@ -9,6 +9,7 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/agents/claude"
+	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
@@ -18,6 +19,7 @@ func newTestRegistry(t *testing.T) *agents.Registry {
 	t.Helper()
 	r := agents.NewRegistry()
 	r.Register(claude.NewAdapter())
+	r.Register(codex.NewAdapter())
 	r.Register(opencode.NewAdapter())
 	return r
 }
@@ -242,5 +244,114 @@ func TestServiceAllDoesNotDeleteLegacyMailboxByName(t *testing.T) {
 	}
 	if string(got) != string(content) {
 		t.Fatalf("legacy external registration changed: %q", got)
+	}
+}
+
+func TestService_Apply_RetainsUnsafeCodexTOMLWithObservableEvidence(t *testing.T) {
+	tests := []struct {
+		name        string
+		before      string
+		disposition string
+		reason      string
+	}{
+		{
+			name:        "malformed",
+			before:      "[mcp_servers.cortex\ncommand = \"cortex\"\nargs = [\"mcp\", \"--tools=agent\"]\n",
+			disposition: "refusal",
+			reason:      "malformed",
+		},
+		{
+			name:        "customized",
+			before:      strings.Replace(ownedCortexTOML(t, "\n"), `command = "cortex"`, `command = "custom"`, 1),
+			disposition: "refusal",
+			reason:      "customized",
+		},
+		{
+			name:        "ambiguous",
+			before:      ownedCortexTOML(t, "\n") + "[mcp_servers.cortex.extra]\nenabled = true\n",
+			disposition: "collision",
+			reason:      "ambiguous",
+		},
+		{
+			name:        "unowned",
+			before:      "[mcp_servers.cortex]\ncommand = \"cortex\"\nargs = [\"mcp\", \"--tools=agent\"]\n# user note\n",
+			disposition: "refusal",
+			reason:      "unowned",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			writeStateWithAgents(t, home, model.AgentCodex)
+			path := filepath.Join(home, ".codex", "config.toml")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(tt.before), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			res, err := NewServiceWithRegistry(home, newTestRegistry(t)).Apply(Selection{
+				Agents:     []model.AgentID{model.AgentCodex},
+				Components: []model.ComponentID{model.ComponentCortex},
+			})
+			if err == nil {
+				t.Fatal("Apply() unexpectedly succeeded")
+			}
+			if len(res.RetainedItems) != 1 {
+				t.Fatalf("RetainedItems = %+v, want one retained Codex TOML item", res.RetainedItems)
+			}
+			retained := res.RetainedItems[0]
+			if retained.Path != path || retained.Agent != model.AgentCodex || retained.Component != model.ComponentCortex {
+				t.Fatalf("retained item = %+v, want Codex Cortex TOML evidence", retained)
+			}
+			if retained.Disposition != tt.disposition || !strings.Contains(retained.Reason, tt.reason) {
+				t.Fatalf("retained item = %+v, want disposition %q and reason containing %q", retained, tt.disposition, tt.reason)
+			}
+			after, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(after) != tt.before {
+				t.Fatalf("refusal changed Codex TOML:\n got %q\nwant %q", after, tt.before)
+			}
+		})
+	}
+}
+
+func TestService_Apply_CodexTOMLRepeatIsNoOp(t *testing.T) {
+	home := t.TempDir()
+	writeStateWithAgents(t, home, model.AgentCodex)
+	path := filepath.Join(home, ".codex", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(ownedCortexTOML(t, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewServiceWithRegistry(home, newTestRegistry(t))
+	sel := Selection{Agents: []model.AgentID{model.AgentCodex}, Components: []model.ComponentID{model.ComponentCortex}}
+	if _, err := svc.Apply(sel); err != nil {
+		t.Fatalf("first Apply: %v", err)
+	}
+	beforeRepeat, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.Apply(sel)
+	if err != nil {
+		t.Fatalf("repeat Apply: %v", err)
+	}
+	if len(res.ChangedFiles) != 0 || len(res.RemovedFiles) != 0 || len(res.RetainedItems) != 0 {
+		t.Fatalf("repeat result = %+v, want no mutation or retained item", res)
+	}
+	afterRepeat, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(afterRepeat) != string(beforeRepeat) {
+		t.Fatalf("repeat changed TOML:\n got %q\nwant %q", afterRepeat, beforeRepeat)
 	}
 }

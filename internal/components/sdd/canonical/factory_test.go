@@ -79,3 +79,56 @@ func TestFactoryRejectsUnsupportedTargetAndVersionBeforeRendering(t *testing.T) 
 		})
 	}
 }
+
+func TestValidateQuestionAuthorizationRejectsInvalidBootstrapBeforeRendering(t *testing.T) {
+	workflow := Workflow()
+	withoutBootstrapQuestion := Workflow()
+	withoutBootstrapRole := Workflow()
+	for i, role := range withoutBootstrapQuestion.Roles {
+		if role.ID == "role/bootstrap" {
+			withoutBootstrapQuestion.Roles[i].AllowedEffects = nil
+		}
+	}
+	for i, role := range withoutBootstrapRole.Roles {
+		if role.ID == "role/bootstrap" {
+			withoutBootstrapRole.Roles = append(withoutBootstrapRole.Roles[:i], withoutBootstrapRole.Roles[i+1:]...)
+			break
+		}
+	}
+
+	for _, test := range []struct {
+		name               string
+		workflow           ir.WorkflowIR
+		allowedPermissions []string
+		want               string
+	}{
+		{
+			name:               "missing explicit permission",
+			workflow:           workflow,
+			allowedPermissions: nil,
+			want:               "bootstrap question authorization requires explicit tool/question allow permission",
+		},
+		{
+			name:               "bootstrap question disabled",
+			workflow:           withoutBootstrapQuestion,
+			allowedPermissions: []string{"tool/question"},
+			want:               "bootstrap question authorization requires tool/question enablement",
+		},
+		{
+			name:               "bootstrap role missing",
+			workflow:           withoutBootstrapRole,
+			allowedPermissions: []string{"tool/question"},
+			want:               "bootstrap question authorization requires role/bootstrap",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateQuestionAuthorization(test.workflow, test.allowedPermissions)
+			if err == nil {
+				t.Fatal("validateQuestionAuthorization() error = nil")
+			}
+			if err.Error() != test.want {
+				t.Fatalf("validateQuestionAuthorization() error = %q, want %q", err, test.want)
+			}
+		})
+	}
+}

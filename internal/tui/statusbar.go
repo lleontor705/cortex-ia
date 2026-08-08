@@ -80,21 +80,9 @@ func renderStatusContext(m Model) string {
 	case ScreenBackups:
 		return statusBarStyle.Render(fmt.Sprintf("%d backups", len(m.Backups)))
 
-	case ScreenProfiles:
-		return statusBarStyle.Render(fmt.Sprintf("%d profiles", len(m.Profiles)))
-
 	case ScreenInstalling:
 		return statusBarStyle.Render(fmt.Sprintf("%d%%", m.Progress.Percent()))
 
-	case ScreenSync:
-		if m.SelectedProfile != "" {
-			return statusBarStyle.Render(fmt.Sprintf("profile: %s", m.SelectedProfile))
-		}
-
-	case ScreenAgentBuilderPreview:
-		return statusBarStyle.Render(
-			fmt.Sprintf("%d%%", int(m.AgentBuilderViewport.ScrollPercent()*100)),
-		)
 	}
 
 	if m.PipelineRunning {
@@ -102,11 +90,6 @@ func renderStatusContext(m Model) string {
 	}
 	if m.OperationRunning {
 		return statusBarStyle.Render("working...")
-	}
-
-	// Show active profile globally if set
-	if m.SelectedProfile != "" {
-		return statusBarStyle.Render(fmt.Sprintf("profile: %s", m.SelectedProfile))
 	}
 
 	return statusBarStyle.Render("? help")

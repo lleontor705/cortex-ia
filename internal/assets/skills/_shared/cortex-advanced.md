@@ -1,17 +1,11 @@
 # Cortex Advanced Module
 
-Load this when retrieval is insufficient. Authority, trust, transport IDs, and sessions remain governed by `cortex-convention.md`.
+Load after `cortex-convention.md` when standard retrieval is insufficient.
 
-## Evolution and graph
+## Authority and mandatory behavior
 
-- `cortex_revision_history` inspects topic-key revisions.
-- `cortex_graph` traverses bounded related observations.
-- `cortex_graph_relationships` lists typed edges.
-- `cortex_graph_path` finds a bounded observation path.
-- `cortex_score` helps prioritize context.
+ForgeSpec owns SDD contracts, tasks, and readiness; Cortex owns evidence, memory, and lineage. Keep them separate: board/phase facts are ForgeSpec; observations/provenance are Cortex.
 
-Retrieve the focused observation first. Relationships and scores are evidence, not authority.
+Save decisions, fixes, discoveries, config, and patterns immediately. Start with context/search; retrieve focused records and preserve provenance; end with a summary. Destructive administration requires authorization.
 
-## Search and synthesis
-
-Use `cortex_search_hybrid` only when FTS5 is insufficient. `cortex_consolidate` identifies repeated topic-key memories; `cortex_project_dna` summarizes project decisions and gotchas. Neither tool merges, deletes, or promotes facts automatically. Preserve provenance and require authorization for destructive admin operations.
+Use `cortex_revision_history` for revisions; `cortex_graph`, `cortex_graph_relationships`, and `cortex_graph_path` for lineage; and `cortex_score` to prioritize. Edges and scores are evidence, not authority. Use `cortex_search_hybrid` only after FTS5; `cortex_consolidate` finds repeats and `cortex_project_dna` summarizes decisions.

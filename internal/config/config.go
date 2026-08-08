@@ -18,10 +18,44 @@ type ProjectConfig struct {
 	Persona            string   `yaml:"persona,omitempty"`
 	ModelPreset        string   `yaml:"model-preset,omitempty"`
 	Profile            string   `yaml:"profile,omitempty"`
+	ModelAssignment    any      `yaml:"model-assignment,omitempty"`
+	PackageInstall     any      `yaml:"package-install,omitempty"`
 	StrictTDD          bool     `yaml:"strict-tdd,omitempty"`
 	Agents             []string `yaml:"agents,omitempty"`
 	DisabledComponents []string `yaml:"disabled-components,omitempty"`
 	CustomSkills       []Skill  `yaml:"custom-skills,omitempty"`
+
+	retiredFields map[string]struct{}
+}
+
+// RetiredProjectFieldError reports configuration that must be migrated rather
+// than translated into a supported installer selection.
+type RetiredProjectFieldError struct {
+	Field string
+}
+
+func (e *RetiredProjectFieldError) Error() string {
+	return fmt.Sprintf("project configuration field %q is retired; remove it and use supported lifecycle configuration", e.Field)
+}
+
+// UnmarshalYAML retains retired field names only long enough to return an
+// actionable migration error. They are never translated into selection data.
+func (cfg *ProjectConfig) UnmarshalYAML(value *yaml.Node) error {
+	type projectConfig ProjectConfig
+	var decoded projectConfig
+	if err := value.Decode(&decoded); err != nil {
+		return err
+	}
+	*cfg = ProjectConfig(decoded)
+	cfg.retiredFields = make(map[string]struct{})
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		field := value.Content[i].Value
+		switch field {
+		case "profile", "model-preset", "model-assignment", "package-install":
+			cfg.retiredFields[field] = struct{}{}
+		}
+	}
+	return nil
 }
 
 // Skill describes a custom skill to load.
@@ -63,6 +97,9 @@ func LoadFile(path string) (*ProjectConfig, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	if err := cfg.validateCurrent(); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
 }
 
@@ -75,11 +112,6 @@ func WriteDefault(dir string) (string, error) {
 
 preset: full           # full | minimal | custom
 persona: professional  # professional | mentor | minimal
-model-preset: balanced # balanced | performance | economy
-
-# Use a saved OpenCode SDD profile (per-phase model assignments).
-# Create one with: cortex-ia profiles create <name>:<provider>/<model>
-# profile: cheap
 
 # Enforce TDD across SDD apply/verify phases.
 # strict-tdd: false
@@ -103,10 +135,14 @@ model-preset: balanced # balanced | performance | economy
 	return path, nil
 }
 
-// ApplyToSelection merges project config into a Selection.
-func ApplyToSelection(cfg *ProjectConfig, sel *model.Selection) {
+// ApplyToSelection merges supported project configuration into a Selection.
+// Retired configuration is rejected before it can change the selection.
+func ApplyToSelection(cfg *ProjectConfig, sel *model.Selection) error {
 	if cfg == nil {
-		return
+		return nil
+	}
+	if err := cfg.validateCurrent(); err != nil {
+		return err
 	}
 
 	if cfg.Preset != "" && sel.Preset == "" {
@@ -115,18 +151,34 @@ func ApplyToSelection(cfg *ProjectConfig, sel *model.Selection) {
 	if cfg.Persona != "" && sel.Persona == "" {
 		sel.Persona = model.PersonaID(cfg.Persona)
 	}
-	if cfg.ModelPreset != "" && sel.ModelAssignments == nil {
-		sel.ModelAssignments = model.ModelsForPreset(model.ModelPreset(cfg.ModelPreset))
-	}
 	if len(cfg.Agents) > 0 && len(sel.Agents) == 0 {
 		for _, a := range cfg.Agents {
 			sel.Agents = append(sel.Agents, model.AgentID(a))
 		}
 	}
-	if cfg.Profile != "" && sel.ProfileName == "" {
-		sel.ProfileName = cfg.Profile
-	}
 	if cfg.StrictTDD && !sel.StrictTDD {
 		sel.StrictTDD = cfg.StrictTDD
 	}
+	return nil
+}
+
+func (cfg *ProjectConfig) validateCurrent() error {
+	for _, field := range []string{"profile", "model-preset", "model-assignment", "package-install"} {
+		if _, found := cfg.retiredFields[field]; found {
+			return &RetiredProjectFieldError{Field: field}
+		}
+	}
+	if cfg.Profile != "" {
+		return &RetiredProjectFieldError{Field: "profile"}
+	}
+	if cfg.ModelPreset != "" {
+		return &RetiredProjectFieldError{Field: "model-preset"}
+	}
+	if cfg.ModelAssignment != nil {
+		return &RetiredProjectFieldError{Field: "model-assignment"}
+	}
+	if cfg.PackageInstall != nil {
+		return &RetiredProjectFieldError{Field: "package-install"}
+	}
+	return nil
 }

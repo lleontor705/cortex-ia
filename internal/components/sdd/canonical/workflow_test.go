@@ -184,6 +184,13 @@ func TestBootstrapQuestionPermissionEffectiveModes(t *testing.T) {
 
 func TestQuestionPermissionBootstrapOnly(t *testing.T) {
 	workflow := Workflow()
+	product, err := NewFactory().Create(FactoryInput{Target: "codex", RuntimeVersion: ir.MustParseVersion("1.0.0")})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if !contains(product.AllowedPermissions, "tool/question") {
+		t.Fatal("Bootstrap question permission is not explicitly allowed")
+	}
 	for _, role := range workflow.Roles {
 		hasQuestion := contains(effectIDs(role.AllowedEffects), "tool/question")
 		if role.ID == "role/bootstrap" && !hasQuestion {
@@ -191,6 +198,43 @@ func TestQuestionPermissionBootstrapOnly(t *testing.T) {
 		}
 		if role.ID != "role/bootstrap" && hasQuestion {
 			t.Fatalf("non-Bootstrap role %q has the question effect", role.ID)
+		}
+	}
+}
+
+func TestCanonicalAuthoritySplitFailsClosedBeforeManifestOutput(t *testing.T) {
+	input := canonicalManifestInput("", "")
+	wantOwners := map[ir.SemanticID]string{
+		"service/forgespec": "ForgeSpec",
+		"service/cortex":    "Cortex",
+	}
+	if len(input.Services) != len(wantOwners) {
+		t.Fatalf("canonical services = %d, want exactly %d", len(input.Services), len(wantOwners))
+	}
+	for _, service := range input.Services {
+		want, ok := wantOwners[service.ID]
+		if !ok || service.Owner != want || !service.Required {
+			t.Fatalf("authority drift before manifest output: service = %+v, want owner %q and required=true", service, want)
+		}
+		delete(wantOwners, service.ID)
+	}
+	if len(wantOwners) != 0 {
+		t.Fatalf("canonical services missing authority mappings: %v", wantOwners)
+	}
+
+	workflow := Workflow()
+	if !contains(inputIDs(findRole(t, workflow, "role/decompose").Outputs), "contract/tasks") {
+		t.Fatal("ForgeSpec task authority is missing contract/tasks output")
+	}
+	if !contains(inputIDs(findRole(t, workflow, "role/implement").Inputs), "contract/task") {
+		t.Fatal("ForgeSpec task authority is missing contract/task input")
+	}
+	if !contains(inputIDs(findRole(t, workflow, "role/finalize").Inputs), "contract/lineage") {
+		t.Fatal("Cortex lineage authority is missing contract/lineage input")
+	}
+	for _, role := range workflow.Roles {
+		if !containsSemantic(role.Evidence, "evidence/phase-contract") {
+			t.Fatalf("Cortex evidence authority is missing from role %q", role.ID)
 		}
 	}
 }

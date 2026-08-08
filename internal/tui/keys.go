@@ -19,7 +19,6 @@ type KeyMap struct {
 	Delete  key.Binding
 	Rename  key.Binding
 	Create  key.Binding
-	Profile key.Binding
 	Filter  key.Binding
 
 	// ShowFullHelp toggles the full help view.
@@ -76,10 +75,6 @@ func DefaultKeyMap() KeyMap {
 		Create: key.NewBinding(
 			key.WithKeys("c"),
 			key.WithHelp("c", "create"),
-		),
-		Profile: key.NewBinding(
-			key.WithKeys("p"),
-			key.WithHelp("p", "profile"),
 		),
 		Filter: key.NewBinding(
 			key.WithKeys("/"),
@@ -160,24 +155,6 @@ func (k InputKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{{k.Enter, k.Esc}}
 }
 
-// ProfileKeyMap is used for the profile management screen.
-type ProfileKeyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Create key.Binding
-	Delete key.Binding
-	Esc    key.Binding
-	Help   key.Binding
-}
-
-func (k ProfileKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Create, k.Delete, k.Esc}
-}
-
-func (k ProfileKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.Create, k.Delete, k.Esc, k.Help}}
-}
-
 // WelcomeKeyMap is used for the welcome screen.
 type WelcomeKeyMap struct {
 	Up    key.Binding
@@ -205,14 +182,7 @@ func (m Model) screenKeyMap() help.KeyMap {
 		return CheckboxKeyMap{Up: m.Keys.Up, Down: m.Keys.Down, Space: m.Keys.Space, All: m.Keys.All, Filter: m.Keys.Filter, Enter: m.Keys.Enter, Esc: m.Keys.Esc, Help: m.Keys.Help}
 	case ScreenBackups:
 		return BackupKeyMap{Up: m.Keys.Up, Down: m.Keys.Down, Restore: m.Keys.Restore, Delete: m.Keys.Delete, Rename: m.Keys.Rename, Esc: m.Keys.Esc, Help: m.Keys.Help}
-	case ScreenProfiles:
-		return ProfileKeyMap{Up: m.Keys.Up, Down: m.Keys.Down, Create: m.Keys.Create, Delete: m.Keys.Delete, Esc: m.Keys.Esc, Help: m.Keys.Help}
-	case ScreenAgentBuilderPrompt:
-		return InputKeyMap{
-			Enter: key.NewBinding(key.WithKeys("ctrl+enter"), key.WithHelp("ctrl+enter", "confirm")),
-			Esc:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
-		}
-	case ScreenRenameBackup, ScreenProfileCreate:
+	case ScreenRenameBackup:
 		return InputKeyMap{
 			Enter: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 			Esc:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),

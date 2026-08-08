@@ -2,7 +2,7 @@ package pipeline
 
 import (
 	"context"
-	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,8 +24,6 @@ import (
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	skillscomp "github.com/lleontor705/cortex-ia/internal/components/skills"
 	"github.com/lleontor705/cortex-ia/internal/model"
-	"github.com/lleontor705/cortex-ia/internal/modelroute"
-	"github.com/lleontor705/cortex-ia/internal/opencode"
 	"github.com/lleontor705/cortex-ia/internal/state"
 	"github.com/lleontor705/cortex-ia/internal/verify"
 )
@@ -49,6 +47,51 @@ type InstallResult struct {
 	WorkflowReceipt     sddinstall.Receipt
 	WorkflowCutover     forgespeccomp.ForgeSpecResolution
 	WorkflowRollback    bool
+}
+
+// installDependencies is deliberately scoped to one coordinator invocation.
+// It gives same-package tests deterministic failure boundaries without making
+// production behavior or state-package operations mutable process globals.
+type installDependencies struct {
+	prepareWorkflow       func(context.Context, WorkflowRequest) (PreparedWorkflowInstall, error)
+	applyWorkflow         func(PreparedWorkflowInstall) (sddinstall.Receipt, error)
+	invokeComponent       func(model.ComponentID, func() ([]string, error)) ([]string, error)
+	invokePersona         func(func() ([]string, error)) ([]string, error)
+	saveInstallStatus     func(string, state.InstallStatus) error
+	clearInstallStatus    func(string) error
+	saveState             func(string, state.State) error
+	saveLock              func(string, state.Lockfile) error
+	beginJournal          func(string, string, []ManagedTarget) (*InstallJournal, error)
+	attachWorkflowReceipt func(*InstallJournal, sddinstall.Receipt) error
+	recordJournalOutcome  func(*InstallJournal, MutationOutcome) error
+	commitJournal         func(*InstallJournal) error
+	restoreAndVerify      func(*InstallJournal) error
+}
+
+func defaultInstallDependencies() installDependencies {
+	return installDependencies{
+		prepareWorkflow: PrepareWorkflow,
+		applyWorkflow: func(workflow PreparedWorkflowInstall) (sddinstall.Receipt, error) {
+			return workflow.Apply()
+		},
+		invokeComponent: func(_ model.ComponentID, invoke func() ([]string, error)) ([]string, error) {
+			return invoke()
+		},
+		invokePersona: func(invoke func() ([]string, error)) ([]string, error) {
+			return invoke()
+		},
+		saveInstallStatus:  state.SaveInstallStatus,
+		clearInstallStatus: state.ClearInstallStatus,
+		saveState:          state.Save,
+		saveLock:           state.SaveLock,
+		beginJournal:       BeginInstallJournal,
+		attachWorkflowReceipt: func(journal *InstallJournal, receipt sddinstall.Receipt) error {
+			return journal.AttachWorkflowReceipt(receipt)
+		},
+		recordJournalOutcome: func(journal *InstallJournal, outcome MutationOutcome) error { return journal.Record(outcome) },
+		commitJournal:        func(journal *InstallJournal) error { return journal.Commit() },
+		restoreAndVerify:     func(journal *InstallJournal) error { return journal.RestoreAndVerify() },
+	}
 }
 
 // Repair reapplies the previously installed configuration from lock/state metadata.
@@ -110,6 +153,10 @@ func Rollback(homeDir, backupID string) (backup.Manifest, error) {
 // Stage 1 (Prepare): validate agents + create backup (stops on error, rolls back)
 // Stage 2 (Apply): inject components per agent + save state (continues on error)
 func Install(homeDir string, registry *agents.Registry, selection model.Selection, version string, dryRun bool, onProgress ...ProgressFunc) (InstallResult, error) {
+	return installWithDependencies(homeDir, registry, selection, version, dryRun, defaultInstallDependencies(), onProgress...)
+}
+
+func installWithDependencies(homeDir string, registry *agents.Registry, selection model.Selection, version string, dryRun bool, deps installDependencies, onProgress ...ProgressFunc) (InstallResult, error) {
 	var progress ProgressFunc
 	if len(onProgress) > 0 {
 		progress = onProgress[0]
@@ -118,25 +165,6 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 	result := InstallResult{}
 	if err := selection.ValidateCurrent(); err != nil {
 		return result, err
-	}
-
-	// Resolve profile if specified.
-	if selection.ProfileName != "" && selection.ModelAssignments == nil {
-		profiles, err := state.LoadProfiles(homeDir)
-		if err == nil {
-			for _, p := range profiles {
-				if p.Name == selection.ProfileName {
-					selection.ModelAssignments = p.ModelAssignments
-					if len(selection.ModelAssignments) == 0 && len(p.ConfiguredAssignments) > 0 {
-						selection.ModelAssignments = make(model.ModelAssignments, len(p.ConfiguredAssignments))
-						for phase, assignment := range p.ConfiguredAssignments {
-							selection.ModelAssignments[phase] = assignment.FormatOpenCodeModel()
-						}
-					}
-					break
-				}
-			}
-		}
 	}
 
 	// 1. Resolve components with dependencies.
@@ -155,19 +183,9 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 			}
 			adapters = append(adapters, adapter)
 		}
-		routeInput, routeErr := explicitWorkflowRoutes(homeDir, selection)
-		if routeErr != nil {
-			return result, routeErr
-		}
-		if selection.ProfileName == "" && !dryRun {
-			selection.ProfileName = "active"
-			if err := persistActiveWorkflowProfile(homeDir, selection); err != nil {
-				return result, fmt.Errorf("persist explicit workflow route profile: %w", err)
-			}
-		}
 		var prepareErr error
-		preparedWorkflow, prepareErr = PrepareWorkflow(context.Background(), WorkflowRequest{
-			HomeDir: homeDir, Adapters: adapters, GeneratorVersion: version, RouteResolution: routeInput,
+		preparedWorkflow, prepareErr = deps.prepareWorkflow(context.Background(), WorkflowRequest{
+			HomeDir: homeDir, Adapters: adapters, GeneratorVersion: version,
 		})
 		if prepareErr != nil {
 			return result, prepareErr
@@ -190,12 +208,9 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		return result, nil
 	}
 
-	// 2. Ensure ~/.cortex-ia/ base directory exists before any component runs.
-	if err := state.EnsureDir(homeDir); err != nil {
-		return result, fmt.Errorf("ensure cortex-ia directory: %w", err)
-	}
-
-	// 3. Build prepare steps.
+	// 2. Build prepare steps. Prepare stays sequential and RunStage preserves its
+	// reverse rollback semantics. All post-backup writers are assembled below but
+	// are not allowed to run until their complete target set has been captured.
 	bkStep := &backupStep{
 		homeDir: homeDir, registry: registry,
 		agentIDs: selection.Agents, resolved: resolved, version: version,
@@ -206,7 +221,7 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		bkStep,
 	}
 
-	// 4. Build apply steps: one sequential chain per agent, agents run in parallel.
+	// 3. Build apply steps: one sequential chain per agent, agents run in parallel.
 	componentSet := make(map[model.ComponentID]bool)
 	for _, c := range resolved {
 		componentSet[c] = true
@@ -216,13 +231,21 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 	var workflowOnce sync.Once
 	var workflowFiles []string
 	var workflowErr error
+	workflowWriter := newPreparedWriter(workflowManagedTargets(preparedWorkflow))
 	applyWorkflow := func() ([]string, error) {
 		workflowOnce.Do(func() {
-			receipt, applyErr := preparedWorkflow.Apply()
-			result.WorkflowReceipt = receipt
-			result.WorkflowRollback = receipt.RestoreAvailable && receipt.BackupVerified
-			workflowFiles = append(workflowFiles, receipt.Applied...)
-			workflowErr = applyErr
+			workflowErr = workflowWriter.run(func() error {
+				receipt, applyErr := deps.applyWorkflow(preparedWorkflow)
+				result.WorkflowReceipt = receipt
+				result.WorkflowRollback = receipt.RestoreAvailable && receipt.BackupVerified
+				workflowFiles = append(workflowFiles, receipt.Applied...)
+				if workflowWriter.journal != nil && receipt.ID != "" {
+					if attachErr := deps.attachWorkflowReceipt(workflowWriter.journal, receipt); attachErr != nil {
+						return errors.Join(applyErr, fmt.Errorf("attach workflow receipt: %w", attachErr))
+					}
+				}
+				return applyErr
+			})
 		})
 		return workflowFiles, workflowErr
 	}
@@ -246,18 +269,36 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 			}
 			cs := &componentStep{
 				homeDir: homeDir, adapter: adapter,
-				componentID: inj.id, injectorFn: inj.fn,
-				progress: progress,
+				componentID: inj.id,
+				injectorFn:  func() ([]string, error) { return deps.invokeComponent(inj.id, inj.fn) },
+				writer:      newPreparedWriter(componentManagedTargets(homeDir, adapter, selection, inj.id, preparedWorkflow)),
+				progress:    progress,
 			}
 			chain = append(chain, cs)
 			allComponentSteps = append(allComponentSteps, cs)
+		}
+		if selection.Persona != "" {
+			personaStep := &componentStep{
+				homeDir: homeDir, adapter: adapter, componentID: "persona", progress: progress,
+				writer: newPreparedWriter(personaManagedTargets(homeDir, adapter)),
+				injectorFn: func() ([]string, error) {
+					return deps.invokePersona(func() ([]string, error) {
+						r, injectErr := persona.Inject(homeDir, adapter, selection.Persona)
+						return r.Files, injectErr
+					})
+				},
+			}
+			chain = append(chain, personaStep)
+			allComponentSteps = append(allComponentSteps, personaStep)
 		}
 		if len(chain) > 0 {
 			agentChains = append(agentChains, chain)
 		}
 	}
 
-	// 5. Run 2-stage: prepare sequentially, then agents in parallel.
+	// 4. Run Prepare before creating the journal. The backup directory is the
+	// durable checkpoint root, so journal creation cannot become an untracked
+	// managed write.
 	// Within each agent, components run sequentially (same config files).
 	// Different agents run in parallel (different config dirs).
 	prepResult := RunStage(prepareSteps)
@@ -266,91 +307,65 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		result.ComponentsDone = resolved
 		return result, prepResult.Error
 	}
+	result.BackupID = bkStep.BackupID
+	result.ComponentsDone = resolved
 
-	// 5a. Mark installation as in-progress (after backup succeeds).
-	// If the process crashes or components fail, the marker stays so
-	// that "cortex-ia doctor" can detect the incomplete install.
-	statusStep := &installStatusStep{homeDir: homeDir, backupID: bkStep.BackupID}
-	if err := statusStep.Run(); err != nil {
-		// Non-fatal: warn but continue — the install itself is more important.
-		result.Errors = append(result.Errors, fmt.Sprintf("install status marker: %v", err))
+	// Capture every writer target before the first post-backup write, then bind
+	// the same journal to each writer. A child workflow receipt remains typed.
+	statusTarget := relativeManagedTarget(homeDir, state.InstallStatusPath(homeDir), "install-status")
+	stateTarget := relativeManagedTarget(homeDir, state.StatePath(homeDir), "state")
+	lockTarget := relativeManagedTarget(homeDir, state.LockPath(homeDir), "lock")
+	statusWriter := newPreparedWriter(withParentDirectories(homeDir, []ManagedTarget{statusTarget}))
+	stateWriter := newPreparedWriter(withParentDirectories(homeDir, []ManagedTarget{stateTarget}))
+	lockWriter := newPreparedWriter(withParentDirectories(homeDir, []ManagedTarget{lockTarget}))
+	allWriters := []*preparedWriter{workflowWriter, statusWriter, stateWriter, lockWriter}
+	for _, step := range allComponentSteps {
+		allWriters = append(allWriters, step.writer)
+	}
+	journal, journalErr := deps.beginJournal(homeDir, filepath.Join(bkStep.BackupDir, "journal"), managedTargets(allWriters))
+	if journalErr != nil {
+		return result, fmt.Errorf("capture install journal: %w", journalErr)
+	}
+	for _, writer := range allWriters {
+		writer.bindJournal(journal)
+		writer.recordJournalOutcome = deps.recordJournalOutcome
 	}
 
+	fail := func(stage string, err error) (InstallResult, error) {
+		for _, cs := range allComponentSteps {
+			result.FilesChanged = append(result.FilesChanged, cs.Files...)
+		}
+		result.FilesChanged = append(result.FilesChanged, workflowFiles...)
+		result.FilesChanged = dedupeStrings(result.FilesChanged)
+		result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", stage, err))
+		if restoreErr := deps.restoreAndVerify(journal); restoreErr != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("restore install journal: %v", restoreErr))
+			return result, fmt.Errorf("%s: %w; restore install journal: %v", stage, err, restoreErr)
+		}
+		return result, fmt.Errorf("%s: %w", stage, err)
+	}
+
+	if err := statusWriter.run(func() error {
+		return deps.saveInstallStatus(homeDir, state.InstallStatus{
+			Status: "in-progress", StartedAt: time.Now().UTC().Format(time.RFC3339), BackupID: bkStep.BackupID,
+		})
+	}); err != nil {
+		return fail("write install status", err)
+	}
+
+	// Active agent writers join here before any failure can begin reverse restore.
 	applyResult := RunParallelChains(agentChains)
-
-	// 6. Inject persona for each agent (non-component injection).
-	if selection.Persona != "" {
-		for _, agentID := range selection.Agents {
-			adapter, err := registry.Get(agentID)
-			if err != nil {
-				continue
-			}
-			pResult, pErr := persona.Inject(homeDir, adapter, selection.Persona)
-			if pErr != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("persona/%s: %v", agentID, pErr))
-				continue
-			}
-			result.FilesChanged = append(result.FilesChanged, pResult.Files...)
-		}
+	if applyResult.Error != nil {
+		return fail("apply agent chains", applyResult.Error)
 	}
 
-	// 7a. Auto-apply model assignments to the effective OpenCode config so per-agent model
-	// routing lands without requiring a separate `profiles apply` call.
-	// Only runs when (a) model assignments exist, (b) OpenCode is in the
-	// selected agents, and (c) Apply succeeded.
-	if applyResult.Error == nil && len(selection.ModelAssignments) > 0 {
-		hasOpenCode := false
-		for _, id := range selection.Agents {
-			if id == model.AgentOpenCode {
-				hasOpenCode = true
-				break
-			}
-		}
-		if hasOpenCode {
-			configName := filepath.Base(opencode.GlobalConfigPath(homeDir))
-			configured := make(model.OpenCodeModelAssignments, len(selection.ModelAssignments))
-			for phase, value := range selection.ModelAssignments {
-				provider, modelID, ok := strings.Cut(string(value), "/")
-				if ok && provider != "" && modelID != "" {
-					configured[phase] = model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
-				}
-			}
-			ocAssignments := sdd.ProfileToOpenCodeAssignments(model.Profile{
-				Name:                  firstNonEmptyString(selection.ProfileName, "active"),
-				ConfiguredAssignments: configured,
-			})
-			if len(ocAssignments) > 0 {
-				receipt, applyErr := opencode.ApplyToOpenCodeConfig(homeDir, ocAssignments)
-				if applyErr != nil {
-					result.BackupID = bkStep.BackupID
-					result.ComponentsDone = resolved
-					for _, cs := range allComponentSteps {
-						result.FilesChanged = append(result.FilesChanged, cs.Files...)
-					}
-					result.Errors = append(result.Errors, fmt.Sprintf("apply model assignments to %s: %v", configName, applyErr))
-					return result, fmt.Errorf("apply model assignments to %s: %w", configName, applyErr)
-				}
-				result.FilesChanged = append(result.FilesChanged, receipt.ConfigPath)
-			}
-		}
-	}
-
-	// 7b. Translate results.
+	// 5. Persist terminal metadata, clear status, and commit. Every failure is
+	// terminal and restores the precise preimages through the shared journal.
 	result.BackupID = bkStep.BackupID
 	result.ComponentsDone = resolved
 	for _, cs := range allComponentSteps {
 		result.FilesChanged = append(result.FilesChanged, cs.Files...)
 	}
-
-	if applyResult.Error != nil {
-		// Leave install-status as "in-progress" so doctor can detect the failure.
-		if applyResult.Failed != "" {
-			result.Errors = append(result.Errors, applyResult.Failed)
-		}
-		return result, fmt.Errorf("installation completed with errors")
-	}
-
-	// 8. Save state (after successful apply).
 	s := state.State{
 		InstalledAgents: selection.Agents,
 		Preset:          selection.Preset,
@@ -358,11 +373,10 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		LastInstall:     time.Now(),
 		LastBackupID:    result.BackupID,
 		Version:         version,
-		LastProfile:     selection.ProfileName,
 		StrictTDD:       selection.StrictTDD,
 	}
-	if err := state.Save(homeDir, s); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("save state: %v", err))
+	if err := stateWriter.run(func() error { return deps.saveState(homeDir, s) }); err != nil {
+		return fail("save state", err)
 	}
 
 	lock := state.Lockfile{
@@ -374,139 +388,19 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		LastBackupID:    result.BackupID,
 		Version:         version,
 	}
-	if err := state.SaveLock(homeDir, lock); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("save lock: %v", err))
+	if err := lockWriter.run(func() error { return deps.saveLock(homeDir, lock) }); err != nil {
+		return fail("save lock", err)
 	}
 
-	// 9. Clear the in-progress marker — installation succeeded.
-	if err := state.ClearInstallStatus(homeDir); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("clear install status: %v", err))
+	if err := statusWriter.run(func() error { return deps.clearInstallStatus(homeDir) }); err != nil {
+		return fail("clear install status", err)
+	}
+	if err := deps.commitJournal(journal); err != nil {
+		return fail("commit install journal", err)
 	}
 
-	if len(result.Errors) > 0 {
-		return result, fmt.Errorf("installation completed with %d warning(s)", len(result.Errors))
-	}
-
+	result.FilesChanged = dedupeStrings(result.FilesChanged)
 	return result, nil
-}
-
-func persistActiveWorkflowProfile(homeDir string, selection model.Selection) error {
-	assignments := make(model.OpenCodeModelAssignments, len(selection.ModelAssignments))
-	for phase, value := range selection.ModelAssignments {
-		provider, modelID, ok := strings.Cut(string(value), "/")
-		if !ok || provider == "" || modelID == "" {
-			continue
-		}
-		assignments[phase] = model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
-	}
-	if len(assignments) == 0 {
-		return fmt.Errorf("explicit provider/model assignments are required")
-	}
-	return state.SaveProfiles(homeDir, []model.Profile{{Name: "active", ConfiguredAssignments: assignments}})
-}
-
-// explicitWorkflowRoutes converts only caller/profile configuration into the
-// resolver input. It never supplies a provider, model, or fallback itself.
-func explicitWorkflowRoutes(homeDir string, selection model.Selection) (modelroute.ResolverInput, error) {
-	requests := map[string]modelroute.RouteRequest{}
-	assignments := map[string]model.OpenCodeModelAssignment{}
-	if selection.ProfileName != "" {
-		profiles, err := state.LoadProfiles(homeDir)
-		if err != nil {
-			return modelroute.ResolverInput{}, err
-		}
-		profile, found := sdd.FindProfile(profiles, selection.ProfileName)
-		if !found {
-			return modelroute.ResolverInput{}, fmt.Errorf("workflow profile %q is not configured", selection.ProfileName)
-		}
-		for phase, route := range profile.Routes {
-			requests[canonicalRouteName(phase)] = route
-		}
-		for phase, assignment := range profile.ConfiguredAssignments {
-			phase = canonicalRouteName(phase)
-			assignments[phase] = assignment
-			if _, exists := requests[phase]; !exists {
-				route, routeErr := modelroute.NewRouteID("route/v1/" + phase)
-				if routeErr != nil {
-					return modelroute.ResolverInput{}, routeErr
-				}
-				requests[phase] = modelroute.RouteRequest{RouteID: route}
-			}
-		}
-	}
-	for phase, value := range selection.ModelAssignments {
-		phase = canonicalRouteName(phase)
-		text := string(value)
-		if route, err := modelroute.NewRouteID(text); err == nil {
-			requests[phase] = modelroute.RouteRequest{RouteID: route}
-			continue
-		}
-		provider, modelID, ok := strings.Cut(text, "/")
-		if !ok || provider == "" || modelID == "" {
-			return modelroute.ResolverInput{}, fmt.Errorf("workflow assignment %q has no explicit route or provider/model configuration", phase)
-		}
-		assignments[phase] = model.OpenCodeModelAssignment{Provider: provider, Model: modelID}
-		if _, exists := requests[phase]; !exists {
-			semantic, err := modelroute.NewRouteID("route/v1/" + strings.TrimPrefix(strings.ToLower(phase), "sdd-"))
-			if err != nil {
-				return modelroute.ResolverInput{}, fmt.Errorf("derive semantic route for %q: %w", phase, err)
-			}
-			requests[phase] = modelroute.RouteRequest{RouteID: semantic}
-		}
-	}
-	if len(requests) == 0 {
-		return modelroute.ResolverInput{}, fmt.Errorf("explicit workflow ModelRoutes configuration is required")
-	}
-	providers := map[modelroute.ProviderID]modelroute.ProviderConfig{}
-	now := time.Now().UTC()
-	for phase, request := range requests {
-		assignment, ok := assignments[phase]
-		if !ok {
-			continue
-		}
-		provider := modelroute.ProviderID(assignment.Provider)
-		config := providers[provider]
-		config.Provider = provider
-		if config.Routes == nil {
-			config.Routes = map[modelroute.RouteID]modelroute.RouteRef{}
-		}
-		config.Routes[request.RouteID] = modelroute.RouteRef{Provider: provider, Model: modelroute.ModelID(assignment.Model)}
-		digest := sha256.Sum256([]byte(string(provider) + "/" + assignment.Model + "|" + string(request.RouteID)))
-		config.Evidence = append(config.Evidence, modelroute.ResolutionEvidence{ID: fmt.Sprintf("user-config:%s", phase), Source: modelroute.SourceUserConfig, Provider: provider, Route: request.RouteID, ObservedAt: now, FreshUntil: now.Add(time.Hour), Digest: fmt.Sprintf("%x", digest), Qualified: true, ReasonID: "route.configured"})
-		providers[provider] = config
-	}
-	providerConfigs := make([]modelroute.ProviderConfig, 0, len(providers))
-	for _, config := range providers {
-		providerConfigs = append(providerConfigs, config)
-	}
-	return modelroute.ResolverInput{Requests: requests, ProviderConfigs: providerConfigs, Now: now}, nil
-}
-
-func canonicalRouteName(phase string) string {
-	switch strings.TrimSpace(strings.ToLower(phase)) {
-	case "sdd-init", "init", "bootstrap":
-		return "bootstrap"
-	case "orchestrator":
-		return "orchestrator"
-	case "sdd-explore", "explore", "investigate":
-		return "investigate"
-	case "sdd-propose", "propose", "draft-proposal":
-		return "draft-proposal"
-	case "sdd-spec", "spec", "write-specs":
-		return "write-specs"
-	case "sdd-design", "design", "architect":
-		return "architect"
-	case "sdd-tasks", "tasks", "decompose":
-		return "decompose"
-	case "sdd-apply", "apply", "implement":
-		return "implement"
-	case "sdd-verify", "verify", "validate":
-		return "validate"
-	case "sdd-archive", "archive", "finalize":
-		return "finalize"
-	default:
-		return phase
-	}
 }
 
 type injectorEntry struct {
@@ -549,6 +443,112 @@ func buildInjectors(homeDir string, adapter agents.Adapter, selection model.Sele
 		}})
 	}
 	return entries
+}
+
+// componentManagedTargets declares the concrete files a component can mutate.
+// The coordinator converts these declarations into journal preimages before any
+// post-backup writer begins; components remain unaware of transaction policy.
+func componentManagedTargets(homeDir string, adapter agents.Adapter, selection model.Selection, component model.ComponentID, workflow PreparedWorkflowInstall) []ManagedTarget {
+	var paths []string
+	switch component {
+	case model.ComponentCortex, model.ComponentForgeSpec, model.ComponentMailbox, model.ComponentContext7:
+		paths = append(paths, adapter.MCPConfigPath(homeDir, "cortex"))
+	case model.ComponentSDD:
+		for _, effects := range [][]sddinstall.Effect{workflow.Plan.Creates, workflow.Plan.Updates, workflow.Plan.Deletes} {
+			for _, effect := range effects {
+				paths = append(paths, filepath.Join(homeDir, filepath.FromSlash(effect.Path)))
+			}
+		}
+	case model.ComponentSkills:
+		for _, skill := range selection.CommunitySkills {
+			paths = append(paths, filepath.Join(adapter.SkillsDir(homeDir), string(skill), "SKILL.md"))
+		}
+	case model.ComponentConventions:
+		paths = append(paths,
+			filepath.Join(state.SharedSkillsDir(homeDir), "_shared", "cortex-convention.md"),
+			filepath.Join(state.SharedSkillsDir(homeDir), "_shared", "cortex-advanced.md"),
+			adapter.SystemPromptFile(homeDir),
+		)
+	}
+	return withParentDirectories(homeDir, managedFileTargets(homeDir, paths, string(component)))
+}
+
+func personaManagedTargets(homeDir string, adapter agents.Adapter) []ManagedTarget {
+	return withParentDirectories(homeDir, managedFileTargets(homeDir, []string{adapter.SystemPromptFile(homeDir)}, "persona"))
+}
+
+func workflowManagedTargets(workflow PreparedWorkflowInstall) []ManagedTarget {
+	var targets []ManagedTarget
+	for _, effects := range [][]sddinstall.Effect{workflow.Plan.Creates, workflow.Plan.Updates, workflow.Plan.Deletes} {
+		for _, effect := range effects {
+			targets = append(targets, ManagedTarget{Path: filepath.ToSlash(effect.Path), Kind: TargetFile, Owner: "workflow"})
+		}
+	}
+	return targets
+}
+
+func managedFileTargets(homeDir string, paths []string, owner string) []ManagedTarget {
+	targets := make([]ManagedTarget, 0, len(paths))
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		targets = append(targets, relativeManagedTarget(homeDir, path, owner))
+	}
+	return targets
+}
+
+func relativeManagedTarget(homeDir, path, owner string) ManagedTarget {
+	relative, err := filepath.Rel(homeDir, path)
+	if err != nil {
+		return ManagedTarget{Path: path, Kind: TargetFile, Owner: owner}
+	}
+	return ManagedTarget{Path: filepath.ToSlash(relative), Kind: TargetFile, Owner: owner}
+}
+
+func withParentDirectories(homeDir string, targets []ManagedTarget) []ManagedTarget {
+	result := append([]ManagedTarget(nil), targets...)
+	for _, target := range targets {
+		if target.Kind != TargetFile {
+			continue
+		}
+		path := filepath.Dir(filepath.FromSlash(target.Path))
+		for path != "." && path != string(filepath.Separator) {
+			result = append(result, ManagedTarget{Path: filepath.ToSlash(path), Kind: TargetDirectory, Owner: target.Owner})
+			path = filepath.Dir(path)
+		}
+	}
+	return result
+}
+
+func managedTargets(writers []*preparedWriter) []ManagedTarget {
+	byPath := make(map[string]ManagedTarget)
+	for _, writer := range writers {
+		if writer == nil {
+			continue
+		}
+		for _, target := range writer.ManagedTargets() {
+			if target.Path == "" {
+				continue
+			}
+			if prior, exists := byPath[target.Path]; exists {
+				if prior.Kind == target.Kind {
+					continue
+				}
+				// A file target is more specific than its parent directory target.
+				if target.Kind == TargetFile {
+					byPath[target.Path] = target
+				}
+				continue
+			}
+			byPath[target.Path] = target
+		}
+	}
+	result := make([]ManagedTarget, 0, len(byPath))
+	for _, target := range byPath {
+		result = append(result, target)
+	}
+	return result
 }
 
 func slicesContainsComponent(components []model.ComponentID, target model.ComponentID) bool {
@@ -624,10 +624,9 @@ func SelectionFromState(s state.State, lock state.Lockfile) (model.Selection, er
 
 func selectionFromMetadata(s state.State, lock state.Lockfile) (model.Selection, error) {
 	selection := model.Selection{
-		Agents:      dedupeAgents(lock.InstalledAgents, s.InstalledAgents),
-		Preset:      firstNonEmptyPreset(lock.Preset, s.Preset, model.PresetFull),
-		Components:  dedupeComponents(lock.Components, s.Components),
-		ProfileName: s.LastProfile,
+		Agents:     dedupeAgents(lock.InstalledAgents, s.InstalledAgents),
+		Preset:     firstNonEmptyPreset(lock.Preset, s.Preset, model.PresetFull),
+		Components: dedupeComponents(lock.Components, s.Components),
 	}
 
 	if len(selection.Agents) == 0 {

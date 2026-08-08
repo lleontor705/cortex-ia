@@ -8,11 +8,10 @@ import (
 func TestScreenName_AllScreensHaveNames(t *testing.T) {
 	screens := []Screen{
 		ScreenWelcome, ScreenDetection, ScreenAgents, ScreenPersona,
-		ScreenPreset, ScreenClaudeModelPicker, ScreenSDDMode, ScreenStrictTDD,
+		ScreenPreset, ScreenSDDMode, ScreenStrictTDD,
 		ScreenDependencyTree, ScreenSkillPicker, ScreenReview, ScreenInstalling,
 		ScreenComplete, ScreenBackups,
-		ScreenRenameBackup, ScreenUpgrade, ScreenSync, ScreenProfiles,
-		ScreenAgentBuilderEngine, ScreenAgentBuilderPrompt,
+		ScreenRenameBackup, ScreenUpgrade, ScreenSync,
 	}
 	for _, s := range screens {
 		name := screenName(s)

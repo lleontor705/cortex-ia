@@ -84,7 +84,7 @@ func validateQuestionAuthorization(workflow ir.WorkflowIR, allowedPermissions []
 		}
 	}
 	if !permissionAllowed {
-		return fmt.Errorf("Bootstrap question authorization requires explicit tool/question allow permission")
+		return fmt.Errorf("bootstrap question authorization requires explicit tool/question allow permission")
 	}
 
 	bootstrapFound := false
@@ -99,7 +99,7 @@ func validateQuestionAuthorization(workflow ir.WorkflowIR, allowedPermissions []
 		if role.ID == "role/bootstrap" {
 			bootstrapFound = true
 			if !questionEnabled {
-				return fmt.Errorf("Bootstrap question authorization requires tool/question enablement")
+				return fmt.Errorf("bootstrap question authorization requires tool/question enablement")
 			}
 			continue
 		}
@@ -108,7 +108,7 @@ func validateQuestionAuthorization(workflow ir.WorkflowIR, allowedPermissions []
 		}
 	}
 	if !bootstrapFound {
-		return fmt.Errorf("Bootstrap question authorization requires role/bootstrap")
+		return fmt.Errorf("bootstrap question authorization requires role/bootstrap")
 	}
 	return nil
 }

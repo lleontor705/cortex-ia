@@ -138,49 +138,64 @@ func RunParallelChains(chains [][]Step) StageResult {
 		return StageResult{}
 	}
 
-	// Single chain — just run sequentially, no goroutines needed.
-	if len(chains) == 1 {
-		return RunStageContinue(chains[0])
-	}
-
-	type chainResult struct {
-		completed []string
-		errors    []string
-	}
-
-	results := make([]chainResult, len(chains))
+	results := make([]ChainResult, len(chains))
 	var wg sync.WaitGroup
 
 	for i, chain := range chains {
 		wg.Add(1)
 		go func(idx int, steps []Step) {
 			defer wg.Done()
-			for _, step := range steps {
-				if err := step.Run(); err != nil {
-					results[idx].errors = append(results[idx].errors, fmt.Sprintf("step %q: %v", step.Name(), err))
-					continue
-				}
-				results[idx].completed = append(results[idx].completed, step.Name())
-			}
+			results[idx] = runChain(steps)
 		}(i, chain)
 	}
 	wg.Wait()
 
-	// Merge results.
+	// Merge results in input order so the primary error is deterministic.
 	var allCompleted []string
-	var allErrors []string
+	var primaryFailure string
+	var primaryError error
+	failures := 0
 	for _, r := range results {
-		allCompleted = append(allCompleted, r.completed...)
-		allErrors = append(allErrors, r.errors...)
+		allCompleted = append(allCompleted, r.Completed...)
+		if r.Error == nil {
+			continue
+		}
+		failures++
+		if primaryError == nil {
+			primaryFailure = r.Failed
+			primaryError = r.Error
+		}
 	}
 
-	if len(allErrors) > 0 {
+	if primaryError != nil {
 		return StageResult{
 			Completed: allCompleted,
-			Error:     fmt.Errorf("%d step(s) failed: %s", len(allErrors), allErrors[0]),
+			Failed:    primaryFailure,
+			Error:     fmt.Errorf("%d step(s) failed: %w", failures, primaryError),
 		}
 	}
 	return StageResult{Completed: allCompleted}
+}
+
+// ChainResult is the result of a sequential chain. A failed step stops only
+// its own chain; other chains continue until they finish.
+type ChainResult struct {
+	Completed []string
+	Failed    string
+	Error     error
+}
+
+func runChain(steps []Step) ChainResult {
+	result := ChainResult{}
+	for _, step := range steps {
+		if err := step.Run(); err != nil {
+			result.Failed = step.Name()
+			result.Error = fmt.Errorf("step %q: %w", step.Name(), err)
+			return result
+		}
+		result.Completed = append(result.Completed, step.Name())
+	}
+	return result
 }
 
 func stepNames(steps []Step) []string {

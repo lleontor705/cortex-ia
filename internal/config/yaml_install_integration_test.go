@@ -1,18 +1,11 @@
 package config_test
 
-// Integration test that proves the full chain:
-//
-//	.cortex-ia.yaml (profile: cheap)
-//	   → config.LoadFile
-//	   → config.ApplyToSelection
-//	   → pipeline.Install (with opencode adapter + profiles.json on disk)
-//	   → opencode.json gains model entries on the real SDD agent names
-//
-// If any link in this chain regresses, the test fails immediately and surfaces
-// the broken hop in its assertion.
+// Integration tests for the project YAML boundary. Supported fields may reach
+// installation; retired routing fields must fail during YAML loading, before
+// any installer mutation is possible.
 
 import (
-	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,29 +14,21 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/config"
 	"github.com/lleontor705/cortex-ia/internal/model"
-	"github.com/lleontor705/cortex-ia/internal/modelroute"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
 const yamlSample = `
-preset: full
+preset: custom
 persona: professional
-profile: cheap
 agents:
   - opencode
 `
 
-func TestYAMLProfile_FlowsThroughInstallToOpencodeJSON(t *testing.T) {
+func TestSupportedYAML_FlowsThroughInstall(t *testing.T) {
 	homeDir := t.TempDir()
 
-	// 1. Persist a profile that the yaml will reference by name.
-	profiles := []model.Profile{{Name: "cheap", Routes: explicitRoutes(), ConfiguredAssignments: explicitAssignments()}}
-	if err := state.SaveProfiles(homeDir, profiles); err != nil {
-		t.Fatalf("SaveProfiles: %v", err)
-	}
-
-	// 2. Write .cortex-ia.yaml in a separate "project" dir and load it.
+	// Write .cortex-ia.yaml in a separate project directory and load it.
 	projectDir := t.TempDir()
 	yamlPath := filepath.Join(projectDir, config.FileName)
 	if err := os.WriteFile(yamlPath, []byte(yamlSample), 0o644); err != nil {
@@ -53,79 +38,87 @@ func TestYAMLProfile_FlowsThroughInstallToOpencodeJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFile: %v", err)
 	}
-	if cfg.Profile != "cheap" {
-		t.Fatalf("yaml load lost Profile field: got %q", cfg.Profile)
-	}
 
-	// 3. Apply yaml to a Selection.
-	sel := model.Selection{}
-	config.ApplyToSelection(cfg, &sel)
-	if sel.ProfileName != "cheap" {
-		t.Fatalf("ApplyToSelection did not set ProfileName: got %q", sel.ProfileName)
+	// Apply supported YAML fields to the selection. Components are supplied by
+	// the caller because project YAML does not select them.
+	sel := model.Selection{Components: []model.ComponentID{model.ComponentCortex}}
+	if err := config.ApplyToSelection(cfg, &sel); err != nil {
+		t.Fatalf("ApplyToSelection: %v", err)
 	}
 	if len(sel.Agents) != 1 || sel.Agents[0] != model.AgentOpenCode {
 		t.Fatalf("agents not propagated: %v", sel.Agents)
 	}
 
-	// 4. Run install with a tiny registry containing only opencode.
+	// Run install with a tiny registry containing only OpenCode.
 	reg := agents.NewRegistry()
 	reg.Register(opencode.NewAdapter())
 	if _, err := pipeline.Install(homeDir, reg, sel, "test-v1", false); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 
-	// 5. opencode.json must contain the per-phase models from the profile.
-	cfgPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
-	data, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatalf("ReadFile opencode.json: %v", err)
-	}
-	var parsed map[string]any
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("Unmarshal: %v\n%s", err, string(data))
-	}
-	agentSection, ok := parsed["agent"].(map[string]any)
-	if !ok {
-		t.Fatalf("agent section missing: %s", string(data))
-	}
-	design, _ := agentSection["architect"].(map[string]any)
-	if design == nil || design["model"] != "provider-test/model-test" {
-		t.Errorf("architect.model = %v, want provider-test/model-test\n%s", design, string(data))
-	}
-	if _, exists := agentSection["team-lead"]; exists {
-		t.Errorf("portable install must not create team-lead\n%s", string(data))
-	}
-	worker, _ := agentSection["implement"].(map[string]any)
-	if worker == nil || worker["model"] != "provider-test/model-test" {
-		t.Errorf("implement.model = %v\n%s", worker, string(data))
-	}
-	if _, hasLegacy := agentSection["sdd-apply"]; hasLegacy {
-		t.Errorf("legacy sdd-apply entry should not be created\n%s", string(data))
+	if _, err := os.Stat(opencode.GlobalConfigPath(homeDir)); err != nil {
+		t.Fatalf("supported YAML install did not write OpenCode configuration: %v", err)
 	}
 
-	// 6. state.json should record the active profile so subsequent `sync` reuses it.
+	// State records the supported selection, not a retired profile.
 	st, err := state.Load(homeDir)
 	if err != nil {
 		t.Fatalf("state.Load: %v", err)
 	}
-	if st.LastProfile != "cheap" {
-		t.Errorf("state.LastProfile = %q, want cheap", st.LastProfile)
+	if len(st.InstalledAgents) != 1 || st.InstalledAgents[0] != model.AgentOpenCode {
+		t.Errorf("state.InstalledAgents = %v, want [opencode]", st.InstalledAgents)
+	}
+	if st.LastProfile != "" {
+		t.Errorf("state.LastProfile = %q, want empty", st.LastProfile)
 	}
 }
 
-func explicitRoutes() model.RouteAssignments {
-	routes := model.RouteAssignments{}
-	for _, phase := range []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize"} {
-		route, _ := modelroute.NewRouteID("route/v1/" + phase)
-		routes[phase] = modelroute.RouteRequest{RouteID: route}
+func TestRetiredYAMLRouting_FailsClosedWithoutInstallMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		yaml string
+	}{
+		{name: "profile", yaml: "preset: custom\nprofile: cheap\nagents:\n  - opencode\n"},
+		{name: "model preset", yaml: "preset: custom\nmodel-preset: economy\nagents:\n  - opencode\n"},
+		{name: "profile driven model assignment", yaml: "preset: custom\nmodel-assignment:\n  implement: provider/model\nagents:\n  - opencode\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			homeDir := t.TempDir()
+			yamlPath := filepath.Join(t.TempDir(), config.FileName)
+			if err := os.WriteFile(yamlPath, []byte(tc.yaml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := config.LoadFile(yamlPath)
+			var retired *config.RetiredProjectFieldError
+			if !errors.As(err, &retired) {
+				t.Fatalf("LoadFile error = %v, want RetiredProjectFieldError", err)
+			}
+			assertNoInstallMutation(t, homeDir)
+		})
 	}
-	return routes
 }
 
-func explicitAssignments() map[string]model.OpenCodeModelAssignment {
-	assignments := map[string]model.OpenCodeModelAssignment{}
-	for _, phase := range []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize"} {
-		assignments[phase] = model.OpenCodeModelAssignment{Provider: "provider-test", Model: "model-test"}
+func assertNoInstallMutation(t *testing.T, homeDir string) {
+	t.Helper()
+	entries, err := os.ReadDir(homeDir)
+	if err != nil {
+		t.Fatalf("ReadDir home: %v", err)
 	}
-	return assignments
+	if len(entries) != 0 {
+		t.Fatalf("retired YAML mutated home; found entries: %v", entries)
+	}
+	for _, path := range []string{
+		opencode.GlobalConfigPath(homeDir),
+		state.StatePath(homeDir),
+		state.LockPath(homeDir),
+		state.InstallStatusPath(homeDir),
+		filepath.Join(state.BaseDir(homeDir), "backups"),
+		filepath.Join(state.BaseDir(homeDir), "workflow-receipt.json"),
+		filepath.Join(state.BaseDir(homeDir), "ownership.json"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("retired YAML created managed path %q: %v", path, err)
+		}
+	}
 }
