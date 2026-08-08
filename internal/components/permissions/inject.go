@@ -73,15 +73,28 @@ func injectClaudePermissions(homeDir string, adapter agents.Adapter) (InjectionR
 
 func buildOpenCodeOverlay() []byte {
 	overlay := map[string]any{
-		"permissions": map[string]any{
+		"permission": map[string]any{
 			"bash": map[string]any{
-				"deny": []string{
-					"rm -rf /", "rm -rf ~", "rm -rf /*",
-					"sudo rm -rf", ":(){ :|:& };:",
-				},
+				"*":             "ask",
+				"rm -rf /":      "deny",
+				"rm -rf /*":     "deny",
+				"rm -rf ~":      "deny",
+				"sudo rm -rf *": "deny",
+				":(){ :|:& };:": "deny",
 			},
-			"file": map[string]any{
-				"deny": denyPatterns,
+			"read": map[string]any{
+				"*":                    "allow",
+				".env":                 "deny",
+				".env.*":               "deny",
+				".env.example":         "allow",
+				"*.pem":                "deny",
+				"*.key":                "deny",
+				"*.p12":                "deny",
+				"*.pfx":                "deny",
+				"credentials.json":     "deny",
+				"service-account.json": "deny",
+				"**/secrets/**":        "deny",
+				"**/.secrets/**":       "deny",
 			},
 		},
 	}
@@ -95,21 +108,13 @@ func injectJSONPermissions(homeDir string, adapter agents.Adapter, overlay []byt
 		return InjectionResult{}, nil
 	}
 
-	baseJSON, err := os.ReadFile(settingsPath)
-	if err != nil && !os.IsNotExist(err) {
-		return InjectionResult{}, fmt.Errorf("read settings: %w", err)
-	}
-
-	merged, err := filemerge.MergeJSONObjects(baseJSON, overlay)
+	result, err := filemerge.MutateJSONFile(settingsPath, filemerge.JSONMutation{
+		Overlay: overlay, RemovePaths: [][]string{{"permissions"}},
+	})
 	if err != nil {
-		return InjectionResult{}, fmt.Errorf("merge permissions: %w", err)
+		return InjectionResult{}, fmt.Errorf("patch OpenCode permissions: %w", err)
 	}
-
-	wr, err := filemerge.WriteFileAtomic(settingsPath, merged, 0o644)
-	if err != nil {
-		return InjectionResult{}, err
-	}
-	return InjectionResult{Changed: wr.Changed, Files: []string{settingsPath}}, nil
+	return InjectionResult{Changed: result.Changed, Files: []string{settingsPath}}, nil
 }
 
 func injectPromptPermissions(homeDir string, adapter agents.Adapter) (InjectionResult, error) {

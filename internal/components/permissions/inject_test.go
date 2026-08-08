@@ -3,6 +3,7 @@ package permissions
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -46,6 +47,13 @@ func TestInject_Claude(t *testing.T) {
 func TestInject_OpenCode(t *testing.T) {
 	tmpDir := t.TempDir()
 	adapter := opencode.NewAdapter()
+	settingsPath := adapter.SettingsPath(tmpDir)
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settingsPath, []byte(`{"permissions":{"bash":"allow","file":"allow"},"share":"disabled"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	result, err := Inject(tmpDir, adapter)
 	if err != nil {
@@ -55,7 +63,7 @@ func TestInject_OpenCode(t *testing.T) {
 		t.Error("expected Changed=true")
 	}
 
-	data, err := os.ReadFile(adapter.SettingsPath(tmpDir))
+	data, err := os.ReadFile(settingsPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,12 +73,38 @@ func TestInject_OpenCode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	perms, ok := settings["permissions"].(map[string]any)
-	if !ok {
-		t.Fatal("expected permissions key")
+	if _, exists := settings["permissions"]; exists {
+		t.Fatal("deprecated permissions key must not be emitted")
 	}
-	if _, ok := perms["bash"]; !ok {
-		t.Error("expected bash deny rules for OpenCode")
+	perms, ok := settings["permission"].(map[string]any)
+	if !ok {
+		t.Fatal("expected permission key")
+	}
+	if _, exists := perms["file"]; exists {
+		t.Fatal("deprecated file permission must not be emitted")
+	}
+	bash, ok := perms["bash"].(map[string]any)
+	if !ok {
+		t.Fatal("expected ordered bash permission rules for OpenCode")
+	}
+	if bash["*"] != "ask" || bash["rm -rf /"] != "deny" || bash["sudo rm -rf *"] != "deny" {
+		t.Errorf("bash permission rules = %#v", bash)
+	}
+	read, ok := perms["read"].(map[string]any)
+	if !ok {
+		t.Fatal("expected read permission rules for OpenCode")
+	}
+	if read["*"] != "allow" || read[".env"] != "deny" || read[".env.*"] != "deny" || read[".env.example"] != "allow" {
+		t.Errorf("read permission rules = %#v", read)
+	}
+	serialized := string(data)
+	for _, ordered := range [][2]string{
+		{`"*":"ask"`, `"rm -rf /":"deny"`},
+		{`".env.*":"deny"`, `".env.example":"allow"`},
+	} {
+		if broad, specific := strings.Index(serialized, ordered[0]), strings.Index(serialized, ordered[1]); broad < 0 || specific < 0 || broad >= specific {
+			t.Errorf("permission rule order %q before %q not preserved:\n%s", ordered[0], ordered[1], serialized)
+		}
 	}
 }
 

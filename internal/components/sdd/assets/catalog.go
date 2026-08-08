@@ -19,7 +19,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/phasecontract"
 )
 
-var canonicalSkills = []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize"}
+var canonicalSkills = []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize", "debate", "parallel-dispatch"}
 var rootModules = []string{"routing-and-risk", "contracts-and-thresholds", "recovery-and-reflection", "parallel-apply", "memory-and-state", "model-routing"}
 
 // MaterializedCatalog includes immutable bytes alongside the receipt-visible
@@ -83,6 +83,9 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 	if err := add("asset/root-index", ir.AssetRootIndex, "generic/sdd-orchestrator-root-index.md", root, true, 1500); err != nil {
 		return MaterializedCatalog{}, err
 	}
+	if err := add("asset/skill/orchestrator", ir.AssetSkill, "skills/orchestrator/SKILL.md", root, true, 1500); err != nil {
+		return MaterializedCatalog{}, err
+	}
 	for _, generatedAsset := range generated {
 		if err := add(generatedAsset.SemanticID, generatedAsset.Class, generatedAsset.RelativePath, generatedAsset.Content, true, 1200); err != nil {
 			return MaterializedCatalog{}, fmt.Errorf("catalog generated asset %q: %w", generatedAsset.SemanticID, err)
@@ -106,6 +109,22 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 	if err := add("asset/shared-contract", ir.AssetSharedContract, sharedPath, shared, true, 1000); err != nil {
 		return MaterializedCatalog{}, err
 	}
+	for _, sharedSkill := range []struct {
+		name      string
+		maxTokens int
+	}{
+		{name: "cortex-convention", maxTokens: 1000},
+		{name: "cortex-advanced", maxTokens: 300},
+	} {
+		path := "skills/_shared/" + sharedSkill.name + ".md"
+		content, readErr := read(path)
+		if readErr != nil {
+			return MaterializedCatalog{}, readErr
+		}
+		if err := add(ir.SemanticID("asset/skill/shared/"+sharedSkill.name), ir.AssetSkill, path, content, true, sharedSkill.maxTokens); err != nil {
+			return MaterializedCatalog{}, err
+		}
+	}
 	for _, skill := range canonicalSkills {
 		path := "skills/" + skill + "/SKILL.md"
 		content, readErr := read(path)
@@ -118,14 +137,22 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 	}
 	for _, role := range workflow.Roles {
 		name := map[string]string{
-			"role/bootstrap": "bootstrap", "role/investigate": "explore", "role/draft-proposal": "proposal",
+			"role/orchestrator": "orchestrator",
+			"role/bootstrap":    "bootstrap", "role/investigate": "explore", "role/draft-proposal": "proposal",
 			"role/write-specs": "spec", "role/architect": "design", "role/decompose": "tasks",
 			"role/implement": "apply", "role/validate": "verify", "role/finalize": "archive",
+			"role/debate": "debate", "role/parallel-dispatch": "parallel-dispatch",
 		}[string(role.ID)]
 		if name == "" {
-			return MaterializedCatalog{}, fmt.Errorf("workflow role %q is not a canonical phase role", role.ID)
+			return MaterializedCatalog{}, fmt.Errorf("workflow role %q is not canonical", role.ID)
 		}
-		content := []byte(fmt.Sprintf("# Phase Role: %s\n\n- Semantic ID: `%s`\n- Objective: %s\n- Load exactly one canonical skill before phase decisions.\n", name, role.ID, role.Objective))
+		title := "Phase Role"
+		decisionScope := "phase decisions"
+		if role.ID == "role/orchestrator" || role.ID == "role/debate" || role.ID == "role/parallel-dispatch" {
+			title = "Transverse Role"
+			decisionScope = "decisions"
+		}
+		content := []byte(fmt.Sprintf("# %s: %s\n\n- Semantic ID: `%s`\n- Objective: %s\n- Load exactly one canonical skill before %s.\n", title, name, role.ID, role.Objective, decisionScope))
 		if err := add(ir.SemanticID("asset/role/"+name), ir.AssetRoleStub, "generated/roles/"+name+".md", content, true, 300); err != nil {
 			return MaterializedCatalog{}, err
 		}

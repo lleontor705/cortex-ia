@@ -32,4 +32,4 @@ Recover task state from ForgeSpec and durable evidence from Cortex. Do not recon
 - Progress: `tb_status`, `tb_unblocked`, `tb_claim`, `tb_update`, `tb_get`, `tb_list_boards`
 - Contracts: `sdd_validate`, `sdd_save`, `sdd_get`, `sdd_list`, `sdd_history`
 - File reservations: `file_reserve`, `file_release`
-- Memory: `mem_save`, `mem_search`, `mem_get_observation`, `mem_context`, `mem_session_summary`, `mem_relate`
+- Memory: `cortex_save`, `cortex_search`, `cortex_get_observation`, `cortex_context`, `cortex_session_summary`, `cortex_relate`

@@ -5,6 +5,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -52,17 +53,18 @@ func (m Model) updateOpenCodeModels(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setScreen(ScreenOpenCodeModelPicker)
 			}
 		case "s":
-			// Save to cortex-ia state AND apply to opencode.json
+			// Save to cortex-ia state and apply to the effective OpenCode config.
 			if err := state.SaveOpenCodeModels(m.HomeDir, m.OpenCodeAssignments); err != nil {
 				m.OCErr = err
 				return m, nil
 			}
-			if err := opencode.ApplyToOpenCodeConfig(m.HomeDir, m.OpenCodeAssignments); err != nil {
+			configName := filepath.Base(opencode.GlobalConfigPath(m.HomeDir))
+			if _, err := opencode.ApplyToOpenCodeConfig(m.HomeDir, m.OpenCodeAssignments); err != nil {
 				m.OCErr = err
-				m.ActiveToast = Toast{Text: fmt.Sprintf("Saved but failed to update opencode.json: %v", err), IsError: true, Visible: true}
+				m.ActiveToast = Toast{Text: fmt.Sprintf("Saved but failed to update %s: %v", configName, err), IsError: true, Visible: true}
 			} else {
 				m.OCErr = nil
-				m.ActiveToast = Toast{Text: "Models saved and applied to opencode.json", Visible: true}
+				m.ActiveToast = Toast{Text: fmt.Sprintf("Models saved and applied to %s", configName), Visible: true}
 			}
 			return m, dismissToastAfter(3 * time.Second)
 		case "r":
@@ -260,7 +262,7 @@ func (m Model) viewOpenCodeModelPicker() string {
 				if lastProvider != "" {
 					sb.WriteString("\n")
 				}
-				sb.WriteString(styles.Subtitle.Render("  "+provider))
+				sb.WriteString(styles.Subtitle.Render("  " + provider))
 				sb.WriteString("\n")
 				lastProvider = provider
 			}

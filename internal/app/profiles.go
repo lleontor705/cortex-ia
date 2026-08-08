@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
 	"github.com/lleontor705/cortex-ia/internal/opencode"
@@ -69,7 +70,7 @@ func printProfilesUsage() error {
 	fmt.Println("  cortex-ia profiles create <name>:<provider>/<model>")
 	fmt.Println("  cortex-ia profiles set    <name>:<phase>:<provider>/<model>")
 	fmt.Println("  cortex-ia profiles delete <name>")
-	fmt.Println("  cortex-ia profiles apply  <name>   Write the profile's per-phase models into opencode.json")
+	fmt.Println("  cortex-ia profiles apply  <name>   Write per-phase models into the effective OpenCode config")
 	return nil
 }
 
@@ -138,11 +139,12 @@ func profilesApply(homeDir, name string) error {
 		return fmt.Errorf("profile %q has no usable phase assignments — every value was empty or unparseable", name)
 	}
 
-	if err := opencode.ApplyToOpenCodeConfig(homeDir, assignments); err != nil {
-		return fmt.Errorf("apply profile to opencode.json: %w", err)
+	configName := filepath.Base(opencode.GlobalConfigPath(homeDir))
+	if _, err := opencode.ApplyToOpenCodeConfig(homeDir, assignments); err != nil {
+		return fmt.Errorf("apply profile to %s: %w", configName, err)
 	}
 
-	fmt.Printf("Profile %q applied to opencode.json (%d phase assignment(s)).\n", name, len(assignments))
+	fmt.Printf("Profile %q applied to %s (%d phase assignment(s)).\n", name, configName, len(assignments))
 	for phase, a := range assignments {
 		fmt.Printf("  sdd-%-9s → %s\n", phase, a.FormatOpenCodeModel())
 	}

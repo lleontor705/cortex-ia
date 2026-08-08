@@ -210,6 +210,89 @@ func TestApplyToOpenCodeConfigResolved_PreservesConfigAndReturnsReceipt(t *testi
 	}
 }
 
+func TestApplyToOpenCodeConfigResolvedPrefersJSONCAndRollsBackExactBytes(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	jsonPath := filepath.Join(configDir, "opencode.json")
+	jsonBefore := []byte(`{"agent":{"implement":{"model":"json/model"}}}`)
+	if err := os.WriteFile(jsonPath, jsonBefore, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	jsoncPath := filepath.Join(configDir, "opencode.jsonc")
+	jsoncBefore := []byte("{\n  // Effective global override.\n  \"agent\": {\n    \"implement\": { \"mode\": \"subagent\" },\n    \"review\": { \"permission\": [\n      // Keep unrelated agent trivia.\n      \"read\",\n    ] },\n  },\n}\n")
+	if err := os.WriteFile(jsoncPath, jsoncBefore, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	receipt, err := ApplyToOpenCodeConfigResolved(home, map[string]ResolvedAssignment{
+		"implement": {
+			Assignment: model.OpenCodeModelAssignment{Provider: "provider-x", Model: "model-y"},
+			Evidence:   DiscoveryEvidence{Source: SourceConfig, ObservedAt: now, FreshUntil: now.Add(time.Hour), Qualified: true, Digest: "cfg-digest"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.ConfigPath != jsoncPath {
+		t.Fatalf("receipt path = %q, want %q", receipt.ConfigPath, jsoncPath)
+	}
+	jsonAfter, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(jsonAfter) != string(jsonBefore) {
+		t.Fatalf("lower-precedence JSON changed: %s", jsonAfter)
+	}
+	jsoncAfter, err := os.ReadFile(jsoncPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(jsoncAfter), "// Effective global override.") || !strings.Contains(string(jsoncAfter), "// Keep unrelated agent trivia.") || !strings.Contains(string(jsoncAfter), "provider-x/model-y") {
+		t.Fatalf("JSONC was not patched safely:\n%s", jsoncAfter)
+	}
+	if err := receipt.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := os.ReadFile(jsoncPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(restored) != string(jsoncBefore) {
+		t.Fatalf("rollback did not restore exact JSONC bytes:\n%s", restored)
+	}
+}
+
+func TestConfigReceiptRollbackRejectsConcurrentChange(t *testing.T) {
+	home := t.TempDir()
+	now := time.Now().UTC()
+	receipt, err := ApplyToOpenCodeConfigResolved(home, map[string]ResolvedAssignment{
+		"implement": {
+			Assignment: model.OpenCodeModelAssignment{Provider: "provider-x", Model: "model-y"},
+			Evidence:   DiscoveryEvidence{Source: SourceConfig, ObservedAt: now, FreshUntil: now.Add(time.Hour), Qualified: true},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	concurrent := []byte(`{"user":"change"}`)
+	if err := os.WriteFile(receipt.ConfigPath, concurrent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := receipt.Rollback(); err == nil {
+		t.Fatal("rollback overwrote a concurrent config change")
+	}
+	after, err := os.ReadFile(receipt.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(concurrent) {
+		t.Fatalf("concurrent bytes changed: %s", after)
+	}
+}
+
 func TestLoadModelsCache_FileNotFound(t *testing.T) {
 	_, err := LoadModelsCache(t.TempDir())
 	if err == nil {
@@ -239,7 +322,7 @@ func TestApplyToOpenCodeConfig(t *testing.T) {
 		"orchestrator": {Provider: "provider-a", Model: "model-a"},
 		"implement":    {Provider: "openai", Model: "gpt-4o"},
 	}
-	err := ApplyToOpenCodeConfig(dir, assignments)
+	_, err := ApplyToOpenCodeConfig(dir, assignments)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -291,7 +374,7 @@ func TestApplyToOpenCodeConfig_DropsLegacyPortableTeamLead(t *testing.T) {
 		"implement": {Provider: "provider-a", Model: "model-a"},
 	}
 
-	if err := ApplyToOpenCodeConfig(homeDir, assignments); err != nil {
+	if _, err := ApplyToOpenCodeConfig(homeDir, assignments); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(configPath)
@@ -329,7 +412,7 @@ func TestApplyToOpenCodeConfig_PreservesLegacyAgentWhenOnlyLegacyExists(t *testi
 	assignments := model.OpenCodeModelAssignments{
 		"orchestrator": {Provider: "provider-a", Model: "model-a"},
 	}
-	if err := ApplyToOpenCodeConfig(dir, assignments); err != nil {
+	if _, err := ApplyToOpenCodeConfig(dir, assignments); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -351,7 +434,7 @@ func TestApplyToOpenCodeConfig_NoExistingFile(t *testing.T) {
 	assignments := model.OpenCodeModelAssignments{
 		"orchestrator": {Provider: "provider-a", Model: "model-a"},
 	}
-	err := ApplyToOpenCodeConfig(dir, assignments)
+	_, err := ApplyToOpenCodeConfig(dir, assignments)
 	if err != nil {
 		t.Fatalf("should create config if missing: %v", err)
 	}

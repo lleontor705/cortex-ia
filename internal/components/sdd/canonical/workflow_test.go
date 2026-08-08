@@ -7,10 +7,21 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/phasecontract"
 )
 
-func TestCanonicalWorkflowHasNineRoles(t *testing.T) {
+func TestCanonicalWorkflowHasTwelveRolesAndNinePhases(t *testing.T) {
 	w := Workflow()
-	if len(w.Roles) != 9 {
-		t.Fatalf("Workflow has %d roles, want 9", len(w.Roles))
+	if len(w.Roles) != 12 {
+		t.Fatalf("Workflow has %d roles, want 12", len(w.Roles))
+	}
+	for _, id := range []ir.SemanticID{"role/orchestrator", "role/debate", "role/parallel-dispatch"} {
+		findRole(t, w, id)
+		for _, phase := range w.Phases {
+			if phase.Role == id {
+				t.Fatalf("transverse role %q must not own phase %q", id, phase.ID)
+			}
+		}
+	}
+	if len(w.Phases) != 9 {
+		t.Fatalf("Workflow has %d phases, want 9", len(w.Phases))
 	}
 }
 

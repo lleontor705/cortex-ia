@@ -4,7 +4,8 @@
       "type": "local",
       "command": [
         "cortex",
-        "mcp"
+        "mcp",
+        "--tools=agent"
       ],
       "enabled": true
     }

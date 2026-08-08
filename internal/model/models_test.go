@@ -7,6 +7,26 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/modelroute"
 )
 
+func TestOpenCodeSubAgents_ContainsTwelveSDDRoles(t *testing.T) {
+	agents := OpenCodeSubAgents()
+	if len(agents) != 12 {
+		t.Fatalf("OpenCodeSubAgents() returned %d roles, want 12", len(agents))
+	}
+
+	seen := make(map[string]bool, len(agents))
+	for _, agent := range agents {
+		if seen[agent] {
+			t.Fatalf("OpenCodeSubAgents() contains duplicate role %q", agent)
+		}
+		seen[agent] = true
+	}
+	for _, required := range []string{"orchestrator", "debate", "parallel-dispatch"} {
+		if !seen[required] {
+			t.Errorf("OpenCodeSubAgents() missing required role %q", required)
+		}
+	}
+}
+
 func TestModelsForPreset_Balanced(t *testing.T) {
 	m := ModelsForPreset(ModelPresetBalanced)
 	if _, err := modelroute.NewRouteID(string(m["architect"])); err != nil {

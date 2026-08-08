@@ -6,14 +6,14 @@ import (
 )
 
 type mockStep struct {
-	name      string
-	err       error
-	ran       bool
+	name       string
+	err        error
+	ran        bool
 	rolledBack bool
 }
 
-func (s *mockStep) Name() string  { return s.name }
-func (s *mockStep) Run() error    { s.ran = true; return s.err }
+func (s *mockStep) Name() string    { return s.name }
+func (s *mockStep) Run() error      { s.ran = true; return s.err }
 func (s *mockStep) Rollback() error { s.rolledBack = true; return nil }
 
 func TestRunStage_AllSuccess(t *testing.T) {

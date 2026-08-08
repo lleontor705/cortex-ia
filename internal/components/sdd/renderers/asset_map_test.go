@@ -23,6 +23,20 @@ func TestAdapterAssetMapMapsSemanticAssetsOnce(t *testing.T) {
 	}
 }
 
+func TestAdapterAssetMapKeepsRoleStubsOutsideNativeAgentDiscovery(t *testing.T) {
+	m, err := AdapterAssetMapFor("opencode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Map("asset/role/implement/binding", ir.AssetRoleStub, ".config/opencode/roles/implement.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Relative != ".config/opencode/.cortex-ia/roles/implement.md" {
+		t.Fatalf("role stub destination = %q", got.Relative)
+	}
+}
+
 func TestAdapterAssetMapRejectsUnsafeAndDuplicateDestinations(t *testing.T) {
 	m, err := AdapterAssetMapFor("vscode")
 	if err != nil {

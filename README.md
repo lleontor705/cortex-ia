@@ -182,7 +182,7 @@ The resolver records provenance, freshness, capability evidence, and fallback/de
 
 ## OpenCode SDD Profiles
 
-For OpenCode users who want per-phase routing, profiles save named bundles of semantic route assignments and apply configuration-backed resolutions to `opencode.json` automatically.
+For OpenCode users who want per-phase routing, profiles save named bundles of semantic route assignments and apply configuration-backed resolutions to the effective global config automatically. Existing `opencode.jsonc` takes precedence and is patched without discarding comments; otherwise cortex-ia uses or creates `opencode.json`.
 
 ```bash
 # Create a profile with a semantic route
@@ -192,7 +192,7 @@ cortex-ia profiles create default:route/v1/implementation
 cortex-ia profiles set default:sdd-design:route/v1/architecture
 cortex-ia profiles set default:sdd-apply:route/v1/implementation
 
-# Use the profile during install — auto-applied to opencode.json
+# Use the profile during install — auto-applied to the effective global config
 cortex-ia install --profile default
 
 # Or apply to an existing install without re-injecting everything

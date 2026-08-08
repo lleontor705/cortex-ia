@@ -1,17 +1,17 @@
 # Cortex Advanced Module
 
-Load this progressive module on demand. The common rules and authority remain in `cortex-convention.md`; this file adds only low-frequency operations.
+Load this when retrieval is insufficient. Authority, trust, transport IDs, and sessions remain governed by `cortex-convention.md`.
 
-## Inspect evolution
+## Evolution and graph
 
-- `mem_revision_history` shows topic-key revisions.
-- `mem_timeline` shows observations around a focus point.
-- `mem_graph` traverses related observations.
+- `cortex_revision_history` inspects topic-key revisions.
+- `cortex_graph` traverses bounded related observations.
+- `cortex_graph_relationships` lists typed edges.
+- `cortex_graph_path` finds a bounded observation path.
+- `cortex_score` helps prioritize context.
 
-Use these when an artifact changed or lineage is unclear. Retrieve the focused observation first.
+Retrieve the focused observation first. Relationships and scores are evidence, not authority.
 
-## Search and lifecycle
+## Search and synthesis
 
-Use `mem_search_hybrid` when ordinary search is insufficient. Project consolidation handles name drift. Temporal snapshots, edges, fact state, and quality metrics are optional audit tools, never readiness.
-
-Session lifecycle remains: start, capture the request, save discoveries, summarize, and end. Archive or delete only with workflow authorization.
+Use `cortex_search_hybrid` only when FTS5 is insufficient. `cortex_consolidate` identifies repeated topic-key memories; `cortex_project_dna` summarizes project decisions and gotchas. Neither tool merges, deletes, or promotes facts automatically. Preserve provenance and require authorization for destructive admin operations.

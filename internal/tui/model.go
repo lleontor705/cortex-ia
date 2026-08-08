@@ -1,13 +1,13 @@
 package tui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lleontor705/cortex-ia/internal/agentbuilder"
 	"github.com/lleontor705/cortex-ia/internal/agents"
@@ -223,10 +223,10 @@ func welcomeLabel(opt WelcomeOption) string {
 
 // SysInfoCache holds cached system detection results.
 type SysInfoCache struct {
-	OS, Arch, PkgMgr, Shell    string
-	NodeVer, GitVer, GoVer     string
-	Npx, Cortex                bool
-	DetectedAgents             int
+	OS, Arch, PkgMgr, Shell string
+	NodeVer, GitVer, GoVer  string
+	Npx, Cortex             bool
+	DetectedAgents          int
 }
 
 // --- Model ---
@@ -241,17 +241,16 @@ type Model struct {
 	Version        string
 
 	// Bubbles components
-	Spinner      spinner.Model
-	ProgressBar  progress.Model
-	Help         help.Model
-	Keys         KeyMap
+	Spinner     spinner.Model
+	ProgressBar progress.Model
+	Help        help.Model
+	Keys        KeyMap
 
 	// Dialog overlay
 	ActiveDialog Dialog
 
 	// Toast notification
 	ActiveToast Toast
-
 
 	// Filters
 	AgentFilter FilterInput
@@ -269,29 +268,29 @@ type Model struct {
 	SysInfo  *SysInfoCache
 
 	// Model selection
-	ModelPreset        model.ModelPreset
-	ModelAssignments   model.ModelAssignments
-	ClaudeModelCursor  int
-	SDDEnabled         bool
-	StrictTDDEnabled   bool
-	SkillSelection     []model.SkillID
-	AvailableSkills    []SkillItem
-	SkillCursor        int
+	ModelPreset       model.ModelPreset
+	ModelAssignments  model.ModelAssignments
+	ClaudeModelCursor int
+	SDDEnabled        bool
+	StrictTDDEnabled  bool
+	SkillSelection    []model.SkillID
+	AvailableSkills   []SkillItem
+	SkillCursor       int
 
 	// Installation
-	Progress    ProgressState
-	Result      pipeline.InstallResult
-	InstallErr  error
+	Progress   ProgressState
+	Result     pipeline.InstallResult
+	InstallErr error
 
 	// Backups
-	Backups          []backup.Manifest
-	BackupWarnings   []string
-	SelectedBackup   backup.Manifest
-	BackupScroll     int
+	Backups           []backup.Manifest
+	BackupWarnings    []string
+	SelectedBackup    backup.Manifest
+	BackupScroll      int
 	BackupRenameInput textinput.Model
-	RestoreErr       error
-	DeleteErr        error
-	RenameErr        error
+	RestoreErr        error
+	DeleteErr         error
+	RenameErr         error
 
 	// Post-install operations
 	UpdateResults    []update.CheckResult
@@ -305,10 +304,10 @@ type Model struct {
 	ModelConfigMode bool
 
 	// Profiles
-	Profiles         []model.Profile
-	SelectedProfile  string
-	ProfileInput     textinput.Model
-	ProfileErr       error
+	Profiles        []model.Profile
+	SelectedProfile string
+	ProfileInput    textinput.Model
+	ProfileErr      error
 
 	// Agent builder
 	AgentBuilderEngine    model.AgentID
@@ -387,18 +386,18 @@ func New(registry *agents.Registry, homeDir, version string) Model {
 	h.Styles.FullDesc = lipgloss.NewStyle().Foreground(styles.Muted)
 
 	return Model{
-		Screen:            ScreenWelcome,
-		Registry:          registry,
-		HomeDir:           homeDir,
-		Version:           version,
-		Presets:           []model.PresetID{model.PresetFull, model.PresetMinimal},
-		Personas:          []model.PersonaID{model.PersonaProfessional, model.PersonaMentor, model.PersonaMinimal},
-		Persona:           model.PersonaProfessional,
-		SDDEnabled:        true,
-		Spinner:           sp,
-		ProgressBar:       pb,
-		Help:              h,
-		Keys:              DefaultKeyMap(),
+		Screen:               ScreenWelcome,
+		Registry:             registry,
+		HomeDir:              homeDir,
+		Version:              version,
+		Presets:              []model.PresetID{model.PresetFull, model.PresetMinimal},
+		Personas:             []model.PersonaID{model.PersonaProfessional, model.PersonaMentor, model.PersonaMinimal},
+		Persona:              model.PersonaProfessional,
+		SDDEnabled:           true,
+		Spinner:              sp,
+		ProgressBar:          pb,
+		Help:                 h,
+		Keys:                 DefaultKeyMap(),
 		AgentFilter:          NewFilterInput(),
 		SkillFilter:          NewFilterInput(),
 		OCModelFilter:        NewFilterInput(),

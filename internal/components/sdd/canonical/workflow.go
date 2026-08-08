@@ -34,6 +34,8 @@ func Workflow() ir.WorkflowIR {
 		ID:            "workflow/sdd",
 		Version:       workflowVersion,
 		Roles: []ir.Role{
+			role("role/orchestrator", "Route ready work and validate handoffs without becoming task authority.",
+				nil, nil),
 			role("role/bootstrap", "Detect project capabilities and initialize SDD context.",
 				[]ir.Contract{contract("contract/bootstrap-request")},
 				[]ir.Contract{contract("contract/bootstrap-context")},
@@ -73,6 +75,10 @@ func Workflow() ir.WorkflowIR {
 				[]ir.Contract{contract("contract/verify-report"), contract("contract/lineage")},
 				[]ir.Contract{contract("contract/archive-report")},
 				"filesystem/write"),
+			role("role/debate", "Run bounded multi-position deliberation without replacing phase authority.",
+				nil, nil),
+			role("role/parallel-dispatch", "Coordinate independent ready work without changing readiness or the workflow DAG.",
+				nil, nil),
 		},
 		Phases: []ir.Phase{
 			{ID: "phase/bootstrap", Role: "role/bootstrap"},

@@ -294,7 +294,7 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 		}
 	}
 
-	// 7a. Auto-apply model assignments to opencode.json so per-agent model
+	// 7a. Auto-apply model assignments to the effective OpenCode config so per-agent model
 	// routing lands without requiring a separate `profiles apply` call.
 	// Only runs when (a) model assignments exist, (b) OpenCode is in the
 	// selected agents, and (c) Apply succeeded.
@@ -307,6 +307,7 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 			}
 		}
 		if hasOpenCode {
+			configName := filepath.Base(opencode.GlobalConfigPath(homeDir))
 			configured := make(model.OpenCodeModelAssignments, len(selection.ModelAssignments))
 			for phase, value := range selection.ModelAssignments {
 				provider, modelID, ok := strings.Cut(string(value), "/")
@@ -319,9 +320,17 @@ func Install(homeDir string, registry *agents.Registry, selection model.Selectio
 				ConfiguredAssignments: configured,
 			})
 			if len(ocAssignments) > 0 {
-				if err := opencode.ApplyToOpenCodeConfig(homeDir, ocAssignments); err != nil {
-					result.Errors = append(result.Errors, fmt.Sprintf("apply model assignments to opencode.json: %v", err))
+				receipt, applyErr := opencode.ApplyToOpenCodeConfig(homeDir, ocAssignments)
+				if applyErr != nil {
+					result.BackupID = bkStep.BackupID
+					result.ComponentsDone = resolved
+					for _, cs := range allComponentSteps {
+						result.FilesChanged = append(result.FilesChanged, cs.Files...)
+					}
+					result.Errors = append(result.Errors, fmt.Sprintf("apply model assignments to %s: %v", configName, applyErr))
+					return result, fmt.Errorf("apply model assignments to %s: %w", configName, applyErr)
 				}
+				result.FilesChanged = append(result.FilesChanged, receipt.ConfigPath)
 			}
 		}
 	}
@@ -475,8 +484,10 @@ func explicitWorkflowRoutes(homeDir string, selection model.Selection) (modelrou
 
 func canonicalRouteName(phase string) string {
 	switch strings.TrimSpace(strings.ToLower(phase)) {
-	case "sdd-init", "init", "bootstrap", "orchestrator":
+	case "sdd-init", "init", "bootstrap":
 		return "bootstrap"
+	case "orchestrator":
+		return "orchestrator"
 	case "sdd-explore", "explore", "investigate":
 		return "investigate"
 	case "sdd-propose", "propose", "draft-proposal":

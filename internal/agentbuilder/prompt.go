@@ -84,8 +84,8 @@ func composePromptBody(
 		switch sdd.Mode {
 		case SDDStandalone, SDDFull:
 			sb.WriteString("Standalone — the skill is loaded on its own trigger; it can ")
-			sb.WriteString("call cortex memory tools (`mem_save`, `mem_search`, ")
-			sb.WriteString("`mem_get_observation`, `mem_relate`, `mem_graph`), forgespec ")
+			sb.WriteString("call cortex memory tools (`cortex_save`, `cortex_search`, ")
+			sb.WriteString("`cortex_get_observation`, `cortex_relate`, `cortex_graph`), forgespec ")
 			sb.WriteString("tools (`sdd_validate`, `sdd_save`, `sdd_list`, `sdd_get`, ")
 			sb.WriteString("`tb_create_board`, `tb_status`, `tb_claim`, `tb_update`, ")
 			sb.WriteString("`tb_get`, `tb_unblocked`, `file_reserve`, `file_release`) ")
@@ -143,7 +143,7 @@ func composePromptBody(
 	}
 
 	sb.WriteString("## Conventions\n")
-	sb.WriteString("- Reference cortex MCP for persistence (`mem_save`, `mem_search`).\n")
+	sb.WriteString("- Reference cortex MCP for persistence (`cortex_save`, `cortex_search`).\n")
 	sb.WriteString("- Reference forgespec MCP for spec/proposal artifacts.\n")
 	sb.WriteString("- License: Apache-2.0. Front-matter author: cortex-ia.\n")
 	sb.WriteString("- Markers used by cortex-ia in injected files have prefix `<!-- cortex-ia:* -->`.\n")

@@ -20,6 +20,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/backup"
+	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	"github.com/lleontor705/cortex-ia/internal/components/forgespec"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
@@ -574,6 +575,101 @@ func TestInstall_ModelAssignmentsAutoApplyToOpenCodeJSON(t *testing.T) {
 	assertAgentModel("architect", "provider-test/architect-model")
 	assertAgentModel("implement", "provider-test/implement-model")
 	assertAgentModel("orchestrator", "provider-test/model-test")
+}
+
+func TestInstall_OpenCodeCoexistenceMutatesOnlyJSONC(t *testing.T) {
+	homeDir := t.TempDir()
+	configDir := filepath.Join(homeDir, ".config", "opencode")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	jsonPath := filepath.Join(configDir, "opencode.json")
+	jsonBefore := []byte(`{"lower_precedence":"unchanged"}`)
+	if err := os.WriteFile(jsonPath, jsonBefore, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	jsoncPath := filepath.Join(configDir, "opencode.jsonc")
+	jsoncBefore := []byte("{\n  // Effective user configuration.\n  \"share\": \"disabled\",\n}\n")
+	if err := os.WriteFile(jsoncPath, jsoncBefore, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	selection := model.Selection{
+		Agents:           []model.AgentID{model.AgentOpenCode},
+		Preset:           model.PresetFull,
+		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+	}
+	if _, err := Install(homeDir, newTestRegistry(), selection, "test-v1", false); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	jsonAfter, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(jsonAfter) != string(jsonBefore) {
+		t.Fatalf("lower-precedence JSON changed:\n%s", jsonAfter)
+	}
+	jsoncAfter, err := os.ReadFile(jsoncPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(jsoncAfter), "// Effective user configuration.") {
+		t.Fatalf("pipeline discarded JSONC comments:\n%s", jsoncAfter)
+	}
+	config, err := filemerge.DecodeJSONObject(jsoncAfter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agents, ok := config["agent"].(map[string]any)
+	if !ok || agents["orchestrator"].(map[string]any)["model"] != "provider-test/model-test" {
+		t.Fatalf("model assignments missing from effective JSONC: %#v", config["agent"])
+	}
+}
+
+func TestInstall_OpenCodeModelApplyFailurePropagatesError(t *testing.T) {
+	homeDir := t.TempDir()
+	configDir := filepath.Join(homeDir, ".config", "opencode")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	jsoncPath := filepath.Join(configDir, "opencode.jsonc")
+	if err := os.WriteFile(jsoncPath, []byte(`{"agent":`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	selection := model.Selection{
+		Agents:           []model.AgentID{model.AgentOpenCode},
+		Preset:           model.PresetFull,
+		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+	}
+	result, err := Install(homeDir, newTestRegistry(), selection, "test-v1", false)
+	if err == nil {
+		t.Fatal("expected error when config is invalid, got nil")
+	}
+	if result.BackupID == "" {
+		t.Fatal("expected backup ID even on failure")
+	}
+}
+
+func TestInstall_OpenCodeModelApplyRecordsConfigPath(t *testing.T) {
+	homeDir := t.TempDir()
+	selection := model.Selection{
+		Agents:           []model.AgentID{model.AgentOpenCode},
+		Preset:           model.PresetFull,
+		ModelAssignments: explicitTestModelAssignments("provider-test/model-test"),
+	}
+	result, err := Install(homeDir, newTestRegistry(), selection, "test-v1", false)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	configPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+	found := false
+	for _, f := range result.FilesChanged {
+		if filepath.Clean(f) == filepath.Clean(configPath) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("model-affected config path %q not in FilesChanged: %v", configPath, result.FilesChanged)
+	}
 }
 
 func TestInstall_ProfileNameDoesNotOverrideExplicitAssignments(t *testing.T) {

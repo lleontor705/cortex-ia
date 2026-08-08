@@ -88,6 +88,7 @@ func resolveWorkflowRoutes(ctx context.Context, request WorkflowRequest) (prompt
 			routes = append(routes, decision)
 			metadata[string(role)] = decision
 		}
+		routes, metadata = completeTransverseRoutes(routes, metadata)
 		return prompt.ModelTable{Routes: routes}, metadata, nil
 	}
 	if len(request.ModelRoutes.Routes) == 0 {
@@ -99,7 +100,37 @@ func resolveWorkflowRoutes(ctx context.Context, request WorkflowRequest) (prompt
 			metadata[string(route.Role)] = route
 		}
 	}
-	return request.ModelRoutes, metadata, nil
+	routes, metadata := completeTransverseRoutes(request.ModelRoutes.Routes, metadata)
+	return prompt.ModelTable{Routes: routes}, metadata, nil
+}
+
+func completeTransverseRoutes(routes []prompt.ModelRoute, metadata map[string]modelroute.ResolvedRoute) ([]prompt.ModelRoute, map[string]modelroute.ResolvedRoute) {
+	byRole := make(map[ir.SemanticID]prompt.ModelRoute, len(routes))
+	for _, route := range routes {
+		byRole[route.Role] = route
+	}
+	for _, inheritance := range []struct {
+		role   ir.SemanticID
+		parent ir.SemanticID
+	}{
+		{role: "role/orchestrator", parent: "role/bootstrap"},
+		{role: "role/debate", parent: "role/orchestrator"},
+		{role: "role/parallel-dispatch", parent: "role/orchestrator"},
+	} {
+		if _, exists := byRole[inheritance.role]; exists {
+			continue
+		}
+		parent, exists := byRole[inheritance.parent]
+		if !exists {
+			continue
+		}
+		inherited := parent
+		inherited.Role = inheritance.role
+		routes = append(routes, inherited)
+		byRole[inheritance.role] = inherited
+		metadata[string(inheritance.role)] = inherited
+	}
+	return routes, metadata
 }
 
 func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWorkflowInstall, error) {
@@ -360,7 +391,12 @@ func workflowPromptContract(homeDir string, adapter agents.Adapter, target rende
 	} else if relative, err := filepath.Rel(homeDir, commands); err == nil && !filepath.IsAbs(relative) {
 		commands = filepath.ToSlash(relative)
 	}
-	return prompt.AdapterPromptContract{Target: target, RootPath: root, SkillRoot: path.Join(root, "skills"), CommandRoot: commands, AgentPath: func(id ir.SemanticID) string { return path.Join(root, "agents", string(id)) }, ExpandPath: expand}
+	return prompt.AdapterPromptContract{
+		Target: target, RootPath: root, SkillRoot: path.Join(root, "skills"), CommandRoot: commands,
+		AgentPath:             func(id ir.SemanticID) string { return path.Join(root, "agents", string(id)) },
+		SupportsSlashCommands: adapter.SupportsSlashCommands(), NativeSkillOnDemand: target == "opencode",
+		NativeModelField: target == "opencode", ExpandPath: expand,
+	}
 }
 
 func productionQualityPolicy() quality.QualityPolicy {

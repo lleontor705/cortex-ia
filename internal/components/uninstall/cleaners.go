@@ -4,11 +4,11 @@
 package uninstall
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
@@ -253,53 +253,21 @@ func removeJSONKey(path string, keyPath []string) (bool, error) {
 	if len(keyPath) == 0 {
 		return false, nil
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
+	extension := strings.ToLower(filepath.Ext(path))
+	if extension != ".json" && extension != ".jsonc" {
+		return false, nil
+	}
+	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
-		return false, fmt.Errorf("read %q: %w", path, err)
+		return false, fmt.Errorf("stat %q: %w", path, err)
 	}
-	var root map[string]any
-	if err := json.Unmarshal(data, &root); err != nil {
-		// Not a JSON object; safest to leave the file alone.
-		return false, nil
-	}
-
-	deleted := deleteNestedKey(root, keyPath)
-	if !deleted {
-		return false, nil
-	}
-
-	out, err := json.MarshalIndent(root, "", "  ")
+	result, err := filemerge.MutateJSONFile(path, filemerge.JSONMutation{RemovePaths: [][]string{keyPath}})
 	if err != nil {
-		return false, fmt.Errorf("marshal %q: %w", path, err)
+		return false, err
 	}
-	out = append(out, '\n')
-	return writeFileAtomic(path, out)
-}
-
-// deleteNestedKey traverses the given path and deletes the leaf. Empty parent
-// maps are removed up the chain. Returns true if anything was deleted.
-func deleteNestedKey(root map[string]any, keyPath []string) bool {
-	if len(keyPath) == 1 {
-		if _, ok := root[keyPath[0]]; !ok {
-			return false
-		}
-		delete(root, keyPath[0])
-		return true
-	}
-	child, ok := root[keyPath[0]].(map[string]any)
-	if !ok {
-		return false
-	}
-	if !deleteNestedKey(child, keyPath[1:]) {
-		return false
-	}
-	if len(child) == 0 {
-		delete(root, keyPath[0])
-	}
-	return true
+	return result.Changed, nil
 }
 
 // writeFileAtomic writes via filemerge.WriteFileAtomic and reports whether the

@@ -91,6 +91,23 @@ func TestOpenCodeRendererRejectsUnqualifiedNative(t *testing.T) {
 	}
 }
 
+func TestRenderOpenCodeAgentIncludesExecutableSkillBinding(t *testing.T) {
+	role := ir.Role{
+		ID:             "role/implement",
+		Objective:      "Implement one bounded work unit.",
+		AllowedEffects: []ir.Effect{"filesystem/read", "filesystem/write"},
+	}
+	content := string(renderOpenCodeAgent(role, ir.WorkflowIR{Roles: []ir.Role{role}}, "portable-sequential", Composition{SkillBindings: []SkillBinding{{
+		Role: "role/apply", Skill: "skill/implement", Mode: SkillModeFallbackRead,
+		Path: ".config/opencode/skills/implement/SKILL.md", Hash: strings.Repeat("a", 64),
+	}}}))
+	for _, required := range []string{"First action", ".config/opencode/skills/implement/SKILL.md", "Allowed effects", "untrusted data", "Return `blocked`"} {
+		if !strings.Contains(content, required) {
+			t.Errorf("rendered OpenCode agent missing %q", required)
+		}
+	}
+}
+
 func openCodeWorkflow(profile string, resolved []resolution.Resolution, extensions []ExtensionDeclaration) ResolvedWorkflow {
 	return ResolvedWorkflow{
 		Target:                "opencode",

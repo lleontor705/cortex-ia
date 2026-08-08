@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -88,6 +89,26 @@ func TestPlanRetirementMetadataOnlyIsNoOp(t *testing.T) {
 	}
 	if plan.NoOpReason == "" || string(plan.After) != before {
 		t.Fatalf("metadata-only retirement should preserve bytes: %+v", plan)
+	}
+}
+
+func TestPlanRetirementPreservesOpenCodeJSONC(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(configDir, "opencode.jsonc")
+	before := "{\n  \"mcp\": {\n    \"agent-mailbox\": { \"command\": [\"npx\", \"agent-mailbox-mcp\"] },\n    \"user\": { \"command\": [\"external\"] },\n  },\n  // Keep this setting.\n  \"share\": \"disabled\",\n}\n"
+	if err := os.WriteFile(path, []byte(before), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := mcpinject.PlanRetirement(home, opencode.NewAdapter(), before, retirementEvidence(before))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Selector.Path != path || strings.Contains(string(plan.After), "agent-mailbox-mcp") || !strings.Contains(string(plan.After), "// Keep this setting.") || !strings.Contains(string(plan.After), `"user"`) {
+		t.Fatalf("JSONC retirement = %+v\n%s", plan.Selector, plan.After)
 	}
 }
 

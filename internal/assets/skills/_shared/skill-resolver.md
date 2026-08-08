@@ -28,13 +28,13 @@ The skill registry is the source of truth for which skills exist and when they a
 
 | Source | Location | When Used |
 |--------|----------|-----------|
-| Cortex (preferred) | `mem_search(query: "skill-registry", project: "{project}")` → `mem_get_observation(id)` | Cortex MCP available |
+| Cortex (preferred) | `cortex_search(query: "skill-registry", project: "{project}")` → `cortex_get_observation(id)` | Cortex MCP available |
 | Filesystem fallback | `.sdd/skill-registry.md` (project root) | Cortex unavailable or registry not persisted |
 | None | — | No registry exists; proceed without project-specific standards |
 
 If no registry exists, warn the user and proceed without project-specific skills. This is not an error — log a note recommending `/bootstrap` to generate the registry.
 
-`mem_search` returns 300-character previews. Call `mem_get_observation(id)` for the full registry content. Working with the preview leads to incomplete skill matching.
+`cortex_search` returns 300-character previews. Call `cortex_get_observation(id)` for the full registry content. Working with the preview leads to incomplete skill matching.
 
 ## Cached Skill Index
 

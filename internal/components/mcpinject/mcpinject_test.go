@@ -186,6 +186,35 @@ func TestInject_MergeIntoSettings_OpenCode(t *testing.T) {
 	}
 }
 
+func TestInject_MergeIntoSettings_OpenCodeJSONCPreservesComments(t *testing.T) {
+	tmpDir := t.TempDir()
+	settingsPath := filepath.Join(tmpDir, "opencode.jsonc")
+	before := []byte("{\n  // User setting.\n  \"share\": \"disabled\",\n}\n")
+	if err := os.WriteFile(settingsPath, before, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &testAdapter{
+		agent: model.AgentOpenCode, mcpStrategy: model.StrategyMergeIntoSettings,
+		supportsMCP: true, settingsPath: settingsPath,
+	}
+	result, err := Inject(tmpDir, adapter, testTemplates())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Changed {
+		t.Fatal("expected JSONC settings to change")
+	}
+	content, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{"// User setting.", `"share": "disabled",`, `"test-server"`} {
+		if !strings.Contains(string(content), marker) {
+			t.Errorf("patched OpenCode JSONC missing %q:\n%s", marker, content)
+		}
+	}
+}
+
 func TestInject_MCPConfigFile_VSCode(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, ".copilot")

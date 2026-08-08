@@ -125,7 +125,7 @@ Usage:
   cortex-ia profiles list                                   List saved OpenCode SDD profiles
   cortex-ia profiles create <name>:<provider>/<model>       Create a profile that maps every SDD phase to one model
   cortex-ia profiles set <name>:<phase>:<provider>/<model>  Override a single SDD phase
-  cortex-ia profiles apply <name>                           Write the profile's per-phase models into opencode.json
+  cortex-ia profiles apply <name>                           Write per-phase models into the effective OpenCode config
   cortex-ia profiles delete <name>                          Remove a profile
   cortex-ia uninstall        Reverse all (or selected) cortex-ia injections
   cortex-ia uninstall --component persona --component cortex

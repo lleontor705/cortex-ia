@@ -108,7 +108,7 @@ func TestAdapterAssetMapsCoverAllTargetsAndProfiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s map: %v", target, err)
 		}
-		if assetMap.WorkflowRoot == "" || assetMap.SkillsRoot == "" || assetMap.AgentsRoot == "" || assetMap.OverlayRoot == "" || assetMap.QualityRoot == "" || assetMap.ManifestRoot == "" || assetMap.ModelRoot == "" || assetMap.PermissionRoot == "" {
+		if assetMap.WorkflowRoot == "" || assetMap.SkillsRoot == "" || assetMap.AgentsRoot == "" || assetMap.RoleRoot == "" || assetMap.OverlayRoot == "" || assetMap.QualityRoot == "" || assetMap.ManifestRoot == "" || assetMap.ModelRoot == "" || assetMap.PermissionRoot == "" {
 			t.Fatalf("%s map omitted a required typed root: %+v", target, assetMap)
 		}
 		for _, profile := range profiles {

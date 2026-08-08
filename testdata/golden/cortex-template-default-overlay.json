@@ -3,7 +3,8 @@
     "cortex": {
       "command": "cortex",
       "args": [
-        "mcp"
+        "mcp",
+        "--tools=agent"
       ]
     }
   }

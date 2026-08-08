@@ -16,6 +16,8 @@ var retainedAssetRoots = []string{
 	"internal/assets/generic/sdd-root",
 	"internal/assets/generic/profiles",
 	"internal/assets/skills/_shared/sdd-phase-contract.md",
+	"internal/assets/skills/_shared/cortex-convention.md",
+	"internal/assets/skills/_shared/cortex-advanced.md",
 	"internal/assets/skills/bootstrap/SKILL.md",
 	"internal/assets/skills/investigate/SKILL.md",
 	"internal/assets/skills/draft-proposal/SKILL.md",
@@ -36,6 +38,7 @@ var staleToolPatterns = map[string]*regexp.Regexp{
 	"mailbox":       regexp.MustCompile(`(?i)\bmailbox\b`),
 	"removed-tool":  regexp.MustCompile(`(?i)\b(?:msg|resource|dlq)_(?:send|request|broadcast|acquire|release|check|list|retry|purge)`),
 	"stale-model":   regexp.MustCompile(`(?i)\b(?:gpt-4|claude-3|gemini-pro)\b`),
+	"legacy-cortex": regexp.MustCompile(`(?i)\bmem_[a-z_]+\b`),
 }
 
 func TestRetainedInstalledSourcesHaveNoStaleTools(t *testing.T) {
@@ -61,7 +64,7 @@ func TestRetainedInstalledSourcesHaveNoStaleTools(t *testing.T) {
 }
 
 func TestStaleToolScannerDetectsEveryForbiddenClass(t *testing.T) {
-	fixture := "agent-mailbox a2a_submit_task team-lead Mailbox msg_send gpt-4"
+	fixture := "agent-mailbox a2a_submit_task team-lead Mailbox msg_send gpt-4 mem_search"
 	for name, pattern := range staleToolPatterns {
 		if !pattern.MatchString(fixture) {
 			t.Errorf("scanner pattern %q does not detect its forbidden class", name)

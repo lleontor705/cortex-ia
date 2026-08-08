@@ -60,6 +60,15 @@ func TestNativeSkillPreloadControlsLoadMode(t *testing.T) {
 	}
 }
 
+func TestNativeSkillOnDemandTakesPrecedenceOverPreload(t *testing.T) {
+	contract := validAdapterContract()
+	contract.NativeSkillPreload = true
+	contract.NativeSkillOnDemand = true
+	if mode := contract.SkillLoadMode(); mode != SkillModeNativeOnDemand {
+		t.Fatalf("SkillLoadMode() = %q, want %q", mode, SkillModeNativeOnDemand)
+	}
+}
+
 func TestCompositionInputReferencesAssetCatalog(t *testing.T) {
 	input := CompositionInput{
 		Workflow: ir.WorkflowIR{SchemaVersion: ir.WorkflowSchema.Current, ID: "workflow/sdd"},
@@ -95,15 +104,18 @@ func TestCompositionInputRejectsInvalidCatalog(t *testing.T) {
 
 func TestCanonicalSkillForRoleIsDeterministic(t *testing.T) {
 	for role, want := range map[ir.SemanticID]ir.SemanticID{
-		"role/bootstrap": "skill/bootstrap",
-		"role/explore":   "skill/investigate",
-		"role/proposal":  "skill/draft-proposal",
-		"role/spec":      "skill/write-specs",
-		"role/design":    "skill/architect",
-		"role/tasks":     "skill/decompose",
-		"role/apply":     "skill/implement",
-		"role/verify":    "skill/validate",
-		"role/archive":   "skill/finalize",
+		"role/orchestrator":      "skill/orchestrator",
+		"role/bootstrap":         "skill/bootstrap",
+		"role/explore":           "skill/investigate",
+		"role/proposal":          "skill/draft-proposal",
+		"role/spec":              "skill/write-specs",
+		"role/design":            "skill/architect",
+		"role/tasks":             "skill/decompose",
+		"role/apply":             "skill/implement",
+		"role/verify":            "skill/validate",
+		"role/archive":           "skill/finalize",
+		"role/debate":            "skill/debate",
+		"role/parallel-dispatch": "skill/parallel-dispatch",
 	} {
 		got, err := CanonicalSkillForRole(role)
 		if err != nil {
@@ -116,6 +128,22 @@ func TestCanonicalSkillForRoleIsDeterministic(t *testing.T) {
 		again, _ := CanonicalSkillForRole(role)
 		if got != again {
 			t.Errorf("CanonicalSkillForRole(%q) is not deterministic", role)
+		}
+	}
+}
+
+func TestTransverseSkillBindingsUseCanonicalInstalledPaths(t *testing.T) {
+	for role, wantPath := range map[ir.SemanticID]string{
+		"role/orchestrator":      "internal/assets/skills/orchestrator/SKILL.md",
+		"role/debate":            "internal/assets/skills/debate/SKILL.md",
+		"role/parallel-dispatch": "internal/assets/skills/parallel-dispatch/SKILL.md",
+	} {
+		binding, err := NewSkillBinding(role, validAdapterContract())
+		if err != nil {
+			t.Fatalf("NewSkillBinding(%q) error = %v", role, err)
+		}
+		if binding.Path != wantPath {
+			t.Errorf("NewSkillBinding(%q).Path = %q, want %q", role, binding.Path, wantPath)
 		}
 	}
 }
@@ -139,8 +167,8 @@ func TestSkillBindingDeterministicFromRole(t *testing.T) {
 	if binding.Skill != "skill/implement" {
 		t.Fatalf("Skill = %q, want skill/implement", binding.Skill)
 	}
-	if binding.Path == "" {
-		t.Fatal("Path must be expanded and non-empty")
+	if binding.Path != "internal/assets/skills/implement/SKILL.md" {
+		t.Fatalf("Path = %q, want installed skill path without semantic prefix", binding.Path)
 	}
 	if binding.Hash == "" {
 		t.Fatal("Hash must be set")

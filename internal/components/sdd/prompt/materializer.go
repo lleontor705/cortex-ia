@@ -142,11 +142,19 @@ func Materialize(input MaterializerInput) ([]MaterializedAsset, []string, error)
 			continue
 		}
 		content := input.Contents[spec.ID]
+		assetPath := spec.SourcePath
+		if spec.Class == ir.AssetCommand {
+			var err error
+			assetPath, err = input.Adapter.ExpandPath(input.Adapter.CommandRoot, strings.TrimPrefix(string(spec.ID), "command/")+".md")
+			if err != nil {
+				return nil, nil, fmt.Errorf("expand command path for %q: %w", spec.ID, err)
+			}
+		}
 		degradation := ""
 		if spec.Class == ir.AssetCommand && !input.Adapter.SupportsSlashCommands {
 			degradation = "unsupported native slash-command form"
 		}
-		if err := add(spec.ID, spec.Class, spec.SourcePath, content, input.Adapter.SkillLoadMode(), nil, ModelRoute{}, degradation); err != nil {
+		if err := add(spec.ID, spec.Class, assetPath, content, input.Adapter.SkillLoadMode(), nil, ModelRoute{}, degradation); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -159,7 +167,7 @@ func Materialize(input MaterializerInput) ([]MaterializedAsset, []string, error)
 		if err != nil {
 			return nil, nil, err
 		}
-		bindingPath, err := input.Adapter.ExpandPath(input.Adapter.SkillRoot, string(skill)+"/SKILL.md")
+		bindingPath, err := input.Adapter.ExpandPath(input.Adapter.SkillRoot, strings.TrimPrefix(string(skill), "skill/")+"/SKILL.md")
 		if err != nil {
 			return nil, nil, fmt.Errorf("expand skill binding for %q: %w", role.ID, err)
 		}
@@ -177,14 +185,10 @@ func Materialize(input MaterializerInput) ([]MaterializedAsset, []string, error)
 			return nil, nil, err
 		}
 	}
-	for _, role := range canonicalRoles {
-		route, err := input.Models.ModelFor(role)
-		if err != nil {
-			aliases := map[ir.SemanticID]ir.SemanticID{"role/explore": "role/investigate", "role/proposal": "role/draft-proposal", "role/spec": "role/write-specs", "role/design": "role/architect", "role/tasks": "role/decompose", "role/apply": "role/implement", "role/verify": "role/validate", "role/archive": "role/finalize"}
-			route, err = input.Models.ModelFor(aliases[role])
-		}
+	for _, role := range input.Workflow.Roles {
+		route, err := input.Models.ModelFor(role.ID)
 		if err != nil || route.PrimaryID == "" || route.Primary.Provider == "" || route.Primary.Model == "" || len(route.Evidence) == 0 || (route.Requested.AllowFallback && route.Fallback == nil) {
-			return nil, nil, fmt.Errorf("model route %q requires primary and fallback", role)
+			return nil, nil, fmt.Errorf("model route %q requires primary and fallback", role.ID)
 		}
 	}
 	slices.SortFunc(assets, func(a, b MaterializedAsset) int { return strings.Compare(string(a.ID), string(b.ID)) })

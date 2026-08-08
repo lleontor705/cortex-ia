@@ -76,6 +76,7 @@ func CompileInjectionBundle(ctx context.Context, input BundleCompilationInput) (
 		Metadata:                slices.Clone(input.Compilation.Metadata),
 		Composition:             renderersComposition(input.Compilation.Composition),
 		NativeSkillPreload:      input.Compilation.Composition.Adapter.NativeSkillPreload,
+		NativeSkillOnDemand:     input.Compilation.Composition.Adapter.NativeSkillOnDemand,
 		NativeModelField:        input.Compilation.Composition.Adapter.NativeModelField,
 		NativeWorktreeIsolation: input.Compilation.Composition.Adapter.NativeWorktreeIsolation,
 	}
@@ -116,7 +117,10 @@ func renderersComposition(input prompt.CompositionResult) renderers.Composition 
 	bindings := make([]renderers.SkillBinding, len(input.SkillBindings))
 	for i, binding := range input.SkillBindings {
 		mode := renderers.SkillModeFallbackRead
-		if binding.Mode == prompt.SkillModeNativePreload {
+		switch binding.Mode {
+		case prompt.SkillModeNativeOnDemand:
+			mode = renderers.SkillModeNativeOnDemand
+		case prompt.SkillModeNativePreload:
 			mode = renderers.SkillModeNativePreload
 		}
 		bindings[i] = renderers.SkillBinding{Role: binding.Role, Skill: binding.Skill, Mode: mode, Path: binding.Path, Hash: binding.Hash}

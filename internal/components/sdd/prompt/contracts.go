@@ -26,8 +26,9 @@ import (
 type SkillLoadMode string
 
 const (
-	SkillModeNativePreload SkillLoadMode = "native-preload"
-	SkillModeFallbackRead  SkillLoadMode = "fallback-read"
+	SkillModeNativePreload  SkillLoadMode = "native-preload"
+	SkillModeNativeOnDemand SkillLoadMode = "native-on-demand"
+	SkillModeFallbackRead   SkillLoadMode = "fallback-read"
 )
 
 // AdapterPromptContract captures one adapter's destination and qualified native
@@ -41,6 +42,7 @@ type AdapterPromptContract struct {
 	CommandRoot             string
 	SupportsSlashCommands   bool
 	NativeSkillPreload      bool
+	NativeSkillOnDemand     bool
 	NativeModelField        bool
 	NativeWorktreeIsolation bool
 	ExpandPath              func(root, relative string) (string, error)
@@ -74,35 +76,41 @@ func (c AdapterPromptContract) Validate() error {
 // native preload; otherwise the first action must read the installed skill
 // (fallback-read). This implements REQ-INST-003's preload-vs-fallback rule.
 func (c AdapterPromptContract) SkillLoadMode() SkillLoadMode {
+	if c.NativeSkillOnDemand {
+		return SkillModeNativeOnDemand
+	}
 	if c.NativeSkillPreload {
 		return SkillModeNativePreload
 	}
 	return SkillModeFallbackRead
 }
 
-// canonicalSkillForRole is the deterministic one-to-one mapping from each of the
-// nine phase roles to its single canonical skill. Exactly one skill per role is
+// canonicalSkillForRole is the deterministic one-to-one mapping from each
+// canonical role to its single canonical skill. Exactly one skill per role is
 // required by REQ-INST-003; ambiguity or absence blocks before phase effects.
 var canonicalSkillForRole = map[ir.SemanticID]ir.SemanticID{
-	"role/bootstrap": "skill/bootstrap",
-	"role/explore":   "skill/investigate",
-	"role/proposal":  "skill/draft-proposal",
-	"role/spec":      "skill/write-specs",
-	"role/design":    "skill/architect",
-	"role/tasks":     "skill/decompose",
-	"role/apply":     "skill/implement",
-	"role/verify":    "skill/validate",
-	"role/archive":   "skill/finalize",
+	"role/orchestrator": "skill/orchestrator",
+	"role/bootstrap":    "skill/bootstrap",
+	"role/explore":      "skill/investigate",
+	"role/proposal":     "skill/draft-proposal",
+	"role/spec":         "skill/write-specs",
+	"role/design":       "skill/architect",
+	"role/tasks":        "skill/decompose",
+	"role/apply":        "skill/implement",
+	"role/verify":       "skill/validate",
+	"role/archive":      "skill/finalize",
 	// The canonical IR retained these adapter-facing names; they are aliases
 	// for the nine phase roles and must resolve to the same skill exactly once.
-	"role/investigate":    "skill/investigate",
-	"role/draft-proposal": "skill/draft-proposal",
-	"role/write-specs":    "skill/write-specs",
-	"role/architect":      "skill/architect",
-	"role/decompose":      "skill/decompose",
-	"role/implement":      "skill/implement",
-	"role/validate":       "skill/validate",
-	"role/finalize":       "skill/finalize",
+	"role/investigate":       "skill/investigate",
+	"role/draft-proposal":    "skill/draft-proposal",
+	"role/write-specs":       "skill/write-specs",
+	"role/architect":         "skill/architect",
+	"role/decompose":         "skill/decompose",
+	"role/implement":         "skill/implement",
+	"role/validate":          "skill/validate",
+	"role/finalize":          "skill/finalize",
+	"role/debate":            "skill/debate",
+	"role/parallel-dispatch": "skill/parallel-dispatch",
 }
 
 // CanonicalSkillForRole resolves a phase role to its single canonical skill
@@ -154,7 +162,7 @@ func NewSkillBinding(role ir.SemanticID, contract AdapterPromptContract) (SkillB
 	if err := contract.Validate(); err != nil {
 		return SkillBinding{}, fmt.Errorf("skill binding contract: %w", err)
 	}
-	relative := string(skill) + "/SKILL.md"
+	relative := strings.TrimPrefix(string(skill), "skill/") + "/SKILL.md"
 	skillPath, err := contract.ExpandPath(contract.SkillRoot, relative)
 	if err != nil {
 		return SkillBinding{}, fmt.Errorf("expand skill path for %q: %w", role, err)

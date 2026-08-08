@@ -12,7 +12,7 @@ import (
 func TestMaterializePreservesMetadataSentinel(t *testing.T) {
 	sentinel := json.RawMessage(`{"profile":"profile-sentinel","quality":"quality-sentinel","trust":"trust-sentinel"}`)
 	catalog := ir.AssetCatalog{SchemaVersion: ir.AssetCatalogSchema.Current, Assets: []ir.AssetSpec{{ID: "asset/root", Class: ir.AssetRootIndex, SourcePath: "root.md", Required: true, SHA256: "hash"}}}
-	assets, _, err := Materialize(MaterializerInput{Catalog: catalog, Contents: map[ir.SemanticID][]byte{"asset/root": []byte("root")}, Adapter: validAdapterContract(), AllowedPermissions: []string{"filesystem/read"}, Models: ModelTable{Routes: allModelRoutes()}, Metadata: sentinel})
+	assets, _, err := Materialize(MaterializerInput{Catalog: catalog, Contents: map[ir.SemanticID][]byte{"asset/root": []byte("root")}, Adapter: validAdapterContract(), AllowedPermissions: []string{"filesystem/read"}, Metadata: sentinel})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,10 +32,7 @@ func TestMaterializeRejectsMissingRequiredAssetBeforeEffects(t *testing.T) {
 func TestMaterializeIntersectsRolePermissionsFailClosed(t *testing.T) {
 	catalog := ir.AssetCatalog{SchemaVersion: ir.AssetCatalogSchema.Current, Assets: []ir.AssetSpec{{ID: "asset/root", Class: ir.AssetRootIndex, SourcePath: "root.md", Required: true, SHA256: "hash"}}}
 	workflow := ir.WorkflowIR{Roles: []ir.Role{{ID: "role/apply", Objective: "apply", AllowedEffects: []ir.Effect{"filesystem/read", "filesystem/write"}}}}
-	routes := make([]ModelRoute, 0, len(canonicalRoles))
-	for _, role := range canonicalRoles {
-		routes = append(routes, qualifiedRoute(role))
-	}
+	routes := []ModelRoute{qualifiedRoute("role/apply")}
 	assets, _, err := Materialize(MaterializerInput{Catalog: catalog, Contents: map[ir.SemanticID][]byte{"asset/root": []byte("root")}, Workflow: workflow, Adapter: validAdapterContract(), AllowedPermissions: []string{"filesystem/read"}, Models: ModelTable{Routes: routes}})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +51,6 @@ func TestMaterializeResolvesTypedTemplateContext(t *testing.T) {
 		Contents:           map[ir.SemanticID][]byte{"asset/root": []byte("Skills root: {{SKILLS_DIR}}\nHome: {{HOME}}")},
 		Adapter:            validAdapterContract(),
 		AllowedPermissions: []string{"filesystem/read"},
-		Models:             ModelTable{Routes: allModelRoutes()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -62,14 +58,6 @@ func TestMaterializeResolvesTypedTemplateContext(t *testing.T) {
 	if got := string(assets[0].Content); got != "Skills root: internal/assets/skills\nHome: .claude" {
 		t.Fatalf("typed template materialization = %q", got)
 	}
-}
-
-func allModelRoutes() []ModelRoute {
-	routes := make([]ModelRoute, 0, len(canonicalRoles))
-	for _, role := range canonicalRoles {
-		routes = append(routes, qualifiedRoute(role))
-	}
-	return routes
 }
 
 func qualifiedRoute(role ir.SemanticID) ModelRoute {

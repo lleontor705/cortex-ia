@@ -35,6 +35,9 @@ func TestSkillLoadModeConstantsExist(t *testing.T) {
 	if SkillModeFallbackRead != "fallback-read" {
 		t.Fatalf("SkillModeFallbackRead = %q", SkillModeFallbackRead)
 	}
+	if SkillModeNativeOnDemand != "native-on-demand" {
+		t.Fatalf("SkillModeNativeOnDemand = %q", SkillModeNativeOnDemand)
+	}
 }
 
 func TestCompositionCarriesAllComposedPaths(t *testing.T) {
@@ -83,11 +86,15 @@ func TestResolvedWorkflowHasAdapterContractFields(t *testing.T) {
 		AllowedAssetKinds:       []AssetKind{AssetSkill},
 		AllowedPermissions:      []string{"tool/read"},
 		NativeSkillPreload:      true,
+		NativeSkillOnDemand:     true,
 		NativeModelField:        true,
 		NativeWorktreeIsolation: true,
 	}
 	if !rw.NativeSkillPreload {
 		t.Fatal("NativeSkillPreload must be settable to true")
+	}
+	if !rw.NativeSkillOnDemand {
+		t.Fatal("NativeSkillOnDemand must be settable to true")
 	}
 	if !rw.NativeModelField {
 		t.Fatal("NativeModelField must be settable to true")
@@ -98,6 +105,10 @@ func TestResolvedWorkflowHasAdapterContractFields(t *testing.T) {
 }
 
 func TestResolvedWorkflowSkillLoadModeDependsOnNativePreload(t *testing.T) {
+	withOnDemand := ResolvedWorkflow{NativeSkillPreload: true, NativeSkillOnDemand: true}
+	if mode := withOnDemand.SkillLoadMode(); mode != SkillModeNativeOnDemand {
+		t.Fatalf("SkillLoadMode() with on-demand = %q, want %q", mode, SkillModeNativeOnDemand)
+	}
 	withPreload := ResolvedWorkflow{NativeSkillPreload: true}
 	if mode := withPreload.SkillLoadMode(); mode != SkillModeNativePreload {
 		t.Fatalf("SkillLoadMode() with preload = %q, want %q", mode, SkillModeNativePreload)

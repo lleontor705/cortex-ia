@@ -2,6 +2,8 @@ package opencode
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +35,40 @@ func TestSystemPromptFile(t *testing.T) {
 	}
 }
 
+func TestSettingsPathPrefersEffectiveGlobalConfig(t *testing.T) {
+	adapter := NewAdapter()
+	for _, tc := range []struct {
+		name  string
+		files []string
+		want  string
+	}{
+		{name: "creates json by default", want: "opencode.json"},
+		{name: "uses existing json", files: []string{"opencode.json"}, want: "opencode.json"},
+		{name: "uses existing jsonc", files: []string{"opencode.jsonc"}, want: "opencode.jsonc"},
+		{name: "jsonc wins coexistence", files: []string{"opencode.json", "opencode.jsonc"}, want: "opencode.jsonc"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			configDir := filepath.Join(home, ".config", "opencode")
+			if err := os.MkdirAll(configDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range tc.files {
+				if err := os.WriteFile(filepath.Join(configDir, name), []byte("{}"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			want := filepath.Join(configDir, tc.want)
+			if got := adapter.SettingsPath(home); got != want {
+				t.Errorf("SettingsPath() = %q, want %q", got, want)
+			}
+			if got := adapter.MCPConfigPath(home, "cortex"); got != want {
+				t.Errorf("MCPConfigPath() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestCapabilityFactsCarryQualificationProvenance(t *testing.T) {
 	adapter := NewAdapter()
 	facts := adapter.CapabilityFacts()
@@ -53,6 +89,12 @@ func TestCapabilityFactsCarryQualificationProvenance(t *testing.T) {
 		}
 		if fact.Enforcement != capability.EnforcementRuntime || !fact.Current {
 			t.Errorf("qualification for %q = enforcement %q current %v", fact.ID, fact.Enforcement, fact.Current)
+		}
+		if got := fact.RuntimeVersions.MaximumTested.String(); got != "1.18.11" {
+			t.Errorf("maximum tested version for %q = %s, want 1.18.11", fact.ID, got)
+		}
+		if !strings.Contains(fact.EvidenceRef, "/1.18.11/") {
+			t.Errorf("evidence reference for %q = %q, want 1.18.11 qualification", fact.ID, fact.EvidenceRef)
 		}
 	}
 	catalog := capability.Catalog{
@@ -79,7 +121,7 @@ func TestCapabilityProberUsesReadOnlyVersionProbeWithinAuthority(t *testing.T) {
 	var command string
 	adapter.runCommand = func(_ context.Context, name string, args ...string) ([]byte, error) {
 		command = strings.Join(append([]string{name}, args...), " ")
-		return []byte("opencode version: 1.18.5\nos: test\nplugins:\nnone\n"), nil
+		return []byte("opencode version: 1.18.11\nos: test\nplugins:\nnone\n"), nil
 	}
 	base := factByID(t, adapter.CapabilityFacts(), "delegation/direct-child")
 	request := capability.ProbeRequest{
@@ -103,7 +145,7 @@ func TestCapabilityProberUsesReadOnlyVersionProbeWithinAuthority(t *testing.T) {
 	if result.Record.Command != "opencode debug info" || result.Record.Result != "available:many" || !strings.HasPrefix(result.Record.EvidenceDigest, "sha256:") {
 		t.Errorf("probe record = %+v", result.Record)
 	}
-	if result.Record.Timestamp.IsZero() || result.Refined.RuntimeVersions.Minimum.String() != "1.18.5" || result.Refined.RuntimeVersions.MaximumTested.String() != "1.18.5" {
+	if result.Record.Timestamp.IsZero() || result.Refined.RuntimeVersions.Minimum.String() != "1.18.11" || result.Refined.RuntimeVersions.MaximumTested.String() != "1.18.11" {
 		t.Errorf("probe refinement = %+v", result.Refined)
 	}
 	if _, err := capability.ApplyProbeResult(request, result); err != nil {
@@ -114,7 +156,7 @@ func TestCapabilityProberUsesReadOnlyVersionProbeWithinAuthority(t *testing.T) {
 func TestCapabilityProberRejectsUnqualifiedRuntimeVersion(t *testing.T) {
 	adapter := NewAdapter()
 	adapter.runCommand = func(context.Context, string, ...string) ([]byte, error) {
-		return []byte("opencode version: 1.19.0\n"), nil
+		return []byte("opencode version: 1.18.15\n"), nil
 	}
 	base := factByID(t, adapter.CapabilityFacts(), "delegation/direct-child")
 	_, err := adapter.CapabilityProber().Probe(context.Background(), capability.ProbeRequest{

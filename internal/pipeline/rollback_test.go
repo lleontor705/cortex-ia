@@ -30,8 +30,8 @@ func TestRollbackUsesLastBackupIDFromLockfile(t *testing.T) {
 	}
 
 	manifest := backup.Manifest{
-		ID:       backupID,
-		RootDir:  backupDir,
+		ID:        backupID,
+		RootDir:   backupDir,
 		FileCount: 1,
 		Entries: []backup.ManifestEntry{
 			{

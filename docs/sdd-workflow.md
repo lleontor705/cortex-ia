@@ -28,7 +28,7 @@ Detects project stack (languages, frameworks, test runners), bootstraps persiste
 ### 1. Explore (`/sdd-explore <topic>`)
 **Agent**: investigate | **Confidence threshold**: 0.5
 
-Reads codebase, compares approaches, rates effort/risk. Uses Context7 for library docs and `mem_timeline` for temporal context. No files created.
+Reads codebase, compares approaches, and rates effort/risk. Uses Context7 for library docs and Cortex retrieval for durable project context. No files created.
 
 ### 2. Propose (`/sdd-new <change>`)
 **Agent**: draft-proposal | **Confidence threshold**: 0.7
@@ -63,7 +63,7 @@ Validates implementation against specs. Runs tests, generates compliance matrix.
 ### 8. Archive (`/sdd-finalize`)
 **Agent**: finalize | **Confidence threshold**: 0.9
 
-Merges delta specs, closes change cycle, generates retrospective. Cleans up obsolete Cortex observations via `mem_archive`.
+Merges delta specs, closes the change cycle, and generates a retrospective. Durable observations remain governed by the configured Cortex profile.
 
 ## Task Routing
 
@@ -130,10 +130,10 @@ sdd/{change-name}/{artifact-type}
 | retrospective | `sdd/{change}/retrospective` | `sdd/add-auth/retrospective` |
 
 ### Two-Step Read (Critical)
-`mem_search` returns 300-char previews only. Always follow with:
+`cortex_search` returns 300-character previews only. Always follow with:
 ```
-1. mem_search(query: "{topic-key}", project: "{project}") → observation ID
-2. mem_get_observation(id: {id}) → full content
+1. cortex_search(query: "{topic-key}", project: "{project}") → observation ID
+2. cortex_get_observation(id: {id}) → full content
 ```
 
 ## Capability Profiles

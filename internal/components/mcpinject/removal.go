@@ -1,15 +1,15 @@
 package mcpinject
 
 import (
+	"bytes"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
+	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
@@ -65,17 +65,21 @@ func PlanRetirement(homeDir string, adapter agents.Adapter, content string, evid
 		return ConfigRetirement{}, err
 	}
 
-	var start, end int
 	var found bool
 	var err error
+	var after []byte
 	switch selector.Strategy {
 	case model.StrategySeparateMCPFiles:
 		found = strings.Contains(content, "agent-mailbox-mcp")
-		start, end = 0, len(content)
 	case model.StrategyMergeIntoSettings, model.StrategyMCPConfigFile:
-		start, end, found, err = findJSONMember([]byte(content), selector.JSONPath)
+		after, err = filemerge.MutateJSONDocument(selector.Path, []byte(content), filemerge.JSONMutation{RemovePaths: [][]string{selector.JSONPath}})
+		found = err == nil && !bytes.Equal(after, []byte(content))
 	case model.StrategyTOMLFile:
-		start, end, found = findTOMLSection(content, selector.TOMLPath)
+		start, end, sectionFound := findTOMLSection(content, selector.TOMLPath)
+		found = sectionFound
+		if found {
+			after = append(append([]byte(nil), content[:start]...), content[end:]...)
+		}
 	default:
 		return ConfigRetirement{}, fmt.Errorf("retire Mailbox registration: unsupported MCP strategy %d", selector.Strategy)
 	}
@@ -97,7 +101,7 @@ func PlanRetirement(homeDir string, adapter agents.Adapter, content string, evid
 		plan.Delete = true
 		return plan, nil
 	}
-	plan.After = append(append([]byte(nil), content[:start]...), content[end:]...)
+	plan.After = after
 	return plan, nil
 }
 
@@ -158,132 +162,6 @@ func ValidateRetirementPath(path string) error {
 		return fmt.Errorf("retirement path %q is protected external Mailbox data and must not be mutated automatically", path)
 	}
 	return nil
-}
-
-func findJSONMember(data []byte, path []string) (int, int, bool, error) {
-	if len(path) == 0 {
-		return 0, 0, false, nil
-	}
-	var value any
-	if err := json.Unmarshal(data, &value); err != nil {
-		return 0, 0, false, err
-	}
-	start := skipJSONSpace(data, 0)
-	return findJSONMemberInObject(data, start, path)
-}
-
-func findJSONMemberInObject(data []byte, objectStart int, path []string) (int, int, bool, error) {
-	if objectStart >= len(data) || data[objectStart] != '{' {
-		return 0, 0, false, nil
-	}
-	i := objectStart + 1
-	previousComma := -1
-	for {
-		i = skipJSONSpace(data, i)
-		if i >= len(data) || data[i] == '}' {
-			return 0, 0, false, nil
-		}
-		keyStart := i
-		key, keyEnd, err := parseJSONString(data, i)
-		if err != nil {
-			return 0, 0, false, err
-		}
-		i = skipJSONSpace(data, keyEnd)
-		if i >= len(data) || data[i] != ':' {
-			return 0, 0, false, fmt.Errorf("expected colon after JSON key %q", key)
-		}
-		valueStart := skipJSONSpace(data, i+1)
-		valueEnd, err := scanJSONValue(data, valueStart)
-		if err != nil {
-			return 0, 0, false, err
-		}
-		next := skipJSONSpace(data, valueEnd)
-		if key == path[0] {
-			if len(path) > 1 {
-				return findJSONMemberInObject(data, valueStart, path[1:])
-			}
-			if next < len(data) && data[next] == ',' {
-				return keyStart, next + 1, true, nil
-			}
-			if previousComma >= 0 {
-				return previousComma, valueEnd, true, nil
-			}
-			return keyStart, valueEnd, true, nil
-		}
-		if next < len(data) && data[next] == ',' {
-			previousComma = next
-			i = next + 1
-			continue
-		}
-		return 0, 0, false, nil
-	}
-}
-
-func parseJSONString(data []byte, start int) (string, int, error) {
-	if start >= len(data) || data[start] != '"' {
-		return "", start, fmt.Errorf("expected JSON string at byte %d", start)
-	}
-	for i := start + 1; i < len(data); i++ {
-		if data[i] == '\\' {
-			i++
-			continue
-		}
-		if data[i] == '"' {
-			decoded, err := strconv.Unquote(string(data[start : i+1]))
-			return decoded, i + 1, err
-		}
-	}
-	return "", start, fmt.Errorf("unterminated JSON string")
-}
-
-func scanJSONValue(data []byte, start int) (int, error) {
-	if start >= len(data) {
-		return start, fmt.Errorf("missing JSON value")
-	}
-	if data[start] == '"' {
-		_, end, err := parseJSONString(data, start)
-		return end, err
-	}
-	if data[start] == '{' || data[start] == '[' {
-		open := data[start]
-		close := byte('}')
-		if open == '[' {
-			close = ']'
-		}
-		depth := 0
-		for i := start; i < len(data); i++ {
-			if data[i] == '"' {
-				_, end, err := parseJSONString(data, i)
-				if err != nil {
-					return i, err
-				}
-				i = end - 1
-				continue
-			}
-			switch data[i] {
-			case open:
-				depth++
-			case close:
-				depth--
-				if depth == 0 {
-					return i + 1, nil
-				}
-			}
-		}
-		return start, fmt.Errorf("unterminated JSON container")
-	}
-	i := start
-	for i < len(data) && data[i] != ',' && data[i] != '}' && data[i] != ']' {
-		i++
-	}
-	return i, nil
-}
-
-func skipJSONSpace(data []byte, i int) int {
-	for i < len(data) && (data[i] == ' ' || data[i] == '\n' || data[i] == '\r' || data[i] == '\t') {
-		i++
-	}
-	return i
 }
 
 func findTOMLSection(content string, path []string) (int, int, bool) {

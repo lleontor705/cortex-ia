@@ -1,13 +1,12 @@
 {
   "mcp": {
     "forgespec": {
+      "type": "local",
       "command": [
         "npx",
         "-y",
         "forgespec-mcp"
       ],
-      "enabled": true,
-      "type": "local"
+      "enabled": true
     }
-  }
-}
+  }}

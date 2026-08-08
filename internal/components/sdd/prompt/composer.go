@@ -10,13 +10,6 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/quality"
 )
 
-// canonicalRoles is the complete set of nine SDD phase roles in canonical
-// order. Compose produces exactly one SkillBinding per role, deterministically.
-var canonicalRoles = []ir.SemanticID{
-	"role/bootstrap", "role/explore", "role/proposal", "role/spec",
-	"role/design", "role/tasks", "role/apply", "role/verify", "role/archive",
-}
-
 // TokenReportEntry records the token estimate for one asset in the composition.
 type TokenReportEntry struct {
 	AssetID ir.SemanticID `json:"asset_id"`
@@ -33,7 +26,7 @@ type TokenReport struct {
 
 // CompositionResult is the complete adapter-valid output of prompt composition.
 // It contains the fully expanded paths for every composed asset and the
-// SkillBindings for all nine roles. Renderers consume this to lower into
+// SkillBindings for all workflow roles. Renderers consume this to lower into
 // adapter-specific destinations.
 type CompositionResult struct {
 	RootIndex         string                `json:"root_index"`
@@ -70,12 +63,12 @@ func Compose(input CompositionInput) (CompositionResult, error) {
 
 	contract := input.Adapter
 
-	// Produce exactly one SkillBinding per canonical role.
-	bindings := make([]SkillBinding, 0, len(canonicalRoles))
-	for _, role := range canonicalRoles {
-		binding, err := NewSkillBinding(role, contract)
+	// Produce exactly one SkillBinding per workflow role.
+	bindings := make([]SkillBinding, 0, len(input.Workflow.Roles))
+	for _, role := range input.Workflow.Roles {
+		binding, err := NewSkillBinding(role.ID, contract)
 		if err != nil {
-			return CompositionResult{}, fmt.Errorf("compose skill binding for %q: %w", role, err)
+			return CompositionResult{}, fmt.Errorf("compose skill binding for %q: %w", role.ID, err)
 		}
 		bindings = append(bindings, binding)
 	}
