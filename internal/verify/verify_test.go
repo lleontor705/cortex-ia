@@ -295,13 +295,13 @@ func TestCheckOpenCodeComposition_DetectsCorruption(t *testing.T) {
 	}
 }
 
-func TestCheckForgeSpecOpenCodeConfig_DetectsWrongVersion(t *testing.T) {
+func TestCheckForgeSpecOpenCodeConfig_DetectsUnsupportedCommand(t *testing.T) {
 	ctx := healthyOpenCodeSDDFixture(t, false)
 	path := filepath.Join(ctx.HomeDir, ".config", "opencode", "opencode.json")
 	mustWriteVerifyFixture(t, path, `{"mcp":{"forgespec":{"type":"local","command":["npx","-y","forgespec-mcp@1.3.0"],"enabled":true}}}`)
 
 	err := checkForgeSpecOpenCodeConfig(ctx)
-	if err == nil || !strings.Contains(err.Error(), "forgespec-mcp@1.4.0") {
+	if err == nil || !strings.Contains(err.Error(), "direct wrapper") {
 		t.Fatalf("expected qualified ForgeSpec version error, got %v", err)
 	}
 }
@@ -326,10 +326,10 @@ func healthyOpenCodeSDDFixture(t *testing.T, jsonc bool) *Context {
 	t.Helper()
 	home := t.TempDir()
 	configName := "opencode.json"
-	config := `{"mcp":{"forgespec":{"type":"local","command":["npx","-y","forgespec-mcp@1.4.0"],"enabled":true}}}`
+	config := `{"mcp":{"forgespec":{"type":"local","command":["forgespec-mcp"],"enabled":true}}}`
 	if jsonc {
 		configName = "opencode.jsonc"
-		config = "{\n  // qualified fixture\n  \"mcp\": {\"forgespec\": {\"command\": [\"npx\", \"-y\", \"forgespec-mcp@1.4.0\"]}}\n}\n"
+		config = "{\n  // qualified fixture\n  \"mcp\": {\"forgespec\": {\"command\": [\"forgespec-mcp\"]}}\n}\n"
 	}
 	paths := map[string]string{
 		".config/opencode/" + configName:                        config,

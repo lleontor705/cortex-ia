@@ -91,6 +91,7 @@ func DefaultChecks() []Check {
 		{ID: "files-exist", Name: "Tracked files present", Severity: SeverityError, Fn: checkFilesExist},
 		{ID: "cortex-binary", Name: "Cortex MCP binary", Severity: SeverityWarning, Fn: checkCortexBinary},
 		{ID: "node-npx", Name: "Node.js and npx available", Severity: SeverityWarning, Fn: checkNodeNpx},
+		{ID: "forgespec-binary", Name: "ForgeSpec MCP wrapper", Severity: SeverityWarning, Fn: checkForgeSpecBinary},
 		{ID: "skills-present", Name: "Skill files present", Severity: SeverityWarning, Fn: checkSkillsPresent},
 		{ID: "convention-present", Name: "Cortex convention file", Severity: SeverityWarning, Fn: checkConventionPresent},
 		{ID: "state-lock-consistent", Name: "State and lock consistent", Severity: SeverityWarning, Fn: checkStateLockConsistent},
@@ -153,6 +154,16 @@ func checkNodeNpx(ctx *Context) error {
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("missing: %s (required for MCP servers)", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func checkForgeSpecBinary(ctx *Context) error {
+	if !componentSelected(ctx, model.ComponentForgeSpec) {
+		return nil
+	}
+	if _, ok := system.ToolExists(forgespeccomp.OpenCodeCommand); !ok {
+		return fmt.Errorf("%s wrapper not found in PATH", forgespeccomp.OpenCodeCommand)
 	}
 	return nil
 }
@@ -351,12 +362,10 @@ func checkForgeSpecOpenCodeConfig(ctx *Context) error {
 	mcp, _ := root["mcp"].(map[string]any)
 	forgeSpec, _ := mcp["forgespec"].(map[string]any)
 	command, _ := forgeSpec["command"].([]any)
-	for _, argument := range command {
-		if value, ok := argument.(string); ok && value == forgespeccomp.QualifiedNPMPackage {
-			return nil
-		}
+	if len(command) != 1 || command[0] != forgespeccomp.OpenCodeCommand {
+		return fmt.Errorf("OpenCode ForgeSpec command must use direct wrapper %s", forgespeccomp.OpenCodeCommand)
 	}
-	return fmt.Errorf("OpenCode ForgeSpec command must contain %s", forgespeccomp.QualifiedNPMPackage)
+	return nil
 }
 
 func openCodeSDDSelected(ctx *Context) bool {

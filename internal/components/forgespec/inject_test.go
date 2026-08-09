@@ -49,7 +49,6 @@ func TestTemplates_PinQualifiedForgeSpecVersion(t *testing.T) {
 	jsonTemplates := map[string][]byte{
 		"separate JSON": tmpl.SeparateFileJSON,
 		"default JSON":  tmpl.DefaultOverlayJSON,
-		"OpenCode":      tmpl.OpenCodeOverlayJSON,
 		"VS Code":       tmpl.VSCodeOverlayJSON,
 	}
 	for name, content := range jsonTemplates {
@@ -62,6 +61,14 @@ func TestTemplates_PinQualifiedForgeSpecVersion(t *testing.T) {
 
 	if len(tmpl.TOMLArgs) != 2 || tmpl.TOMLArgs[1] != string(wantPackage) {
 		t.Fatalf("TOMLArgs = %v, want [-y %s]", tmpl.TOMLArgs, wantPackage)
+	}
+	var openCode map[string]any
+	if err := json.Unmarshal(tmpl.OpenCodeOverlayJSON, &openCode); err != nil {
+		t.Fatal(err)
+	}
+	command := openCode["mcp"].(map[string]any)["forgespec"].(map[string]any)["command"].([]any)
+	if len(command) != 1 || command[0] != OpenCodeCommand {
+		t.Fatalf("OpenCode command = %v, want direct qualified wrapper %q", command, OpenCodeCommand)
 	}
 	if got, want := tmpl.Service.Versions.MaximumTested, ir.MustParseVersion("1.4.0"); got != want {
 		t.Fatalf("contract maximum tested = %s, want qualified version %s", got, want)

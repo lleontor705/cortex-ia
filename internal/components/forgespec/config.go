@@ -9,6 +9,7 @@ import (
 const (
 	QualifiedVersion    = "1.4.0"
 	QualifiedNPMPackage = "forgespec-mcp@" + QualifiedVersion
+	OpenCodeCommand     = "forgespec-mcp"
 )
 
 // Contract declares ForgeSpec as the sole external authority for SDD contracts
@@ -61,9 +62,7 @@ func Templates() mcpinject.ServerTemplates {
     "forgespec": {
       "type": "local",
       "command": [
-        "npx",
-        "-y",
-        "` + QualifiedNPMPackage + `"
+        "` + OpenCodeCommand + `"
       ],
       "enabled": true
     }

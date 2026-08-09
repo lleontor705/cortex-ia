@@ -3,9 +3,7 @@
     "forgespec": {
       "type": "local",
       "command": [
-        "npx",
-        "-y",
-        "forgespec-mcp@1.4.0"
+        "forgespec-mcp"
       ],
       "enabled": true
     }

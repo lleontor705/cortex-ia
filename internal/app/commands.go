@@ -106,6 +106,10 @@ func runInstall(args []string) error {
 	}
 
 	result, installErr := pipeline.Install(homeDir, registry, selection, Version, selection.DryRun)
+	if selection.DryRun && result.WorkflowFingerprint != "" {
+		WriteWorkflowInstallPlan(os.Stdout, result.WorkflowPlan)
+		WriteWorkflowDoctor(os.Stdout, result.WorkflowDoctor)
+	}
 
 	fmt.Printf("\nInstallation complete.\n")
 	fmt.Printf("  Components: %v\n", result.ComponentsDone)
