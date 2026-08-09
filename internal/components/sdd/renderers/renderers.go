@@ -272,16 +272,6 @@ func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset,
 	}
 	bindings := slices.Clone(composition.SkillBindings)
 	slices.SortFunc(bindings, func(left, right SkillBinding) int { return strings.Compare(string(left.Role), string(right.Role)) })
-	for index := range bindings {
-		switch bindings[index].Mode {
-		case SkillModeNativeOnDemand:
-			bindings[index].FirstAction = "skill:" + string(bindings[index].Skill)
-		case SkillModeNativePreload:
-			bindings[index].FirstAction = "preload:" + string(bindings[index].Skill)
-		default:
-			bindings[index].FirstAction = "read:" + bindings[index].Path
-		}
-	}
 	routes := slices.Clone(composition.ModelRoutes)
 	slices.SortFunc(routes, func(left, right ModelRoute) int { return strings.Compare(string(left.Role), string(right.Role)) })
 	for _, route := range routes {
@@ -294,19 +284,10 @@ func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset,
 			}
 		}
 	}
-	for _, asset := range composition.OperationalAssets {
-		if strings.TrimSpace(asset.Path) == "" || len(asset.Content) == 0 || asset.ID == "" {
-			return nil, fmt.Errorf("composition operational asset %q is incomplete", asset.ID)
-		}
-	}
 	if hasQualityPlan(composition.QualityPlan) {
 		if err := composition.QualityPlan.Validate(); err != nil {
 			return nil, fmt.Errorf("composition quality plan: %w", err)
 		}
-	}
-	data, err := json.Marshal(compositionManifestData{RootIndex: composition.RootIndex, Modules: modules, SkillBindings: bindings, SharedContract: composition.SharedContract, ProfileOverlay: composition.ProfileOverlay, QualityTemplate: composition.QualityTemplate, QualityPlan: composition.QualityPlan, ModelRoutes: routes, NativePreload: resolved.NativeSkillPreload, NativeOnDemand: resolved.NativeSkillOnDemand, NativeModel: resolved.NativeModelField, Worktree: resolved.NativeWorktreeIsolation, Metadata: slices.Clone(resolved.Metadata)})
-	if err != nil {
-		return nil, fmt.Errorf("marshal composition manifest: %w", err)
 	}
 	kind := AssetFixture
 	if slices.Contains(resolved.AllowedAssetKinds, AssetSchema) {
@@ -317,7 +298,16 @@ func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset,
 	if !slices.Contains(resolved.AllowedAssetKinds, kind) {
 		return nil, fmt.Errorf("resolved target %q cannot emit a composition manifest", resolved.Target)
 	}
+	type loweredCompositionAsset struct {
+		class  ir.AssetClass
+		source string
+		path   string
+	}
+	lowered := make([]loweredCompositionAsset, 0, len(composition.OperationalAssets))
 	for _, common := range composition.OperationalAssets {
+		if strings.TrimSpace(common.Path) == "" || len(common.Content) == 0 || common.ID == "" {
+			return nil, fmt.Errorf("composition operational asset %q is incomplete", common.ID)
+		}
 		assetKind := AssetInstruction
 		switch common.Class {
 		case ir.AssetSkill:
@@ -334,54 +324,75 @@ func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset,
 		if !slices.Contains(resolved.AllowedAssetKinds, assetKind) {
 			continue
 		}
-		assets = append(assets, Asset{Path: common.Path, SemanticID: common.ID, Kind: assetKind, Content: bytes.Clone(common.Content), Mode: 0o644, Permissions: slices.Clone(common.Permissions), Metadata: slices.Clone(common.Metadata)})
-	}
-	assets = append(assets, Asset{Path: ".cortex-ia/composition.json", SemanticID: ir.SemanticID(string(resolved.Target) + "/composition"), Kind: kind, Content: append(data, '\n'), Mode: 0o644})
-	// Composition is the sole semantic-to-destination lowering boundary. The
-	// target renderers only emit adapter syntax; common assets are mapped once.
-	for index := range assets {
-		asset := &assets[index]
-		if asset.SemanticID == ir.SemanticID(string(resolved.Target)+"/composition") {
-			continue
-		}
-		common := false
-		for _, candidate := range composition.OperationalAssets {
-			if candidate.ID == asset.SemanticID {
-				common = true
-				break
-			}
-		}
-		if !common {
-			continue
-		}
-		mapped, mapErr := assetMap.Map(asset.SemanticID, compositionAssetClass(asset.Kind), asset.Path)
+		mapped, mapErr := assetMap.Map(common.ID, common.Class, common.Path)
 		if mapErr != nil {
 			return nil, mapErr
 		}
-		asset.Path = mapped.Relative
+		lowered = append(lowered, loweredCompositionAsset{class: common.Class, source: common.Path, path: mapped.Relative})
+		assets = append(assets, Asset{Path: mapped.Relative, SemanticID: common.ID, Kind: assetKind, Content: bytes.Clone(common.Content), Mode: 0o644, Permissions: slices.Clone(common.Permissions), Metadata: slices.Clone(common.Metadata)})
 	}
+	resolveReference := func(name, reference string, class ir.AssetClass) (string, error) {
+		matches := make([]string, 0, 1)
+		for _, candidate := range lowered {
+			if candidate.class != class {
+				continue
+			}
+			if reference == candidate.source || reference == candidate.path || strings.HasSuffix(reference, "/"+candidate.source) {
+				matches = append(matches, candidate.path)
+			}
+		}
+		matches = sortedUnique(matches)
+		if len(matches) != 1 {
+			return "", fmt.Errorf("composition %s has orphaned or ambiguous reference %q", name, reference)
+		}
+		return matches[0], nil
+	}
+	rootIndex, err := resolveReference("root_index", composition.RootIndex, ir.AssetRootIndex)
+	if err != nil {
+		return nil, err
+	}
+	for index := range modules {
+		modules[index], err = resolveReference("modules", modules[index], ir.AssetRootModule)
+		if err != nil {
+			return nil, err
+		}
+	}
+	sharedContract, err := resolveReference("shared_contract", composition.SharedContract, ir.AssetSharedContract)
+	if err != nil {
+		return nil, err
+	}
+	profileOverlay, err := resolveReference("profile_overlay", composition.ProfileOverlay, ir.AssetProfileOverlay)
+	if err != nil {
+		return nil, err
+	}
+	qualityTemplate, err := resolveReference("quality_template", composition.QualityTemplate, ir.AssetQualityTemplate)
+	if err != nil {
+		return nil, err
+	}
+	for index := range bindings {
+		bindings[index].Path, err = resolveReference("skill_bindings.path", bindings[index].Path, ir.AssetSkill)
+		if err != nil {
+			return nil, err
+		}
+		switch bindings[index].Mode {
+		case SkillModeNativeOnDemand:
+			bindings[index].FirstAction = "skill:" + string(bindings[index].Skill)
+		case SkillModeNativePreload:
+			bindings[index].FirstAction = "preload:" + string(bindings[index].Skill)
+		default:
+			bindings[index].FirstAction = "read:" + bindings[index].Path
+		}
+	}
+	data, err := json.Marshal(compositionManifestData{RootIndex: rootIndex, Modules: modules, SkillBindings: bindings, SharedContract: sharedContract, ProfileOverlay: profileOverlay, QualityTemplate: qualityTemplate, QualityPlan: composition.QualityPlan, ModelRoutes: routes, NativePreload: resolved.NativeSkillPreload, NativeOnDemand: resolved.NativeSkillOnDemand, NativeModel: resolved.NativeModelField, Worktree: resolved.NativeWorktreeIsolation, Metadata: slices.Clone(resolved.Metadata)})
+	if err != nil {
+		return nil, fmt.Errorf("marshal composition manifest: %w", err)
+	}
+	assets = append(assets, Asset{Path: ".cortex-ia/composition.json", SemanticID: ir.SemanticID(string(resolved.Target) + "/composition"), Kind: kind, Content: append(data, '\n'), Mode: 0o644})
 	return assets, nil
 }
 
 func hasQualityPlan(plan quality.QualityPlan) bool {
 	return plan.PolicySHA256 != "" || plan.TemplateSHA256 != "" || plan.ChangeSignalsSHA256 != ""
-}
-
-func compositionAssetClass(kind AssetKind) ir.AssetClass {
-	switch kind {
-	case AssetSkill:
-		return ir.AssetSkill
-	case AssetCommand:
-		return ir.AssetCommand
-	case AssetAgent:
-		return ir.AssetRoleStub
-	case AssetRule:
-		return ir.AssetProfileOverlay
-	case AssetSchema:
-		return ir.AssetManifest
-	default:
-		return ir.AssetRootModule
-	}
 }
 
 const (

@@ -92,7 +92,10 @@ func resolveWorkflowRoutes(ctx context.Context, request WorkflowRequest) (prompt
 		return prompt.ModelTable{Routes: routes}, metadata, nil
 	}
 	if len(request.ModelRoutes.Routes) == 0 {
-		return prompt.ModelTable{}, nil, fmt.Errorf("explicit model routes are required")
+		// Model routing is optional. Without explicit routes or qualified route
+		// resolution the workflow installs with no model bindings instead of
+		// failing closed before generation.
+		return prompt.ModelTable{}, map[string]modelroute.ResolvedRoute{}, nil
 	}
 	metadata := make(map[string]modelroute.ResolvedRoute)
 	for _, route := range request.ModelRoutes.Routes {

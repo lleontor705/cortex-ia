@@ -5,7 +5,7 @@
       "command": [
         "npx",
         "-y",
-        "forgespec-mcp"
+        "forgespec-mcp@1.4.0"
       ],
       "enabled": true
     }

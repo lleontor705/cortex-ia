@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -104,6 +105,17 @@ func TestCheckConventionPresent(t *testing.T) {
 	}
 }
 
+func TestCheckConventionPresent_OpenCodeSharedSkills(t *testing.T) {
+	tmpDir := t.TempDir()
+	convDir := filepath.Join(tmpDir, ".config", "opencode", "skills", "_shared")
+	mustWriteVerifyFixture(t, filepath.Join(convDir, "cortex-convention.md"), "conv")
+
+	ctx := &Context{HomeDir: tmpDir, Lock: state.Lockfile{InstalledAgents: []model.AgentID{model.AgentOpenCode}}}
+	if err := checkConventionPresent(ctx); err != nil {
+		t.Errorf("expected OpenCode convention path to pass, got: %v", err)
+	}
+}
+
 func TestCheckConventionPresent_Missing(t *testing.T) {
 	ctx := &Context{HomeDir: t.TempDir()}
 	if err := checkConventionPresent(ctx); err == nil {
@@ -183,6 +195,200 @@ func TestCheckInstallStatus_Complete(t *testing.T) {
 	ctx := &Context{HomeDir: tmpDir}
 	if err := checkInstallStatus(ctx); err != nil {
 		t.Errorf("expected pass for complete status, got: %v", err)
+	}
+}
+
+func TestOpenCodeSDDDoctorChecks_HealthyFixture(t *testing.T) {
+	ctx := healthyOpenCodeSDDFixture(t, false)
+	for _, check := range []struct {
+		name string
+		fn   func(*Context) error
+	}{
+		{name: "critical lock inventory", fn: checkCriticalLockInventory},
+		{name: "orchestrator frontmatter", fn: checkOrchestratorFrontmatter},
+		{name: "composition", fn: checkOpenCodeComposition},
+		{name: "ForgeSpec version", fn: checkForgeSpecOpenCodeConfig},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			if err := check.fn(ctx); err != nil {
+				t.Fatalf("healthy fixture failed: %v", err)
+			}
+		})
+	}
+}
+
+func TestCheckOpenCodeComposition_AcceptsPostLoweringHomeRelativePaths(t *testing.T) {
+	ctx := healthyOpenCodeSDDFixture(t, false)
+
+	if err := checkOpenCodeComposition(ctx); err != nil {
+		t.Fatalf("post-lowering home-relative references should pass: %v", err)
+	}
+}
+
+func TestOpenCodeSDDDoctorChecks_HealthyJSONCFixture(t *testing.T) {
+	ctx := healthyOpenCodeSDDFixture(t, true)
+	if err := checkForgeSpecOpenCodeConfig(ctx); err != nil {
+		t.Fatalf("healthy JSONC fixture failed: %v", err)
+	}
+}
+
+func TestCheckCriticalLockInventory_DetectsTruncatedInventory(t *testing.T) {
+	ctx := healthyOpenCodeSDDFixture(t, false)
+	ctx.Lock.Files = ctx.Lock.Files[:len(ctx.Lock.Files)-1]
+
+	err := checkCriticalLockInventory(ctx)
+	if err == nil || !strings.Contains(err.Error(), "skills/orchestrator/SKILL.md") {
+		t.Fatalf("expected truncated inventory error naming orchestrator, got %v", err)
+	}
+}
+
+func TestCheckOrchestratorFrontmatter_DetectsCorruption(t *testing.T) {
+	ctx := healthyOpenCodeSDDFixture(t, false)
+	path := filepath.Join(ctx.HomeDir, ".config", "opencode", "skills", "orchestrator", "SKILL.md")
+	mustWriteVerifyFixture(t, path, "---\nname: wrong\ndescription: ''\n---\n")
+
+	err := checkOrchestratorFrontmatter(ctx)
+	if err == nil || !strings.Contains(err.Error(), "frontmatter") {
+		t.Fatalf("expected frontmatter error, got %v", err)
+	}
+}
+
+func TestCheckOpenCodeComposition_DetectsCorruption(t *testing.T) {
+	tests := []struct {
+		name       string
+		manifest   string
+		removeFile string
+		untrack    string
+		want       string
+	}{
+		{name: "malformed JSON", manifest: `{`, want: "parse composition"},
+		{name: "unsafe path", manifest: `{"root_index":"../escape.md"}`, want: "unsafe relative path"},
+		{name: "missing referenced file", removeFile: ".config/opencode/generic/index.md", want: "does not exist"},
+		{name: "untracked referenced file", untrack: ".config/opencode/generic/index.md", want: "not registered in lock"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := healthyOpenCodeSDDFixture(t, false)
+			if tt.manifest != "" {
+				path := filepath.Join(ctx.HomeDir, ".config", "opencode", ".cortex-ia", "composition.json")
+				mustWriteVerifyFixture(t, path, tt.manifest)
+			}
+			if tt.removeFile != "" {
+				if err := os.Remove(filepath.Join(ctx.HomeDir, filepath.FromSlash(tt.removeFile))); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.untrack != "" {
+				for i, path := range ctx.Lock.Files {
+					if filepath.ToSlash(path) == tt.untrack {
+						ctx.Lock.Files = append(ctx.Lock.Files[:i], ctx.Lock.Files[i+1:]...)
+						break
+					}
+				}
+			}
+
+			err := checkOpenCodeComposition(ctx)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected error containing %q, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
+func TestCheckForgeSpecOpenCodeConfig_DetectsWrongVersion(t *testing.T) {
+	ctx := healthyOpenCodeSDDFixture(t, false)
+	path := filepath.Join(ctx.HomeDir, ".config", "opencode", "opencode.json")
+	mustWriteVerifyFixture(t, path, `{"mcp":{"forgespec":{"type":"local","command":["npx","-y","forgespec-mcp@1.3.0"],"enabled":true}}}`)
+
+	err := checkForgeSpecOpenCodeConfig(ctx)
+	if err == nil || !strings.Contains(err.Error(), "forgespec-mcp@1.4.0") {
+		t.Fatalf("expected qualified ForgeSpec version error, got %v", err)
+	}
+}
+
+func TestOpenCodeSDDDoctorChecks_SkipWhenNotApplicable(t *testing.T) {
+	tmpDir := t.TempDir()
+	mustWriteVerifyFixture(t, filepath.Join(tmpDir, ".config", "opencode", "opencode.json"), `{broken`)
+	ctx := &Context{HomeDir: tmpDir}
+	for _, fn := range []func(*Context) error{
+		checkCriticalLockInventory,
+		checkOrchestratorFrontmatter,
+		checkOpenCodeComposition,
+		checkForgeSpecOpenCodeConfig,
+	} {
+		if err := fn(ctx); err != nil {
+			t.Fatalf("non-applicable check should skip, got %v", err)
+		}
+	}
+}
+
+func healthyOpenCodeSDDFixture(t *testing.T, jsonc bool) *Context {
+	t.Helper()
+	home := t.TempDir()
+	configName := "opencode.json"
+	config := `{"mcp":{"forgespec":{"type":"local","command":["npx","-y","forgespec-mcp@1.4.0"],"enabled":true}}}`
+	if jsonc {
+		configName = "opencode.jsonc"
+		config = "{\n  // qualified fixture\n  \"mcp\": {\"forgespec\": {\"command\": [\"npx\", \"-y\", \"forgespec-mcp@1.4.0\"]}}\n}\n"
+	}
+	paths := map[string]string{
+		".config/opencode/" + configName:                        config,
+		".config/opencode/generic/index.md":                     "# OpenCode\n",
+		".config/opencode/generic/routing.md":                   "routing\n",
+		".config/opencode/_shared/sdd-phase-contract.md":        "contract\n",
+		".config/opencode/overlays/profile-portable-flat.md":    "profile\n",
+		".config/opencode/quality/quality-activity-template.md": "quality\n",
+		".config/opencode/skills/orchestrator/SKILL.md":         "---\nname: orchestrator\ndescription: Route SDD work.\n---\n\n# Orchestrator\n",
+	}
+	manifest := `{
+  "root_index": ".config/opencode/generic/index.md",
+  "modules": [".config/opencode/generic/routing.md"],
+  "skill_bindings": [{"role":"role/orchestrator","skill":"skill/orchestrator","mode":"native-on-demand","path":".config/opencode/skills/orchestrator/SKILL.md","hash":"sha256:test"}],
+  "shared_contract": ".config/opencode/_shared/sdd-phase-contract.md",
+  "profile_overlay": ".config/opencode/overlays/profile-portable-flat.md",
+  "quality_template": ".config/opencode/quality/quality-activity-template.md"
+}`
+	paths[".config/opencode/.cortex-ia/composition.json"] = manifest
+	tracked := make([]string, 0, len(paths))
+	for path, content := range paths {
+		mustWriteVerifyFixture(t, filepath.Join(home, filepath.FromSlash(path)), content)
+		tracked = append(tracked, path)
+	}
+	// Keep the final entry stable for the truncated-inventory fixture.
+	for i, path := range tracked {
+		if path == ".config/opencode/skills/orchestrator/SKILL.md" {
+			tracked[i], tracked[len(tracked)-1] = tracked[len(tracked)-1], tracked[i]
+			break
+		}
+	}
+	components := []model.ComponentID{model.ComponentSDD, model.ComponentForgeSpec}
+	agents := []model.AgentID{model.AgentOpenCode}
+	return &Context{
+		HomeDir: home,
+		State:   state.State{InstalledAgents: agents, Components: components},
+		Lock:    state.Lockfile{InstalledAgents: agents, Components: components, Files: tracked},
+	}
+}
+
+func TestCanonicalPathRespectsFilesystemCaseSemantics(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "CaseSensitive", "SKILL.md")
+	got := canonicalPath(path)
+	want := filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		want = strings.ToLower(want)
+	}
+	if got != want {
+		t.Fatalf("canonicalPath(%q) = %q, want %q", path, got, want)
+	}
+}
+
+func mustWriteVerifyFixture(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

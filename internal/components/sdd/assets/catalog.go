@@ -83,7 +83,11 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 	if err := add("asset/root-index", ir.AssetRootIndex, "generic/sdd-orchestrator-root-index.md", root, true, 1500); err != nil {
 		return MaterializedCatalog{}, err
 	}
-	if err := add("asset/skill/orchestrator", ir.AssetSkill, "skills/orchestrator/SKILL.md", root, true, 1500); err != nil {
+	orchestrator, err := read("skills/orchestrator/SKILL.md")
+	if err != nil {
+		return MaterializedCatalog{}, err
+	}
+	if err := add("asset/skill/orchestrator", ir.AssetSkill, "skills/orchestrator/SKILL.md", orchestrator, true, 1500); err != nil {
 		return MaterializedCatalog{}, err
 	}
 	for _, generatedAsset := range generated {

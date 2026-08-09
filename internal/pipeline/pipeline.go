@@ -267,29 +267,39 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 			if !componentSet[inj.id] {
 				continue
 			}
+			writer := newPreparedWriter(componentManagedTargets(homeDir, adapter, selection, inj.id, preparedWorkflow))
+			if len(writer.ManagedTargets()) == 0 {
+				// A component that declares no targets (for example the skills
+				// component with no community skills, or an idempotent workflow
+				// with nothing to write) is a no-op for this adapter.
+				continue
+			}
 			cs := &componentStep{
 				homeDir: homeDir, adapter: adapter,
 				componentID: inj.id,
 				injectorFn:  func() ([]string, error) { return deps.invokeComponent(inj.id, inj.fn) },
-				writer:      newPreparedWriter(componentManagedTargets(homeDir, adapter, selection, inj.id, preparedWorkflow)),
+				writer:      writer,
 				progress:    progress,
 			}
 			chain = append(chain, cs)
 			allComponentSteps = append(allComponentSteps, cs)
 		}
 		if selection.Persona != "" {
-			personaStep := &componentStep{
-				homeDir: homeDir, adapter: adapter, componentID: "persona", progress: progress,
-				writer: newPreparedWriter(personaManagedTargets(homeDir, adapter)),
-				injectorFn: func() ([]string, error) {
-					return deps.invokePersona(func() ([]string, error) {
-						r, injectErr := persona.Inject(homeDir, adapter, selection.Persona)
-						return r.Files, injectErr
-					})
-				},
+			personaWriter := newPreparedWriter(personaManagedTargets(homeDir, adapter))
+			if len(personaWriter.ManagedTargets()) > 0 {
+				personaStep := &componentStep{
+					homeDir: homeDir, adapter: adapter, componentID: "persona", progress: progress,
+					writer: personaWriter,
+					injectorFn: func() ([]string, error) {
+						return deps.invokePersona(func() ([]string, error) {
+							r, injectErr := persona.Inject(homeDir, adapter, selection.Persona)
+							return r.Files, injectErr
+						})
+					},
+				}
+				chain = append(chain, personaStep)
+				allComponentSteps = append(allComponentSteps, personaStep)
 			}
-			chain = append(chain, personaStep)
-			allComponentSteps = append(allComponentSteps, personaStep)
 		}
 		if len(chain) > 0 {
 			agentChains = append(agentChains, chain)
@@ -329,6 +339,10 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 	for _, writer := range allWriters {
 		writer.bindJournal(journal)
 		writer.recordJournalOutcome = deps.recordJournalOutcome
+	}
+	priorLock, err := state.LoadLock(homeDir)
+	if err != nil {
+		return result, err
 	}
 
 	fail := func(stage string, err error) (InstallResult, error) {
@@ -383,7 +397,7 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 		InstalledAgents: selection.Agents,
 		Preset:          selection.Preset,
 		Components:      resolved,
-		Files:           dedupeStrings(result.FilesChanged),
+		Files:           durableInstallFiles(priorLock.Files, preparedWorkflow, result.FilesChanged),
 		GeneratedAt:     time.Now(),
 		LastBackupID:    result.BackupID,
 		Version:         version,
@@ -454,10 +468,8 @@ func componentManagedTargets(homeDir string, adapter agents.Adapter, selection m
 	case model.ComponentCortex, model.ComponentForgeSpec, model.ComponentMailbox, model.ComponentContext7:
 		paths = append(paths, adapter.MCPConfigPath(homeDir, "cortex"))
 	case model.ComponentSDD:
-		for _, effects := range [][]sddinstall.Effect{workflow.Plan.Creates, workflow.Plan.Updates, workflow.Plan.Deletes} {
-			for _, effect := range effects {
-				paths = append(paths, filepath.Join(homeDir, filepath.FromSlash(effect.Path)))
-			}
+		for _, path := range workflow.Plan.Backup.Paths {
+			paths = append(paths, filepath.Join(homeDir, filepath.FromSlash(path)))
 		}
 	case model.ComponentSkills:
 		for _, skill := range selection.CommunitySkills {
@@ -478,11 +490,13 @@ func personaManagedTargets(homeDir string, adapter agents.Adapter) []ManagedTarg
 }
 
 func workflowManagedTargets(workflow PreparedWorkflowInstall) []ManagedTarget {
+	// The backup scope is the exact superset of every path the plan may create,
+	// update, or delete — including the ownership sidecars (".cortex-ia.base" and
+	// ".cortex-ia.json") written by the SDD applier. Declaring them keeps journal
+	// rollback able to restore an initially absent parent directory.
 	var targets []ManagedTarget
-	for _, effects := range [][]sddinstall.Effect{workflow.Plan.Creates, workflow.Plan.Updates, workflow.Plan.Deletes} {
-		for _, effect := range effects {
-			targets = append(targets, ManagedTarget{Path: filepath.ToSlash(effect.Path), Kind: TargetFile, Owner: "workflow"})
-		}
+	for _, path := range workflow.Plan.Backup.Paths {
+		targets = append(targets, ManagedTarget{Path: filepath.ToSlash(path), Kind: TargetFile, Owner: "workflow"})
 	}
 	return targets
 }
@@ -615,6 +629,42 @@ func dedupeStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+// durableInstallFiles reconstructs managed inventory exclusively from prior
+// ownership metadata, the desired workflow bundle, and current component
+// reports. Explicit workflow deletes are authoritative removals. It does not
+// inspect the target tree, so unrelated files cannot become managed by mere
+// presence on disk.
+func durableInstallFiles(prior []string, workflow PreparedWorkflowInstall, reported []string) []string {
+	files := append([]string(nil), prior...)
+	for _, asset := range workflow.Plan.Inventory {
+		files = append(files, asset.Path)
+	}
+	files = append(files, reported...)
+
+	deleted := make(map[string]struct{}, len(workflow.Plan.Deletes)*3)
+	for _, effect := range workflow.Plan.Deletes {
+		for _, path := range []string{effect.Path, effect.OwnershipPath, effect.BasePath} {
+			if path != "" {
+				deleted[path] = struct{}{}
+			}
+		}
+	}
+	collapsed := dedupeStrings(files)
+	if len(deleted) == 0 {
+		return collapsed
+	}
+	kept := collapsed[:0]
+	for _, path := range collapsed {
+		if _, remove := deleted[path]; !remove {
+			kept = append(kept, path)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
 }
 
 // SelectionFromState reconstructs a Selection from persisted state/lock metadata.

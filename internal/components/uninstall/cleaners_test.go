@@ -366,6 +366,27 @@ func TestRemoveTOMLRegion_AcceptsCurrentOwnershipWithResolvedCommand(t *testing.
 	}
 }
 
+func TestRemoveTOMLRegion_AcceptsPinnedForgeSpecCommand(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	before := ownedTOML(t, "forgespec", "npx", []string{"-y", "forgespec-mcp@1.4.0"}, "\n")
+	if err := os.WriteFile(path, []byte(before), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := removeTOMLRegion(path, "forgespec")
+	if err != nil || !changed {
+		t.Fatalf("removeTOMLRegion() = changed %v, err %v", changed, err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "forgespec") {
+		t.Fatalf("pinned ForgeSpec region remains after removal:\n%s", content)
+	}
+}
+
 func TestComponentOperations_TOMLUsesTOMLRegionOperation(t *testing.T) {
 	adapter := &cleanerTestAdapter{agent: model.AgentCodex, strategy: model.StrategyTOMLFile, settings: filepath.Join(t.TempDir(), "config.toml")}
 	ops := componentOperations("", adapter, model.ComponentCortex)

@@ -54,16 +54,16 @@ func TestModelRouteBoundaryRejectsMissingResolutionEvidence(t *testing.T) {
 	}
 }
 
-func TestPrepareWorkflowRejectsMissingRoutesBeforeMutation(t *testing.T) {
+func TestPrepareWorkflowAllowsMissingRoutesBeforeMutation(t *testing.T) {
 	home := t.TempDir()
-	if _, err := PrepareWorkflow(t.Context(), WorkflowRequest{HomeDir: home, Adapters: []agents.Adapter{codex.NewAdapter()}}); err == nil {
-		t.Fatal("missing model routes unexpectedly allowed workflow preparation")
+	if _, err := PrepareWorkflow(t.Context(), WorkflowRequest{HomeDir: home, Adapters: []agents.Adapter{codex.NewAdapter()}}); err != nil {
+		t.Fatalf("missing model routes should allow workflow preparation: %v", err)
 	}
 	entries, err := os.ReadDir(home)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 0 {
-		t.Fatalf("missing evidence caused mutation: %v", entries)
+		t.Fatalf("preparation caused mutation: %v", entries)
 	}
 }

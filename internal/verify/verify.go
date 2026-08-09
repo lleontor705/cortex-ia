@@ -1,14 +1,20 @@
 package verify
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
+	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
+	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
+	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
 	"github.com/lleontor705/cortex-ia/internal/system"
+	"gopkg.in/yaml.v3"
 )
 
 // Severity indicates how critical a check failure is.
@@ -88,6 +94,10 @@ func DefaultChecks() []Check {
 		{ID: "skills-present", Name: "Skill files present", Severity: SeverityWarning, Fn: checkSkillsPresent},
 		{ID: "convention-present", Name: "Cortex convention file", Severity: SeverityWarning, Fn: checkConventionPresent},
 		{ID: "state-lock-consistent", Name: "State and lock consistent", Severity: SeverityWarning, Fn: checkStateLockConsistent},
+		{ID: "critical-lock-inventory", Name: "Critical artifacts tracked", Severity: SeverityError, Fn: checkCriticalLockInventory},
+		{ID: "orchestrator-frontmatter", Name: "Orchestrator skill frontmatter", Severity: SeverityError, Fn: checkOrchestratorFrontmatter},
+		{ID: "opencode-composition", Name: "OpenCode SDD composition", Severity: SeverityError, Fn: checkOpenCodeComposition},
+		{ID: "forgespec-version", Name: "Qualified ForgeSpec version", Severity: SeverityError, Fn: checkForgeSpecOpenCodeConfig},
 	}
 }
 
@@ -180,7 +190,7 @@ func checkConventionPresent(ctx *Context) error {
 		return nil
 	}
 	for _, a := range ctx.Lock.InstalledAgents {
-		if _, err := os.Stat(filepath.Join(ctx.HomeDir, ".config", string(a), "_shared", "cortex-convention.md")); err == nil {
+		if _, err := os.Stat(filepath.Join(ctx.HomeDir, ".config", string(a), "skills", "_shared", "cortex-convention.md")); err == nil {
 			return nil
 		}
 	}
@@ -214,4 +224,245 @@ func checkStateLockConsistent(ctx *Context) error {
 		return fmt.Errorf("state/lock mismatch: %s", strings.Join(diffs, "; "))
 	}
 	return nil
+}
+
+func checkCriticalLockInventory(ctx *Context) error {
+	if !agentSelected(ctx, model.AgentOpenCode) {
+		return nil
+	}
+
+	var critical []string
+	configRoot := openCodeConfigRoot(ctx.HomeDir)
+	if configPath, ok := existingOpenCodeConfig(configRoot); ok {
+		critical = append(critical, configPath)
+	}
+	if componentSelected(ctx, model.ComponentSDD) {
+		critical = appendExisting(critical,
+			filepath.Join(configRoot, ".cortex-ia", "composition.json"),
+			filepath.Join(configRoot, "skills", "orchestrator", "SKILL.md"),
+		)
+	}
+
+	tracked := trackedFileSet(ctx)
+	var missing []string
+	for _, path := range critical {
+		if _, ok := tracked[canonicalPath(path)]; !ok {
+			missing = append(missing, displayHomePath(ctx.HomeDir, path))
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("critical artifacts missing from lock inventory: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func checkOrchestratorFrontmatter(ctx *Context) error {
+	if !openCodeSDDSelected(ctx) {
+		return nil
+	}
+	path := filepath.Join(openCodeConfigRoot(ctx.HomeDir), "skills", "orchestrator", "SKILL.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read orchestrator skill: %w", err)
+	}
+	type frontmatter struct {
+		Name        string `yaml:"name"`
+		Description string `yaml:"description"`
+	}
+	var header frontmatter
+	if err := decodeFrontmatter(content, &header); err != nil {
+		return fmt.Errorf("invalid orchestrator frontmatter: %w", err)
+	}
+	if header.Name != "orchestrator" || strings.TrimSpace(header.Description) == "" {
+		return fmt.Errorf("invalid orchestrator frontmatter: name must be %q and description must be non-empty", "orchestrator")
+	}
+	return nil
+}
+
+func checkOpenCodeComposition(ctx *Context) error {
+	if !openCodeSDDSelected(ctx) {
+		return nil
+	}
+	configRoot := openCodeConfigRoot(ctx.HomeDir)
+	manifestPath := filepath.Join(configRoot, ".cortex-ia", "composition.json")
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return fmt.Errorf("read composition manifest: %w", err)
+	}
+	type skillBinding struct {
+		Path string `json:"path"`
+	}
+	type compositionManifest struct {
+		RootIndex       string         `json:"root_index"`
+		Modules         []string       `json:"modules"`
+		SkillBindings   []skillBinding `json:"skill_bindings"`
+		SharedContract  string         `json:"shared_contract"`
+		ProfileOverlay  string         `json:"profile_overlay"`
+		QualityTemplate string         `json:"quality_template"`
+	}
+	var manifest compositionManifest
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		return fmt.Errorf("parse composition manifest: %w", err)
+	}
+	references := []string{manifest.RootIndex, manifest.SharedContract, manifest.ProfileOverlay, manifest.QualityTemplate}
+	references = append(references, manifest.Modules...)
+	for _, binding := range manifest.SkillBindings {
+		references = append(references, binding.Path)
+	}
+	tracked := trackedFileSet(ctx)
+	for _, reference := range references {
+		fullPath, err := safeCompositionPath(ctx.HomeDir, reference)
+		if err != nil {
+			return fmt.Errorf("composition reference %q: %w", reference, err)
+		}
+		info, err := os.Stat(fullPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("composition reference %q does not exist", reference)
+			}
+			return fmt.Errorf("stat composition reference %q: %w", reference, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("composition reference %q is not a regular file", reference)
+		}
+		if _, ok := tracked[canonicalPath(fullPath)]; !ok {
+			return fmt.Errorf("composition reference %q is not registered in lock", reference)
+		}
+	}
+	return nil
+}
+
+func checkForgeSpecOpenCodeConfig(ctx *Context) error {
+	if !agentSelected(ctx, model.AgentOpenCode) || !componentSelected(ctx, model.ComponentForgeSpec) {
+		return nil
+	}
+	configPath, ok := existingOpenCodeConfig(openCodeConfigRoot(ctx.HomeDir))
+	if !ok {
+		return fmt.Errorf("OpenCode config not found for selected ForgeSpec component")
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read OpenCode config: %w", err)
+	}
+	root, err := filemerge.DecodeJSONObject(content)
+	if err != nil {
+		return fmt.Errorf("parse OpenCode config: %w", err)
+	}
+	mcp, _ := root["mcp"].(map[string]any)
+	forgeSpec, _ := mcp["forgespec"].(map[string]any)
+	command, _ := forgeSpec["command"].([]any)
+	for _, argument := range command {
+		if value, ok := argument.(string); ok && value == forgespeccomp.QualifiedNPMPackage {
+			return nil
+		}
+	}
+	return fmt.Errorf("OpenCode ForgeSpec command must contain %s", forgespeccomp.QualifiedNPMPackage)
+}
+
+func openCodeSDDSelected(ctx *Context) bool {
+	return agentSelected(ctx, model.AgentOpenCode) && componentSelected(ctx, model.ComponentSDD)
+}
+
+func agentSelected(ctx *Context, wanted model.AgentID) bool {
+	for _, agents := range [][]model.AgentID{ctx.State.InstalledAgents, ctx.Lock.InstalledAgents} {
+		for _, agent := range agents {
+			if agent == wanted {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func componentSelected(ctx *Context, wanted model.ComponentID) bool {
+	for _, components := range [][]model.ComponentID{ctx.State.Components, ctx.Lock.Components} {
+		for _, component := range components {
+			if component == wanted {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func openCodeConfigRoot(homeDir string) string {
+	return filepath.Join(homeDir, ".config", "opencode")
+}
+
+func existingOpenCodeConfig(configRoot string) (string, bool) {
+	for _, name := range []string{"opencode.jsonc", "opencode.json"} {
+		path := filepath.Join(configRoot, name)
+		if _, err := os.Stat(path); err == nil {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+func appendExisting(paths []string, candidates ...string) []string {
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			paths = append(paths, candidate)
+		}
+	}
+	return paths
+}
+
+func trackedFileSet(ctx *Context) map[string]struct{} {
+	tracked := make(map[string]struct{}, len(ctx.Lock.Files))
+	for _, path := range ctx.Lock.Files {
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(ctx.HomeDir, path)
+		}
+		tracked[canonicalPath(path)] = struct{}{}
+	}
+	return tracked
+}
+
+func canonicalPath(path string) string {
+	clean := filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(clean)
+	}
+	return clean
+}
+
+func displayHomePath(homeDir, path string) string {
+	relative, err := filepath.Rel(homeDir, path)
+	if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return filepath.ToSlash(relative)
+	}
+	return filepath.Clean(path)
+}
+
+func decodeFrontmatter(content []byte, target any) error {
+	normalized := strings.ReplaceAll(string(content), "\r\n", "\n")
+	if !strings.HasPrefix(normalized, "---\n") {
+		return fmt.Errorf("missing opening delimiter")
+	}
+	rest := normalized[len("---\n"):]
+	end := strings.Index(rest, "\n---\n")
+	if end < 0 {
+		return fmt.Errorf("missing closing delimiter")
+	}
+	if err := yaml.Unmarshal([]byte(rest[:end]), target); err != nil {
+		return err
+	}
+	return nil
+}
+
+func safeCompositionPath(root, reference string) (string, error) {
+	if strings.TrimSpace(reference) == "" || filepath.IsAbs(reference) || filepath.VolumeName(reference) != "" {
+		return "", fmt.Errorf("unsafe relative path")
+	}
+	clean := filepath.Clean(filepath.FromSlash(reference))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("unsafe relative path")
+	}
+	fullPath := filepath.Join(root, clean)
+	relative, err := filepath.Rel(root, fullPath)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("unsafe relative path")
+	}
+	return fullPath, nil
 }

@@ -150,13 +150,24 @@ func canonicalOpenCodeResolvedWorkflow(profile string) ResolvedWorkflow {
 		roles = append(roles, ir.Role{ID: role, Objective: "Execute " + string(role) + "."})
 		bindings = append(bindings, SkillBinding{Role: role, Skill: skill, Mode: SkillModeFallbackRead, Path: "skills/" + openCodeSemanticName(skill) + "/SKILL.md", Hash: "hash-" + openCodeSemanticName(skill)})
 	}
-	return ResolvedWorkflow{
+	resolved := ResolvedWorkflow{
 		Target: "opencode", Profile: profile, GenerationFingerprint: strings.Repeat("b", 64),
-		Capabilities: qualifiedOpenCodeProfile(profile), AllowedAssetKinds: []AssetKind{AssetInstruction, AssetCommand, AssetAgent},
+		Capabilities: qualifiedOpenCodeProfile(profile), AllowedAssetKinds: []AssetKind{AssetInstruction, AssetCommand, AssetAgent, AssetRule, AssetSkill},
 		AllowedPermissions: []string{"tool/question"}, Extensions: openCodeExtensions(profile),
 		Workflow:    ir.WorkflowIR{SchemaVersion: ir.MustParseVersion("1.0.0"), ID: "workflow/sdd", Version: ir.MustParseVersion("1.0.0"), Roles: roles},
 		Composition: Composition{RootIndex: "sdd-root/index.md", Modules: []string{"sdd-root/contracts.md"}, SkillBindings: bindings, SharedContract: "skills/_shared/contract.md", ProfileOverlay: "profiles/" + profile + ".md", QualityTemplate: "quality/plan-template.json"},
 	}
+	resolved.Composition.OperationalAssets = []CompositionAsset{
+		{ID: "asset/root-index", Class: ir.AssetRootIndex, Path: resolved.Composition.RootIndex, Content: []byte("root")},
+		{ID: "asset/root-module/contracts", Class: ir.AssetRootModule, Path: resolved.Composition.Modules[0], Content: []byte("contracts")},
+		{ID: "asset/shared-contract", Class: ir.AssetSharedContract, Path: resolved.Composition.SharedContract, Content: []byte("shared")},
+		{ID: "asset/profile-overlay", Class: ir.AssetProfileOverlay, Path: resolved.Composition.ProfileOverlay, Content: []byte("overlay")},
+		{ID: "asset/quality-template", Class: ir.AssetQualityTemplate, Path: resolved.Composition.QualityTemplate, Content: []byte("quality")},
+	}
+	for _, binding := range bindings {
+		resolved.Composition.OperationalAssets = append(resolved.Composition.OperationalAssets, CompositionAsset{ID: ir.SemanticID("asset/" + string(binding.Skill)), Class: ir.AssetSkill, Path: binding.Path, Content: []byte(binding.Skill)})
+	}
+	return resolved
 }
 
 func qualifiedOpenCodeProfile(profile string) []resolution.Resolution {

@@ -49,8 +49,27 @@ func TestOperationalCatalogIsCompleteDeterministicAndFingerprinted(t *testing.T)
 			t.Fatalf("transverse retained asset %q missing", id)
 		}
 	}
-	if got, want := string(a.Contents["asset/skill/orchestrator"]), string(a.Contents["asset/root-index"]); got != want {
-		t.Fatal("orchestrator skill must reuse the canonical root index bytes")
+	orchestrator := string(a.Contents["asset/skill/orchestrator"])
+	root := string(a.Contents["asset/root-index"])
+	if orchestrator == root {
+		t.Fatal("orchestrator skill must have its own identity, not reuse root index bytes")
+	}
+	for _, marker := range []string{
+		"---\nname: orchestrator\n",
+		"description:",
+		"# SDD Orchestrator — Operational Index",
+	} {
+		if !strings.Contains(orchestrator, marker) {
+			t.Errorf("orchestrator skill missing identity marker %q", marker)
+		}
+	}
+	if !strings.HasPrefix(orchestrator, "---\n") || strings.Count(orchestrator, "---\n") < 2 {
+		t.Fatal("orchestrator skill must contain OpenCode YAML frontmatter")
+	}
+	for _, phase := range []string{"init", "explore", "propose", "spec", "design", "tasks", "apply", "verify", "archive"} {
+		if !strings.Contains(orchestrator, "| "+phase+" |") {
+			t.Errorf("orchestrator skill missing canonical phase %q", phase)
+		}
 	}
 	for _, spec := range a.Catalog.Assets {
 		if strings.Contains(string(a.Contents[spec.ID]), "mem_") {

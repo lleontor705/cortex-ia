@@ -480,6 +480,70 @@ func TestInstallIdempotentCortexOnlyDoesNotCreateModelOrPackageFiles(t *testing.
 	}
 }
 
+func TestInstallNoOpReinstallPreservesWorkflowLockInventory(t *testing.T) {
+	homeDir := t.TempDir()
+	foreignPath := filepath.Join(homeDir, "operator-owned.txt")
+	if err := os.WriteFile(foreignPath, []byte("keep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	selection := model.Selection{
+		Agents:     []model.AgentID{model.AgentCodex},
+		Components: []model.ComponentID{model.ComponentSDD},
+	}
+	registry := newTestRegistry()
+
+	first, err := Install(homeDir, registry, selection, "test-v1", false)
+	if err != nil {
+		t.Fatalf("first Install() error = %v\nErrors: %v", err, first.Errors)
+	}
+	firstLock, err := state.LoadLock(homeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(firstLock.Files) == 0 {
+		t.Fatal("first install produced an empty workflow lock inventory")
+	}
+
+	second, err := Install(homeDir, registry, selection, "test-v1", false)
+	if err != nil {
+		t.Fatalf("second Install() error = %v\nErrors: %v", err, second.Errors)
+	}
+	for _, asset := range second.WorkflowPlan.Inventory {
+		for _, reported := range second.FilesChanged {
+			if reported == asset.Path {
+				t.Fatalf("no-op workflow asset %q leaked into current FilesChanged reports %v", asset.Path, second.FilesChanged)
+			}
+		}
+	}
+	secondLock, err := state.LoadLock(homeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(secondLock.Files, firstLock.Files) {
+		t.Fatalf("no-op reinstall lock files = %v, want preserved inventory %v", secondLock.Files, firstLock.Files)
+	}
+	for _, tracked := range secondLock.Files {
+		if tracked == foreignPath {
+			t.Fatalf("lock claimed unrelated on-disk file %q", foreignPath)
+		}
+	}
+}
+
+func TestDurableInstallFilesCollapsesKnownSourcesAndAppliesDeletes(t *testing.T) {
+	prior := []string{"prior.md", "delete.md", "prior.md"}
+	workflow := PreparedWorkflowInstall{Plan: sddinstall.Plan{
+		Inventory: []sddinstall.AssetInventory{{Path: "workflow.md"}, {Path: "prior.md"}},
+		Deletes:   []sddinstall.Effect{{Path: "delete.md"}},
+	}}
+	reported := []string{"reported.md", "workflow.md", "reported.md"}
+
+	got := durableInstallFiles(prior, workflow, reported)
+	want := []string{"prior.md", "workflow.md", "reported.md"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("durableInstallFiles() = %v, want collapsed known inventory %v", got, want)
+	}
+}
+
 func TestInstallPostBackupStatusTargetConflictPreservesConfigAndMetadata(t *testing.T) {
 	homeDir := t.TempDir()
 	configPath := filepath.Join(homeDir, ".codex", "config.toml")
@@ -653,7 +717,10 @@ func TestInstallReceiptFailureRestoresWorkflowPreimage(t *testing.T) {
 	boom := errors.New("injected workflow apply failure")
 	deps := defaultInstallDependencies()
 	deps.prepareWorkflow = func(context.Context, WorkflowRequest) (PreparedWorkflowInstall, error) {
-		return PreparedWorkflowInstall{Plan: sddinstall.Plan{Updates: []sddinstall.Effect{{Path: "workflow.md"}}}}, nil
+		return PreparedWorkflowInstall{Plan: sddinstall.Plan{
+			Updates: []sddinstall.Effect{{Path: "workflow.md"}},
+			Backup:  sddinstall.BackupScope{Required: true, Paths: []string{"workflow.md"}},
+		}}, nil
 	}
 	deps.applyWorkflow = func(PreparedWorkflowInstall) (sddinstall.Receipt, error) {
 		if err := os.WriteFile(workflowPath, []byte("workflow after\n"), 0o600); err != nil {
@@ -669,6 +736,24 @@ func TestInstallReceiptFailureRestoresWorkflowPreimage(t *testing.T) {
 		t.Fatalf("Install() = (%+v, %v), want workflow failure with backup evidence", result, err)
 	}
 	assertInstallCoordinatorPreimages(t, before)
+}
+
+func TestInstallSkipsNoOpComponentWithoutDeclaredTargets(t *testing.T) {
+	homeDir := t.TempDir()
+	result, err := Install(homeDir, newTestRegistry(), model.Selection{
+		Agents:     []model.AgentID{model.AgentOpenCode},
+		Components: []model.ComponentID{model.ComponentSkills},
+	}, "test-v1", false)
+	if err != nil {
+		t.Fatalf("Install() error = %v\nErrors: %v", err, result.Errors)
+	}
+	if len(result.Errors) != 0 {
+		t.Fatalf("Install() produced warnings: %v", result.Errors)
+	}
+	skillsRoot := filepath.Join(homeDir, ".config", "opencode", "skills")
+	if entries, readErr := os.ReadDir(skillsRoot); readErr == nil && len(entries) != 0 {
+		t.Fatalf("no-op skills step wrote files under %s: %v", skillsRoot, entries)
+	}
 }
 
 func TestInstallChainWaitsForPeerBeforeRestoring(t *testing.T) {

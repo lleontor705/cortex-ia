@@ -187,14 +187,16 @@ func Materialize(input MaterializerInput) ([]MaterializedAsset, []string, error)
 			return nil, nil, err
 		}
 	}
-	for _, role := range canonicalRoles {
-		route, err := input.Models.ModelFor(role)
-		if err != nil {
-			aliases := map[ir.SemanticID]ir.SemanticID{"role/explore": "role/investigate", "role/proposal": "role/draft-proposal", "role/spec": "role/write-specs", "role/design": "role/architect", "role/tasks": "role/decompose", "role/apply": "role/implement", "role/verify": "role/validate", "role/archive": "role/finalize"}
-			route, err = input.Models.ModelFor(aliases[role])
-		}
-		if err != nil || route.PrimaryID == "" || route.Primary.Provider == "" || route.Primary.Model == "" || len(route.Evidence) == 0 || (route.Requested.AllowFallback && route.Fallback == nil) {
-			return nil, nil, fmt.Errorf("model route %q requires primary and fallback", role)
+	if len(input.Models.Routes) > 0 {
+		for _, role := range canonicalRoles {
+			route, err := input.Models.ModelFor(role)
+			if err != nil {
+				aliases := map[ir.SemanticID]ir.SemanticID{"role/explore": "role/investigate", "role/proposal": "role/draft-proposal", "role/spec": "role/write-specs", "role/design": "role/architect", "role/tasks": "role/decompose", "role/apply": "role/implement", "role/verify": "role/validate", "role/archive": "role/finalize"}
+				route, err = input.Models.ModelFor(aliases[role])
+			}
+			if err != nil || route.PrimaryID == "" || route.Primary.Provider == "" || route.Primary.Model == "" || len(route.Evidence) == 0 || (route.Requested.AllowFallback && route.Fallback == nil) {
+				return nil, nil, fmt.Errorf("model route %q requires primary and fallback", role)
+			}
 		}
 	}
 	slices.SortFunc(assets, func(a, b MaterializedAsset) int { return strings.Compare(string(a.ID), string(b.ID)) })
@@ -206,10 +208,16 @@ func materializedRoleContent(role ir.SemanticID, binding SkillBinding, primary, 
 	if binding.Mode == SkillModeNativePreload {
 		firstAction = fmt.Sprintf("First phase action: load native skill preload `%s` before any phase work.", binding.Path)
 	}
+	if primary == "" {
+		primary = "(none)"
+	}
 	return []byte(fmt.Sprintf("# Role %s\n\nCanonical skill: `%s`\nLoad mode: `%s`\nModel: `%s` (fallback `%s`)\n\n%s\nContinue phase work only after the mapped skill is loaded.\n", role, binding.Path, binding.Mode, primary, fallback, firstAction))
 }
 
 func routeForRole(models ModelTable, role ir.SemanticID) (ModelRoute, error) {
+	if len(models.Routes) == 0 {
+		return ModelRoute{}, nil
+	}
 	if route, err := models.ModelFor(role); err == nil {
 		if route.PrimaryID != "" {
 			return route, nil

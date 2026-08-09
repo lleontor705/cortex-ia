@@ -15,6 +15,7 @@ import (
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
+	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
@@ -286,7 +287,7 @@ type tomlServerDefinition struct {
 
 var tomlServersByName = map[string]tomlServerDefinition{
 	"cortex":    {command: "cortex", args: []string{"mcp", "--tools=agent"}},
-	"forgespec": {command: "npx", args: []string{"-y", "forgespec-mcp"}},
+	"forgespec": {command: "npx", args: []string{"-y", forgespeccomp.QualifiedNPMPackage}},
 	"context7":  {command: "npx", args: []string{"-y", "@upstash/context7-mcp"}},
 }
 

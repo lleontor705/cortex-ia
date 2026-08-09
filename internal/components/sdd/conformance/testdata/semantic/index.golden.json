@@ -6,25 +6,25 @@
       {
         "semantic_id": "asset/contract/phase-envelope",
         "scope": "workflow-root",
-        "path": ".claude/contracts/phase-envelope.json",
+        "path": ".claude/.cortex-ia/contracts/phase-envelope.json",
         "sha256": "6d3395f3698400ec3bacb255f8e53712fcadc4abffcc430cb01e4de710999e3c"
       },
       {
         "semantic_id": "asset/contract/phase-schema",
         "scope": "workflow-root",
-        "path": ".claude/contracts/phase-schema.json",
+        "path": ".claude/.cortex-ia/contracts/phase-schema.json",
         "sha256": "02f09afbe6667dcadb0a62022d60c7c9be28d4b91245590ba186fd4344c19564"
       },
       {
         "semantic_id": "asset/contract/policy",
         "scope": "workflow-root",
-        "path": ".claude/contracts/policy.json",
+        "path": ".claude/.cortex-ia/contracts/policy.json",
         "sha256": "abbe57eeb9e713e9dfce5632c7f2eadcb1affe7a03d013c07a670a25d4a36134"
       },
       {
         "semantic_id": "asset/contract/status-vocabulary",
         "scope": "workflow-root",
-        "path": ".claude/contracts/status-vocabulary.json",
+        "path": ".claude/.cortex-ia/contracts/status-vocabulary.json",
         "sha256": "fd583d9fa3b8b212f7f3c2876989dae479f895bbbacf01b526dde1794046b2c6"
       },
       {
@@ -54,7 +54,7 @@
       {
         "semantic_id": "asset/quality-template",
         "scope": "workflow-root",
-        "path": ".claude/generated/quality-plan-template.md",
+        "path": ".claude/quality/generated/quality-plan-template.md",
         "sha256": "8537b38d23f43f17accbfb834b623958a2459f5839f57a9a29812533715b9ee6"
       },
       {
@@ -327,7 +327,7 @@
         "semantic_id": "asset/skill/orchestrator",
         "scope": "workflow-root",
         "path": ".claude/skills/orchestrator/SKILL.md",
-        "sha256": "d5285952944ae33d2d37e9791aba65e487cbf18d435ea6f1e2c6007b47248482"
+        "sha256": "18614a09bdc7ba527dd1a409e55b99ddecb9207e15361258813cf0368f0a888a"
       },
       {
         "semantic_id": "asset/skill/parallel-dispatch",
@@ -363,7 +363,7 @@
         "semantic_id": "claude/composition",
         "scope": "workflow-root",
         "path": ".claude/.cortex-ia/composition.json",
-        "sha256": "8ef2588be3d663523fbe82f5578460cdf258afd0be6782e464df2c7d022e6fb7"
+        "sha256": "c8f70755d51daa13819456cd8ec0eb078c4c9597efe9b4dd7e091ecafba7ef05"
       },
       {
         "semantic_id": "claude/instruction/root",
@@ -375,34 +375,34 @@
         "semantic_id": "claude/manifest/degradation-json",
         "scope": "manifest",
         "path": ".claude/.cortex-ia/degradation-manifest.json",
-        "sha256": "a17ca701de6616f2a34b6f10c1ec79d9babc305885923c3da44bd9432d71dfdd"
+        "sha256": "292830a2dc3211c7922e8829882f8a52d194ac890932a16c77c87f571328d991"
       },
       {
         "semantic_id": "claude/manifest/degradation-markdown",
         "scope": "manifest",
         "path": ".claude/.cortex-ia/degradation-manifest.md",
-        "sha256": "1c087aa3fdf7dcca7e5a3516c1d529a64b33ee1dfe249386e164afc04cee7636"
+        "sha256": "607693e760ef2fbc68c96d43a7143cdce0458d2798200f3a53b0e06c5a1abceb"
       },
       {
         "semantic_id": "claude/manifest/security-json",
         "scope": "manifest",
         "path": ".claude/.cortex-ia/security-manifest.json",
-        "sha256": "2007731090aa166018266eb37eaa4a4f3201d61795b97e736f98502bab9735f0"
+        "sha256": "9b92528c7816e8ed6ebcaa1b2a17fa29d6d0ca9bed1d8abd14bbbe8b4293c036"
       },
       {
         "semantic_id": "claude/manifest/security-markdown",
         "scope": "manifest",
         "path": ".claude/.cortex-ia/security-manifest.md",
-        "sha256": "e3a780bfdd1ed20661687e3b3329b2c2397116ddd2e847d583a27c1dc534d341"
+        "sha256": "f0e68ad42b19e18ca18dfbf8b780b4dd2ed2864a052e34499d2bc2d083759c7a"
       },
       {
         "semantic_id": "claude/manifest/semantic",
         "scope": "workflow-root",
         "path": ".claude/.cortex-ia/semantic-manifest.json",
-        "sha256": "9a419242106d0a8342699b480de7567455f5c333b95c7f6fdbb69d1bfc8c25dc"
+        "sha256": "c2f15b8a2cebcb7663a2d5c23ae8406d1d6fa517d90b89f101e4e1143fbc4dc5"
       }
     ],
-    "digest": "sha256:7ef7de66328bd1c06d9e5476e6e1eb1cab1d98f92d74a3656d03ef603f4b3cea"
+    "digest": "sha256:f2bce6329e148ac9a2172cec181873f6cd2968bf1ab49088509453c70c5b3c10"
   },
   {
     "adapter": "codex",
@@ -411,25 +411,25 @@
       {
         "semantic_id": "asset/contract/phase-envelope",
         "scope": "workflow-root",
-        "path": ".codex/contracts/phase-envelope.json",
+        "path": ".codex/.cortex-ia/contracts/phase-envelope.json",
         "sha256": "6d3395f3698400ec3bacb255f8e53712fcadc4abffcc430cb01e4de710999e3c"
       },
       {
         "semantic_id": "asset/contract/phase-schema",
         "scope": "workflow-root",
-        "path": ".codex/contracts/phase-schema.json",
+        "path": ".codex/.cortex-ia/contracts/phase-schema.json",
         "sha256": "02f09afbe6667dcadb0a62022d60c7c9be28d4b91245590ba186fd4344c19564"
       },
       {
         "semantic_id": "asset/contract/policy",
         "scope": "workflow-root",
-        "path": ".codex/contracts/policy.json",
+        "path": ".codex/.cortex-ia/contracts/policy.json",
         "sha256": "abbe57eeb9e713e9dfce5632c7f2eadcb1affe7a03d013c07a670a25d4a36134"
       },
       {
         "semantic_id": "asset/contract/status-vocabulary",
         "scope": "workflow-root",
-        "path": ".codex/contracts/status-vocabulary.json",
+        "path": ".codex/.cortex-ia/contracts/status-vocabulary.json",
         "sha256": "fd583d9fa3b8b212f7f3c2876989dae479f895bbbacf01b526dde1794046b2c6"
       },
       {
@@ -459,7 +459,7 @@
       {
         "semantic_id": "asset/quality-template",
         "scope": "workflow-root",
-        "path": ".codex/generated/quality-plan-template.md",
+        "path": ".codex/quality/generated/quality-plan-template.md",
         "sha256": "8537b38d23f43f17accbfb834b623958a2459f5839f57a9a29812533715b9ee6"
       },
       {
@@ -732,7 +732,7 @@
         "semantic_id": "asset/skill/orchestrator",
         "scope": "workflow-root",
         "path": ".codex/skills/orchestrator/SKILL.md",
-        "sha256": "d5285952944ae33d2d37e9791aba65e487cbf18d435ea6f1e2c6007b47248482"
+        "sha256": "392e3b33374ccd93cf59cfaad106f99e9151c70421f8a49c11a05291d99a9748"
       },
       {
         "semantic_id": "asset/skill/parallel-dispatch",
@@ -768,13 +768,13 @@
         "semantic_id": "codex/composition",
         "scope": "workflow-root",
         "path": ".codex/.cortex-ia/composition.json",
-        "sha256": "3fccdd64ea75bd159fe27cc693c6795eccbb67795a512e4f9fcfedfc1b25b3b3"
+        "sha256": "ace0789bc7f3f94d9dc9eabc1dc9599360398b146a503f1a2ed15a5d38142b56"
       },
       {
         "semantic_id": "codex/instruction/root",
         "scope": "workflow-root",
         "path": ".codex/AGENTS.md",
-        "sha256": "d676ff1538d222e00e121cfeaeacbee262cd643929e9d6d7efc13168c7445b90",
+        "sha256": "b698ec2498a8d71fc1241e3858a2637a60047dbc400e6cf1d1e39e04d0fa2133",
         "permissions": [
           "filesystem/read",
           "filesystem/write",
@@ -790,7 +790,7 @@
         "semantic_id": "codex/manifest/bundle",
         "scope": "workflow-root",
         "path": ".codex/manifests/bundle.json",
-        "sha256": "ab0f423ff8dad787026a123bbf150ef4bbbd73b290fe3bf6098fd4866d7b8191",
+        "sha256": "9eb9b94559ac139110d5329f8b5eae0ec5eac9d4632254b7284c7f4edb92fec2",
         "permissions": [
           "filesystem/read",
           "filesystem/write",
@@ -870,7 +870,7 @@
         "semantic_id": "codex/manifest/semantic",
         "scope": "workflow-root",
         "path": ".codex/manifests/semantic.json",
-        "sha256": "fb908735c6400d62a94540838a9dc2f713237dc8b33a04cc6b952b023b0a2215",
+        "sha256": "2a64b7926819c14df29d89ead5872083b23ea76221f6420808b19980e107150c",
         "permissions": [
           "filesystem/read",
           "filesystem/write",
@@ -883,7 +883,7 @@
         ]
       }
     ],
-    "digest": "sha256:14a38e0df4c694f0133b3a38d44a0974fb66802f2fc967409a19954e711979f6"
+    "digest": "sha256:f946fc80ae9683dc2fd4ebbc737b9e5f809b4e923d430b8d886f3c8288799bb1"
   },
   {
     "adapter": "opencode",
@@ -892,25 +892,25 @@
       {
         "semantic_id": "asset/contract/phase-envelope",
         "scope": "workflow-root",
-        "path": ".config/opencode/contracts/phase-envelope.json",
+        "path": ".config/opencode/.cortex-ia/contracts/phase-envelope.json",
         "sha256": "6d3395f3698400ec3bacb255f8e53712fcadc4abffcc430cb01e4de710999e3c"
       },
       {
         "semantic_id": "asset/contract/phase-schema",
         "scope": "workflow-root",
-        "path": ".config/opencode/contracts/phase-schema.json",
+        "path": ".config/opencode/.cortex-ia/contracts/phase-schema.json",
         "sha256": "02f09afbe6667dcadb0a62022d60c7c9be28d4b91245590ba186fd4344c19564"
       },
       {
         "semantic_id": "asset/contract/policy",
         "scope": "workflow-root",
-        "path": ".config/opencode/contracts/policy.json",
+        "path": ".config/opencode/.cortex-ia/contracts/policy.json",
         "sha256": "abbe57eeb9e713e9dfce5632c7f2eadcb1affe7a03d013c07a670a25d4a36134"
       },
       {
         "semantic_id": "asset/contract/status-vocabulary",
         "scope": "workflow-root",
-        "path": ".config/opencode/contracts/status-vocabulary.json",
+        "path": ".config/opencode/.cortex-ia/contracts/status-vocabulary.json",
         "sha256": "fd583d9fa3b8b212f7f3c2876989dae479f895bbbacf01b526dde1794046b2c6"
       },
       {
@@ -1027,7 +1027,7 @@
         "semantic_id": "asset/opencode/instruction/root",
         "scope": "workflow-root",
         "path": ".config/opencode/AGENTS.md",
-        "sha256": "ebf9ebaa9a80c2989bad3f3042c10c7a55baa3755d56c4bf2b621f3fd2a52268"
+        "sha256": "91b1c60f6b039b07c01c41bb381a8da2a8d07bf64fdd436d691525e0e09c023c"
       },
       {
         "semantic_id": "asset/profile-overlay/portable-sequential",
@@ -1038,7 +1038,7 @@
       {
         "semantic_id": "asset/quality-template",
         "scope": "workflow-root",
-        "path": ".config/opencode/generated/quality-plan-template.md",
+        "path": ".config/opencode/quality/generated/quality-plan-template.md",
         "sha256": "8537b38d23f43f17accbfb834b623958a2459f5839f57a9a29812533715b9ee6"
       },
       {
@@ -1311,7 +1311,7 @@
         "semantic_id": "asset/skill/orchestrator",
         "scope": "workflow-root",
         "path": ".config/opencode/skills/orchestrator/SKILL.md",
-        "sha256": "d5285952944ae33d2d37e9791aba65e487cbf18d435ea6f1e2c6007b47248482"
+        "sha256": "667f9dfa60d5487009220aa0161ab85be6c0fbc4c5d9f002bb1dcb3ca209d07c"
       },
       {
         "semantic_id": "asset/skill/parallel-dispatch",
@@ -1407,10 +1407,10 @@
         "semantic_id": "opencode/composition",
         "scope": "workflow-root",
         "path": ".config/opencode/.cortex-ia/composition.json",
-        "sha256": "5f6112f6d16212c8b07e13af181e856436e4261f6adb2c2cf658e20525bdfffb"
+        "sha256": "909e1f6478ecdbc063f6cc815fda0c341faa5af96ea49ed7dda077b93c89946d"
       }
     ],
-    "digest": "sha256:666838fcec2fae29db14ad648ac08c017878bd51d2558efa741b970650c25256"
+    "digest": "sha256:99ecdcdffc703f54d916df0b93bb94209e0f14bb1b474c4ce6363575b5d204da"
   },
   {
     "adapter": "vscode",
@@ -1419,25 +1419,25 @@
       {
         "semantic_id": "asset/contract/phase-envelope",
         "scope": "workflow-root",
-        "path": ".copilot/contracts/phase-envelope.json",
+        "path": ".copilot/.cortex-ia/contracts/phase-envelope.json",
         "sha256": "6d3395f3698400ec3bacb255f8e53712fcadc4abffcc430cb01e4de710999e3c"
       },
       {
         "semantic_id": "asset/contract/phase-schema",
         "scope": "workflow-root",
-        "path": ".copilot/contracts/phase-schema.json",
+        "path": ".copilot/.cortex-ia/contracts/phase-schema.json",
         "sha256": "02f09afbe6667dcadb0a62022d60c7c9be28d4b91245590ba186fd4344c19564"
       },
       {
         "semantic_id": "asset/contract/policy",
         "scope": "workflow-root",
-        "path": ".copilot/contracts/policy.json",
+        "path": ".copilot/.cortex-ia/contracts/policy.json",
         "sha256": "abbe57eeb9e713e9dfce5632c7f2eadcb1affe7a03d013c07a670a25d4a36134"
       },
       {
         "semantic_id": "asset/contract/status-vocabulary",
         "scope": "workflow-root",
-        "path": ".copilot/contracts/status-vocabulary.json",
+        "path": ".copilot/.cortex-ia/contracts/status-vocabulary.json",
         "sha256": "fd583d9fa3b8b212f7f3c2876989dae479f895bbbacf01b526dde1794046b2c6"
       },
       {
@@ -1467,7 +1467,7 @@
       {
         "semantic_id": "asset/quality-template",
         "scope": "workflow-root",
-        "path": ".copilot/generated/quality-plan-template.md",
+        "path": ".copilot/quality/generated/quality-plan-template.md",
         "sha256": "8537b38d23f43f17accbfb834b623958a2459f5839f57a9a29812533715b9ee6"
       },
       {
@@ -1740,7 +1740,7 @@
         "semantic_id": "asset/skill/orchestrator",
         "scope": "workflow-root",
         "path": ".copilot/skills/orchestrator/SKILL.md",
-        "sha256": "d5285952944ae33d2d37e9791aba65e487cbf18d435ea6f1e2c6007b47248482"
+        "sha256": "228e75962dad112f44b903d6365f70847ae8746835717819573f9872877ac341"
       },
       {
         "semantic_id": "asset/skill/parallel-dispatch",
@@ -1810,21 +1810,21 @@
         "semantic_id": "manifest/vscode/security-json",
         "scope": "manifest",
         "path": ".copilot/manifests/security.json",
-        "sha256": "ed82bf7472c448d8446420c98c55d27a573d6860a299e1cb493929d50013d20a"
+        "sha256": "6ce767992e229840d3cb3254d5829e963d9743c49e8b884342db269e9d0ee2bf"
       },
       {
         "semantic_id": "manifest/vscode/semantic",
         "scope": "workflow-root",
         "path": ".copilot/manifests/semantic.json",
-        "sha256": "532a2046da4b4470369b6eb81c067eedd818bb01b3f8c4f3f2f726de7a6c2ad0"
+        "sha256": "4980f1733164de604f745a2a909d95e349cd53ea3ee9cc29ed9b1ce0a9c6e3d4"
       },
       {
         "semantic_id": "vscode/composition",
         "scope": "workflow-root",
         "path": ".copilot/.cortex-ia/composition.json",
-        "sha256": "5a468cffa9f23057624244965171f5bf7054ec4e4215ac0cea03a87f7a69b5fd"
+        "sha256": "efc4f8da013f8ab5b01f9335fc84ddeb7c8de548b4b7ca2f7263d33976068f8a"
       }
     ],
-    "digest": "sha256:7141e74d6d1416d358d72f073bf86dc6700f6c66a74973cc1a44cf4014f16d5e"
+    "digest": "sha256:b4c2ed97ab742679d6cb18075c09087f31fa3cb079c620584b5688a927c6c025"
   }
 ]

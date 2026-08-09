@@ -59,52 +59,33 @@ func runDetect() error {
 }
 
 func runInstall(args []string) error {
+	selection, local, help, err := parseInstallArgs(args)
+	if err != nil {
+		return err
+	}
+	if help {
+		printHelp()
+		return nil
+	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("cannot determine home directory: %w", err)
 	}
 
-	selection := model.Selection{
-		Preset: model.PresetFull,
-	}
-
-	// Parse flags.
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--agent":
-			if i+1 >= len(args) {
-				return fmt.Errorf("flag --agent requires a value")
+	if local {
+		cwd, _ := os.Getwd()
+		cfg, _, err := config.FindProjectConfig(cwd)
+		if err != nil {
+			return fmt.Errorf("load project config: %w", err)
+		}
+		if cfg != nil {
+			if err := config.ApplyToSelection(cfg, &selection); err != nil {
+				return fmt.Errorf("apply project config: %w", err)
 			}
-			i++
-			selection.Agents = append(selection.Agents, model.AgentID(args[i]))
-		case "--preset":
-			if i+1 >= len(args) {
-				return fmt.Errorf("flag --preset requires a value")
-			}
-			i++
-			selection.Preset = model.PresetID(args[i])
-		case "--persona":
-			if i+1 >= len(args) {
-				return fmt.Errorf("flag --persona requires a value (professional, mentor, minimal)")
-			}
-			i++
-			selection.Persona = model.PersonaID(args[i])
-		case "--local":
-			cwd, _ := os.Getwd()
-			cfg, _, err := config.FindProjectConfig(cwd)
-			if err != nil {
-				return fmt.Errorf("load project config: %w", err)
-			}
-			if cfg != nil {
-				if err := config.ApplyToSelection(cfg, &selection); err != nil {
-					return fmt.Errorf("apply project config: %w", err)
-				}
-				fmt.Println("Loaded project config from .cortex-ia.yaml")
-			} else {
-				fmt.Println("No .cortex-ia.yaml found. Run 'cortex-ia init' first.")
-			}
-		case "--dry-run":
-			selection.DryRun = true
+			fmt.Println("Loaded project config from .cortex-ia.yaml")
+		} else {
+			fmt.Println("No .cortex-ia.yaml found. Run 'cortex-ia init' first.")
 		}
 	}
 
@@ -140,6 +121,47 @@ func runInstall(args []string) error {
 	}
 
 	return installErr
+}
+
+func parseInstallArgs(args []string) (model.Selection, bool, bool, error) {
+	selection := model.Selection{Preset: model.PresetFull}
+	local := false
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			return selection, false, true, nil
+		}
+	}
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--agent":
+			if i+1 >= len(args) {
+				return selection, local, false, fmt.Errorf("flag --agent requires a value")
+			}
+			i++
+			selection.Agents = append(selection.Agents, model.AgentID(args[i]))
+		case "--preset":
+			if i+1 >= len(args) {
+				return selection, local, false, fmt.Errorf("flag --preset requires a value")
+			}
+			i++
+			selection.Preset = model.PresetID(args[i])
+		case "--persona":
+			if i+1 >= len(args) {
+				return selection, local, false, fmt.Errorf("flag --persona requires a value (professional, mentor, minimal)")
+			}
+			i++
+			selection.Persona = model.PersonaID(args[i])
+		case "--local":
+			local = true
+		case "--dry-run":
+			selection.DryRun = true
+		default:
+			return selection, local, false, fmt.Errorf("unknown flag: %s", args[i])
+		}
+	}
+
+	return selection, local, false, nil
 }
 
 func runDoctor() error {

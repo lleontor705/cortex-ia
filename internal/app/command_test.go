@@ -4,10 +4,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/config"
+	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
 func TestRunCLI_RemovedGGACommand(t *testing.T) {
@@ -93,6 +95,86 @@ func TestPreflightCLIGeminiClientIsRejected(t *testing.T) {
 	var unsupported UnsupportedClientError
 	if !errors.As(err, &unsupported) {
 		t.Fatalf("preflightCLI() error = %v, want UnsupportedClientError", err)
+	}
+}
+
+func TestRunCLIInstallHelpReturnsBeforeHomeResolutionOrInstallation(t *testing.T) {
+	for _, args := range [][]string{{"--help"}, {"-h"}, {"--unknown", "--help"}} {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			t.Setenv("HOME", "")
+			t.Setenv("USERPROFILE", "")
+
+			var installErr error
+			output := captureStdout(t, func() {
+				installErr = runCLI(append([]string{"install"}, args...))
+			})
+			if installErr != nil {
+				t.Fatalf("runCLI(install %v) error = %v, want nil", args, installErr)
+			}
+			if !strings.Contains(output, "Usage:") || !strings.Contains(output, "cortex-ia install") {
+				t.Fatalf("runCLI(install %v) output = %q, want install help", args, output)
+			}
+			if strings.Contains(output, "Auto-detected agents:") || strings.Contains(output, "Installation complete.") {
+				t.Fatalf("runCLI(install %v) continued into detection or installation: %q", args, output)
+			}
+		})
+	}
+}
+
+func TestRunCLIInstallUnknownFlagFailsBeforeHomeResolutionOrMutation(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+
+	err := runCLI([]string{"install", "--unknown"})
+	if err == nil || !strings.Contains(err.Error(), "unknown flag: --unknown") {
+		t.Fatalf("runInstall unknown flag error = %v, want unknown-flag error", err)
+	}
+	entries, readErr := os.ReadDir(homeDir)
+	if readErr != nil {
+		t.Fatalf("read temporary home: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("unknown flag mutated home before failing: %v", entries)
+	}
+
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	err = runCLI([]string{"install", "--still-unknown"})
+	if err == nil || !strings.Contains(err.Error(), "unknown flag: --still-unknown") {
+		t.Fatalf("runInstall resolved home before parsing unknown flag: %v", err)
+	}
+}
+
+func TestParseInstallArgsPreservesValidFlags(t *testing.T) {
+	selection, local, help, err := parseInstallArgs([]string{
+		"--agent", "opencode",
+		"--agent", "codex",
+		"--preset", "minimal",
+		"--persona", "mentor",
+		"--local",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("parseInstallArgs() error = %v", err)
+	}
+	if help {
+		t.Fatal("parseInstallArgs() help = true, want false")
+	}
+	if !local {
+		t.Fatal("parseInstallArgs() local = false, want true")
+	}
+	if got, want := selection.Agents, []model.AgentID{model.AgentOpenCode, model.AgentCodex}; !slices.Equal(got, want) {
+		t.Fatalf("parseInstallArgs() agents = %v, want %v", got, want)
+	}
+	if selection.Preset != model.PresetMinimal {
+		t.Fatalf("parseInstallArgs() preset = %q, want %q", selection.Preset, model.PresetMinimal)
+	}
+	if selection.Persona != model.PersonaMentor {
+		t.Fatalf("parseInstallArgs() persona = %q, want %q", selection.Persona, model.PersonaMentor)
+	}
+	if !selection.DryRun {
+		t.Fatal("parseInstallArgs() dry-run = false, want true")
 	}
 }
 
