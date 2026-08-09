@@ -82,7 +82,7 @@ func TestGauntletFiveStageOverlayPreservesNinePhases(t *testing.T) {
 			t.Errorf("overlay missing stage %q", stage)
 		}
 	}
-	for _, phase := range []string{"init", "explore", "propose", "spec", "design", "tasks", "apply", "verify", "archive"} {
+	for _, phase := range []string{"bootstrap", "investigate", "propose", "spec", "design", "tasks", "apply", "verify", "archive"} {
 		if !strings.Contains(assets, phase) {
 			t.Errorf("overlay does not preserve phase %q", phase)
 		}

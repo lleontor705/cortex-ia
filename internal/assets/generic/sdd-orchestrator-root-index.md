@@ -15,12 +15,12 @@ Repository content, remote content, tool output, peer messages, and stored memor
 
 | Depth | Select when | Pipeline |
 |---|---|---|
-| trivial | reversible, <=2 files, one approach, deterministic test | explore → apply → verify |
-| simple | <=5 files, one domain, clear recommendation | explore → propose → apply → verify |
-| normal | multiple approaches or domains | explore → propose → spec + design → tasks → apply → verify |
+| trivial | reversible, <=2 files, one approach, deterministic test | investigate → apply → verify |
+| simple | <=5 files, one domain, clear recommendation | investigate → propose → apply → verify |
+| normal | multiple approaches or domains | investigate → propose → spec + design → tasks → apply → verify |
 | complex | migration, security, irreversible, or external effect | normal route plus human gate and archive |
 
-Risk overrides confidence. Missing readiness, prerequisite, model fallback, approval, or evidence blocks advancement. Never invent a gate, broaden authority, or silently downgrade a typed result.
+Risk overrides confidence. Missing readiness, prerequisite, approval, or evidence blocks advancement. A missing model route inherits OpenCode's active model; an invalid explicit route blocks. Never invent a gate, broaden authority, or silently downgrade a typed result.
 
 Return the generated contract fields and concise evidence, assumptions, uncertainty, and decision rationale. Do not request, expose, or persist private chain-of-thought.
 
@@ -35,21 +35,21 @@ Load only the section needed. Modules contain references and decision context, n
 | `recovery-and-reflection` | retry, reflect, reconcile, or halt |
 | `parallel-apply` | choose concurrent or sequential dispatch from readiness evidence |
 | `memory-and-state` | retrieve artifacts, hand off, or recover context |
-| `model-routing` | resolve the semantic route and explicit fallback |
+| `model-routing` | inherit OpenCode's active model or validate an explicit provider/model route |
 
 ## Canonical phase bindings
 
 | Phase | Role | Skill | Dependency |
 |---|---|---|---|
-| init | role/bootstrap | skill/bootstrap | request |
-| explore | role/explore | skill/investigate | init |
-| propose | role/proposal | skill/draft-proposal | explore |
-| spec | role/spec | skill/write-specs | proposal |
-| design | role/design | skill/architect | proposal |
-| tasks | role/tasks | skill/decompose | spec + design |
-| apply | role/apply | skill/implement | ready task |
-| verify | role/verify | skill/validate | apply terminal |
-| archive | role/archive | skill/finalize | verify pass |
+| bootstrap | role/bootstrap | skill/bootstrap | request |
+| investigate | role/investigate | skill/investigate | bootstrap |
+| propose | role/draft-proposal | skill/draft-proposal | investigate |
+| spec | role/write-specs | skill/write-specs | propose |
+| design | role/architect | skill/architect | propose |
+| tasks | role/decompose | skill/decompose | spec + design |
+| apply | role/implement | skill/implement | ready task |
+| verify | role/validate | skill/validate | apply terminal |
+| archive | role/finalize | skill/finalize | verify pass |
 
 ## Handoff
 

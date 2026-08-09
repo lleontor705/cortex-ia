@@ -108,6 +108,122 @@ func TestPlannerBacksUpChangedTargetsOwnershipAndCompatibilityMetadata(t *testin
 	}
 }
 
+func TestApplierPromotesAndVerifiesLegacyOpenCodeOwnershipBeforeRetirement(t *testing.T) {
+	root := t.TempDir()
+	path := ".config/opencode/agents/implement.md"
+	content := []byte("unchanged\n")
+	writeTarget(t, root, path, content, 0o600)
+	writeLegacyOwnership(t, root, path, "asset/opencode/agent/implement", content)
+	evidence, err := NewOwnershipStore(root).ReadEvidence(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := NewPlanner(root).Plan(PlanRequest{
+		Bundle: bundleWithAsset(path, "asset/opencode/agent/implement", content),
+		Managed: []ManagedAsset{{
+			Path: path, Ownership: evidence.Ownership, Base: evidence.Base, Mode: 0o600,
+			OwnershipPath: evidence.OwnershipPath, BasePath: evidence.BasePath,
+			OwnershipSHA256: evidence.OwnershipSHA256, BaseSHA256: evidence.BaseSHA256, LegacyOwnership: true,
+		}},
+		Profile: "portable-flat", OwnershipMarkers: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := NewApplier(root, filepath.Join(t.TempDir(), "backups")).Apply(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.BackupVerified || receipt.State != ReceiptCommitted {
+		t.Fatalf("receipt = %+v", receipt)
+	}
+	promoted, err := NewOwnershipStore(root).ReadEvidence(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if promoted.Legacy || string(promoted.Base) != string(content) {
+		t.Fatalf("promoted evidence = %+v, base %q", promoted, promoted.Base)
+	}
+	for _, legacy := range []string{path + sidecarSuffix, path + baseSuffix} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(legacy))); !os.IsNotExist(err) {
+			t.Fatalf("legacy evidence %q was not retired: %v", legacy, err)
+		}
+	}
+}
+
+func TestRollbackRestoresLegacyOpenCodeOwnershipAfterPromotion(t *testing.T) {
+	root := t.TempDir()
+	path := ".config/opencode/agents/implement.md"
+	content := []byte("unchanged\n")
+	writeTarget(t, root, path, content, 0o600)
+	writeLegacyOwnership(t, root, path, "asset/opencode/agent/implement", content)
+	evidence, err := NewOwnershipStore(root).ReadEvidence(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := NewPlanner(root).Plan(PlanRequest{
+		Bundle: bundleWithAsset(path, "asset/opencode/agent/implement", content),
+		Managed: []ManagedAsset{{
+			Path: path, Ownership: evidence.Ownership, Base: evidence.Base, Mode: 0o600,
+			OwnershipPath: evidence.OwnershipPath, BasePath: evidence.BasePath,
+			OwnershipSHA256: evidence.OwnershipSHA256, BaseSHA256: evidence.BaseSHA256, LegacyOwnership: true,
+		}},
+		Profile: "portable-flat", OwnershipMarkers: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := NewApplier(root, filepath.Join(t.TempDir(), "backups")).Apply(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Rollback(receipt, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	for _, legacy := range []string{path + sidecarSuffix, path + baseSuffix} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(legacy))); err != nil {
+			t.Fatalf("legacy evidence %q was not restored: %v", legacy, err)
+		}
+	}
+	canonicalOwnership, canonicalBase, err := NewOwnershipStore(root).paths(path, OwnershipScopeAsset, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{canonicalOwnership, canonicalBase} {
+		if _, err := os.Stat(relative); !os.IsNotExist(err) {
+			t.Fatalf("canonical evidence %q remains after rollback: %v", relative, err)
+		}
+	}
+}
+
+func TestApplierDeleteRetiresSelectedOwnershipEvidence(t *testing.T) {
+	root := t.TempDir()
+	path := ".config/opencode/generic/root/contracts.md"
+	content := []byte("legacy\n")
+	writeTarget(t, root, path, content, 0o600)
+	writeLegacyOwnership(t, root, path, "asset/opencode/legacy/contracts", content)
+	evidence, err := NewOwnershipStore(root).ReadEvidence(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := NewPlanner(root).Plan(PlanRequest{Bundle: renderers.Bundle{}, Managed: []ManagedAsset{{
+		Path: path, Ownership: evidence.Ownership, Base: evidence.Base, Mode: 0o600,
+		OwnershipPath: evidence.OwnershipPath, BasePath: evidence.BasePath,
+		OwnershipSHA256: evidence.OwnershipSHA256, BaseSHA256: evidence.BaseSHA256, LegacyOwnership: true,
+	}}, Profile: "portable-flat", OwnershipMarkers: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewApplier(root, filepath.Join(t.TempDir(), "backups")).Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{path, evidence.OwnershipPath, evidence.BasePath} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relative))); !os.IsNotExist(err) {
+			t.Fatalf("deleted managed path %q remains: %v", relative, err)
+		}
+	}
+}
+
 func manifestOriginalPaths(manifest backup.Manifest) []string {
 	paths := make([]string, len(manifest.Entries))
 	for i, entry := range manifest.Entries {

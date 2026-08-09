@@ -260,11 +260,11 @@ func validInput(t *testing.T) Input {
 		"id":             "workflow/sdd",
 		"version":        "1.0.0",
 		"roles": []any{
-			map[string]any{"id": "role/spec", "objective": "Specify behavior"},
+			map[string]any{"id": "role/write-specs", "objective": "Specify behavior"},
 			map[string]any{"id": "role/implement", "objective": "Implement behavior"},
 		},
 		"phases": []any{
-			map[string]any{"id": "phase/spec", "role": "role/spec"},
+			map[string]any{"id": "phase/spec", "role": "role/write-specs"},
 			map[string]any{"id": "phase/apply", "role": "role/implement", "depends_on": []any{"phase/spec", "phase/spec"}},
 		},
 		"tools": []any{map[string]any{"id": "tool/test/run", "required": true}},

@@ -6,7 +6,7 @@ override deepens. Missing evidence blocks.
 Gauntlet c > b > a: read_only; no_side_effect; evidence_missing;
 conflicting_facts; reason code. Stages: constitutional preflight; requirement quality; blueprint handoff; deterministic gates; bounded remediation.
 
-Phases: init, explore, propose, spec, design, tasks, apply, verify, archive. Reject
+Phases: bootstrap, investigate, propose, spec, design, tasks, apply, verify, archive. Reject
 tenth phase, new WorkflowIR phase, ears parser. Minion aliases;
 orchestrator alone routes; reference-only, sequential by default, disjoint read-only.
 

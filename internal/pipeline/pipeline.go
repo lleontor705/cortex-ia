@@ -21,6 +21,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/mailbox"
 	"github.com/lleontor705/cortex-ia/internal/components/persona"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	skillscomp "github.com/lleontor705/cortex-ia/internal/components/skills"
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -53,6 +54,8 @@ type InstallResult struct {
 // It gives same-package tests deterministic failure boundaries without making
 // production behavior or state-package operations mutable process globals.
 type installDependencies struct {
+	qualifyCapabilities   func(context.Context, []agents.Adapter, time.Time, []capability.CapabilityID) map[model.AgentID][]capability.CapabilityFact
+	now                   func() time.Time
 	prepareWorkflow       func(context.Context, WorkflowRequest) (PreparedWorkflowInstall, error)
 	applyWorkflow         func(PreparedWorkflowInstall) (sddinstall.Receipt, error)
 	invokeComponent       func(model.ComponentID, func() ([]string, error)) ([]string, error)
@@ -70,7 +73,9 @@ type installDependencies struct {
 
 func defaultInstallDependencies() installDependencies {
 	return installDependencies{
-		prepareWorkflow: PrepareWorkflow,
+		qualifyCapabilities: qualifyCapabilities,
+		now:                 func() time.Time { return time.Now().UTC() },
+		prepareWorkflow:     PrepareWorkflow,
 		applyWorkflow: func(workflow PreparedWorkflowInstall) (sddinstall.Receipt, error) {
 			return workflow.Apply()
 		},
@@ -183,9 +188,13 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 			}
 			adapters = append(adapters, adapter)
 		}
+		qualificationTime := deps.now().UTC()
+		qualifiedFacts := deps.qualifyCapabilities(context.Background(), adapters, qualificationTime, nil)
+		evaluationTime := deps.now().UTC()
 		var prepareErr error
 		preparedWorkflow, prepareErr = deps.prepareWorkflow(context.Background(), WorkflowRequest{
 			HomeDir: homeDir, Adapters: adapters, GeneratorVersion: version,
+			CapabilityEvaluationTime: evaluationTime, QualifiedCapabilityFacts: qualifiedFacts,
 		})
 		if prepareErr != nil {
 			return result, prepareErr

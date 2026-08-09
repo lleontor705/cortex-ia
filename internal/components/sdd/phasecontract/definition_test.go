@@ -4,13 +4,18 @@ import "testing"
 
 func TestCanonicalDefinitionsExposeExactlyNinePhases(t *testing.T) {
 	got := CanonicalPhaseIDs()
-	want := []PhaseID{PhaseInit, PhaseExplore, PhasePropose, PhaseSpec, PhaseDesign, PhaseTasks, PhaseApply, PhaseVerify, PhaseArchive}
+	want := []PhaseID{PhaseBootstrap, PhaseInvestigate, PhasePropose, PhaseSpec, PhaseDesign, PhaseTasks, PhaseApply, PhaseVerify, PhaseArchive}
 	if len(got) != len(want) {
 		t.Fatalf("canonical phase count = %d, want %d", len(got), len(want))
 	}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("canonical phase[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	for _, legacy := range []PhaseID{"init", "explore"} {
+		if err := ValidatePhaseID(legacy); err == nil {
+			t.Errorf("legacy phase %q accepted at the canonical boundary", legacy)
 		}
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agents/claude"
 	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
+	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
@@ -196,6 +197,87 @@ func TestService_Apply_AllRemovesState(t *testing.T) {
 	}
 	if len(st.InstalledAgents) != 0 {
 		t.Errorf("state should be empty after All-uninstall, got %v", st.InstalledAgents)
+	}
+}
+
+func TestServiceApplyRemovesOnlyCleanLockedOpenCodeWorkflowAssets(t *testing.T) {
+	home := t.TempDir()
+	writeStateWithAgents(t, home, model.AgentOpenCode)
+	cleanPath := ".config/opencode/agents/implement.md"
+	legacyCleanPath := ".config/opencode/generic/root/contracts.md"
+	dirtyPath := ".config/opencode/commands/customized.md"
+	foreignPath := ".config/opencode/commands/foreign.md"
+	writeOwnedOpenCodeAsset(t, home, cleanPath, []byte("clean\n"), false)
+	writeLegacyOwnedOpenCodeAsset(t, home, legacyCleanPath, []byte("legacy clean\n"))
+	writeOwnedOpenCodeAsset(t, home, dirtyPath, []byte("base\n"), true)
+	writeFileAt(t, home, foreignPath, []byte("foreign\n"))
+	if err := state.SaveLock(home, state.Lockfile{Files: []string{
+		filepath.Join(home, filepath.FromSlash(cleanPath)), legacyCleanPath, dirtyPath, foreignPath,
+		filepath.Join(home, "package.json"), filepath.Join(home, "node_modules"),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := NewServiceWithRegistry(home, newTestRegistry(t)).Apply(Selection{
+		Agents: []model.AgentID{model.AgentOpenCode}, Components: []model.ComponentID{model.ComponentSDD},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, removed := range []string{cleanPath, legacyCleanPath, legacyCleanPath + ".cortex-ia.json", legacyCleanPath + ".cortex-ia.base"} {
+		if _, err := os.Stat(filepath.Join(home, filepath.FromSlash(removed))); !os.IsNotExist(err) {
+			t.Fatalf("clean owned path %q was not removed: %v", removed, err)
+		}
+	}
+	for _, kept := range []string{dirtyPath, foreignPath} {
+		if _, err := os.Stat(filepath.Join(home, filepath.FromSlash(kept))); err != nil {
+			t.Fatalf("uninstall removed retained path %q: %v", kept, err)
+		}
+	}
+	if len(res.RetainedItems) == 0 || res.RetainedItems[0].Path != filepath.Join(home, filepath.FromSlash(dirtyPath)) {
+		t.Fatalf("dirty retention evidence = %+v", res.RetainedItems)
+	}
+}
+
+func writeLegacyOwnedOpenCodeAsset(t *testing.T, home, relative string, content []byte) {
+	t.Helper()
+	writeFileAt(t, home, relative, content)
+	ownership, err := sddinstall.NewOwnership(relative, "1.0.0", "asset/opencode/test/legacy-owned", content, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.MarshalIndent(ownership, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFileAt(t, home, relative+".cortex-ia.json", append(encoded, '\n'))
+	writeFileAt(t, home, relative+".cortex-ia.base", content)
+}
+
+func writeOwnedOpenCodeAsset(t *testing.T, home, relative string, base []byte, dirty bool) {
+	t.Helper()
+	current := base
+	if dirty {
+		current = []byte("operator edit\n")
+	}
+	writeFileAt(t, home, relative, current)
+	ownership, err := sddinstall.NewOwnership(relative, "1.0.0", "asset/opencode/test/owned", base, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sddinstall.NewOwnershipStore(home).Write(ownership, base); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeFileAt(t *testing.T, home, relative string, content []byte) {
+	t.Helper()
+	fullPath := filepath.Join(home, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullPath, content, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

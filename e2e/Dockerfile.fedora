@@ -1,6 +1,14 @@
+FROM golang:1.26.1-bookworm AS go-toolchain
+
 FROM fedora:40
 
-RUN dnf install -y golang git curl nodejs npm && dnf clean all
+# Copy the exact local Go 1.26.1 toolchain from the pinned upstream stage; do
+# not rely on Fedora's golang package, which may drift to an older patch.
+COPY --from=go-toolchain /usr/local/go /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOTOOLCHAIN=local
+
+RUN dnf install -y git curl nodejs npm && dnf clean all
 
 WORKDIR /src
 COPY . .

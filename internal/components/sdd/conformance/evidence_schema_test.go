@@ -33,6 +33,22 @@ func TestEvidenceSchemaAggregatesNineBindingsForEveryMatrixCell(t *testing.T) {
 	if got := len(evidence.Records); got != 108 {
 		t.Fatalf("records = %d, want 108", got)
 	}
+	wantBindings := []PhaseRoleBinding{
+		{Phase: "bootstrap", Role: "bootstrap", Skill: "skills/bootstrap/SKILL.md"},
+		{Phase: "investigate", Role: "investigate", Skill: "skills/investigate/SKILL.md"},
+		{Phase: "propose", Role: "draft-proposal", Skill: "skills/draft-proposal/SKILL.md"},
+		{Phase: "spec", Role: "write-specs", Skill: "skills/write-specs/SKILL.md"},
+		{Phase: "design", Role: "architect", Skill: "skills/architect/SKILL.md"},
+		{Phase: "tasks", Role: "decompose", Skill: "skills/decompose/SKILL.md"},
+		{Phase: "apply", Role: "implement", Skill: "skills/implement/SKILL.md"},
+		{Phase: "verify", Role: "validate", Skill: "skills/validate/SKILL.md"},
+		{Phase: "archive", Role: "finalize", Skill: "skills/finalize/SKILL.md"},
+	}
+	for index, want := range wantBindings {
+		if got := evidence.Records[index].Role; got != want {
+			t.Errorf("binding %d = %+v, want %+v", index, got, want)
+		}
+	}
 	for _, record := range evidence.Records {
 		if record.Role.Phase == "" || record.Role.Skill == "" || record.SemanticAssets == nil ||
 			record.Contract.Version == "" || record.Contract.Fingerprint == "" ||
@@ -40,6 +56,9 @@ func TestEvidenceSchemaAggregatesNineBindingsForEveryMatrixCell(t *testing.T) {
 			record.QualityPlan == "" || record.TrustEvidence == nil || record.Permissions == nil ||
 			record.Destination == "" || record.Disposition == "" {
 			t.Fatalf("incomplete record: %+v", record)
+		}
+		if record.Role.Phase == "init" || record.Role.Phase == "explore" {
+			t.Fatalf("legacy phase leaked into evidence: %+v", record.Role)
 		}
 	}
 }

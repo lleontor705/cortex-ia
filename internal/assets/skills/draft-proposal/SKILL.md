@@ -33,7 +33,7 @@ boundary. It does not become a specification or implementation plan.
 
 ## Activation
 
-Activate only when `sdd/{change}/explore` is available and the operator supplies
+Activate only when `sdd/{change}/investigate` is available and the operator supplies
 the change name and project. Read the complete exploration artifact before
 drafting. If it is missing, return `blocked` and request exploration; do not
 invent scope from the title.

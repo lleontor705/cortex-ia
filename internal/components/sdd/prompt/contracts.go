@@ -96,8 +96,8 @@ type PhaseRoleBinding struct {
 }
 
 var canonicalPhaseRoleBindings = []PhaseRoleBinding{
-	{Phase: "phase/init", Role: "role/bootstrap", Agent: "agent/bootstrap", Skill: "skill/bootstrap"},
-	{Phase: "phase/explore", Role: "role/investigate", Agent: "agent/investigate", Skill: "skill/investigate"},
+	{Phase: "phase/bootstrap", Role: "role/bootstrap", Agent: "agent/bootstrap", Skill: "skill/bootstrap"},
+	{Phase: "phase/investigate", Role: "role/investigate", Agent: "agent/investigate", Skill: "skill/investigate"},
 	{Phase: "phase/propose", Role: "role/draft-proposal", Agent: "agent/draft-proposal", Skill: "skill/draft-proposal"},
 	{Phase: "phase/spec", Role: "role/write-specs", Agent: "agent/write-specs", Skill: "skill/write-specs"},
 	{Phase: "phase/design", Role: "role/architect", Agent: "agent/architect", Skill: "skill/architect"},
@@ -157,8 +157,8 @@ func ValidatePhaseRoleBindings(bindings []PhaseRoleBinding) error {
 	return nil
 }
 
-// canonicalSkillForRole retains compatibility aliases while deriving canonical
-// phase-role skills exclusively from the validated nine-binding inventory.
+// canonicalSkillForRole derives canonical phase-role skills exclusively from
+// the validated nine-binding inventory.
 var canonicalSkillForRole = func() map[ir.SemanticID]ir.SemanticID {
 	bindings := CanonicalPhaseRoleBindings()
 	if err := ValidatePhaseRoleBindings(bindings); err != nil {
@@ -167,13 +167,6 @@ var canonicalSkillForRole = func() map[ir.SemanticID]ir.SemanticID {
 	result := make(map[ir.SemanticID]ir.SemanticID, len(bindings)+8)
 	for _, binding := range bindings {
 		result[binding.Role] = binding.Skill
-	}
-	for alias, role := range map[ir.SemanticID]ir.SemanticID{
-		"role/explore": "role/investigate", "role/proposal": "role/draft-proposal", "role/spec": "role/write-specs",
-		"role/design": "role/architect", "role/tasks": "role/decompose", "role/apply": "role/implement",
-		"role/verify": "role/validate", "role/archive": "role/finalize",
-	} {
-		result[alias] = result[role]
 	}
 	// Utility and coordinator roles are not phase authorities and therefore do
 	// not belong to the nine-binding inventory. They retain deterministic skills

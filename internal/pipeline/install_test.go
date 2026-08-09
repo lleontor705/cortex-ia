@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
+	"github.com/lleontor705/cortex-ia/internal/components/uninstall"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
@@ -526,6 +528,86 @@ func TestInstallNoOpReinstallPreservesWorkflowLockInventory(t *testing.T) {
 		if tracked == foreignPath {
 			t.Fatalf("lock claimed unrelated on-disk file %q", foreignPath)
 		}
+	}
+}
+
+func TestOpenCodeLegacyUpgradeReinstallAndUninstallLifecycle(t *testing.T) {
+	homeDir := t.TempDir()
+	legacyPath := ".config/opencode/generic/root/contracts.md"
+	legacyContent := []byte("legacy internal\n")
+	writeLegacyWorkflowOwnership(t, homeDir, legacyPath, legacyContent)
+	foreign := []string{"package.json", "package-lock.json", ".gitignore", "node_modules/operator.txt"}
+	for _, relative := range foreign {
+		fullPath := filepath.Join(homeDir, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte("foreign\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := state.Save(homeDir, state.State{InstalledAgents: []model.AgentID{model.AgentOpenCode}, Components: []model.ComponentID{model.ComponentSDD}}); err != nil {
+		t.Fatal(err)
+	}
+	locked := []string{filepath.Join(homeDir, filepath.FromSlash(legacyPath))}
+	for _, relative := range foreign {
+		locked = append(locked, filepath.Join(homeDir, filepath.FromSlash(relative)))
+	}
+	if err := state.SaveLock(homeDir, state.Lockfile{InstalledAgents: []model.AgentID{model.AgentOpenCode}, Components: []model.ComponentID{model.ComponentSDD}, Files: locked}); err != nil {
+		t.Fatal(err)
+	}
+
+	selection := model.Selection{Agents: []model.AgentID{model.AgentOpenCode}, Components: []model.ComponentID{model.ComponentSDD}}
+	registry := newTestRegistry()
+	first, err := Install(homeDir, registry, selection, "test-v1", false)
+	if err != nil {
+		t.Fatalf("legacy upgrade: %v; errors: %v", err, first.Errors)
+	}
+	for _, relative := range []string{legacyPath, legacyPath + ".cortex-ia.json", legacyPath + ".cortex-ia.base"} {
+		if _, err := os.Stat(filepath.Join(homeDir, filepath.FromSlash(relative))); !os.IsNotExist(err) {
+			t.Fatalf("legacy path %q survived native-only upgrade: %v", relative, err)
+		}
+	}
+	second, err := Install(homeDir, registry, selection, "test-v1", false)
+	if err != nil {
+		t.Fatalf("native-only reinstall: %v; errors: %v", err, second.Errors)
+	}
+	if second.WorkflowPlan.HasBlockingConflicts() {
+		t.Fatalf("native-only reinstall conflicts: %+v", second.WorkflowPlan.Conflicts)
+	}
+	if _, err := uninstall.NewServiceWithRegistry(homeDir, registry).Apply(uninstall.Selection{Agents: selection.Agents, Components: selection.Components}); err != nil {
+		t.Fatalf("uninstall native-only workflow: %v", err)
+	}
+	for _, relative := range foreign {
+		content, err := os.ReadFile(filepath.Join(homeDir, filepath.FromSlash(relative)))
+		if err != nil || string(content) != "foreign\n" {
+			t.Fatalf("foreign path %q changed across lifecycle: content=%q err=%v", relative, content, err)
+		}
+	}
+}
+
+func writeLegacyWorkflowOwnership(t *testing.T, homeDir, relative string, content []byte) {
+	t.Helper()
+	fullPath := filepath.Join(homeDir, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ownership, err := sddinstall.NewOwnership(relative, "1.0.0", "asset/opencode/legacy/contracts", content, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.MarshalIndent(ownership, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullPath+".cortex-ia.json", append(encoded, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullPath+".cortex-ia.base", content, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

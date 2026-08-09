@@ -118,7 +118,7 @@ Each phase has a minimum confidence for the orchestrator to accept the result wi
 
 | Phase | Minimum Confidence |
 |-------|--------------------|
-| bootstrap / explore | 0.5 |
+| bootstrap / investigate | 0.5 |
 | propose / design | 0.7 |
 | spec / tasks | 0.8 |
 | apply | 0.6 |

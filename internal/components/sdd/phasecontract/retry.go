@@ -6,15 +6,15 @@ import "fmt"
 // Global ceilings are 3 transient, 2 semantic, and 2 no-progress cycles; no
 // profile may exceed them.
 var RetryProfiles = map[PhaseID]RetryPolicy{
-	PhaseBootstrap: {TransientMax: 3, SemanticMax: 1, NoProgressCycles: 1},
-	PhaseExplore:   {TransientMax: 3, SemanticMax: 1, NoProgressCycles: 1},
-	PhaseProposal:  {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 1},
-	PhaseSpec:      {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 1},
-	PhaseDesign:    {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 1},
-	PhaseTasks:     {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 1},
-	PhaseApply:     {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 2},
-	PhaseVerify:    {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 2},
-	PhaseArchive:   {TransientMax: 1, SemanticMax: 1, NoProgressCycles: 1},
+	PhaseBootstrap:   {TransientMax: 3, SemanticMax: 1, NoProgressCycles: 1},
+	PhaseInvestigate: {TransientMax: 3, SemanticMax: 1, NoProgressCycles: 1},
+	PhasePropose:     {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 1},
+	PhaseSpec:        {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 1},
+	PhaseDesign:      {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 1},
+	PhaseTasks:       {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 1},
+	PhaseApply:       {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 2},
+	PhaseVerify:      {TransientMax: 3, SemanticMax: 2, NoProgressCycles: 2},
+	PhaseArchive:     {TransientMax: 1, SemanticMax: 1, NoProgressCycles: 1},
 }
 
 // RetryState tracks the bounded retry counters for one phase execution. It

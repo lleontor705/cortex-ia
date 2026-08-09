@@ -23,7 +23,7 @@ const (
 	VerdictInconclusive VerificationVerdict = "inconclusive"
 )
 
-const CompatibilityVersion = "1.0.0"
+const ContractVersion = "1.0.0"
 
 // CanonicalEnvelope is the versioned, executable contract boundary. The legacy
 // PhaseEnvelope remains available for historical readers; new output uses this
@@ -63,11 +63,10 @@ type Definitions struct {
 	Phases        []PhaseID
 	Statuses      []PhaseStatus
 	Verdicts      []VerificationVerdict
-	Aliases       map[string]PhaseID
 }
 
 func CanonicalPhaseIDs() []PhaseID {
-	return []PhaseID{PhaseInit, PhaseExplore, PhasePropose, PhaseSpec, PhaseDesign, PhaseTasks, PhaseApply, PhaseVerify, PhaseArchive}
+	return []PhaseID{PhaseBootstrap, PhaseInvestigate, PhasePropose, PhaseSpec, PhaseDesign, PhaseTasks, PhaseApply, PhaseVerify, PhaseArchive}
 }
 
 func CanonicalPhaseStatuses() []PhaseStatus {
@@ -80,16 +79,8 @@ func CanonicalVerificationVerdicts() []VerificationVerdict {
 
 func CanonicalDefinitions() Definitions {
 	return Definitions{
-		SchemaVersion: CompatibilityVersion,
+		SchemaVersion: ContractVersion,
 		Phases:        CanonicalPhaseIDs(), Statuses: CanonicalPhaseStatuses(),
-		Verdicts: CanonicalVerificationVerdicts(), Aliases: compatibilityAliases(),
-	}
-}
-
-func compatibilityAliases() map[string]PhaseID {
-	return map[string]PhaseID{
-		"bootstrap": PhaseInit, "investigate": PhaseExplore, "draft-proposal": PhasePropose,
-		"write-specs": PhaseSpec, "architect": PhaseDesign, "decompose": PhaseTasks,
-		"implement": PhaseApply, "validate": PhaseVerify, "finalize": PhaseArchive,
+		Verdicts: CanonicalVerificationVerdicts(),
 	}
 }

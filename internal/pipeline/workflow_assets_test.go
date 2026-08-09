@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,8 +18,12 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
+	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/prompt"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/renderers"
+	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/modelroute"
 )
 
@@ -34,6 +41,21 @@ func TestPrepareWorkflowUsesFreshQualifiedAdapterProfile(t *testing.T) {
 	}
 	if prepared.Plan.Profile != "portable-flat" {
 		t.Fatalf("profile = %q, want strongest fresh adapter-qualified profile", prepared.Plan.Profile)
+	}
+}
+
+func TestWorkflowCapabilityFactsUseRuntimeAsDeterministicGate(t *testing.T) {
+	adapter := opencode.NewAdapter()
+	declared := adapter.CapabilityFacts()
+	qualified := declared[0]
+	qualified.ObservedAt = qualified.ObservedAt.Add(37 * time.Minute)
+	qualified.EvidenceRef = "sha256:runtime-probe"
+
+	got := workflowCapabilityFacts(WorkflowRequest{QualifiedCapabilityFacts: map[model.AgentID][]capability.CapabilityFact{
+		model.AgentOpenCode: {qualified},
+	}}, adapter)
+	if len(got) != 1 || !reflect.DeepEqual(got[0], declared[0]) {
+		t.Fatalf("deterministic emitted facts = %+v, want declared fact %+v", got, declared[0])
 	}
 }
 
@@ -127,6 +149,164 @@ func TestPrepareWorkflowInstallsTenNativeOpenCodeCommands(t *testing.T) {
 	}
 	if _, exists := commands[".config/opencode/commands/run-workflow.md"]; exists {
 		t.Fatal("deprecated run-workflow command is still installed")
+	}
+}
+
+func TestLoadManagedWorkflowAssetsMarksLegacyOpenCodeEvidenceForPromotion(t *testing.T) {
+	home := t.TempDir()
+	path := ".config/opencode/agents/implement.md"
+	content := []byte("legacy\n")
+	metadata, err := sddinstall.NewOwnership(path, "1.0.0", "asset/opencode/agent/implement", content, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for suffix, data := range map[string][]byte{".cortex-ia.json": append(encoded, '\n'), ".cortex-ia.base": content} {
+		fullPath := filepath.Join(home, filepath.FromSlash(path+suffix))
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bundle := renderers.Bundle{Assets: []renderers.Asset{{Path: path, SemanticID: metadata.SemanticID, Content: content, Mode: 0o600}}}
+	managed, err := loadManagedWorkflowAssets(home, bundle, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(managed) != 1 || !managed[0].LegacyOwnership || managed[0].OwnershipPath != path+".cortex-ia.json" {
+		t.Fatalf("managed legacy evidence = %+v", managed)
+	}
+}
+
+func TestLoadManagedWorkflowAssetsIncludesOnlyOwnedPriorLockPaths(t *testing.T) {
+	home := t.TempDir()
+	legacyPath := ".config/opencode/generic/root/contracts.md"
+	content := []byte("legacy internal\n")
+	metadata, err := sddinstall.NewOwnership(legacyPath, "1.0.0", "asset/opencode/legacy/contracts", content, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for suffix, data := range map[string][]byte{".cortex-ia.json": append(encoded, '\n'), ".cortex-ia.base": content} {
+		fullPath := filepath.Join(home, filepath.FromSlash(legacyPath+suffix))
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(home, filepath.FromSlash(legacyPath)), content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	foreign := []string{"package.json", "package-lock.json", ".gitignore", "node_modules", "operator.md"}
+	for _, relative := range foreign[:3] {
+		if err := os.WriteFile(filepath.Join(home, relative), []byte("foreign\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(home, "node_modules"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	locked := append([]string{filepath.Join(home, filepath.FromSlash(legacyPath))}, foreign...)
+
+	managed, err := loadManagedWorkflowAssets(home, renderers.Bundle{}, locked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(managed) != 1 || managed[0].Path != legacyPath || !managed[0].LegacyOwnership {
+		t.Fatalf("managed prior-lock paths = %+v", managed)
+	}
+}
+
+func TestLoadManagedWorkflowAssetsDiscoversOnlyKnownOwnedLegacyNamespaces(t *testing.T) {
+	home := t.TempDir()
+	owned := []string{
+		".config/opencode/.cortex-ia/contracts/phase.json",
+		".config/opencode/contracts/policy.json",
+		".config/opencode/generated/quality-plan-template.md",
+	}
+	for _, relative := range owned {
+		content := []byte("legacy\n")
+		writeWorkflowTarget(t, home, relative, content)
+		writeWorkflowOwnership(t, home, relative, ir.SemanticID("asset/legacy/"+path.Base(relative)), content)
+	}
+	foreign := ".config/opencode/operator/file.md"
+	writeWorkflowTarget(t, home, foreign, []byte("foreign\n"))
+
+	managed, err := loadManagedWorkflowAssets(home, renderers.Bundle{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, 0, len(managed))
+	for _, asset := range managed {
+		got = append(got, asset.Path)
+	}
+	slices.Sort(got)
+	if !reflect.DeepEqual(got, owned) {
+		t.Fatalf("discovered legacy assets = %v, want %v", got, owned)
+	}
+}
+
+func writeWorkflowTarget(t *testing.T, home, relative string, content []byte) {
+	t.Helper()
+	fullPath := filepath.Join(home, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fullPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeWorkflowOwnership(t *testing.T, home, relative string, semanticID ir.SemanticID, content []byte) {
+	t.Helper()
+	metadata, err := sddinstall.NewOwnership(relative, "1.0.0", semanticID, content, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for suffix, data := range map[string][]byte{".cortex-ia.json": append(encoded, '\n'), ".cortex-ia.base": content} {
+		writeWorkflowTarget(t, home, relative+suffix, data)
+	}
+}
+
+func TestPrepareWorkflowKeepsOnlyNativeOpenCodeFilesUnderConfigRoot(t *testing.T) {
+	prepared, err := PrepareWorkflow(context.Background(), WorkflowRequest{
+		HomeDir:          t.TempDir(),
+		Adapters:         []agents.Adapter{opencode.NewAdapter()},
+		RequestedProfile: sdd.ProfilePortableSequential,
+		EvaluationTime:   time.Date(2026, time.August, 7, 12, 0, 0, 0, time.UTC),
+		ModelRoutes:      testModelRoutes(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, asset := range prepared.Bundles[0].Bundle.Assets {
+		if strings.HasPrefix(asset.Path, ".config/opencode/") {
+			relative := strings.TrimPrefix(asset.Path, ".config/opencode/")
+			native := relative == "opencode.json" || relative == "opencode.jsonc" || relative == "AGENTS.md" ||
+				(strings.HasPrefix(relative, "agents/") && strings.HasSuffix(relative, ".md")) ||
+				(strings.HasPrefix(relative, "commands/") && strings.HasSuffix(relative, ".md")) ||
+				(strings.HasPrefix(relative, "skills/") && strings.HasSuffix(relative, "/SKILL.md"))
+			if !native {
+				t.Errorf("non-native asset remained under OpenCode config: %s (%s)", asset.Path, asset.SemanticID)
+			}
+		}
+		if asset.SemanticID == "opencode/composition" && asset.Path != ".cortex-ia/opencode/composition.json" {
+			t.Errorf("composition path = %q", asset.Path)
+		}
 	}
 }
 

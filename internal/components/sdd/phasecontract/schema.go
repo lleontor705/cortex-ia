@@ -7,25 +7,19 @@ import "fmt"
 type PhaseID string
 
 const (
-	PhaseInit    = PhaseID("init")
-	PhaseExplore = PhaseID("explore")
-	PhasePropose = PhaseID("propose")
-	PhaseSpec    = PhaseID("spec")
-	PhaseDesign  = PhaseID("design")
-	PhaseTasks   = PhaseID("tasks")
-	PhaseApply   = PhaseID("apply")
-	PhaseVerify  = PhaseID("verify")
-	PhaseArchive = PhaseID("archive")
-
-	// Deprecated role names remain source-compatible for callers that have not
-	// crossed the explicit compatibility boundary yet. They are canonical values,
-	// not additional phase IDs, and therefore can never be persisted as aliases.
-	PhaseBootstrap = PhaseInit
-	PhaseProposal  = PhasePropose
+	PhaseBootstrap   = PhaseID("bootstrap")
+	PhaseInvestigate = PhaseID("investigate")
+	PhasePropose     = PhaseID("propose")
+	PhaseSpec        = PhaseID("spec")
+	PhaseDesign      = PhaseID("design")
+	PhaseTasks       = PhaseID("tasks")
+	PhaseApply       = PhaseID("apply")
+	PhaseVerify      = PhaseID("verify")
+	PhaseArchive     = PhaseID("archive")
 )
 
 var retainedPhases = map[PhaseID]struct{}{
-	PhaseInit: {}, PhaseExplore: {}, PhasePropose: {}, PhaseSpec: {},
+	PhaseBootstrap: {}, PhaseInvestigate: {}, PhasePropose: {}, PhaseSpec: {},
 	PhaseDesign: {}, PhaseTasks: {}, PhaseApply: {}, PhaseVerify: {}, PhaseArchive: {},
 }
 
@@ -60,18 +54,18 @@ func (i BootstrapInput) Validate() error {
 	return nil
 }
 
-// ExploreInput carries the request plus the bootstrap context.
-type ExploreInput struct {
+// InvestigateInput carries the request plus the bootstrap context.
+type InvestigateInput struct {
 	Request   ArtifactRef `json:"request"`
 	Bootstrap ArtifactRef `json:"bootstrap"`
 }
 
-func (i ExploreInput) Validate() error {
+func (i InvestigateInput) Validate() error {
 	if err := i.Request.Validate(); err != nil {
-		return fmt.Errorf("explore request: %w", err)
+		return fmt.Errorf("investigate request: %w", err)
 	}
 	if err := i.Bootstrap.Validate(); err != nil {
-		return fmt.Errorf("explore bootstrap: %w", err)
+		return fmt.Errorf("investigate bootstrap: %w", err)
 	}
 	return nil
 }
@@ -242,11 +236,11 @@ var PhaseSchemas = map[PhaseID]PhaseSchema{
 		Budget: Budget{MaxFileReads: 8, MaxToolCalls: 10},
 		Stops:  StopPolicy{Completion: []string{"context"}, Blocking: []string{"missing-root", "unsafe-probe", "contradiction", "store-unavailable"}, Failure: []string{"fatal"}},
 	},
-	PhaseExplore: {
+	PhaseInvestigate: {
 		Budget: Budget{MaxFileReads: 4, CheckpointAtFiles: 4},
 		Stops:  StopPolicy{Completion: []string{"current-map"}, Blocking: []string{"unsupported-claim", "conflicting-evidence"}, Failure: []string{"fatal"}},
 	},
-	PhaseProposal: {
+	PhasePropose: {
 		Budget: Budget{MaxOutputTokens: 3500},
 		Stops:  StopPolicy{Completion: []string{"proposal"}, Blocking: []string{"unresolved-product-decision", "rollback-absent", "acceptance-unverifiable"}, Failure: []string{"fatal"}},
 	},

@@ -93,3 +93,25 @@ func TestUtilitySkillsRejectDefaultProviderAndHiddenPhaseAuthority(t *testing.T)
 		}
 	}
 }
+
+func TestPlanningUtilitiesNeverDispatchWork(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		output []string
+	}{
+		{name: "debate", output: []string{"plan-only", "deliberation plan"}},
+		{name: "parallel-dispatch", output: []string{"plan-only", "dispatch waves"}},
+	} {
+		content := strings.ToLower(readAsset(t, "internal/assets/skills/"+tc.name+"/SKILL.md"))
+		for _, marker := range tc.output {
+			if !strings.Contains(content, marker) {
+				t.Errorf("%s missing plan output marker %q", tc.name, marker)
+			}
+		}
+		for _, forbidden := range []string{"task()", "native `task`", "dispatch all independent defenders", "dispatch ready units"} {
+			if strings.Contains(content, forbidden) {
+				t.Errorf("%s must not invoke task dispatch: found %q", tc.name, forbidden)
+			}
+		}
+	}
+}

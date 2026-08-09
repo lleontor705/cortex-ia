@@ -81,8 +81,28 @@ func TestReadCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) < 10 {
-		t.Errorf("expected at least 10 commands, got %d", len(entries))
+	if len(entries) != 10 {
+		t.Errorf("expected exactly 10 commands, got %d", len(entries))
+	}
+}
+
+func TestNewChangeDispatchesInitialPhasesAsDirectChildren(t *testing.T) {
+	content, err := Read("opencode/commands/new-change.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{"task", "bootstrap", "investigate", "draft-proposal", "blocked"} {
+		if !strings.Contains(content, marker) {
+			t.Errorf("new-change command missing %q", marker)
+		}
+	}
+	if !(strings.Index(content, "bootstrap") < strings.Index(content, "investigate") && strings.Index(content, "investigate") < strings.Index(content, "draft-proposal")) {
+		t.Error("new-change must dispatch bootstrap, investigate, then draft-proposal")
+	}
+	for _, forbidden := range []string{"skill/bootstrap", "skill/investigate", "skill/draft-proposal", "Read canonical proposal skill", "Draft change proposal"} {
+		if strings.Contains(content, forbidden) {
+			t.Errorf("new-change command must not perform or load child phase work: found %q", forbidden)
+		}
 	}
 }
 

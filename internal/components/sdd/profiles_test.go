@@ -2,6 +2,7 @@ package sdd
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -9,6 +10,18 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
+
+func TestProfilePhaseOrderUsesCanonicalActiveIDs(t *testing.T) {
+	want := []string{"bootstrap", "investigate", "propose", "spec", "design", "tasks", "apply", "verify", "archive"}
+	if got := ProfilePhaseOrder(); !slices.Equal(got, want) {
+		t.Fatalf("ProfilePhaseOrder() = %v, want %v", got, want)
+	}
+	for _, legacy := range []string{"init", "explore", "sdd-init", "sdd-explore"} {
+		if IsKnownPhase(legacy) {
+			t.Errorf("legacy profile phase %q advertised as active", legacy)
+		}
+	}
+}
 
 func TestSelectWorkflowProfile_Goldens(t *testing.T) {
 	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
@@ -201,8 +214,8 @@ func TestParseProfileSpec(t *testing.T) {
 	if len(p.ConfiguredAssignments) != len(ProfilePhaseOrder()) {
 		t.Errorf("expected %d phase assignments, got %d", len(ProfilePhaseOrder()), len(p.ConfiguredAssignments))
 	}
-	if p.ConfiguredAssignments["sdd-design"].FormatOpenCodeModel() != "openai/gpt-4o-mini" {
-		t.Errorf("sdd-design = %#v", p.ConfiguredAssignments["sdd-design"])
+	if p.ConfiguredAssignments["design"].FormatOpenCodeModel() != "openai/gpt-4o-mini" {
+		t.Errorf("design = %#v", p.ConfiguredAssignments["design"])
 	}
 }
 
@@ -215,11 +228,11 @@ func TestParseProfileSpec_Invalid(t *testing.T) {
 }
 
 func TestParseProfilePhaseSpec(t *testing.T) {
-	name, phase, pm, err := ParseProfilePhaseSpec("cheap:sdd-design:provider-test/model-test")
+	name, phase, pm, err := ParseProfilePhaseSpec("cheap:design:provider-test/model-test")
 	if err != nil {
 		t.Fatalf("ParseProfilePhaseSpec: %v", err)
 	}
-	if name != "cheap" || phase != "sdd-design" || pm != "provider-test/model-test" {
+	if name != "cheap" || phase != "design" || pm != "provider-test/model-test" {
 		t.Errorf("got (%q, %q, %q)", name, phase, pm)
 	}
 }

@@ -1,6 +1,7 @@
 package install
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -47,6 +48,102 @@ func TestOwnershipStorePersistsStableSidecarAndInstallBase(t *testing.T) {
 			t.Fatalf("expected sidecar %q: %v", path, err)
 		}
 	}
+}
+
+func TestOwnershipStoreCentralizesOpenCodeEvidence(t *testing.T) {
+	root := t.TempDir()
+	content := []byte("generated command\n")
+	metadata, err := NewOwnership(".config/opencode/commands/implement.md", "1.4.0", "asset/opencode/command/implement", content, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewOwnershipStore(root)
+	if err := store.Write(metadata, content); err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := store.ReadEvidence(metadata.AssetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evidence.Legacy {
+		t.Fatal("new OpenCode ownership was reported as legacy")
+	}
+	if got, want := evidence.OwnershipPath, ".cortex-ia/opencode/ownership/commands/implement.md.cortex-ia.json"; got != want {
+		t.Fatalf("ownership path = %q, want %q", got, want)
+	}
+	if got, want := evidence.BasePath, ".cortex-ia/opencode/ownership/commands/implement.md.cortex-ia.base"; got != want {
+		t.Fatalf("base path = %q, want %q", got, want)
+	}
+	for _, path := range []string{evidence.OwnershipPath, evidence.BasePath} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(path))); err != nil {
+			t.Fatalf("canonical evidence %q: %v", path, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, ".config", "opencode", "commands", "implement.md.cortex-ia.json")); !os.IsNotExist(err) {
+		t.Fatalf("new write created adjacent legacy ownership: %v", err)
+	}
+}
+
+func TestOwnershipStoreFallsBackToAdjacentOpenCodeEvidenceButPrefersCanonical(t *testing.T) {
+	root := t.TempDir()
+	assetPath := ".config/opencode/agents/implement.md"
+	legacyContent := []byte("legacy\n")
+	writeLegacyOwnership(t, root, assetPath, "asset/opencode/agent/implement", legacyContent)
+	store := NewOwnershipStore(root)
+	evidence, err := store.ReadEvidence(assetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !evidence.Legacy || string(evidence.Base) != string(legacyContent) {
+		t.Fatalf("legacy evidence = %+v, base %q", evidence, evidence.Base)
+	}
+	if got, want := evidence.OwnershipPath, assetPath+sidecarSuffix; got != want {
+		t.Fatalf("legacy ownership path = %q, want %q", got, want)
+	}
+	canonicalContent := []byte("canonical\n")
+	canonical, err := NewOwnership(assetPath, "1.4.0", "asset/opencode/agent/implement", canonicalContent, canonicalContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Write(canonical, canonicalContent); err != nil {
+		t.Fatal(err)
+	}
+	evidence, err = store.ReadEvidence(assetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evidence.Legacy || string(evidence.Base) != string(canonicalContent) {
+		t.Fatalf("canonical-first evidence = %+v, base %q", evidence, evidence.Base)
+	}
+}
+
+func TestOwnershipStoreDoesNotMaskCorruptCanonicalEvidenceWithLegacyFallback(t *testing.T) {
+	root := t.TempDir()
+	assetPath := ".config/opencode/agents/implement.md"
+	writeLegacyOwnership(t, root, assetPath, "asset/opencode/agent/implement", []byte("legacy\n"))
+	writeTarget(t, root, ".cortex-ia/opencode/ownership/agents/implement.md.cortex-ia.json", []byte("not json\n"), 0o600)
+
+	evidence, err := NewOwnershipStore(root).ReadEvidence(assetPath)
+	if err == nil {
+		t.Fatalf("ReadEvidence() = %+v, want corrupt canonical error", evidence)
+	}
+	if evidence.Legacy {
+		t.Fatal("corrupt canonical evidence was masked by legacy fallback")
+	}
+}
+
+func writeLegacyOwnership(t *testing.T, root, assetPath string, semanticID ir.SemanticID, content []byte) {
+	t.Helper()
+	metadata, err := NewOwnership(assetPath, "1.0.0", semanticID, content, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTarget(t, root, assetPath+sidecarSuffix, append(encoded, '\n'), 0o600)
+	writeTarget(t, root, assetPath+baseSuffix, content, 0o600)
 }
 
 func TestOwnershipMarkerRoundTripsIdentityAndHashes(t *testing.T) {

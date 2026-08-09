@@ -31,8 +31,8 @@ func ValidateVerificationVerdict(verdict VerificationVerdict) error {
 	return reject("contract/verdict-invalid", fmt.Sprintf("%q is not a canonical verification verdict", verdict))
 }
 
-// ValidateEnvelope rejects aliases and unversioned/free-form terminal terms at
-// the canonical boundary. Compatibility aliases must be decoded first.
+// ValidateEnvelope rejects noncanonical IDs and unversioned/free-form terminal
+// terms at the canonical boundary.
 func ValidateEnvelope(e CanonicalEnvelope) error {
 	if e.SchemaVersion == "" {
 		return reject("contract/schema-version-required", "schema version is required")
@@ -91,22 +91,4 @@ func ValidateEnvelope(e CanonicalEnvelope) error {
 		}
 	}
 	return nil
-}
-
-type CompatibilityEvidence struct {
-	Alias   string `json:"alias"`
-	Version string `json:"version"`
-}
-
-// DecodeCompatibilityAlias is the only supported alias-to-canonical lowering
-// operation. It records evidence so persistence can retain only the PhaseID.
-func DecodeCompatibilityAlias(alias, version string) (PhaseID, CompatibilityEvidence, error) {
-	if version != CompatibilityVersion {
-		return "", CompatibilityEvidence{}, reject("contract/compatibility-version-unsupported", fmt.Sprintf("version %q is unsupported", version))
-	}
-	phase, ok := compatibilityAliases()[alias]
-	if !ok {
-		return "", CompatibilityEvidence{}, reject("contract/compatibility-alias-unknown", fmt.Sprintf("alias %q is unknown", alias))
-	}
-	return phase, CompatibilityEvidence{Alias: alias, Version: version}, nil
 }

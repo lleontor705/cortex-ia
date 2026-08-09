@@ -107,12 +107,12 @@ func TestCheckConventionPresent(t *testing.T) {
 
 func TestCheckConventionPresent_OpenCodeSharedSkills(t *testing.T) {
 	tmpDir := t.TempDir()
-	convDir := filepath.Join(tmpDir, ".config", "opencode", "skills", "_shared")
+	convDir := filepath.Join(tmpDir, ".cortex-ia", "opencode", "contracts", "_shared")
 	mustWriteVerifyFixture(t, filepath.Join(convDir, "cortex-convention.md"), "conv")
 
 	ctx := &Context{HomeDir: tmpDir, Lock: state.Lockfile{InstalledAgents: []model.AgentID{model.AgentOpenCode}}}
 	if err := checkConventionPresent(ctx); err != nil {
-		t.Errorf("expected OpenCode convention path to pass, got: %v", err)
+		t.Errorf("expected canonical OpenCode convention path to pass, got: %v", err)
 	}
 }
 
@@ -263,14 +263,15 @@ func TestCheckOpenCodeComposition_DetectsCorruption(t *testing.T) {
 	}{
 		{name: "malformed JSON", manifest: `{`, want: "parse composition"},
 		{name: "unsafe path", manifest: `{"root_index":"../escape.md"}`, want: "unsafe relative path"},
-		{name: "missing referenced file", removeFile: ".config/opencode/generic/index.md", want: "does not exist"},
-		{name: "untracked referenced file", untrack: ".config/opencode/generic/index.md", want: "not registered in lock"},
+		{name: "legacy internal path", manifest: `{"root_index":".config/opencode/generic/index.md"}`, want: "outside canonical OpenCode state root"},
+		{name: "missing referenced file", removeFile: ".cortex-ia/opencode/root/index.md", want: "does not exist"},
+		{name: "untracked referenced file", untrack: ".cortex-ia/opencode/root/index.md", want: "not registered in lock"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := healthyOpenCodeSDDFixture(t, false)
 			if tt.manifest != "" {
-				path := filepath.Join(ctx.HomeDir, ".config", "opencode", ".cortex-ia", "composition.json")
+				path := filepath.Join(ctx.HomeDir, ".cortex-ia", "opencode", "composition.json")
 				mustWriteVerifyFixture(t, path, tt.manifest)
 			}
 			if tt.removeFile != "" {
@@ -333,22 +334,22 @@ func healthyOpenCodeSDDFixture(t *testing.T, jsonc bool) *Context {
 	}
 	paths := map[string]string{
 		".config/opencode/" + configName:                        config,
-		".config/opencode/generic/index.md":                     "# OpenCode\n",
-		".config/opencode/generic/routing.md":                   "routing\n",
-		".config/opencode/_shared/sdd-phase-contract.md":        "contract\n",
-		".config/opencode/overlays/profile-portable-flat.md":    "profile\n",
-		".config/opencode/quality/quality-activity-template.md": "quality\n",
+		".cortex-ia/opencode/root/index.md":                     "# OpenCode\n",
+		".cortex-ia/opencode/root/routing.md":                   "routing\n",
+		".cortex-ia/opencode/contracts/sdd-phase-contract.md":   "contract\n",
+		".cortex-ia/opencode/overlays/profile-portable-flat.md": "profile\n",
+		".cortex-ia/opencode/quality/quality-template.md":       "quality\n",
 		".config/opencode/skills/orchestrator/SKILL.md":         "---\nname: orchestrator\ndescription: Route SDD work.\n---\n\n# Orchestrator\n",
 	}
 	manifest := `{
-  "root_index": ".config/opencode/generic/index.md",
-  "modules": [".config/opencode/generic/routing.md"],
+  "root_index": ".cortex-ia/opencode/root/index.md",
+  "modules": [".cortex-ia/opencode/root/routing.md"],
   "skill_bindings": [{"role":"role/orchestrator","skill":"skill/orchestrator","mode":"native-on-demand","path":".config/opencode/skills/orchestrator/SKILL.md","hash":"sha256:test"}],
-  "shared_contract": ".config/opencode/_shared/sdd-phase-contract.md",
-  "profile_overlay": ".config/opencode/overlays/profile-portable-flat.md",
-  "quality_template": ".config/opencode/quality/quality-activity-template.md"
+  "shared_contract": ".cortex-ia/opencode/contracts/sdd-phase-contract.md",
+  "profile_overlay": ".cortex-ia/opencode/overlays/profile-portable-flat.md",
+  "quality_template": ".cortex-ia/opencode/quality/quality-template.md"
 }`
-	paths[".config/opencode/.cortex-ia/composition.json"] = manifest
+	paths[".cortex-ia/opencode/composition.json"] = manifest
 	tracked := make([]string, 0, len(paths))
 	for path, content := range paths {
 		mustWriteVerifyFixture(t, filepath.Join(home, filepath.FromSlash(path)), content)

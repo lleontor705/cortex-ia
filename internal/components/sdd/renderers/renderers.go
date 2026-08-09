@@ -199,23 +199,16 @@ type compositionManifestData struct {
 
 var canonicalCompositionSkills = map[ir.SemanticID]ir.SemanticID{
 	"role/orchestrator": "skill/orchestrator",
-	"role/bootstrap":    "skill/bootstrap", "role/explore": "skill/investigate", "role/proposal": "skill/draft-proposal",
-	"role/spec": "skill/write-specs", "role/design": "skill/architect", "role/tasks": "skill/decompose",
-	"role/apply": "skill/implement", "role/verify": "skill/validate", "role/archive": "skill/finalize",
-	"role/investigate": "skill/investigate", "role/draft-proposal": "skill/draft-proposal", "role/write-specs": "skill/write-specs",
+	"role/bootstrap":    "skill/bootstrap",
+	"role/investigate":  "skill/investigate", "role/draft-proposal": "skill/draft-proposal", "role/write-specs": "skill/write-specs",
 	"role/architect": "skill/architect", "role/decompose": "skill/decompose", "role/implement": "skill/implement",
 	"role/validate": "skill/validate", "role/finalize": "skill/finalize", "role/debate": "skill/debate",
 	"role/parallel-dispatch": "skill/parallel-dispatch",
 }
 
 func compositionSkillBinding(composition Composition, role ir.SemanticID) (SkillBinding, bool) {
-	aliases := map[ir.SemanticID]ir.SemanticID{
-		"role/investigate": "role/explore", "role/draft-proposal": "role/proposal", "role/write-specs": "role/spec",
-		"role/architect": "role/design", "role/decompose": "role/tasks", "role/implement": "role/apply",
-		"role/validate": "role/verify", "role/finalize": "role/archive",
-	}
 	for _, binding := range composition.SkillBindings {
-		if binding.Role == role || binding.Role == aliases[role] {
+		if binding.Role == role {
 			return binding, true
 		}
 	}
@@ -258,15 +251,7 @@ func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset,
 		byRole[binding.Role] = binding
 	}
 	for _, role := range resolved.Workflow.Roles {
-		lookup := role.ID
-		if _, ok := byRole[lookup]; !ok {
-			lookup = map[ir.SemanticID]ir.SemanticID{
-				"role/investigate": "role/explore", "role/draft-proposal": "role/proposal", "role/write-specs": "role/spec",
-				"role/architect": "role/design", "role/decompose": "role/tasks", "role/implement": "role/apply",
-				"role/validate": "role/verify", "role/finalize": "role/archive",
-			}[role.ID]
-		}
-		if _, ok := byRole[lookup]; !ok {
+		if _, ok := byRole[role.ID]; !ok {
 			return nil, fmt.Errorf("composition is missing skill binding for role %q", role.ID)
 		}
 	}
@@ -329,7 +314,11 @@ func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset,
 			return nil, mapErr
 		}
 		lowered = append(lowered, loweredCompositionAsset{class: common.Class, source: common.Path, path: mapped.Relative})
-		assets = append(assets, Asset{Path: mapped.Relative, SemanticID: common.ID, Kind: assetKind, Content: bytes.Clone(common.Content), Mode: 0o644, Permissions: slices.Clone(common.Permissions), Metadata: slices.Clone(common.Metadata)})
+		content := bytes.Clone(common.Content)
+		if resolved.Target == "opencode" {
+			content = rewriteOpenCodeInternalReferences(content)
+		}
+		assets = append(assets, Asset{Path: mapped.Relative, SemanticID: common.ID, Kind: assetKind, Content: content, Mode: 0o644, Permissions: slices.Clone(common.Permissions), Metadata: slices.Clone(common.Metadata)})
 	}
 	resolveReference := func(name, reference string, class ir.AssetClass) (string, error) {
 		matches := make([]string, 0, 1)
@@ -387,8 +376,20 @@ func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset,
 	if err != nil {
 		return nil, fmt.Errorf("marshal composition manifest: %w", err)
 	}
-	assets = append(assets, Asset{Path: ".cortex-ia/composition.json", SemanticID: ir.SemanticID(string(resolved.Target) + "/composition"), Kind: kind, Content: append(data, '\n'), Mode: 0o644})
+	compositionPath := ".cortex-ia/composition.json"
+	if assetMap.CompositionPath != "" {
+		compositionPath = assetMap.CompositionPath
+	}
+	assets = append(assets, Asset{Path: compositionPath, SemanticID: ir.SemanticID(string(resolved.Target) + "/composition"), Kind: kind, Content: append(data, '\n'), Mode: 0o644})
 	return assets, nil
+}
+
+func rewriteOpenCodeInternalReferences(content []byte) []byte {
+	replacer := strings.NewReplacer(
+		".config/opencode/_shared/", ".cortex-ia/opencode/contracts/_shared/",
+		"skills/_shared/", ".cortex-ia/opencode/contracts/_shared/",
+	)
+	return []byte(replacer.Replace(string(content)))
 }
 
 func hasQualityPlan(plan quality.QualityPlan) bool {

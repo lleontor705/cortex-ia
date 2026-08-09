@@ -20,10 +20,15 @@ import (
 // installation. Base and Ownership are used to distinguish clean managed
 // content from customization or corrupt ownership evidence.
 type ManagedAsset struct {
-	Path      string
-	Ownership Ownership
-	Base      []byte
-	Mode      fs.FileMode
+	Path            string
+	Ownership       Ownership
+	Base            []byte
+	Mode            fs.FileMode
+	OwnershipPath   string
+	BasePath        string
+	OwnershipSHA256 string
+	BaseSHA256      string
+	LegacyOwnership bool
 }
 
 // PlanRequest contains all inputs that affect persistent installation. The
@@ -100,6 +105,23 @@ type Plan struct {
 	GeneratorVersion         string
 	Metadata                 json.RawMessage
 	Inventory                []AssetInventory
+	OwnershipMigrations      []OwnershipMigration
+}
+
+// OwnershipMigration promotes selected legacy adjacent evidence to the
+// canonical store. Apply verifies and backs up both locations before retiring
+// either legacy file.
+type OwnershipMigration struct {
+	AssetPath              string
+	SemanticID             ir.SemanticID
+	LegacyOwnershipPath    string
+	LegacyBasePath         string
+	CanonicalOwnershipPath string
+	CanonicalBasePath      string
+	LegacyOwnershipSHA256  string
+	LegacyBaseSHA256       string
+	Ownership              Ownership
+	Base                   []byte
 }
 
 // AssetInventory is the receipt/planner evidence for every selected asset,
@@ -155,6 +177,13 @@ func (p Planner) Plan(request PlanRequest) (Plan, error) {
 		current, mode, exists, err := p.read(asset.Path)
 		if err != nil {
 			return Plan{}, err
+		}
+		if previous, ok := managed[asset.Path]; ok && previous.LegacyOwnership {
+			migration, migrationErr := newOwnershipMigration(previous)
+			if migrationErr != nil {
+				return Plan{}, migrationErr
+			}
+			plan.OwnershipMigrations = append(plan.OwnershipMigrations, migration)
 		}
 		if !exists {
 			plan.Creates = append(plan.Creates, newEffect(asset.Path, asset.SemanticID, nil, asset.Content, 0, asset.Mode))
@@ -244,7 +273,11 @@ func (p Planner) Plan(request PlanRequest) (Plan, error) {
 	for _, effect := range plan.Creates {
 		backupPaths = append(backupPaths, effect.Path)
 		if request.OwnershipMarkers {
-			backupPaths = append(backupPaths, effect.Path+sidecarSuffix, effect.Path+baseSuffix)
+			ownershipPath, basePath, pathErr := ownershipPaths(effect.Path, OwnershipScopeAsset, effect.SemanticID, false)
+			if pathErr != nil {
+				return Plan{}, pathErr
+			}
+			backupPaths = append(backupPaths, ownershipPath, basePath)
 		}
 	}
 	for _, effect := range plan.Updates {
@@ -254,6 +287,12 @@ func (p Planner) Plan(request PlanRequest) (Plan, error) {
 	for _, effect := range plan.Deletes {
 		backupPaths = append(backupPaths, effect.Path)
 		backupPaths = append(backupPaths, ownershipBackupPaths(managed[effect.Path])...)
+	}
+	for _, migration := range plan.OwnershipMigrations {
+		backupPaths = append(backupPaths,
+			migration.LegacyOwnershipPath, migration.LegacyBasePath,
+			migration.CanonicalOwnershipPath, migration.CanonicalBasePath,
+		)
 	}
 	if len(backupPaths) != 0 {
 		for _, path := range request.CompatibilityMetadata {
@@ -312,11 +351,14 @@ func ownershipBackupPaths(asset ManagedAsset) []string {
 	if asset.Path == "" {
 		return nil
 	}
-	if asset.Ownership.Scope == OwnershipScopeRegion {
-		regionSuffix := ".cortex-ia.region." + SHA256([]byte(asset.Ownership.SemanticID))
-		return []string{asset.Path + regionSuffix + ".json", asset.Path + regionSuffix + ".base"}
+	if asset.OwnershipPath != "" || asset.BasePath != "" {
+		return []string{asset.OwnershipPath, asset.BasePath}
 	}
-	return []string{asset.Path + sidecarSuffix, asset.Path + baseSuffix}
+	paths, basePaths, err := ownershipPaths(asset.Path, asset.Ownership.Scope, asset.Ownership.SemanticID, false)
+	if err != nil {
+		return nil
+	}
+	return []string{paths, basePaths}
 }
 
 func (p Planner) attachOwnershipPreconditions(effect *Effect, asset ManagedAsset) error {
@@ -342,9 +384,51 @@ func (p Planner) attachOwnershipPreconditions(effect *Effect, asset ManagedAsset
 	}
 	effect.OwnershipPath = paths[0]
 	effect.BasePath = paths[1]
-	effect.OwnershipSHA256 = SHA256(ownership)
-	effect.BaseSHA256 = SHA256(base)
+	effect.OwnershipSHA256 = asset.OwnershipSHA256
+	if effect.OwnershipSHA256 == "" {
+		effect.OwnershipSHA256 = SHA256(ownership)
+	}
+	effect.BaseSHA256 = asset.BaseSHA256
+	if effect.BaseSHA256 == "" {
+		effect.BaseSHA256 = SHA256(base)
+	}
 	return nil
+}
+
+func newOwnershipMigration(asset ManagedAsset) (OwnershipMigration, error) {
+	if !asset.LegacyOwnership {
+		return OwnershipMigration{}, errors.New("ownership migration requires legacy evidence")
+	}
+	if !isOpenCodeAsset(asset.Path) || asset.Ownership.AssetPath != asset.Path {
+		return OwnershipMigration{}, fmt.Errorf("managed asset %q has invalid legacy ownership identity", asset.Path)
+	}
+	if !validSHA256(asset.OwnershipSHA256) || !validSHA256(asset.BaseSHA256) {
+		return OwnershipMigration{}, fmt.Errorf("managed asset %q has invalid legacy evidence hashes", asset.Path)
+	}
+	if SHA256(asset.Base) != asset.Ownership.BaseSHA256 {
+		return OwnershipMigration{}, fmt.Errorf("managed asset %q has corrupt legacy ownership base", asset.Path)
+	}
+	legacyOwnershipPath, legacyBasePath, err := ownershipPaths(asset.Path, asset.Ownership.Scope, asset.Ownership.SemanticID, true)
+	if err != nil {
+		return OwnershipMigration{}, err
+	}
+	canonicalOwnershipPath, canonicalBasePath, err := ownershipPaths(asset.Path, asset.Ownership.Scope, asset.Ownership.SemanticID, false)
+	if err != nil {
+		return OwnershipMigration{}, err
+	}
+	if asset.OwnershipPath != "" {
+		legacyOwnershipPath = asset.OwnershipPath
+	}
+	if asset.BasePath != "" {
+		legacyBasePath = asset.BasePath
+	}
+	return OwnershipMigration{
+		AssetPath: asset.Path, SemanticID: asset.Ownership.SemanticID,
+		LegacyOwnershipPath: legacyOwnershipPath, LegacyBasePath: legacyBasePath,
+		CanonicalOwnershipPath: canonicalOwnershipPath, CanonicalBasePath: canonicalBasePath,
+		LegacyOwnershipSHA256: asset.OwnershipSHA256, LegacyBaseSHA256: asset.BaseSHA256,
+		Ownership: asset.Ownership, Base: bytes.Clone(asset.Base),
+	}, nil
 }
 
 func (p Planner) read(path string) ([]byte, fs.FileMode, bool, error) {
@@ -411,6 +495,7 @@ func normalizePlan(plan *Plan) {
 	slices.SortFunc(plan.Conflicts, func(left, right PlanConflict) int { return strings.Compare(left.Path, right.Path) })
 	slices.SortFunc(plan.PermissionChanges, func(left, right PermissionChange) int { return strings.Compare(left.Path, right.Path) })
 	slices.SortFunc(plan.Inventory, func(left, right AssetInventory) int { return strings.Compare(left.Path, right.Path) })
+	slices.SortFunc(plan.OwnershipMigrations, func(left, right OwnershipMigration) int { return strings.Compare(left.AssetPath, right.AssetPath) })
 }
 
 func compareEffects(left, right Effect) int { return strings.Compare(left.Path, right.Path) }

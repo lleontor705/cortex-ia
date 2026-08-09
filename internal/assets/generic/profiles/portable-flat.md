@@ -4,7 +4,7 @@ Applies when direct children are available for read/planning but worktree isolat
 
 ## Read and Planning
 
-Direct children MAY be used for read-only exploration and planning phases (bootstrap, explore, propose, spec, design, tasks).
+Direct children MAY be used for read-only investigation and planning phases (bootstrap, investigate, propose, spec, design, tasks).
 
 ## Parallel Apply
 

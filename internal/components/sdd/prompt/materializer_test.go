@@ -32,7 +32,7 @@ func TestMaterializeRejectsMissingRequiredAssetBeforeEffects(t *testing.T) {
 
 func TestMaterializeIntersectsRolePermissionsFailClosed(t *testing.T) {
 	catalog := ir.AssetCatalog{SchemaVersion: ir.AssetCatalogSchema.Current, Assets: []ir.AssetSpec{{ID: "asset/root", Class: ir.AssetRootIndex, SourcePath: "root.md", Required: true, SHA256: "hash"}}}
-	workflow := ir.WorkflowIR{Roles: []ir.Role{{ID: "role/apply", Objective: "apply", AllowedEffects: []ir.Effect{"filesystem/read", "filesystem/write"}}}}
+	workflow := ir.WorkflowIR{Roles: []ir.Role{{ID: "role/implement", Objective: "apply", AllowedEffects: []ir.Effect{"filesystem/read", "filesystem/write"}}}}
 	routes := make([]ModelRoute, 0, len(canonicalRoles))
 	for _, role := range canonicalRoles {
 		routes = append(routes, qualifiedRoute(role))
@@ -42,7 +42,7 @@ func TestMaterializeIntersectsRolePermissionsFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, asset := range assets {
-		if asset.ID == "asset/role/apply/binding" && len(asset.Permissions) != 1 {
+		if asset.ID == "asset/role/implement/binding" && len(asset.Permissions) != 1 {
 			t.Fatalf("permissions widened: %v", asset.Permissions)
 		}
 	}

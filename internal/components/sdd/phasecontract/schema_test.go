@@ -23,16 +23,16 @@ func TestBootstrapInputValidateRequiresRequestAndProbes(t *testing.T) {
 	}
 }
 
-func TestExploreInputValidateRequiresRequestAndBootstrap(t *testing.T) {
-	valid := ExploreInput{
+func TestInvestigateInputValidateRequiresRequestAndBootstrap(t *testing.T) {
+	valid := InvestigateInput{
 		Request:   ArtifactRef{SHA256: "req", Trust: trusted},
 		Bootstrap: ArtifactRef{SHA256: "bs", Trust: trusted},
 	}
 	if err := valid.Validate(); err != nil {
-		t.Fatalf("valid ExploreInput.Validate() error = %v", err)
+		t.Fatalf("valid InvestigateInput.Validate() error = %v", err)
 	}
-	if err := (ExploreInput{}).Validate(); err == nil {
-		t.Fatal("empty ExploreInput.Validate() error = nil, want rejection")
+	if err := (InvestigateInput{}).Validate(); err == nil {
+		t.Fatal("empty InvestigateInput.Validate() error = nil, want rejection")
 	}
 }
 
@@ -169,14 +169,14 @@ func TestPhaseSchemasMatchDesignBudgetTable(t *testing.T) {
 		maxReads  int
 		maxCalls  int
 	}{
-		PhaseBootstrap: {maxReads: 8, maxCalls: 10},
-		PhaseExplore:   {maxReads: 4, maxCalls: 0},
-		PhaseProposal:  {maxOutput: 3500},
-		PhaseSpec:      {maxOutput: 3500},
-		PhaseDesign:    {maxOutput: 4000},
-		PhaseApply:     {},
-		PhaseVerify:    {maxOutput: 4000},
-		PhaseArchive:   {maxOutput: 3000},
+		PhaseBootstrap:   {maxReads: 8, maxCalls: 10},
+		PhaseInvestigate: {maxReads: 4, maxCalls: 0},
+		PhasePropose:     {maxOutput: 3500},
+		PhaseSpec:        {maxOutput: 3500},
+		PhaseDesign:      {maxOutput: 4000},
+		PhaseApply:       {},
+		PhaseVerify:      {maxOutput: 4000},
+		PhaseArchive:     {maxOutput: 3000},
 	}
 	if len(PhaseSchemas) < 9 {
 		t.Fatalf("PhaseSchemas must cover all 9 phases, got %d", len(PhaseSchemas))

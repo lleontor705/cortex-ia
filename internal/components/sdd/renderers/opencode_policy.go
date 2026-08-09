@@ -121,8 +121,16 @@ func openCodeModelRoute(composition Composition, role ir.SemanticID) (ModelRoute
 }
 
 func openCodeRolePermissions(role ir.Role, workflow ir.WorkflowIR, profile string, skill ir.SemanticID) []openCodeToolPermission {
-	permissions := make([]openCodeToolPermission, 0, 8)
-	if slices.Contains(role.AllowedEffects, ir.Effect("filesystem/read")) {
+	permissions := make([]openCodeToolPermission, 0, 9)
+	managedOrchestratorRead := role.ID == "role/orchestrator" && profile == "portable-flat"
+	if managedOrchestratorRead {
+		permissions = append(permissions,
+			openCodeToolPermission{Tool: "read", Rules: openCodeManagedReadRules()},
+			openCodeToolPermission{Tool: "glob", Action: "deny"},
+			openCodeToolPermission{Tool: "grep", Action: "deny"},
+			openCodeToolPermission{Tool: "list", Action: "deny"},
+		)
+	} else if slices.Contains(role.AllowedEffects, ir.Effect("filesystem/read")) {
 		permissions = append(permissions,
 			openCodeToolPermission{Tool: "read", Rules: openCodeReadRules()},
 			openCodeToolPermission{Tool: "glob", Action: "allow"},
@@ -147,6 +155,9 @@ func openCodeRolePermissions(role ir.Role, workflow ir.WorkflowIR, profile strin
 	} else {
 		permissions = append(permissions, openCodeToolPermission{Tool: "bash", Action: "deny"})
 	}
+	if managedOrchestratorRead {
+		permissions = append(permissions, openCodeToolPermission{Tool: "external_directory", Rules: openCodeManagedReadRules()})
+	}
 	if skill != "" {
 		permissions = append(permissions, openCodeToolPermission{Tool: "skill", Rules: []openCodePermissionRule{
 			{Pattern: "*", Action: "deny"},
@@ -158,22 +169,13 @@ func openCodeRolePermissions(role ir.Role, workflow ir.WorkflowIR, profile strin
 }
 
 func openCodeTaskPermission(role ir.SemanticID, workflow ir.WorkflowIR, profile string) openCodeToolPermission {
-	if profile == "portable-sequential" || (role != "role/orchestrator" && (profile != "native-advanced" || (role != "role/debate" && role != "role/parallel-dispatch"))) {
+	if profile == "portable-sequential" || role != "role/orchestrator" {
 		return openCodeToolPermission{Tool: "task", Action: "deny"}
 	}
 	names := make([]string, 0, len(workflow.Roles))
-	if role == "role/orchestrator" {
-		for _, candidate := range workflow.Roles {
-			if candidate.ID != "role/orchestrator" {
-				names = append(names, openCodeSemanticName(candidate.ID))
-			}
-		}
-	} else {
-		for _, phase := range workflow.Phases {
-			name := openCodeSemanticName(phase.Role)
-			if !slices.Contains(names, name) {
-				names = append(names, name)
-			}
+	for _, candidate := range workflow.Roles {
+		if candidate.ID != "role/orchestrator" {
+			names = append(names, openCodeSemanticName(candidate.ID))
 		}
 	}
 	rules := []openCodePermissionRule{{Pattern: "*", Action: "deny"}}
@@ -181,6 +183,14 @@ func openCodeTaskPermission(role ir.SemanticID, workflow ir.WorkflowIR, profile 
 		rules = append(rules, openCodePermissionRule{Pattern: name, Action: "allow"})
 	}
 	return openCodeToolPermission{Tool: "task", Rules: rules}
+}
+
+func openCodeManagedReadRules() []openCodePermissionRule {
+	return []openCodePermissionRule{
+		{Pattern: "*", Action: "deny"},
+		{Pattern: "~/.cortex-ia/opencode/root/**", Action: "allow"},
+		{Pattern: "~/.cortex-ia/opencode/contracts/**", Action: "allow"},
+	}
 }
 
 func openCodeReadRules() []openCodePermissionRule {

@@ -71,16 +71,21 @@ func TestCurrentOrchestratorAssetsContainNoRetiredCoordinationSurface(t *testing
 	}
 }
 
-func TestCoordinatorSkillsDescribeNativeDispatch(t *testing.T) {
+func TestCoordinatorSkillsReturnBoundedPlansWithoutNestedDispatch(t *testing.T) {
 	for _, id := range []string{"debate", "parallel-dispatch"} {
 		content, err := assets.Read("skills/" + id + "/SKILL.md")
 		if err != nil {
 			t.Fatalf("read %s skill: %v", id, err)
 		}
 		text := strings.ToLower(content)
-		for _, required := range []string{"task", "independent", "bounded", "synthesize"} {
+		for _, required := range []string{"plan-only", "independent", "bounded", "orchestrator"} {
 			if !strings.Contains(text, required) {
-				t.Errorf("%s skill missing native coordination instruction %q", id, required)
+				t.Errorf("%s skill missing planning contract %q", id, required)
+			}
+		}
+		for _, forbidden := range []string{"task()", "native `task`"} {
+			if strings.Contains(text, forbidden) {
+				t.Errorf("%s skill contains nested dispatch instruction %q", id, forbidden)
 			}
 		}
 	}

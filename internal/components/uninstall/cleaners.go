@@ -14,8 +14,10 @@ import (
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
+	opencodelayout "github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
+	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
@@ -23,24 +25,30 @@ import (
 type opType int
 
 const (
-	opRewriteFile      opType = iota // strip a marker section from a file
-	opRemoveFile                     // delete a single file
-	opRemoveTree                     // recursively delete a directory
-	opRemoveIfEmpty                  // remove a directory only if it is empty
-	opRemoveJSONKey                  // delete a top-level key from a JSON file
-	opRemoveTOMLRegion               // delete one ownership-proven TOML MCP table
+	opRewriteFile              opType = iota // strip a marker section from a file
+	opRemoveFile                             // delete a single file
+	opRemoveTree                             // recursively delete a directory
+	opRemoveIfEmpty                          // remove a directory only if it is empty
+	opRemoveJSONKey                          // delete a top-level key from a JSON file
+	opRemoveTOMLRegion                       // delete one ownership-proven TOML MCP table
+	opRemoveOwnedWorkflowAsset               // delete one lock+ownership-proven workflow asset and evidence
+	opRetainWorkflowAsset                    // report an unsafe locked workflow asset without mutation
 )
 
 // operation is a single planned mutation. SectionID is used by opRewriteFile;
 // JSONPath is used by opRemoveJSONKey; TOMLServer is used by opRemoveTOMLRegion.
 type operation struct {
-	typeID     opType
-	path       string
-	sectionID  string
-	jsonPath   []string
-	tomlServer string
-	component  model.ComponentID
-	agent      model.AgentID
+	typeID      opType
+	path        string
+	sectionID   string
+	jsonPath    []string
+	tomlServer  string
+	assetPath   string
+	root        string
+	backupPaths []string
+	reason      string
+	component   model.ComponentID
+	agent       model.AgentID
 }
 
 // markersByComponent enumerates the cortex-ia: marker section IDs each
@@ -133,6 +141,10 @@ func componentOperations(homeDir string, adapter agents.Adapter, component model
 				ops = append(ops, operation{typeID: opRemoveIfEmpty, path: dir, component: component, agent: agent})
 			}
 		}
+		if adapter.Agent() == model.AgentOpenCode {
+			layout := opencodelayout.NativeLayout()
+			ops = append(ops, operation{typeID: opRemoveIfEmpty, path: filepath.Join(homeDir, filepath.FromSlash(layout.WorkflowRoot)), component: component, agent: agent})
+		}
 	}
 
 	return ops
@@ -167,9 +179,38 @@ func applyOperation(op operation) (changed bool, err error) {
 		return removeJSONKey(op.path, op.jsonPath)
 	case opRemoveTOMLRegion:
 		return removeTOMLRegion(op.path, op.tomlServer)
+	case opRemoveOwnedWorkflowAsset:
+		return removeOwnedWorkflowAsset(op.root, op.assetPath)
+	case opRetainWorkflowAsset:
+		return false, nil
 	default:
 		return false, fmt.Errorf("uninstall: unknown op type %d", op.typeID)
 	}
+}
+
+func removeOwnedWorkflowAsset(root, assetPath string) (bool, error) {
+	evidence, err := sddinstall.NewOwnershipStore(root).ReadEvidence(assetPath)
+	if err != nil {
+		return false, fmt.Errorf("verify workflow ownership %q: %w", assetPath, err)
+	}
+	target := filepath.Join(root, filepath.FromSlash(assetPath))
+	current, err := os.ReadFile(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read managed workflow asset %q: %w", target, err)
+	}
+	inspection := sddinstall.InspectOwnership(current, &evidence.Ownership, evidence.Base)
+	if inspection.State != sddinstall.OwnershipClean {
+		return false, fmt.Errorf("refuse workflow asset %q removal: %s", assetPath, inspection.Reason)
+	}
+	for _, relative := range []string{assetPath, evidence.OwnershipPath, evidence.BasePath} {
+		if err := os.Remove(filepath.Join(root, filepath.FromSlash(relative))); err != nil && !os.IsNotExist(err) {
+			return false, fmt.Errorf("remove managed workflow path %q: %w", relative, err)
+		}
+	}
+	return true, nil
 }
 
 // rewriteMarkdownSection strips a single <!-- cortex-ia:ID --> ... section

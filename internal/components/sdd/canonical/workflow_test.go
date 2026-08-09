@@ -139,8 +139,8 @@ func TestFactoryProductCarriesCorrectedPhaseSchemas(t *testing.T) {
 		t.Fatal("Product.PhaseSchemas is nil, want phasecontract.PhaseSchemas")
 	}
 	for _, phase := range []phasecontract.PhaseID{
-		phasecontract.PhaseBootstrap, phasecontract.PhaseExplore,
-		phasecontract.PhaseProposal, phasecontract.PhaseSpec,
+		phasecontract.PhaseBootstrap, phasecontract.PhaseInvestigate,
+		phasecontract.PhasePropose, phasecontract.PhaseSpec,
 		phasecontract.PhaseDesign, phasecontract.PhaseTasks,
 		phasecontract.PhaseApply, phasecontract.PhaseVerify,
 		phasecontract.PhaseArchive,
@@ -157,8 +157,8 @@ func TestFactoryProductCarriesCorrectedPhaseSchemas(t *testing.T) {
 	if product.PhaseSchemas[phasecontract.PhaseBootstrap].Budget.MaxFileReads != 8 {
 		t.Fatalf("bootstrap MaxFileReads = %d, want 8", product.PhaseSchemas[phasecontract.PhaseBootstrap].Budget.MaxFileReads)
 	}
-	if product.PhaseSchemas[phasecontract.PhaseProposal].Budget.MaxOutputTokens != 3500 {
-		t.Fatalf("proposal MaxOutputTokens = %d, want 3500", product.PhaseSchemas[phasecontract.PhaseProposal].Budget.MaxOutputTokens)
+	if product.PhaseSchemas[phasecontract.PhasePropose].Budget.MaxOutputTokens != 3500 {
+		t.Fatalf("proposal MaxOutputTokens = %d, want 3500", product.PhaseSchemas[phasecontract.PhasePropose].Budget.MaxOutputTokens)
 	}
 }
 

@@ -9,7 +9,25 @@ import (
 	"strings"
 )
 
-var canonicalPhases = []string{"init", "explore", "propose", "spec", "design", "tasks", "apply", "verify", "archive"}
+var canonicalBindings = []PhaseRoleBinding{
+	{Phase: "bootstrap", Role: "bootstrap", Skill: "skills/bootstrap/SKILL.md"},
+	{Phase: "investigate", Role: "investigate", Skill: "skills/investigate/SKILL.md"},
+	{Phase: "propose", Role: "draft-proposal", Skill: "skills/draft-proposal/SKILL.md"},
+	{Phase: "spec", Role: "write-specs", Skill: "skills/write-specs/SKILL.md"},
+	{Phase: "design", Role: "architect", Skill: "skills/architect/SKILL.md"},
+	{Phase: "tasks", Role: "decompose", Skill: "skills/decompose/SKILL.md"},
+	{Phase: "apply", Role: "implement", Skill: "skills/implement/SKILL.md"},
+	{Phase: "verify", Role: "validate", Skill: "skills/validate/SKILL.md"},
+	{Phase: "archive", Role: "finalize", Skill: "skills/finalize/SKILL.md"},
+}
+
+var canonicalPhases = func() []string {
+	phases := make([]string, len(canonicalBindings))
+	for index, binding := range canonicalBindings {
+		phases[index] = binding.Phase
+	}
+	return phases
+}()
 
 type Accountability string
 
@@ -91,16 +109,15 @@ func AggregateEvidence(matrix Matrix, options EvidenceOptions) (EvidenceReport, 
 		if cell.Disposition == DispositionRejected {
 			accountability = AccountabilityPreMutation
 		}
-		for _, phase := range canonicalPhases {
-			skill := "skills/" + phase + "/SKILL.md"
+		for _, binding := range canonicalBindings {
 			record := PhaseBindingEvidence{
 				Cell:           cellKey,
-				Role:           PhaseRoleBinding{Phase: phase, Role: phase, Skill: skill},
+				Role:           binding,
 				SemanticAssets: []SemanticAssetEvidence{{ID: "workflow/common", Class: "semantic", Fingerprint: cell.Hash}},
 				Contract:       ContractEvidence{Version: options.ContractVersion, Fingerprint: options.ContractFingerprint},
 				Model:          ModelEvidence{Primary: options.PrimaryModel, Fallback: options.FallbackModel, Degradation: options.ModelDegradation},
 				QualityPlan:    options.QualityPlan, TrustEvidence: append([]string(nil), trust...), Permissions: append([]string(nil), permissions...),
-				Destination: "" + cell.Adapter + "/" + cell.EffectiveProfile + "/" + phase + "/SKILL.md",
+				Destination: "" + cell.Adapter + "/" + cell.EffectiveProfile + "/" + binding.Role + "/SKILL.md",
 				Disposition: cell.Disposition, ReasonID: cell.ReasonID, Accountability: accountability,
 			}
 			if record.Model.Degradation == "" {
@@ -118,11 +135,14 @@ func ValidateEvidence(report EvidenceReport) error {
 	}
 	seen := make(map[string]struct{}, len(report.Records))
 	for i, record := range report.Records {
-		if record.Cell == "" || record.Role.Phase == "" || record.Role.Role == "" || record.Role.Skill == "" || record.Role.Phase != record.Role.Role || record.Destination == "" || record.ReasonID == "" {
+		if record.Cell == "" || record.Role.Phase == "" || record.Role.Role == "" || record.Role.Skill == "" || record.Destination == "" || record.ReasonID == "" {
 			return fmt.Errorf("record %d lacks canonical binding or destination", i)
 		}
 		if !contains(canonicalPhases, record.Role.Phase) {
 			return fmt.Errorf("record %d has noncanonical phase %q", i, record.Role.Phase)
+		}
+		if canonical, ok := canonicalBindingForPhase(record.Role.Phase); !ok || record.Role != canonical {
+			return fmt.Errorf("record %d has noncanonical phase-role-skill binding %+v", i, record.Role)
 		}
 		key := record.Cell + "\x00" + record.Role.Phase
 		if _, ok := seen[key]; ok {
@@ -146,6 +166,15 @@ func ValidateEvidence(report EvidenceReport) error {
 		return fmt.Errorf("evidence fingerprint mismatch")
 	}
 	return nil
+}
+
+func canonicalBindingForPhase(phase string) (PhaseRoleBinding, bool) {
+	for _, binding := range canonicalBindings {
+		if binding.Phase == phase {
+			return binding, true
+		}
+	}
+	return PhaseRoleBinding{}, false
 }
 
 // ValidateCompleteEvidence applies the N3 matrix gate: twelve adapters times

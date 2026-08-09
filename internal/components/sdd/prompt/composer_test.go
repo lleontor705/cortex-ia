@@ -52,9 +52,9 @@ func validCompositionInput() CompositionInput {
 			SchemaVersion: "1.0.0", PolicySHA256: "policy-hash", ProfileID: "profile/portable-sequential",
 		},
 		Models: ModelTable{Routes: []ModelRoute{
-			qualifiedRoute("role/bootstrap"), qualifiedRoute("role/explore"), qualifiedRoute("role/proposal"),
-			qualifiedRoute("role/spec"), qualifiedRoute("role/design"), qualifiedRoute("role/tasks"),
-			qualifiedRoute("role/apply"), qualifiedRoute("role/verify"), qualifiedRoute("role/archive"),
+			qualifiedRoute("role/bootstrap"), qualifiedRoute("role/investigate"), qualifiedRoute("role/draft-proposal"),
+			qualifiedRoute("role/write-specs"), qualifiedRoute("role/architect"), qualifiedRoute("role/decompose"),
+			qualifiedRoute("role/implement"), qualifiedRoute("role/validate"), qualifiedRoute("role/finalize"),
 		}},
 	}
 }

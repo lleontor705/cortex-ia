@@ -190,10 +190,6 @@ func Materialize(input MaterializerInput) ([]MaterializedAsset, []string, error)
 	if len(input.Models.Routes) > 0 {
 		for _, role := range canonicalRoles {
 			route, err := input.Models.ModelFor(role)
-			if err != nil {
-				aliases := map[ir.SemanticID]ir.SemanticID{"role/explore": "role/investigate", "role/proposal": "role/draft-proposal", "role/spec": "role/write-specs", "role/design": "role/architect", "role/tasks": "role/decompose", "role/apply": "role/implement", "role/verify": "role/validate", "role/archive": "role/finalize"}
-				route, err = input.Models.ModelFor(aliases[role])
-			}
 			if err != nil || route.PrimaryID == "" || route.Primary.Provider == "" || route.Primary.Model == "" || len(route.Evidence) == 0 || (route.Requested.AllowFallback && route.Fallback == nil) {
 				return nil, nil, fmt.Errorf("model route %q requires primary and fallback", role)
 			}
@@ -220,16 +216,6 @@ func routeForRole(models ModelTable, role ir.SemanticID) (ModelRoute, error) {
 	}
 	if route, err := models.ModelFor(role); err == nil {
 		if route.PrimaryID != "" {
-			return route, nil
-		}
-	}
-	aliases := map[ir.SemanticID]ir.SemanticID{
-		"role/explore": "role/investigate", "role/proposal": "role/draft-proposal", "role/spec": "role/write-specs",
-		"role/design": "role/architect", "role/tasks": "role/decompose", "role/apply": "role/implement",
-		"role/verify": "role/validate", "role/archive": "role/finalize",
-	}
-	if alias, ok := aliases[role]; ok {
-		if route, err := models.ModelFor(alias); err == nil && route.PrimaryID != "" {
 			return route, nil
 		}
 	}

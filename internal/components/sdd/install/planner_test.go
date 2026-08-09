@@ -103,6 +103,72 @@ func TestPlannerUnchangedReinstallHasNoManagedChangesOrBackup(t *testing.T) {
 	}
 }
 
+func TestPlannerPlansLegacyOpenCodeOwnershipPromotion(t *testing.T) {
+	root := t.TempDir()
+	path := ".config/opencode/agents/implement.md"
+	content := []byte("unchanged\n")
+	writeTarget(t, root, path, content, 0o600)
+	writeLegacyOwnership(t, root, path, "asset/opencode/agent/implement", content)
+	evidence, err := NewOwnershipStore(root).ReadEvidence(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed := ManagedAsset{
+		Path: path, Ownership: evidence.Ownership, Base: evidence.Base, Mode: 0o600,
+		OwnershipPath: evidence.OwnershipPath, BasePath: evidence.BasePath,
+		OwnershipSHA256: evidence.OwnershipSHA256, BaseSHA256: evidence.BaseSHA256, LegacyOwnership: evidence.Legacy,
+	}
+
+	plan, err := NewPlanner(root).Plan(PlanRequest{
+		Bundle:  bundleWithAsset(path, "asset/opencode/agent/implement", content),
+		Managed: []ManagedAsset{managed}, Profile: "portable-flat", OwnershipMarkers: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Creates)+len(plan.Updates)+len(plan.Deletes) != 0 {
+		t.Fatalf("asset mutations = %+v %+v %+v", plan.Creates, plan.Updates, plan.Deletes)
+	}
+	if len(plan.OwnershipMigrations) != 1 {
+		t.Fatalf("ownership migrations = %+v", plan.OwnershipMigrations)
+	}
+	migration := plan.OwnershipMigrations[0]
+	if migration.LegacyOwnershipPath != path+sidecarSuffix || migration.CanonicalOwnershipPath != ".cortex-ia/opencode/ownership/agents/implement.md.cortex-ia.json" {
+		t.Fatalf("migration paths = %+v", migration)
+	}
+	wantBackup := []string{
+		".config/opencode/agents/implement.md.cortex-ia.base",
+		".config/opencode/agents/implement.md.cortex-ia.json",
+		".cortex-ia/opencode/ownership/agents/implement.md.cortex-ia.base",
+		".cortex-ia/opencode/ownership/agents/implement.md.cortex-ia.json",
+	}
+	if !plan.Backup.Required || !reflect.DeepEqual(plan.Backup.Paths, wantBackup) {
+		t.Fatalf("backup = %+v, want %v", plan.Backup, wantBackup)
+	}
+}
+
+func TestPlannerRetiresOnlyCleanStaleLockedAssets(t *testing.T) {
+	root := t.TempDir()
+	cleanPath := ".config/opencode/generic/root/clean.md"
+	dirtyPath := ".config/opencode/generic/root/dirty.md"
+	base := []byte("legacy\n")
+	writeTarget(t, root, cleanPath, base, 0o600)
+	writeTarget(t, root, dirtyPath, []byte("operator edit\n"), 0o600)
+	clean := managedAsset(t, cleanPath, "asset/opencode/legacy/clean", base, 0o600)
+	dirty := managedAsset(t, dirtyPath, "asset/opencode/legacy/dirty", base, 0o600)
+
+	plan, err := NewPlanner(root).Plan(PlanRequest{Bundle: renderers.Bundle{}, Managed: []ManagedAsset{clean, dirty}, Profile: "portable-flat", OwnershipMarkers: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Deletes) != 1 || plan.Deletes[0].Path != cleanPath {
+		t.Fatalf("clean stale deletes = %+v", plan.Deletes)
+	}
+	if len(plan.Conflicts) != 1 || plan.Conflicts[0].Path != dirtyPath || plan.Conflicts[0].State != OwnershipCustomized {
+		t.Fatalf("dirty stale conflicts = %+v", plan.Conflicts)
+	}
+}
+
 func managedAsset(t *testing.T, path string, semanticID ir.SemanticID, content []byte, mode os.FileMode) ManagedAsset {
 	t.Helper()
 	ownership, err := NewOwnership(path, "1.0.0", semanticID, content, content)

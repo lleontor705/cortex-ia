@@ -49,19 +49,19 @@ func (a *Adapter) Detect(homeDir string) (bool, string, string, bool, error) {
 }
 
 func (a *Adapter) GlobalConfigDir(homeDir string) string {
-	return filepath.Join(homeDir, ".config", "opencode")
+	return filepath.Join(homeDir, filepath.FromSlash(NativeLayout().ConfigRoot))
 }
 
 func (a *Adapter) SystemPromptDir(homeDir string) string {
-	return filepath.Join(homeDir, ".config", "opencode")
+	return filepath.Join(homeDir, filepath.FromSlash(NativeLayout().ConfigRoot))
 }
 
 func (a *Adapter) SystemPromptFile(homeDir string) string {
-	return filepath.Join(homeDir, ".config", "opencode", "AGENTS.md")
+	return filepath.Join(homeDir, filepath.FromSlash(NativeLayout().ConfigRoot), "AGENTS.md")
 }
 
 func (a *Adapter) SkillsDir(homeDir string) string {
-	return filepath.Join(homeDir, ".config", "opencode", "skills")
+	return filepath.Join(homeDir, filepath.FromSlash(NativeLayout().SkillsRoot))
 }
 
 func (a *Adapter) SettingsPath(homeDir string) string {
@@ -71,7 +71,7 @@ func (a *Adapter) SettingsPath(homeDir string) string {
 // GlobalConfigPath follows OpenCode's global load precedence: JSONC is loaded
 // after JSON and therefore owns conflicting keys when both files exist.
 func GlobalConfigPath(homeDir string) string {
-	dir := filepath.Join(homeDir, ".config", "opencode")
+	dir := filepath.Join(homeDir, filepath.FromSlash(NativeLayout().ConfigRoot))
 	jsonc := filepath.Join(dir, "opencode.jsonc")
 	if _, err := os.Stat(jsonc); err == nil || !os.IsNotExist(err) {
 		return jsonc
@@ -96,20 +96,20 @@ func (a *Adapter) SupportsSystemPrompt() bool  { return true }
 func (a *Adapter) SupportsMCP() bool           { return true }
 func (a *Adapter) SupportsSlashCommands() bool { return true }
 func (a *Adapter) CommandsDir(homeDir string) string {
-	return filepath.Join(homeDir, ".config", "opencode", "commands")
+	return filepath.Join(homeDir, filepath.FromSlash(NativeLayout().CommandsRoot))
 }
 
 func (a *Adapter) SupportsTaskDelegation() bool { return true }
 func (a *Adapter) SupportsSubAgents() bool      { return true }
 func (a *Adapter) SubAgentsDir(homeDir string) string {
-	return filepath.Join(homeDir, ".config", "opencode", "agents")
+	return filepath.Join(homeDir, filepath.FromSlash(NativeLayout().AgentsRoot))
 }
 
 var (
 	openCodeMinimumQualified = ir.MustParseVersion("1.18.0")
-	openCodeMaximumTested    = ir.MustParseVersion("1.18.11")
-	openCodeObservedAt       = time.Date(2026, time.August, 7, 0, 0, 0, 0, time.UTC)
-	openCodeFreshUntil       = time.Date(2026, time.November, 7, 0, 0, 0, 0, time.UTC)
+	openCodeMaximumTested    = ir.MustParseVersion("1.18.15")
+	openCodeObservedAt       = time.Date(2026, time.August, 9, 0, 0, 0, 0, time.UTC)
+	openCodeFreshUntil       = time.Date(2026, time.November, 9, 0, 0, 0, 0, time.UTC)
 	openCodeVersionPattern   = regexp.MustCompile(`(?m)opencode version:\s*v?(\d+\.\d+\.\d+)`)
 )
 
@@ -145,13 +145,13 @@ func (a *Adapter) CapabilityFacts() []capability.CapabilityFact {
 
 	directChild := base
 	directChild.ID = directChildCapabilityID
-	directChild.EvidenceRef = "qualification/opencode/1.18.11/direct-child/2026-08-07"
+	directChild.EvidenceRef = "qualification/opencode/1.18.15/direct-child/2026-08-09"
 	directChild.Probe = qualificationProbeRecord("probe/opencode/direct-child", openCodeObservedAt)
 
 	nested := base
 	nested.ID = nestedDelegationCapabilityID
 	nested.Experimental = true
-	nested.EvidenceRef = "qualification/opencode/1.18.11/nested-delegation/2026-08-07"
+	nested.EvidenceRef = "qualification/opencode/1.18.15/nested-delegation/2026-08-09"
 	nested.Probe = qualificationProbeRecord("probe/opencode/nested-delegation", openCodeObservedAt)
 
 	return []capability.CapabilityFact{directChild, nested}
@@ -162,9 +162,9 @@ func qualificationProbeRecord(id ir.SemanticID, observedAt time.Time) *capabilit
 		ID:             id,
 		Method:         capability.ProbeCommand,
 		Command:        "opencode debug info",
-		Result:         "qualified-version:1.18.11;available:many",
+		Result:         "qualified-version:1.18.15;available:many",
 		Timestamp:      observedAt,
-		EvidenceDigest: "sha256:c5d32363bcc4f432c5e8a71201ac42fc00265f32dd8b227a48bc2524629a7a76",
+		EvidenceDigest: "sha256:e20cf5c0bdddeff7f795fb4ce5393db4e02a4e6977f4991bef775be46d123104",
 	}
 }
 

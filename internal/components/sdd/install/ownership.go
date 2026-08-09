@@ -23,6 +23,8 @@ const (
 	ownershipSchemaVersion = "1.0.0"
 	sidecarSuffix          = ".cortex-ia.json"
 	baseSuffix             = ".cortex-ia.base"
+	opencodeAssetPrefix    = ".config/opencode/"
+	opencodeOwnershipRoot  = ".cortex-ia/opencode/ownership/"
 )
 
 var (
@@ -153,9 +155,22 @@ func ParseOwnershipMarker(marker string) (Ownership, error) {
 	return metadata, nil
 }
 
-// OwnershipStore persists sidecar metadata and the exact generated base beside
+// OwnershipStore persists sidecar metadata and the exact generated base for
 // formats that cannot safely carry an inline marker.
 type OwnershipStore struct{ root string }
+
+// OwnershipEvidence includes the selected persisted location so planning can
+// promote legacy adjacent OpenCode evidence without guessing where it came
+// from. Canonical evidence is always selected before the legacy fallback.
+type OwnershipEvidence struct {
+	Ownership       Ownership
+	Base            []byte
+	OwnershipPath   string
+	BasePath        string
+	OwnershipSHA256 string
+	BaseSHA256      string
+	Legacy          bool
+}
 
 func NewOwnershipStore(root string) OwnershipStore { return OwnershipStore{root: root} }
 
@@ -185,7 +200,14 @@ func (s OwnershipStore) Write(metadata Ownership, base []byte) error {
 }
 
 func (s OwnershipStore) Read(assetPath string) (Ownership, []byte, error) {
-	return s.read(assetPath, OwnershipScopeAsset, "")
+	evidence, err := s.ReadEvidence(assetPath)
+	return evidence.Ownership, evidence.Base, err
+}
+
+// ReadEvidence returns canonical ownership when present and uses the adjacent
+// pre-migration location only when canonical OpenCode evidence is absent.
+func (s OwnershipStore) ReadEvidence(assetPath string) (OwnershipEvidence, error) {
+	return s.readEvidence(assetPath, OwnershipScopeAsset, "")
 }
 
 // ReadRegion retrieves sidecar metadata for one region when the target format
@@ -194,57 +216,90 @@ func (s OwnershipStore) ReadRegion(assetPath string, semanticID ir.SemanticID) (
 	if err := ir.ValidateSemanticID(semanticID); err != nil {
 		return Ownership{}, nil, fmt.Errorf("semantic ID: %w", err)
 	}
-	return s.read(assetPath, OwnershipScopeRegion, semanticID)
+	evidence, err := s.readEvidence(assetPath, OwnershipScopeRegion, semanticID)
+	return evidence.Ownership, evidence.Base, err
 }
 
-func (s OwnershipStore) read(assetPath string, scope OwnershipScope, semanticID ir.SemanticID) (Ownership, []byte, error) {
-	sidecar, basePath, err := s.paths(assetPath, scope, semanticID)
+func (s OwnershipStore) readEvidence(assetPath string, scope OwnershipScope, semanticID ir.SemanticID) (OwnershipEvidence, error) {
+	ownershipPath, baseRelativePath, err := ownershipPaths(assetPath, scope, semanticID, false)
 	if err != nil {
-		return Ownership{}, nil, err
+		return OwnershipEvidence{}, err
 	}
-	encoded, err := os.ReadFile(sidecar)
+	evidence, err := s.readAt(assetPath, scope, semanticID, ownershipPath, baseRelativePath)
+	if err == nil || !errors.Is(err, ErrOwnershipNotFound) || !isOpenCodeAsset(assetPath) {
+		return evidence, err
+	}
+	legacyOwnershipPath, legacyBasePath, pathErr := ownershipPaths(assetPath, scope, semanticID, true)
+	if pathErr != nil {
+		return OwnershipEvidence{}, pathErr
+	}
+	evidence, err = s.readAt(assetPath, scope, semanticID, legacyOwnershipPath, legacyBasePath)
+	if err == nil {
+		evidence.Legacy = true
+	}
+	return evidence, err
+}
+
+func (s OwnershipStore) readAt(assetPath string, scope OwnershipScope, semanticID ir.SemanticID, ownershipPath, basePath string) (OwnershipEvidence, error) {
+	encoded, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(ownershipPath)))
 	if errors.Is(err, fs.ErrNotExist) {
-		return Ownership{}, nil, ErrOwnershipNotFound
+		return OwnershipEvidence{}, ErrOwnershipNotFound
 	}
 	if err != nil {
-		return Ownership{}, nil, fmt.Errorf("read ownership sidecar: %w", err)
+		return OwnershipEvidence{}, fmt.Errorf("read ownership sidecar: %w", err)
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
 	decoder.DisallowUnknownFields()
 	var metadata Ownership
 	if err := decoder.Decode(&metadata); err != nil {
-		return Ownership{}, nil, fmt.Errorf("decode ownership sidecar: %w", err)
+		return OwnershipEvidence{}, fmt.Errorf("decode ownership sidecar: %w", err)
 	}
 	if err := metadata.Validate(); err != nil {
-		return Ownership{}, nil, err
+		return OwnershipEvidence{}, err
 	}
 	if metadata.AssetPath != assetPath {
-		return Ownership{}, nil, errors.New("ownership sidecar asset path does not match requested asset")
+		return OwnershipEvidence{}, errors.New("ownership sidecar asset path does not match requested asset")
 	}
 	if metadata.Scope != scope || scope == OwnershipScopeRegion && metadata.SemanticID != semanticID {
-		return Ownership{}, nil, errors.New("ownership sidecar identity does not match requested scope")
+		return OwnershipEvidence{}, errors.New("ownership sidecar identity does not match requested scope")
 	}
-	base, err := os.ReadFile(basePath)
+	base, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(basePath)))
 	if err != nil {
-		return Ownership{}, nil, fmt.Errorf("read install-state base: %w", err)
+		return OwnershipEvidence{}, fmt.Errorf("read install-state base: %w", err)
 	}
-	return metadata, base, nil
+	return OwnershipEvidence{
+		Ownership: metadata, Base: base, OwnershipPath: ownershipPath, BasePath: basePath,
+		OwnershipSHA256: SHA256(encoded), BaseSHA256: SHA256(base),
+	}, nil
 }
 
 func (s OwnershipStore) paths(assetPath string, scope OwnershipScope, semanticID ir.SemanticID) (string, string, error) {
+	ownershipPath, basePath, err := ownershipPaths(assetPath, scope, semanticID, false)
+	if err != nil {
+		return "", "", err
+	}
+	return filepath.Join(s.root, filepath.FromSlash(ownershipPath)), filepath.Join(s.root, filepath.FromSlash(basePath)), nil
+}
+
+func ownershipPaths(assetPath string, scope OwnershipScope, semanticID ir.SemanticID, legacy bool) (string, string, error) {
 	if err := validateAssetPath(assetPath); err != nil {
 		return "", "", err
 	}
-	local := filepath.FromSlash(assetPath)
+	local := assetPath
+	if isOpenCodeAsset(assetPath) && !legacy {
+		local = opencodeOwnershipRoot + strings.TrimPrefix(assetPath, opencodeAssetPrefix)
+	}
 	if scope == OwnershipScopeAsset {
-		return filepath.Join(s.root, local+sidecarSuffix), filepath.Join(s.root, local+baseSuffix), nil
+		return local + sidecarSuffix, local + baseSuffix, nil
 	}
 	if scope != OwnershipScopeRegion {
 		return "", "", fmt.Errorf("invalid ownership scope %q", scope)
 	}
 	regionSuffix := ".cortex-ia.region." + SHA256([]byte(semanticID))
-	return filepath.Join(s.root, local+regionSuffix+".json"), filepath.Join(s.root, local+regionSuffix+".base"), nil
+	return local + regionSuffix + ".json", local + regionSuffix + ".base", nil
 }
+
+func isOpenCodeAsset(assetPath string) bool { return strings.HasPrefix(assetPath, opencodeAssetPrefix) }
 
 type OwnershipState string
 

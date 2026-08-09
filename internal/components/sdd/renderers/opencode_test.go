@@ -14,6 +14,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/resolution"
+	"github.com/lleontor705/cortex-ia/internal/modelroute"
 )
 
 var updateOpenCodeGoldens = flag.Bool("update-opencode", false, "update isolated OpenCode renderer golden files")
@@ -119,6 +120,26 @@ func TestOpenCodeRendererCoreV2RolesLoadMappedSkillsFirst(t *testing.T) {
 	}
 }
 
+func TestOpenCodeRendererCoreV2ExplicitRoutesEmitProviderModel(t *testing.T) {
+	resolved := canonicalOpenCodeResolvedWorkflow("portable-flat")
+	for role := range canonicalOpenCodeSkills {
+		resolved.Composition.ModelRoutes = append(resolved.Composition.ModelRoutes, ModelRoute{
+			Role: role, Requested: modelroute.RouteRequest{RouteID: "route/v1/test"}, PrimaryID: "route/v1/test",
+			Primary:  modelroute.RouteRef{Provider: "provider-test", Model: "model-test"},
+			Evidence: []modelroute.ResolutionEvidence{{ID: "evidence-test", Source: modelroute.SourceProviderConfig, Provider: "provider-test", Route: "route/v1/test", Qualified: true}},
+		})
+	}
+	bundle, err := NewOpenCodeRenderer().Render(context.Background(), resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range openCodeAgentAssets(bundle) {
+		if !strings.Contains(content, "\nmodel: provider-test/model-test\n") {
+			t.Errorf("explicit route missing provider/model field from %q:\n%s", name, content)
+		}
+	}
+}
+
 func TestOpenCodeRendererBootstrapQuestionPermissionOnly(t *testing.T) {
 	for _, profile := range []string{"portable-flat", "native-advanced"} {
 		t.Run(profile, func(t *testing.T) {
@@ -141,6 +162,46 @@ func TestOpenCodeRendererBootstrapQuestionPermissionOnly(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOpenCodeCompositionManifestUsesHomeRelativeWorkflowLayout(t *testing.T) {
+	resolved := canonicalOpenCodeResolvedWorkflow("portable-flat")
+	bundle, err := NewOpenCodeRenderer().Render(context.Background(), resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, asset := range bundle.Assets {
+		if asset.SemanticID == "opencode/composition" {
+			if asset.Path != ".cortex-ia/opencode/composition.json" {
+				t.Fatalf("composition path = %q", asset.Path)
+			}
+			return
+		}
+	}
+	t.Fatal("composition manifest not emitted")
+}
+
+func TestOpenCodeRendererRewritesInternalContractReferences(t *testing.T) {
+	resolved := canonicalOpenCodeResolvedWorkflow("portable-flat")
+	resolved.Composition.OperationalAssets[0].Content = []byte("use skills/_shared/cortex-convention.md and .config/opencode/_shared/sdd-phase-contract.md")
+	bundle, err := NewOpenCodeRenderer().Render(context.Background(), resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, asset := range bundle.Assets {
+		if asset.SemanticID != resolved.Composition.OperationalAssets[0].ID {
+			continue
+		}
+		got := string(asset.Content)
+		if strings.Contains(got, "skills/_shared/") || strings.Contains(got, ".config/opencode/_shared/") {
+			t.Fatalf("legacy internal reference remains in %q", got)
+		}
+		if !strings.Contains(got, ".cortex-ia/opencode/contracts/_shared/cortex-convention.md") || !strings.Contains(got, ".cortex-ia/opencode/contracts/_shared/sdd-phase-contract.md") {
+			t.Fatalf("canonical internal references missing from %q", got)
+		}
+		return
+	}
+	t.Fatal("operational asset not rendered")
 }
 
 func canonicalOpenCodeResolvedWorkflow(profile string) ResolvedWorkflow {

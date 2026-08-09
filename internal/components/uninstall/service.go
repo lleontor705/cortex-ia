@@ -3,9 +3,13 @@ package uninstall
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
+	opencodelayout "github.com/lleontor705/cortex-ia/internal/agents/opencode"
+	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
@@ -93,6 +97,13 @@ func (s *Service) Plan(sel Selection) ([]operation, error) {
 			if getErr != nil {
 				continue
 			}
+			if comp == model.ComponentSDD && agentID == model.AgentOpenCode {
+				owned, ownedErr := s.lockedOpenCodeWorkflowOperations()
+				if ownedErr != nil {
+					return nil, ownedErr
+				}
+				plan = append(plan, owned...)
+			}
 			plan = append(plan, componentOperations(s.homeDir, adapter, comp)...)
 		}
 	}
@@ -127,6 +138,9 @@ func (s *Service) Apply(sel Selection) (Result, error) {
 			return res, fmt.Errorf("uninstall %s/%s: %w", op.agent, op.component, err)
 		}
 		if !changed {
+			if op.typeID == opRetainWorkflowAsset {
+				res.RetainedItems = append(res.RetainedItems, RetainedItem{Path: op.path, Agent: op.agent, Component: op.component, Disposition: "refusal", Reason: op.reason})
+			}
 			if op.typeID == opRemoveIfEmpty {
 				res.SkippedNonEmpty = append(res.SkippedNonEmpty, op.path)
 			}
@@ -201,8 +215,79 @@ func (s *Service) PathsToBackup(sel Selection) ([]string, error) {
 		}
 		seen[op.path] = struct{}{}
 		out = append(out, op.path)
+		for _, auxiliary := range op.backupPaths {
+			if _, ok := seen[auxiliary]; ok {
+				continue
+			}
+			seen[auxiliary] = struct{}{}
+			out = append(out, auxiliary)
+		}
 	}
 	return out, nil
+}
+
+func (s *Service) lockedOpenCodeWorkflowOperations() ([]operation, error) {
+	lock, err := state.LoadLock(s.homeDir)
+	if err != nil {
+		return nil, fmt.Errorf("uninstall: load workflow lock: %w", err)
+	}
+	layout := opencodelayout.NativeLayout()
+	store := sddinstall.NewOwnershipStore(s.homeDir)
+	result := make([]operation, 0, len(lock.Files))
+	seen := make(map[string]struct{}, len(lock.Files))
+	for _, locked := range lock.Files {
+		relative, ok := uninstallHomeRelativePath(s.homeDir, locked)
+		if !ok || !layout.IsWorkflowPath(relative) && !strings.HasPrefix(relative, layout.ConfigRoot+"/") {
+			continue
+		}
+		if _, duplicate := seen[relative]; duplicate {
+			continue
+		}
+		seen[relative] = struct{}{}
+		evidence, readErr := store.ReadEvidence(relative)
+		if readErr != nil {
+			if !errors.Is(readErr, sddinstall.ErrOwnershipNotFound) {
+				result = append(result, retainedWorkflowOperation(s.homeDir, relative, "invalid ownership evidence"))
+			}
+			continue
+		}
+		current, readErr := os.ReadFile(filepath.Join(s.homeDir, filepath.FromSlash(relative)))
+		if readErr != nil {
+			if !os.IsNotExist(readErr) {
+				result = append(result, retainedWorkflowOperation(s.homeDir, relative, "managed asset cannot be inspected"))
+			}
+			continue
+		}
+		inspection := sddinstall.InspectOwnership(current, &evidence.Ownership, evidence.Base)
+		if inspection.State != sddinstall.OwnershipClean {
+			result = append(result, retainedWorkflowOperation(s.homeDir, relative, "managed asset is not clean"))
+			continue
+		}
+		result = append(result, operation{
+			typeID: opRemoveOwnedWorkflowAsset, root: s.homeDir, assetPath: relative,
+			path:        filepath.Join(s.homeDir, filepath.FromSlash(relative)),
+			backupPaths: []string{filepath.Join(s.homeDir, filepath.FromSlash(evidence.OwnershipPath)), filepath.Join(s.homeDir, filepath.FromSlash(evidence.BasePath))},
+			component:   model.ComponentSDD, agent: model.AgentOpenCode,
+		})
+	}
+	return result, nil
+}
+
+func retainedWorkflowOperation(homeDir, relative, reason string) operation {
+	return operation{typeID: opRetainWorkflowAsset, path: filepath.Join(homeDir, filepath.FromSlash(relative)), component: model.ComponentSDD, agent: model.AgentOpenCode, reason: reason}
+}
+
+func uninstallHomeRelativePath(homeDir, candidate string) (string, bool) {
+	clean := filepath.Clean(filepath.FromSlash(candidate))
+	if filepath.IsAbs(clean) {
+		relative, err := filepath.Rel(homeDir, clean)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return "", false
+		}
+		clean = relative
+	}
+	relative := filepath.ToSlash(clean)
+	return relative, relative != "." && relative != ".." && !strings.HasPrefix(relative, "../")
 }
 
 // resolveAgents normalises sel.Agents (empty ⇒ everything in state).

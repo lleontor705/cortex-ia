@@ -3,13 +3,16 @@ package pipeline
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/agents/codex"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/prompt"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/renderers"
 	"github.com/lleontor705/cortex-ia/internal/modelroute"
 )
 
@@ -44,6 +47,29 @@ func TestRouteEvidenceSentinelSurvivesPipelineMetadataBoundary(t *testing.T) {
 	}
 	if roundTrip.Routes["role/architecture"].Primary != resolved.Primary || roundTrip.Routes["role/architecture"].Evidence[0].Digest != "fingerprint-sentinel" || table.Routes[0].Primary != resolved.Primary {
 		t.Fatalf("route evidence lost: metadata=%+v table=%+v", roundTrip, table)
+	}
+}
+
+func TestPrepareOpenCodeWithoutRoutesInheritsActiveModel(t *testing.T) {
+	prepared, err := PrepareWorkflow(t.Context(), WorkflowRequest{HomeDir: t.TempDir(), Adapters: []agents.Adapter{opencode.NewAdapter()}})
+	if err != nil {
+		t.Fatalf("PrepareWorkflow() without routes: %v", err)
+	}
+	if len(prepared.Bundles) != 1 {
+		t.Fatalf("prepared bundles = %d, want 1", len(prepared.Bundles))
+	}
+	foundRoutingText := false
+	for _, asset := range prepared.Bundles[0].Bundle.Assets {
+		if asset.Kind == renderers.AssetAgent && strings.Contains(string(asset.Content), "\nmodel:") {
+			t.Fatalf("OpenCode no-route agent emitted a model field in %s:\n%s", asset.Path, asset.Content)
+		}
+		if asset.SemanticID == "asset/root-module/model-routing" {
+			text := string(asset.Content)
+			foundRoutingText = strings.Contains(text, "omits the `model` field") && strings.Contains(text, "inherits the active model selected by OpenCode") && strings.Contains(text, "provider/model") && strings.Contains(text, "fail closed")
+		}
+	}
+	if !foundRoutingText {
+		t.Fatal("rendered OpenCode model-routing reference does not describe no-route inheritance and explicit-route validation")
 	}
 }
 

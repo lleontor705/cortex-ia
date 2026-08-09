@@ -11,10 +11,10 @@ var trustedOperator = ir.TrustOperatorInput
 
 func TestAuthorizeTransitionAllowsValidDAGAndRejectsInvalid(t *testing.T) {
 	valid := []struct{ from, to PhaseID }{
-		{PhaseBootstrap, PhaseExplore},
-		{PhaseExplore, PhaseProposal},
-		{PhaseProposal, PhaseSpec},
-		{PhaseProposal, PhaseDesign},
+		{PhaseBootstrap, PhaseInvestigate},
+		{PhaseInvestigate, PhasePropose},
+		{PhasePropose, PhaseSpec},
+		{PhasePropose, PhaseDesign},
 		{PhaseSpec, PhaseTasks},
 		{PhaseDesign, PhaseTasks},
 		{PhaseTasks, PhaseApply},
@@ -28,11 +28,11 @@ func TestAuthorizeTransitionAllowsValidDAGAndRejectsInvalid(t *testing.T) {
 	}
 
 	invalid := []struct{ from, to PhaseID }{
-		{PhaseBootstrap, PhaseApply},  // skip pipeline
-		{PhaseTasks, PhaseProposal},   // backwards
-		{PhaseApply, PhaseSpec},       // backwards
-		{PhaseExplore, PhaseArchive},  // skip to end
-		{PhaseBootstrap, PhaseDesign}, // skip proposal
+		{PhaseBootstrap, PhaseApply},     // skip pipeline
+		{PhaseTasks, PhasePropose},       // backwards
+		{PhaseApply, PhaseSpec},          // backwards
+		{PhaseInvestigate, PhaseArchive}, // skip to end
+		{PhaseBootstrap, PhaseDesign},    // skip proposal
 	}
 	for _, tt := range invalid {
 		if err := AuthorizeTransition(tt.from, tt.to); err == nil {

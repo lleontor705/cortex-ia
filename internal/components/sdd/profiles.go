@@ -164,8 +164,8 @@ func capabilityDegradation(id capability.CapabilityID, reason string) string {
 // needs to enumerate phases (TUI listing, --profile-phase parser, validation).
 func ProfilePhaseOrder() []string {
 	return []string{
-		"sdd-init", "sdd-explore", "sdd-propose", "sdd-spec",
-		"sdd-design", "sdd-tasks", "sdd-apply", "sdd-verify", "sdd-archive",
+		"bootstrap", "investigate", "propose", "spec",
+		"design", "tasks", "apply", "verify", "archive",
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 
+	opencodelayout "github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 )
 
@@ -24,6 +25,9 @@ type AdapterAssetMap struct {
 	ModelRoot          string
 	PermissionRoot     string
 	ExternalConfigRoot string
+	RootModuleRoot     string
+	ContractRoot       string
+	CompositionPath    string
 	SlashCommands      bool
 	NativeProfiles     map[string]bool
 	state              *assetMapState
@@ -55,6 +59,9 @@ func (m AdapterAssetMap) Map(id ir.SemanticID, class ir.AssetClass, relative str
 		return ir.AssetPath{}, fmt.Errorf("asset %q destination %q is source-shaped", id, relative)
 	}
 	root := m.rootFor(class)
+	if m.Target == "opencode" && class == ir.AssetSkill && !isOpenCodeNativeSkill(clean) {
+		root = m.ContractRoot
+	}
 	if root == "" {
 		return ir.AssetPath{}, fmt.Errorf("asset %q has no destination root for class %q", id, class)
 	}
@@ -62,6 +69,10 @@ func (m AdapterAssetMap) Map(id ir.SemanticID, class ir.AssetClass, relative str
 	// so a second lowering cannot produce a double-root destination.
 	clean = strings.TrimPrefix(clean, strings.TrimSuffix(root, "/")+"/")
 	clean = strings.TrimPrefix(clean, strings.TrimSuffix(m.WorkflowRoot, "/")+"/")
+	if m.Target == "opencode" {
+		clean = strings.TrimPrefix(clean, strings.TrimSuffix(opencodelayout.NativeLayout().ConfigRoot, "/")+"/")
+		clean = trimOpenCodeSourcePrefix(class, clean)
+	}
 	for _, prefix := range []string{"skills/", "agents/", "roles/", "commands/", "overlays/", "quality/", "manifests/", "steering/"} {
 		if strings.HasPrefix(clean, prefix) {
 			clean = strings.TrimPrefix(clean, prefix)
@@ -88,7 +99,15 @@ func (m AdapterAssetMap) Map(id ir.SemanticID, class ir.AssetClass, relative str
 
 func (m AdapterAssetMap) rootFor(class ir.AssetClass) string {
 	switch class {
-	case ir.AssetRootIndex, ir.AssetRootModule, ir.AssetSharedContract:
+	case ir.AssetRootIndex, ir.AssetRootModule:
+		if m.RootModuleRoot != "" {
+			return m.RootModuleRoot
+		}
+		return m.WorkflowRoot
+	case ir.AssetSharedContract:
+		if m.ContractRoot != "" {
+			return m.ContractRoot
+		}
 		return m.WorkflowRoot
 	case ir.AssetSkill:
 		return m.SkillsRoot
@@ -103,7 +122,12 @@ func (m AdapterAssetMap) rootFor(class ir.AssetClass) string {
 		return m.OverlayRoot
 	case ir.AssetQualityTemplate:
 		return m.QualityRoot
-	case ir.AssetContractSchema, ir.AssetManifest:
+	case ir.AssetContractSchema:
+		if m.ContractRoot != "" {
+			return m.ContractRoot
+		}
+		return m.ManifestRoot
+	case ir.AssetManifest:
 		return m.ManifestRoot
 	default:
 		return ""
@@ -112,9 +136,49 @@ func (m AdapterAssetMap) rootFor(class ir.AssetClass) string {
 
 var adapterAssetMaps = map[TargetID]AdapterAssetMap{
 	"claude":   {Target: "claude", WorkflowRoot: ".claude", SkillsRoot: ".claude/skills", AgentsRoot: ".claude/agents", RoleRoot: ".claude/.cortex-ia/roles", OverlayRoot: ".claude/overlays", QualityRoot: ".claude/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
-	"opencode": {Target: "opencode", WorkflowRoot: ".config/opencode", SkillsRoot: ".config/opencode/skills", AgentsRoot: ".config/opencode/agents", RoleRoot: ".config/opencode/.cortex-ia/roles", CommandsRoot: ".config/opencode/commands", OverlayRoot: ".config/opencode/overlays", QualityRoot: ".config/opencode/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", SlashCommands: true, NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
+	"opencode": openCodeAssetMap(),
 	"vscode":   {Target: "vscode", WorkflowRoot: ".copilot", SkillsRoot: ".copilot/skills", AgentsRoot: ".copilot/agents", RoleRoot: ".copilot/.cortex-ia/roles", OverlayRoot: ".copilot/overlays", QualityRoot: ".copilot/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
 	"codex":    {Target: "codex", WorkflowRoot: ".codex", SkillsRoot: ".codex/skills", AgentsRoot: ".codex/agents", RoleRoot: ".codex/.cortex-ia/roles", OverlayRoot: ".codex/overlays", QualityRoot: ".codex/quality", ManifestRoot: ".cortex-ia", ModelRoot: ".cortex-ia/models", PermissionRoot: ".cortex-ia/permissions", NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true}},
+}
+
+func openCodeAssetMap() AdapterAssetMap {
+	layout := opencodelayout.NativeLayout()
+	return AdapterAssetMap{
+		Target: "opencode", WorkflowRoot: layout.WorkflowRoot, SkillsRoot: layout.SkillsRoot, AgentsRoot: layout.AgentsRoot,
+		RoleRoot: layout.RoleRoot, CommandsRoot: layout.CommandsRoot, OverlayRoot: layout.OverlayRoot, QualityRoot: layout.QualityRoot,
+		ManifestRoot: layout.ManifestRoot, ModelRoot: layout.ModelRoot, PermissionRoot: layout.PermissionRoot,
+		RootModuleRoot: layout.RootModuleRoot, ContractRoot: layout.ContractRoot, CompositionPath: layout.CompositionPath,
+		SlashCommands: true, NativeProfiles: map[string]bool{"portable-sequential": true, "portable-flat": true, "native-advanced": true},
+	}
+}
+
+func isOpenCodeNativeSkill(relative string) bool {
+	parts := strings.Split(strings.TrimPrefix(relative, "skills/"), "/")
+	return len(parts) == 2 && parts[0] != "" && parts[1] == "SKILL.md"
+}
+
+func trimOpenCodeSourcePrefix(class ir.AssetClass, relative string) string {
+	prefixes := []string{}
+	switch class {
+	case ir.AssetRootIndex, ir.AssetRootModule:
+		prefixes = []string{"generic/sdd-root/", "sdd-root/", "generic/", "root/"}
+	case ir.AssetSharedContract, ir.AssetContractSchema:
+		prefixes = []string{"skills/", "contracts/"}
+	case ir.AssetRoleStub:
+		prefixes = []string{"roles/"}
+	case ir.AssetProfileOverlay:
+		prefixes = []string{"generic/profiles/", "profiles/", "overlays/"}
+	case ir.AssetQualityTemplate:
+		prefixes = []string{"generated/", "quality/"}
+	case ir.AssetManifest:
+		prefixes = []string{"manifests/"}
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(relative, prefix) {
+			return strings.TrimPrefix(relative, prefix)
+		}
+	}
+	return relative
 }
 
 func AdapterAssetMapFor(target TargetID) (AdapterAssetMap, error) {

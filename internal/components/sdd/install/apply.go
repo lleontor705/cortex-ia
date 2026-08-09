@@ -109,10 +109,10 @@ func (a *Applier) ApplyWithStore(plan Plan, store WorkflowReceiptStore) (Receipt
 		return receipt, errors.New("apply blocked by install plan conflicts")
 	}
 	mutations := planMutations(plan)
-	if len(mutations) == 0 {
+	if len(mutations) == 0 && len(plan.OwnershipMigrations) == 0 {
 		return receipt, nil
 	}
-	if err := validateBackupScope(plan.Backup, mutations); err != nil {
+	if err := validateBackupScope(plan.Backup, mutations, plan.OwnershipMigrations); err != nil {
 		return receipt, err
 	}
 	computedFingerprint := FingerprintPlan(plan)
@@ -195,13 +195,19 @@ func (a *Applier) ApplyWithStore(plan Plan, store WorkflowReceiptStore) (Receipt
 			return receipt, err
 		}
 		if plan.OwnershipMarkers {
-			if err := a.writeOwnership(plan, mutation.effect); err != nil {
+			var ownershipErr error
+			if mutation.kind == mutationDelete {
+				ownershipErr = a.removeOwnership(mutation.effect)
+			} else {
+				ownershipErr = a.writeOwnership(plan, mutation.effect)
+			}
+			if ownershipErr != nil {
 				receipt.FailedPath = mutation.effect.Path
 				receipt.State = ReceiptFailed
-				receipt.OperationOutcomes = append(receipt.OperationOutcomes, failedOutcome(mutation.effect, err))
+				receipt.OperationOutcomes = append(receipt.OperationOutcomes, failedOutcome(mutation.effect, ownershipErr))
 				sealReceipt(&receipt)
 				_ = saveReceipt(store, receipt)
-				return receipt, err
+				return receipt, ownershipErr
 			}
 		}
 		receipt.Applied = append(receipt.Applied, mutation.effect.Path)
@@ -222,12 +228,46 @@ func (a *Applier) ApplyWithStore(plan Plan, store WorkflowReceiptStore) (Receipt
 			return receipt, fmt.Errorf("checkpoint workflow receipt after %q: %w", mutation.effect.Path, err)
 		}
 	}
+	for _, migration := range plan.OwnershipMigrations {
+		if err := a.applyOwnershipMigration(migration); err != nil {
+			receipt.FailedPath = migration.AssetPath
+			receipt.State = ReceiptFailed
+			receipt.OperationOutcomes = append(receipt.OperationOutcomes, OperationOutcome{Path: migration.AssetPath, Status: "failed", Error: err.Error()})
+			sealReceipt(&receipt)
+			_ = saveReceipt(store, receipt)
+			return receipt, err
+		}
+		receipt.Applied = append(receipt.Applied, migration.AssetPath)
+		receipt.State = ReceiptApplying
+		receipt.OperationOutcomes = append(receipt.OperationOutcomes, OperationOutcome{Path: migration.AssetPath, Status: "ownership-migrated"})
+		sealReceipt(&receipt)
+		if err := saveReceipt(store, receipt); err != nil {
+			return receipt, fmt.Errorf("checkpoint workflow receipt after ownership migration %q: %w", migration.AssetPath, err)
+		}
+	}
 	receipt.State = ReceiptCommitted
 	sealReceipt(&receipt)
 	if err := saveReceipt(store, receipt); err != nil {
 		return receipt, fmt.Errorf("persist COMMITTED workflow receipt: %w", err)
 	}
 	return receipt, nil
+}
+
+func (a *Applier) removeOwnership(effect Effect) error {
+	ownershipPath, basePath := effect.OwnershipPath, effect.BasePath
+	if ownershipPath == "" || basePath == "" {
+		var err error
+		ownershipPath, basePath, err = ownershipPaths(effect.Path, OwnershipScopeAsset, effect.SemanticID, false)
+		if err != nil {
+			return err
+		}
+	}
+	for _, relative := range []string{ownershipPath, basePath} {
+		if err := os.Remove(filepath.Join(a.root, filepath.FromSlash(relative))); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove ownership evidence %q: %w", relative, err)
+		}
+	}
+	return nil
 }
 
 func (a *Applier) writeOwnership(plan Plan, effect Effect) error {
@@ -255,6 +295,18 @@ func (a *Applier) Preflight(plan Plan) error {
 			return err
 		}
 	}
+	for _, migration := range plan.OwnershipMigrations {
+		if err := a.checkOwnershipMigrationSource(migration); err != nil {
+			return err
+		}
+		for _, path := range []string{migration.CanonicalOwnershipPath, migration.CanonicalBasePath} {
+			if _, err := os.Lstat(filepath.Join(a.root, filepath.FromSlash(path))); err == nil {
+				return fmt.Errorf("%w: canonical ownership evidence %q appeared after preview", ErrStalePlan, path)
+			} else if !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("inspect canonical ownership evidence %q: %w", path, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -262,11 +314,11 @@ func (a *Applier) checkMutation(mutation plannedMutation) error {
 	path := filepath.Join(a.root, filepath.FromSlash(mutation.effect.Path))
 	ownershipPath := mutation.effect.OwnershipPath
 	if ownershipPath == "" {
-		ownershipPath = mutation.effect.Path + sidecarSuffix
+		ownershipPath, _, _ = ownershipPaths(mutation.effect.Path, OwnershipScopeAsset, mutation.effect.SemanticID, false)
 	}
 	basePath := mutation.effect.BasePath
 	if basePath == "" {
-		basePath = mutation.effect.Path + baseSuffix
+		_, basePath, _ = ownershipPaths(mutation.effect.Path, OwnershipScopeAsset, mutation.effect.SemanticID, false)
 	}
 	if err := checkEvidenceHash(filepath.Join(a.root, filepath.FromSlash(ownershipPath)), mutation.effect.OwnershipSHA256, "ownership", mutation.effect.Path); err != nil {
 		return err
@@ -416,7 +468,7 @@ func planMutations(plan Plan) []plannedMutation {
 	return result
 }
 
-func validateBackupScope(scope BackupScope, mutations []plannedMutation) error {
+func validateBackupScope(scope BackupScope, mutations []plannedMutation, migrations []OwnershipMigration) error {
 	if !scope.Required || len(scope.Paths) == 0 {
 		return errors.New("managed mutations require a restorable backup scope")
 	}
@@ -425,6 +477,52 @@ func validateBackupScope(scope BackupScope, mutations []plannedMutation) error {
 	for _, mutation := range mutations {
 		if _, found := slices.BinarySearch(paths, mutation.effect.Path); !found {
 			return fmt.Errorf("backup scope omits managed target %q", mutation.effect.Path)
+		}
+	}
+	for _, migration := range migrations {
+		for _, path := range []string{
+			migration.LegacyOwnershipPath, migration.LegacyBasePath,
+			migration.CanonicalOwnershipPath, migration.CanonicalBasePath,
+		} {
+			if _, found := slices.BinarySearch(paths, path); !found {
+				return fmt.Errorf("backup scope omits ownership migration path %q", path)
+			}
+		}
+	}
+	return nil
+}
+
+func (a *Applier) checkOwnershipMigrationSource(migration OwnershipMigration) error {
+	if err := checkEvidenceHash(filepath.Join(a.root, filepath.FromSlash(migration.LegacyOwnershipPath)), migration.LegacyOwnershipSHA256, "legacy ownership", migration.AssetPath); err != nil {
+		return err
+	}
+	if err := checkEvidenceHash(filepath.Join(a.root, filepath.FromSlash(migration.LegacyBasePath)), migration.LegacyBaseSHA256, "legacy base", migration.AssetPath); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *Applier) applyOwnershipMigration(migration OwnershipMigration) error {
+	if err := a.checkOwnershipMigrationSource(migration); err != nil {
+		return err
+	}
+	store := NewOwnershipStore(a.root)
+	evidence, err := store.ReadEvidence(migration.AssetPath)
+	if errors.Is(err, ErrOwnershipNotFound) || err == nil && evidence.Legacy {
+		if err := store.Write(migration.Ownership, migration.Base); err != nil {
+			return fmt.Errorf("promote canonical ownership for %q: %w", migration.AssetPath, err)
+		}
+		evidence, err = store.ReadEvidence(migration.AssetPath)
+	}
+	if err != nil {
+		return fmt.Errorf("verify canonical ownership for %q: %w", migration.AssetPath, err)
+	}
+	if evidence.Legacy || evidence.Ownership.AssetPath != migration.AssetPath || SHA256(evidence.Base) != evidence.Ownership.BaseSHA256 {
+		return fmt.Errorf("verify canonical ownership for %q: promoted evidence is invalid", migration.AssetPath)
+	}
+	for _, path := range []string{migration.LegacyOwnershipPath, migration.LegacyBasePath} {
+		if err := os.Remove(filepath.Join(a.root, filepath.FromSlash(path))); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("retire legacy ownership evidence %q: %w", path, err)
 		}
 	}
 	return nil

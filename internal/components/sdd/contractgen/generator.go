@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/phasecontract"
@@ -48,7 +49,7 @@ func GenerateReferences(in GeneratorInput) ([]GeneratedAsset, error) {
 		// The generated policy table is a supplemental root module, not the
 		// always-on root index. Keeping that ownership distinct prevents the
 		// installer from treating it as a second root authority.
-		makeAsset(in, "asset/root/policy", ir.AssetRootModule, "root/policy.md", rootReference(snapshot)),
+		makeTextAsset(in, "asset/root/policy", ir.AssetRootModule, "root/policy.md", rootReference(snapshot)),
 	}
 	sort.Slice(assets, func(i, j int) bool { return assets[i].SemanticID < assets[j].SemanticID })
 	return assets, nil
@@ -60,6 +61,12 @@ func makeAsset(in GeneratorInput, id ir.SemanticID, class ir.AssetClass, path st
 		panic(err)
 	}
 	content = append(content, '\n')
+	sum := sha256.Sum256(content)
+	return GeneratedAsset{SemanticID: id, Class: class, RelativePath: path, Content: content, SHA256: hex.EncodeToString(sum[:]), Version: in.Version, SourceFingerprint: in.SourceFingerprint}
+}
+
+func makeTextAsset(in GeneratorInput, id ir.SemanticID, class ir.AssetClass, path, value string) GeneratedAsset {
+	content := []byte(strings.TrimRight(value, "\r\n") + "\n")
 	sum := sha256.Sum256(content)
 	return GeneratedAsset{SemanticID: id, Class: class, RelativePath: path, Content: content, SHA256: hex.EncodeToString(sum[:]), Version: in.Version, SourceFingerprint: in.SourceFingerprint}
 }
@@ -91,7 +98,6 @@ func schemaReference(definitions phasecontract.Definitions) map[string]any {
 	return map[string]any{
 		"schema_version": definitions.SchemaVersion,
 		"envelope":       envelopeReference(),
-		"aliases":        definitions.Aliases,
 	}
 }
 

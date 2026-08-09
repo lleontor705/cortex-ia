@@ -53,7 +53,7 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 	workflow := canonical.Workflow()
 	contents := make(map[ir.SemanticID][]byte)
 	policy := phasecontract.PolicySnapshot()
-	generatorVersion := phasecontract.CompatibilityVersion
+	generatorVersion := phasecontract.ContractVersion
 	generated, err := contractgen.GenerateReferences(contractgen.GeneratorInput{
 		Definitions:       phasecontract.CanonicalDefinitions(),
 		Version:           generatorVersion,
@@ -140,13 +140,7 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 		}
 	}
 	for _, role := range workflow.Roles {
-		name := map[string]string{
-			"role/orchestrator": "orchestrator",
-			"role/bootstrap":    "bootstrap", "role/investigate": "explore", "role/draft-proposal": "proposal",
-			"role/write-specs": "spec", "role/architect": "design", "role/decompose": "tasks",
-			"role/implement": "apply", "role/validate": "verify", "role/finalize": "archive",
-			"role/debate": "debate", "role/parallel-dispatch": "parallel-dispatch",
-		}[string(role.ID)]
+		name := strings.TrimPrefix(string(role.ID), "role/")
 		if name == "" {
 			return MaterializedCatalog{}, fmt.Errorf("workflow role %q is not canonical", role.ID)
 		}

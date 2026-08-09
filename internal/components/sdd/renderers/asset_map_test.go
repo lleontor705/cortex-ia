@@ -32,8 +32,43 @@ func TestAdapterAssetMapKeepsRoleStubsOutsideNativeAgentDiscovery(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Relative != ".config/opencode/.cortex-ia/roles/implement.md" {
+	if got.Relative != ".cortex-ia/opencode/roles/implement.md" {
 		t.Fatalf("role stub destination = %q", got.Relative)
+	}
+}
+
+func TestOpenCodeAssetMapSeparatesNativeAndInternalAssets(t *testing.T) {
+	tests := []struct {
+		name     string
+		id       ir.SemanticID
+		class    ir.AssetClass
+		relative string
+		want     string
+	}{
+		{name: "native skill", id: "asset/skill/implement", class: ir.AssetSkill, relative: "skills/implement/SKILL.md", want: ".config/opencode/skills/implement/SKILL.md"},
+		{name: "shared skill contract", id: "asset/skill/shared/convention", class: ir.AssetSkill, relative: "skills/_shared/cortex-convention.md", want: ".cortex-ia/opencode/contracts/_shared/cortex-convention.md"},
+		{name: "root module", id: "asset/root-module/contracts", class: ir.AssetRootModule, relative: "sdd-root/contracts.md", want: ".cortex-ia/opencode/root/contracts.md"},
+		{name: "shared contract", id: "asset/shared-contract", class: ir.AssetSharedContract, relative: "skills/_shared/sdd-phase-contract.md", want: ".cortex-ia/opencode/contracts/_shared/sdd-phase-contract.md"},
+		{name: "overlay", id: "asset/profile-overlay/flat", class: ir.AssetProfileOverlay, relative: "profiles/portable-flat.md", want: ".cortex-ia/opencode/overlays/portable-flat.md"},
+		{name: "quality", id: "asset/quality-template", class: ir.AssetQualityTemplate, relative: "quality/plan-template.json", want: ".cortex-ia/opencode/quality/plan-template.json"},
+		{name: "manifest", id: "asset/manifest/security", class: ir.AssetManifest, relative: "manifests/security.json", want: ".cortex-ia/opencode/manifests/security.json"},
+		{name: "contract schema", id: "asset/contract/phase", class: ir.AssetContractSchema, relative: "contracts/phase.json", want: ".cortex-ia/opencode/contracts/phase.json"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m, err := AdapterAssetMapFor("opencode")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := m.Map(test.id, test.class, test.relative)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Relative != test.want {
+				t.Fatalf("destination = %q, want %q", got.Relative, test.want)
+			}
+		})
 	}
 }
 

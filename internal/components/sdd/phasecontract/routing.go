@@ -5,14 +5,14 @@ import "fmt"
 // authorizedTransitions is the phase DAG. design runs in parallel with spec
 // (both consume proposal); tasks consumes both spec and design.
 var authorizedTransitions = map[PhaseID]map[PhaseID]struct{}{
-	PhaseBootstrap: {PhaseExplore: {}},
-	PhaseExplore:   {PhaseProposal: {}},
-	PhaseProposal:  {PhaseSpec: {}, PhaseDesign: {}},
-	PhaseSpec:      {PhaseTasks: {}},
-	PhaseDesign:    {PhaseTasks: {}},
-	PhaseTasks:     {PhaseApply: {}},
-	PhaseApply:     {PhaseVerify: {}},
-	PhaseVerify:    {PhaseArchive: {}},
+	PhaseBootstrap:   {PhaseInvestigate: {}},
+	PhaseInvestigate: {PhasePropose: {}},
+	PhasePropose:     {PhaseSpec: {}, PhaseDesign: {}},
+	PhaseSpec:        {PhaseTasks: {}},
+	PhaseDesign:      {PhaseTasks: {}},
+	PhaseTasks:       {PhaseApply: {}},
+	PhaseApply:       {PhaseVerify: {}},
+	PhaseVerify:      {PhaseArchive: {}},
 }
 
 // AuthorizeTransition permits only the dependency-ordered transitions in the

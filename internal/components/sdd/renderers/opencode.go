@@ -328,7 +328,7 @@ func renderOpenCodeCoreV2Agents(resolved ResolvedWorkflow) ([]Asset, error) {
 		}
 		agents = append(agents, Asset{
 			Path: "agents/" + name + ".md", SemanticID: ir.SemanticID("asset/opencode/agent/" + name), Kind: AssetAgent,
-			Content: renderOpenCodeCoreV2Agent(role, bindings[roleID]), Mode: 0o644, Permissions: permissions,
+			Content: renderOpenCodeCoreV2Agent(role, bindings[roleID], resolved.Composition), Mode: 0o644, Permissions: permissions,
 		})
 	}
 	return agents, nil
@@ -338,11 +338,14 @@ func hasCanonicalOpenCodeCoreV2Composition(resolved ResolvedWorkflow) bool {
 	return len(resolved.Workflow.Roles) == len(canonicalOpenCodeSkills) && len(resolved.Composition.SkillBindings) == len(canonicalOpenCodeSkills)
 }
 
-func renderOpenCodeCoreV2Agent(role ir.Role, binding SkillBinding) []byte {
+func renderOpenCodeCoreV2Agent(role ir.Role, binding SkillBinding, composition Composition) []byte {
 	var output strings.Builder
 	fmt.Fprintln(&output, "---")
 	fmt.Fprintf(&output, "description: %s\n", strconv.Quote(role.Objective))
 	fmt.Fprintln(&output, "mode: subagent")
+	if route, ok := openCodeModelRoute(composition, role.ID); ok {
+		fmt.Fprintf(&output, "model: %s/%s\n", route.Primary.Provider, route.Primary.Model)
+	}
 	if role.ID == "role/bootstrap" {
 		fmt.Fprintln(&output, "tools:")
 		fmt.Fprintln(&output, "  question: true")

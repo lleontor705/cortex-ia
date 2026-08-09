@@ -2,6 +2,7 @@ package renderers
 
 import (
 	"context"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -81,8 +82,9 @@ func TestOpenCodeAgentPolicyRestrictsTaskByProfile(t *testing.T) {
 		{profile: "portable-sequential", role: "role/orchestrator"},
 		{profile: "portable-flat", role: "role/orchestrator", allows: elevenSubagentNames()},
 		{profile: "portable-flat", role: "role/debate"},
-		{profile: "native-advanced", role: "role/debate", allows: ninePhaseRoleNames(workflow)},
-		{profile: "native-advanced", role: "role/parallel-dispatch", allows: ninePhaseRoleNames(workflow)},
+		{profile: "native-advanced", role: "role/orchestrator", allows: elevenSubagentNames()},
+		{profile: "native-advanced", role: "role/debate"},
+		{profile: "native-advanced", role: "role/parallel-dispatch"},
 	} {
 		t.Run(tc.profile+"/"+string(tc.role), func(t *testing.T) {
 			policy, err := buildOpenCodeAgentPolicy(canonicalRole(t, workflow, tc.role), workflow, tc.profile, composition)
@@ -110,6 +112,64 @@ func TestOpenCodeAgentPolicyRestrictsTaskByProfile(t *testing.T) {
 				t.Fatalf("task allowlist = %v, want %v", got, tc.allows)
 			}
 		})
+	}
+}
+
+func TestOpenCodePortableFlatOrchestratorHasExactManagedReadPermissions(t *testing.T) {
+	workflow := canonicalOpenCodeWorkflow()
+	policy, err := buildOpenCodeAgentPolicy(canonicalRole(t, workflow, "role/orchestrator"), workflow, "portable-flat", openCodePolicyComposition(workflow))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	managedReadRules := []openCodePermissionRule{
+		{Pattern: "*", Action: "deny"},
+		{Pattern: "~/.cortex-ia/opencode/root/**", Action: "allow"},
+		{Pattern: "~/.cortex-ia/opencode/contracts/**", Action: "allow"},
+	}
+	taskRules := []openCodePermissionRule{{Pattern: "*", Action: "deny"}}
+	for _, name := range elevenSubagentNames() {
+		taskRules = append(taskRules, openCodePermissionRule{Pattern: name, Action: "allow"})
+	}
+	want := []openCodeToolPermission{
+		{Tool: "read", Rules: managedReadRules},
+		{Tool: "glob", Action: "deny"},
+		{Tool: "grep", Action: "deny"},
+		{Tool: "list", Action: "deny"},
+		{Tool: "edit", Action: "deny"},
+		{Tool: "bash", Action: "deny"},
+		{Tool: "external_directory", Rules: managedReadRules},
+		{Tool: "skill", Rules: []openCodePermissionRule{{Pattern: "*", Action: "deny"}, {Pattern: "orchestrator", Action: "allow"}}},
+		{Tool: "task", Rules: taskRules},
+	}
+	if !reflect.DeepEqual(policy.Permissions, want) {
+		t.Fatalf("orchestrator permissions = %+v, want exact policy %+v", policy.Permissions, want)
+	}
+
+	rendered := strings.ToLower(string(renderOpenCodeAgent(canonicalRole(t, workflow, "role/orchestrator"), workflow, "portable-flat", openCodePolicyComposition(workflow))))
+	for _, forbidden := range []string{"mailbox", "ownership", "/roles/", "~/**", "~/*"} {
+		if strings.Contains(rendered, forbidden) {
+			t.Errorf("orchestrator policy contains forbidden scope %q:\n%s", forbidden, rendered)
+		}
+	}
+}
+
+func TestOpenCodeChildrenAlwaysDenyTask(t *testing.T) {
+	workflow := canonicalOpenCodeWorkflow()
+	composition := openCodePolicyComposition(workflow)
+	for _, profile := range []string{"portable-flat", "native-advanced"} {
+		for _, role := range workflow.Roles {
+			if role.ID == "role/orchestrator" {
+				continue
+			}
+			t.Run(profile+"/"+string(role.ID), func(t *testing.T) {
+				policy, err := buildOpenCodeAgentPolicy(role, workflow, profile, composition)
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertFlatPermission(t, policy, "task", "deny")
+			})
+		}
 	}
 }
 
@@ -243,17 +303,6 @@ func canonicalRole(t *testing.T, workflow ir.WorkflowIR, id ir.SemanticID) ir.Ro
 
 func elevenSubagentNames() []string {
 	return []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize", "debate", "parallel-dispatch"}
-}
-
-func ninePhaseRoleNames(workflow ir.WorkflowIR) []string {
-	result := make([]string, 0, len(workflow.Phases))
-	for _, phase := range workflow.Phases {
-		name := openCodeSemanticName(phase.Role)
-		if !slices.Contains(result, name) {
-			result = append(result, name)
-		}
-	}
-	return result
 }
 
 func assertFlatPermission(t *testing.T, policy openCodeAgentPolicy, tool, action string) {

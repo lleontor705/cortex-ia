@@ -200,7 +200,16 @@ func checkConventionPresent(ctx *Context) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	}
+	if agentSelected(ctx, model.AgentOpenCode) {
+		canonical := filepath.Join(ctx.HomeDir, ".cortex-ia", "opencode", "contracts", "_shared", "cortex-convention.md")
+		if _, err := os.Stat(canonical); err == nil {
+			return nil
+		}
+	}
 	for _, a := range ctx.Lock.InstalledAgents {
+		if a == model.AgentOpenCode {
+			continue
+		}
 		if _, err := os.Stat(filepath.Join(ctx.HomeDir, ".config", string(a), "skills", "_shared", "cortex-convention.md")); err == nil {
 			return nil
 		}
@@ -249,7 +258,7 @@ func checkCriticalLockInventory(ctx *Context) error {
 	}
 	if componentSelected(ctx, model.ComponentSDD) {
 		critical = appendExisting(critical,
-			filepath.Join(configRoot, ".cortex-ia", "composition.json"),
+			filepath.Join(ctx.HomeDir, ".cortex-ia", "opencode", "composition.json"),
 			filepath.Join(configRoot, "skills", "orchestrator", "SKILL.md"),
 		)
 	}
@@ -294,8 +303,7 @@ func checkOpenCodeComposition(ctx *Context) error {
 	if !openCodeSDDSelected(ctx) {
 		return nil
 	}
-	configRoot := openCodeConfigRoot(ctx.HomeDir)
-	manifestPath := filepath.Join(configRoot, ".cortex-ia", "composition.json")
+	manifestPath := filepath.Join(ctx.HomeDir, ".cortex-ia", "opencode", "composition.json")
 	content, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return fmt.Errorf("read composition manifest: %w", err)
@@ -314,6 +322,21 @@ func checkOpenCodeComposition(ctx *Context) error {
 	var manifest compositionManifest
 	if err := json.Unmarshal(content, &manifest); err != nil {
 		return fmt.Errorf("parse composition manifest: %w", err)
+	}
+	internalReferences := append([]string{manifest.RootIndex, manifest.SharedContract, manifest.ProfileOverlay, manifest.QualityTemplate}, manifest.Modules...)
+	for _, reference := range internalReferences {
+		if _, err := safeCompositionPath(ctx.HomeDir, reference); err != nil {
+			return fmt.Errorf("composition reference %q: %w", reference, err)
+		}
+		if !strings.HasPrefix(filepath.ToSlash(reference), ".cortex-ia/opencode/") {
+			return fmt.Errorf("composition internal reference %q is outside canonical OpenCode state root", reference)
+		}
+	}
+	for _, binding := range manifest.SkillBindings {
+		clean := filepath.ToSlash(binding.Path)
+		if !strings.HasPrefix(clean, ".config/opencode/skills/") || !strings.HasSuffix(clean, "/SKILL.md") {
+			return fmt.Errorf("composition skill reference %q is outside native OpenCode skill root", binding.Path)
+		}
 	}
 	references := []string{manifest.RootIndex, manifest.SharedContract, manifest.ProfileOverlay, manifest.QualityTemplate}
 	references = append(references, manifest.Modules...)

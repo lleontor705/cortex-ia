@@ -6,17 +6,18 @@ subtask: false
 
 <command_dispatch>
   <instruction>
-    Activate new SDD change. Capture working directory, project, change, and context.
+    Activate a new change and capture its directory, project, name, and context.
     Target Arguments: "$ARGUMENTS"
   </instruction>
   <execution_flow>
-    1. Read canonical proposal skill and review exploration evidence.
-    2. Draft change proposal with bounded scope and rollback plan.
-    3. Select dependency route and map requirement candidates.
-    4. Emit canonical proposal contract for specification phase.
+    1. Dispatch bootstrap via native `task` with context.
+    2. Dispatch investigate with the successful bootstrap reference.
+    3. Dispatch draft-proposal with the successful investigate reference.
+    4. Return child references and proposal handoff.
   </execution_flow>
   <error_handling>
-    - If proposal contradicts repository stack: return blocked.
-    - When human gate requested: present scope and wait for approval.
+    - After each child, stop on `blocked` and return its evidence.
+    - Route only: never load child skills or perform phase work.
+    - Each child performs one phase and never continues the chain.
   </error_handling>
 </command_dispatch>

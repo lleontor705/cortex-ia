@@ -18,7 +18,7 @@ Handoffs carry Cortex topic keys and ForgeSpec IDs, not copied transcripts. Save
 
 ## Artifact keys and lineage
 
-Use `bootstrap/{project}` for initialization and `sdd/{change}/{artifact}` for explore, proposal, spec, design, tasks, apply-progress, verify-report, and archive-report. Connect meaningful upstream/downstream observations with `cortex_relate`; supported relations are `references`, `relates_to`, `follows`, `supersedes`, and `contradicts`.
+Use `bootstrap/{project}` for initialization and `sdd/{change}/{artifact}` for investigate, proposal, spec, design, tasks, apply-progress, verify-report, and archive-report. Connect meaningful upstream/downstream observations with `cortex_relate`; supported relations are `references`, `relates_to`, `follows`, `supersedes`, and `contradicts`.
 
 ## Sessions and recovery
 

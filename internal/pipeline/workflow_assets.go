@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
 	"github.com/lleontor705/cortex-ia/internal/components/mcpinject"
 	"github.com/lleontor705/cortex-ia/internal/components/mcpprobe"
@@ -38,16 +40,22 @@ import (
 )
 
 type WorkflowRequest struct {
-	HomeDir               string
-	Adapters              []agents.Adapter
-	GeneratorVersion      string
-	ForgeSpecEndpoint     string
-	ForgeSpecRequirements forgespeccomp.WorkflowRequirements
-	EvaluationTime        time.Time
-	RequestedProfile      sdd.WorkflowProfile
-	ExperimentalOptIns    []capability.CapabilityID
-	ModelRoutes           prompt.ModelTable
-	RouteResolution       modelroute.ResolverInput
+	HomeDir                  string
+	Adapters                 []agents.Adapter
+	GeneratorVersion         string
+	ForgeSpecEndpoint        string
+	ForgeSpecRequirements    forgespeccomp.WorkflowRequirements
+	EvaluationTime           time.Time
+	CapabilityEvaluationTime time.Time
+	RequestedProfile         sdd.WorkflowProfile
+	ExperimentalOptIns       []capability.CapabilityID
+	// QualifiedCapabilityFacts is populated by the production install
+	// coordinator after runtime probes. A nil map preserves static adapter facts
+	// for direct PrepareWorkflow unit calls; a non-nil empty entry is an explicit
+	// closed-world result with no qualified capabilities for that target.
+	QualifiedCapabilityFacts map[model.AgentID][]capability.CapabilityFact
+	ModelRoutes              prompt.ModelTable
+	RouteResolution          modelroute.ResolverInput
 }
 
 type TargetBundle struct {
@@ -148,10 +156,15 @@ func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWork
 		return PreparedWorkflowInstall{}, fmt.Errorf("resolve workflow model routes: %w", err)
 	}
 	evaluationTime := request.EvaluationTime
-	resolutionTime := evaluationTime
+	resolutionTime := request.CapabilityEvaluationTime
 	if evaluationTime.IsZero() {
 		evaluationTime = time.Unix(0, 0).UTC()
-		resolutionTime = time.Now().UTC()
+	}
+	if resolutionTime.IsZero() {
+		resolutionTime = request.EvaluationTime
+		if resolutionTime.IsZero() {
+			resolutionTime = time.Now().UTC()
+		}
 	}
 	snapshot, err := probeForgeSpec(ctx, request.ForgeSpecEndpoint)
 	if err != nil {
@@ -162,7 +175,7 @@ func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWork
 	if err != nil {
 		return PreparedWorkflowInstall{}, fmt.Errorf("digest ForgeSpec capability snapshot: %w", err)
 	}
-	profileDecision := resolveProductionProfile(request.Adapters, request.RequestedProfile, request.ExperimentalOptIns, resolutionTime)
+	profileDecision := resolveProductionProfile(request.Adapters, request.QualifiedCapabilityFacts, request.RequestedProfile, request.ExperimentalOptIns, resolutionTime)
 	if profileDecision.Disposition == ProfileDispositionBlocked {
 		return PreparedWorkflowInstall{}, fmt.Errorf("resolve workflow profile: %s", profileDecision.ReasonID)
 	}
@@ -229,10 +242,7 @@ func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWork
 		if err != nil {
 			return PreparedWorkflowInstall{}, fmt.Errorf("marshal canonical workflow: %w", err)
 		}
-		facts := []capability.CapabilityFact{}
-		if provider, ok := adapter.(agents.CapabilityProvider); ok {
-			facts = append(facts, provider.CapabilityFacts()...)
-		}
+		facts := workflowCapabilityFacts(request, adapter)
 		if _, err := installroots.Resolve(string(target), request.HomeDir, adapter.GlobalConfigDir(request.HomeDir)); err != nil {
 			return PreparedWorkflowInstall{}, fmt.Errorf("resolve typed install roots for %s: %w", target, err)
 		}
@@ -290,7 +300,7 @@ func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWork
 			return PreparedWorkflowInstall{}, fmt.Errorf("compile workflow bundle for %s: %w", target, err)
 		}
 		configRoot := adapter.GlobalConfigDir(request.HomeDir)
-		rebased, err := rebaseWorkflowBundle(request.HomeDir, configRoot, bundle.Bundle)
+		rebased, err := rebaseWorkflowBundle(request.HomeDir, configRoot, target, bundle.Bundle)
 		if err != nil {
 			return PreparedWorkflowInstall{}, fmt.Errorf("rebase workflow bundle for %s: %w", target, err)
 		}
@@ -302,7 +312,11 @@ func PrepareWorkflow(ctx context.Context, request WorkflowRequest) (PreparedWork
 	digest := sha256.Sum256([]byte(strings.Join(fingerprints, "\n")))
 	fingerprint := hex.EncodeToString(digest[:])
 
-	managed, err := loadManagedWorkflowAssets(request.HomeDir, combined)
+	priorLock, err := state.LoadLock(request.HomeDir)
+	if err != nil {
+		return PreparedWorkflowInstall{}, fmt.Errorf("load prior workflow lock: %w", err)
+	}
+	managed, err := loadManagedWorkflowAssets(request.HomeDir, combined, priorLock.Files)
 	if err != nil {
 		return PreparedWorkflowInstall{}, err
 	}
@@ -354,14 +368,47 @@ func nativeResolutions(facts []capability.CapabilityFact) []sddresolution.Resolu
 	return result
 }
 
-func resolveProductionProfile(adapters []agents.Adapter, requested sdd.WorkflowProfile, optIns []capability.CapabilityID, now time.Time) ProfileDecision {
+func resolveProductionProfile(adapters []agents.Adapter, qualified map[model.AgentID][]capability.CapabilityFact, requested sdd.WorkflowProfile, optIns []capability.CapabilityID, now time.Time) ProfileDecision {
 	facts := make([]capability.CapabilityFact, 0)
 	for _, adapter := range adapters {
-		if provider, ok := adapter.(agents.CapabilityProvider); ok {
-			facts = append(facts, provider.CapabilityFacts()...)
-		}
+		facts = append(facts, capabilityFactsForAdapter(adapter, qualified)...)
 	}
 	return ResolveProfileDecision(ProfileResolutionInput{Requested: requested, Facts: facts, ExperimentalOptIns: optIns, Now: now})
+}
+
+func workflowCapabilityFacts(request WorkflowRequest, adapter agents.Adapter) []capability.CapabilityFact {
+	provider, ok := adapter.(agents.CapabilityProvider)
+	if !ok {
+		return nil
+	}
+	declared := provider.CapabilityFacts()
+	if request.QualifiedCapabilityFacts == nil {
+		return slices.Clone(declared)
+	}
+	qualified := request.QualifiedCapabilityFacts[adapter.Agent()]
+	result := make([]capability.CapabilityFact, 0, len(qualified))
+	for _, fact := range declared {
+		for _, runtimeFact := range qualified {
+			if runtimeFact.ID == fact.ID {
+				// Runtime evidence gates emission, while declared facts keep the
+				// generated bundle deterministic across equivalent probes.
+				result = append(result, fact)
+				break
+			}
+		}
+	}
+	return result
+}
+
+func capabilityFactsForAdapter(adapter agents.Adapter, qualified map[model.AgentID][]capability.CapabilityFact) []capability.CapabilityFact {
+	if qualified != nil {
+		return append([]capability.CapabilityFact{}, qualified[adapter.Agent()]...)
+	}
+	provider, ok := adapter.(agents.CapabilityProvider)
+	if !ok {
+		return nil
+	}
+	return slices.Clone(provider.CapabilityFacts())
 }
 
 func profileRank(profile sdd.WorkflowProfile) int {
@@ -473,7 +520,7 @@ func workflowDegradations(resolution forgespeccomp.ForgeSpecResolution) []string
 	return result
 }
 
-func rebaseWorkflowBundle(homeDir, configDir string, bundle renderers.Bundle) (renderers.Bundle, error) {
+func rebaseWorkflowBundle(homeDir, configDir string, target renderers.TargetID, bundle renderers.Bundle) (renderers.Bundle, error) {
 	root, err := filepath.Abs(homeDir)
 	if err != nil {
 		return renderers.Bundle{}, err
@@ -491,7 +538,8 @@ func rebaseWorkflowBundle(homeDir, configDir string, bundle renderers.Bundle) (r
 		asset := input
 		assetPath := filepath.ToSlash(filepath.Clean(filepath.FromSlash(input.Path)))
 		prefixSlash := filepath.ToSlash(filepath.Clean(prefix))
-		if assetPath != prefixSlash && !strings.HasPrefix(assetPath, prefixSlash+"/") {
+		homeRelative := target == "opencode" && opencode.NativeLayout().IsWorkflowPath(assetPath)
+		if !homeRelative && assetPath != prefixSlash && !strings.HasPrefix(assetPath, prefixSlash+"/") {
 			assetPath = filepath.ToSlash(filepath.Join(prefix, filepath.FromSlash(assetPath)))
 		}
 		asset.Path = assetPath
@@ -500,20 +548,117 @@ func rebaseWorkflowBundle(homeDir, configDir string, bundle renderers.Bundle) (r
 	return renderers.Bundle{Assets: assets, Metadata: slices.Clone(bundle.Metadata)}, nil
 }
 
-func loadManagedWorkflowAssets(root string, bundle renderers.Bundle) ([]sddinstall.ManagedAsset, error) {
+func loadManagedWorkflowAssets(root string, bundle renderers.Bundle, priorLockedPaths []string) ([]sddinstall.ManagedAsset, error) {
 	store := sddinstall.NewOwnershipStore(root)
-	managed := make([]sddinstall.ManagedAsset, 0, len(bundle.Assets))
+	managed := make([]sddinstall.ManagedAsset, 0, len(bundle.Assets)+len(priorLockedPaths))
+	candidates := make([]string, 0, len(bundle.Assets)+len(priorLockedPaths))
+	desiredModes := make(map[string]fs.FileMode, len(bundle.Assets))
 	for _, asset := range bundle.Assets {
-		ownership, base, err := store.Read(asset.Path)
+		candidates = append(candidates, asset.Path)
+		desiredModes[asset.Path] = asset.Mode
+	}
+	for _, lockedPath := range priorLockedPaths {
+		relative, ok := homeRelativeLockedPath(root, lockedPath)
+		if !ok || !opencode.NativeLayout().IsWorkflowPath(relative) && !strings.HasPrefix(relative, opencode.NativeLayout().ConfigRoot+"/") {
+			continue
+		}
+		candidates = append(candidates, relative)
+	}
+	legacyCandidates, err := discoverOwnedOpenCodeLegacyAssets(root)
+	if err != nil {
+		return nil, err
+	}
+	candidates = append(candidates, legacyCandidates...)
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		if _, duplicate := seen[candidate]; duplicate {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		evidence, err := store.ReadEvidence(candidate)
 		if errors.Is(err, sddinstall.ErrOwnershipNotFound) {
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("read workflow ownership %q: %w", asset.Path, err)
+			return nil, fmt.Errorf("read workflow ownership %q: %w", candidate, err)
 		}
-		managed = append(managed, sddinstall.ManagedAsset{Path: asset.Path, Ownership: ownership, Base: base, Mode: asset.Mode})
+		managed = append(managed, sddinstall.ManagedAsset{
+			Path: candidate, Ownership: evidence.Ownership, Base: evidence.Base, Mode: desiredModes[candidate],
+			OwnershipPath: evidence.OwnershipPath, BasePath: evidence.BasePath,
+			OwnershipSHA256: evidence.OwnershipSHA256, BaseSHA256: evidence.BaseSHA256,
+			LegacyOwnership: evidence.Legacy,
+		})
 	}
 	return managed, nil
+}
+
+func discoverOwnedOpenCodeLegacyAssets(root string) ([]string, error) {
+	configRoot := filepath.Join(root, filepath.FromSlash(opencode.NativeLayout().ConfigRoot))
+	var candidates []string
+	err := filepath.WalkDir(configRoot, func(candidate string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if errors.Is(walkErr, fs.ErrNotExist) {
+				return nil
+			}
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".cortex-ia.json") {
+			return nil
+		}
+		relative, err := filepath.Rel(root, strings.TrimSuffix(candidate, ".cortex-ia.json"))
+		if err != nil {
+			return err
+		}
+		relative = filepath.ToSlash(relative)
+		for _, prefix := range []string{
+			".config/opencode/.cortex-ia/",
+			".config/opencode/_shared/",
+			".config/opencode/contracts/",
+			".config/opencode/generated/",
+			".config/opencode/generic/",
+			".config/opencode/overlays/",
+			".config/opencode/quality/",
+			".config/opencode/root/",
+			".config/opencode/skills/_shared/",
+		} {
+			if strings.HasPrefix(relative, prefix) {
+				candidates = append(candidates, relative)
+				break
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("discover legacy OpenCode ownership: %w", err)
+	}
+	slices.Sort(candidates)
+	return candidates, nil
+}
+
+func homeRelativeLockedPath(root, lockedPath string) (string, bool) {
+	if strings.TrimSpace(lockedPath) == "" {
+		return "", false
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", false
+	}
+	candidate := filepath.Clean(filepath.FromSlash(lockedPath))
+	if filepath.IsAbs(candidate) {
+		relative, relErr := filepath.Rel(rootAbs, candidate)
+		if relErr != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return "", false
+		}
+		candidate = relative
+	}
+	relative := filepath.ToSlash(candidate)
+	if relative == "." || relative == ".." || strings.HasPrefix(relative, "../") {
+		return "", false
+	}
+	return relative, true
 }
 
 func workflowTarget(agent model.AgentID) (renderers.TargetID, error) {

@@ -10,8 +10,8 @@ import (
 
 func TestCanonicalNineRoleSkillBindingsBothAuthorities(t *testing.T) {
 	want := []PhaseRoleBinding{
-		{Phase: "phase/init", Role: "role/bootstrap", Agent: "agent/bootstrap", Skill: "skill/bootstrap"},
-		{Phase: "phase/explore", Role: "role/investigate", Agent: "agent/investigate", Skill: "skill/investigate"},
+		{Phase: "phase/bootstrap", Role: "role/bootstrap", Agent: "agent/bootstrap", Skill: "skill/bootstrap"},
+		{Phase: "phase/investigate", Role: "role/investigate", Agent: "agent/investigate", Skill: "skill/investigate"},
 		{Phase: "phase/propose", Role: "role/draft-proposal", Agent: "agent/draft-proposal", Skill: "skill/draft-proposal"},
 		{Phase: "phase/spec", Role: "role/write-specs", Agent: "agent/write-specs", Skill: "skill/write-specs"},
 		{Phase: "phase/design", Role: "role/architect", Agent: "agent/architect", Skill: "skill/architect"},
@@ -231,14 +231,14 @@ func TestCanonicalSkillForRoleIsDeterministic(t *testing.T) {
 	for role, want := range map[ir.SemanticID]ir.SemanticID{
 		"role/orchestrator":      "skill/orchestrator",
 		"role/bootstrap":         "skill/bootstrap",
-		"role/explore":           "skill/investigate",
-		"role/proposal":          "skill/draft-proposal",
-		"role/spec":              "skill/write-specs",
-		"role/design":            "skill/architect",
-		"role/tasks":             "skill/decompose",
-		"role/apply":             "skill/implement",
-		"role/verify":            "skill/validate",
-		"role/archive":           "skill/finalize",
+		"role/investigate":       "skill/investigate",
+		"role/draft-proposal":    "skill/draft-proposal",
+		"role/write-specs":       "skill/write-specs",
+		"role/architect":         "skill/architect",
+		"role/decompose":         "skill/decompose",
+		"role/implement":         "skill/implement",
+		"role/validate":          "skill/validate",
+		"role/finalize":          "skill/finalize",
 		"role/debate":            "skill/debate",
 		"role/parallel-dispatch": "skill/parallel-dispatch",
 	} {
@@ -282,12 +282,12 @@ func TestCanonicalSkillForRoleRejectsUnknownRole(t *testing.T) {
 }
 
 func TestSkillBindingDeterministicFromRole(t *testing.T) {
-	binding, err := NewSkillBinding("role/apply", validAdapterContract())
+	binding, err := NewSkillBinding("role/implement", validAdapterContract())
 	if err != nil {
 		t.Fatalf("NewSkillBinding error = %v", err)
 	}
-	if binding.Role != "role/apply" {
-		t.Fatalf("Role = %q, want role/apply", binding.Role)
+	if binding.Role != "role/implement" {
+		t.Fatalf("Role = %q, want role/implement", binding.Role)
 	}
 	if binding.Skill != "skill/implement" {
 		t.Fatalf("Skill = %q, want skill/implement", binding.Skill)
