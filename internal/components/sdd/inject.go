@@ -101,7 +101,7 @@ func FilesToBackup(homeDir string, adapter agents.Adapter) []string {
 	// Agent-specific slash commands (OpenCode).
 	if adapter.SupportsSlashCommands() {
 		commandsDir := adapter.CommandsDir(homeDir)
-		entries, _ := fs.ReadDir(assets.FS, "opencode/commands")
+		entries, _ := fs.ReadDir(assets.FS, "commands")
 		for _, e := range entries {
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
 				paths = append(paths, filepath.Join(commandsDir, e.Name()))

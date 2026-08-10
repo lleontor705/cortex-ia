@@ -91,7 +91,7 @@ func Inject(homeDir string, adapter agents.Adapter) (InjectionResult, error) {
 
 	// 2. Inject cortex-protocol.md into system prompt.
 	if adapter.SupportsSystemPrompt() {
-		protocol, err := assets.Read("generic/cortex-protocol.md")
+		protocol, err := assets.Read("AGENTS.md")
 		if err != nil {
 			return InjectionResult{}, fmt.Errorf("read cortex-protocol: %w", err)
 		}

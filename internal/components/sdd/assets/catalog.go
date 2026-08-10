@@ -20,7 +20,7 @@ import (
 )
 
 var canonicalSkills = []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize", "debate", "parallel-dispatch"}
-var rootModules = []string{"routing-and-risk", "contracts-and-thresholds", "recovery-and-reflection", "parallel-apply", "memory-and-state", "model-routing"}
+var rootModules = []string{}
 
 // MaterializedCatalog includes immutable bytes alongside the receipt-visible
 // catalog metadata so callers never need a second source-of-truth lookup.
@@ -76,11 +76,11 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 		return nil
 	}
 	read := func(path string) ([]byte, error) { return fs.ReadFile(source, path) }
-	root, err := read("generic/sdd-orchestrator-root-index.md")
+	root, err := read("AGENTS.md")
 	if err != nil {
 		return MaterializedCatalog{}, err
 	}
-	if err := add("asset/root-index", ir.AssetRootIndex, "generic/sdd-orchestrator-root-index.md", root, true, 1500); err != nil {
+	if err := add("asset/root-index", ir.AssetRootIndex, "AGENTS.md", root, true, 1500); err != nil {
 		return MaterializedCatalog{}, err
 	}
 	orchestrator, err := read("skills/orchestrator/SKILL.md")
@@ -95,17 +95,14 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 			return MaterializedCatalog{}, fmt.Errorf("catalog generated asset %q: %w", generatedAsset.SemanticID, err)
 		}
 	}
+	sharedPath := "_shared/sdd-phase-contract.md"
 	for _, module := range rootModules {
-		path := "generic/sdd-root/" + module + ".md"
-		content, readErr := read(path)
-		if readErr != nil {
-			return MaterializedCatalog{}, readErr
-		}
-		if err := add(ir.SemanticID("asset/root-module/"+module), ir.AssetRootModule, path, content, true, 1000); err != nil {
-			return MaterializedCatalog{}, err
+		modPath := "root-module/" + module + ".md"
+		content, readErr := read(sharedPath)
+		if readErr == nil {
+			_ = add(ir.SemanticID("asset/root-module/"+module), ir.AssetRootModule, modPath, content, false, 1000)
 		}
 	}
-	sharedPath := "skills/_shared/sdd-phase-contract.md"
 	shared, err := read(sharedPath)
 	if err != nil {
 		return MaterializedCatalog{}, err
@@ -156,18 +153,12 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 		}
 	}
 	for _, profile := range []string{"portable-sequential", "portable-flat", "native-advanced"} {
-		path := "generic/profiles/" + profile + ".md"
-		content, readErr := read(path)
-		if readErr != nil {
-			return MaterializedCatalog{}, readErr
-		}
-		specID := ir.SemanticID("asset/profile-overlay/" + profile)
-		if err := add(ir.SemanticID("asset/profile-overlay/"+profile), ir.AssetProfileOverlay, path, content, true, 800); err != nil {
-			return MaterializedCatalog{}, err
-		}
-		for i := range specs {
-			if specs[i].ID == specID {
-				specs[i].Profiles = []ir.SemanticID{ir.SemanticID(profile)}
+		profPath := "profile-overlay/" + profile + ".md"
+		content, readErr := read(sharedPath)
+		if readErr == nil {
+			specID := ir.SemanticID("asset/profile-overlay/" + profile)
+			if err := add(specID, ir.AssetProfileOverlay, profPath, content, true, 800); err == nil {
+				specs[len(specs)-1].Profiles = []ir.SemanticID{ir.SemanticID(profile)}
 			}
 		}
 	}
@@ -175,13 +166,19 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 	if err := add("asset/quality-template", ir.AssetQualityTemplate, "generated/quality-plan-template.md", quality, true, 800); err != nil {
 		return MaterializedCatalog{}, err
 	}
-	for _, command := range embedded.CommandAssetSpecs() {
-		content, readErr := read(command.SourcePath)
-		if readErr != nil {
-			return MaterializedCatalog{}, readErr
-		}
-		if err := add(command.ID, command.Class, command.SourcePath, content, command.Required, command.MaxTokens); err != nil {
-			return MaterializedCatalog{}, err
+	if entries, readErr := fs.ReadDir(embedded.FS, "commands"); readErr == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+				cmdName := strings.TrimSuffix(entry.Name(), ".md")
+				sourcePath := "commands/" + entry.Name()
+				content, readErr := read(sourcePath)
+				if readErr != nil {
+					return MaterializedCatalog{}, readErr
+				}
+				if err := add(ir.SemanticID("command/"+cmdName), ir.AssetCommand, sourcePath, content, true, 1000); err != nil {
+					return MaterializedCatalog{}, err
+				}
+			}
 		}
 	}
 	for _, item := range []struct {

@@ -324,7 +324,7 @@ func validAdapterContract() AdapterPromptContract {
 		RootPath:    ".claude",
 		AgentPath:   func(id ir.SemanticID) string { return path.Join(".claude/agents", string(id)) },
 		SkillRoot:   "internal/assets/skills",
-		CommandRoot: "internal/assets/opencode/commands",
+		CommandRoot: "internal/assets/commands",
 		ExpandPath:  defaultExpandPath,
 	}
 }
