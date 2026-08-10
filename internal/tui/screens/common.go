@@ -202,13 +202,6 @@ type ModelPickerState struct {
 	Selected map[string]int // phase -> selected model index
 }
 
-// ClaudeModelPickerState holds the state for the Claude model tier picker.
-type ClaudeModelPickerState struct {
-	Options  []string
-	Cursor   int
-	Selected int
-}
-
 // RenderScrollIndicator renders scroll indicators for a list that may overflow.
 // It shows "▲ N more above" and "▼ N more below" hints.
 func RenderScrollIndicator(total, visibleStart, visibleEnd int) string {

@@ -869,8 +869,7 @@ func Run(version string) error {
 
 func isRetiredScreen(screen Screen) bool {
 	switch screen {
-	case ScreenClaudeModelPicker,
-		ScreenProfiles, ScreenProfileCreate,
+	case ScreenProfiles, ScreenProfileCreate,
 		ScreenAgentBuilderEngine, ScreenAgentBuilderPrompt, ScreenAgentBuilderSDD,
 		ScreenAgentBuilderSDDPhase, ScreenAgentBuilderGenerating, ScreenAgentBuilderPreview,
 		ScreenAgentBuilderInstalling, ScreenAgentBuilderComplete,

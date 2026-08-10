@@ -262,5 +262,3 @@ func (m Model) viewUpgradeSync() string {
 	// help rendered centrally
 	return sb.String()
 }
-
-// ModelConfig screen removed — Welcome now goes directly to ClaudeModelPicker.

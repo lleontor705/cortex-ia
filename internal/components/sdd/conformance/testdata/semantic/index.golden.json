@@ -141,7 +141,7 @@
         "semantic_id": "asset/opencode/instruction/root",
         "scope": "workflow-root",
         "path": ".config/opencode/AGENTS.md",
-        "sha256": "ec6f7d7489bf668a0a88924217c7ce2ef2b33d79a17643663a33c8b4be612b51"
+        "sha256": "a5f71265b626b3a02d6ac441dbeef3a1c9b3cdfb690f5146bd585118f8225957"
       },
       {
         "semantic_id": "asset/profile-overlay/portable-sequential",
@@ -323,7 +323,7 @@
         "semantic_id": "asset/root-index",
         "scope": "workflow-root",
         "path": ".cortex-ia/opencode/root/sdd-orchestrator-root-index.md",
-        "sha256": "c2cf59b4fb15bfed829e3960f7c9b44e51dcbb916e2cb148a7f8a9a1c2923c8b"
+        "sha256": "48ca22ee250f1b2ef0a132ba2f65ffad65f7b91a97049ae6a47b0ba15fdd1cc1"
       },
       {
         "semantic_id": "asset/root-module/contracts-and-thresholds",
@@ -524,6 +524,6 @@
         "sha256": "f1412db8faed6e83a4a7c1aae4bf9de97e1b5ac9e2a80a622931278461d1b841"
       }
     ],
-    "digest": "sha256:6af9086dcaa701c5340b683f26ec75e5dbbd92c62280a936eadab9f9448f10b4"
+    "digest": "sha256:7a5c8c72ef010e72155988258998d9b7a482cd1130844d4dcb6c705541d288aa"
   }
 ]

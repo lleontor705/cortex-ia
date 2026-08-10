@@ -26,7 +26,6 @@ const (
 	ScreenAgents
 	ScreenPersona
 	ScreenPreset
-	ScreenClaudeModelPicker
 	ScreenSDDMode
 	ScreenStrictTDD
 	ScreenDependencyTree

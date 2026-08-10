@@ -211,7 +211,7 @@ func TestCLIInstallDryRunPreservesTargetAtShippedBoundary(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("USERPROFILE", homeDir)
-	target := filepath.Join(homeDir, ".codex", "AGENTS.md")
+	target := filepath.Join(homeDir, ".config", "opencode", "AGENTS.md")
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestCLIInstallDryRunPreservesTargetAtShippedBoundary(t *testing.T) {
 
 	t.Run("retired profile fails closed before mutation", func(t *testing.T) {
 		before := snapshotTree(t, homeDir)
-		err := runCLI([]string{"install", "--agent", "codex", "--profile", "explicit-test", "--dry-run"})
+		err := runCLI([]string{"install", "--agent", "opencode", "--profile", "explicit-test", "--dry-run"})
 		var retired RetiredSurfaceError
 		if !errors.As(err, &retired) {
 			t.Fatalf("runCLI() error = %v, want RetiredSurfaceError", err)
@@ -246,7 +246,7 @@ func TestCLIInstallDryRunPreservesTargetAtShippedBoundary(t *testing.T) {
 	})
 
 	t.Run("supported invocation has no retired selector", func(t *testing.T) {
-		err := runCLI([]string{"install", "--agent", "codex", "--dry-run"})
+		err := runCLI([]string{"install", "--agent", "opencode", "--dry-run"})
 		var retired RetiredSurfaceError
 		if errors.As(err, &retired) {
 			t.Fatalf("supported invocation returned RetiredSurfaceError: %v", err)

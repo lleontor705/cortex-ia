@@ -106,7 +106,7 @@ type UnsupportedClientError struct {
 }
 
 func (e UnsupportedClientError) Error() string {
-	return fmt.Sprintf("unsupported client %q; supported clients are claude-code, opencode, vscode-copilot, and codex", e.Client)
+	return fmt.Sprintf("unsupported client %q; supported client is opencode", e.Client)
 }
 
 // preflightCLI scans the complete invocation before dispatch so a retired
@@ -137,7 +137,7 @@ func preflightCLI(args []string) error {
 
 func isCanonicalClient(client string) bool {
 	switch strings.ToLower(client) {
-	case "claude-code", "opencode", "vscode-copilot", "codex":
+	case "opencode":
 		return true
 	default:
 		return false
@@ -150,7 +150,7 @@ func printHelp() {
 Usage:
   cortex-ia                  Launch interactive TUI
   cortex-ia install          Install ecosystem (auto-detect agents)
-  cortex-ia install --agent claude-code --preset full
+  cortex-ia install --agent opencode --preset full
   cortex-ia install --persona professional|mentor|minimal
   cortex-ia install --local           Use project .cortex-ia.yaml config
   cortex-ia install --dry-run
@@ -173,7 +173,7 @@ Usage:
   cortex-ia rollback         Restore managed files from the last backup
   cortex-ia uninstall        Reverse all (or selected) cortex-ia injections
   cortex-ia uninstall --component persona --component cortex
-  cortex-ia uninstall --agent claude-code --dry-run
+  cortex-ia uninstall --agent opencode --dry-run
   cortex-ia uninstall --all  Wipe every managed change and clear state
   cortex-ia update           Check for available updates
   cortex-ia version          Show version

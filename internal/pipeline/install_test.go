@@ -1334,3 +1334,65 @@ func TestCollectBackupPaths_WithExistingMCPConfig(t *testing.T) {
 		t.Error("expected MCP config in backup paths when file exists")
 	}
 }
+
+func TestOpenCodeInstallation_AssetsAndConfigValidation(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := agents.NewDefaultRegistry()
+	selection := model.Selection{
+		Agents:    []model.AgentID{model.AgentOpenCode},
+		Preset:    model.PresetFull,
+		Persona:   model.PersonaProfessional,
+		StrictTDD: true,
+	}
+
+	result, err := Install(homeDir, registry, selection, "v1.0.0", false)
+	if err != nil {
+		t.Fatalf("Install() error = %v, errors: %v", err, result.Errors)
+	}
+
+	// 1. Validate AGENTS.md exists and contains expected persona/header content.
+	agentsMDPath := filepath.Join(homeDir, ".config", "opencode", "AGENTS.md")
+	content, err := os.ReadFile(agentsMDPath)
+	if err != nil {
+		t.Fatalf("AGENTS.md missing: %v", err)
+	}
+	if len(content) == 0 {
+		t.Errorf("AGENTS.md is empty")
+	}
+
+	// 2. Validate opencode.json exists and contains valid JSON with MCP servers.
+	configPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+	configBytes, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("opencode.json missing: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(configBytes, &cfg); err != nil {
+		t.Fatalf("opencode.json is not valid JSON: %v", err)
+	}
+	mcp, ok := cfg["mcp"].(map[string]any)
+	if !ok || len(mcp) == 0 {
+		t.Errorf("opencode.json missing 'mcp' section or has no servers, got: %v", cfg)
+	}
+
+	// 3. Validate subagents copied to .config/opencode/agents/
+	agentsDir := filepath.Join(homeDir, ".config", "opencode", "agents")
+	agentEntries, err := os.ReadDir(agentsDir)
+	if err != nil || len(agentEntries) == 0 {
+		t.Fatalf("no subagents found in %s: %v", agentsDir, err)
+	}
+
+	// 4. Validate skills copied to .config/opencode/skills/
+	skillsDir := filepath.Join(homeDir, ".config", "opencode", "skills")
+	skillEntries, err := os.ReadDir(skillsDir)
+	if err != nil || len(skillEntries) == 0 {
+		t.Fatalf("no skills found in %s: %v", skillsDir, err)
+	}
+
+	// 5. Validate commands copied to .config/opencode/commands/
+	commandsDir := filepath.Join(homeDir, ".config", "opencode", "commands")
+	cmdEntries, err := os.ReadDir(commandsDir)
+	if err != nil || len(cmdEntries) == 0 {
+		t.Fatalf("no commands found in %s: %v", commandsDir, err)
+	}
+}

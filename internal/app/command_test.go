@@ -33,7 +33,7 @@ func TestPreflightCLIRetiredSurfacesRejectsCompleteInvocation(t *testing.T) {
 		{"list", "profiles"},
 		{"install", "--local", "--profile", "legacy"},
 		{"sync", "--dry-run", "--model-preset=balanced"},
-		{"install", "--agent", "codex", "--model-preset", "balanced"},
+		{"install", "--agent", "opencode", "--model-preset", "balanced"},
 	} {
 		err := preflightCLI(args)
 		if err == nil {
@@ -57,7 +57,7 @@ func TestRunCLIRetiredSurfacesFailBeforeDispatch(t *testing.T) {
 		{"list", "profiles"},
 		{"install", "--local", "--profile", "legacy"},
 		{"sync", "--dry-run", "--model-preset=balanced"},
-		{"install", "--agent", "codex", "--model-preset", "balanced"},
+		{"install", "--agent", "opencode", "--model-preset", "balanced"},
 	} {
 		err := runCLI(args)
 		var retired RetiredSurfaceError
@@ -71,10 +71,7 @@ func TestPreflightCLISupportedLifecycleRemainsEligible(t *testing.T) {
 	t.Parallel()
 
 	for _, args := range [][]string{
-		{"install", "--agent", "claude-code", "--dry-run"},
 		{"install", "--agent", "opencode", "--dry-run"},
-		{"install", "--agent", "vscode-copilot", "--dry-run"},
-		{"install", "--agent", "codex", "--dry-run"},
 		{"sync", "--persona", "mentor", "--dry-run"},
 		{"repair", "--dry-run"},
 		{"doctor"},

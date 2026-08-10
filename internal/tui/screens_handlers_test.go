@@ -485,9 +485,6 @@ func TestUpgradeSync_EscWhenIdle(t *testing.T) {
 	}
 }
 
-// ModelConfig screen was removed — Welcome goes directly to ClaudeModelPicker.
-// See TestClaudeModelPicker_Enter_ModelConfigMode for the config mode test.
-
 // ---------------------------------------------------------------------------
 // Backup handlers — additional coverage
 // ---------------------------------------------------------------------------
