@@ -103,7 +103,6 @@ const (
 	PresetCustom  PresetID = "custom"
 )
 
-
 // ModelPreset identifies a predefined model assignment strategy.
 type ModelPreset string
 

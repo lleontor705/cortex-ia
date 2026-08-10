@@ -36,8 +36,8 @@ func TestRenderReview_ShowsPreset(t *testing.T) {
 
 func TestRenderReview_ShowsComponents(t *testing.T) {
 	data := ReviewData{
-		Agents:  []ReviewAgent{{Name: "test-agent"}},
-		Preset:  model.PresetFull,
+		Agents: []ReviewAgent{{Name: "test-agent"}},
+		Preset: model.PresetFull,
 		Resolved: []model.ComponentID{
 			model.ComponentCortex,
 			model.ComponentForgeSpec,

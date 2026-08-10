@@ -27,6 +27,7 @@ permission:
     parallel-dispatch: allow
     validate: allow
     write-specs: allow
+    reviewer: allow
 ---
 
 # role/orchestrator

@@ -19,7 +19,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/phasecontract"
 )
 
-var canonicalSkills = []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize", "debate", "parallel-dispatch"}
+var canonicalSkills = []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize", "debate", "parallel-dispatch", "fast-tdd", "hotfix-triage", "spike-prototype", "code-review-adversary"}
 var rootModules = []string{}
 
 // MaterializedCatalog includes immutable bytes alongside the receipt-visible

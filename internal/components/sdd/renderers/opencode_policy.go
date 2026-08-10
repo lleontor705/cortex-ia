@@ -51,6 +51,10 @@ var openCodeCommandDefinitions = map[ir.SemanticID]openCodeCommandPolicy{
 	"command/finalize":     {Name: "finalize", Description: "Activate finalization for a verified SDD change", Subtask: true},
 	"command/debate":       {Name: "debate", Description: "Activate debate for an SDD topic"},
 	"command/monitor":      {Name: "monitor", Description: "Activate monitoring for SDD state", Subtask: true},
+	"command/tdd":          {Name: "tdd", Description: "Launch Fast-TDD micro loop for bounded feature or bugfix"},
+	"command/hotfix":       {Name: "hotfix", Description: "Launch emergency hotfix triage and atomic patch"},
+	"command/spike":        {Name: "spike", Description: "Launch exploratory spike and disposable proof-of-concept"},
+	"command/review":       {Name: "review", Description: "Launch independent adversarial code review"},
 }
 
 func buildOpenCodeCommandPolicy(id ir.SemanticID, profile string) (openCodeCommandPolicy, error) {
@@ -69,6 +73,7 @@ func buildOpenCodeCommandPolicy(id ir.SemanticID, profile string) (openCodeComma
 		definition.Agent = map[ir.SemanticID]string{
 			"command/bootstrap": "bootstrap", "command/investigate": "investigate", "command/implement": "implement",
 			"command/validate": "validate", "command/finalize": "finalize", "command/debate": "debate",
+			"command/tdd": "implement", "command/hotfix": "implement", "command/spike": "investigate", "command/review": "reviewer",
 		}[id]
 		if definition.Agent == "" {
 			definition.Agent = "orchestrator"

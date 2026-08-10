@@ -6,6 +6,7 @@ import (
 )
 
 // FS embeds all OpenCode copy-paste assets.
+//
 //go:embed AGENTS.md all:_shared all:agents all:commands all:skills
 var FS embed.FS
 

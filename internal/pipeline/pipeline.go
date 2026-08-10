@@ -472,7 +472,6 @@ func componentManagedTargets(homeDir string, adapter agents.Adapter, selection m
 	return withParentDirectories(homeDir, managedFileTargets(homeDir, paths, string(component)))
 }
 
-
 func workflowManagedTargets(workflow PreparedWorkflowInstall) []ManagedTarget {
 	// The backup scope is the exact superset of every path the plan may create,
 	// update, or delete — including the ownership sidecars (".cortex-ia.base" and
