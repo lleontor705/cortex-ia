@@ -122,9 +122,6 @@ func injectMCPConfigFile(homeDir string, adapter agents.Adapter, tmpl ServerTemp
 	}
 
 	overlay := tmpl.DefaultOverlayJSON
-	if adapter.Agent() == model.AgentVSCodeCopilot && tmpl.VSCodeOverlayJSON != nil {
-		overlay = tmpl.VSCodeOverlayJSON
-	}
 
 	wr, err := mergeJSONFile(path, overlay)
 	if err != nil {
@@ -164,7 +161,7 @@ func upsertOwnedTOMLServer(content string, tmpl ServerTemplates) (string, error)
 	command := append([]string{tmpl.TOMLCommand}, tmpl.TOMLArgs...)
 	ownership := tomlRegionOwnership{
 		Owner:      "cortex-ia",
-		SemanticID: "mcp/codex/" + tmpl.Name,
+		SemanticID: "mcp/opencode/" + tmpl.Name,
 		TablePath:  tablePath,
 		Command:    command,
 		BaseSHA256: fmt.Sprintf("%x", sha256.Sum256(base)),

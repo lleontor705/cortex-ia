@@ -153,14 +153,7 @@ func componentOperations(homeDir string, adapter agents.Adapter, component model
 // mcpKeyForAgent returns the JSON path within a settings/mcp file where the
 // named MCP server lives, per-adapter.
 func mcpKeyForAgent(agent model.AgentID, serverName string) []string {
-	switch agent {
-	case model.AgentOpenCode:
-		return []string{"mcp", serverName}
-	case model.AgentVSCodeCopilot:
-		return []string{"servers", serverName}
-	default:
-		return []string{"mcpServers", serverName}
-	}
+	return []string{"mcp", serverName}
 }
 
 // applyOperation executes a single operation. Returns whether the file system

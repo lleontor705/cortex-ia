@@ -37,15 +37,14 @@ func (m *mockAdapter) InstallCommands(_ system.PlatformProfile) [][]string { ret
 
 func TestRegistryRegisterAndGet(t *testing.T) {
 	r := NewRegistry()
-	r.Register(&mockAdapter{id: model.AgentClaudeCode})
 	r.Register(&mockAdapter{id: model.AgentOpenCode})
 
-	a, err := r.Get(model.AgentClaudeCode)
+	a, err := r.Get(model.AgentOpenCode)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Agent() != model.AgentClaudeCode {
-		t.Errorf("expected claude-code, got %s", a.Agent())
+	if a.Agent() != model.AgentOpenCode {
+		t.Errorf("expected opencode, got %s", a.Agent())
 	}
 
 	_, err = r.Get("nonexistent")
@@ -56,25 +55,21 @@ func TestRegistryRegisterAndGet(t *testing.T) {
 
 func TestRegistryAll(t *testing.T) {
 	r := NewRegistry()
-	r.Register(&mockAdapter{id: model.AgentClaudeCode})
 	r.Register(&mockAdapter{id: model.AgentOpenCode})
 
 	all := r.All()
-	if len(all) != 2 {
-		t.Fatalf("expected 2 adapters, got %d", len(all))
+	if len(all) != 1 {
+		t.Fatalf("expected 1 adapter, got %d", len(all))
 	}
-	if all[0].Agent() != model.AgentClaudeCode {
-		t.Errorf("expected claude-code first, got %s", all[0].Agent())
-	}
-	if all[1].Agent() != model.AgentOpenCode {
-		t.Errorf("expected opencode second, got %s", all[1].Agent())
+	if all[0].Agent() != model.AgentOpenCode {
+		t.Errorf("expected opencode, got %s", all[0].Agent())
 	}
 }
 
 func TestRegistryDuplicateOverwrites(t *testing.T) {
 	r := NewRegistry()
-	r.Register(&mockAdapter{id: model.AgentClaudeCode})
-	r.Register(&mockAdapter{id: model.AgentClaudeCode}) // overwrite
+	r.Register(&mockAdapter{id: model.AgentOpenCode})
+	r.Register(&mockAdapter{id: model.AgentOpenCode}) // overwrite
 
 	if len(r.All()) != 1 {
 		t.Errorf("expected 1 adapter after duplicate register, got %d", len(r.All()))

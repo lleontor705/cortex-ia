@@ -9,7 +9,7 @@ import (
 
 func TestGenerate_FullSDD(t *testing.T) {
 	spec := AgentSpec{
-		Engine:  model.AgentClaudeCode,
+		Engine:  model.AgentOpenCode,
 		Purpose: "Code review assistant",
 		SDDMode: SDDFull,
 	}
@@ -31,14 +31,14 @@ func TestGenerate_FullSDD(t *testing.T) {
 		t.Error("expected SkillContent to mention all SDD phases")
 	}
 
-	if !strings.Contains(agent.SkillContent, "claude-code") {
+	if !strings.Contains(agent.SkillContent, "opencode") {
 		t.Error("expected SkillContent to reference the engine")
 	}
 }
 
 func TestGenerate_PhaseSDD(t *testing.T) {
 	spec := AgentSpec{
-		Engine:   model.AgentClaudeCode,
+		Engine:   model.AgentOpenCode,
 		Purpose:  "Security scanner",
 		SDDMode:  SDDPhase,
 		SDDPhase: "verify",
@@ -64,7 +64,7 @@ func TestGenerate_PhaseSDD(t *testing.T) {
 
 func TestGenerate_NoSDD(t *testing.T) {
 	spec := AgentSpec{
-		Engine:  model.AgentCodex,
+		Engine:  model.AgentOpenCode,
 		Purpose: "Documentation writer",
 		SDDMode: SDDNone,
 	}
@@ -106,7 +106,7 @@ func TestGenerate_KebabCase(t *testing.T) {
 
 func TestGenerate_EmptyPurpose(t *testing.T) {
 	spec := AgentSpec{
-		Engine:  model.AgentClaudeCode,
+		Engine:  model.AgentOpenCode,
 		Purpose: "",
 		SDDMode: SDDNone,
 	}
@@ -123,7 +123,7 @@ func TestGenerate_EmptyPurpose(t *testing.T) {
 
 func TestGenerate_WhitespacePurpose(t *testing.T) {
 	spec := AgentSpec{
-		Engine:  model.AgentClaudeCode,
+		Engine:  model.AgentOpenCode,
 		Purpose: "   ",
 		SDDMode: SDDNone,
 	}
@@ -136,7 +136,7 @@ func TestGenerate_WhitespacePurpose(t *testing.T) {
 
 func TestGenerate_FrontmatterPresent(t *testing.T) {
 	spec := AgentSpec{
-		Engine:  model.AgentClaudeCode,
+		Engine:  model.AgentOpenCode,
 		Purpose: "Test agent",
 		SDDMode: SDDNone,
 	}

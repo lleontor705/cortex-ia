@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
-	"github.com/lleontor705/cortex-ia/internal/agents/codex"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
@@ -50,16 +50,16 @@ func TestRenderWorkflowInstallReviewDisclosesPlanDoctorAndRestoration(t *testing
 
 func TestTUIInstallCommandReachesShippedPipelineBoundary(t *testing.T) {
 	registry := agents.NewRegistry()
-	registry.Register(codex.NewAdapter())
+	registry.Register(opencode.NewAdapter())
 	m := New(registry, t.TempDir(), "test-v1")
-	m.Agents = []AgentItem{{ID: model.AgentCodex, Selected: true}}
+	m.Agents = []AgentItem{{ID: model.AgentOpenCode, Selected: true}}
 	m.Resolved = []model.ComponentID{model.ComponentSDD}
 	m.SDDEnabled = true
 
 	called := false
 	m.ExecuteFn = func(selection model.Selection, progress pipeline.ProgressFunc) pipeline.InstallResult {
 		called = true
-		if len(selection.Agents) != 1 || selection.Agents[0] != model.AgentCodex {
+		if len(selection.Agents) != 1 || selection.Agents[0] != model.AgentOpenCode {
 			t.Fatalf("TUI selection agents = %v", selection.Agents)
 		}
 		if len(selection.Components) != 1 || selection.Components[0] != model.ComponentSDD {

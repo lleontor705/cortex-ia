@@ -151,7 +151,7 @@ func TestReview_Enter_InitializesProgressAndChannel(t *testing.T) {
 	m := newTestModel()
 	m.Screen = ScreenReview
 	m.Agents = []AgentItem{
-		{ID: model.AgentClaudeCode, Selected: true},
+		{ID: model.AgentOpenCode, Selected: true},
 	}
 	m.Resolved = []model.ComponentID{model.ComponentCortex, model.ComponentSDD}
 	m.ExecuteFn = func(sel model.Selection, onProgress pipeline.ProgressFunc) pipeline.InstallResult {
@@ -309,8 +309,7 @@ func TestUpdateAgents_SpaceToggle(t *testing.T) {
 	m := newTestModel()
 	m.Screen = ScreenAgents
 	m.Agents = []AgentItem{
-		{ID: model.AgentClaudeCode, Selected: true},
-		{ID: model.AgentOpenCode, Selected: false},
+		{ID: model.AgentOpenCode, Selected: true},
 	}
 	m.Cursor = 0
 
@@ -333,7 +332,7 @@ func TestUpdateAgents_Enter(t *testing.T) {
 	m := newTestModel()
 	m.Screen = ScreenAgents
 	m.Agents = []AgentItem{
-		{ID: model.AgentClaudeCode, Selected: true},
+		{ID: model.AgentOpenCode, Selected: true},
 	}
 
 	result, _ := m.Update(keyMsg("enter"))
@@ -347,7 +346,7 @@ func TestUpdateAgents_EnterNoSelection(t *testing.T) {
 	m := newTestModel()
 	m.Screen = ScreenAgents
 	m.Agents = []AgentItem{
-		{ID: model.AgentClaudeCode, Selected: false},
+		{ID: model.AgentOpenCode, Selected: false},
 	}
 
 	result, _ := m.Update(keyMsg("enter"))
@@ -390,29 +389,16 @@ func TestUpdatePreset_EnterSkipsRetiredModelPicker(t *testing.T) {
 	}
 }
 
-func TestSelectedSupportedAgentIDs_AcceptsCanonicalFourAndRejectsGemini(t *testing.T) {
-	canonical := []model.AgentID{
-		model.AgentClaudeCode,
-		model.AgentOpenCode,
-		model.AgentVSCodeCopilot,
-		model.AgentCodex,
-	}
+func TestSelectedSupportedAgentIDs_AcceptsOpenCodeAndRejectsGemini(t *testing.T) {
 	m := newTestModel()
-	for _, id := range canonical {
-		m.Agents = append(m.Agents, AgentItem{ID: id, Selected: true})
-	}
+	m.Agents = []AgentItem{{ID: model.AgentOpenCode, Selected: true}}
 
 	got, err := m.selectedSupportedAgentIDs()
 	if err != nil {
 		t.Fatalf("selectedSupportedAgentIDs() error = %v", err)
 	}
-	if len(got) != len(canonical) {
-		t.Fatalf("len(selected agents) = %d, want %d", len(got), len(canonical))
-	}
-	for i, id := range canonical {
-		if got[i] != id {
-			t.Errorf("selected agent[%d] = %q, want %q", i, got[i], id)
-		}
+	if len(got) != 1 || got[0] != model.AgentOpenCode {
+		t.Fatalf("selected agents = %v, want [opencode]", got)
 	}
 
 	m.Agents = append(m.Agents, AgentItem{ID: model.AgentID("gemini"), Selected: true})

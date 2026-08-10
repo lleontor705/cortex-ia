@@ -388,7 +388,7 @@ func TestRemoveTOMLRegion_AcceptsPinnedForgeSpecCommand(t *testing.T) {
 }
 
 func TestComponentOperations_TOMLUsesTOMLRegionOperation(t *testing.T) {
-	adapter := &cleanerTestAdapter{agent: model.AgentCodex, strategy: model.StrategyTOMLFile, settings: filepath.Join(t.TempDir(), "config.toml")}
+	adapter := &cleanerTestAdapter{agent: model.AgentOpenCode, strategy: model.StrategyTOMLFile, settings: filepath.Join(t.TempDir(), "config.toml")}
 	ops := componentOperations("", adapter, model.ComponentCortex)
 	if len(ops) != 1 || ops[0].typeID != opRemoveTOMLRegion || ops[0].path != adapter.settings || ops[0].tomlServer != "cortex" {
 		t.Fatalf("TOML operations = %#v, want one TOML region operation", ops)

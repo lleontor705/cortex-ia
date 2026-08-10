@@ -23,7 +23,7 @@ func TestLoadRegistry_MissingFile(t *testing.T) {
 func TestSaveAndLoad_Roundtrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "registry.json")
 	reg := &Registry{Version: 1, Agents: []RegistryEntry{
-		{Name: "my-skill", Engine: model.AgentClaudeCode, SDDMode: SDDStandalone},
+		{Name: "my-skill", Engine: model.AgentOpenCode, SDDMode: SDDStandalone},
 	}}
 	if err := SaveRegistry(path, reg); err != nil {
 		t.Fatalf("SaveRegistry: %v", err)

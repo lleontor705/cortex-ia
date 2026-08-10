@@ -9,12 +9,12 @@ import (
 
 func TestSelectionFromMetadataAcceptsCurrentMailboxComponent(t *testing.T) {
 	s := state.State{
-		InstalledAgents: []model.AgentID{model.AgentCodex},
+		InstalledAgents: []model.AgentID{model.AgentOpenCode},
 		Preset:          model.PresetFull,
 		Components:      []model.ComponentID{model.ComponentCortex, model.ComponentMailbox},
 	}
 	lock := state.Lockfile{
-		InstalledAgents: []model.AgentID{model.AgentCodex, model.AgentCodex},
+		InstalledAgents: []model.AgentID{model.AgentOpenCode},
 		Preset:          model.PresetMinimal,
 		Components:      []model.ComponentID{model.ComponentCortex, model.ComponentSDD},
 	}

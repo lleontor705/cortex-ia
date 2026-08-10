@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
-	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/components/mcpinject"
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -41,12 +39,6 @@ func TestPlanRetirementRemovesOnlyExactManagedRegistration(t *testing.T) {
 			before:   "{\n  \"mcp\": {\n    \"agent-mailbox\": {\"command\":[\"npx\",\"agent-mailbox-mcp\"]},\n    \"agent-mailbox-custom\": {\"command\":[\"external\"]}\n  },\n  \"theme\": \"dark\"\n}\n",
 			wantKept: []string{"agent-mailbox-custom", "\"theme\": \"dark\""},
 		},
-		{
-			name:     "format preserving TOML",
-			adapter:  codex.NewAdapter(),
-			before:   "model = \"gpt\"\n\n[mcp_servers.agent-mailbox]\ncommand = \"npx\"\nargs = [\"-y\", \"agent-mailbox-mcp\"]\n\n[mcp_servers.agent-mailbox-custom]\ncommand = \"external\"\n",
-			wantKept: []string{"model = \"gpt\"", "[mcp_servers.agent-mailbox-custom]", "command = \"external\""},
-		},
 	}
 
 	for _, tt := range tests {
@@ -67,17 +59,6 @@ func TestPlanRetirementRemovesOnlyExactManagedRegistration(t *testing.T) {
 				t.Fatal("missing active-runtime reload guidance")
 			}
 		})
-	}
-}
-
-func TestPlanRetirementSeparateFileIsExactDelete(t *testing.T) {
-	before := "{\n  \"command\": \"npx\",\n  \"args\": [\"-y\", \"agent-mailbox-mcp\"]\n}\n"
-	plan, err := mcpinject.PlanRetirement(t.TempDir(), claude.NewAdapter(), before, retirementEvidence(before))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !plan.Delete || len(plan.After) != 0 {
-		t.Fatalf("separate managed registration was not planned as exact delete: %+v", plan)
 	}
 }
 

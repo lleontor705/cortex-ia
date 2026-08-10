@@ -119,11 +119,7 @@ func mailboxSelector(homeDir string, adapter agents.Adapter) ConfigSelector {
 		}
 	case model.StrategyMCPConfigFile:
 		selector.Path = adapter.MCPConfigPath(homeDir, retiredMailboxName)
-		if adapter.Agent() == model.AgentVSCodeCopilot {
-			selector.JSONPath = []string{"servers", retiredMailboxName}
-		} else {
-			selector.JSONPath = []string{"mcpServers", retiredMailboxName}
-		}
+		selector.JSONPath = []string{"mcpServers", retiredMailboxName}
 	case model.StrategyTOMLFile:
 		selector.Path = adapter.SettingsPath(homeDir)
 		selector.TOMLPath = []string{"mcp_servers", retiredMailboxName}

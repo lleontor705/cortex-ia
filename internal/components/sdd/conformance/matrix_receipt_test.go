@@ -2,7 +2,7 @@ package conformance
 
 import "testing"
 
-func TestAggregateMatrixReceiptEmitsExactly108LinkedBindings(t *testing.T) {
+func TestAggregateMatrixReceiptEmitsExactly27LinkedBindings(t *testing.T) {
 	raw := completeRuntimeReceipt(t)
 	receipt, err := AggregateMatrixReceipt(raw, MatrixReceiptOptions{
 		RouteEvidence:       []string{"route:v1/runtime", "fallback:v1/runtime"},
@@ -17,8 +17,8 @@ func TestAggregateMatrixReceiptEmitsExactly108LinkedBindings(t *testing.T) {
 	if err := ValidateMatrixReceipt(receipt); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(receipt.Bindings); got != 108 {
-		t.Fatalf("bindings = %d, want 108", got)
+	if got := len(receipt.Bindings); got != 27 {
+		t.Fatalf("bindings = %d, want 27", got)
 	}
 	for _, binding := range receipt.Bindings {
 		if binding.CellExecutionHash == "" || binding.ReceiptHash == "" || binding.EvidenceHash == "" {
@@ -90,9 +90,9 @@ func TestAggregateMatrixReceiptFingerprintIsDeterministic(t *testing.T) {
 
 func completeRuntimeReceipt(t *testing.T) RuntimeReceipt {
 	t.Helper()
-	adapters := []string{"a", "b", "c", "d"}
+	adapters := []string{"opencode"}
 	profiles := []string{"p1", "p2", "p3"}
-	raw := RuntimeReceipt{Adapters: adapters, Profiles: profiles, Cells: make([]RuntimeCell, 0, 12)}
+	raw := RuntimeReceipt{Adapters: adapters, Profiles: profiles, Cells: make([]RuntimeCell, 0, 3)}
 	for _, adapter := range adapters {
 		for _, profile := range profiles {
 			receiptBytes := "immutable receipt bytes:" + adapter + ":" + profile

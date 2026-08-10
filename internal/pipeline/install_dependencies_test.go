@@ -149,7 +149,7 @@ func TestInstallDependencies_BeginJournalHookIsScoped(t *testing.T) {
 	}
 
 	selection := model.Selection{
-		Agents:     []model.AgentID{model.AgentCodex},
+		Agents:     []model.AgentID{model.AgentOpenCode},
 		Components: []model.ComponentID{model.ComponentCortex},
 	}
 	result, err := installWithDependencies(t.TempDir(), newTestRegistry(), selection, "test-v1", false, deps)

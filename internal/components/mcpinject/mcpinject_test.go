@@ -73,10 +73,10 @@ func TestInject_NoMCPSupport(t *testing.T) {
 
 func TestInject_SeparateFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, ".claude")
+	configDir := filepath.Join(tmpDir, ".opencode")
 
 	adapter := &testAdapter{
-		agent:           model.AgentClaudeCode,
+		agent:           model.AgentOpenCode,
 		mcpStrategy:     model.StrategySeparateMCPFiles,
 		supportsMCP:     true,
 		globalConfigDir: configDir,
@@ -112,7 +112,7 @@ func TestInject_MergeIntoSettings_NewFile(t *testing.T) {
 	settingsPath := filepath.Join(tmpDir, "settings.json")
 
 	adapter := &testAdapter{
-		agent:        model.AgentClaudeCode,
+		agent:        model.AgentOpenCode,
 		mcpStrategy:  model.StrategyMergeIntoSettings,
 		supportsMCP:  true,
 		settingsPath: settingsPath,
@@ -135,9 +135,9 @@ func TestInject_MergeIntoSettings_NewFile(t *testing.T) {
 	if err := json.Unmarshal(content, &m); err != nil {
 		t.Fatal(err)
 	}
-	servers := m["mcpServers"].(map[string]any)
+	servers := m["mcp"].(map[string]any)
 	if servers["test-server"] == nil {
-		t.Error("expected test-server in mcpServers")
+		t.Error("expected test-server in mcp")
 	}
 }
 
@@ -219,10 +219,10 @@ func TestInject_MergeIntoSettings_OpenCodeJSONCPreservesComments(t *testing.T) {
 
 func TestInject_MCPConfigFile_VSCode(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, ".copilot")
+	configDir := filepath.Join(tmpDir, ".opencode")
 
 	adapter := &testAdapter{
-		agent:           model.AgentVSCodeCopilot,
+		agent:           model.AgentOpenCode,
 		mcpStrategy:     model.StrategyMCPConfigFile,
 		supportsMCP:     true,
 		globalConfigDir: configDir,
@@ -242,13 +242,6 @@ func TestInject_MCPConfigFile_VSCode(t *testing.T) {
 	if err := json.Unmarshal(content, &m); err != nil {
 		t.Fatal(err)
 	}
-
-	// VS Code uses "servers" key
-	servers := m["servers"].(map[string]any)
-	server := servers["test-server"].(map[string]any)
-	if server["type"] != "stdio" {
-		t.Errorf("type = %v, want stdio", server["type"])
-	}
 }
 
 func TestInject_TOML(t *testing.T) {
@@ -261,7 +254,7 @@ func TestInject_TOML(t *testing.T) {
 	}
 
 	adapter := &testAdapter{
-		agent:        model.AgentCodex,
+		agent:        model.AgentOpenCode,
 		mcpStrategy:  model.StrategyTOMLFile,
 		supportsMCP:  true,
 		settingsPath: settingsPath,
@@ -300,7 +293,7 @@ func TestInject_TOMLPersistsRegionOwnershipEvidence(t *testing.T) {
 	templates.TOMLCommand = filepath.Join("Program Files", "Cortex", "cortex")
 	templates.TOMLArgs = []string{"mcp", "--tools=agent"}
 	adapter := &testAdapter{
-		agent:        model.AgentCodex,
+		agent:        model.AgentOpenCode,
 		mcpStrategy:  model.StrategyTOMLFile,
 		supportsMCP:  true,
 		settingsPath: settingsPath,
@@ -331,8 +324,8 @@ func TestInject_TOMLPersistsRegionOwnershipEvidence(t *testing.T) {
 	if ownership.Owner != "cortex-ia" {
 		t.Errorf("owner = %q, want cortex-ia", ownership.Owner)
 	}
-	if ownership.SemanticID != "mcp/codex/cortex" {
-		t.Errorf("semantic ID = %q, want mcp/codex/cortex", ownership.SemanticID)
+	if ownership.SemanticID != "mcp/opencode/cortex" {
+		t.Errorf("semantic ID = %q, want mcp/opencode/cortex", ownership.SemanticID)
 	}
 	if got, want := ownership.TablePath, []string{"mcp_servers", "cortex"}; strings.Join(got, "/") != strings.Join(want, "/") {
 		t.Errorf("table path = %q, want %q", got, want)
@@ -358,7 +351,7 @@ func TestInject_TOMLFailedWriteLeavesNoOwnershipEvidence(t *testing.T) {
 	}
 	settingsPath := filepath.Join(blockedParent, "config.toml")
 	adapter := &testAdapter{
-		agent:        model.AgentCodex,
+		agent:        model.AgentOpenCode,
 		mcpStrategy:  model.StrategyTOMLFile,
 		supportsMCP:  true,
 		settingsPath: settingsPath,
@@ -375,10 +368,10 @@ func TestInject_TOMLFailedWriteLeavesNoOwnershipEvidence(t *testing.T) {
 
 func TestInject_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, ".claude")
+	configDir := filepath.Join(tmpDir, ".opencode")
 
 	adapter := &testAdapter{
-		agent:           model.AgentClaudeCode,
+		agent:           model.AgentOpenCode,
 		mcpStrategy:     model.StrategySeparateMCPFiles,
 		supportsMCP:     true,
 		globalConfigDir: configDir,

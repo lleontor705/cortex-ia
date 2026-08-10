@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
-	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/prompt"
@@ -82,7 +81,7 @@ func TestModelRouteBoundaryRejectsMissingResolutionEvidence(t *testing.T) {
 
 func TestPrepareWorkflowAllowsMissingRoutesBeforeMutation(t *testing.T) {
 	home := t.TempDir()
-	if _, err := PrepareWorkflow(t.Context(), WorkflowRequest{HomeDir: home, Adapters: []agents.Adapter{codex.NewAdapter()}}); err != nil {
+	if _, err := PrepareWorkflow(t.Context(), WorkflowRequest{HomeDir: home, Adapters: []agents.Adapter{opencode.NewAdapter()}}); err != nil {
 		t.Fatalf("missing model routes should allow workflow preparation: %v", err)
 	}
 	entries, err := os.ReadDir(home)

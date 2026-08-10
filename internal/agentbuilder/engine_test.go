@@ -13,10 +13,9 @@ func TestNewEngine(t *testing.T) {
 		id     model.AgentID
 		expect bool
 	}{
-		{model.AgentClaudeCode, true},
 		{model.AgentOpenCode, true},
-		{model.AgentCodex, true},
-		{model.AgentVSCodeCopilot, false},
+		{"claude-code", false},
+		{"codex", false},
 		{"made-up", false},
 	}
 	for _, tc := range cases {
@@ -32,11 +31,11 @@ func TestNewEngine(t *testing.T) {
 
 func TestMockEngine(t *testing.T) {
 	e := &MockEngine{
-		AgentIDVal:  model.AgentClaudeCode,
+		AgentIDVal:  model.AgentOpenCode,
 		Output:      "mock output",
 		IsAvailable: true,
 	}
-	if e.Agent() != model.AgentClaudeCode {
+	if e.Agent() != model.AgentOpenCode {
 		t.Errorf("Agent() = %v", e.Agent())
 	}
 	if !e.Available() {

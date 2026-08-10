@@ -10,11 +10,11 @@ func TestAdapterProfileMatrixIsCompleteAndExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := len(receipt.Cells); got != 12 {
-		t.Fatalf("matrix cells = %d, want 12", got)
+	if got := len(receipt.Cells); got != 3 {
+		t.Fatalf("matrix cells = %d, want 3", got)
 	}
-	if got := len(receipt.Adapters) * len(receipt.Profiles); got != 12 {
-		t.Fatalf("cartesian cardinality = %d, want 12", got)
+	if got := len(receipt.Adapters) * len(receipt.Profiles); got != 3 {
+		t.Fatalf("cartesian cardinality = %d, want 3", got)
 	}
 	for _, cell := range receipt.Cells {
 		if cell.RequestedProfile == "" || cell.EffectiveProfile == "" || cell.ReasonID == "" {

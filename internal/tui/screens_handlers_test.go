@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -667,30 +668,19 @@ func TestInjectedUnsupportedAgentFailsBeforeInstall(t *testing.T) {
 	}
 }
 
-func TestSelectedSupportedAgentsAreExactlyCanonicalFour(t *testing.T) {
+func TestSelectedSupportedAgentsAreExactlyCanonical(t *testing.T) {
 	m := New(nil, t.TempDir(), "test")
 	m.Agents = []AgentItem{
-		{ID: model.AgentClaudeCode, Selected: true},
 		{ID: model.AgentOpenCode, Selected: true},
-		{ID: model.AgentVSCodeCopilot, Selected: true},
-		{ID: model.AgentCodex, Selected: true},
 	}
 	got, err := m.selectedSupportedAgentIDs()
 	if err != nil {
 		t.Fatalf("selectedSupportedAgentIDs() error = %v", err)
 	}
 	want := []model.AgentID{
-		model.AgentClaudeCode,
 		model.AgentOpenCode,
-		model.AgentVSCodeCopilot,
-		model.AgentCodex,
 	}
-	if len(got) != len(want) {
-		t.Fatalf("len(selected agents) = %d, want %d", len(got), len(want))
-	}
-	for i, agent := range want {
-		if got[i] != agent {
-			t.Errorf("selected agent[%d] = %q, want %q", i, got[i], agent)
-		}
+	if !slices.Equal(got, want) {
+		t.Fatalf("selectedSupportedAgentIDs() = %v, want %v", got, want)
 	}
 }

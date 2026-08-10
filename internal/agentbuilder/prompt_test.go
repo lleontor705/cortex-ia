@@ -48,8 +48,8 @@ func TestComposePrompt_NoSDD(t *testing.T) {
 }
 
 func TestComposePrompt_TargetsListed(t *testing.T) {
-	p := ComposePrompt("x", nil, []model.AgentID{model.AgentClaudeCode, model.AgentOpenCode}, "", nil)
-	if !strings.Contains(p, "claude-code") || !strings.Contains(p, "opencode") {
+	p := ComposePrompt("x", nil, []model.AgentID{model.AgentOpenCode}, "", nil)
+	if !strings.Contains(p, "opencode") {
 		t.Errorf("targets not listed: %s", p)
 	}
 }

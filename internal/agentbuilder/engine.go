@@ -20,27 +20,11 @@ type GenerationEngine interface {
 // Returns nil when the agentID is unknown.
 func NewEngine(agentID model.AgentID) GenerationEngine {
 	switch agentID {
-	case model.AgentClaudeCode:
-		return &ClaudeEngine{}
 	case model.AgentOpenCode:
 		return &OpenCodeEngine{}
-	case model.AgentCodex:
-		return &CodexEngine{}
 	default:
 		return nil
 	}
-}
-
-// ClaudeEngine drives Claude Code via `claude --print -p "{prompt}"`.
-type ClaudeEngine struct{}
-
-func (e *ClaudeEngine) Agent() model.AgentID { return model.AgentClaudeCode }
-func (e *ClaudeEngine) Available() bool {
-	_, err := exec.LookPath("claude")
-	return err == nil
-}
-func (e *ClaudeEngine) Generate(ctx context.Context, prompt string) (string, error) {
-	return runEngineCmd(ctx, "claude", "--print", "-p", prompt)
 }
 
 // OpenCodeEngine drives OpenCode via `opencode run "{prompt}"`.
@@ -53,18 +37,6 @@ func (e *OpenCodeEngine) Available() bool {
 }
 func (e *OpenCodeEngine) Generate(ctx context.Context, prompt string) (string, error) {
 	return runEngineCmd(ctx, "opencode", "run", prompt)
-}
-
-// CodexEngine drives Codex via `codex exec "{prompt}"`.
-type CodexEngine struct{}
-
-func (e *CodexEngine) Agent() model.AgentID { return model.AgentCodex }
-func (e *CodexEngine) Available() bool {
-	_, err := exec.LookPath("codex")
-	return err == nil
-}
-func (e *CodexEngine) Generate(ctx context.Context, prompt string) (string, error) {
-	return runEngineCmd(ctx, "codex", "exec", prompt)
 }
 
 // runEngineCmd is the shared subprocess wrapper. Surfaces stderr in the error

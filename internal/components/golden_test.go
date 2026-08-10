@@ -51,30 +51,10 @@ func context7Inject(home string, adapter agents.Adapter) error {
 	return err
 }
 
-// ---------------------------------------------------------------------------
-// cortex (Cortex memory MCP)
-// ---------------------------------------------------------------------------
-
-func TestGoldenCortex_Claude(t *testing.T) {
-	home := runMCP(t, cortexInject, claudeAdapter())
-	got := readTestFile(t, filepath.Join(home, ".claude", "mcp", "cortex.json"))
-	assertGolden(t, "cortex-claude-mcp.golden", got)
-}
-
 func TestGoldenCortex_OpenCode(t *testing.T) {
 	home := runMCP(t, cortexInject, opencodeAdapter())
 	got := readTestFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
 	assertGolden(t, "cortex-opencode-settings.golden", got)
-}
-
-// ---------------------------------------------------------------------------
-// forgespec
-// ---------------------------------------------------------------------------
-
-func TestGoldenForgespec_Claude(t *testing.T) {
-	home := runMCP(t, forgespecInject, claudeAdapter())
-	got := readTestFile(t, filepath.Join(home, ".claude", "mcp", "forgespec.json"))
-	assertGolden(t, "forgespec-claude-mcp.golden", got)
 }
 
 func TestGoldenForgespec_OpenCode(t *testing.T) {
@@ -83,57 +63,10 @@ func TestGoldenForgespec_OpenCode(t *testing.T) {
 	assertGolden(t, "forgespec-opencode-settings.golden", got)
 }
 
-// ---------------------------------------------------------------------------
-// context7
-// ---------------------------------------------------------------------------
-
-func TestGoldenContext7_Claude(t *testing.T) {
-	home := runMCP(t, context7Inject, claudeAdapter())
-	got := readTestFile(t, filepath.Join(home, ".claude", "mcp", "context7.json"))
-	assertGolden(t, "context7-claude-mcp.golden", got)
-}
-
 func TestGoldenContext7_OpenCode(t *testing.T) {
 	home := runMCP(t, context7Inject, opencodeAdapter())
 	got := readTestFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
 	assertGolden(t, "context7-opencode-settings.golden", got)
-}
-
-// ---------------------------------------------------------------------------
-// persona (system-prompt injection)
-// ---------------------------------------------------------------------------
-
-func TestGoldenPersona_Claude_Professional(t *testing.T) {
-	home := t.TempDir()
-	adapter := claudeAdapter()
-	if _, err := persona.Inject(home, adapter, model.PersonaProfessional); err != nil {
-		t.Fatalf("persona.Inject error: %v", err)
-	}
-	prompt := adapter.SystemPromptFile(home)
-	got := readTestFile(t, prompt)
-	assertGolden(t, "persona-claude-professional.golden", got)
-}
-
-func TestGoldenPersona_Claude_Mentor(t *testing.T) {
-	home := t.TempDir()
-	adapter := claudeAdapter()
-	if _, err := persona.Inject(home, adapter, model.PersonaMentor); err != nil {
-		t.Fatalf("persona.Inject error: %v", err)
-	}
-	prompt := adapter.SystemPromptFile(home)
-	got := readTestFile(t, prompt)
-	assertGolden(t, "persona-claude-mentor.golden", got)
-}
-
-func TestGoldenPersona_Claude_Minimal(t *testing.T) {
-	home := t.TempDir()
-	adapter := claudeAdapter()
-	if _, err := persona.Inject(home, adapter, model.PersonaMinimal); err != nil {
-		t.Fatalf("persona.Inject error: %v", err)
-	}
-	prompt := adapter.SystemPromptFile(home)
-	got := readTestFile(t, prompt)
-	assertGolden(t, "persona-claude-minimal.golden", got)
 }
 
 func TestGoldenPersona_OpenCode_Professional(t *testing.T) {
@@ -147,21 +80,6 @@ func TestGoldenPersona_OpenCode_Professional(t *testing.T) {
 	assertGolden(t, "persona-opencode-professional.golden", got)
 }
 
-// ---------------------------------------------------------------------------
-// conventions (shared memory protocol injection)
-// ---------------------------------------------------------------------------
-
-func TestGoldenConventions_Claude(t *testing.T) {
-	home := t.TempDir()
-	adapter := claudeAdapter()
-	if _, err := conventions.Inject(home, adapter); err != nil {
-		t.Fatalf("conventions.Inject error: %v", err)
-	}
-	prompt := adapter.SystemPromptFile(home)
-	got := readTestFile(t, prompt)
-	assertGolden(t, "conventions-claude-claudemd.golden", got)
-}
-
 func TestGoldenConventions_OpenCode(t *testing.T) {
 	home := t.TempDir()
 	adapter := opencodeAdapter()
@@ -173,14 +91,9 @@ func TestGoldenConventions_OpenCode(t *testing.T) {
 	assertGolden(t, "conventions-opencode-agentsmd.golden", got)
 }
 
-// ---------------------------------------------------------------------------
-// MCP server templates (raw byte snapshots — guard against accidental edits)
-// ---------------------------------------------------------------------------
-
 func TestGoldenCortexTemplates(t *testing.T) {
 	tmpl := cortex.Templates()
 	assertGolden(t, "cortex-template-separate.json", tmpl.SeparateFileJSON)
 	assertGolden(t, "cortex-template-default-overlay.json", tmpl.DefaultOverlayJSON)
 	assertGolden(t, "cortex-template-opencode-overlay.json", tmpl.OpenCodeOverlayJSON)
-	assertGolden(t, "cortex-template-vscode-overlay.json", tmpl.VSCodeOverlayJSON)
 }

@@ -83,7 +83,6 @@ func TestWelcomeLabel_Unknown(t *testing.T) {
 func TestSelectedAgentIDs_NoneSelected(t *testing.T) {
 	m := New(nil, "/tmp", "1.0.0")
 	m.Agents = []AgentItem{
-		{ID: model.AgentClaudeCode, Selected: false},
 		{ID: model.AgentOpenCode, Selected: false},
 	}
 	ids := m.SelectedAgentIDs()
@@ -95,26 +94,17 @@ func TestSelectedAgentIDs_NoneSelected(t *testing.T) {
 func TestSelectedAgentIDs_SomeSelected(t *testing.T) {
 	m := New(nil, "/tmp", "1.0.0")
 	m.Agents = []AgentItem{
-		{ID: model.AgentClaudeCode, Selected: true},
-		{ID: model.AgentOpenCode, Selected: false},
-		{ID: model.AgentCodex, Selected: true},
+		{ID: model.AgentOpenCode, Selected: true},
 	}
 	ids := m.SelectedAgentIDs()
-	if len(ids) != 2 {
-		t.Fatalf("len(SelectedAgentIDs) = %d, want 2", len(ids))
-	}
-	if ids[0] != model.AgentClaudeCode {
-		t.Errorf("ids[0] = %v, want AgentClaudeCode", ids[0])
-	}
-	if ids[1] != model.AgentCodex {
-		t.Errorf("ids[1] = %v, want AgentCodex", ids[1])
+	if len(ids) != 1 || ids[0] != model.AgentOpenCode {
+		t.Errorf("SelectedAgentIDs = %v, want [opencode]", ids)
 	}
 }
 
 func TestHasSelectedAgents_True(t *testing.T) {
 	m := New(nil, "/tmp", "1.0.0")
 	m.Agents = []AgentItem{
-		{ID: model.AgentClaudeCode, Selected: false},
 		{ID: model.AgentOpenCode, Selected: true},
 	}
 	if !m.HasSelectedAgents() {
@@ -125,7 +115,7 @@ func TestHasSelectedAgents_True(t *testing.T) {
 func TestHasSelectedAgents_False(t *testing.T) {
 	m := New(nil, "/tmp", "1.0.0")
 	m.Agents = []AgentItem{
-		{ID: model.AgentClaudeCode, Selected: false},
+		{ID: model.AgentOpenCode, Selected: false},
 	}
 	if m.HasSelectedAgents() {
 		t.Error("HasSelectedAgents should be false when no agent is selected")

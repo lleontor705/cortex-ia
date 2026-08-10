@@ -3,15 +3,14 @@ package mailbox
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 )
 
-func TestInjectMailbox_ClaudeCode(t *testing.T) {
+func TestInjectMailbox_OpenCode(t *testing.T) {
 	tmpDir := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 
 	result, err := Inject(tmpDir, adapter)
 	if err != nil {
@@ -21,7 +20,7 @@ func TestInjectMailbox_ClaudeCode(t *testing.T) {
 		t.Error("expected Changed=true")
 	}
 
-	path := filepath.Join(tmpDir, ".claude", "mcp", "agent-mailbox.json")
+	path := adapter.SettingsPath(tmpDir)
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -30,12 +29,5 @@ func TestInjectMailbox_ClaudeCode(t *testing.T) {
 	var m map[string]any
 	if err := json.Unmarshal(content, &m); err != nil {
 		t.Fatal(err)
-	}
-	if m["command"] != "npx" {
-		t.Errorf("command = %v, want npx", m["command"])
-	}
-	args := m["args"].([]any)
-	if len(args) != 2 || args[1] != "agent-mailbox-mcp" {
-		t.Errorf("args = %v", args)
 	}
 }

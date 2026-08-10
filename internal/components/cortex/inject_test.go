@@ -5,21 +5,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
-	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
-	"github.com/lleontor705/cortex-ia/internal/agents/vscode"
 	"github.com/lleontor705/cortex-ia/internal/components/mcpinject"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
-func TestInjectCortex_ClaudeCode(t *testing.T) {
+func TestInjectCortex_OpenCode(t *testing.T) {
 	tmpDir := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 
 	result, err := Inject(tmpDir, adapter)
 	if err != nil {
@@ -29,7 +25,7 @@ func TestInjectCortex_ClaudeCode(t *testing.T) {
 		t.Error("expected Changed=true")
 	}
 
-	path := filepath.Join(tmpDir, ".claude", "mcp", "cortex.json")
+	path := adapter.SettingsPath(tmpDir)
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -38,13 +34,6 @@ func TestInjectCortex_ClaudeCode(t *testing.T) {
 	var m map[string]any
 	if err := json.Unmarshal(content, &m); err != nil {
 		t.Fatal(err)
-	}
-	if m["command"] != "cortex" {
-		t.Errorf("command = %v, want cortex", m["command"])
-	}
-	args := m["args"].([]any)
-	if len(args) != 2 || args[0] != "mcp" || args[1] != "--tools=agent" {
-		t.Errorf("args = %v, want [mcp --tools=agent]", args)
 	}
 }
 
@@ -67,10 +56,7 @@ func TestCortexCommandVectorPathRoundTripAllClients(t *testing.T) {
 		name    string
 		adapter func() agents.Adapter
 	}{
-		{name: "claude-code", adapter: func() agents.Adapter { return claude.NewAdapter() }},
 		{name: "opencode", adapter: func() agents.Adapter { return opencode.NewAdapter() }},
-		{name: "vscode-copilot", adapter: func() agents.Adapter { return vscode.NewAdapter() }},
-		{name: "codex", adapter: func() agents.Adapter { return codex.NewAdapter() }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
@@ -132,41 +118,13 @@ func cortexTemplatesForExecutable(t *testing.T, executable string) mcpinject.Ser
 }
 
 func decodedCortexCommandVector(agentID model.AgentID, content []byte) ([]string, error) {
-	if agentID == model.AgentCodex {
-		var command string
-		var args []string
-		for _, line := range strings.Split(string(content), "\n") {
-			switch {
-			case strings.HasPrefix(line, "command = "):
-				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "command = ")), &command); err != nil {
-					return nil, fmt.Errorf("decode Codex command: %w", err)
-				}
-			case strings.HasPrefix(line, "args = "):
-				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "args = ")), &args); err != nil {
-					return nil, fmt.Errorf("decode Codex args: %w", err)
-				}
-			}
-		}
-		if command == "" || args == nil {
-			return nil, fmt.Errorf("decode Codex command vector from %q", content)
-		}
-		return append([]string{command}, args...), nil
-	}
-
 	var document map[string]any
 	if err := json.Unmarshal(content, &document); err != nil {
 		return nil, err
 	}
-	var server map[string]any
-	switch agentID {
-	case model.AgentClaudeCode:
-		server = document
-	case model.AgentOpenCode:
-		server = document["mcp"].(map[string]any)["cortex"].(map[string]any)
-	case model.AgentVSCodeCopilot:
-		server = document["servers"].(map[string]any)["cortex"].(map[string]any)
-	default:
-		return nil, fmt.Errorf("unsupported agent %q", agentID)
+	server, ok := document["mcp"].(map[string]any)["cortex"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("cortex server config missing from settings")
 	}
 	if command, ok := server["command"].([]any); ok {
 		return stringsFromAny(command)

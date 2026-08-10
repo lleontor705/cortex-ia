@@ -57,14 +57,14 @@ func newStubRegistry(adapters ...stubAdapter) *Registry {
 func TestDiscoverInstalled_ReturnsOnlyInstalledAgents(t *testing.T) {
 	home := t.TempDir()
 
-	claudeDir := filepath.Join(home, ".claude")
-	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+	opencodeDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(opencodeDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 
 	reg := newStubRegistry(
-		stubAdapter{agent: model.AgentClaudeCode, configDir: claudeDir},
-		stubAdapter{agent: model.AgentOpenCode, configDir: filepath.Join(home, ".config", "opencode")},
+		stubAdapter{agent: model.AgentOpenCode, configDir: opencodeDir},
+		stubAdapter{agent: "other", configDir: filepath.Join(home, ".config", "other")},
 	)
 
 	got := DiscoverInstalled(reg, home)
@@ -72,11 +72,11 @@ func TestDiscoverInstalled_ReturnsOnlyInstalledAgents(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("DiscoverInstalled() returned %d agents, want 1; got %v", len(got), got)
 	}
-	if got[0].ID != model.AgentClaudeCode {
-		t.Errorf("DiscoverInstalled() agent = %q, want %q", got[0].ID, model.AgentClaudeCode)
+	if got[0].ID != model.AgentOpenCode {
+		t.Errorf("DiscoverInstalled() agent = %q, want %q", got[0].ID, model.AgentOpenCode)
 	}
-	if got[0].ConfigDir != claudeDir {
-		t.Errorf("DiscoverInstalled() ConfigDir = %q, want %q", got[0].ConfigDir, claudeDir)
+	if got[0].ConfigDir != opencodeDir {
+		t.Errorf("DiscoverInstalled() ConfigDir = %q, want %q", got[0].ConfigDir, opencodeDir)
 	}
 }
 
@@ -84,7 +84,7 @@ func TestDiscoverInstalled_EmptyGlobalConfigDirIsSkipped(t *testing.T) {
 	home := t.TempDir()
 
 	reg := newStubRegistry(
-		stubAdapter{agent: model.AgentClaudeCode, configDir: ""},
+		stubAdapter{agent: model.AgentOpenCode, configDir: ""},
 	)
 
 	got := DiscoverInstalled(reg, home)
@@ -118,7 +118,7 @@ func TestDiscoverInstalled_FileInsteadOfDirIsSkipped(t *testing.T) {
 	}
 
 	reg := newStubRegistry(
-		stubAdapter{agent: model.AgentClaudeCode, configDir: notDir},
+		stubAdapter{agent: model.AgentOpenCode, configDir: notDir},
 	)
 
 	got := DiscoverInstalled(reg, home)
@@ -131,17 +131,17 @@ func TestDiscoverInstalled_FileInsteadOfDirIsSkipped(t *testing.T) {
 func TestDiscoverInstalled_MultipleInstalled(t *testing.T) {
 	home := t.TempDir()
 
-	claudeDir := filepath.Join(home, ".claude")
 	opencodeDir := filepath.Join(home, ".config", "opencode")
-	for _, dir := range []string{claudeDir, opencodeDir} {
+	otherDir := filepath.Join(home, ".config", "other")
+	for _, dir := range []string{opencodeDir, otherDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q): %v", dir, err)
 		}
 	}
 
 	reg := newStubRegistry(
-		stubAdapter{agent: model.AgentClaudeCode, configDir: claudeDir},
 		stubAdapter{agent: model.AgentOpenCode, configDir: opencodeDir},
+		stubAdapter{agent: "other", configDir: otherDir},
 	)
 
 	got := DiscoverInstalled(reg, home)
@@ -175,14 +175,14 @@ func TestDiscoverInstalled_NilRegistryReturnsEmpty(t *testing.T) {
 func TestConfigRootsForBackup_ReturnsInstalledDirs(t *testing.T) {
 	home := t.TempDir()
 
-	claudeDir := filepath.Join(home, ".claude")
-	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+	opencodeDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(opencodeDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 
 	reg := newStubRegistry(
-		stubAdapter{agent: model.AgentClaudeCode, configDir: claudeDir},
-		stubAdapter{agent: model.AgentOpenCode, configDir: filepath.Join(home, ".config", "opencode")},
+		stubAdapter{agent: model.AgentOpenCode, configDir: opencodeDir},
+		stubAdapter{agent: "other", configDir: filepath.Join(home, ".config", "other")},
 	)
 
 	roots := ConfigRootsForBackup(reg, home)
@@ -190,8 +190,8 @@ func TestConfigRootsForBackup_ReturnsInstalledDirs(t *testing.T) {
 	if len(roots) != 1 {
 		t.Fatalf("ConfigRootsForBackup() returned %d roots, want 1; got %v", len(roots), roots)
 	}
-	if roots[0] != claudeDir {
-		t.Errorf("ConfigRootsForBackup() root = %q, want %q", roots[0], claudeDir)
+	if roots[0] != opencodeDir {
+		t.Errorf("ConfigRootsForBackup() root = %q, want %q", roots[0], opencodeDir)
 	}
 }
 
@@ -204,8 +204,8 @@ func TestConfigRootsForBackup_DeduplicatesSharedDirs(t *testing.T) {
 	}
 
 	reg := newStubRegistry(
-		stubAdapter{agent: model.AgentClaudeCode, configDir: sharedDir},
 		stubAdapter{agent: model.AgentOpenCode, configDir: sharedDir},
+		stubAdapter{agent: "other", configDir: sharedDir},
 	)
 
 	roots := ConfigRootsForBackup(reg, home)
@@ -233,8 +233,8 @@ func TestConfigRootsForBackup_NilSafeOnEmptyRegistry(t *testing.T) {
 func TestDiscoverInstalled_WithDefaultRegistryAndRealFS(t *testing.T) {
 	home := t.TempDir()
 
-	claudeDir := filepath.Join(home, ".claude")
-	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+	opencodeDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(opencodeDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 
@@ -245,7 +245,7 @@ func TestDiscoverInstalled_WithDefaultRegistryAndRealFS(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("DiscoverInstalled() with real registry returned %d agents, want 1; got %v", len(got), got)
 	}
-	if got[0].ID != model.AgentClaudeCode {
-		t.Errorf("DiscoverInstalled() agent = %q, want %q", got[0].ID, model.AgentClaudeCode)
+	if got[0].ID != model.AgentOpenCode {
+		t.Errorf("DiscoverInstalled() agent = %q, want %q", got[0].ID, model.AgentOpenCode)
 	}
 }

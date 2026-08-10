@@ -5,13 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
 func TestInject_Professional(t *testing.T) {
 	tmpDir := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 
 	result, err := Inject(tmpDir, adapter, model.PersonaProfessional)
 	if err != nil {
@@ -32,7 +32,7 @@ func TestInject_Professional(t *testing.T) {
 
 func TestInject_Mentor(t *testing.T) {
 	tmpDir := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 
 	result, err := Inject(tmpDir, adapter, model.PersonaMentor)
 	if err != nil {
@@ -50,7 +50,7 @@ func TestInject_Mentor(t *testing.T) {
 
 func TestInject_Minimal(t *testing.T) {
 	tmpDir := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 
 	result, err := Inject(tmpDir, adapter, model.PersonaMinimal)
 	if err != nil {
@@ -68,7 +68,7 @@ func TestInject_Minimal(t *testing.T) {
 
 func TestInject_Default(t *testing.T) {
 	tmpDir := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 
 	// Empty persona should default to professional.
 	result, err := Inject(tmpDir, adapter, "")
@@ -82,7 +82,7 @@ func TestInject_Default(t *testing.T) {
 
 func TestInject_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 
 	if _, err := Inject(tmpDir, adapter, model.PersonaProfessional); err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestInject_Idempotent(t *testing.T) {
 
 func TestInject_InvalidPersona(t *testing.T) {
 	tmpDir := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 
 	_, err := Inject(tmpDir, adapter, "nonexistent")
 	if err == nil {

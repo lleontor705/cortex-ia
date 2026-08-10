@@ -890,7 +890,7 @@ func (m Model) selectedSupportedAgentIDs() ([]model.AgentID, error) {
 			continue
 		}
 		switch agent.ID {
-		case model.AgentClaudeCode, model.AgentOpenCode, model.AgentVSCodeCopilot, model.AgentCodex:
+		case model.AgentOpenCode:
 		default:
 			return nil, &RetiredSelectionError{Selection: string(agent.ID)}
 		}

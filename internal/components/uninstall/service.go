@@ -165,7 +165,7 @@ func (s *Service) Apply(sel Selection) (Result, error) {
 }
 
 func retainedTOMLItem(op operation, err error) (RetainedItem, bool) {
-	if op.typeID != opRemoveTOMLRegion || op.agent != model.AgentCodex {
+	if op.typeID != opRemoveTOMLRegion {
 		return RetainedItem{}, false
 	}
 

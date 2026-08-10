@@ -663,11 +663,7 @@ func homeRelativeLockedPath(root, lockedPath string) (string, bool) {
 
 func workflowTarget(agent model.AgentID) (renderers.TargetID, error) {
 	switch agent {
-	case model.AgentClaudeCode:
-		return "claude", nil
-	case model.AgentVSCodeCopilot:
-		return "vscode", nil
-	case model.AgentOpenCode, model.AgentCodex:
+	case model.AgentOpenCode:
 		return renderers.TargetID(agent), nil
 	default:
 		return "", fmt.Errorf("unsupported workflow target adapter %q", agent)

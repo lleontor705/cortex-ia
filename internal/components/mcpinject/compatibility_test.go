@@ -2,11 +2,10 @@ package mcpinject_test
 
 import (
 	"errors"
-	"path/filepath"
 	"reflect"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/components/cortex"
 	"github.com/lleontor705/cortex-ia/internal/components/forgespec"
 	"github.com/lleontor705/cortex-ia/internal/components/mcpinject"
@@ -83,7 +82,7 @@ func TestForgeSpecRequiredUpstreamCapabilityBlocksWhenUnavailable(t *testing.T) 
 
 func TestInjectCompatibleBlocksBeforeMutationAndDisclosesDegradation(t *testing.T) {
 	home := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 	template := cortex.Templates()
 
 	blocked, err := mcpinject.InjectCompatible(home, adapter, template, mcpinject.InstalledService{})
@@ -106,7 +105,7 @@ func TestInjectCompatibleBlocksBeforeMutationAndDisclosesDegradation(t *testing.
 	if !degraded.Changed || degraded.Compatibility.State != mcpinject.CompatibilityDegraded || len(degraded.Compatibility.Findings) == 0 {
 		t.Fatalf("degraded result = %+v", degraded)
 	}
-	wantPath := filepath.Join(home, ".claude", "mcp", "cortex.json")
+	wantPath := adapter.SettingsPath(home)
 	if !reflect.DeepEqual(degraded.Files, []string{wantPath}) {
 		t.Fatalf("files = %v, want %v", degraded.Files, []string{wantPath})
 	}

@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 )
 
 func TestFilesToBackup(t *testing.T) {
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 	paths := FilesToBackup("/home/test", adapter)
 
 	if len(paths) == 0 {
@@ -18,7 +18,7 @@ func TestFilesToBackup(t *testing.T) {
 	hasPrompt := false
 	hasSkill := false
 	for _, p := range paths {
-		if strings.HasSuffix(p, "CLAUDE.md") {
+		if strings.HasSuffix(p, "AGENTS.md") {
 			hasPrompt = true
 		}
 		if strings.Contains(p, "bootstrap") {
@@ -26,7 +26,7 @@ func TestFilesToBackup(t *testing.T) {
 		}
 	}
 	if !hasPrompt {
-		t.Error("expected CLAUDE.md in backup paths")
+		t.Error("expected AGENTS.md in backup paths")
 	}
 	if !hasSkill {
 		t.Error("expected skill files in backup paths")

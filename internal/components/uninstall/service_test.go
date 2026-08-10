@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
-	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	"github.com/lleontor705/cortex-ia/internal/model"
@@ -19,8 +17,6 @@ import (
 func newTestRegistry(t *testing.T) *agents.Registry {
 	t.Helper()
 	r := agents.NewRegistry()
-	r.Register(claude.NewAdapter())
-	r.Register(codex.NewAdapter())
 	r.Register(opencode.NewAdapter())
 	return r
 }
@@ -40,11 +36,11 @@ func writeStateWithAgents(t *testing.T, home string, ids ...model.AgentID) {
 
 func TestService_Apply_RemovesPersonaSection(t *testing.T) {
 	home := t.TempDir()
-	writeStateWithAgents(t, home, model.AgentClaudeCode)
+	writeStateWithAgents(t, home, model.AgentOpenCode)
 
-	prompt := filepath.Join(home, ".claude", "CLAUDE.md")
+	prompt := filepath.Join(home, ".config", "opencode", "AGENTS.md")
 	_ = os.MkdirAll(filepath.Dir(prompt), 0o755)
-	original := "# CLAUDE\n\n<!-- cortex-ia:cortex-persona -->\nManaged tone\n<!-- /cortex-ia:cortex-persona -->\n\nMy own notes.\n"
+	original := "# AGENTS\n\n<!-- cortex-ia:cortex-persona -->\nManaged tone\n<!-- /cortex-ia:cortex-persona -->\n\nMy own notes.\n"
 	if err := os.WriteFile(prompt, []byte(original), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -64,27 +60,6 @@ func TestService_Apply_RemovesPersonaSection(t *testing.T) {
 	}
 	if !strings.Contains(string(got), "My own notes.") {
 		t.Errorf("user content was wiped:\n%s", string(got))
-	}
-}
-
-func TestService_Apply_RemovesCortexMCP_Claude(t *testing.T) {
-	home := t.TempDir()
-	writeStateWithAgents(t, home, model.AgentClaudeCode)
-
-	mcpFile := filepath.Join(home, ".claude", "mcp", "cortex.json")
-	_ = os.MkdirAll(filepath.Dir(mcpFile), 0o755)
-	_ = os.WriteFile(mcpFile, []byte(`{"command":"cortex","args":["mcp"]}`), 0o644)
-
-	svc := NewServiceWithRegistry(home, newTestRegistry(t))
-	res, err := svc.Apply(Selection{Components: []model.ComponentID{model.ComponentCortex}})
-	if err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-	if _, err := os.Stat(mcpFile); !os.IsNotExist(err) {
-		t.Errorf("cortex.json should have been removed: %v", err)
-	}
-	if len(res.RemovedFiles) == 0 {
-		t.Errorf("expected RemovedFiles to be populated, got %+v", res)
 	}
 }
 
@@ -131,9 +106,9 @@ func TestService_Apply_RemovesCortexMCP_OpenCode(t *testing.T) {
 
 func TestService_Apply_DryRun(t *testing.T) {
 	home := t.TempDir()
-	writeStateWithAgents(t, home, model.AgentClaudeCode)
+	writeStateWithAgents(t, home, model.AgentOpenCode)
 
-	mcpFile := filepath.Join(home, ".claude", "mcp", "cortex.json")
+	mcpFile := filepath.Join(home, ".config", "opencode", "opencode.json")
 	_ = os.MkdirAll(filepath.Dir(mcpFile), 0o755)
 	_ = os.WriteFile(mcpFile, []byte(`{}`), 0o644)
 
@@ -152,10 +127,10 @@ func TestService_Apply_DryRun(t *testing.T) {
 
 func TestService_PathsToBackup(t *testing.T) {
 	home := t.TempDir()
-	writeStateWithAgents(t, home, model.AgentClaudeCode)
+	writeStateWithAgents(t, home, model.AgentOpenCode)
 
-	prompt := filepath.Join(home, ".claude", "CLAUDE.md")
-	mcp := filepath.Join(home, ".claude", "mcp", "cortex.json")
+	prompt := filepath.Join(home, ".config", "opencode", "AGENTS.md")
+	mcp := filepath.Join(home, ".config", "opencode", "opencode.json")
 	_ = os.MkdirAll(filepath.Dir(mcp), 0o755)
 	_ = os.WriteFile(prompt, []byte("x"), 0o644)
 	_ = os.WriteFile(mcp, []byte("{}"), 0o644)
@@ -167,7 +142,7 @@ func TestService_PathsToBackup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PathsToBackup: %v", err)
 	}
-	wantSubstrings := []string{"CLAUDE.md", "cortex.json"}
+	wantSubstrings := []string{"AGENTS.md", "opencode.json"}
 	for _, want := range wantSubstrings {
 		found := false
 		for _, p := range paths {
@@ -184,7 +159,7 @@ func TestService_PathsToBackup(t *testing.T) {
 
 func TestService_Apply_AllRemovesState(t *testing.T) {
 	home := t.TempDir()
-	writeStateWithAgents(t, home, model.AgentClaudeCode)
+	writeStateWithAgents(t, home, model.AgentOpenCode)
 
 	svc := NewServiceWithRegistry(home, newTestRegistry(t))
 	if _, err := svc.Apply(Selection{All: true}); err != nil {
@@ -283,7 +258,7 @@ func writeFileAt(t *testing.T, home, relative string, content []byte) {
 
 func TestService_Apply_UnknownAgentRejected(t *testing.T) {
 	home := t.TempDir()
-	writeStateWithAgents(t, home, model.AgentClaudeCode)
+	writeStateWithAgents(t, home, model.AgentOpenCode)
 
 	svc := NewServiceWithRegistry(home, newTestRegistry(t))
 	_, err := svc.Apply(Selection{Agents: []model.AgentID{"made-up-agent"}})
@@ -306,7 +281,7 @@ func TestService_Apply_NoStateNoAgents(t *testing.T) {
 
 func TestServiceAllDoesNotDeleteLegacyMailboxByName(t *testing.T) {
 	home := t.TempDir()
-	writeStateWithAgents(t, home, model.AgentClaudeCode)
+	writeStateWithAgents(t, home, model.AgentOpenCode)
 	legacy := filepath.Join(home, ".claude", "mcp", "agent-mailbox.json")
 	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
 		t.Fatal(err)
@@ -326,114 +301,5 @@ func TestServiceAllDoesNotDeleteLegacyMailboxByName(t *testing.T) {
 	}
 	if string(got) != string(content) {
 		t.Fatalf("legacy external registration changed: %q", got)
-	}
-}
-
-func TestService_Apply_RetainsUnsafeCodexTOMLWithObservableEvidence(t *testing.T) {
-	tests := []struct {
-		name        string
-		before      string
-		disposition string
-		reason      string
-	}{
-		{
-			name:        "malformed",
-			before:      "[mcp_servers.cortex\ncommand = \"cortex\"\nargs = [\"mcp\", \"--tools=agent\"]\n",
-			disposition: "refusal",
-			reason:      "malformed",
-		},
-		{
-			name:        "customized",
-			before:      strings.Replace(ownedCortexTOML(t, "\n"), `command = "cortex"`, `command = "custom"`, 1),
-			disposition: "refusal",
-			reason:      "customized",
-		},
-		{
-			name:        "ambiguous",
-			before:      ownedCortexTOML(t, "\n") + "[mcp_servers.cortex.extra]\nenabled = true\n",
-			disposition: "collision",
-			reason:      "ambiguous",
-		},
-		{
-			name:        "unowned",
-			before:      "[mcp_servers.cortex]\ncommand = \"cortex\"\nargs = [\"mcp\", \"--tools=agent\"]\n# user note\n",
-			disposition: "refusal",
-			reason:      "unowned",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			home := t.TempDir()
-			writeStateWithAgents(t, home, model.AgentCodex)
-			path := filepath.Join(home, ".codex", "config.toml")
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(path, []byte(tt.before), 0o644); err != nil {
-				t.Fatal(err)
-			}
-
-			res, err := NewServiceWithRegistry(home, newTestRegistry(t)).Apply(Selection{
-				Agents:     []model.AgentID{model.AgentCodex},
-				Components: []model.ComponentID{model.ComponentCortex},
-			})
-			if err == nil {
-				t.Fatal("Apply() unexpectedly succeeded")
-			}
-			if len(res.RetainedItems) != 1 {
-				t.Fatalf("RetainedItems = %+v, want one retained Codex TOML item", res.RetainedItems)
-			}
-			retained := res.RetainedItems[0]
-			if retained.Path != path || retained.Agent != model.AgentCodex || retained.Component != model.ComponentCortex {
-				t.Fatalf("retained item = %+v, want Codex Cortex TOML evidence", retained)
-			}
-			if retained.Disposition != tt.disposition || !strings.Contains(retained.Reason, tt.reason) {
-				t.Fatalf("retained item = %+v, want disposition %q and reason containing %q", retained, tt.disposition, tt.reason)
-			}
-			after, readErr := os.ReadFile(path)
-			if readErr != nil {
-				t.Fatal(readErr)
-			}
-			if string(after) != tt.before {
-				t.Fatalf("refusal changed Codex TOML:\n got %q\nwant %q", after, tt.before)
-			}
-		})
-	}
-}
-
-func TestService_Apply_CodexTOMLRepeatIsNoOp(t *testing.T) {
-	home := t.TempDir()
-	writeStateWithAgents(t, home, model.AgentCodex)
-	path := filepath.Join(home, ".codex", "config.toml")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(ownedCortexTOML(t, "\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	svc := NewServiceWithRegistry(home, newTestRegistry(t))
-	sel := Selection{Agents: []model.AgentID{model.AgentCodex}, Components: []model.ComponentID{model.ComponentCortex}}
-	if _, err := svc.Apply(sel); err != nil {
-		t.Fatalf("first Apply: %v", err)
-	}
-	beforeRepeat, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	res, err := svc.Apply(sel)
-	if err != nil {
-		t.Fatalf("repeat Apply: %v", err)
-	}
-	if len(res.ChangedFiles) != 0 || len(res.RemovedFiles) != 0 || len(res.RetainedItems) != 0 {
-		t.Fatalf("repeat result = %+v, want no mutation or retained item", res)
-	}
-	afterRepeat, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(afterRepeat) != string(beforeRepeat) {
-		t.Fatalf("repeat changed TOML:\n got %q\nwant %q", afterRepeat, beforeRepeat)
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/components/conventions"
 	"github.com/lleontor705/cortex-ia/internal/components/permissions"
 	"github.com/lleontor705/cortex-ia/internal/components/persona"
@@ -19,7 +19,7 @@ import (
 // marker after `cortex-ia uninstall`.
 func TestMarkerAudit_PersonaMarkerIsCleaned(t *testing.T) {
 	home := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 	if _, err := persona.Inject(home, adapter, model.PersonaProfessional); err != nil {
 		t.Fatalf("persona.Inject: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestMarkerAudit_PersonaMarkerIsCleaned(t *testing.T) {
 
 func TestMarkerAudit_ConventionsMarkerIsCleaned(t *testing.T) {
 	home := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 	if _, err := conventions.Inject(home, adapter); err != nil {
 		t.Fatalf("conventions.Inject: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestMarkerAudit_ConventionsMarkerIsCleaned(t *testing.T) {
 
 func TestMarkerAudit_PermissionsMarkerIsCleaned(t *testing.T) {
 	home := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 	if _, err := permissions.Inject(home, adapter); err != nil {
 		t.Fatalf("permissions.Inject: %v", err)
 	}

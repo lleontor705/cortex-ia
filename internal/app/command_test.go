@@ -149,7 +149,6 @@ func TestRunCLIInstallUnknownFlagFailsBeforeHomeResolutionOrMutation(t *testing.
 func TestParseInstallArgsPreservesValidFlags(t *testing.T) {
 	selection, local, help, err := parseInstallArgs([]string{
 		"--agent", "opencode",
-		"--agent", "codex",
 		"--preset", "minimal",
 		"--persona", "mentor",
 		"--local",
@@ -164,7 +163,7 @@ func TestParseInstallArgsPreservesValidFlags(t *testing.T) {
 	if !local {
 		t.Fatal("parseInstallArgs() local = false, want true")
 	}
-	if got, want := selection.Agents, []model.AgentID{model.AgentOpenCode, model.AgentCodex}; !slices.Equal(got, want) {
+	if got, want := selection.Agents, []model.AgentID{model.AgentOpenCode}; !slices.Equal(got, want) {
 		t.Fatalf("parseInstallArgs() agents = %v, want %v", got, want)
 	}
 	if selection.Preset != model.PresetMinimal {

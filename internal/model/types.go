@@ -6,10 +6,7 @@ import "github.com/lleontor705/cortex-ia/internal/modelroute"
 type AgentID string
 
 const (
-	AgentClaudeCode    AgentID = "claude-code"
-	AgentOpenCode      AgentID = "opencode"
-	AgentVSCodeCopilot AgentID = "vscode-copilot"
-	AgentCodex         AgentID = "codex"
+	AgentOpenCode AgentID = "opencode"
 )
 
 // SupportTier indicates how fully an agent supports the cortex-ia ecosystem.

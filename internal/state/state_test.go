@@ -89,7 +89,7 @@ func TestSaveAndLoad(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	s := State{
-		InstalledAgents: []model.AgentID{model.AgentClaudeCode, model.AgentOpenCode},
+		InstalledAgents: []model.AgentID{model.AgentOpenCode},
 		Preset:          model.PresetFull,
 		Components:      []model.ComponentID{model.ComponentCortex, model.ComponentSDD},
 		LastInstall:     time.Now(),
@@ -106,8 +106,8 @@ func TestSaveAndLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(loaded.InstalledAgents) != 2 {
-		t.Errorf("expected 2 agents, got %d", len(loaded.InstalledAgents))
+	if len(loaded.InstalledAgents) != 1 {
+		t.Errorf("expected 1 agent, got %d", len(loaded.InstalledAgents))
 	}
 	if loaded.Preset != model.PresetFull {
 		t.Errorf("preset = %s", loaded.Preset)
@@ -132,10 +132,10 @@ func TestSaveAndLoadLock(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	lock := Lockfile{
-		InstalledAgents: []model.AgentID{model.AgentCodex},
+		InstalledAgents: []model.AgentID{model.AgentOpenCode},
 		Preset:          model.PresetMinimal,
 		Components:      []model.ComponentID{model.ComponentCortex, model.ComponentSDD},
-		Files:           []string{"C:/Users/test/.codex/agents.md", "C:/Users/test/.codex/config.toml"},
+		Files:           []string{"C:/Users/test/.config/opencode/opencode.json"},
 		GeneratedAt:     time.Now(),
 		LastBackupID:    "backup-123",
 		Version:         "v0.1.0",
@@ -150,8 +150,8 @@ func TestSaveAndLoadLock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(loaded.Files) != 2 {
-		t.Errorf("expected 2 files, got %d", len(loaded.Files))
+	if len(loaded.Files) != 1 {
+		t.Errorf("expected 1 file, got %d", len(loaded.Files))
 	}
 	if loaded.LastBackupID != "backup-123" {
 		t.Errorf("backup ID = %s", loaded.LastBackupID)

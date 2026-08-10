@@ -8,13 +8,11 @@ import (
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 )
 
 var update = flag.Bool("update", false, "update golden files")
 
-func claudeAdapter() agents.Adapter   { return claude.NewAdapter() }
 func opencodeAdapter() agents.Adapter { return opencode.NewAdapter() }
 
 func goldenDir(t *testing.T) string {

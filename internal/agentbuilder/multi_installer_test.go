@@ -22,7 +22,7 @@ func TestInstallToAdapters_HappyPath(t *testing.T) {
 	skillsB := filepath.Join(home, "opencode-skills")
 
 	res, err := InstallToAdapters(newAgent("my-tool"), []AdapterInfo{
-		{ID: model.AgentClaudeCode, SkillsDir: skillsA, HasSkills: true},
+		{ID: model.AgentOpenCode, SkillsDir: skillsA, HasSkills: true},
 		{ID: model.AgentOpenCode, SkillsDir: skillsB, HasSkills: true},
 	})
 	if err != nil {
@@ -43,7 +43,7 @@ func TestInstallToAdapters_HappyPath(t *testing.T) {
 
 func TestInstallToAdapters_SkillsUnsupported(t *testing.T) {
 	res, err := InstallToAdapters(newAgent("my-tool"), []AdapterInfo{
-		{ID: model.AgentClaudeCode, HasSkills: false},
+		{ID: model.AgentOpenCode, HasSkills: false},
 	})
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -83,7 +83,7 @@ func TestInstallToAdapters_RollbackOnFailure(t *testing.T) {
 	bad := filepath.Join(blocker, "child", "skills")
 
 	_, err := InstallToAdapters(newAgent("rollback-me"), []AdapterInfo{
-		{ID: model.AgentClaudeCode, SkillsDir: good, HasSkills: true},
+		{ID: model.AgentOpenCode, SkillsDir: good, HasSkills: true},
 		{ID: model.AgentOpenCode, SkillsDir: bad, HasSkills: true},
 	})
 	if err == nil {

@@ -90,11 +90,11 @@ func TestValidateStep_UnknownAgent(t *testing.T) {
 
 func TestComponentStep_Name(t *testing.T) {
 	step := &componentStep{
-		adapter:     &mockAdapter{agentID: "claude-code"},
+		adapter:     &mockAdapter{agentID: "opencode"},
 		componentID: "cortex",
 	}
-	if got := step.Name(); got != "claude-code/cortex" {
-		t.Errorf("Name() = %q, want %q", got, "claude-code/cortex")
+	if got := step.Name(); got != "opencode/cortex" {
+		t.Errorf("Name() = %q, want %q", got, "opencode/cortex")
 	}
 }
 

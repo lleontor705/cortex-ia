@@ -87,8 +87,8 @@ func ValidateMatrixReceipt(receipt MatrixReceipt) error {
 	if err := validateRawReceiptForAggregation(receipt.Raw); err != nil {
 		return fmt.Errorf("matrix receipt raw: %w", err)
 	}
-	if len(receipt.Bindings) != 108 {
-		return fmt.Errorf("matrix receipt bindings = %d, want 108", len(receipt.Bindings))
+	if len(receipt.Bindings) != 27 {
+		return fmt.Errorf("matrix receipt bindings = %d, want 27", len(receipt.Bindings))
 	}
 	seen := make(map[string]struct{}, len(receipt.Bindings))
 	cells := make(map[string]RuntimeCell, len(receipt.Raw.Cells))

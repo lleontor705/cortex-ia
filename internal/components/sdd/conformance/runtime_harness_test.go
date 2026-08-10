@@ -29,8 +29,8 @@ func TestRuntimeHarnessProducesDeterministicReceiptLinkedMatrixEvidence(t *testi
 	if err := ValidateMatrixReceipt(first); err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Bindings) != 108 || first.Fingerprint != second.Fingerprint {
-		t.Fatalf("matrix evidence is not deterministic 12/108 output: bindings=%d fingerprints=%q/%q", len(first.Bindings), first.Fingerprint, second.Fingerprint)
+	if len(first.Bindings) != 27 || first.Fingerprint != second.Fingerprint {
+		t.Fatalf("matrix evidence is not deterministic output: bindings=%d fingerprints=%q/%q", len(first.Bindings), first.Fingerprint, second.Fingerprint)
 	}
 	for _, cell := range raw.Cells {
 		if err := validateCanonicalDigest(cell.ReceiptDigest); err != nil {
@@ -44,11 +44,11 @@ func TestRuntimeHarnessExecutesExactlyThirtySixProductionCells(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := len(receipt.Cells); got != 12 {
-		t.Fatalf("executed cells = %d, want 12", got)
+	if got := len(receipt.Cells); got != 3 {
+		t.Fatalf("executed cells = %d, want 3", got)
 	}
-	if got := len(receipt.Adapters) * len(receipt.Profiles); got != 12 {
-		t.Fatalf("cartesian cardinality = %d, want 12", got)
+	if got := len(receipt.Adapters) * len(receipt.Profiles); got != 3 {
+		t.Fatalf("cartesian cardinality = %d, want 3", got)
 	}
 	seen := make(map[string]bool, len(receipt.Cells))
 	for _, cell := range receipt.Cells {
@@ -64,8 +64,8 @@ func TestRuntimeHarnessExecutesExactlyThirtySixProductionCells(t *testing.T) {
 			t.Fatalf("cell lacks disposition evidence: %+v", cell)
 		}
 	}
-	if len(seen) != 12 {
-		t.Fatalf("unique cells = %d, want 12", len(seen))
+	if len(seen) != 3 {
+		t.Fatalf("unique cells = %d, want 3", len(seen))
 	}
 	if err := receipt.Validate(); err != nil {
 		t.Fatal(err)

@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
-	"github.com/lleontor705/cortex-ia/internal/agents/codex"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
@@ -32,14 +30,14 @@ func TestPrepareWorkflowUsesFreshQualifiedAdapterProfile(t *testing.T) {
 	now := time.Date(2026, time.July, 28, 12, 0, 0, 0, time.UTC)
 	prepared, err := PrepareWorkflow(context.Background(), WorkflowRequest{
 		HomeDir:        home,
-		Adapters:       []agents.Adapter{codex.NewAdapter()},
+		Adapters:       []agents.Adapter{opencode.NewAdapter()},
 		EvaluationTime: now,
 		ModelRoutes:    testModelRoutes(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prepared.Plan.Profile != "portable-flat" {
+	if prepared.Plan.Profile != "portable-sequential" {
 		t.Fatalf("profile = %q, want strongest fresh adapter-qualified profile", prepared.Plan.Profile)
 	}
 }
@@ -79,7 +77,7 @@ func TestResolveWorkflowRoutesCompletesTransverseRolesFromQualifiedBootstrap(t *
 }
 
 func TestPrepareWorkflowInstallsTwelveRoleCatalogForPrimaryTargets(t *testing.T) {
-	for _, adapter := range []agents.Adapter{opencode.NewAdapter(), claude.NewAdapter(), codex.NewAdapter()} {
+	for _, adapter := range []agents.Adapter{opencode.NewAdapter()} {
 		prepared, err := PrepareWorkflow(context.Background(), WorkflowRequest{
 			HomeDir:          t.TempDir(),
 			Adapters:         []agents.Adapter{adapter},
@@ -376,7 +374,7 @@ func TestOpenCodeGeneratedAgentsPassRuntimeConfigQualification(t *testing.T) {
 
 func TestPrepareWorkflowDegradesWhenAdapterProfileRouteIsNotQualified(t *testing.T) {
 	now := time.Date(2026, time.July, 28, 12, 0, 0, 0, time.UTC)
-	provider := claude.NewAdapter()
+	provider := opencode.NewAdapter()
 	decision := ResolveProfileDecision(ProfileResolutionInput{
 		Requested: sdd.ProfileNativeAdvanced, Facts: provider.CapabilityFacts(), Now: now,
 	})
@@ -405,7 +403,7 @@ func TestWorkflowMetadataRoundTripsSentinels(t *testing.T) {
 func TestPreparedWorkflowMetadataSurvivesPlanAndReceipt(t *testing.T) {
 	home := t.TempDir()
 	prepared, err := PrepareWorkflow(context.Background(), WorkflowRequest{
-		HomeDir: home, Adapters: []agents.Adapter{codex.NewAdapter()},
+		HomeDir: home, Adapters: []agents.Adapter{opencode.NewAdapter()},
 		GeneratorVersion: "test-v1", EvaluationTime: time.Date(2026, time.July, 28, 12, 0, 0, 0, time.UTC),
 		ModelRoutes: testModelRoutes(),
 	})

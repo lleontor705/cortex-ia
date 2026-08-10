@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/agents/claude"
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 )
 
-func TestInjectConventions_ClaudeCode(t *testing.T) {
+func TestInjectConventions_OpenCode(t *testing.T) {
 	ResetSharedWrite()
 	tmpDir := t.TempDir()
-	adapter := claude.NewAdapter()
+	adapter := opencode.NewAdapter()
 
 	result, err := Inject(tmpDir, adapter)
 	if err != nil {
@@ -33,13 +33,13 @@ func TestInjectConventions_ClaudeCode(t *testing.T) {
 	}
 
 	// Verify cortex-protocol was injected into system prompt.
-	promptFile := filepath.Join(tmpDir, ".claude", "CLAUDE.md")
+	promptFile := adapter.SystemPromptFile(tmpDir)
 	prompt, err := os.ReadFile(promptFile)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(prompt), "cortex-ia:cortex-protocol") {
-		t.Error("expected cortex-protocol marker in CLAUDE.md")
+		t.Error("expected cortex-protocol marker in AGENTS.md")
 	}
 	if !strings.Contains(string(prompt), "Persistent Memory") {
 		t.Error("expected cortex protocol content")
