@@ -385,10 +385,13 @@ func checkForgeSpecOpenCodeConfig(ctx *Context) error {
 	mcp, _ := root["mcp"].(map[string]any)
 	forgeSpec, _ := mcp["forgespec"].(map[string]any)
 	command, _ := forgeSpec["command"].([]any)
-	if len(command) != 1 || command[0] != forgespeccomp.OpenCodeCommand {
-		return fmt.Errorf("OpenCode ForgeSpec command must use direct wrapper %s", forgespeccomp.OpenCodeCommand)
+	if len(command) == 1 && command[0] == forgespeccomp.OpenCodeCommand {
+		return nil
 	}
-	return nil
+	if len(command) >= 3 && command[0] == "npx" && command[1] == "-y" && (command[2] == "forgespec-mcp" || strings.HasPrefix(fmt.Sprint(command[2]), "forgespec-mcp@")) {
+		return nil
+	}
+	return fmt.Errorf("OpenCode ForgeSpec command must use npx -y forgespec-mcp or direct wrapper %s", forgespeccomp.OpenCodeCommand)
 }
 
 func openCodeSDDSelected(ctx *Context) bool {

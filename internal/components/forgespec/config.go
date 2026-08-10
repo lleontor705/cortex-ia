@@ -62,7 +62,9 @@ func Templates() mcpinject.ServerTemplates {
     "forgespec": {
       "type": "local",
       "command": [
-        "` + OpenCodeCommand + `"
+        "npx",
+        "-y",
+        "forgespec-mcp"
       ],
       "enabled": true
     }
