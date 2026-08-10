@@ -27,7 +27,6 @@ const (
 	ComponentSkills      ComponentID = "skills"
 	ComponentContext7    ComponentID = "context7"
 	ComponentConventions ComponentID = "conventions"
-	ComponentPersona     ComponentID = "persona"
 	ComponentPermissions ComponentID = "permissions"
 	ComponentTheme       ComponentID = "theme"
 )
@@ -65,6 +64,7 @@ const (
 	SkillSkillCreator    SkillID = "skill-creator"
 	SkillSkillImprover   SkillID = "skill-improver"
 	SkillOnboard         SkillID = "onboard"
+	SkillDecisionScorer  SkillID = "decision-scorer"
 )
 
 // SystemPromptStrategy defines how an agent's system prompt file is managed.
@@ -103,14 +103,6 @@ const (
 	PresetCustom  PresetID = "custom"
 )
 
-// PersonaID identifies a communication style persona.
-type PersonaID string
-
-const (
-	PersonaProfessional PersonaID = "professional"
-	PersonaMentor       PersonaID = "mentor"
-	PersonaMinimal      PersonaID = "minimal"
-)
 
 // ModelPreset identifies a predefined model assignment strategy.
 type ModelPreset string

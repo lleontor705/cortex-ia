@@ -64,12 +64,12 @@ c. Check that the analysis does not attempt to edit production code.
 
 ## Decision gates
 
-- `investigate/evidence`: every affected file in the result was actually read and
+- `explore/evidence`: every affected file in the result was actually read and
   every material claim has a citation.
-- `investigate/alternatives`: architecture and migration outputs contain two or
+- `explore/alternatives`: architecture and migration outputs contain two or
   more viable approaches with one recommendation; incident outputs contain a
   causal evidence chain.
-- `investigate/scope`: the analysis names limitations and does not imply code
+- `explore/scope`: the analysis names limitations and does not imply code
   changes that were not investigated.
 
 If a gate fails, return `partial` or `blocked` with the missing evidence rather
@@ -115,6 +115,6 @@ Confidence follows evidence coverage, never the amount of prose.
 ## References
 
 - `_shared/sdd-phase-contract.md` — result envelope and status vocabulary.
-- `investigate/evidence`, `investigate/alternatives`, `investigate/scope` — executable gates.
+- `explore/evidence`, `explore/alternatives`, `explore/scope` — executable gates.
 - `internal/components/sdd/phasecontract` — canonical result definitions.
 - `internal/components/sdd/contractgen` — generated reference source.

@@ -24,7 +24,6 @@ const (
 	ScreenWelcome
 	ScreenDetection
 	ScreenAgents
-	ScreenPersona
 	ScreenPreset
 	ScreenSDDMode
 	ScreenStrictTDD
@@ -244,8 +243,6 @@ type Model struct {
 	Agents   []AgentItem
 	Preset   model.PresetID
 	Presets  []model.PresetID
-	Personas []model.PersonaID
-	Persona  model.PersonaID
 	Resolved []model.ComponentID
 	SysInfo  *SysInfoCache
 
@@ -335,8 +332,6 @@ func New(registry *agents.Registry, homeDir, version string) Model {
 		HomeDir:           homeDir,
 		Version:           version,
 		Presets:           []model.PresetID{model.PresetFull, model.PresetMinimal},
-		Personas:          []model.PersonaID{model.PersonaProfessional, model.PersonaMentor, model.PersonaMinimal},
-		Persona:           model.PersonaProfessional,
 		SDDEnabled:        true,
 		Spinner:           sp,
 		ProgressBar:       pb,

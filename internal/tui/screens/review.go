@@ -18,7 +18,6 @@ type ReviewAgent struct {
 type ReviewData struct {
 	Agents   []ReviewAgent
 	Preset   model.PresetID
-	Persona  model.PersonaID
 	Resolved []model.ComponentID
 }
 
@@ -35,10 +34,7 @@ func RenderReview(data ReviewData) string {
 		fmt.Fprintf(&sb, "  %s %s\n", styles.StatusOK.Render("●"), a.Name)
 	}
 
-	sb.WriteString("\n")
 	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("Preset: %s", data.Preset)))
-	sb.WriteString("  ")
-	sb.WriteString(styles.Subtitle.Render(fmt.Sprintf("Persona: %s", data.Persona)))
 	sb.WriteString("\n\n")
 
 	sb.WriteString(styles.Subtitle.Render("Components (with dependencies):"))

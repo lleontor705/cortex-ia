@@ -9,7 +9,12 @@
 ## Verification
 
 - Full local gates, in hook order: `gofmt -s -w .`, `go vet ./...`, `golangci-lint run ./...`, then `go test -count=1 ./...`.
-- Focus a package with `go test ./internal/pipeline/...`; focus a test with `go test ./internal/pipeline -run '^TestInstall_DryRun$' -count=1`.
+- **Testing Scope & Anti-Overengineering Rule**: No crear tests innecesarios ni sobreingenierizados. Las pruebas unitarias/integración se limitan exclusivamente a:
+  1. Interfaz TUI (`internal/tui/...`).
+  2. Integración e inyección de MCPs (`internal/components/mcpinject/...`, `internal/components/mcpprobe/...`).
+  3. Validación simple de existencia y copia de archivos/carpetas hacia OpenCode (`internal/pipeline/install_test.go`, `internal/components/skills/inject_test.go`).
+- El objetivo principal del proyecto es copiar limpiamente todos los assets (skills, agentes, comandos) hacia las carpetas de configuración de OpenCode y permitir agregar MCPs manualmente.
+- Focus a package with `go test ./internal/tui/...`; focus a test with `go test ./internal/pipeline -run '^TestInstall_DryRun$' -count=1`.
 - Injection output is snapshot-tested in `testdata/golden/`. Regenerate only intentional output changes with `go test -update ./internal/components/...`, then inspect the fixture diff and rerun without `-update`.
 - Docker E2E requires a running Docker daemon: `./e2e/docker-test.sh` covers Ubuntu, Fedora, and Arch; pass one distro such as `./e2e/docker-test.sh ubuntu` for a focused run.
 - Windows tests that need symlink creation skip when `SeCreateSymbolicLinkPrivilege` is unavailable; use Developer Mode or an elevated shell to exercise them.

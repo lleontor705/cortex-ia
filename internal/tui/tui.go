@@ -222,8 +222,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateDetection(msg)
 	case ScreenAgents:
 		return m.updateAgents(msg)
-	case ScreenPersona:
-		return m.updatePersona(msg)
 	case ScreenPreset:
 		return m.updatePreset(msg)
 	case ScreenSDDMode:
@@ -268,8 +266,6 @@ func (m Model) View() string {
 		content = m.viewDetection()
 	case ScreenAgents:
 		content = m.viewAgents()
-	case ScreenPersona:
-		content = m.viewPersona()
 	case ScreenPreset:
 		content = m.viewPreset()
 	case ScreenSDDMode:
@@ -549,7 +545,7 @@ func (m Model) updateAgents(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.HasSelectedAgents() {
 				m.AgentFilter.Deactivate()
-				m.setScreen(ScreenPersona)
+				m.setScreen(ScreenPreset)
 			}
 		case "esc":
 			m.AgentFilter.Deactivate()
@@ -585,37 +581,6 @@ func (m Model) viewAgents() string {
 	return content
 }
 
-// --- Persona screen ---
-
-func (m Model) updatePersona(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "up", "k":
-			if m.Cursor > 0 {
-				m.Cursor--
-			}
-		case "down", "j":
-			if m.Cursor < len(m.Personas)-1 {
-				m.Cursor++
-			}
-		case "enter":
-			m.Persona = m.Personas[m.Cursor]
-			m.setScreen(ScreenPreset)
-		case "esc":
-			m.setScreen(ScreenAgents)
-		}
-	}
-	return m, nil
-}
-
-func (m Model) viewPersona() string {
-	return screens.RenderPersona(screens.PersonaData{
-		Personas: m.Personas,
-		Cursor:   m.Cursor,
-		Selected: m.Persona,
-	})
-}
-
 // --- Preset screen ---
 
 func (m Model) updatePreset(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -635,7 +600,7 @@ func (m Model) updatePreset(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Resolved = catalog.ResolveDeps(components)
 			m.setScreen(ScreenSDDMode)
 		case "esc":
-			m.setScreen(ScreenPersona)
+			m.setScreen(ScreenAgents)
 		}
 	}
 	return m, nil
@@ -690,7 +655,6 @@ func (m Model) viewReview() string {
 	return screens.RenderReview(screens.ReviewData{
 		Agents:   reviewAgents,
 		Preset:   m.Preset,
-		Persona:  m.Persona,
 		Resolved: m.Resolved,
 	})
 }
@@ -731,7 +695,6 @@ func (m Model) runInstallWithProgress(ch chan StepProgressMsg) tea.Cmd {
 		selection := model.Selection{
 			Agents:          agents,
 			Preset:          m.Preset,
-			Persona:         m.Persona,
 			Components:      components,
 			StrictTDD:       m.StrictTDDEnabled,
 			CommunitySkills: m.SkillSelection,

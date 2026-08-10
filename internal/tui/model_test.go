@@ -16,17 +16,11 @@ func TestNew_DefaultValues(t *testing.T) {
 	if m.Screen != ScreenWelcome {
 		t.Errorf("Screen = %v, want ScreenWelcome", m.Screen)
 	}
-	if m.Persona != model.PersonaProfessional {
-		t.Errorf("Persona = %v, want PersonaProfessional", m.Persona)
-	}
 	if !m.SDDEnabled {
 		t.Error("SDDEnabled should be true by default")
 	}
 	if len(m.Presets) != 2 {
 		t.Errorf("len(Presets) = %d, want 2", len(m.Presets))
-	}
-	if len(m.Personas) != 3 {
-		t.Errorf("len(Personas) = %d, want 3", len(m.Personas))
 	}
 }
 

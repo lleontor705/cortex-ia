@@ -8,7 +8,6 @@ type Selection struct {
 	Preset     PresetID
 	Components []ComponentID
 	DryRun     bool
-	Persona    PersonaID // "" = use professional default
 	// ModelAssignments and ProfileName are retained only to reject stale
 	// programmatic selections. Supported installer routing must not set them.
 	ModelAssignments ModelAssignments

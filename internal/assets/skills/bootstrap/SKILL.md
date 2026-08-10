@@ -79,7 +79,7 @@ c. That probe limits were strictly respected without unbudgeted reads.
 
 ## Decision gates
 
-- `contract/bootstrap`: every stack claim has a source citation. If a category is
+- `contract/init`: every stack claim has a source citation. If a category is
   not observable, record `partial` and stop short of guessing.
 - `contract/registry`: the phase registry contains one selected entry per
   canonical skill and no path that cannot be read.
@@ -129,7 +129,7 @@ Freshness evidence is mandatory for detected capabilities.
 ## References
 
 - `_shared/sdd-phase-contract.md` — result envelope and status vocabulary.
-- `contract/bootstrap`, `contract/registry`, `contract/test-capability` — executable
+- `contract/init`, `contract/registry`, `contract/test-capability` — executable
   gate identifiers.
 - `internal/components/sdd/phasecontract` — canonical contract definitions.
 - `internal/components/sdd/contractgen` — generated reference source.

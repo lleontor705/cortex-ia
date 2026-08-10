@@ -15,7 +15,6 @@ const FileName = ".cortex-ia.yaml"
 // ProjectConfig represents a project-level configuration file.
 type ProjectConfig struct {
 	Preset             string   `yaml:"preset,omitempty"`
-	Persona            string   `yaml:"persona,omitempty"`
 	ModelPreset        string   `yaml:"model-preset,omitempty"`
 	Profile            string   `yaml:"profile,omitempty"`
 	ModelAssignment    any      `yaml:"model-assignment,omitempty"`
@@ -147,9 +146,6 @@ func ApplyToSelection(cfg *ProjectConfig, sel *model.Selection) error {
 
 	if cfg.Preset != "" && sel.Preset == "" {
 		sel.Preset = model.PresetID(cfg.Preset)
-	}
-	if cfg.Persona != "" && sel.Persona == "" {
-		sel.Persona = model.PersonaID(cfg.Persona)
 	}
 	if len(cfg.Agents) > 0 && len(sel.Agents) == 0 {
 		for _, a := range cfg.Agents {

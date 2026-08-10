@@ -11,7 +11,6 @@ func TestRenderReview_ShowsAgents(t *testing.T) {
 	data := ReviewData{
 		Agents:   []ReviewAgent{{Name: "claude-code"}, {Name: "vscode-copilot"}},
 		Preset:   model.PresetFull,
-		Persona:  model.PersonaProfessional,
 		Resolved: []model.ComponentID{model.ComponentCortex},
 	}
 	output := RenderReview(data)
@@ -23,19 +22,15 @@ func TestRenderReview_ShowsAgents(t *testing.T) {
 	}
 }
 
-func TestRenderReview_ShowsPresetAndPersona(t *testing.T) {
+func TestRenderReview_ShowsPreset(t *testing.T) {
 	data := ReviewData{
 		Agents:   []ReviewAgent{{Name: "test-agent"}},
 		Preset:   model.PresetMinimal,
-		Persona:  model.PersonaMentor,
 		Resolved: []model.ComponentID{model.ComponentCortex},
 	}
 	output := RenderReview(data)
 	if !strings.Contains(output, string(model.PresetMinimal)) {
 		t.Error("expected preset 'minimal' in output")
-	}
-	if !strings.Contains(output, string(model.PersonaMentor)) {
-		t.Error("expected persona 'mentor' in output")
 	}
 }
 
@@ -43,7 +38,6 @@ func TestRenderReview_ShowsComponents(t *testing.T) {
 	data := ReviewData{
 		Agents:  []ReviewAgent{{Name: "test-agent"}},
 		Preset:  model.PresetFull,
-		Persona: model.PersonaProfessional,
 		Resolved: []model.ComponentID{
 			model.ComponentCortex,
 			model.ComponentForgeSpec,

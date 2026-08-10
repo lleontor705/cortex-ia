@@ -337,8 +337,8 @@ func TestUpdateAgents_Enter(t *testing.T) {
 
 	result, _ := m.Update(keyMsg("enter"))
 	rm := result.(Model)
-	if rm.Screen != ScreenPersona {
-		t.Errorf("Screen = %v, want ScreenPersona", rm.Screen)
+	if rm.Screen != ScreenPreset {
+		t.Errorf("Screen = %v, want ScreenPreset", rm.Screen)
 	}
 }
 
@@ -353,21 +353,6 @@ func TestUpdateAgents_EnterNoSelection(t *testing.T) {
 	rm := result.(Model)
 	if rm.Screen != ScreenAgents {
 		t.Errorf("Screen = %v, want ScreenAgents (should stay when no agents selected)", rm.Screen)
-	}
-}
-
-func TestUpdatePersona_Enter(t *testing.T) {
-	m := newTestModel()
-	m.Screen = ScreenPersona
-	m.Cursor = 1 // PersonaMentor (index 1 in default Personas)
-
-	result, _ := m.Update(keyMsg("enter"))
-	rm := result.(Model)
-	if rm.Persona != model.PersonaMentor {
-		t.Errorf("Persona = %v, want PersonaMentor", rm.Persona)
-	}
-	if rm.Screen != ScreenPreset {
-		t.Errorf("Screen = %v, want ScreenPreset", rm.Screen)
 	}
 }
 

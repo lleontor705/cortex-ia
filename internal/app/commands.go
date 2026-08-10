@@ -150,12 +150,6 @@ func parseInstallArgs(args []string) (model.Selection, bool, bool, error) {
 			}
 			i++
 			selection.Preset = model.PresetID(args[i])
-		case "--persona":
-			if i+1 >= len(args) {
-				return selection, local, false, fmt.Errorf("flag --persona requires a value (professional, mentor, minimal)")
-			}
-			i++
-			selection.Persona = model.PersonaID(args[i])
 		case "--local":
 			local = true
 		case "--dry-run":
@@ -275,12 +269,6 @@ func runSync(args []string) error {
 		switch args[i] {
 		case "--dry-run":
 			sel.DryRun = true
-		case "--persona":
-			if i+1 >= len(args) {
-				return fmt.Errorf("flag --persona requires a value")
-			}
-			i++
-			sel.Persona = model.PersonaID(args[i])
 		}
 	}
 

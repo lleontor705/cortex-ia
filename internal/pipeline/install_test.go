@@ -18,6 +18,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
+	sddprompt "github.com/lleontor705/cortex-ia/internal/components/sdd/prompt"
 	"github.com/lleontor705/cortex-ia/internal/components/uninstall"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
@@ -151,6 +152,10 @@ func TestInstallDryRunWithSupportedComponentsDoesNotMutate(t *testing.T) {
 	if result.WorkflowFingerprint != "" || result.WorkflowReceipt.ID != "" || result.WorkflowRollback {
 		t.Fatalf("dry-run produced mutation evidence: receipt=%+v rollback=%t", result.WorkflowReceipt, result.WorkflowRollback)
 	}
+}
+
+func testModelRoutes() sddprompt.ModelTable {
+	return sddprompt.ModelTable{}
 }
 
 func TestPreparedWorkflowCreateUsesStrictAbsentTargetCAS(t *testing.T) {
@@ -703,19 +708,6 @@ func TestInstallPostBackupFailuresRestoreExactPreimages(t *testing.T) {
 			},
 		},
 		{
-			name: "persona",
-			inject: func(deps installDependencies) installDependencies {
-				deps.invokePersona = func(invoke func() ([]string, error)) ([]string, error) {
-					files, err := invoke()
-					if err != nil {
-						return files, err
-					}
-					return files, boom
-				}
-				return deps
-			},
-		},
-		{
 			name: "state",
 			inject: func(deps installDependencies) installDependencies {
 				deps.saveState = func(home string, value state.State) error {
@@ -768,10 +760,7 @@ func TestInstallPostBackupFailuresRestoreExactPreimages(t *testing.T) {
 	} {
 		t.Run(failure.name, func(t *testing.T) {
 			homeDir, before := installCoordinatorPreimages(t, "existing")
-			selection := model.Selection{Agents: []model.AgentID{model.AgentOpenCode}, Components: []model.ComponentID{model.ComponentCortex}, Persona: model.PersonaProfessional}
-			if failure.name == "component" {
-				selection.Persona = ""
-			}
+			selection := model.Selection{Agents: []model.AgentID{model.AgentOpenCode}, Components: []model.ComponentID{model.ComponentCortex}}
 			result, err := installWithDependencies(homeDir, newTestRegistry(), selection, "test-v1", false, failure.inject(defaultInstallDependencies()))
 			if !errors.Is(err, boom) {
 				t.Fatalf("Install() error = %v, want injected failure", err)
@@ -1341,7 +1330,6 @@ func TestOpenCodeInstallation_AssetsAndConfigValidation(t *testing.T) {
 	selection := model.Selection{
 		Agents:    []model.AgentID{model.AgentOpenCode},
 		Preset:    model.PresetFull,
-		Persona:   model.PersonaProfessional,
 		StrictTDD: true,
 	}
 

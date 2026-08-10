@@ -26,7 +26,7 @@ type RouteSelection struct {
 
 // ComposePromptWithRoute composes a prompt with an explicit route decision.
 // Concrete provider/model values require trusted configuration provenance.
-func ComposePromptWithRoute(userInput string, sdd *SDDIntegration, installedTargets []model.AgentID, persona model.PersonaID, selection RouteSelection) (string, error) {
+func ComposePromptWithRoute(userInput string, sdd *SDDIntegration, installedTargets []model.AgentID, selection RouteSelection) (string, error) {
 	if selection.Resolved {
 		if selection.Route == "" || selection.Provider == "" || selection.Model == "" || !trustedRouteProvenance(selection.Provenance) {
 			return "", fmt.Errorf("agentbuilder: resolved route requires trusted configuration provenance")
@@ -34,7 +34,7 @@ func ComposePromptWithRoute(userInput string, sdd *SDDIntegration, installedTarg
 	} else if selection.Route == "" && !selection.Deferred {
 		return "", fmt.Errorf("agentbuilder: route decision is unresolved")
 	}
-	p := composePromptBody(userInput, sdd, installedTargets, persona, selection)
+	p := composePromptBody(userInput, sdd, installedTargets, selection)
 	return p, nil
 }
 
@@ -46,10 +46,9 @@ func ComposePrompt(
 	userInput string,
 	sdd *SDDIntegration,
 	installedTargets []model.AgentID,
-	persona model.PersonaID,
 	models any,
 ) string {
-	return composePromptBody(userInput, sdd, installedTargets, persona, RouteSelection{Deferred: true})
+	return composePromptBody(userInput, sdd, installedTargets, RouteSelection{Deferred: true})
 }
 
 /* prompt body continues below */
@@ -57,7 +56,6 @@ func composePromptBody(
 	userInput string,
 	sdd *SDDIntegration,
 	installedTargets []model.AgentID,
-	persona model.PersonaID,
 	selection RouteSelection,
 ) string {
 	var sb strings.Builder
@@ -105,20 +103,7 @@ func composePromptBody(
 		}
 	}
 
-	if persona != "" {
-		sb.WriteString("## Tone (persona)\n")
-		switch persona {
-		case model.PersonaProfessional:
-			sb.WriteString("Professional — concise, no hedging, no emojis.\n\n")
-		case model.PersonaMentor:
-			sb.WriteString("Mentor — explain trade-offs, anticipate beginner questions, ")
-			sb.WriteString("show one canonical example.\n\n")
-		case model.PersonaMinimal:
-			sb.WriteString("Minimal — terse imperative bullets only.\n\n")
-		default:
-			fmt.Fprintf(&sb, "%s\n\n", persona)
-		}
-	}
+	sb.WriteString("\n")
 
 	if selection.Route != "" {
 		fmt.Fprintf(&sb, "## Route resolution\nRoute: %s\n", selection.Route)

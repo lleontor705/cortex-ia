@@ -10,9 +10,8 @@ var linearRoutes = map[Screen]Route{
 	// Main install flow
 	ScreenWelcome:        {Forward: ScreenDetection},
 	ScreenDetection:      {Forward: ScreenAgents, Backward: ScreenWelcome},
-	ScreenAgents:         {Forward: ScreenPersona, Backward: ScreenDetection},
-	ScreenPersona:        {Forward: ScreenPreset, Backward: ScreenAgents},
-	ScreenPreset:         {Forward: ScreenSDDMode, Backward: ScreenPersona},
+	ScreenAgents:         {Forward: ScreenPreset, Backward: ScreenDetection},
+	ScreenPreset:         {Forward: ScreenSDDMode, Backward: ScreenAgents},
 	ScreenSDDMode:        {Forward: ScreenStrictTDD, Backward: ScreenPreset},
 	ScreenStrictTDD:      {Forward: ScreenDependencyTree, Backward: ScreenSDDMode},
 	ScreenDependencyTree: {Forward: ScreenSkillPicker, Backward: ScreenStrictTDD},

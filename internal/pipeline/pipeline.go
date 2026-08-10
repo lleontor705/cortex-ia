@@ -19,7 +19,6 @@ import (
 	cortexcomp "github.com/lleontor705/cortex-ia/internal/components/cortex"
 	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
 	"github.com/lleontor705/cortex-ia/internal/components/mailbox"
-	"github.com/lleontor705/cortex-ia/internal/components/persona"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
@@ -59,7 +58,6 @@ type installDependencies struct {
 	prepareWorkflow       func(context.Context, WorkflowRequest) (PreparedWorkflowInstall, error)
 	applyWorkflow         func(PreparedWorkflowInstall) (sddinstall.Receipt, error)
 	invokeComponent       func(model.ComponentID, func() ([]string, error)) ([]string, error)
-	invokePersona         func(func() ([]string, error)) ([]string, error)
 	saveInstallStatus     func(string, state.InstallStatus) error
 	clearInstallStatus    func(string) error
 	saveState             func(string, state.State) error
@@ -80,9 +78,6 @@ func defaultInstallDependencies() installDependencies {
 			return workflow.Apply()
 		},
 		invokeComponent: func(_ model.ComponentID, invoke func() ([]string, error)) ([]string, error) {
-			return invoke()
-		},
-		invokePersona: func(invoke func() ([]string, error)) ([]string, error) {
 			return invoke()
 		},
 		saveInstallStatus:  state.SaveInstallStatus,
@@ -293,23 +288,6 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 			chain = append(chain, cs)
 			allComponentSteps = append(allComponentSteps, cs)
 		}
-		if selection.Persona != "" {
-			personaWriter := newPreparedWriter(personaManagedTargets(homeDir, adapter))
-			if len(personaWriter.ManagedTargets()) > 0 {
-				personaStep := &componentStep{
-					homeDir: homeDir, adapter: adapter, componentID: "persona", progress: progress,
-					writer: personaWriter,
-					injectorFn: func() ([]string, error) {
-						return deps.invokePersona(func() ([]string, error) {
-							r, injectErr := persona.Inject(homeDir, adapter, selection.Persona)
-							return r.Files, injectErr
-						})
-					},
-				}
-				chain = append(chain, personaStep)
-				allComponentSteps = append(allComponentSteps, personaStep)
-			}
-		}
 		if len(chain) > 0 {
 			agentChains = append(agentChains, chain)
 		}
@@ -494,9 +472,6 @@ func componentManagedTargets(homeDir string, adapter agents.Adapter, selection m
 	return withParentDirectories(homeDir, managedFileTargets(homeDir, paths, string(component)))
 }
 
-func personaManagedTargets(homeDir string, adapter agents.Adapter) []ManagedTarget {
-	return withParentDirectories(homeDir, managedFileTargets(homeDir, []string{adapter.SystemPromptFile(homeDir)}, "persona"))
-}
 
 func workflowManagedTargets(workflow PreparedWorkflowInstall) []ManagedTarget {
 	// The backup scope is the exact superset of every path the plan may create,

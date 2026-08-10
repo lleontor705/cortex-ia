@@ -55,7 +55,6 @@ type Selection struct {
 // Order matters for execution: marker-based components first (so the agent's
 // system prompt is left clean), then MCP, then sub-agent / commands / skills dirs.
 var allManagedComponents = []model.ComponentID{
-	model.ComponentPersona,
 	model.ComponentConventions,
 	model.ComponentSDD,
 	model.ComponentCortex,

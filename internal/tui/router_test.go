@@ -7,7 +7,6 @@ func TestNextScreen_MainFlow(t *testing.T) {
 		ScreenWelcome,
 		ScreenDetection,
 		ScreenAgents,
-		ScreenPersona,
 		ScreenPreset,
 		ScreenSDDMode,
 		ScreenStrictTDD,
@@ -48,8 +47,7 @@ func TestPreviousScreen_MainFlow(t *testing.T) {
 	}{
 		{ScreenDetection, ScreenWelcome},
 		{ScreenAgents, ScreenDetection},
-		{ScreenPersona, ScreenAgents},
-		{ScreenPreset, ScreenPersona},
+		{ScreenPreset, ScreenAgents},
 		{ScreenSDDMode, ScreenPreset},
 		{ScreenStrictTDD, ScreenSDDMode},
 		{ScreenDependencyTree, ScreenStrictTDD},

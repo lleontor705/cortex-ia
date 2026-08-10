@@ -15,8 +15,6 @@ func screenName(s Screen) string {
 		return "Detection"
 	case ScreenAgents:
 		return "Agents"
-	case ScreenPersona:
-		return "Persona"
 	case ScreenPreset:
 		return "Preset"
 	case ScreenSDDMode:
@@ -49,7 +47,7 @@ func screenName(s Screen) string {
 
 // installFlowScreens defines the ordered screens in the main install flow.
 var installFlowScreens = []Screen{
-	ScreenDetection, ScreenAgents, ScreenPersona, ScreenPreset,
+	ScreenDetection, ScreenAgents, ScreenPreset,
 	ScreenSDDMode, ScreenStrictTDD,
 	ScreenDependencyTree, ScreenSkillPicker, ScreenReview,
 	ScreenInstalling, ScreenComplete,

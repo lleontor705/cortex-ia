@@ -7,7 +7,7 @@ import (
 
 func TestScreenName_AllScreensHaveNames(t *testing.T) {
 	screens := []Screen{
-		ScreenWelcome, ScreenDetection, ScreenAgents, ScreenPersona,
+		ScreenWelcome, ScreenDetection, ScreenAgents,
 		ScreenPreset, ScreenSDDMode, ScreenStrictTDD,
 		ScreenDependencyTree, ScreenSkillPicker, ScreenReview, ScreenInstalling,
 		ScreenComplete, ScreenBackups,

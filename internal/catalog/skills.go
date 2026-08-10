@@ -42,6 +42,7 @@ var allSkills = []Skill{
 	{ID: model.SkillCommentWriter, Name: "comment-writer", Category: "utility", Priority: 3},
 	{ID: model.SkillGoTesting, Name: "go-testing", Category: "utility", Priority: 3},
 	{ID: model.SkillCognitiveDoc, Name: "cognitive-doc-design", Category: "utility", Priority: 4},
+	{ID: model.SkillDecisionScorer, Name: "decision-scorer", Category: "utility", Priority: 3},
 
 	{ID: model.SkillParallelDispatch, Name: "parallel-dispatch", Category: "utility", Priority: 3},
 

@@ -60,7 +60,6 @@ type operation struct {
 // uninstaller calls these IDs back through the same primitive (with an empty
 // body) to strip them.
 var markersByComponent = map[model.ComponentID][]string{
-	model.ComponentPersona:     {"cortex-persona"},
 	model.ComponentConventions: {"cortex-protocol"},
 	model.ComponentPermissions: {"cortex-permissions"},
 	model.ComponentSDD:         {"sdd-orchestrator"},

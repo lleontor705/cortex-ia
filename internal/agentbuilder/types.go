@@ -86,7 +86,6 @@ type RegistryEntry struct {
 	SDDMode     SDDIntegrationMode `json:"sdd_mode,omitempty"`
 	SDDPhase    string             `json:"sdd_phase,omitempty"`
 	Targets     []model.AgentID    `json:"targets,omitempty"`
-	Persona     model.PersonaID    `json:"persona,omitempty"`
 	CreatedAt   string             `json:"created_at,omitempty"`
 }
 
