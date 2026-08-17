@@ -14,6 +14,10 @@ type Selection struct {
 	ProfileName      string
 	StrictTDD        bool      // when true, enforce test-first development in SDD
 	CommunitySkills  []SkillID // community skills selected for installation
+	// Registry carries declarative registry intent when an overlay config
+	// was loaded; nil keeps the embedded baseline. It is transport-only
+	// and never an authority source.
+	Registry *RegistrySelection
 }
 
 // ValidateCurrent rejects compatibility-only identifiers before a selection

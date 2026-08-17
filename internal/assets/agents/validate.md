@@ -1,5 +1,6 @@
 ---
 description: "Independently validate outcomes and evidence against specifications."
+disable: true
 mode: subagent
 temperature: 0.1
 steps: 40
@@ -35,7 +36,7 @@ permission:
   task: deny
 ---
 
-# role/validate
+# legacy role/validate (disabled)
 
 Independently validate outcomes and evidence against specifications.
 

@@ -1,5 +1,6 @@
 ---
 description: "Archive verified change evidence without changing runtime behavior."
+disable: true
 mode: subagent
 temperature: 0.2
 steps: 30
@@ -17,7 +18,7 @@ permission:
   task: deny
 ---
 
-# role/finalize
+# legacy role/finalize (disabled)
 
 Archive verified change evidence without changing runtime behavior.
 

@@ -2,6 +2,7 @@ package agents
 
 import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/skillcore"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/system"
 )
@@ -12,6 +13,24 @@ import (
 type CapabilityProvider interface {
 	CapabilityFacts() []capability.CapabilityFact
 	CapabilityProber() capability.Prober
+}
+
+// SkillLayoutProvider is the optional declarative skill-layout surface
+// exposed by adapters that represent custom skills on their host. Host
+// representation stays adapter-owned: declaring a layout grants no registry,
+// command, subagent, config, tool, permission, or binding authority, and
+// custom skills always lower to plain SKILL.md data assets.
+type SkillLayoutProvider interface {
+	// SkillDestinations returns the relative host destinations for one
+	// verified custom skill. Destinations are slash-separated paths
+	// relative to the home directory, deterministic and stably ordered for
+	// a given skill, and always located beneath the adapter's SkillsDir.
+	//
+	// The method receives the typed skillcore Skill only — never YAML
+	// bytes, file paths, or provenance evidence — and is a pure
+	// declaration: it must not touch the filesystem or mutate state, so
+	// planning can call it freely before any write is planned or made.
+	SkillDestinations(skill skillcore.Skill) []string
 }
 
 // Adapter is the core abstraction for AI agent integration. Components use

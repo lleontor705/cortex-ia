@@ -42,6 +42,11 @@ type State struct {
 	Version         string              `json:"version,omitempty"`
 	LastProfile     string              `json:"last_profile,omitempty"`
 	StrictTDD       bool                `json:"strict_tdd,omitempty"`
+	// RegistrySelection preserves the declarative registry intent of the
+	// last successful install so Repair can reconstruct the overlay without
+	// guessing. It is additive: older binaries ignore it, and installs
+	// without an overlay omit it entirely.
+	RegistrySelection *model.RegistrySelection `json:"registry_selection,omitempty"`
 }
 
 // Lockfile captures the concrete installed artifact set for verification and repair.
@@ -53,6 +58,10 @@ type Lockfile struct {
 	GeneratedAt     time.Time           `json:"generated_at"`
 	LastBackupID    string              `json:"last_backup_id,omitempty"`
 	Version         string              `json:"version,omitempty"`
+	// RegistrySelection mirrors the state copy. Repair accepts equal copies,
+	// recovers from a single surviving copy, and fails closed when the two
+	// disagree; it is never inferred from receipt outputs.
+	RegistrySelection *model.RegistrySelection `json:"registry_selection,omitempty"`
 }
 
 // BaseDir returns the path to the cortex-ia home directory (~/.cortex-ia/).

@@ -17,6 +17,9 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/prompt"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/quality"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/registry"
+	"github.com/lleontor705/cortex-ia/internal/model"
+	"gopkg.in/yaml.v3"
 )
 
 // Input is the complete deterministic compiler boundary. EvaluationTime is an
@@ -39,6 +42,12 @@ type Input struct {
 	Models            prompt.ModelTable
 	OperationalAssets []prompt.MaterializedAsset
 	Metadata          json.RawMessage
+	// CustomSkills carries the registry-normalized, provenance-verified
+	// custom skill overlay records. Each declared skill must also compile
+	// into AssetCatalog: the overlay is additive and never replaces
+	// embedded assets. It stays nil for baseline installs without an
+	// overlay.
+	CustomSkills []registry.Skill
 }
 
 // NormalizedInput contains stable, owned values suitable for renderers and
@@ -60,6 +69,18 @@ type NormalizedInput struct {
 	QualityPlan       quality.QualityPlan         `json:"quality_plan,omitempty"`
 	OperationalAssets []prompt.MaterializedAsset  `json:"operational_assets,omitempty"`
 	Metadata          json.RawMessage             `json:"metadata,omitempty"`
+	CustomSkills      []CustomSkillRecord         `json:"custom_skills,omitempty"`
+}
+
+// CustomSkillRecord is the canonical compiled projection of one accepted
+// custom skill: identity, origin, and content digest only. Raw content,
+// provenance, and any authority notion are deliberately absent (design D8,
+// D9); renderers receive skill bytes through the materialized catalog
+// contents, never through the canonical evidence.
+type CustomSkillRecord struct {
+	ID            string `json:"id"`
+	ContentSHA256 string `json:"content_sha256"`
+	Origin        string `json:"origin"`
 }
 
 // Result carries the canonical representation used to calculate Fingerprint.
@@ -82,6 +103,11 @@ const (
 	ErrorDuplicateReference  ErrorCode = "duplicate_reference"
 	ErrorUnresolvedReference ErrorCode = "unresolved_reference"
 	ErrorCyclicReference     ErrorCode = "cyclic_reference"
+	// ErrorUnsupportedDeclaration marks a custom skill declaration that
+	// attempts to grant authority (agents, tools, permissions, or
+	// bindings). Declarative skills carry only identity and content, so
+	// such a declaration is rejected unbound before any write.
+	ErrorUnsupportedDeclaration ErrorCode = "unsupported_declaration"
 )
 
 // ValidationError identifies a compiler-level semantic failure before any
@@ -109,6 +135,9 @@ func Compile(input Input) (Result, error) {
 		return Result{}, fmt.Errorf("decode capability catalog: %w", err)
 	}
 	if err := validateInput(input, workflowResult.Workflow); err != nil {
+		return Result{}, err
+	}
+	if err := validateCustomSkills(input.CustomSkills, input.AssetCatalog); err != nil {
 		return Result{}, err
 	}
 	var composition prompt.CompositionResult
@@ -181,6 +210,7 @@ func Compile(input Input) (Result, error) {
 		QualityPlan:       qualityPlan,
 		OperationalAssets: slices.Clone(input.OperationalAssets),
 		Metadata:          slices.Clone(input.Metadata),
+		CustomSkills:      customSkillRecords(input.CustomSkills),
 	}
 	canonical, err := json.Marshal(normalized)
 	if err != nil {
@@ -209,6 +239,190 @@ func normalizeAssetCatalog(catalog ir.AssetCatalog) ir.AssetCatalog {
 		return strings.Compare(string(left.ID), string(right.ID))
 	})
 	return normalized
+}
+
+// authorityFrontmatterFields are the frontmatter keys a declarative custom
+// skill can never declare (design invariant: custom declarations contain only
+// skill ID/content). Matching is case-insensitive: the field vocabulary is
+// lowercase by convention and a case variant of an authority name grants no
+// additional legitimacy.
+var authorityFrontmatterFields = map[string]struct{}{
+	"agents": {}, "tools": {}, "permissions": {}, "bindings": {},
+}
+
+// validateCustomSkills is the compiler-boundary semantic validation of the
+// custom skill overlay (REQ-REG-001, REQ-ADAPT-001). Every record must keep
+// its registry-normalized identity, digest, and custom origin, must declare
+// no authority field in its frontmatter, and must be present exactly once in
+// the effective asset catalog with the same digest. All failures are pure
+// pre-write rejections; the compiler mutates nothing.
+func validateCustomSkills(skills []registry.Skill, catalog ir.AssetCatalog) error {
+	seen := make(map[model.SkillID]struct{}, len(skills))
+	for index, skill := range skills {
+		path := fmt.Sprintf("$.custom_skills[%d]", index)
+		if _, err := registry.NormalizeSkillID(string(skill.ID)); err != nil {
+			return invalid(path+".id", string(skill.ID), "use the registry-normalized lowercase ASCII skill ID grammar")
+		}
+		if skill.Origin != registry.OriginCustom {
+			return invalid(path+".origin", customOriginLabel(skill.Origin), "the overlay input accepts only custom-origin skill records")
+		}
+		if skill.ContentSHA256 != ir.FingerprintContent(skill.Content) {
+			return invalid(path+".content_sha256", "declared digest does not match the declared content", "carry the digest produced by registry normalization of the same canonical content")
+		}
+		field, scanErr := scanFrontmatterAuthority(skill.Content)
+		if scanErr != nil {
+			return invalid(path+".frontmatter", scanErr.Error(), "provide a YAML mapping frontmatter closed by a --- line, or omit frontmatter entirely")
+		}
+		if field != "" {
+			return &ValidationError{
+				Code:        ErrorUnsupportedDeclaration,
+				Path:        path + ".frontmatter." + field,
+				Observed:    fmt.Sprintf("frontmatter declares authority field %q", field),
+				Remediation: "remove agents, tools, permissions, and bindings from custom skill frontmatter; declarative skills carry only identity and content",
+			}
+		}
+		if _, exists := seen[skill.ID]; exists {
+			return duplicate(path+".id", ir.SemanticID(skill.ID))
+		}
+		seen[skill.ID] = struct{}{}
+		if err := validateCustomSkillCatalogEntry(skill, catalog, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateCustomSkillCatalogEntry cross-checks one accepted custom skill
+// against the effective asset catalog: it must appear exactly once, as a
+// skill-class asset, with the digest the registry normalized.
+func validateCustomSkillCatalogEntry(skill registry.Skill, catalog ir.AssetCatalog, path string) error {
+	wantID := customSkillSemanticID(skill.ID)
+	matches := 0
+	for _, spec := range catalog.Assets {
+		if spec.ID != wantID {
+			continue
+		}
+		matches++
+		if spec.Class != ir.AssetSkill {
+			return invalid(path, string(spec.ID), "the effective catalog entry for a custom skill must use the skill asset class")
+		}
+		if spec.SHA256 != skill.ContentSHA256 {
+			return invalid(path, "effective catalog digest disagrees with the declared skill digest", "compile the effective catalog from the same accepted custom skill declarations")
+		}
+	}
+	switch matches {
+	case 1:
+		return nil
+	case 0:
+		return &ValidationError{
+			Code:        ErrorUnresolvedReference,
+			Path:        path,
+			Observed:    fmt.Sprintf("custom skill %q is absent from the effective asset catalog", skill.ID),
+			Remediation: "compile the effective catalog containing every accepted custom skill declaration",
+		}
+	default:
+		return duplicate(path+".id", wantID)
+	}
+}
+
+// scanFrontmatterAuthority inspects a custom skill's YAML frontmatter for a
+// top-level authority declaration. It returns the lowercased offending field
+// name when one is found, an error when frontmatter is present but malformed
+// (fail closed: absence of authority fields cannot be proven from an
+// unparseable block), and empty/nil when the content carries no frontmatter
+// or a well-formed authority-free mapping. Indented occurrences under another
+// key are values, not declarations, and never match.
+func scanFrontmatterAuthority(content []byte) (string, error) {
+	const opening = "---\n"
+	text := string(content)
+	if !strings.HasPrefix(text, opening) {
+		return "", nil
+	}
+	rest := text[len(opening):]
+	end := frontmatterClose(rest)
+	if end < 0 {
+		return "", fmt.Errorf("frontmatter is not closed by a --- delimiter line")
+	}
+	block := rest[:end]
+	if strings.TrimSpace(block) == "" {
+		return "", nil
+	}
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(block), &document); err != nil {
+		return "", fmt.Errorf("frontmatter is not valid YAML: %w", err)
+	}
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return "", fmt.Errorf("frontmatter must be a YAML mapping")
+	}
+	mapping := document.Content[0]
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		key := strings.ToLower(mapping.Content[i].Value)
+		if _, authority := authorityFrontmatterFields[key]; authority {
+			return key, nil
+		}
+	}
+	return "", nil
+}
+
+// frontmatterClose returns the index in rest where the closing --- delimiter
+// line begins, or -1 when none exists. A delimiter is a line whose entire
+// content is ---; it may end the document without a trailing newline. A line
+// like ---foo is ordinary content and never closes the block.
+func frontmatterClose(rest string) int {
+	const marker = "\n---"
+	for offset := 0; ; {
+		index := strings.Index(rest[offset:], marker)
+		if index < 0 {
+			return -1
+		}
+		index += offset
+		after := rest[index+len(marker):]
+		if after == "" || after[0] == '\n' {
+			return index
+		}
+		offset = index + len(marker)
+	}
+}
+
+// customSkillRecords projects validated custom skills into their canonical,
+// deterministically ordered records: identity, origin, and content digest
+// only.
+func customSkillRecords(skills []registry.Skill) []CustomSkillRecord {
+	if len(skills) == 0 {
+		return nil
+	}
+	records := make([]CustomSkillRecord, 0, len(skills))
+	for _, skill := range skills {
+		records = append(records, CustomSkillRecord{
+			ID:            string(skill.ID),
+			ContentSHA256: skill.ContentSHA256,
+			Origin:        customOriginLabel(skill.Origin),
+		})
+	}
+	slices.SortFunc(records, func(left, right CustomSkillRecord) int {
+		return strings.Compare(left.ID, right.ID)
+	})
+	return records
+}
+
+// customSkillSemanticID mirrors the unexported derivation in the assets
+// package so the compiler cross-checks custom skills against the same catalog
+// identity the additive overlay produces.
+func customSkillSemanticID(id model.SkillID) ir.SemanticID {
+	return ir.SemanticID("asset/skill/" + string(id))
+}
+
+// customOriginLabel renders an origin kind with the canonical vocabulary the
+// registry receipt also uses ("custom"/"embedded").
+func customOriginLabel(origin registry.OriginKind) string {
+	switch origin {
+	case registry.OriginEmbedded:
+		return "embedded"
+	case registry.OriginCustom:
+		return "custom"
+	default:
+		return fmt.Sprintf("unknown(%d)", uint8(origin))
+	}
 }
 
 func validateInput(input Input, workflow ir.WorkflowIR) error {

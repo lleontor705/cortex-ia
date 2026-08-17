@@ -25,6 +25,11 @@ type ProjectConfig struct {
 	CustomSkills       []Skill  `yaml:"custom-skills,omitempty"`
 
 	retiredFields map[string]struct{}
+
+	// sourcePath records the config file origin after LoadFile. It is
+	// non-serialized runtime provenance: never decoded from or encoded to
+	// YAML, only transported into a RegistrySelection.
+	sourcePath string
 }
 
 // RetiredProjectFieldError reports configuration that must be migrated rather
@@ -99,6 +104,7 @@ func LoadFile(path string) (*ProjectConfig, error) {
 	if err := cfg.validateCurrent(); err != nil {
 		return nil, err
 	}
+	cfg.sourcePath = path
 	return &cfg, nil
 }
 
@@ -136,6 +142,9 @@ persona: professional  # professional | mentor | minimal
 
 // ApplyToSelection merges supported project configuration into a Selection.
 // Retired configuration is rejected before it can change the selection.
+// Registry intent (custom skill paths, disabled components) is transported
+// verbatim: parsing or validating skill content and disable eligibility is
+// owned by the registry and policy layers, not by config.
 func ApplyToSelection(cfg *ProjectConfig, sel *model.Selection) error {
 	if cfg == nil {
 		return nil
@@ -154,6 +163,16 @@ func ApplyToSelection(cfg *ProjectConfig, sel *model.Selection) error {
 	}
 	if cfg.StrictTDD && !sel.StrictTDD {
 		sel.StrictTDD = cfg.StrictTDD
+	}
+	if len(cfg.CustomSkills) > 0 || len(cfg.DisabledComponents) > 0 {
+		registry := &model.RegistrySelection{ConfigFile: cfg.sourcePath}
+		for _, skill := range cfg.CustomSkills {
+			registry.CustomSkillPaths = append(registry.CustomSkillPaths, skill.Path)
+		}
+		for _, component := range cfg.DisabledComponents {
+			registry.DisabledComponents = append(registry.DisabledComponents, model.ComponentID(component))
+		}
+		sel.Registry = registry
 	}
 	return nil
 }

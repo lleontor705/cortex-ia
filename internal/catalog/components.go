@@ -2,23 +2,66 @@ package catalog
 
 import "github.com/lleontor705/cortex-ia/internal/model"
 
+// DisableClass classifies whether a component may be disabled and, when it
+// may not, the protection category (design D4). The zero value is the
+// fail-closed protected default, so components without an explicit catalog
+// descriptor can never be disabled.
+type DisableClass uint8
+
+const (
+	// ProtectedUnclassified is the fail-closed default for components
+	// without an explicit descriptor, including unknown IDs.
+	ProtectedUnclassified DisableClass = iota
+	// Optional marks explicit catalog entries that may be disabled.
+	Optional
+	// ProtectedAuthority protects core authority components (Cortex, ForgeSpec).
+	ProtectedAuthority
+	// ProtectedWorkflow protects the SDD workflow component.
+	ProtectedWorkflow
+	// ProtectedRequired protects transitive dependencies of retained selections.
+	ProtectedRequired
+)
+
+// Protected reports whether the class forbids disabling the component.
+func (c DisableClass) Protected() bool { return c != Optional }
+
+// String returns the canonical class name for category-identifying
+// diagnostics.
+func (c DisableClass) String() string {
+	switch c {
+	case Optional:
+		return "optional"
+	case ProtectedAuthority:
+		return "protected-authority"
+	case ProtectedWorkflow:
+		return "protected-workflow"
+	case ProtectedRequired:
+		return "protected-required"
+	default:
+		return "protected-unclassified"
+	}
+}
+
 // ComponentInfo describes an installable component.
 type ComponentInfo struct {
 	ID          model.ComponentID
 	Name        string
 	Description string
 	Deps        []model.ComponentID
+	// Disable is the explicit disable-class descriptor. Omitting it keeps
+	// the component protected (fail-closed).
+	Disable DisableClass
 }
 
 // AllComponents returns all available components in dependency order.
 func AllComponents() []ComponentInfo {
 	return []ComponentInfo{
-		{ID: model.ComponentCortex, Name: "Cortex Memory", Description: "Persistent cross-session memory with knowledge graph (19 MCP tools)", Deps: nil},
-		{ID: model.ComponentForgeSpec, Name: "ForgeSpec", Description: "SDD contract validation, task board, file reservation (15 MCP tools)", Deps: nil},
-		{ID: model.ComponentContext7, Name: "Context7", Description: "Live framework and library documentation via MCP", Deps: nil},
-		{ID: model.ComponentConventions, Name: "Conventions", Description: "Shared cortex conventions and memory protocol", Deps: []model.ComponentID{model.ComponentCortex}},
-		{ID: model.ComponentSDD, Name: "SDD Workflow", Description: "Full 9-phase Spec-Driven Development with orchestrator + 19 skills", Deps: []model.ComponentID{model.ComponentCortex, model.ComponentForgeSpec}},
-		{ID: model.ComponentSkills, Name: "Extra Skills", Description: "Additional utility skills (non-SDD)", Deps: nil},
+		{ID: model.ComponentCortex, Name: "Cortex Memory", Description: "Persistent cross-session memory with knowledge graph (19 MCP tools)", Deps: nil, Disable: ProtectedAuthority},
+		{ID: model.ComponentForgeSpec, Name: "ForgeSpec", Description: "SDD contract validation, task board, file reservation (15 MCP tools)", Deps: nil, Disable: ProtectedAuthority},
+		{ID: model.ComponentContext7, Name: "Context7", Description: "Live framework and library documentation via MCP", Deps: nil, Disable: Optional},
+		{ID: model.ComponentConventions, Name: "Conventions", Description: "Shared cortex conventions and memory protocol", Deps: []model.ComponentID{model.ComponentCortex}, Disable: Optional},
+		{ID: model.ComponentSDD, Name: "SDD Workflow", Description: "Full 9-phase Spec-Driven Development with orchestrator + 19 skills", Deps: []model.ComponentID{model.ComponentCortex, model.ComponentForgeSpec}, Disable: ProtectedWorkflow},
+		{ID: model.ComponentSkills, Name: "Extra Skills", Description: "Additional utility skills (non-SDD)", Deps: nil, Disable: Optional},
 	}
 }
 
@@ -80,4 +123,27 @@ func ResolveDeps(selected []model.ComponentID) []model.ComponentID {
 		visit(id)
 	}
 	return result
+}
+
+// DisableClasses returns the effective disable classification for every
+// catalog component given the retained selection. Transitive dependencies of
+// retained components resolve as ProtectedRequired because disabling them
+// would break a retained selection; every other component keeps its explicit
+// descriptor. IDs absent from the returned map are unclassified and protected
+// (fail-closed default).
+func DisableClasses(retained []model.ComponentID) map[model.ComponentID]DisableClass {
+	classes := make(map[model.ComponentID]DisableClass)
+	for _, c := range AllComponents() {
+		classes[c.ID] = c.Disable
+	}
+	retainedSet := make(map[model.ComponentID]bool, len(retained))
+	for _, id := range retained {
+		retainedSet[id] = true
+	}
+	for _, id := range ResolveDeps(retained) {
+		if !retainedSet[id] {
+			classes[id] = ProtectedRequired
+		}
+	}
+	return classes
 }

@@ -184,10 +184,6 @@ func canonicalOwner(owner Owner) bool {
 	return owner == OwnerForgeSpec || owner == OwnerCortex || owner == OwnerRuntime
 }
 
-func versionInterval(minimum, maximum string) VersionInterval {
-	return VersionInterval{Minimum: ir.MustParseVersion(minimum), MaximumTested: ir.MustParseVersion(maximum)}
-}
-
 func validVersionInterval(interval VersionInterval) bool {
 	minimum, maximum := interval.Minimum, interval.MaximumTested
 	if minimum.Major == 0 || maximum.Major != minimum.Major || maximum.Minor < minimum.Minor {

@@ -1,5 +1,6 @@
 ---
 description: "Detect project capabilities and initialize SDD context."
+disable: true
 mode: subagent
 temperature: 0.2
 steps: 30
@@ -29,7 +30,7 @@ permission:
   task: deny
 ---
 
-# role/bootstrap
+# legacy role/bootstrap (disabled)
 
 Detect project capabilities and initialize SDD context.
 

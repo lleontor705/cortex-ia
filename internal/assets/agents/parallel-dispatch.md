@@ -1,5 +1,6 @@
 ---
 description: "Coordinate independent ready work without changing readiness or the workflow DAG."
+disable: true
 mode: subagent
 temperature: 0.2
 steps: 30
@@ -17,7 +18,7 @@ permission:
   task: deny
 ---
 
-# role/parallel-dispatch
+# legacy role/parallel-dispatch (disabled)
 
 Coordinate independent ready work without changing readiness or the workflow DAG.
 

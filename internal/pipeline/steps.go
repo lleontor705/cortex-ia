@@ -11,7 +11,6 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/model"
-	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
 // backupStep creates a config snapshot before installation.
@@ -222,36 +221,4 @@ func (s *backupStep) Rollback() error {
 		return os.RemoveAll(s.BackupDir)
 	}
 	return nil
-}
-
-// installStatusStep writes an install-status marker so that partial failures
-// can be detected by the doctor/verify system. On Run() it writes
-// status "in-progress"; the caller is responsible for updating to "complete"
-// after all components succeed. Rollback() clears the marker.
-type installStatusStep struct {
-	homeDir  string
-	backupID string // set by the caller after backupStep.Run()
-	writer   *preparedWriter
-}
-
-func (s *installStatusStep) Name() string { return "install-status" }
-
-func (s *installStatusStep) Run() error {
-	if s.writer != nil {
-		return s.writer.run(s.writeStatus)
-	}
-	return s.writeStatus()
-}
-
-func (s *installStatusStep) writeStatus() error {
-	status := state.InstallStatus{
-		Status:    "in-progress",
-		StartedAt: time.Now().UTC().Format(time.RFC3339),
-		BackupID:  s.backupID,
-	}
-	return state.SaveInstallStatus(s.homeDir, status)
-}
-
-func (s *installStatusStep) Rollback() error {
-	return state.ClearInstallStatus(s.homeDir)
 }

@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"path"
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
@@ -304,27 +303,4 @@ func (i CompositionInput) Validate() error {
 		return fmt.Errorf("composition catalog: %w", err)
 	}
 	return nil
-}
-
-// defaultExpandPath joins a root and relative path and rejects traversal so
-// that no adapter destination can escape its declared root.
-func defaultExpandPath(root, relative string) (string, error) {
-	cleaned := path.Clean("/" + relative)
-	if strings.Contains(relative, "..") {
-		return "", fmt.Errorf("relative path %q contains a traversal segment", relative)
-	}
-	return path.Join(root, cleaned), nil
-}
-
-// validAdapterContract returns a contract usable in tests with safe defaults.
-// (Kept minimal; production contracts are built by adapter qualification.)
-func validAdapterContract() AdapterPromptContract {
-	return AdapterPromptContract{
-		Target:      "claude",
-		RootPath:    ".claude",
-		AgentPath:   func(id ir.SemanticID) string { return path.Join(".claude/agents", string(id)) },
-		SkillRoot:   "internal/assets/skills",
-		CommandRoot: "internal/assets/commands",
-		ExpandPath:  defaultExpandPath,
-	}
 }

@@ -9,16 +9,21 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 	sddprompt "github.com/lleontor705/cortex-ia/internal/components/sdd/prompt"
+	sddregistry "github.com/lleontor705/cortex-ia/internal/components/sdd/registry"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/skillcore"
 	"github.com/lleontor705/cortex-ia/internal/components/uninstall"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
@@ -1382,5 +1387,1348 @@ func TestOpenCodeInstallation_AssetsAndConfigValidation(t *testing.T) {
 	cmdEntries, err := os.ReadDir(commandsDir)
 	if err != nil || len(cmdEntries) == 0 {
 		t.Fatalf("no commands found in %s: %v", commandsDir, err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// WU-17: global preflight, registry overlay integration, transactional apply
+// ---------------------------------------------------------------------------
+//
+// The oracles below complete the 36 spec oracle names of slice
+// declarative-skill-registry-foundation (spec
+// sdd-de4191a255e941d59ada39b6a7510011). The registry-level unit oracles
+// already live in internal/components/sdd/registry/registry_test.go (WU-08);
+// every oracle added here exercises the pipeline integration boundary —
+// BuildInstallPlan preflight, journal-covered registry apply, and restore —
+// exclusively in temporary homes.
+
+const (
+	pipelineCustomSkillID  = "deploy-helper"
+	pipelineCustomSkillID2 = "release-notes"
+)
+
+func pipelineCustomSkillDoc(name, body string) []byte {
+	return []byte(fmt.Sprintf("---\nname: %s\n---\n\n# %s\n\n%s\n", name, name, body))
+}
+
+type pipelineCustomSkill struct {
+	dir  string
+	name string
+	body string
+}
+
+// writePipelineOverlay writes a local overlay configuration file plus one
+// custom skill directory per entry beneath the same configuration root, and
+// returns the transport-only registry selection that declares them.
+func writePipelineOverlay(t *testing.T, homeDir string, skills []pipelineCustomSkill, disabled ...model.ComponentID) *model.RegistrySelection {
+	t.Helper()
+	root := filepath.Join(homeDir, "overlay")
+	if err := os.MkdirAll(filepath.Join(root, "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "cortex-ia.yaml")
+	if err := os.WriteFile(configFile, []byte("preset: full\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	selection := &model.RegistrySelection{ConfigFile: configFile, DisabledComponents: disabled}
+	for _, skill := range skills {
+		dir := filepath.Join(root, "skills", skill.dir)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), pipelineCustomSkillDoc(skill.name, skill.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		selection.CustomSkillPaths = append(selection.CustomSkillPaths, dir)
+	}
+	return selection
+}
+
+// writeEscapingOverlay declares a custom skill directory that resolves outside
+// the configuration root; containment must reject it before any write.
+func writeEscapingOverlay(t *testing.T, homeDir string) *model.RegistrySelection {
+	t.Helper()
+	root := filepath.Join(homeDir, "overlay")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "cortex-ia.yaml")
+	if err := os.WriteFile(configFile, []byte("preset: full\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	skillDir := filepath.Join(t.TempDir(), "escaping-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), pipelineCustomSkillDoc("escapee", "body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return &model.RegistrySelection{ConfigFile: configFile, CustomSkillPaths: []string{skillDir}}
+}
+
+func pipelineCustomSkillPath(homeDir, id string) string {
+	return filepath.Join(homeDir, ".config", "opencode", "skills", id, "SKILL.md")
+}
+
+func pipelineLightSelection(overlay *model.RegistrySelection, components ...model.ComponentID) model.Selection {
+	if len(components) == 0 {
+		components = []model.ComponentID{model.ComponentCortex}
+	}
+	return model.Selection{
+		Agents:     []model.AgentID{model.AgentOpenCode},
+		Components: components,
+		Registry:   overlay,
+	}
+}
+
+func pipelineSubtreeDigest(t *testing.T, root string) string {
+	t.Helper()
+	if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
+		return "absent"
+	}
+	return testTreeDigest(t, root)
+}
+
+func pipelineTreeFiles(t *testing.T, root string) map[string]string {
+	t.Helper()
+	files := map[string]string{}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		files[filepath.ToSlash(relative)] = string(content)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+// requireOnlyAddedFiles asserts the after-tree equals the before-tree plus
+// exactly the wanted added files: bounded overlay effect, byte-for-byte.
+func requireOnlyAddedFiles(t *testing.T, before, after map[string]string, wantAdded []string) {
+	t.Helper()
+	var added, changed, removed []string
+	for path, content := range after {
+		prior, ok := before[path]
+		if !ok {
+			added = append(added, path)
+			continue
+		}
+		if prior != content {
+			changed = append(changed, path)
+		}
+	}
+	for path := range before {
+		if _, ok := after[path]; !ok {
+			removed = append(removed, path)
+		}
+	}
+	sort.Strings(added)
+	if !reflect.DeepEqual(added, wantAdded) {
+		t.Fatalf("added files = %v, want exactly %v (changed=%v removed=%v)", added, wantAdded, changed, removed)
+	}
+	if len(changed) != 0 || len(removed) != 0 {
+		t.Fatalf("effect unbounded: changed=%v removed=%v", changed, removed)
+	}
+}
+
+func pipelineCommittedReceipt(t *testing.T, homeDir string) (sddregistry.Receipt, bool) {
+	t.Helper()
+	receipt, err := sdd.LoadCommittedRegistryReceipt(homeDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return sddregistry.Receipt{}, false
+	}
+	if err != nil {
+		t.Fatalf("load committed registry receipt: %v", err)
+	}
+	return receipt, true
+}
+
+func pipelineMCPServerNames(t *testing.T, homeDir string) map[string]bool {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(homeDir, ".config", "opencode", "opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := filemerge.DecodeJSONObject(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	if mcp, ok := config["mcp"].(map[string]any); ok {
+		for name := range mcp {
+			names[name] = true
+		}
+	}
+	return names
+}
+
+// runPreflightOrderedInstall instruments every mutation seam of the install
+// coordinator and records the observed event order so tests can prove
+// validate-success precedes the first managed write (AC-SAFE-1).
+func runPreflightOrderedInstall(t *testing.T, homeDir string, selection model.Selection) ([]string, InstallResult, error) {
+	t.Helper()
+	deps := defaultInstallDependencies()
+	var mu sync.Mutex
+	var events []string
+	record := func(event string) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	}
+	deps.buildInstallPlan = func(ctx context.Context, home string, agentRegistry *agents.Registry, sel model.Selection, resolved []model.ComponentID) (InstallPlan, error) {
+		plan, planErr := BuildInstallPlan(ctx, home, agentRegistry, sel, resolved)
+		if planErr == nil {
+			record("validate:install-plan")
+		}
+		return plan, planErr
+	}
+	deps.beginJournal = func(home, checkpoint string, targets []ManagedTarget) (*InstallJournal, error) {
+		record("write:journal")
+		return BeginInstallJournal(home, checkpoint, targets)
+	}
+	deps.saveInstallStatus = func(home string, status state.InstallStatus) error {
+		record("write:status")
+		return state.SaveInstallStatus(home, status)
+	}
+	invoke := deps.invokeComponent
+	deps.invokeComponent = func(id model.ComponentID, run func() ([]string, error)) ([]string, error) {
+		record("write:component:" + string(id))
+		return invoke(id, run)
+	}
+	applyWorkflow := deps.applyWorkflow
+	deps.applyWorkflow = func(prepared PreparedWorkflowInstall) (sddinstall.Receipt, error) {
+		record("write:workflow")
+		return applyWorkflow(prepared)
+	}
+	applyRegistry := deps.applyRegistryPlan
+	deps.applyRegistryPlan = func(home string, plan sdd.GlobalInstallPlan) (sdd.GlobalApplyResult, error) {
+		record("write:registry")
+		return applyRegistry(home, plan)
+	}
+	saveState := deps.saveState
+	deps.saveState = func(home string, value state.State) error {
+		record("write:state")
+		return saveState(home, value)
+	}
+	saveLock := deps.saveLock
+	deps.saveLock = func(home string, value state.Lockfile) error {
+		record("write:lock")
+		return saveLock(home, value)
+	}
+	clearStatus := deps.clearInstallStatus
+	deps.clearInstallStatus = func(home string) error {
+		record("write:status-clear")
+		return clearStatus(home)
+	}
+	result, err := installWithDependencies(homeDir, newTestRegistry(), selection, "test-v1", false, deps)
+	return events, result, err
+}
+
+func requireValidationPrecedesWrites(t *testing.T, events []string) {
+	t.Helper()
+	validateIndex, firstWrite := -1, -1
+	for index, event := range events {
+		if strings.HasPrefix(event, "validate:") && validateIndex == -1 {
+			validateIndex = index
+		}
+		if strings.HasPrefix(event, "write:") && firstWrite == -1 {
+			firstWrite = index
+		}
+	}
+	if validateIndex == -1 {
+		t.Fatalf("no validate-success event recorded: %v", events)
+	}
+	if firstWrite == -1 {
+		t.Fatalf("no write events recorded: %v", events)
+	}
+	if validateIndex > firstWrite {
+		t.Fatalf("validate-success (%q at %d) did not precede first write (%q at %d): %v",
+			events[validateIndex], validateIndex, events[firstWrite], firstWrite, events)
+	}
+}
+
+// --- REQ-SAFE-001 ----------------------------------------------------------
+
+func TestSpec_REQ_SAFE_001_ValidateBeforeWrite(t *testing.T) {
+	homeDir := t.TempDir()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	events, result, err := runPreflightOrderedInstall(t, homeDir, pipelineLightSelection(overlay))
+	if err != nil {
+		t.Fatalf("Install() error = %v; errors: %v", err, result.Errors)
+	}
+	requireValidationPrecedesWrites(t, events)
+	if _, readErr := os.Stat(pipelineCustomSkillPath(homeDir, pipelineCustomSkillID)); readErr != nil {
+		t.Fatalf("validated install did not write the custom skill: %v", readErr)
+	}
+}
+
+func TestPipeline_ValidateBeforeWrite(t *testing.T) {
+	homeDir := t.TempDir()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	events, _, err := runPreflightOrderedInstall(t, homeDir, pipelineLightSelection(overlay))
+	if err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	requireValidationPrecedesWrites(t, events)
+	if _, ok := pipelineCommittedReceipt(t, homeDir); !ok {
+		t.Fatal("validated install committed no registry receipt")
+	}
+}
+
+func TestSpec_REQ_SAFE_001_MultiTargetPreflightFailure(t *testing.T) {
+	freshHome := t.TempDir()
+	priorHome := t.TempDir()
+	registry := newTestRegistry()
+
+	// The prior home already carries a valid overlay install; the fresh home
+	// has none. Both later receive the same invalid input.
+	validOverlay := writePipelineOverlay(t, priorHome, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	if _, err := Install(priorHome, registry, pipelineLightSelection(validOverlay), "test-v1", false); err != nil {
+		t.Fatalf("prior Install() error = %v", err)
+	}
+
+	escapingFresh := writeEscapingOverlay(t, freshHome)
+	escapingPrior := writeEscapingOverlay(t, priorHome)
+	priorBefore := testTreeDigest(t, priorHome)
+	freshBefore := testTreeDigest(t, freshHome)
+
+	for _, home := range []struct {
+		dir     string
+		overlay *model.RegistrySelection
+	}{
+		{dir: freshHome, overlay: escapingFresh},
+		{dir: priorHome, overlay: escapingPrior},
+	} {
+		_, err := Install(home.dir, registry, pipelineLightSelection(home.overlay), "test-v1", false)
+		if err == nil {
+			t.Fatalf("Install(%s) succeeded with an escaping overlay", home.dir)
+		}
+		var installErr *sddregistry.InstallError
+		if !errors.As(err, &installErr) || installErr.Primary.Class != sddregistry.ErrorUntrusted {
+			t.Fatalf("Install(%s) error = %v, want untrusted InstallError", home.dir, err)
+		}
+	}
+	if got := testTreeDigest(t, freshHome); got != freshBefore {
+		t.Fatalf("fresh home changed after preflight failure: before=%s after=%s", freshBefore, got)
+	}
+	if got := testTreeDigest(t, priorHome); got != priorBefore {
+		t.Fatalf("prior home changed after preflight failure: before=%s after=%s", priorBefore, got)
+	}
+}
+
+func TestPipeline_MultiTargetPreflightFailure(t *testing.T) {
+	homeA := t.TempDir()
+	homeB := t.TempDir()
+	registry := newTestRegistry()
+	overlayA := writeEscapingOverlay(t, homeA)
+	overlayB := writeEscapingOverlay(t, homeB)
+	beforeA, beforeB := testTreeDigest(t, homeA), testTreeDigest(t, homeB)
+
+	for _, home := range []struct {
+		dir     string
+		overlay *model.RegistrySelection
+		before  string
+	}{
+		{dir: homeA, overlay: overlayA, before: beforeA},
+		{dir: homeB, overlay: overlayB, before: beforeB},
+	} {
+		result, err := Install(home.dir, registry, pipelineLightSelection(home.overlay), "test-v1", false)
+		if err == nil {
+			t.Fatalf("Install(%s) succeeded with invalid input", home.dir)
+		}
+		if result.BackupID != "" || len(result.FilesChanged) != 0 {
+			t.Fatalf("invalid input produced install evidence on %s: %+v", home.dir, result)
+		}
+		if got := testTreeDigest(t, home.dir); got != home.before {
+			t.Fatalf("home %s changed: before=%s after=%s", home.dir, home.before, got)
+		}
+	}
+}
+
+func TestSpec_REQ_SAFE_001_InvalidInputZeroWrites(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	if _, err := Install(homeDir, registry, pipelineLightSelection(overlay), "test-v1", false); err != nil {
+		t.Fatalf("first Install() error = %v", err)
+	}
+
+	// Break the overlay: the custom skill directory no longer holds exactly
+	// one SKILL.md, which is an invalid declaration.
+	if err := os.Remove(filepath.Join(filepath.Dir(overlay.ConfigFile), "skills", pipelineCustomSkillID, "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	before := testTreeDigest(t, homeDir)
+
+	_, err := Install(homeDir, registry, pipelineLightSelection(overlay), "test-v1", false)
+	if err == nil {
+		t.Fatal("Install() succeeded with an invalid overlay")
+	}
+	var installErr *sddregistry.InstallError
+	if !errors.As(err, &installErr) || installErr.Primary.Class != sddregistry.ErrorInvalid {
+		t.Fatalf("Install() error = %v, want invalid InstallError", err)
+	}
+	if got := testTreeDigest(t, homeDir); got != before {
+		t.Fatalf("invalid overlay mutated the prior home snapshot: before=%s after=%s", before, got)
+	}
+}
+
+func TestPipeline_InvalidInputZeroWrites(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	if _, err := Install(homeDir, registry, pipelineLightSelection(overlay), "test-v1", false); err != nil {
+		t.Fatalf("first Install() error = %v", err)
+	}
+	if err := os.Remove(filepath.Join(filepath.Dir(overlay.ConfigFile), "skills", pipelineCustomSkillID, "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	before := testTreeDigest(t, homeDir)
+
+	result, err := Install(homeDir, registry, pipelineLightSelection(overlay), "test-v1", false)
+	if err == nil {
+		t.Fatal("Install() succeeded with an invalid overlay")
+	}
+	if result.BackupID != "" {
+		t.Fatalf("invalid overlay created a backup: %q", result.BackupID)
+	}
+	if got := testTreeDigest(t, homeDir); got != before {
+		t.Fatalf("invalid overlay left writes behind: before=%s after=%s", before, got)
+	}
+}
+
+// --- REQ-ROLL-001 / REQ-DIAG-001 mutation oracles ---------------------------
+
+func TestPipeline_TransactionalRestore(t *testing.T) {
+	homeDir := t.TempDir()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+		{dir: pipelineCustomSkillID2, name: pipelineCustomSkillID2, body: "Writes release notes.\n"},
+	})
+	beforeConfig := pipelineSubtreeDigest(t, filepath.Join(homeDir, ".config"))
+	deps := defaultInstallDependencies()
+	deps.applyRegistryPlan = func(home string, plan sdd.GlobalInstallPlan) (sdd.GlobalApplyResult, error) {
+		// Apply only the first planned write, then fail: no partial success
+		// may survive.
+		if len(plan.Adapters) == 0 || len(plan.Adapters[0].Ops) == 0 {
+			return sdd.GlobalApplyResult{}, errors.New("injected plan had no adapter ops")
+		}
+		first := plan.Adapters[0].Ops[0]
+		target := filepath.Join(home, filepath.FromSlash(first.Path))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return sdd.GlobalApplyResult{}, err
+		}
+		if err := os.WriteFile(target, first.Content, 0o644); err != nil {
+			return sdd.GlobalApplyResult{}, err
+		}
+		return sdd.GlobalApplyResult{}, errors.New("injected mid-apply write failure")
+	}
+
+	result, err := installWithDependencies(homeDir, newTestRegistry(), pipelineLightSelection(overlay), "test-v1", false, deps)
+	if err == nil || !strings.Contains(err.Error(), "injected mid-apply write failure") {
+		t.Fatalf("Install() error = %v, want injected mid-apply failure", err)
+	}
+	for _, id := range []string{pipelineCustomSkillID, pipelineCustomSkillID2} {
+		if _, statErr := os.Stat(pipelineCustomSkillPath(homeDir, id)); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("partial success survived for %s: %v", id, statErr)
+		}
+	}
+	if _, ok := pipelineCommittedReceipt(t, homeDir); ok {
+		t.Fatal("failed apply left a committed registry receipt behind")
+	}
+	if got := pipelineSubtreeDigest(t, filepath.Join(homeDir, ".config")); got != beforeConfig {
+		t.Fatalf("touched paths were not restored: before=%s after=%s", beforeConfig, got)
+	}
+	if result.BackupID == "" {
+		t.Fatal("write failure lost backup evidence")
+	}
+}
+
+func TestSpec_REQ_DIAG_001_NoFalseSuccessOnMutationFailure(t *testing.T) {
+	homeDir := t.TempDir()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	beforeConfig := pipelineSubtreeDigest(t, filepath.Join(homeDir, ".config"))
+	deps := defaultInstallDependencies()
+	deps.applyRegistryPlan = func(home string, plan sdd.GlobalInstallPlan) (sdd.GlobalApplyResult, error) {
+		outcome, applyErr := sdd.ApplyGlobalInstallPlan(home, plan)
+		if applyErr != nil {
+			return outcome, applyErr
+		}
+		// The writes converged, but the install must still report the write
+		// failure and restore every touched path (write class, complete
+		// restoration: no rollback diagnostic).
+		return outcome, errors.New("injected post-apply write failure")
+	}
+
+	_, err := installWithDependencies(homeDir, newTestRegistry(), pipelineLightSelection(overlay), "test-v1", false, deps)
+	if err == nil || !strings.Contains(err.Error(), "injected post-apply write failure") {
+		t.Fatalf("Install() error = %v, want injected write failure", err)
+	}
+	var installErr *sddregistry.InstallError
+	if errors.As(err, &installErr) && installErr.Rollback != nil {
+		t.Fatalf("complete restoration reported a rollback diagnostic: %+v", installErr.Rollback)
+	}
+	if _, statErr := os.Stat(pipelineCustomSkillPath(homeDir, pipelineCustomSkillID)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("written custom skill survived a write failure: %v", statErr)
+	}
+	if _, ok := pipelineCommittedReceipt(t, homeDir); ok {
+		t.Fatal("failed install committed a registry receipt")
+	}
+	if got := pipelineSubtreeDigest(t, filepath.Join(homeDir, ".config")); got != beforeConfig {
+		t.Fatalf("write failure did not restore touched paths: before=%s after=%s", beforeConfig, got)
+	}
+}
+
+func TestSpec_REQ_ROLL_001_ResidualPreventsFalseSuccess(t *testing.T) {
+	homeDir := t.TempDir()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	deps := defaultInstallDependencies()
+	deps.applyRegistryPlan = func(home string, plan sdd.GlobalInstallPlan) (sdd.GlobalApplyResult, error) {
+		// Simulate a failed apply whose own rollback left a residual behind:
+		// the coordinator must distinguish rollback-incomplete from write and
+		// never claim success.
+		target := filepath.Join(home, ".config", "opencode", "skills", pipelineCustomSkillID, "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return sdd.GlobalApplyResult{}, err
+		}
+		if err := os.WriteFile(target, []byte("residual\n"), 0o644); err != nil {
+			return sdd.GlobalApplyResult{}, err
+		}
+		rollback := sddregistry.Diagnostic{
+			Class: sddregistry.ErrorRollback, Stage: sddregistry.StageRollback, Rule: sdd.RuleRollbackResidual,
+			Cause: fmt.Errorf("residual paths: %s", target),
+		}
+		return sdd.GlobalApplyResult{}, &sddregistry.InstallError{
+			Primary: sddregistry.Diagnostic{
+				Class: sddregistry.ErrorWrite, Stage: sddregistry.StageApply, Rule: sdd.RuleApplyWriteFailed,
+				Cause: errors.New("injected write failure"),
+			},
+			All:      []sddregistry.Diagnostic{{Class: sddregistry.ErrorWrite, Stage: sddregistry.StageApply, Rule: sdd.RuleApplyWriteFailed}},
+			Rollback: &rollback,
+		}
+	}
+
+	result, err := installWithDependencies(homeDir, newTestRegistry(), pipelineLightSelection(overlay), "test-v1", false, deps)
+	if err == nil {
+		t.Fatal("rollback-incomplete apply reported success")
+	}
+	var installErr *sddregistry.InstallError
+	if !errors.As(err, &installErr) || installErr.Rollback == nil || installErr.Rollback.Class != sddregistry.ErrorRollback {
+		t.Fatalf("Install() error = %v, want rollback-incomplete InstallError", err)
+	}
+	if _, ok := pipelineCommittedReceipt(t, homeDir); ok {
+		t.Fatal("rollback-incomplete install committed a baseline registry receipt")
+	}
+	// The journal's verified restoration still converges the residual.
+	if _, statErr := os.Stat(pipelineCustomSkillPath(homeDir, pipelineCustomSkillID)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("residual survived journal restoration: %v", statErr)
+	}
+	if result.WorkflowReceipt.ID != "" {
+		t.Fatalf("failed install reported workflow success evidence: %+v", result)
+	}
+}
+
+func TestSpec_REQ_ROLL_001_RemoveOverlayRestoresBaseline(t *testing.T) {
+	homeDir := t.TempDir()
+	control := t.TempDir()
+	registry := newTestRegistry()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+
+	if _, err := Install(homeDir, registry, pipelineLightSelection(overlay), "test-v1", false); err != nil {
+		t.Fatalf("overlay Install() error = %v", err)
+	}
+	if _, err := os.Stat(pipelineCustomSkillPath(homeDir, pipelineCustomSkillID)); err != nil {
+		t.Fatalf("custom skill missing after overlay install: %v", err)
+	}
+
+	// Retire the overlay entirely and reinstall: the baseline must return and
+	// the formerly managed custom output must be gone.
+	if _, err := Install(homeDir, registry, pipelineLightSelection(nil), "test-v1", false); err != nil {
+		t.Fatalf("baseline reinstall error = %v", err)
+	}
+	if _, statErr := os.Stat(pipelineCustomSkillPath(homeDir, pipelineCustomSkillID)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("custom skill survived overlay removal: %v", statErr)
+	}
+	if _, err := Install(control, registry, pipelineLightSelection(nil), "test-v1", false); err != nil {
+		t.Fatalf("control Install() error = %v", err)
+	}
+	if got, want := pipelineSubtreeDigest(t, filepath.Join(homeDir, ".config")), pipelineSubtreeDigest(t, filepath.Join(control, ".config")); got != want {
+		t.Fatalf("baseline not restored exactly: got=%s want=%s", got, want)
+	}
+	receipt, ok := pipelineCommittedReceipt(t, homeDir)
+	if !ok {
+		t.Fatal("overlay removal committed no registry receipt")
+	}
+	if len(receipt.HostOutputs) != 0 {
+		t.Fatalf("baseline receipt still lists custom host outputs: %v", receipt.HostOutputs)
+	}
+}
+
+func TestSpec_REQ_ROLL_001_RejectedOverlayLeavesNoResidue(t *testing.T) {
+	homeDir := t.TempDir()
+	control := t.TempDir()
+	registry := newTestRegistry()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	if _, err := Install(homeDir, registry, pipelineLightSelection(overlay), "test-v1", false); err != nil {
+		t.Fatalf("first Install() error = %v", err)
+	}
+
+	// A rejected overlay (duplicate custom ID, even with identical bytes) must
+	// change nothing; the follow-up baseline install then needs no manual
+	// cleanup to restore the exact baseline.
+	rejected := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: "one", name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+		{dir: "two", name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	afterFirst := testTreeDigest(t, homeDir)
+	_, err := Install(homeDir, registry, pipelineLightSelection(rejected), "test-v1", false)
+	if err == nil {
+		t.Fatal("Install() succeeded with a colliding overlay")
+	}
+	var installErr *sddregistry.InstallError
+	if !errors.As(err, &installErr) || installErr.Primary.Class != sddregistry.ErrorCollision {
+		t.Fatalf("Install() error = %v, want collision InstallError", err)
+	}
+	if got := testTreeDigest(t, homeDir); got != afterFirst {
+		t.Fatalf("rejected overlay left residue: before=%s after=%s", afterFirst, got)
+	}
+
+	if _, err := Install(homeDir, registry, pipelineLightSelection(nil), "test-v1", false); err != nil {
+		t.Fatalf("baseline reinstall error = %v", err)
+	}
+	if _, statErr := os.Stat(pipelineCustomSkillPath(homeDir, pipelineCustomSkillID)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("custom skill survived rejected-overlay recovery: %v", statErr)
+	}
+	if _, err := Install(control, registry, pipelineLightSelection(nil), "test-v1", false); err != nil {
+		t.Fatalf("control Install() error = %v", err)
+	}
+	if got, want := pipelineSubtreeDigest(t, filepath.Join(homeDir, ".config")), pipelineSubtreeDigest(t, filepath.Join(control, ".config")); got != want {
+		t.Fatalf("baseline not restored without manual cleanup: got=%s want=%s", got, want)
+	}
+}
+
+// --- REQ-BASE-001 / REQ-SEL-001 --------------------------------------------
+
+func TestSpec_REQ_BASE_001_NoOverlayBaseline(t *testing.T) {
+	plainHome := t.TempDir()
+	emptyOverlayHome := t.TempDir()
+	registry := newTestRegistry()
+	emptyOverlay := writePipelineOverlay(t, emptyOverlayHome, nil)
+
+	plain, err := Install(plainHome, registry, pipelineLightSelection(nil, model.ComponentSDD), "test-v1", false)
+	if err != nil {
+		t.Fatalf("no-overlay Install() error = %v; errors: %v", err, plain.Errors)
+	}
+	empty, err := Install(emptyOverlayHome, registry, pipelineLightSelection(emptyOverlay, model.ComponentSDD), "test-v1", false)
+	if err != nil {
+		t.Fatalf("empty-overlay Install() error = %v", err)
+	}
+	if plain.WorkflowFingerprint == "" || plain.WorkflowFingerprint != empty.WorkflowFingerprint {
+		t.Fatalf("workflow fingerprints differ from baseline: plain=%q empty=%q", plain.WorkflowFingerprint, empty.WorkflowFingerprint)
+	}
+	if got, want := pipelineSubtreeDigest(t, filepath.Join(emptyOverlayHome, ".config")), pipelineSubtreeDigest(t, filepath.Join(plainHome, ".config")); got != want {
+		t.Fatalf("empty-overlay outputs differ from baseline: got=%s want=%s", got, want)
+	}
+	if _, ok := pipelineCommittedReceipt(t, plainHome); ok {
+		t.Fatal("no-overlay install committed a registry receipt")
+	}
+	if _, ok := pipelineCommittedReceipt(t, emptyOverlayHome); ok {
+		t.Fatal("empty-overlay install committed a registry receipt")
+	}
+}
+
+func TestSpec_REQ_BASE_001_EmptyOverlayIsBaseline(t *testing.T) {
+	plainHome := t.TempDir()
+	emptyOverlayHome := t.TempDir()
+	registry := newTestRegistry()
+	emptyOverlay := writePipelineOverlay(t, emptyOverlayHome, nil)
+
+	if _, err := Install(plainHome, registry, pipelineLightSelection(nil), "test-v1", false); err != nil {
+		t.Fatalf("no-overlay Install() error = %v", err)
+	}
+	if _, err := Install(emptyOverlayHome, registry, pipelineLightSelection(emptyOverlay), "test-v1", false); err != nil {
+		t.Fatalf("empty-overlay Install() error = %v", err)
+	}
+	if got, want := pipelineSubtreeDigest(t, filepath.Join(emptyOverlayHome, ".config")), pipelineSubtreeDigest(t, filepath.Join(plainHome, ".config")); got != want {
+		t.Fatalf("empty overlay is not byte-for-byte the baseline: got=%s want=%s", got, want)
+	}
+	if _, statErr := os.Stat(pipelineCustomSkillPath(emptyOverlayHome, pipelineCustomSkillID)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("empty overlay left a custom skill residue: %v", statErr)
+	}
+	if _, ok := pipelineCommittedReceipt(t, emptyOverlayHome); ok {
+		t.Fatal("empty overlay left a receipt residue")
+	}
+}
+
+func TestSpec_REQ_SEL_001_DisableOptionalComponent(t *testing.T) {
+	homeDir := t.TempDir()
+	control := t.TempDir()
+	registry := newTestRegistry()
+	components := []model.ComponentID{model.ComponentCortex, model.ComponentContext7}
+	overlay := writePipelineOverlay(t, homeDir, nil, model.ComponentContext7)
+
+	if _, err := Install(homeDir, registry, pipelineLightSelection(overlay, components...), "test-v1", false); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	if _, err := Install(control, registry, pipelineLightSelection(nil, components...), "test-v1", false); err != nil {
+		t.Fatalf("control Install() error = %v", err)
+	}
+
+	disabledNames := pipelineMCPServerNames(t, homeDir)
+	if disabledNames["context7"] {
+		t.Fatal("disabled optional component context7 was still installed")
+	}
+	if !disabledNames["cortex"] {
+		t.Fatal("protected component cortex missing after optional disable")
+	}
+	if names := pipelineMCPServerNames(t, control); !names["context7"] {
+		t.Fatal("control install lost context7 without a disable")
+	}
+	receipt, ok := pipelineCommittedReceipt(t, homeDir)
+	if !ok {
+		t.Fatal("overlay disable install committed no registry receipt")
+	}
+	if slices.Contains(receipt.EffectiveComponents, model.ComponentContext7) {
+		t.Fatalf("receipt still lists the disabled component: %v", receipt.EffectiveComponents)
+	}
+}
+
+func TestSpec_REQ_SEL_001_RepeatedOptionalDisable(t *testing.T) {
+	onceHome := t.TempDir()
+	repeatedHome := t.TempDir()
+	registry := newTestRegistry()
+	components := []model.ComponentID{model.ComponentCortex, model.ComponentContext7}
+	once := writePipelineOverlay(t, onceHome, nil, model.ComponentContext7)
+	repeated := writePipelineOverlay(t, repeatedHome, nil, model.ComponentContext7, model.ComponentContext7)
+
+	if _, err := Install(onceHome, registry, pipelineLightSelection(once, components...), "test-v1", false); err != nil {
+		t.Fatalf("single disable Install() error = %v", err)
+	}
+	if _, err := Install(repeatedHome, registry, pipelineLightSelection(repeated, components...), "test-v1", false); err != nil {
+		t.Fatalf("repeated disable Install() error = %v", err)
+	}
+
+	onceReceipt, ok := pipelineCommittedReceipt(t, onceHome)
+	if !ok {
+		t.Fatal("single disable committed no receipt")
+	}
+	repeatedReceipt, ok := pipelineCommittedReceipt(t, repeatedHome)
+	if !ok {
+		t.Fatal("repeated disable committed no receipt")
+	}
+	if onceReceipt.Fingerprint != repeatedReceipt.Fingerprint {
+		t.Fatalf("repeated disable is not equivalent to one: once=%s repeated=%s", onceReceipt.Fingerprint, repeatedReceipt.Fingerprint)
+	}
+	if got, want := pipelineSubtreeDigest(t, filepath.Join(repeatedHome, ".config")), pipelineSubtreeDigest(t, filepath.Join(onceHome, ".config")); got != want {
+		t.Fatalf("repeated disable produced different outputs: got=%s want=%s", got, want)
+	}
+}
+
+// --- REQ-ADAPT-001 ----------------------------------------------------------
+
+func TestSpec_REQ_ADAPT_001_EquivalentSelectionAcrossAdapters(t *testing.T) {
+	homeA := t.TempDir()
+	homeB := t.TempDir()
+	registry := newTestRegistry()
+	doc := "Deploys the service.\n"
+	overlayA := writePipelineOverlay(t, homeA, []pipelineCustomSkill{{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: doc}})
+	overlayB := writePipelineOverlay(t, homeB, []pipelineCustomSkill{{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: doc}})
+
+	for _, home := range []struct {
+		dir     string
+		overlay *model.RegistrySelection
+	}{{homeA, overlayA}, {homeB, overlayB}} {
+		if _, err := Install(home.dir, registry, pipelineLightSelection(home.overlay), "test-v1", false); err != nil {
+			t.Fatalf("Install(%s) error = %v", home.dir, err)
+		}
+	}
+
+	contentA, err := os.ReadFile(pipelineCustomSkillPath(homeA, pipelineCustomSkillID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contentB, err := os.ReadFile(pipelineCustomSkillPath(homeB, pipelineCustomSkillID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contentA) != string(pipelineCustomSkillDoc(pipelineCustomSkillID, doc)) || string(contentA) != string(contentB) {
+		t.Fatalf("equivalent selections produced different representations: a=%q b=%q", contentA, contentB)
+	}
+
+	// The destination must be exactly the adapter-declared layout, not a
+	// pipeline-invented location.
+	var opencodeAdapter agents.Adapter = opencode.NewAdapter()
+	provider, ok := opencodeAdapter.(agents.SkillLayoutProvider)
+	if !ok {
+		t.Fatal("opencode adapter does not implement agents.SkillLayoutProvider")
+	}
+	relative, err := filepath.Rel(homeA, pipelineCustomSkillPath(homeA, pipelineCustomSkillID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := provider.SkillDestinations(skillcore.Skill{ID: model.SkillID(pipelineCustomSkillID)})
+	if !reflect.DeepEqual(declared, []string{filepath.ToSlash(relative)}) {
+		t.Fatalf("installed destination %q is not the adapter-declared layout %v", relative, declared)
+	}
+
+	receiptA, ok := pipelineCommittedReceipt(t, homeA)
+	if !ok {
+		t.Fatal("home A committed no receipt")
+	}
+	receiptB, ok := pipelineCommittedReceipt(t, homeB)
+	if !ok {
+		t.Fatal("home B committed no receipt")
+	}
+	if receiptA.Fingerprint != receiptB.Fingerprint {
+		t.Fatalf("equivalent selections produced different evidence: %s vs %s", receiptA.Fingerprint, receiptB.Fingerprint)
+	}
+}
+
+func TestPipeline_EquivalentSelectionAcrossAdapters(t *testing.T) {
+	homeA := t.TempDir()
+	homeB := t.TempDir()
+	registry := newTestRegistry()
+	overlayA := writePipelineOverlay(t, homeA, []pipelineCustomSkill{{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "alpha body\n"}})
+	overlayB := writePipelineOverlay(t, homeB, []pipelineCustomSkill{{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "beta body\n"}})
+
+	if _, err := Install(homeA, registry, pipelineLightSelection(overlayA), "test-v1", false); err != nil {
+		t.Fatalf("Install(A) error = %v", err)
+	}
+	if _, err := Install(homeB, registry, pipelineLightSelection(overlayB), "test-v1", false); err != nil {
+		t.Fatalf("Install(B) error = %v", err)
+	}
+	gotA, err := os.ReadFile(pipelineCustomSkillPath(homeA, pipelineCustomSkillID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotB, err := os.ReadFile(pipelineCustomSkillPath(homeB, pipelineCustomSkillID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(gotA), "alpha body") || !strings.Contains(string(gotB), "beta body") {
+		t.Fatalf("per-home selections contaminated each other: a=%q b=%q", gotA, gotB)
+	}
+}
+
+func TestSpec_REQ_ADAPT_001_TemporaryHomesIsolated(t *testing.T) {
+	homeA := t.TempDir()
+	homeB := t.TempDir()
+	registry := newTestRegistry()
+	overlayA := writePipelineOverlay(t, homeA, []pipelineCustomSkill{{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "alpha body\n"}})
+	overlayB := writePipelineOverlay(t, homeB, []pipelineCustomSkill{{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "beta body\n"}})
+
+	// Installing home A must not touch home B, and vice versa.
+	baselineB := testTreeDigest(t, homeB)
+	if _, err := Install(homeA, registry, pipelineLightSelection(overlayA), "test-v1", false); err != nil {
+		t.Fatalf("Install(A) error = %v", err)
+	}
+	if got := testTreeDigest(t, homeB); got != baselineB {
+		t.Fatalf("installing A mutated B: before=%s after=%s", baselineB, got)
+	}
+	baselineA := testTreeDigest(t, homeA)
+	if _, err := Install(homeB, registry, pipelineLightSelection(overlayB), "test-v1", false); err != nil {
+		t.Fatalf("Install(B) error = %v", err)
+	}
+	if got := testTreeDigest(t, homeA); got != baselineA {
+		t.Fatalf("installing B mutated A: before=%s after=%s", baselineA, got)
+	}
+	gotA, err := os.ReadFile(pipelineCustomSkillPath(homeA, pipelineCustomSkillID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotB, err := os.ReadFile(pipelineCustomSkillPath(homeB, pipelineCustomSkillID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotA) == string(gotB) {
+		t.Fatalf("temporary homes cross-contaminated: both hold %q", gotA)
+	}
+}
+
+func TestSpec_REQ_ADAPT_001_DeclarationCannotGrantAuthority(t *testing.T) {
+	overlayHome := t.TempDir()
+	controlHome := t.TempDir()
+	registry := newTestRegistry()
+
+	// The declaration asks for tools, permissions, agents, and bindings; the
+	// registry surface carries only identity and content.
+	authorityDoc := "---\n" +
+		"name: " + pipelineCustomSkillID + "\n" +
+		"allowed-tools: [bash, webfetch]\n" +
+		"permissions: [filesystem:write]\n" +
+		"agents: [deploy-agent]\n" +
+		"bindings: [role/implement]\n" +
+		"---\n\n# " + pipelineCustomSkillID + "\n\nDeclares authority it must never receive.\n"
+	overlay := writePipelineOverlay(t, overlayHome, []pipelineCustomSkill{{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "placeholder"}})
+	// Overwrite the skill document with the authority-seeking declaration.
+	if err := os.WriteFile(filepath.Join(filepath.Dir(overlay.ConfigFile), "skills", pipelineCustomSkillID, "SKILL.md"), []byte(authorityDoc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install(controlHome, registry, pipelineLightSelection(nil), "test-v1", false); err != nil {
+		t.Fatalf("control Install() error = %v", err)
+	}
+	if _, err := Install(overlayHome, registry, pipelineLightSelection(overlay), "test-v1", false); err != nil {
+		t.Fatalf("overlay Install() error = %v", err)
+	}
+
+	before := pipelineTreeFiles(t, filepath.Join(controlHome, ".config"))
+	after := pipelineTreeFiles(t, filepath.Join(overlayHome, ".config"))
+	requireOnlyAddedFiles(t, before, after, []string{"opencode/skills/" + pipelineCustomSkillID + "/SKILL.md"})
+
+	// The SKILL.md is data only: byte-exact declaration bytes, no binding.
+	written, err := os.ReadFile(pipelineCustomSkillPath(overlayHome, pipelineCustomSkillID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(written) != authorityDoc {
+		t.Fatalf("custom skill bytes were not preserved verbatim: %q", written)
+	}
+	controlNames := pipelineMCPServerNames(t, controlHome)
+	overlayNames := pipelineMCPServerNames(t, overlayHome)
+	for name := range overlayNames {
+		if !controlNames[name] {
+			t.Fatalf("custom declaration granted MCP authority %q", name)
+		}
+	}
+}
+
+// --- REQ-COMPAT-001 ----------------------------------------------------------
+
+func TestSpec_REQ_COMPAT_001_LegacyConfigUnchanged(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+	configDir := filepath.Join(homeDir, ".config", "opencode")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := []byte(`{"share":"disabled"}`)
+	if err := os.WriteFile(filepath.Join(configDir, "opencode.json"), legacy, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install(homeDir, registry, pipelineLightSelection(nil), "test-v1", false); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(configDir, "opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := filemerge.DecodeJSONObject(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config["share"] != "disabled" {
+		t.Fatalf("legacy user setting not preserved: %v", config)
+	}
+	if !pipelineMCPServerNames(t, homeDir)["cortex"] {
+		t.Fatal("baseline output missing from legacy install")
+	}
+	if _, ok := pipelineCommittedReceipt(t, homeDir); ok {
+		t.Fatal("legacy no-overlay install triggered registry migration")
+	}
+	if _, statErr := os.Stat(filepath.Join(homeDir, "overlay")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("legacy install invented overlay configuration: %v", statErr)
+	}
+}
+
+func TestPipeline_LegacyConfigUnchanged(t *testing.T) {
+	homeA := t.TempDir()
+	homeB := t.TempDir()
+	registry := newTestRegistry()
+
+	resultA, err := Install(homeA, registry, pipelineLightSelection(nil), "test-v1", false)
+	if err != nil {
+		t.Fatalf("Install(A) error = %v; errors: %v", err, resultA.Errors)
+	}
+	resultB, err := Install(homeB, registry, pipelineLightSelection(nil), "test-v1", false)
+	if err != nil {
+		t.Fatalf("Install(B) error = %v", err)
+	}
+	if got, want := pipelineSubtreeDigest(t, filepath.Join(homeA, ".config")), pipelineSubtreeDigest(t, filepath.Join(homeB, ".config")); got != want {
+		t.Fatalf("legacy baseline is not deterministic: got=%s want=%s", got, want)
+	}
+	if resultA.WorkflowFingerprint != "" || resultB.WorkflowFingerprint != "" {
+		t.Fatal("legacy no-overlay install produced workflow evidence")
+	}
+	for _, home := range []string{homeA, homeB} {
+		if _, ok := pipelineCommittedReceipt(t, home); ok {
+			t.Fatalf("legacy install in %s committed a registry receipt", home)
+		}
+	}
+	lock, err := state.LoadLock(homeA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lock.Files) == 0 || lock.Version != "test-v1" {
+		t.Fatalf("legacy install lost lock evidence: %+v", lock)
+	}
+}
+
+func TestSpec_REQ_COMPAT_001_OverlayHasBoundedEffect(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+
+	if _, err := Install(homeDir, registry, pipelineLightSelection(nil), "test-v1", false); err != nil {
+		t.Fatalf("baseline Install() error = %v", err)
+	}
+	before := pipelineTreeFiles(t, filepath.Join(homeDir, ".config"))
+
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	if _, err := Install(homeDir, registry, pipelineLightSelection(overlay), "test-v1", false); err != nil {
+		t.Fatalf("overlay Install() error = %v", err)
+	}
+	after := pipelineTreeFiles(t, filepath.Join(homeDir, ".config"))
+	requireOnlyAddedFiles(t, before, after, []string{"opencode/skills/" + pipelineCustomSkillID + "/SKILL.md"})
+}
+
+func TestSpec_REQ_COMPAT_001_OutOfScopeExtensionNotEnabled(t *testing.T) {
+	overlayHome := t.TempDir()
+	controlHome := t.TempDir()
+	registry := newTestRegistry()
+
+	extensionDoc := "---\n" +
+		"name: " + pipelineCustomSkillID2 + "\n" +
+		"mcp:\n" +
+		"  evil-server:\n" +
+		"    command: curl\n" +
+		"plugins: [everything]\n" +
+		"---\n\n# " + pipelineCustomSkillID2 + "\n\nTries to enable an MCP server and plugins.\n"
+	overlay := writePipelineOverlay(t, overlayHome, []pipelineCustomSkill{{dir: pipelineCustomSkillID2, name: pipelineCustomSkillID2, body: "placeholder"}})
+	if err := os.WriteFile(filepath.Join(filepath.Dir(overlay.ConfigFile), "skills", pipelineCustomSkillID2, "SKILL.md"), []byte(extensionDoc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install(controlHome, registry, pipelineLightSelection(nil), "test-v1", false); err != nil {
+		t.Fatalf("control Install() error = %v", err)
+	}
+	if _, err := Install(overlayHome, registry, pipelineLightSelection(overlay), "test-v1", false); err != nil {
+		t.Fatalf("overlay Install() error = %v", err)
+	}
+
+	before := pipelineTreeFiles(t, filepath.Join(controlHome, ".config"))
+	after := pipelineTreeFiles(t, filepath.Join(overlayHome, ".config"))
+	requireOnlyAddedFiles(t, before, after, []string{"opencode/skills/" + pipelineCustomSkillID2 + "/SKILL.md"})
+
+	controlNames := pipelineMCPServerNames(t, controlHome)
+	overlayNames := pipelineMCPServerNames(t, overlayHome)
+	for name := range overlayNames {
+		if !controlNames[name] {
+			t.Fatalf("out-of-scope extension enabled MCP server %q", name)
+		}
+	}
+	if overlayNames["evil-server"] {
+		t.Fatal("declared MCP server escaped the unsupported surface")
+	}
+}
+
+// --- REQ-REM-B1 --------------------------------------------------------------
+
+// loadMetadataDocument reads a state or lock JSON file as a raw document so
+// tests can assert persisted registry intent without depending on struct
+// field access.
+func loadMetadataDocument(t *testing.T, path string) map[string]json.RawMessage {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	return doc
+}
+
+func rewriteMetadataDocument(t *testing.T, path string, doc map[string]json.RawMessage) {
+	t.Helper()
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// stripRegistrySelectionKey rewrites a metadata file without the persisted
+// registry intent, simulating state last written by a legacy binary.
+func stripRegistrySelectionKey(t *testing.T, path string) {
+	t.Helper()
+	doc := loadMetadataDocument(t, path)
+	delete(doc, "registry_selection")
+	rewriteMetadataDocument(t, path, doc)
+}
+
+// setLockRegistrySelection overwrites the lock's persisted registry intent
+// with a conflicting declaration.
+func setLockRegistrySelection(t *testing.T, homeDir string, value model.RegistrySelection) {
+	t.Helper()
+	path := state.LockPath(homeDir)
+	doc := loadMetadataDocument(t, path)
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc["registry_selection"] = encoded
+	rewriteMetadataDocument(t, path, doc)
+}
+
+func requirePersistedRegistrySelection(t *testing.T, path string, want *model.RegistrySelection, context string) {
+	t.Helper()
+	doc := loadMetadataDocument(t, path)
+	node, ok := doc["registry_selection"]
+	if !ok {
+		t.Fatalf("%s: no registry_selection persisted in %s", context, path)
+	}
+	var got model.RegistrySelection
+	if err := json.Unmarshal(node, &got); err != nil {
+		t.Fatalf("%s: decode registry_selection in %s: %v", context, path, err)
+	}
+	if !reflect.DeepEqual(got, *want) {
+		t.Fatalf("%s: persisted registry selection = %+v, want %+v", context, got, *want)
+	}
+}
+
+func assertMetadataLacksRegistrySelection(t *testing.T, path string) {
+	t.Helper()
+	if doc := loadMetadataDocument(t, path); doc["registry_selection"] != nil {
+		t.Fatalf("legacy metadata %s unexpectedly carries registry_selection", path)
+	}
+}
+
+// TestSpec_REM_B1_RepairReconstructsRegistrySelection covers SC-B1-PERSIST: a
+// successful install persists the declared RegistrySelection in both state and
+// lock, and Repair reconstructs it semantically unchanged, revalidates
+// provenance, and retains the custom outputs and disable intent.
+func TestSpec_REM_B1_RepairReconstructsRegistrySelection(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	}, model.ComponentContext7)
+	selection := pipelineLightSelection(overlay, model.ComponentCortex, model.ComponentContext7)
+
+	if _, err := Install(homeDir, registry, selection, "test-v1", false); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	requirePersistedRegistrySelection(t, state.StatePath(homeDir), overlay, "state")
+	requirePersistedRegistrySelection(t, state.LockPath(homeDir), overlay, "lock")
+
+	customOutput := pipelineCustomSkillPath(homeDir, pipelineCustomSkillID)
+	if _, err := os.Stat(customOutput); err != nil {
+		t.Fatalf("setup: custom output missing after install: %v", err)
+	}
+
+	// Provenance is revalidated through normal preflight: a disappeared
+	// configuration file must fail Repair before any mutation.
+	configPath := overlay.ConfigFile
+	if err := os.Rename(configPath, configPath+".gone"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Repair(homeDir, registry, "test-v1", false); err == nil {
+		t.Fatal("expected Repair to fail after the verified config file disappeared")
+	}
+	if _, err := os.Stat(customOutput); err != nil {
+		t.Fatalf("failed provenance repair mutated outputs: %v", err)
+	}
+	if err := os.Rename(configPath+".gone", configPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Drift: remove the custom output; Repair must reconstruct it from the
+	// persisted intent instead of retiring it as stale.
+	if err := os.Remove(customOutput); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Repair(homeDir, registry, "test-v1", false)
+	if err != nil {
+		t.Fatalf("Repair() error = %v; errors: %v", err, result.Errors)
+	}
+	if _, err := os.Stat(customOutput); err != nil {
+		t.Fatalf("Repair() did not reconstruct the custom output: %v", err)
+	}
+
+	// Disable intent is retained: context7 stays disabled, cortex stays.
+	names := pipelineMCPServerNames(t, homeDir)
+	if names["context7"] {
+		t.Fatal("repair re-enabled the disabled optional component context7")
+	}
+	if !names["cortex"] {
+		t.Fatal("repair lost the protected cortex component")
+	}
+
+	// The reconstructed intent survives the repair transaction itself.
+	requirePersistedRegistrySelection(t, state.StatePath(homeDir), overlay, "state after repair")
+	requirePersistedRegistrySelection(t, state.LockPath(homeDir), overlay, "lock after repair")
+	if _, ok := pipelineCommittedReceipt(t, homeDir); !ok {
+		t.Fatal("repair lost the committed registry receipt")
+	}
+}
+
+// TestSpec_REM_B1_LegacyReceiptWithoutIntentFailsClosed covers SC-B1-LEGACY-
+// FAIL: a committed registry receipt without persisted intent must fail before
+// BuildInstallPlan or any mutation and must not retire prior host outputs.
+func TestSpec_REM_B1_LegacyReceiptWithoutIntentFailsClosed(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+
+	if _, err := Install(homeDir, registry, pipelineLightSelection(overlay), "test-v1", false); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	// Simulate metadata last written by a legacy binary: strip the intent
+	// from both copies while keeping the committed receipt.
+	stripRegistrySelectionKey(t, state.StatePath(homeDir))
+	stripRegistrySelectionKey(t, state.LockPath(homeDir))
+	if _, ok := pipelineCommittedReceipt(t, homeDir); !ok {
+		t.Fatal("setup: expected a committed registry receipt")
+	}
+
+	customOutput := pipelineCustomSkillPath(homeDir, pipelineCustomSkillID)
+	if _, err := os.Stat(customOutput); err != nil {
+		t.Fatalf("setup: custom output missing: %v", err)
+	}
+	before := pipelineSubtreeDigest(t, homeDir)
+
+	_, err := Repair(homeDir, registry, "test-v1", false)
+	if err == nil {
+		t.Fatal("expected fail-closed error for committed receipt without registry intent")
+	}
+	if !strings.Contains(err.Error(), "committed registry receipt without persisted registry intent") {
+		t.Fatalf("unexpected repair error: %v", err)
+	}
+	if after := pipelineSubtreeDigest(t, homeDir); after != before {
+		t.Fatal("fail-closed repair mutated the home tree")
+	}
+	if _, err := os.Stat(customOutput); err != nil {
+		t.Fatalf("fail-closed repair retired prior host outputs: %v", err)
+	}
+}
+
+// TestSpec_REM_B1_LegacyMetadataRemainsOverlayFree covers SC-B1-LEGACY-BASE:
+// a no-overlay install persists no registry intent and Repair stays on the
+// legacy no-overlay path.
+func TestSpec_REM_B1_LegacyMetadataRemainsOverlayFree(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+	selection := model.Selection{
+		Agents:     []model.AgentID{model.AgentOpenCode},
+		Components: []model.ComponentID{model.ComponentCortex},
+	}
+	if _, err := Install(homeDir, registry, selection, "test-v1", false); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	assertMetadataLacksRegistrySelection(t, state.StatePath(homeDir))
+	assertMetadataLacksRegistrySelection(t, state.LockPath(homeDir))
+	if _, ok := pipelineCommittedReceipt(t, homeDir); ok {
+		t.Fatal("no-overlay install committed a registry receipt")
+	}
+	if _, err := Repair(homeDir, registry, "test-v1", false); err != nil {
+		t.Fatalf("legacy Repair() error = %v", err)
+	}
+}
+
+// TestSpec_REM_B1_SingleMetadataCopyRecovers proves one present intent copy
+// recovers the missing one (design D2).
+func TestSpec_REM_B1_SingleMetadataCopyRecovers(t *testing.T) {
+	for _, strip := range []string{"lock", "state"} {
+		t.Run(strip, func(t *testing.T) {
+			homeDir := t.TempDir()
+			registry := newTestRegistry()
+			overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+				{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+			})
+			if _, err := Install(homeDir, registry, pipelineLightSelection(overlay), "test-v1", false); err != nil {
+				t.Fatalf("Install() error = %v", err)
+			}
+			if strip == "lock" {
+				stripRegistrySelectionKey(t, state.LockPath(homeDir))
+			} else {
+				stripRegistrySelectionKey(t, state.StatePath(homeDir))
+			}
+
+			customOutput := pipelineCustomSkillPath(homeDir, pipelineCustomSkillID)
+			if err := os.Remove(customOutput); err != nil {
+				t.Fatal(err)
+			}
+			result, err := Repair(homeDir, registry, "test-v1", false)
+			if err != nil {
+				t.Fatalf("Repair() error = %v; errors: %v", err, result.Errors)
+			}
+			if _, err := os.Stat(customOutput); err != nil {
+				t.Fatalf("Repair() did not recover intent after stripping the %s copy: %v", strip, err)
+			}
+		})
+	}
+}
+
+// TestSpec_REM_B1_ConflictingMetadataCopiesFailClosed proves disagreeing
+// non-nil intent copies fail closed without mutation (design D2).
+func TestSpec_REM_B1_ConflictingMetadataCopiesFailClosed(t *testing.T) {
+	homeDir := t.TempDir()
+	registry := newTestRegistry()
+	overlay := writePipelineOverlay(t, homeDir, []pipelineCustomSkill{
+		{dir: pipelineCustomSkillID, name: pipelineCustomSkillID, body: "Deploys the service.\n"},
+	})
+	if _, err := Install(homeDir, registry, pipelineLightSelection(overlay), "test-v1", false); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	conflicting := *overlay
+	conflicting.ConfigFile = filepath.Join(homeDir, "overlay", "other-cortex-ia.yaml")
+	setLockRegistrySelection(t, homeDir, conflicting)
+
+	customOutput := pipelineCustomSkillPath(homeDir, pipelineCustomSkillID)
+	before := pipelineSubtreeDigest(t, homeDir)
+	_, err := Repair(homeDir, registry, "test-v1", false)
+	if err == nil {
+		t.Fatal("expected fail-closed error for conflicting registry intent copies")
+	}
+	if !strings.Contains(err.Error(), "disagree on persisted registry intent") {
+		t.Fatalf("unexpected repair error: %v", err)
+	}
+	if after := pipelineSubtreeDigest(t, homeDir); after != before {
+		t.Fatal("conflict repair mutated the home tree")
+	}
+	if _, err := os.Stat(customOutput); err != nil {
+		t.Fatalf("conflict repair mutated prior host outputs: %v", err)
 	}
 }

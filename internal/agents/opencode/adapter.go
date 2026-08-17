@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/skillcore"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/system"
 )
@@ -103,6 +105,34 @@ func (a *Adapter) SupportsTaskDelegation() bool { return true }
 func (a *Adapter) SupportsSubAgents() bool      { return true }
 func (a *Adapter) SubAgentsDir(homeDir string) string {
 	return filepath.Join(homeDir, filepath.FromSlash(NativeLayout().AgentsRoot))
+}
+
+// customSkillIDPattern guards the skill ID used as the single path segment
+// of a declared destination. It lexically mirrors the registry policy
+// owner's strict lowercase ASCII grammar (one or more [a-z0-9] segments
+// joined by single hyphens) because this package must not import the
+// registry package; it is a containment guard, never a second grammar
+// authority.
+var customSkillIDPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
+// SkillDestinations implements agents.SkillLayoutProvider for OpenCode. It
+// declares the host representation of one verified custom skill as the
+// native per-skill directory form .config/opencode/skills/<id>/SKILL.md —
+// a plain Markdown data asset OpenCode discovers natively.
+//
+// The declaration is pure: it reads no files, creates no directories, and
+// mutates no state, so planning may call it freely before any write.
+// Destinations are home-relative, slash-separated, deterministic, and
+// always beneath the adapter's SkillsDir. An ID outside the strict grammar
+// fails closed with no destinations rather than an unsafe path. Declaring a
+// layout grants no registry, command, subagent, config, tool, permission,
+// or binding authority (design D8).
+func (a *Adapter) SkillDestinations(skill skillcore.Skill) []string {
+	id := string(skill.ID)
+	if !customSkillIDPattern.MatchString(id) {
+		return nil
+	}
+	return []string{path.Join(NativeLayout().SkillsRoot, id, "SKILL.md")}
 }
 
 var (

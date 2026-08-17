@@ -1,90 +1,48 @@
 ---
 name: fast-tdd
-description: >
-  Execute an ultra-fast Test-Driven Development loop (Red-Green-Refactor) for
-  bounded, unit-level tasks without full SDD overhead.
-  Trigger: When a task is scoped to <=2 files or explicitly launched via /tdd.
+description: Execute one bounded RED-GREEN-REFACTOR loop where a fast deterministic oracle proves observable behavior.
 license: MIT
 metadata:
   author: lleontor705
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
-# Fast-TDD — Micro Red-Green-Refactor Loop
+# Fast-TDD minion strategy
 
-<role>
-You are the Fast-TDD specialist. Implement bounded features, bugfixes, and pure functions
-using a strict Test-Driven Development feedback loop. Keep scope minimal, deterministic,
-and evidenced by automated test execution.
-</role>
+Use this strategy only when behavior is localized, observable, reproducible, and covered by a fast deterministic test oracle. File count alone does not decide eligibility. If the oracle is slow, flaky, unavailable, or the change crosses unresolved boundaries, return `blocked` and recommend `direct-change`, `spike`, or right-sized SDD.
 
-<success_criteria>
-- A failing test is created and executed before any production code is touched (RED).
-- The minimal code change is implemented to turn the test green (GREEN).
-- Code is refactored for clarity and structure without breaking tests (REFACTOR).
-- All changes are verified by narrow test commands with exit code 0.
-- File locks (`file_reserve`) and task claims (`tb_claim`) are managed cleanly via ForgeSpec.
-</success_criteria>
+## Lifecycle and loop
 
-<rules>
-  <critical>
-  1. Scope is strictly bounded to <= 2 production files. If wider, return `blocked` and request full SDD.
-  2. Never write production code without an active failing test demonstrating the requirement.
-  3. Never claim success without executable command evidence and exit code 0.
-  4. Always release reserved files (`file_release`) upon phase completion or exit.
-  </critical>
-  <guidance>
-  Prefer focused table-driven tests, isolated unit fixtures, and narrow package commands
-  (e.g., `go test -run TestName ./pkg/...` or `npm test -- -t "test name"`). Record the
-  test output hash and save the key finding in Cortex (`cortex_save`).
-  </guidance>
-</rules>
+1. If assigned a ForgeSpec task, negotiate compatible `direct-v1`, query its current revision, claim it with `tb_claim`, and retain the returned attempt authority only in live context.
+2. Reserve every edit scope with `file_reserve` bound to that task and attempt. Do not edit on conflict.
+3. Write one focused test that captures the missing behavior. Run it and prove RED: failure must be caused by the intended missing behavior, not syntax, setup, or an unrelated failure.
+4. Implement the minimum production change and rerun the identical focused command to prove GREEN.
+5. Refactor only locally, then rerun the focused test and proportional regression suite.
+6. Renew the task attempt and file leases before expiry. If authority expires or a CAS/lease conflict occurs, stop writing.
+7. Save a bounded Cortex observation containing commands, exit codes, revision, timestamp, oracle, and summarized outcomes. Never save tokens or large stdout.
+8. Update ForgeSpec with latest task revision, attempt authority, and evidence links. Mark done only after GREEN and regression pass. Release all leases on every exit path.
 
-<steps>
-**1. Acquire & Check**
-- Claim the task in ForgeSpec: `tb_claim` with your agent ID.
-- Reserve target files: `file_reserve` with `check_only: false` and TTL 15m.
-
-**2. RED — Failing Test**
-- Write a narrow unit test covering the desired behavior, boundary, or bug reproduction.
-- Run the focused test command. Verify and capture the failure (exit code != 0).
-
-**3. GREEN — Minimal Implementation**
-- Write the minimum viable code to satisfy the test.
-- Run the focused test command again. Verify it passes (exit code == 0).
-
-**4. REFACTOR — Clean & Verify**
-- Clean up names, remove duplicate code, and format (`gofmt`, `prettier`, etc.).
-- Re-run the test suite to ensure no regressions occur.
-
-**5. Handoff & Release**
-- Update task state in ForgeSpec (`tb_update` -> `done`).
-- Release file reservations (`file_release`).
-- Persist evidence in Cortex (`cortex_save` topic `tdd/{change}/{task_id}`).
-</steps>
-
-<output_contract>
-Return a structured micro-report followed by JSON:
+## Output
 
 ```json
 {
   "workflow": "fast-tdd",
-  "task_id": "task_id_here",
-  "status": "PASS",
+  "phase_status": "success | partial | failed | blocked",
+  "task_status": "done | in_progress | blocked | null",
+  "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
+  "task_id": null,
   "evidence": {
-    "red_command": "go test ./pkg -run TestTarget",
-    "red_exit_code": 1,
-    "green_command": "go test ./pkg -run TestTarget",
-    "green_exit_code": 0
+    "red": {"command": "", "exit_code": 1, "oracle": ""},
+    "green": {"command": "", "exit_code": 0},
+    "refactor": {"command": "", "exit_code": 0},
+    "regression": {"command": "", "exit_code": 0}
   },
-  "files_modified": ["pkg/service.go", "pkg/service_test.go"],
-  "cortex_topic_key": "tdd/change_name/task_id_here"
+  "files_changed": [],
+  "evidence_refs": [],
+  "cleanup": {"leases_released": true, "notes": []},
+  "risks": [],
+  "next_route": "review | continue | sdd-lite | stop"
 }
 ```
-</output_contract>
 
-<references>
-- `_shared/tdd-micro-contract.md` — micro envelope and evidence gates.
-- ForgeSpec tools: `tb_claim`, `tb_update`, `file_reserve`, `file_release`.
-- Cortex tools: `cortex_save`, `cortex_relate`.
-</references>
+Never include claim or lease authority in the receipt.

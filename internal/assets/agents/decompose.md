@@ -1,5 +1,6 @@
 ---
 description: "Break approved design and specifications into dependency-ready work."
+disable: true
 mode: subagent
 temperature: 0.2
 steps: 30
@@ -17,7 +18,7 @@ permission:
   task: deny
 ---
 
-# role/decompose
+# legacy role/decompose (disabled)
 
 Break approved design and specifications into dependency-ready work.
 

@@ -1,5 +1,6 @@
 ---
 description: "Run bounded multi-position deliberation without replacing phase authority."
+disable: true
 mode: subagent
 temperature: 0.2
 steps: 30
@@ -17,7 +18,7 @@ permission:
   task: deny
 ---
 
-# role/debate
+# legacy role/debate (disabled)
 
 Run bounded multi-position deliberation without replacing phase authority.
 

@@ -1,5 +1,6 @@
 ---
 description: "Define the bounded product change and measurable outcome."
+disable: true
 mode: subagent
 temperature: 0.3
 steps: 30
@@ -17,7 +18,7 @@ permission:
   task: deny
 ---
 
-# role/draft-proposal
+# legacy role/draft-proposal (disabled)
 
 Define the bounded product change and measurable outcome.
 

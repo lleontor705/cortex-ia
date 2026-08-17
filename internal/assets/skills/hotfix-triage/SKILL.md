@@ -1,74 +1,44 @@
 ---
 name: hotfix-triage
-description: >
-  Triage, diagnose, and apply atomic hotfixes to critical bugs and regressions
-  with immediate regression testing and minimal token footprint.
-  Trigger: Dispatched via /hotfix or emergency bug reports.
+description: Contain an active incident, apply the smallest safe patch, prove regression protection, and create structural follow-up when needed.
 license: MIT
 metadata:
   author: lleontor705
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
-# Hotfix Triage — Emergency Diagnostic & Atomic Patching
+# Hotfix strategy
 
-<role>
-You are the Hotfix Emergency Responder. Rapidly pinpoint root causes from logs or
-stacktraces, apply the smallest possible correct patch, and verify against regressions.
-</role>
+Optimize for safe service restoration, not architectural completeness. Do not refactor, optimize speculatively, add unrelated dependencies, or widen permissions. Define the containment boundary, rollback checkpoint, and stop conditions before editing.
 
-<success_criteria>
-- Root cause is identified and documented with clear line-level diagnosis.
-- Patch diff is strictly bounded (<= 50 changed lines, <= 2 files).
-- Regression test is added or existing suite passes cleanly without failures.
-- Zero extraneous refactoring or scope creep.
-</success_criteria>
+## Procedure
 
-<rules>
-  <critical>
-  1. Do NOT perform cosmetic refactoring or speculative optimizations in a hotfix.
-  2. If the fix requires modifying > 2 files or architectural rewrites, return `blocked` and recommend SDD.
-  3. Every patch must have proof of regression prevention (test command + exit code 0).
-  4. Acquire file reservation before modifying files and release afterwards.
-  </critical>
-</rules>
+1. Preserve the exact symptom and identify the smallest reproducible failing boundary. Distinguish immediate cause from deeper structural cause.
+2. Negotiate ForgeSpec `direct-v1` when a task exists; claim one task and reserve the exact file scopes using attempt-bound leases. Keep all authority tokens only in live context.
+3. Apply the smallest coherent patch. Patch size is a risk signal, not an arbitrary correctness rule; stop and escalate when the change crosses unresolved architectural, data, or security boundaries.
+4. Add or run a regression test when technically possible, then run a focused smoke check. If no automated oracle exists, state the limitation and use the safest observable check; do not label it PASS beyond its evidence.
+5. Save a sanitized Cortex incident observation: symptom, root cause confidence, patch rationale, commands, outcomes, revision, and follow-up. Do not store tokens, secrets, or raw logs.
+6. Update the task with evidence and release all leases. Require independent `review` after containment.
 
-<steps>
-**1. Triage & Root Cause**
-- Analyze the error message, stacktrace, or bug description.
-- Pinpoint the exact failing function or edge condition.
+If the patch only contains the incident, return a separate `sdd-lite` or `sdd-full` follow-up. If claim/lease authority expires, tests regress, or rollback cannot be made safe, stop and return `BLOCKED`; do not issue an improvised destructive rollback.
 
-**2. Reserve & Patch**
-- Reserve affected files in ForgeSpec: `file_reserve`.
-- Apply the minimal atomic fix addressing the edge condition.
+## Output
 
-**3. Verify & Smoke Test**
-- Run the narrow test suite and smoke-test the affected subsystem.
-- Capture command execution proof and exit code.
-
-**4. Complete & Record**
-- Release file locks: `file_release`.
-- Save diagnostic summary and patch rationale to Cortex: `cortex_save` with topic `hotfix/{project}/{incident_id}`.
-</steps>
-
-<output_contract>
 ```json
 {
   "workflow": "hotfix",
-  "incident_id": "hotfix_xxx",
-  "status": "PASS",
-  "root_cause": "Detailed one-line cause",
-  "patch_summary": "Summary of minimal fix",
-  "diff_stat": "1 file changed, 3 insertions(+), 1 deletion(-)",
-  "smoke_test_command": "go test ./pkg/...",
-  "smoke_test_exit_code": 0,
-  "cortex_topic_key": "hotfix/project/hotfix_xxx"
+  "phase_status": "success | partial | failed | blocked",
+  "task_status": "done | in_progress | blocked | null",
+  "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
+  "incident_id": "",
+  "containment": "",
+  "root_cause": "",
+  "root_cause_confidence": "high | medium | low",
+  "files_changed": [],
+  "checks": [],
+  "evidence_refs": [],
+  "cleanup": {"leases_released": true, "notes": []},
+  "risks": [],
+  "next_route": "review | sdd-lite | sdd-full | stop"
 }
 ```
-</output_contract>
-
-<references>
-- `_shared/tdd-micro-contract.md` — micro envelope definitions.
-- Cortex MCP: `cortex_save`, `cortex_session_summary`.
-- ForgeSpec MCP: `file_reserve`, `file_release`.
-</references>

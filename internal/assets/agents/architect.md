@@ -1,5 +1,6 @@
 ---
 description: "Design implementation boundaries and explicit tradeoffs."
+disable: true
 mode: subagent
 temperature: 0.2
 steps: 30
@@ -17,7 +18,7 @@ permission:
   task: deny
 ---
 
-# role/architect
+# legacy role/architect (disabled)
 
 Design implementation boundaries and explicit tradeoffs.
 

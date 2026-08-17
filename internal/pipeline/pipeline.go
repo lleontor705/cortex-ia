@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,8 +21,12 @@ import (
 	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
 	"github.com/lleontor705/cortex-ia/internal/components/mailbox"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd"
+	operationalassets "github.com/lleontor705/cortex-ia/internal/components/sdd/assets"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/capability"
 	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
+	sddregistry "github.com/lleontor705/cortex-ia/internal/components/sdd/registry"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/renderers"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/skillcore"
 	skillscomp "github.com/lleontor705/cortex-ia/internal/components/skills"
 	"github.com/lleontor705/cortex-ia/internal/model"
 	"github.com/lleontor705/cortex-ia/internal/state"
@@ -67,6 +72,8 @@ type installDependencies struct {
 	recordJournalOutcome  func(*InstallJournal, MutationOutcome) error
 	commitJournal         func(*InstallJournal) error
 	restoreAndVerify      func(*InstallJournal) error
+	buildInstallPlan      func(context.Context, string, *agents.Registry, model.Selection, []model.ComponentID) (InstallPlan, error)
+	applyRegistryPlan     func(string, sdd.GlobalInstallPlan) (sdd.GlobalApplyResult, error)
 }
 
 func defaultInstallDependencies() installDependencies {
@@ -91,6 +98,8 @@ func defaultInstallDependencies() installDependencies {
 		recordJournalOutcome: func(journal *InstallJournal, outcome MutationOutcome) error { return journal.Record(outcome) },
 		commitJournal:        func(journal *InstallJournal) error { return journal.Commit() },
 		restoreAndVerify:     func(journal *InstallJournal) error { return journal.RestoreAndVerify() },
+		buildInstallPlan:     BuildInstallPlan,
+		applyRegistryPlan:    sdd.ApplyGlobalInstallPlan,
 	}
 }
 
@@ -103,6 +112,25 @@ func Repair(homeDir string, registry *agents.Registry, version string, dryRun bo
 	lock, err := state.LoadLock(homeDir)
 	if err != nil {
 		return InstallResult{}, err
+	}
+
+	registryIntent, err := registrySelectionFromMetadata(s, lock)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	if registryIntent == nil {
+		// Legacy receipt-without-intent guard (REQ-REM-B1): an empty
+		// overlay over a committed registry receipt would plan stale
+		// retirement of prior custom outputs, so Repair fails closed
+		// before BuildInstallPlan or any mutation instead of guessing
+		// intent from receipt evidence.
+		hasReceipt, receiptErr := hasCommittedRegistryReceipt(homeDir)
+		if receiptErr != nil {
+			return InstallResult{}, receiptErr
+		}
+		if hasReceipt {
+			return InstallResult{}, ErrRepairRegistryIntentMissing
+		}
 	}
 
 	selection, err := selectionFromMetadata(s, lock)
@@ -173,16 +201,20 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 		components = catalog.ComponentsForPreset(selection.Preset)
 	}
 	resolved := catalog.ResolveDeps(components)
+
+	// Global preflight (design D7): every selected adapter is validated and
+	// the complete registry overlay resolves and plans before any directory
+	// creation, backup, or status write is allowed to happen. A preflight
+	// failure is terminal and pure: zero homes change.
+	preflight, preflightErr := deps.buildInstallPlan(context.Background(), homeDir, registry, selection, resolved)
+	if preflightErr != nil {
+		return result, preflightErr
+	}
+	resolved = preflight.Resolved
+	adapters := preflight.Adapters
+
 	var preparedWorkflow PreparedWorkflowInstall
 	if slicesContainsComponent(resolved, model.ComponentSDD) {
-		adapters := make([]agents.Adapter, 0, len(selection.Agents))
-		for _, agentID := range selection.Agents {
-			adapter, getErr := registry.Get(agentID)
-			if getErr != nil {
-				return result, getErr
-			}
-			adapters = append(adapters, adapter)
-		}
 		qualificationTime := deps.now().UTC()
 		qualifiedFacts := deps.qualifyCapabilities(context.Background(), adapters, qualificationTime, nil)
 		evaluationTime := deps.now().UTC()
@@ -254,13 +286,35 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 		return workflowFiles, workflowErr
 	}
 
+	// The registry overlay plan applies exactly once across the agent chains.
+	// The planner only returns a plan when it carries operations or records
+	// declared intent, so empty overlays never reach this writer. Its targets
+	// join the shared journal, so any later failure restores the same
+	// pre-apply snapshot as every other writer (design D10).
+	var registryFiles []string
+	var registryOnce sync.Once
+	var registryErr error
+	var registryWriter *preparedWriter
+	if preflight.Registry != nil {
+		registryWriter = newPreparedWriter(registryManagedTargets(homeDir, preflight.Registry.Plan))
+	}
+	applyRegistry := func() ([]string, error) {
+		registryOnce.Do(func() {
+			outcome, applyErr := deps.applyRegistryPlan(homeDir, preflight.Registry.Plan)
+			registryFiles = append(registryFiles, outcome.Applied...)
+			registryFiles = append(registryFiles, outcome.Deleted...)
+			registryErr = applyErr
+		})
+		return registryFiles, registryErr
+	}
+
 	// Build one sequential step chain per agent. Each chain applies
 	// components in dependency order for that agent.
 	var agentChains [][]Step
 	for _, agentID := range selection.Agents {
 		adapter, err := registry.Get(agentID)
 		if err != nil {
-			continue // validateStep already catches this
+			continue // preflight already catches this
 		}
 
 		if progress == nil {
@@ -287,6 +341,15 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 			}
 			chain = append(chain, cs)
 			allComponentSteps = append(allComponentSteps, cs)
+		}
+		if registryWriter != nil {
+			// The registry overlay is install-level, not a component: its
+			// once-guarded apply is the final sequential operation inside
+			// every agent chain, preserving the parallel-chain boundary and
+			// the sequential order with that agent's component writes.
+			chain = append(chain, &registryPlanStep{
+				agent: adapter, apply: applyRegistry, writer: registryWriter, progress: progress,
+			})
 		}
 		if len(chain) > 0 {
 			agentChains = append(agentChains, chain)
@@ -316,6 +379,9 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 	stateWriter := newPreparedWriter(withParentDirectories(homeDir, []ManagedTarget{stateTarget}))
 	lockWriter := newPreparedWriter(withParentDirectories(homeDir, []ManagedTarget{lockTarget}))
 	allWriters := []*preparedWriter{workflowWriter, statusWriter, stateWriter, lockWriter}
+	if registryWriter != nil {
+		allWriters = append(allWriters, registryWriter)
+	}
 	for _, step := range allComponentSteps {
 		allWriters = append(allWriters, step.writer)
 	}
@@ -337,6 +403,7 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 			result.FilesChanged = append(result.FilesChanged, cs.Files...)
 		}
 		result.FilesChanged = append(result.FilesChanged, workflowFiles...)
+		result.FilesChanged = append(result.FilesChanged, registryFiles...)
 		result.FilesChanged = dedupeStrings(result.FilesChanged)
 		result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", stage, err))
 		if restoreErr := deps.restoreAndVerify(journal); restoreErr != nil {
@@ -367,27 +434,30 @@ func installWithDependencies(homeDir string, registry *agents.Registry, selectio
 	for _, cs := range allComponentSteps {
 		result.FilesChanged = append(result.FilesChanged, cs.Files...)
 	}
+	result.FilesChanged = append(result.FilesChanged, registryFiles...)
 	s := state.State{
-		InstalledAgents: selection.Agents,
-		Preset:          selection.Preset,
-		Components:      resolved,
-		LastInstall:     time.Now(),
-		LastBackupID:    result.BackupID,
-		Version:         version,
-		StrictTDD:       selection.StrictTDD,
+		InstalledAgents:   selection.Agents,
+		Preset:            selection.Preset,
+		Components:        resolved,
+		LastInstall:       time.Now(),
+		LastBackupID:      result.BackupID,
+		Version:           version,
+		StrictTDD:         selection.StrictTDD,
+		RegistrySelection: copyRegistrySelection(selection.Registry),
 	}
 	if err := stateWriter.run(func() error { return deps.saveState(homeDir, s) }); err != nil {
 		return fail("save state", err)
 	}
 
 	lock := state.Lockfile{
-		InstalledAgents: selection.Agents,
-		Preset:          selection.Preset,
-		Components:      resolved,
-		Files:           durableInstallFiles(priorLock.Files, preparedWorkflow, result.FilesChanged),
-		GeneratedAt:     time.Now(),
-		LastBackupID:    result.BackupID,
-		Version:         version,
+		InstalledAgents:   selection.Agents,
+		Preset:            selection.Preset,
+		Components:        resolved,
+		Files:             durableInstallFiles(priorLock.Files, preparedWorkflow, result.FilesChanged),
+		GeneratedAt:       time.Now(),
+		LastBackupID:      result.BackupID,
+		Version:           version,
+		RegistrySelection: copyRegistrySelection(selection.Registry),
 	}
 	if err := lockWriter.run(func() error { return deps.saveLock(homeDir, lock) }); err != nil {
 		return fail("save lock", err)
@@ -482,6 +552,293 @@ func workflowManagedTargets(workflow PreparedWorkflowInstall) []ManagedTarget {
 		targets = append(targets, ManagedTarget{Path: filepath.ToSlash(path), Kind: TargetFile, Owner: "workflow"})
 	}
 	return targets
+}
+
+// ---------------------------------------------------------------------------
+// Global install preflight (design D7)
+// ---------------------------------------------------------------------------
+
+// RulePreflightAdapterLayout is the pipeline-level rule for adapters that
+// cannot represent a custom skill overlay. The registry and bundle packages
+// own every other executable rule cited by preflight diagnostics.
+const RulePreflightAdapterLayout = "pipeline.adapter-skill-layout"
+
+// InstallPlan is the pure result of the global preflight: validated adapters
+// for every selected agent, the effective component set after registry
+// overlay disables, and the registry plan when an overlay or a prior
+// committed registry receipt requires one. Building it performs reads only.
+type InstallPlan struct {
+	// Adapters lists every selected agent's adapter in selection order; an
+	// unknown agent fails the preflight before any write can happen.
+	Adapters []agents.Adapter
+	// Resolved is the effective component set: dependency-resolved components
+	// minus overlay-disabled optional components.
+	Resolved []model.ComponentID
+	// Registry is non-nil when the selection declared an overlay or a prior
+	// committed registry receipt exists; nil keeps the legacy no-overlay path
+	// byte-for-byte unchanged.
+	Registry *GlobalRegistryPlan
+}
+
+// GlobalRegistryPlan pairs the pure global install plan with whether the
+// current selection declared an overlay. A plan without operations (an empty
+// overlay, or a converged repeat install) applies nothing.
+type GlobalRegistryPlan struct {
+	Plan    sdd.GlobalInstallPlan
+	Overlay bool
+}
+
+// BuildInstallPlan performs the global pure preflight for one install: it
+// validates every selected adapter, resolves the registry overlay (custom
+// skill provenance, additive merge, protected disables) against the embedded
+// baseline catalog, lowers verified custom skills through each adapter's
+// declared layout, and plans every write and stale-managed retirement with
+// destination collision checks and the rollback inventory. It runs before
+// any EnsureDir, backup, or status write, so a non-empty diagnostic report is
+// always a pre-write rejection with a deterministic primary cause and zero
+// homes changed.
+func BuildInstallPlan(ctx context.Context, homeDir string, agentRegistry *agents.Registry, selection model.Selection, resolved []model.ComponentID) (InstallPlan, error) {
+	plan := InstallPlan{Resolved: resolved}
+	plan.Adapters = make([]agents.Adapter, 0, len(selection.Agents))
+	for _, agentID := range selection.Agents {
+		adapter, err := agentRegistry.Get(agentID)
+		if err != nil {
+			return InstallPlan{}, fmt.Errorf("unknown agent %q: %w", agentID, err)
+		}
+		plan.Adapters = append(plan.Adapters, adapter)
+	}
+
+	priorReceipt, priorErr := sdd.LoadCommittedRegistryReceipt(homeDir)
+	hasPriorReceipt := priorErr == nil
+	if priorErr != nil && !errors.Is(priorErr, fs.ErrNotExist) {
+		return InstallPlan{}, fmt.Errorf("load committed registry receipt: %w", priorErr)
+	}
+	overlay := selection.Registry
+	hasOverlay := overlay != nil
+	if !hasOverlay && !hasPriorReceipt {
+		// Legacy input: no overlay declared and no prior overlay evidence.
+		// The existing pipeline path applies unchanged (REQ-COMPAT-001).
+		return plan, nil
+	}
+
+	registrySelection := model.RegistrySelection{}
+	if hasOverlay {
+		registrySelection = *overlay
+	}
+	retained := withoutComponents(resolved, registrySelection.DisabledComponents)
+	policy := registryDisablePolicy(retained)
+	embedded, err := operationalassets.BuildOperationalCatalog()
+	if err != nil {
+		return InstallPlan{}, fmt.Errorf("materialize embedded baseline catalog: %w", err)
+	}
+
+	// The registry receives the retained selection explicitly (design D4):
+	// resolved components minus declared disables. Resolve revalidates the
+	// disables and seals EffectiveComponents from this retained set, never
+	// from the policy classification map (REQ-REM-B3).
+	resolvedRegistry, diagnostics := sddregistry.Resolve(ctx, sddregistry.Request{
+		Selection:          registrySelection,
+		RetainedComponents: retained,
+	}, embedded, policy)
+	if len(diagnostics) > 0 {
+		return InstallPlan{}, &sddregistry.InstallError{Primary: diagnostics[0], All: diagnostics}
+	}
+	plan.Resolved = withoutComponents(resolved, resolvedRegistry.Disabled)
+
+	bundles, err := lowerRegistryBundles(plan.Adapters, resolvedRegistry.EffectiveSkills)
+	if err != nil {
+		return InstallPlan{}, err
+	}
+	request := sdd.GlobalInstallPlanRequest{
+		HomeDir: homeDir,
+		Bundles: bundles,
+		Receipt: resolvedRegistry.CanonicalReceipt,
+	}
+	if hasPriorReceipt {
+		request.PriorManagedPaths = priorReceipt.HostOutputs
+	}
+	globalPlan, planDiagnostics := sdd.BuildGlobalInstallPlan(request)
+	if len(planDiagnostics) > 0 {
+		return InstallPlan{}, &sddregistry.InstallError{Primary: planDiagnostics[0], All: planDiagnostics}
+	}
+	if !registryPlanHasOperations(globalPlan) &&
+		len(registrySelection.CustomSkillPaths) == 0 && len(registrySelection.DisabledComponents) == 0 {
+		// A converged baseline input with no declared intent plans nothing
+		// and must not churn evidence: empty overlays stay byte-for-byte the
+		// baseline and leave no receipt residue (SC-BASE-E).
+		return plan, nil
+	}
+	plan.Registry = &GlobalRegistryPlan{Plan: globalPlan, Overlay: hasOverlay}
+	return plan, nil
+}
+
+// lowerRegistryBundles lowers the resolved custom skills onto every selected
+// adapter through its declared skill layout. A custom overlay without a
+// declared layout is unrepresentable and fails closed; embedded skills are
+// never re-lowered here (the workflow bundle owns those).
+func lowerRegistryBundles(adapters []agents.Adapter, skills []skillcore.Skill) ([]sdd.CompiledInjectionBundle, error) {
+	customs := make([]skillcore.Skill, 0, len(skills))
+	for _, skill := range skills {
+		if skill.Origin == skillcore.OriginCustom {
+			customs = append(customs, skill)
+		}
+	}
+	if len(customs) == 0 {
+		return nil, nil
+	}
+	bundles := make([]sdd.CompiledInjectionBundle, 0, len(adapters))
+	for _, adapter := range adapters {
+		layout, ok := adapter.(agents.SkillLayoutProvider)
+		if !ok {
+			diagnostic := sddregistry.Diagnostic{
+				Class:           sddregistry.ErrorUnsupported,
+				Stage:           sddregistry.StagePlan,
+				Rule:            RulePreflightAdapterLayout,
+				Cause:           fmt.Errorf("adapter %q declares no custom skill layout", adapter.Agent()),
+				SafeRemediation: "install custom skills only on adapters that declare a skill layout",
+			}
+			return nil, &sddregistry.InstallError{Primary: diagnostic, All: []sddregistry.Diagnostic{diagnostic}}
+		}
+		assets, err := renderers.LowerCustomSkills(layout, customs)
+		if err != nil {
+			diagnostic := sddregistry.Diagnostic{
+				Class:           sddregistry.ErrorInvalid,
+				Stage:           sddregistry.StagePlan,
+				Rule:            RulePreflightAdapterLayout,
+				Cause:           fmt.Errorf("lower custom skills for %q: %w", adapter.Agent(), err),
+				SafeRemediation: "fix the declared custom skill so it lowers to exactly one safe destination",
+			}
+			return nil, &sddregistry.InstallError{Primary: diagnostic, All: []sddregistry.Diagnostic{diagnostic}}
+		}
+		bundles = append(bundles, sdd.CompiledInjectionBundle{
+			Target: renderers.TargetID(adapter.Agent()), Bundle: renderers.Bundle{Assets: assets},
+		})
+	}
+	return bundles, nil
+}
+
+// registryDisablePolicy derives the registry disable policy from the catalog's
+// explicit disable-class descriptors given the retained component selection
+// (design D4). Transitive dependencies of retained components resolve as
+// protected-required; IDs absent from the policy map stay protected fail-closed.
+func registryDisablePolicy(retained []model.ComponentID) sddregistry.Policy {
+	classes := catalog.DisableClasses(retained)
+	componentClasses := make(map[model.ComponentID]sddregistry.DisableClass, len(classes))
+	for id, class := range classes {
+		switch class {
+		case catalog.Optional:
+			componentClasses[id] = sddregistry.Optional
+		case catalog.ProtectedAuthority:
+			componentClasses[id] = sddregistry.ProtectedAuthority
+		case catalog.ProtectedWorkflow:
+			componentClasses[id] = sddregistry.ProtectedWorkflow
+		case catalog.ProtectedRequired:
+			componentClasses[id] = sddregistry.ProtectedRequired
+		default:
+			// Unclassified stays absent from the map: the registry treats a
+			// missing classification as protected (fail-closed).
+		}
+	}
+	return sddregistry.Policy{
+		SchemaVersion:    "1.0.0",
+		PolicyVersion:    "catalog-disable-classes-1",
+		ComponentClasses: componentClasses,
+	}
+}
+
+// withoutComponents returns resolved with every disabled entry removed,
+// preserving dependency order.
+func withoutComponents(resolved, disabled []model.ComponentID) []model.ComponentID {
+	if len(disabled) == 0 {
+		return resolved
+	}
+	off := make(map[model.ComponentID]bool, len(disabled))
+	for _, id := range disabled {
+		off[id] = true
+	}
+	kept := make([]model.ComponentID, 0, len(resolved))
+	for _, id := range resolved {
+		if !off[id] {
+			kept = append(kept, id)
+		}
+	}
+	return kept
+}
+
+// registryPlanHasOperations reports whether the plan carries any write or
+// stale-managed delete. A converged overlay — an empty one, or a repeat
+// install whose outputs already match — plans nothing; the planner pairs
+// this with declared-intent detection so empty overlays stay byte-for-byte
+// the baseline (REQ-BASE-001) while declared disables still commit their
+// canonical evidence.
+func registryPlanHasOperations(plan sdd.GlobalInstallPlan) bool {
+	if len(plan.Shared.Writes) > 0 || len(plan.Shared.Deletes) > 0 {
+		return true
+	}
+	for _, adapter := range plan.Adapters {
+		if len(adapter.Ops) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// registryManagedTargets declares the journal-managed surface of one registry
+// plan: every rollback path plus the committed canonical receipt location, so
+// a failed apply restores the pre-apply snapshot and never leaves a committed
+// receipt behind.
+func registryManagedTargets(homeDir string, plan sdd.GlobalInstallPlan) []ManagedTarget {
+	targets := make([]ManagedTarget, 0, len(plan.RollbackPaths)+1)
+	for _, path := range plan.RollbackPaths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		targets = append(targets, ManagedTarget{Path: path, Kind: TargetFile, Owner: "registry"})
+	}
+	targets = append(targets, relativeManagedTarget(homeDir, sdd.CommittedRegistryReceiptPath(homeDir), "registry"))
+	return withParentDirectories(homeDir, targets)
+}
+
+// registryPlanStep applies the registry overlay plan inside one agent's
+// sequential chain. Every chain shares the once-guarded apply and the same
+// journal writer, so the plan executes exactly once while each chain keeps
+// the transactional boundary of a component step.
+type registryPlanStep struct {
+	agent    agents.Adapter
+	apply    func() ([]string, error)
+	writer   *preparedWriter
+	progress ProgressFunc
+
+	// Output: managed paths written or deleted by the apply.
+	Files []string
+}
+
+func (s *registryPlanStep) Name() string {
+	return fmt.Sprintf("%s/registry-overlay", s.agent.Agent())
+}
+
+func (s *registryPlanStep) Run() error {
+	if s.progress != nil {
+		s.progress(s.Name(), "running", nil)
+	}
+	var files []string
+	run := func() error {
+		var err error
+		files, err = s.apply()
+		return err
+	}
+	err := s.writer.run(run)
+	if err != nil {
+		if s.progress != nil {
+			s.progress(s.Name(), "failed", err)
+		}
+		return err
+	}
+	s.Files = files
+	if s.progress != nil {
+		s.progress(s.Name(), "succeeded", nil)
+	}
+	return nil
 }
 
 func managedFileTargets(homeDir string, paths []string, owner string) []ManagedTarget {
@@ -665,11 +1022,97 @@ func selectionFromMetadata(s state.State, lock state.Lockfile) (model.Selection,
 	if len(selection.Agents) == 0 {
 		return model.Selection{}, fmt.Errorf("no cortex-ia installation metadata found")
 	}
+
+	registryIntent, err := registrySelectionFromMetadata(s, lock)
+	if err != nil {
+		return model.Selection{}, err
+	}
+	selection.Registry = registryIntent
+
 	if err := selection.ValidateCurrent(); err != nil {
 		return model.Selection{}, fmt.Errorf("repair selection: %w", err)
 	}
 
 	return selection, nil
+}
+
+// ErrRepairRegistryIntentMissing is the stable fail-closed error returned when
+// a committed registry receipt exists but neither state nor lock carries the
+// persisted registry intent of the install that produced it.
+var ErrRepairRegistryIntentMissing = errors.New("committed registry receipt without persisted registry intent")
+
+// ErrRepairRegistryIntentConflict is the stable fail-closed error returned
+// when state and lock carry disagreeing non-nil registry intent copies.
+var ErrRepairRegistryIntentConflict = errors.New("state and lock disagree on persisted registry intent")
+
+// registrySelectionFromMetadata reconstructs registry intent exclusively from
+// persisted metadata (design D2): equal state/lock copies are accepted, a
+// single surviving copy recovers the other, and conflicting non-nil copies
+// fail closed. Nil, nil means no overlay was ever declared.
+func registrySelectionFromMetadata(s state.State, lock state.Lockfile) (*model.RegistrySelection, error) {
+	switch {
+	case s.RegistrySelection == nil && lock.RegistrySelection == nil:
+		return nil, nil
+	case s.RegistrySelection == nil:
+		return copyRegistrySelection(lock.RegistrySelection), nil
+	case lock.RegistrySelection == nil:
+		return copyRegistrySelection(s.RegistrySelection), nil
+	case !equalRegistrySelection(s.RegistrySelection, lock.RegistrySelection):
+		return nil, ErrRepairRegistryIntentConflict
+	default:
+		return copyRegistrySelection(s.RegistrySelection), nil
+	}
+}
+
+// copyRegistrySelection returns a deep copy of a registry selection so
+// persisted metadata can never alias caller-owned transport state.
+func copyRegistrySelection(selection *model.RegistrySelection) *model.RegistrySelection {
+	if selection == nil {
+		return nil
+	}
+	copied := *selection
+	copied.CustomSkillPaths = append([]string(nil), selection.CustomSkillPaths...)
+	copied.DisabledComponents = append([]model.ComponentID(nil), selection.DisabledComponents...)
+	return &copied
+}
+
+// equalRegistrySelection compares two registry selections semantically,
+// treating nil and empty slices as equivalent.
+func equalRegistrySelection(a, b *model.RegistrySelection) bool {
+	if a.ConfigFile != b.ConfigFile {
+		return false
+	}
+	if len(a.CustomSkillPaths) != len(b.CustomSkillPaths) {
+		return false
+	}
+	for i, path := range a.CustomSkillPaths {
+		if path != b.CustomSkillPaths[i] {
+			return false
+		}
+	}
+	if len(a.DisabledComponents) != len(b.DisabledComponents) {
+		return false
+	}
+	for i, id := range a.DisabledComponents {
+		if id != b.DisabledComponents[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// hasCommittedRegistryReceipt reports whether the canonical receipt of a
+// prior successful registry apply exists, mirroring the preflight's read-only
+// receipt loading semantics.
+func hasCommittedRegistryReceipt(homeDir string) (bool, error) {
+	_, err := sdd.LoadCommittedRegistryReceipt(homeDir)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	return false, fmt.Errorf("load committed registry receipt: %w", err)
 }
 
 func dedupeAgents(groups ...[]model.AgentID) []model.AgentID {

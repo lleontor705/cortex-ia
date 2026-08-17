@@ -13,10 +13,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/manifest"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/quality"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/resolution"
+	"github.com/lleontor705/cortex-ia/internal/components/sdd/skillcore"
 	"github.com/lleontor705/cortex-ia/internal/modelroute"
 )
 
@@ -80,6 +82,13 @@ type ResolvedWorkflow struct {
 	// NativeWorktreeIsolation controls whether the adapter supports
 	// runtime-enforced worktree isolation for direct child tasks.
 	NativeWorktreeIsolation bool `json:"native_worktree_isolation,omitempty"`
+	// SkillLayout is the adapter-declared layout authority for custom skill
+	// host destinations (agents.SkillLayoutProvider). It is the only source
+	// of custom skill destinations: renderers never derive, rewrite, or
+	// guess one and never switch on the agent identity, so an adapter that
+	// did not declare a layout leaves its custom skills unrepresentable — a
+	// fail-closed pre-write error, never a guessed destination (design D8).
+	SkillLayout agents.SkillLayoutProvider `json:"-"`
 }
 
 // SkillLoadMode returns native-preload only when the adapter has qualified
@@ -161,7 +170,14 @@ type Composition struct {
 	QualityPlan       quality.QualityPlan `json:"quality_plan"`
 	ModelRoutes       []ModelRoute        `json:"model_routes,omitempty"`
 	OperationalAssets []CompositionAsset  `json:"operational_assets,omitempty"`
-	Metadata          json.RawMessage     `json:"metadata,omitempty"`
+	// CustomSkills carries the typed registry-verified custom skill records
+	// to lower onto the host. Each record lowers to exactly the destination
+	// its adapter declared in the resolved SkillLayout, as a plain SKILL.md
+	// data asset — never as a command, subagent, config, tool, permission,
+	// or binding overlay (design D8). It is nil for baseline installs
+	// without an overlay.
+	CustomSkills []skillcore.Skill `json:"custom_skills,omitempty"`
+	Metadata     json.RawMessage   `json:"metadata,omitempty"`
 }
 
 type CompositionAsset struct {
@@ -215,6 +231,100 @@ func compositionSkillBinding(composition Composition, role ir.SemanticID) (Skill
 	return SkillBinding{}, false
 }
 
+// LowerCustomSkills lowers typed custom Skill records to their adapter-declared
+// host destinations as plain SKILL.md data assets (design D8, REQ-ADAPT-001).
+//
+// The layout provider — the adapter's SkillLayoutProvider — is the sole
+// destination authority: this function never derives, rewrites, or guesses a
+// destination and never switches on the agent identity, so a custom skill can
+// only ever become data the host already knows how to discover. Command,
+// subagent, config, tool, permission, and binding overlays are structurally
+// unrepresentable: every lowered asset is a skill-kind SKILL.md file carrying
+// only the declared bytes, with no permissions and no extensions.
+//
+// The lowering is pure and fail-closed: records that are not custom-origin,
+// carry empty content, disagree with their declared digest, or do not declare
+// exactly one safe destination are rejected before any asset is emitted, and
+// duplicated skill identities or destinations are rejected rather than merged.
+// An empty overlay lowers to nothing; an overlay without a declared layout is
+// rejected because no destination can be derived without inventing adapter
+// authority. Output is sorted by destination, so declaration order never leaks
+// into the bundle.
+func LowerCustomSkills(layout agents.SkillLayoutProvider, skills []skillcore.Skill) ([]Asset, error) {
+	if len(skills) == 0 {
+		return nil, nil
+	}
+	if layout == nil {
+		return nil, validationError(ErrorUndeclaredSkillLayout, "workflow/resolved", "$.skill_layout", "<nil>", "the adapter-declared custom skill layout (agents.SkillLayoutProvider) for the custom skill overlay")
+	}
+	assets := make([]Asset, 0, len(skills))
+	seenSkills := make(map[ir.SemanticID]struct{}, len(skills))
+	seenDestinations := make(map[string]ir.SemanticID, len(skills))
+	for index, skill := range skills {
+		recordPath := fmt.Sprintf("$.custom_skills[%d]", index)
+		semanticID := ir.SemanticID("asset/skill/" + string(skill.ID))
+		if err := ir.ValidateSemanticID(semanticID); err != nil {
+			return nil, validationError(ErrorInvalidAsset, semanticID, recordPath+".id", string(skill.ID), "a registry-normalized lowercase ASCII skill ID")
+		}
+		if skill.Origin != skillcore.OriginCustom {
+			return nil, validationError(ErrorUnrepresentableSkill, semanticID, recordPath+".origin", fmt.Sprintf("origin kind %d", uint8(skill.Origin)), "custom-origin records only: lowering targets the overlay, never the embedded baseline")
+		}
+		if len(skill.Content) == 0 {
+			return nil, validationError(ErrorUnrepresentableSkill, semanticID, recordPath+".content", "<empty>", "the canonical SKILL.md body for the declared skill")
+		}
+		if skill.ContentSHA256 != ir.FingerprintContent(skill.Content) {
+			return nil, validationError(ErrorInvalidAsset, semanticID, recordPath+".content_sha256", skill.ContentSHA256, "the digest of the declared canonical content")
+		}
+		if _, duplicate := seenSkills[semanticID]; duplicate {
+			return nil, validationError(ErrorDuplicateAsset, semanticID, recordPath+".id", string(semanticID), "exactly one lowered SKILL.md asset per custom skill identity")
+		}
+		seenSkills[semanticID] = struct{}{}
+		destinations := layout.SkillDestinations(skill)
+		if len(destinations) != 1 {
+			return nil, validationError(ErrorUnrepresentableSkill, semanticID, recordPath+".destinations", fmt.Sprintf("%d declared destinations", len(destinations)), "exactly one adapter-declared SKILL.md destination per custom skill")
+		}
+		destination := destinations[0]
+		if reason := unsafeSkillDestinationReason(destination); reason != "" {
+			return nil, validationError(ErrorUnsafeSkillDestination, semanticID, recordPath+".destinations[0]", destination, reason)
+		}
+		if previous, duplicate := seenDestinations[destination]; duplicate {
+			return nil, validationError(ErrorDuplicateAsset, semanticID, recordPath+".destinations[0]", destination, "a unique destination; already owned by "+string(previous))
+		}
+		seenDestinations[destination] = semanticID
+		assets = append(assets, Asset{
+			Path:       destination,
+			SemanticID: semanticID,
+			Kind:       AssetSkill,
+			Content:    bytes.Clone(skill.Content),
+			Mode:       0o644,
+		})
+	}
+	slices.SortFunc(assets, func(left, right Asset) int { return strings.Compare(left.Path, right.Path) })
+	return assets, nil
+}
+
+// unsafeSkillDestinationReason reports why an adapter-declared custom skill
+// destination cannot be a plain data destination, or empty when it can. The
+// check is containment only — which paths are legal stays adapter authority:
+// the destination must be a clean, relative, slash-separated path without
+// drive or traversal segments, outside source-shaped roots, and always a
+// SKILL.md file, so custom skills can never materialize as command,
+// subagent, config, or any other non-data overlay.
+func unsafeSkillDestinationReason(destination string) string {
+	switch {
+	case strings.TrimSpace(destination) == "" || strings.ContainsAny(destination, `\:`):
+		return "a non-empty slash-separated home-relative SKILL.md destination"
+	case !fs.ValidPath(destination) || path.Clean(destination) != destination:
+		return "a clean relative destination without traversal, absolute, or empty segments"
+	case strings.HasPrefix(destination, "internal/") || strings.HasPrefix(destination, "src/") || strings.HasPrefix(destination, "testdata/"):
+		return "a destination outside source-shaped roots"
+	case path.Base(destination) != "SKILL.md":
+		return "a destination whose file name is SKILL.md, keeping custom skills plain data"
+	default:
+		return ""
+	}
+}
+
 func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset, error) {
 	assetMap, err := AdapterAssetMapFor(resolved.Target)
 	if err != nil {
@@ -224,7 +334,12 @@ func appendCompositionAsset(resolved ResolvedWorkflow, assets []Asset) ([]Asset,
 		return nil, err
 	}
 	composition := resolved.Composition
-	if composition.RootIndex == "" && len(composition.Modules) == 0 && len(composition.SkillBindings) == 0 && composition.SharedContract == "" && composition.ProfileOverlay == "" && composition.QualityTemplate == "" && !hasQualityPlan(composition.QualityPlan) {
+	customSkillAssets, err := LowerCustomSkills(resolved.SkillLayout, composition.CustomSkills)
+	if err != nil {
+		return nil, err
+	}
+	assets = append(assets, customSkillAssets...)
+	if composition.RootIndex == "" && len(composition.Modules) == 0 && len(composition.SkillBindings) == 0 && composition.SharedContract == "" && composition.ProfileOverlay == "" && composition.QualityTemplate == "" && !hasQualityPlan(composition.QualityPlan) && len(composition.CustomSkills) == 0 {
 		return assets, nil
 	}
 	for name, value := range map[string]string{"root_index": composition.RootIndex, "shared_contract": composition.SharedContract, "profile_overlay": composition.ProfileOverlay, "quality_template": composition.QualityTemplate} {
@@ -406,6 +521,9 @@ const (
 	ErrorUndeclaredExtension     ir.SemanticID = "renderer/undeclared-extension"
 	ErrorUnresolvedVariable      ir.SemanticID = "renderer/unresolved-variable"
 	ErrorPermissionWidening      ir.SemanticID = "renderer/permission-widening"
+	ErrorUndeclaredSkillLayout   ir.SemanticID = "renderer/undeclared-skill-layout"
+	ErrorUnrepresentableSkill    ir.SemanticID = "renderer/unrepresentable-skill"
+	ErrorUnsafeSkillDestination  ir.SemanticID = "renderer/unsafe-skill-destination"
 )
 
 // ValidationError provides stable semantic identifiers for diagnostics and

@@ -1,5 +1,6 @@
 ---
 description: "Express observable requirements and acceptance scenarios."
+disable: true
 mode: subagent
 temperature: 0.2
 steps: 30
@@ -17,7 +18,7 @@ permission:
   task: deny
 ---
 
-# role/write-specs
+# legacy role/write-specs (disabled)
 
 Express observable requirements and acceptance scenarios.
 

@@ -17,6 +17,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/contractgen"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/ir"
 	"github.com/lleontor705/cortex-ia/internal/components/sdd/phasecontract"
+	"github.com/lleontor705/cortex-ia/internal/model"
 )
 
 var canonicalSkills = []string{"bootstrap", "investigate", "draft-proposal", "write-specs", "architect", "decompose", "implement", "validate", "finalize", "debate", "parallel-dispatch", "fast-tdd", "hotfix-triage", "spike-prototype", "code-review-adversary"}
@@ -43,6 +44,53 @@ func (c MaterializedCatalog) Count(id string) int {
 	return count
 }
 
+// CustomSkill is one externally validated custom skill record offered as an
+// additive overlay on the embedded baseline catalog. Records arrive from the
+// registry already provenance-verified and normalized; this catalog enforces
+// only the structural overlay rules: additions must be unique, non-empty, and
+// must never replace an embedded canonical asset.
+type CustomSkill struct {
+	// ID is the normalized skill identifier. It derives the catalog semantic
+	// ID and the installed skill directory name.
+	ID model.SkillID
+	// Content is the canonical UTF-8/LF skill body.
+	Content []byte
+}
+
+// OverrideError reports a custom skill whose ID would replace an embedded
+// canonical asset. Embedded assets are always the base and are never
+// replaced: the overlay is strictly additive.
+type OverrideError struct {
+	// SkillID is the offending custom skill ID.
+	SkillID string
+}
+
+func (e *OverrideError) Error() string {
+	return fmt.Sprintf("custom skill %q overrides embedded asset %q: custom skills are additive and never replace embedded assets", e.SkillID, customSkillSemanticID(model.SkillID(e.SkillID)))
+}
+
+// CollisionError reports two custom skill declarations sharing one effective
+// ID, even when their content is identical.
+type CollisionError struct {
+	// SkillID is the duplicated custom skill ID.
+	SkillID string
+}
+
+func (e *CollisionError) Error() string {
+	return fmt.Sprintf("duplicate custom skill %q: custom IDs must be unique even with identical content", e.SkillID)
+}
+
+// customSkillSemanticID derives the catalog semantic ID for a custom skill ID.
+func customSkillSemanticID(id model.SkillID) ir.SemanticID {
+	return ir.SemanticID("asset/skill/" + string(id))
+}
+
+// customSkillSourcePath derives the adapter-neutral skill layout path for a
+// custom skill ID, mirroring the embedded skill directory layout.
+func customSkillSourcePath(id model.SkillID) string {
+	return "skills/" + string(id) + "/SKILL.md"
+}
+
 // BuildOperationalCatalog materializes the embedded retained operational set.
 func BuildOperationalCatalog() (MaterializedCatalog, error) {
 	return BuildOperationalCatalogFromFS(embedded.FS)
@@ -50,6 +98,22 @@ func BuildOperationalCatalog() (MaterializedCatalog, error) {
 
 // BuildOperationalCatalogFromFS is injectable for deterministic catalog tests.
 func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
+	return BuildEffectiveCatalogFromFS(source, nil)
+}
+
+// BuildEffectiveCatalog materializes the effective operational catalog: the
+// embedded baseline plus validated custom skill additions. A nil or empty
+// overlay yields the byte-for-byte embedded baseline catalog.
+func BuildEffectiveCatalog(custom []CustomSkill) (MaterializedCatalog, error) {
+	return BuildEffectiveCatalogFromFS(embedded.FS, custom)
+}
+
+// BuildEffectiveCatalogFromFS is injectable for deterministic catalog tests.
+// Custom skills are appended to the embedded base, validated against embedded
+// IDs (override rejection) and among themselves (collision rejection), and
+// the combined asset list is re-sorted so an empty overlay is byte-for-byte
+// identical to the embedded baseline.
+func BuildEffectiveCatalogFromFS(source fs.FS, custom []CustomSkill) (MaterializedCatalog, error) {
 	workflow := canonical.Workflow()
 	contents := make(map[ir.SemanticID][]byte)
 	policy := phasecontract.PolicySnapshot()
@@ -192,6 +256,24 @@ func BuildOperationalCatalogFromFS(source fs.FS) (MaterializedCatalog, error) {
 		if err := add(item.id, ir.AssetManifest, "generated/"+string(item.id)+".json", []byte(item.body), true, 500); err != nil {
 			return MaterializedCatalog{}, err
 		}
+	}
+	embeddedIDs := make(map[ir.SemanticID]struct{}, len(specs))
+	for _, spec := range specs {
+		embeddedIDs[spec.ID] = struct{}{}
+	}
+	customIDs := make(map[ir.SemanticID]struct{}, len(custom))
+	for _, skill := range custom {
+		id := customSkillSemanticID(skill.ID)
+		if _, exists := embeddedIDs[id]; exists {
+			return MaterializedCatalog{}, &OverrideError{SkillID: string(skill.ID)}
+		}
+		if _, exists := customIDs[id]; exists {
+			return MaterializedCatalog{}, &CollisionError{SkillID: string(skill.ID)}
+		}
+		if err := add(id, ir.AssetSkill, customSkillSourcePath(skill.ID), skill.Content, true, 3500); err != nil {
+			return MaterializedCatalog{}, fmt.Errorf("catalog custom skill %q: %w", skill.ID, err)
+		}
+		customIDs[id] = struct{}{}
 	}
 	slices.SortFunc(specs, func(a, b ir.AssetSpec) int { return strings.Compare(string(a.ID), string(b.ID)) })
 	catalog := ir.AssetCatalog{SchemaVersion: ir.AssetCatalogSchema.Current, Assets: specs}
