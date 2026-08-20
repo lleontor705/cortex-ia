@@ -103,36 +103,37 @@ TRANSPORT IDS: Follow the active MCP tool schema. Local observation and graph ID
 
 ### WHEN TO SAVE (mandatory — not optional)
 
-Call \`cortex_save\` IMMEDIATELY after any of these:
-- Bug fix completed
-- Architecture or design decision made
-- Non-obvious discovery about the codebase
-- Configuration change or environment setup
-- Pattern established (naming, structure, convention)
-- User preference or constraint learned
+Call `cortex_save` IMMEDIATELY after any of these:
+1. **Architecture & ADRs** (`type: decision | architecture`, `topic_key: architecture/<module>`): Choices of libraries, design patterns, state management, DB engines and discarded alternatives.
+2. **Gotchas & Quirks** (`type: discovery`, `topic_key: gotchas/<issue>`): Non-obvious edge cases, OS/PowerShell traps, tricky framework quirks, race conditions.
+3. **Project DNA & Stack** (`type: config`, `topic_key: dna/<project>`): Test runner commands, linters, folder conventions, runtime versions.
+4. **Domain & Business Rules** (`type: architecture`, `topic_key: domain/<entity>`): Meaning of data models, lifecycle states, business invariants.
+5. **Bug Fixes & Root Cause** (`type: bugfix`, `topic_key: bugfix/<issue>`): Root cause of fixed bugs and why the fix works.
+6. **Hotfix & Tech Debt** (`type: bugfix`, `topic_key: hotfix/<incident>`): Emergency containment and pending structural refactorings.
+7. **User Preferences** (`type: preference`, `scope: personal`): User's preferred language, tooling, formatting, or working style.
 
-Format for \`cortex_save\`:
-- **title**: Verb + what — short, searchable (e.g. "Fixed N+1 query in UserList")
-- **type**: bugfix | decision | architecture | discovery | pattern | config | learning
-- **scope**: \`project\` (default) | \`personal\`
-- **topic_key** (optional, recommended): stable key like \`architecture/auth-model\`
+Format for `cortex_save`:
+- **title**: Verb + what — short, searchable (e.g. "Chose SQLite WAL over Postgres for local Cortex")
+- **type**: bugfix | decision | architecture | discovery | pattern | config | preference
+- **scope**: `project` (default) | `personal`
+- **topic_key** (recommended for evolving topics): stable key like `architecture/auth-model`
 - **content**:
   **What**: One sentence — what was done
-  **Why**: What motivated it
+  **Why**: What motivated it (user request, bug, performance, etc.)
   **Where**: Files or paths affected
-  **Learned**: Gotchas, edge cases (omit if none)
+  **Learned**: Gotchas, edge cases, things that surprised you (omit if none)
 
 Topic rules:
-- Different topics must not overwrite each other
-- Reuse the same \`topic_key\` to update an evolving topic (upsert)
-- If unsure about the key, call \`cortex_suggest_topic_key\` first
-- Use \`cortex_update\` when you have an exact observation ID to correct
+- Different topics must not overwrite each other (e.g. architecture vs bugfix)
+- Reuse the same `topic_key` to update an evolving topic (upsert)
+- If unsure about the key, call `cortex_suggest_topic_key` first
+- Use `cortex_update` when you have an exact observation ID to correct
 
-### KNOWLEDGE GRAPH
-After saving related observations, use \`cortex_relate\` to connect them:
-- references, relates_to, follows, supersedes, contradicts
-Use \`cortex_graph\` to explore connections from any observation.
-Use \`cortex_score\` to check/recalculate observation importance.
+### KNOWLEDGE GRAPH & RELATIONSHIPS
+After saving related observations, use `cortex_relate` to connect them:
+- `references`, `relates_to`, `follows`, `supersedes`, `contradicts`
+Use `cortex_graph` to explore connections from any observation.
+Use `cortex_score` to check/recalculate observation importance.
 
 ### SEARCH & RETRIEVAL
 
@@ -469,6 +470,7 @@ export const Cortex: Plugin = async (ctx) => {
   const toolCounts = new Map<string, number>()
   const knownSessions = new Set<string>()
   const subAgentSessions = new Set<string>()
+  const lastNudgeTime = new Map<string, number>()
 
   type SessionEnsureResult = {
     confirmed: boolean
@@ -557,6 +559,7 @@ export const Cortex: Plugin = async (ctx) => {
           toolCounts.delete(sessionId)
           knownSessions.delete(sessionId)
           subAgentSessions.delete(sessionId)
+          lastNudgeTime.delete(sessionId)
         }
       }
     },
@@ -655,12 +658,46 @@ export const Cortex: Plugin = async (ctx) => {
 
     // ─── System Prompt: Always-on memory instructions ──────────
 
-    "experimental.chat.system.transform": async (_input, output) => {
+    "experimental.chat.system.transform": async (input, output) => {
       if (output.system.length > 0) {
         output.system[output.system.length - 1] += "\n\n" + MEMORY_INSTRUCTIONS
       } else {
         output.system.push(MEMORY_INSTRUCTIONS)
       }
+
+      // Save nudge: remind agent if it has been working without saving memories for > 15 minutes
+      try {
+        const sessionId: string = input.sessionID ?? ""
+        if (!sessionId || subAgentSessions.has(sessionId)) return
+
+        const nowSecs = Math.floor(Date.now() / 1000)
+        const lastNudge = lastNudgeTime.get(sessionId)
+        if (lastNudge !== undefined && nowSecs - lastNudge < 900) return
+
+        if (CORTEX_HTTP_TOKEN) {
+          const res = await request(
+            `/api/observations?project=${encodeURIComponent(project)}&limit=1&sort=created_at:desc`
+          )
+          if (res.ok && Array.isArray(res.body) && res.body.length > 0) {
+            const createdAt: string = (res.body[0] as any)?.created_at ?? ""
+            if (createdAt) {
+              const normalized = createdAt.includes("T") ? createdAt : createdAt.replace(" ", "T") + "Z"
+              const lastObsEpoch = Math.floor(new Date(normalized).getTime() / 1000)
+              if (!Number.isNaN(lastObsEpoch) && lastObsEpoch > 0 && nowSecs - lastObsEpoch >= 900) {
+                const nudge =
+                  "\n\nMEMORY REMINDER: It has been over 15 minutes since your last Cortex memory save. " +
+                  "If you have made decisions, solved bugs, found gotchas, or established conventions, call cortex_save now."
+                if (output.system.length > 0) {
+                  output.system[output.system.length - 1] += nudge
+                } else {
+                  output.system.push(nudge)
+                }
+                lastNudgeTime.set(sessionId, nowSecs)
+              }
+            }
+          }
+        }
+      } catch {}
     },
 
     // ─── Compaction Hook ──────────────────────────────────────────

@@ -2,103 +2,79 @@
 
 ← [Codebase Guide](../CODEBASE-GUIDE.md)
 
-The interactive Bubbletea dashboard that powers `cortex-ia` with no arguments. This page covers the TUI architecture, screen router, and dependency-injection patterns — it does not cover the CLI subcommand dispatch (see [repository-map.md](repository-map.md)) or the pipeline internals (see [mental-model.md](mental-model.md)).
-
-## Scope Boundary
-
-| Concern | Covered here | Not covered |
-|---------|-------------|-------------|
-| Bubbletea Model-Update-View architecture | ✅ | — |
-| Screen router & welcome hub groups | ✅ | — |
-| Progress channel pattern | ✅ | — |
-| Dependency-injected callbacks | ✅ | — |
-| CLI subcommand dispatch | — | [repository-map.md](repository-map.md) |
-| Pipeline execution internals | — | [mental-model.md](mental-model.md) |
-
-## Architecture
-
-`internal/tui/` implements the Elm Architecture (Bubbletea's Model-Update-View):
-
-| Phase | Role | Key Method |
-|-------|------|-----------|
-| **Model** | Immutable state struct; holds current screen, selection, progress, errors. | `Model` struct in `tui.go` |
-| **Update** | Handles `tea.Msg`, transitions screens, processes progress events. | `Update(msg) (Model, tea.Cmd)` |
-| **View** | Renders the current screen via lipgloss styles. | `View() string` |
-
-The TUI is launched from `internal/app/` when `cortex-ia` is invoked with no subcommand.
-
-## Screen Router
-
-| Component | Package | Purpose |
-|-----------|---------|---------|
-| Root model | `internal/tui/tui.go` | Holds active screen, routes messages, manages lifecycle. |
-| Screens | `internal/tui/screens/` | Individual screen implementations (28 screens). |
-| Styles | `internal/tui/styles/` | Colors, padding, layout via lipgloss. `theme.go` centralizes palette. |
-| Welcome hub | `internal/tui/screens/` | Landing menu grouping actions into SETUP / CUSTOMIZE / MAINTAIN. |
-
-### Welcome Hub Groups
-
-| Group | Actions | Trigger |
-|-------|---------|---------|
-| **SETUP** | Detect agents, install agents, select components, apply preset | First-run onboarding |
-| **CUSTOMIZE** | Toggle components, select persona, configure model assignments, manage skills, manage profiles | Ongoing configuration |
-| **MAINTAIN** | Verify/doctor, repair, rollback, uninstall, update, sync | Ongoing maintenance |
-
-## Dependency Injection
-
-The TUI does **not** import the pipeline directly. Operations are injected as function-typed fields, enabling testability and decoupling.
-
-| Callback Type | Purpose | Real impl |
-|--------------|---------|-----------|
-| `ExecuteFn` | Run a full install/sync from a `Selection`. | `pipeline.Install` |
-| `SyncFn` | Reconcile drift from saved state. | `pipeline.SelectionFromState → Install` |
-| `RestoreFn` | Roll back to a backup snapshot. | `backup.RestoreService.Restore` |
-
-| Benefit | Detail |
-|---------|--------|
-| Testability | Tests inject mock callbacks; no real filesystem mutation needed. |
-| Decoupling | `internal/tui` has no import dependency on `internal/pipeline`. |
-| Configurability | The CLI layer (`internal/app`) wires real implementations; the TUI is agnostic. |
-
-## Progress Channel
-
-Long-running operations (install, sync, restore) report progress through a Go channel consumed by the TUI's `Update` loop.
-
-```
-ExecuteFn(selection) → progressCh ← TUI Update() polls via tea.Tick
-                        ↓
-              tea.Msg (progress update) → View() re-renders progress bar
-```
-
-| Aspect | Detail |
-|--------|--------|
-| Channel type | `chan ProgressEvent` (or equivalent struct msg) |
-| Consumer | TUI `Update` loop via `tea.Tick` / `tea.Cmd` |
-| Rendering | Progress bar + current step label via lipgloss |
-| Completion | Close channel → final status msg → return to hub or error screen |
-
-### Progress Invariants
-
-- The TUI never blocks on a synchronous pipeline call — work happens in a goroutine.
-- Progress events carry a human-readable label for the current step.
-- Errors surface as a dedicated message type, not a panic.
-
-## Invariants
-
-- `internal/tui/` has zero direct imports of `internal/pipeline` — all pipeline access is via injected callbacks.
-- The root `Model` is immutable; `Update` returns a new `Model`, never mutates in place.
-- All 28 screens live under `internal/tui/screens/`; the root model dispatches by screen enum.
-- Styles are centralized in `internal/tui/styles/theme.go`; screens do not hardcode colors.
-
-## Contributor Checklist
-
-- [ ] Adding a screen? Create it in `internal/tui/screens/`, add the screen enum value, wire it into the router's `Update`/`View` dispatch.
-- [ ] Adding a welcome hub action? Place it in the correct group (SETUP / CUSTOMIZE / MAINTAIN) and add a navigation entry.
-- [ ] Adding a new operation type? Define a new `*Fn` callback field on the Model, inject the real impl from `internal/app`, do not import pipeline in tui.
-- [ ] Changing colors or layout? Edit `internal/tui/styles/theme.go` only — do not scatter styles across screens.
-- [ ] Long-running work? Report progress through the channel pattern; never block `Update` synchronously.
-- [ ] Test TUI logic with injected mock callbacks — do not spin up a real install in unit tests.
+The interactive Bubble Tea terminal user interface (TUI) powers `cortex-ia` when executed with no arguments. This page covers the Elm-based Model-Update-View architecture, screen states, `ServiceAPI` contract, and confirmation overlays.
 
 ---
 
-← Prev: [Sync, State & Backup](sync-and-cloud.md) · Next: [Integrations](integrations.md) →
+## 1. Architecture Overview
+
+`internal/tui/` implements the Elm architecture via [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss):
+
+| Phase | Role | Key Method |
+| :--- | :--- | :--- |
+| **Model** | Holds immutable state: active screen, cursor, MCP selection, plan effects, result receipts, confirm modal. | `model` in `model.go` |
+| **Update** | Handles keyboard messages (`tea.KeyMsg`), tick spinner frames, async operation messages (`tea.Cmd`). | `Update(msg) (tea.Model, tea.Cmd)` |
+| **View** | Renders styled ASCII banner, cards, timelines, badges, and modals. | `View() string` |
+
+---
+
+## 2. Five-Screen Workflow
+
+The TUI is strictly organized around 5 conceptual screens with a global destructive-action confirmation overlay:
+
+```text
+[ Home Dashboard ]
+  ├── 1. Install / Sync  ──▶ [ Review Plan & MCPs ] ──▶ (Confirm Overwrite?) ──▶ [ Running Pipeline ] ──▶ [ Result Receipt ]
+  ├── 2. Manage MCPs     ──▶ [ MCP Manager Screen ] ──▶ (Confirm Remove?)    ──▶ [ Running Pipeline ] ──▶ [ Result Receipt ]
+  ├── 3. Doctor / Health ──▶ [ Running Pipeline ]   ──▶ [ Result Receipt ]
+  ├── 4. Uninstall       ──▶ (Confirm Modal)        ──▶ [ Running Pipeline ] ──▶ [ Result Receipt ]
+  └── 5. Quit
+```
+
+### Screen Details
+
+1. **`screenHome`**: Landing dashboard with stylized ASCII logo banner, OpenCode status indicator, numbered menu options (`1-5`), and direct hotkey navigation.
+2. **`screenReview`**: Reactive plan inspector. Displays MCP toggles (`[x] cortex`, `[x] forgespec`, `[ ] context7`) with live re-planning, categorized operation badges (+Create, ⚡Merge, ↻Update), and overwrite warning toggle (`[ o ]`).
+3. **`screenRunning`**: Asynchronous execution timeline with high-framerate dot spinner (`⠋ ⠙ ⠹ ...`) and numbered stage progression (`Plan` → `Backup` → `Apply` → `Verify` → `Commit`).
+4. **`screenResult`**: Comprehensive receipt card with `PASS`/`FAIL` Hero badge, changed artifact count, verified backup ID, detailed scrollable log, and one-key rollback trigger (`[ r ]`).
+5. **`screenMCP`**: Interactive MCP catalog table with accreditation badges (`managed`, `absent`, `conflict`) and single-key add/remove toggling (`space`/`enter`).
+
+---
+
+## 3. Service Decoupling (`ServiceAPI`)
+
+The TUI consumes `internal/install.Service` exclusively through the typed `ServiceAPI` interface:
+
+```go
+type ServiceAPI interface {
+    Plan(opts install.Options) (*pipeline.Plan, error)
+    Install(opts install.Options) (*install.InstallReceipt, error)
+    Sync(opts install.Options) (*install.InstallReceipt, error)
+    Doctor() (*install.DoctorReport, error)
+    Rollback(backupID string) (*install.RollbackReceipt, error)
+    Uninstall(opts install.UninstallOptions) (*install.UninstallReceipt, error)
+    MCPList() (*install.MCPListReport, error)
+    MCPAdd(name string, opts install.MCPOptions) (*install.MCPReceipt, error)
+    MCPRemove(name string, opts install.MCPOptions) (*install.MCPReceipt, error)
+}
+```
+
+- **Test Isolation**: Unit tests run against `fakeService` with zero filesystem side effects.
+- **Strict Separation**: The TUI owns no copy, merge, or hash logic; it acts purely as an interactive controller.
+
+---
+
+## 4. Confirmation Modals (`confirmOverlay`)
+
+Destructive operations (`--overwrite`, `uninstall`, `mcp remove`, `rollback`) are guarded by an explicit modal overlay:
+- Rendered as an amber-bordered floating dialog.
+- Requires explicit `y` keystroke to proceed; `n` or `esc` cancels immediately.
+- Reassures users that a verified backup snapshot is always created prior to any mutation.
+
+---
+
+## 5. Styling and Responsiveness
+
+- Centralized in `internal/tui/styles/theme.go` with unified palette (Primary Violet `#7C3AED`, Secondary Cyan `#06B6D4`, Success Green `#22C55E`, Warning Amber `#F59E0B`, Error Red `#EF4444`).
+- **Responsive Clamping**: `clampScreen` dynamically adapts header, content, and footer to terminal heights down to 16 rows.
+

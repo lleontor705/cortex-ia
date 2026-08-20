@@ -9,11 +9,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
-
-	sddinstall "github.com/lleontor705/cortex-ia/internal/components/sdd/install"
 )
 
 // TargetKind describes the only target classes a journal is allowed to own.
@@ -46,6 +45,17 @@ const (
 )
 
 var ErrJournalConflict = errors.New("install journal restore conflict")
+
+// caseInsensitiveJournalPaths mirrors the platform path-identity policy used
+// for journal targets: Windows and macOS fold case; Unix does not.
+var caseInsensitiveJournalPaths = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+
+func foldJournalKey(path string) string {
+	if caseInsensitiveJournalPaths {
+		return strings.ToLower(path)
+	}
+	return path
+}
 
 type journalCheckpointFile interface {
 	Write([]byte) (int, error)
@@ -93,20 +103,23 @@ type MutationOutcome struct {
 	Error       string      `json:"error,omitempty"`
 }
 
-// InstallJournal is the outer receipt for install writers. Workflow receipts
-// remain typed child receipts and are attached rather than translated.
+// InstallJournal is the outer receipt for install writers. Child receipts
+// are attached as opaque JSON evidence so the journal never depends on the
+// producer's package.
 type InstallJournal struct {
-	SchemaVersion    string               `json:"schema_version"`
-	ID               string               `json:"id"`
-	State            JournalState         `json:"state"`
-	Entries          []PathPreimage       `json:"entries"`
-	Targets          []ManagedTarget      `json:"targets"`
-	Outcomes         []MutationOutcome    `json:"outcomes"`
-	WorkflowReceipts []sddinstall.Receipt `json:"workflow_receipts,omitempty"`
-	CreatedDirs      []string             `json:"created_dirs,omitempty"`
-	PrimaryError     string               `json:"primary_error,omitempty"`
-	TargetRoot       string               `json:"target_root"`
-	CheckpointPath   string               `json:"-"`
+	SchemaVersion string            `json:"schema_version"`
+	ID            string            `json:"id"`
+	State         JournalState      `json:"state"`
+	Entries       []PathPreimage    `json:"entries"`
+	Targets       []ManagedTarget   `json:"targets"`
+	Outcomes      []MutationOutcome `json:"outcomes"`
+	// ChildReceipts preserves typed producer receipts as raw JSON without
+	// coupling the journal to the producer package.
+	ChildReceipts  []json.RawMessage `json:"child_receipts,omitempty"`
+	CreatedDirs    []string          `json:"created_dirs,omitempty"`
+	PrimaryError   string            `json:"primary_error,omitempty"`
+	TargetRoot     string            `json:"target_root"`
+	CheckpointPath string            `json:"-"`
 }
 
 // BeginInstallJournal captures and durably checkpoints every declared target
@@ -136,6 +149,7 @@ func BeginInstallJournal(targetRoot, checkpointRoot string, targets []ManagedTar
 	}
 	journal := &InstallJournal{SchemaVersion: "1.0.0", ID: id, State: JournalPrepared, TargetRoot: root, CheckpointPath: filepath.Join(dir, "journal.json")}
 	seen := make(map[string]TargetKind, len(targets))
+	seenFold := make(map[string]bool, len(targets))
 	for _, target := range targets {
 		path, err := journalPath(root, target.Path)
 		if err != nil {
@@ -150,7 +164,11 @@ func BeginInstallJournal(targetRoot, checkpointRoot string, targets []ManagedTar
 			}
 			return nil, fmt.Errorf("journal target %q is declared more than once", target.Path)
 		}
+		if seenFold[foldJournalKey(target.Path)] {
+			return nil, fmt.Errorf("journal target %q is a case alias of another target", target.Path)
+		}
 		seen[target.Path] = target.Kind
+		seenFold[foldJournalKey(target.Path)] = true
 		journal.Targets = append(journal.Targets, target)
 		entry, err := capturePreimage(path, target.Path, target.Kind, filepath.Join(dir, "snapshots"))
 		if err != nil {
@@ -159,19 +177,26 @@ func BeginInstallJournal(targetRoot, checkpointRoot string, targets []ManagedTar
 		journal.Entries = append(journal.Entries, entry)
 	}
 	sort.Slice(journal.Entries, func(i, k int) bool { return journal.Entries[i].Path < journal.Entries[k].Path })
+	if err := journal.validate(); err != nil {
+		return nil, err
+	}
 	if err := journal.checkpoint(); err != nil {
 		return nil, err
 	}
 	return journal, nil
 }
 
-// AttachWorkflowReceipt composes a child receipt without altering its typed
-// recovery contract.
-func (j *InstallJournal) AttachWorkflowReceipt(receipt sddinstall.Receipt) error {
+// AttachReceipt composes a child receipt as opaque JSON evidence without
+// altering its typed recovery contract in the producer.
+func (j *InstallJournal) AttachReceipt(receipt any) error {
 	if j == nil {
 		return errors.New("nil install journal")
 	}
-	j.WorkflowReceipts = append(j.WorkflowReceipts, receipt)
+	encoded, err := json.Marshal(receipt)
+	if err != nil {
+		return fmt.Errorf("encode child receipt: %w", err)
+	}
+	j.ChildReceipts = append(j.ChildReceipts, encoded)
 	return j.checkpoint()
 }
 
@@ -237,7 +262,18 @@ func (j *InstallJournal) RestoreAndVerify() error {
 	if j == nil {
 		return errors.New("nil install journal")
 	}
+	if err := j.validate(); err != nil {
+		// Fail closed before any state transition, checkpoint write, or
+		// inverse mutation: a foreign or corrupt journal never mutates.
+		return err
+	}
 	if err := j.preflightInverse(); err != nil {
+		j.State = JournalFailed
+		j.PrimaryError = err.Error()
+		_ = j.checkpoint()
+		return err
+	}
+	if err := j.preflightSnapshots(); err != nil {
 		j.State = JournalFailed
 		j.PrimaryError = err.Error()
 		_ = j.checkpoint()
@@ -322,7 +358,7 @@ func (j *InstallJournal) restore(entry PathPreimage) error {
 			return fmt.Errorf("restore directory mode %q: %w", entry.Path, err)
 		}
 	case PresenceRegularFile:
-		content, err := os.ReadFile(entry.SnapshotPath)
+		content, err := j.consumeSnapshot(entry)
 		if err != nil {
 			return fmt.Errorf("read journal snapshot for %q: %w", entry.Path, err)
 		}
@@ -343,6 +379,89 @@ func (j *InstallJournal) restore(entry PathPreimage) error {
 		}
 	default:
 		return fmt.Errorf("restore target %q has unknown presence", entry.Path)
+	}
+	return nil
+}
+
+func (j *InstallJournal) preflightSnapshots() error {
+	if j == nil {
+		return errors.New("nil install journal")
+	}
+	checkpointDir := filepath.Dir(j.CheckpointPath)
+	for _, entry := range j.Entries {
+		if err := j.validateSnapshot(entry, checkpointDir, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (j *InstallJournal) consumeSnapshot(entry PathPreimage) ([]byte, error) {
+	checkpointDir := filepath.Dir(j.CheckpointPath)
+	if err := j.validateSnapshot(entry, checkpointDir, true); err != nil {
+		return nil, err
+	}
+	content, err := os.ReadFile(entry.SnapshotPath)
+	if err != nil {
+		return nil, fmt.Errorf("read snapshot %q: %w", entry.Path, err)
+	}
+	if entry.Size >= 0 && int64(len(content)) != entry.Size {
+		return nil, fmt.Errorf("snapshot %q changed size between validation and consume", entry.Path)
+	}
+	if digest := journalSHA256(content); digest != entry.SHA256 {
+		return nil, fmt.Errorf("snapshot %q changed hash between validation and consume", entry.Path)
+	}
+	return content, nil
+}
+
+func (j *InstallJournal) validateSnapshot(entry PathPreimage, checkpointDir string, enforceContent bool) error {
+	if entry.Presence != PresenceRegularFile {
+		if entry.SnapshotPath != "" {
+			return fmt.Errorf("journal entry %q stores a snapshot for a non-regular target", entry.Path)
+		}
+		return nil
+	}
+	if entry.SnapshotPath == "" {
+		return fmt.Errorf("journal entry %q is missing a snapshot path", entry.Path)
+	}
+	if err := journalContainedPath(checkpointDir, entry.SnapshotPath); err != nil {
+		return fmt.Errorf("journal snapshot %q: %w", entry.Path, err)
+	}
+	if err := rejectJournalSymlinkComponents(checkpointDir, entry.SnapshotPath); err != nil {
+		return err
+	}
+	before, err := os.Lstat(entry.SnapshotPath)
+	if err != nil {
+		return fmt.Errorf("inspect journal snapshot %q: %w", entry.Path, err)
+	}
+	if before.Mode()&os.ModeSymlink != 0 || before.Mode()&os.ModeIrregular != 0 {
+		return fmt.Errorf("journal snapshot %q is a symlink/reparse point", entry.Path)
+	}
+	if !before.Mode().IsRegular() {
+		return fmt.Errorf("journal snapshot %q is not a regular file", entry.Path)
+	}
+	if before.Size() != entry.Size {
+		return fmt.Errorf("journal snapshot %q size does not match preimage", entry.Path)
+	}
+	if !enforceContent {
+		return nil
+	}
+	content, err := os.ReadFile(entry.SnapshotPath)
+	if err != nil {
+		return fmt.Errorf("read journal snapshot %q: %w", entry.Path, err)
+	}
+	after, err := os.Lstat(entry.SnapshotPath)
+	if err != nil {
+		return fmt.Errorf("reinspect journal snapshot %q: %w", entry.Path, err)
+	}
+	if snapshotIdentity(before) != snapshotIdentity(after) {
+		return fmt.Errorf("journal snapshot %q was replaced between validation and consume", entry.Path)
+	}
+	if journalSHA256(content) != entry.SHA256 {
+		return fmt.Errorf("journal snapshot %q hash mismatch", entry.Path)
+	}
+	if int64(len(content)) != entry.Size {
+		return fmt.Errorf("journal snapshot %q content size does not match preimage", entry.Path)
 	}
 	return nil
 }
@@ -380,6 +499,148 @@ func (j *InstallJournal) targetKind(path string) (TargetKind, bool) {
 	return 0, false
 }
 
+// validate proves the in-memory journal obeys its fail-closed contract:
+// known schema and state, captured preimages for relative targets free of
+// escape and Windows alias vectors, snapshots contained in the checkpoint
+// directory, no exact or case-folded duplicates, and well-formed evidence.
+// It never writes.
+func (j *InstallJournal) validate() error {
+	if j == nil {
+		return errors.New("nil install journal")
+	}
+	if j.SchemaVersion != "1.0.0" || j.ID == "" || j.TargetRoot == "" {
+		return errors.New("invalid install journal checkpoint")
+	}
+	switch j.State {
+	case JournalPrepared, JournalApplying, JournalCommitted, JournalFailed, JournalRestoring, JournalRestored:
+	default:
+		return fmt.Errorf("install journal %q has unknown state %q", j.ID, j.State)
+	}
+	if len(j.Entries) == 0 {
+		return errors.New("install journal has no preimages")
+	}
+	if j.CheckpointPath == "" {
+		return errors.New("install journal has no checkpoint path")
+	}
+	checkpointDir := filepath.Dir(j.CheckpointPath)
+	seenFold := make(map[string]bool, len(j.Entries))
+	for _, entry := range j.Entries {
+		if _, err := journalPath(j.TargetRoot, entry.Path); err != nil {
+			return err
+		}
+		if err := validateImage(entry.Path, entry.Presence, entry.Mode, entry.Size, entry.SHA256); err != nil {
+			return err
+		}
+		if entry.Presence == PresenceRegularFile {
+			if entry.SnapshotPath == "" {
+				return fmt.Errorf("journal entry %q lacks a snapshot", entry.Path)
+			}
+			if err := journalContainedPath(checkpointDir, entry.SnapshotPath); err != nil {
+				return fmt.Errorf("journal entry %q: %w", entry.Path, err)
+			}
+		} else if entry.SnapshotPath != "" {
+			return fmt.Errorf("journal entry %q records a snapshot without a regular file", entry.Path)
+		}
+		if seenFold[foldJournalKey(entry.Path)] {
+			return fmt.Errorf("journal entry %q is a duplicate or case alias of another entry", entry.Path)
+		}
+		seenFold[foldJournalKey(entry.Path)] = true
+	}
+	for _, target := range j.Targets {
+		if _, err := journalPath(j.TargetRoot, target.Path); err != nil {
+			return err
+		}
+		if target.Kind != TargetFile && target.Kind != TargetDirectory {
+			return fmt.Errorf("journal target %q has unknown kind", target.Path)
+		}
+		if !j.declared(target.Path) {
+			return fmt.Errorf("journal target %q has no captured preimage", target.Path)
+		}
+	}
+	for _, outcome := range j.Outcomes {
+		if _, err := journalPath(j.TargetRoot, outcome.Path); err != nil {
+			return err
+		}
+		if !j.declared(outcome.Path) {
+			return fmt.Errorf("journal outcome %q was not declared", outcome.Path)
+		}
+		if err := validateImage(outcome.Path, outcome.Presence, outcome.Mode, outcome.Size, outcome.SHA256); err != nil {
+			return err
+		}
+		for i := range outcome.CreatedDirs {
+			if _, err := journalPath(j.TargetRoot, outcome.CreatedDirs[i]); err != nil {
+				return fmt.Errorf("journal created directory: %w", err)
+			}
+		}
+	}
+	for _, dir := range j.CreatedDirs {
+		if _, err := journalPath(j.TargetRoot, dir); err != nil {
+			return fmt.Errorf("journal created directory: %w", err)
+		}
+	}
+	return nil
+}
+
+// JournalPending reports whether a journal state describes an incomplete
+// transaction that recovery may act on: prepared, applying, restoring, or
+// failed (a failed reverse restoration is retained for a safe retry).
+// Committed and restored journals are terminal and never recovery
+// candidates.
+func JournalPending(state JournalState) bool {
+	switch state {
+	case JournalPrepared, JournalApplying, JournalRestoring, JournalFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// DiscoverJournals enumerates every retained journal checkpoint beneath
+// backupsRoot, whose canonical layout is
+// <backupsRoot>/<backupID>/journal/<journalID>/journal.json. Results are
+// sorted by checkpoint path so listings are deterministic. A missing or
+// empty root yields an empty set; only directories that actually hold a
+// journal.json checkpoint are returned. Discovery is structural only:
+// interpretation, validation, and recovery stay with LoadInstallJournal.
+func DiscoverJournals(backupsRoot string) ([]string, error) {
+	backups, err := os.ReadDir(backupsRoot)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("discover install journals: read %q: %w", backupsRoot, err)
+	}
+	checkpoints := make([]string, 0, len(backups))
+	for _, backup := range backups {
+		if !backup.IsDir() {
+			continue
+		}
+		journalRoot := filepath.Join(backupsRoot, backup.Name(), "journal")
+		journals, err := os.ReadDir(journalRoot)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("discover install journals: read %q: %w", journalRoot, err)
+		}
+		for _, journalDir := range journals {
+			if !journalDir.IsDir() {
+				continue
+			}
+			checkpoint := filepath.Join(journalRoot, journalDir.Name(), "journal.json")
+			if _, err := os.Lstat(checkpoint); err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					continue
+				}
+				return nil, fmt.Errorf("discover install journals: inspect %q: %w", checkpoint, err)
+			}
+			checkpoints = append(checkpoints, checkpoint)
+		}
+	}
+	sort.Strings(checkpoints)
+	return checkpoints, nil
+}
+
 // LoadInstallJournal opens retained recovery evidence for a safe retry. The
 // checkpoint location is supplied by the caller; it is never derived from an
 // untrusted journal ID.
@@ -400,10 +661,8 @@ func LoadInstallJournal(checkpointPath string) (*InstallJournal, error) {
 		return nil, fmt.Errorf("resolve journal target root: %w", err)
 	}
 	journal.TargetRoot, journal.CheckpointPath = root, checkpointPath
-	for _, entry := range journal.Entries {
-		if _, err := journalPath(root, entry.Path); err != nil {
-			return nil, err
-		}
+	if err := journal.validate(); err != nil {
+		return nil, err
 	}
 	return &journal, nil
 }
@@ -415,6 +674,18 @@ func (j *InstallJournal) outcome(path string) (MutationOutcome, bool) {
 		}
 	}
 	return MutationOutcome{}, false
+}
+
+// InspectOutcome reports the current verified image of one declared target
+// relative to root, using the journal's own inspection semantics (symlink,
+// escape, and type checks included). Service-level transactions reuse it so
+// recorded postimages obey exactly the journal's fail-closed contract.
+func InspectOutcome(root, rel string) (MutationOutcome, error) {
+	path, err := journalPath(root, rel)
+	if err != nil {
+		return MutationOutcome{}, err
+	}
+	return inspectPath(path, rel)
 }
 
 func (j *InstallJournal) checkpoint() error {
@@ -486,6 +757,9 @@ func inspectPath(path, display string) (MutationOutcome, error) {
 	if err != nil {
 		return MutationOutcome{}, fmt.Errorf("inspect journal target %q: %w", display, err)
 	}
+	if info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeIrregular != 0 {
+		return MutationOutcome{}, fmt.Errorf("journal target %q is a symlink/reparse point", display)
+	}
 	if info.IsDir() {
 		return MutationOutcome{Path: display, Presence: PresenceDirectory, Mode: info.Mode().Perm()}, nil
 	}
@@ -532,6 +806,11 @@ func journalPath(root, path string) (string, error) {
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("journal target %q escapes its root", path)
 	}
+	for _, component := range strings.Split(clean, string(filepath.Separator)) {
+		if err := validateJournalComponent(component, path); err != nil {
+			return "", err
+		}
+	}
 	full := filepath.Join(root, clean)
 	rel, err := filepath.Rel(root, full)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -573,9 +852,54 @@ func rejectJournalSymlinkComponents(root, target string) error {
 	return nil
 }
 
+func validateJournalComponent(component, display string) error {
+	if component == "" || component == "." || component == ".." {
+		return nil // separators and traversal markers handled by the caller
+	}
+	if strings.ContainsRune(component, ':') {
+		return fmt.Errorf("journal target %q contains an alternate-data-stream colon", display)
+	}
+	if component != strings.TrimRight(component, ". ") {
+		return fmt.Errorf("journal target %q contains a trailing dot or space", display)
+	}
+	if isJournalReservedDeviceName(component) {
+		return fmt.Errorf("journal target %q contains a reserved device name", display)
+	}
+	return nil
+}
+
+func isJournalReservedDeviceName(component string) bool {
+	name := strings.ToUpper(component)
+	if dot := strings.IndexByte(name, '.'); dot >= 0 {
+		name = name[:dot]
+	}
+	switch name {
+	case "CON", "PRN", "AUX", "NUL":
+		return true
+	}
+	if len(name) == 4 {
+		if (strings.HasPrefix(name, "COM") || strings.HasPrefix(name, "LPT")) && name[3] >= '1' && name[3] <= '9' {
+			return true
+		}
+	}
+	return false
+}
+
+func journalContainedPath(root, candidate string) error {
+	rel, err := filepath.Rel(root, candidate)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("path %q escapes %q", candidate, root)
+	}
+	return nil
+}
+
 func journalSHA256(content []byte) string {
 	sum := sha256.Sum256(content)
 	return hex.EncodeToString(sum[:])
+}
+
+func snapshotIdentity(info os.FileInfo) string {
+	return fmt.Sprintf("mode=%s size=%d modtime=%d", info.Mode(), info.Size(), info.ModTime().UnixNano())
 }
 
 func uniqueSorted(values []string) []string {

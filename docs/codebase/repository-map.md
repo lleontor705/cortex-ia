@@ -2,137 +2,88 @@
 
 ← [Codebase Guide](../CODEBASE-GUIDE.md)
 
-Directory-by-directory map of the cortex-ia codebase. This page is a navigational index of where things live and what owns them — it does not explain how to extend the system (see [mental-model.md](mental-model.md)) or list Go contracts (see [interfaces.md](interfaces.md)).
+Directory-by-directory map of the active `cortex-ia` codebase.
 
-## Top-Level
+---
 
-| Path | Purpose | Key Files |
-|------|---------|-----------|
-| `cmd/cortex-ia/` | Entry point. ldflags version injection. | `main.go` |
-| `go.mod` | Module `github.com/lleontor705/cortex-ia`, Go 1.26.1. Deps: bubbletea, bubbles, lipgloss, yaml.v3. | — |
-
-## internal/app
+## 1. Top-Level Entry Points
 
 | Path | Purpose | Key Files |
-|------|---------|-----------|
-| `internal/app/` | CLI dispatch + TUI launch. Routes subcommands to handlers. | `app.go`, `version.go` |
+| :--- | :--- | :--- |
+| `cmd/cortex-ia/` | Application entry point with version injection via `-ldflags`. | `main.go` |
+| `go.mod` | Module `github.com/lleontor705/cortex-ia`, Go 1.26.1+. | — |
 
-CLI subcommands: `install`, `sync`, `detect`, `doctor`/`verify`, `repair`, `rollback`, `uninstall`, `profiles`, `agent-builder`, `update`, `config`, `list`, `init`, `skill`, `auto-install`.
+---
 
-## internal/model
+## 2. Core Architecture Packages
 
-| Path | Purpose | Key Files |
-|------|---------|-----------|
-| `internal/model/` | Core type definitions shared across all packages. | `types.go`, `selection.go` |
+### `internal/app`
+- **Role**: Command-line dispatcher, intent parsing, receipt rendering, and retired surface fail-closed guard.
+- **Key Files**: `app.go`, `cli.go`, `version.go`.
+- **Command Surface**: `install`, `sync`, `mcp`, `doctor`, `rollback`, `recover`, `uninstall`, `version`, `help`.
 
-Defines: `AgentID`, `ComponentID`, `SkillID`, `MCPStrategy`, `SystemPromptStrategy`, `PresetID`, `PersonaID`, `ModelAssignments`, `OpenCodeModel` types.
+### `internal/tui` & `internal/tui/styles`
+- **Role**: Bubble Tea interactive terminal user interface (5 screens).
+- **Key Files**: `tui.go`, `model.go`, `views.go`, `actions.go`, `styles/theme.go`.
+- **Screens**: `Home`, `Review`, `Running`, `Result`, `MCP Manager`.
 
-## internal/agents
+### `internal/install`
+- **Role**: High-level service facade orchestrating all install, sync, doctor, rollback, uninstall, and MCP operations.
+- **Key Files**: `service.go`, `receipt.go`, `doctor.go`, `mcp.go`, `rollback.go`, `uninstall.go`, `txn.go`.
 
-| Path | Purpose | Key Files |
-|------|---------|-----------|
-| `internal/agents/` | Adapter interface + registry + per-agent implementations. | `interface.go`, `registry.go`, `factory.go`, `errors.go` |
-| `internal/agents/<name>/` | One package per agent (12 total). | `<name>/adapter.go` |
+### `internal/pipeline`
+- **Role**: Transactional copy engine: planning, backup verification, atomic apply, journaling, rollback recovery.
+- **Key Files**: `engine.go`, `plan.go`, `apply.go`, `journal.go`, `pipeline.go`.
 
-Agents: `claude-code`, `opencode`, `vscode-copilot`, `codex`. Registry preserves insertion order; `factory.go` builds the default registry.
+### `internal/mcpmanager`
+- **Role**: MCP server catalog (`cortex`, `forgespec`, `context7`), desired-entry validation, qualification, and conflict detection.
+- **Key Files**: `mcpmanager.go`, `presets.go`, `evidence.go`.
 
-## internal/catalog
+### `internal/state` & `internal/installmeta`
+- **Role**: State persistence under `~/.cortex-ia/`: metadata v2, lock agreement, semantic and postimage digests.
+- **Key Files**: `metadata_v2.go`, `lock_v2.go`, `agreement_v2.go`, `fingerprints.go`.
 
-| Path | Purpose | Key Files |
-|------|---------|-----------|
-| `internal/catalog/` | Component registry, dependency declarations, preset expansion, `ResolveDeps()` topological sort. | `components.go`, `skills.go` |
+### `internal/backup`
+- **Role**: Pre-mutation snapshots, manifests, restore verification, deduplication and retention pruning.
+- **Key Files**: `backup.go`, `manifest.go`, `restore.go`.
 
-## internal/components
+### `internal/agents/opencode`
+- **Role**: Declarative OpenCode layout rules and pure asset mapping.
+- **Key Files**: `layout.go`, `assetmap.go`.
 
-| Path | Purpose | Key Files |
-|------|---------|-----------|
-| `internal/components/mcpinject/` | Shared MCP injection engine. Per-strategy `ServerTemplates` + dispatch. | `mcpinject.go` |
-| `internal/components/filemerge/` | File-operation primitives used by all injectors. | `section.go`, `json_merge.go`, `toml.go`, `writer.go` |
-| `internal/components/cortex/` | Cortex MCP server injection (Go binary). | — |
-| `internal/components/mcpinject/removal.go` | Retired historical Mailbox registration migration only. | — |
-| `internal/components/forgespec/` | ForgeSpec MCP server injection (npm). | — |
-| `internal/components/context7/` | Context7 MCP server injection (npm/remote). | `config.go`, `inject.go` |
-| `internal/components/sdd/` | SDD workflow injection: orchestrator prompt + 19 skills + commands + sub-agents. | `inject.go` |
-| `internal/components/skills/` | Non-SDD utility skills injection (with SDD-skip logic). | `inject.go` |
-| `internal/components/conventions/` | Cortex convention + memory protocol injection. | `inject.go` |
-| `internal/components/persona/` | Communication-style persona injection. | — |
-| `internal/components/permissions/` | Permissions component. | — |
-| `internal/components/theme/` | Terminal theme component. | — |
-| `internal/components/uninstall/` | Uninstall command support. | — |
+### `internal/components/filemerge`
+- **Role**: JSONC 3-way decode/merge, atomic file writing, and comments preservation.
+- **Key Files**: `json_merge.go`, `json_file.go`.
 
-## internal/pipeline
+### `internal/assets`
+- **Role**: Embedded runtime source assets (`go:embed`).
+- **Key Files**: `assets.go`, `opencode.jsonc`, `AGENTS.md`, `agents/`, `commands/`, `skills/`, `plugin/`.
 
-| Path | Purpose | Key Files |
-|------|---------|-----------|
-| `internal/pipeline/` | 2-stage install pipeline (Prepare → Apply), parallel-chain execution, rollback. | `pipeline.go`, `runner.go`, `types.go` |
+---
 
-## internal/assets
+## 3. Supported Platforms & Future Roadmap
 
-| Path | Purpose | Key Files |
-|------|---------|-----------|
-| `internal/assets/` | `go:embed` access to all injectable content. Ships in the binary. | `assets.go` |
-| `internal/assets/skills/` | 19+ `SKILL.md` files + `_shared/` conventions. | `skills/<skill>/SKILL.md` |
-| `internal/assets/generic/` | Orchestrator prompts + cortex protocol. | `generic/sdd-orchestrator.md`, `generic/sdd-orchestrator-reference.md` |
-| `internal/assets/opencode/` | OpenCode slash commands. | `opencode/commands/*.md` |
-Embed directive: `//go:embed all:skills all:generic all:opencode`.
+- **Active Platform**: **OpenCode** (`~/.config/opencode/`)
+- **Future Targets**: **Google Antigravity** (`~/.gemini/antigravity/`), **Claude CLI** (`~/.claude/`)
 
-## Supporting packages
-
-| Path | Purpose | Key Files |
-|------|---------|-----------|
-| `internal/backup/` | File snapshotter, JSON manifest, restore from snapshot. | `snapshot.go`, `manifest.go`, `restore.go` |
-| `internal/state/` | `~/.cortex-ia/state.json` + lockfile persistence; shared dirs. | `state.go` |
-| `internal/system/` | OS/platform/package-manager detection. | `detect.go` |
-| `internal/config/` | Project `.cortex-ia.yaml` config handling. | — |
-| `internal/agentbuilder/` | `cortex-ia agent-builder` support. | — |
-| `internal/opencode/` | OpenCode config model-assignment application. | — |
-| `internal/update/` | `cortex-ia update` self-update support. | — |
-| `internal/verify/` | `cortex-ia doctor` verification logic. | — |
-
-## internal/tui
-
-| Path | Purpose | Key Files |
-|------|---------|-----------|
-| `internal/tui/` | Bubbletea model with 6 screens. | `tui.go` |
-| `internal/tui/screens/` | Screen implementations. | — |
-| `internal/tui/styles/` | Colors and layout styles (lipgloss). | `theme.go` |
-
-## Planned packages (not yet present)
-
-> The following directories are part of the in-progress `port-gentle-ai-patterns` change and do **not** exist in the tree yet. Listed here so contributors don't go looking for them.
-
-| Path | Planned purpose |
-|------|----------------|
-| `internal/skillregistry/` | Deterministic Go skill-registry builder + `cortex-ia skill-registry` CLI subcommand. |
-| `internal/planner/` | Dependency-driven planner separating resolution from execution ordering. |
-
-## Project-level
+## 4. Project-Level Files
 
 | Path | Purpose |
-|------|---------|
-| `docs/` | Documentation (`architecture.md`, `agents.md`, `sdd-workflow.md`, `codebase/`). |
-| `scripts/install.sh` | Curl-pipe installer. |
-| `.goreleaser.yaml` | Cross-platform release config. |
-| `.golangci.yml` | Lint config (errcheck, govet, staticcheck, unused, ineffassign). |
-| `Makefile` | Build, test, lint, coverage, docker, install targets. |
-| `Dockerfile` | Multi-stage Alpine build. |
-| `.github/workflows/` | CI, PR checks, release, stale. |
-| `skills/` | Project-level community skills (`issue-creation`, `branch-pr`). |
+| :--- | :--- |
+| `docs/` | Comprehensive documentation (`architecture.md`, `agents.md`, `components.md`, `mcp.md`, `codebase/`). |
+| `scripts/install.sh` | Curl-pipe installer for Unix systems. |
+| `.goreleaser.yaml` | Cross-platform release build automation. |
+| `Makefile` | Build, test, lint, coverage, and install targets. |
+| `.github/workflows/` | CI test gates and automated release pipelines. |
 
-## Invariants
+---
 
-- `cmd/` is the only package importable by `main`; everything else lives under `internal/`.
-- `internal/model` has zero imports from other internal packages — it is the shared vocabulary leaf.
-- `internal/assets` embeds at compile time; no external files are read at runtime.
-- `internal/components/filemerge` is the only package allowed to write managed files.
+## 5. Architectural Invariants
 
-## Contributor Checklist
-
-- [ ] New package? Place it under `internal/`. Add it to this map.
-- [ ] New CLI subcommand? Add the case to `internal/app/app.go:runCLI` and document it in `printHelp()`.
-- [ ] New embedded asset? Put it under `internal/assets/<dir>/` and ensure the `//go:embed` directive covers it.
-- [ ] New testdata? Use `testdata/golden/` for component output fixtures and `t.TempDir()` for isolation.
-- [ ] Confirm `make lint` and `make test` pass before committing.
+1. **OpenCode First**: All asset installations target `~/.config/opencode/` without touching other locations.
+2. **Compile-Time Embedding**: Assets in `internal/assets/` are embedded via `go:embed` and delivered byte-for-byte.
+3. **Fail-Closed Verification**: Unmanaged conflicting files are never overwritten without explicit `--overwrite` and user confirmation.
+4. **Verified Backup**: A full snapshot is captured and verified before any filesystem mutation begins.
 
 ---
 

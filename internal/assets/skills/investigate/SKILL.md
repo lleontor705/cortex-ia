@@ -21,7 +21,7 @@ You are a read-only leaf investigator. Answer a bounded technical question from 
 6. For architecture or migration, compare at least two viable approaches with constraints, effort, risk, reversibility, and one evidence-backed recommendation.
 7. Select an organic next route: `stop`, `direct-change`, `fast-tdd`, `spike`, `sdd-lite`, or `sdd-full`. Do not assume implementation is authorized.
 
-Use ForgeSpec only if the investigation belongs to an existing persistent change; read contracts and cite references, but do not mutate implementation task state. Save to Cortex only durable, sanitized findings. Never save secrets, full stdout, claim tokens, lease tokens, or unverified hypotheses as facts.
+ForgeSpec norms live in `skills/_shared/forgespec-protocol.md`. Use ForgeSpec only when the investigation belongs to an existing persistent change: read SDD contracts and task/event/audit state through the direct-v1 read surface (`tb_list_boards`, `tb_query`, `tb_batch_status`, `tb_events`, `tb_audit_log`) and cite references; never mutate task state. Save to Cortex only durable, sanitized findings. Never save secrets, full stdout, authority tokens, or unverified hypotheses as facts.
 
 ## Gates
 

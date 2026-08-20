@@ -32,14 +32,11 @@ body:
       options:
         - CLI (commands, flags)
         - TUI (terminal UI)
-        - Installation Pipeline (2-stage)
-        - Agent Detection / New Agent
-        - Doctor / Health Checks
-        - Backup / Rollback
-        - Components (cortex, forgespec, mailbox, etc.)
-        - Skills / SDD
-        - Persona / Model Preset
-        - Agent Builder
+        - Installation / Sync Pipeline
+        - Doctor / Health Report
+        - Backup / Rollback / Uninstall
+        - MCP Management (presets, custom servers)
+        - Assets (agents, skills, commands, plugin)
         - Documentation
         - Other
     validations:

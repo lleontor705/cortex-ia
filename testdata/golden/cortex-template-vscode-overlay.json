@@ -4,8 +4,7 @@
       "type": "stdio",
       "command": "cortex",
       "args": [
-        "mcp",
-        "--tools=agent"
+        "mcp"
       ]
     }
   }

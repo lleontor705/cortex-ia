@@ -13,14 +13,12 @@ Use this strategy only when behavior is localized, observable, reproducible, and
 
 ## Lifecycle and loop
 
-1. If assigned a ForgeSpec task, negotiate compatible `direct-v1`, query its current revision, claim it with `tb_claim`, and retain the returned attempt authority only in live context.
-2. Reserve every edit scope with `file_reserve` bound to that task and attempt. Do not edit on conflict.
-3. Write one focused test that captures the missing behavior. Run it and prove RED: failure must be caused by the intended missing behavior, not syntax, setup, or an unrelated failure.
-4. Implement the minimum production change and rerun the identical focused command to prove GREEN.
-5. Refactor only locally, then rerun the focused test and proportional regression suite.
-6. Renew the task attempt and file leases before expiry. If authority expires or a CAS/lease conflict occurs, stop writing.
-7. Save a bounded Cortex observation containing commands, exit codes, revision, timestamp, oracle, and summarized outcomes. Never save tokens or large stdout.
-8. Update ForgeSpec with latest task revision, attempt authority, and evidence links. Mark done only after GREEN and regression pass. Release all leases on every exit path.
+Canonical protocol: `skills/_shared/forgespec-protocol.md` — when a ForgeSpec task is assigned, run its canonical implementer lifecycle and completion order; authority tokens live only in live context, with writes stopped immediately on expired or stale authority. This file adds only the RED-GREEN-REFACTOR loop:
+
+1. Write one focused test that captures the missing behavior. Run it and prove RED: failure must be caused by the intended missing behavior, not syntax, setup, or an unrelated failure.
+2. Implement the minimum production change and rerun the identical focused command to prove GREEN.
+3. Refactor only locally, then rerun the focused test and proportional regression suite.
+4. Save a bounded Cortex observation containing commands, exit codes, revision, timestamp, oracle, and summarized outcomes; never save tokens or large stdout. Link it from the evidence-bearing `tb_update`; cleanup follows the canonical completion order on every exit path.
 
 ## Output
 

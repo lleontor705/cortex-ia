@@ -2,6 +2,6 @@
   "command": "npx",
   "args": [
     "-y",
-    "forgespec-mcp@1.4.0"
+    "forgespec-mcp"
   ]
 }

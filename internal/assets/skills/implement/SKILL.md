@@ -22,19 +22,9 @@ TDD is not mandatory for documentation, declarative configuration, generated out
 
 ## Direct-v1 lifecycle
 
-If a `task_id` is present:
+Canonical protocol: `skills/_shared/forgespec-protocol.md` — negotiation, per-family CAS, required reserve fields, heartbeats, the canonical completion order, and cleanup are normative there; this file keeps only the operative summary.
 
-1. Negotiate `direct-v1` with `forgespec_capabilities`; stop if incompatible.
-2. Query the task and confirm it is ready, dependencies are done, acceptance is clear, and declared files match the assignment.
-3. Claim exactly that task with `tb_claim`, current `expected_revision`, a unique `idempotency_key`, and negotiated versions.
-4. Keep returned `task_revision`, `attempt_id`, `claim_token`, and expiry only in live context. Never print or persist tokens.
-5. Reserve all edit scopes using `file_reserve` bound to workspace, task, attempt, claim token, and current task revision. On conflict, do not edit.
-6. Inspect, implement, and verify only the declared scope. Renew the attempt with `tb_heartbeat` and leases with `file_renew` before expiry.
-7. Save only sanitized, bounded evidence in Cortex. Use its returned observation reference as a ForgeSpec evidence link when available.
-8. Update with `tb_update` using the latest revision, attempt authority, evidence links, and an idempotency key. Mark `done` only after every acceptance check passes.
-9. Release every lease with `file_release` using its lease authority. Always attempt cleanup in a finally-style path.
-
-If claim authority expires, a lease is lost, or CAS is stale, stop writes immediately, preserve the working diff, and return `BLOCKED` for orchestrator reconciliation. Never reuse old attempt or lease authority.
+If a `task_id` is present, run the canonical implementer lifecycle end to end: claim the ready task, reserve every in-scope file before editing, keep authority tokens only in live context, and stop writing immediately on expired or stale authority — preserve the working diff and return `BLOCKED` for orchestrator reconciliation; never reuse old attempt or lease authority.
 
 For an ephemeral direct change without a board task, do not invent claims. Still check file conflicts when coordination is active and keep modifications within `allowed_files`.
 

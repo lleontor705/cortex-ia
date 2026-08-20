@@ -13,6 +13,7 @@ type Layout struct {
 	SkillsRoot      string
 	AgentsRoot      string
 	CommandsRoot    string
+	PluginRoot      string
 	RootModuleRoot  string
 	ContractRoot    string
 	RoleRoot        string
@@ -33,6 +34,7 @@ func NativeLayout() Layout {
 	return Layout{
 		ConfigRoot: config, WorkflowRoot: workflow,
 		SkillsRoot: path.Join(config, "skills"), AgentsRoot: path.Join(config, "agents"), CommandsRoot: path.Join(config, "commands"),
+		PluginRoot:     path.Join(config, "plugin"),
 		RootModuleRoot: path.Join(workflow, "root"), ContractRoot: path.Join(workflow, "contracts"), RoleRoot: path.Join(workflow, "roles"),
 		OverlayRoot: path.Join(workflow, "overlays"), QualityRoot: path.Join(workflow, "quality"), ManifestRoot: path.Join(workflow, "manifests"),
 		ModelRoot: path.Join(workflow, "models"), PermissionRoot: path.Join(workflow, "permissions"), CompositionPath: path.Join(workflow, "composition.json"),
@@ -47,12 +49,17 @@ func (l Layout) IsWorkflowPath(relative string) bool {
 
 // IsNativePath reports whether a home-relative path belongs to OpenCode's
 // documented discovery surface. Cortex workflow support files are excluded.
+// Plugin files are validated against PluginRoot, the single declaration of
+// the plugin destination root, so mapping and validation cannot disagree.
 func (l Layout) IsNativePath(relative string) bool {
 	clean := path.Clean(strings.ReplaceAll(relative, "\\", "/"))
 	if clean == path.Join(l.ConfigRoot, "opencode.json") || clean == path.Join(l.ConfigRoot, "opencode.jsonc") || clean == path.Join(l.ConfigRoot, "AGENTS.md") {
 		return true
 	}
 	if nativeMarkdownChild(clean, l.AgentsRoot) || nativeMarkdownChild(clean, l.CommandsRoot) {
+		return true
+	}
+	if plugin := strings.TrimPrefix(clean, l.PluginRoot+"/"); plugin != clean && plugin != "" {
 		return true
 	}
 	value := strings.TrimPrefix(clean, l.SkillsRoot+"/")

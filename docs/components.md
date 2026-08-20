@@ -1,21 +1,63 @@
-# Components
+# OpenCode Assets & MCP Components
 
-cortex-ia exposes seven current components: Cortex, Agent Mailbox, ForgeSpec, Context7, conventions, direct SDD workflow assets, and extra skills. Component and tool counts are derived from the catalog and negotiated service schemas rather than duplicated in documentation.
+`cortex-ia` deploys a complete, atomic asset set and manages the MCP catalog for **OpenCode** (`~/.config/opencode/`).
 
-## Current service boundaries
+---
 
-| Service | Authority |
-|---|---|
-| ForgeSpec | Versioned SDD contracts, task DAG/readiness/claim/status, and file reservations when negotiated |
-| Cortex | Durable evidence, provenance, memory, and relationships |
-| Agent Mailbox | Optional messaging, A2A transport, resource coordination, and dead-letter handling; never SDD task authority |
-| Runtime-native dispatch | Bounded child execution transport only |
-| cortex-ia | Compile, diagnose, install, back up, receipt, and restore generated assets |
+## 1. Native Workflow Assets
 
-ForgeSpec `direct-v1` requires fresh compatible P0 evidence. ForgeSpec 1.2.x may run only as visible `legacy-sequential`. Optional P1 omissions are disclosed and may force sequential/no-concurrent-write execution.
+All workflow assets are embedded directly inside the `cortex-ia` binary via `go:embed` and mapped byte-for-byte to OpenCode's native directory structure:
 
-## Presets and dependencies
+| Asset Kind | Embedded Source | Destination under `~/.config/opencode/` | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Base Configuration** | `opencode.jsonc` | `opencode.jsonc` | Safe 3-way merge preserving user keys, comments, and permissions. |
+| **System Prompt** | `AGENTS.md` | `AGENTS.md` | Core orchestrator system prompt and SDD operational protocol. |
+| **Sub-Agents (5)** | `agents/*.md` | `agents/<name>.md` | `orchestrator`, `planner`, `implement`, `investigate`, `reviewer`. |
+| **Slash Commands (9)**| `commands/*.md` | `commands/<name>.md` | `/hotfix`, `/sdd`, `/work`, `/review`, `/tdd`, `/spike`, `/status`, `/resume`, `/investigate`. |
+| **Native Skills (12)**| `skills/<name>/SKILL.md`| `skills/<name>/SKILL.md` | SDD phase skills & utility skills (`fast-tdd`, `ast-impact-analysis`, `property-based-testing`, etc.). |
+| **Plugins (5)** | `plugin/*.ts` | `plugin/*.ts` | `background-supervisor`, `cortex`, `model-variants`, `openspec-mirror`. |
 
-The full preset contains all seven components. The minimal preset selects Cortex, ForgeSpec, Context7, and SDD; dependency resolution also includes Agent Mailbox because SDD uses its optional coordination transport. Conventions depend on Cortex.
+---
 
-Installation updates only managed configuration and assets. It never deletes user Mailbox data, WAL/SHM files, caches, archives, or repository checkouts.
+## 2. Managed MCP Server Presets
+
+`cortex-ia` manages three official catalog presets:
+
+### 1. Cortex (`cortex`) — *Default: ON*
+- **Execution Vector**: `["cortex", "mcp", "--tools=agent"]`
+- **Capabilities**: Cross-session persistent memory, knowledge graph, hybrid search (FTS5 + semantic), temporal evolution history.
+
+### 2. ForgeSpec (`forgespec`) — *Default: ON*
+- **Execution Vector**: `["npx", "-y", "forgespec-mcp"]`
+- **Capabilities**: SDD specification validation, task board synchronization, file locks and concurrent claim coordination.
+
+### 3. Context7 (`context7`) — *Default: OFF (Optional)*
+- **Execution Vector**: `["npx", "-y", "@upstash/context7-mcp"]`
+- **Capabilities**: Live framework and library documentation lookup via MCP.
+
+---
+
+## 3. Custom MCP Servers
+
+Users can register custom local and remote MCP servers through the CLI:
+
+```bash
+# Add a custom local server
+cortex-ia mcp add my-tool --local --env API_KEY=secret -- npx -y my-tool-mcp
+
+# Add a custom remote SSE endpoint
+cortex-ia mcp add remote-docs --remote https://mcp.example.com/sse --header "Authorization=Bearer secret"
+
+# List accredited and unmanaged MCP servers
+cortex-ia mcp list
+```
+
+---
+
+## 4. Platform Expansion Roadmap
+
+`cortex-ia` is architected to bring the same SDD and MCP stack to additional platforms in the future:
+1. **OpenCode**: Primary active native target (`~/.config/opencode`).
+2. **Google Antigravity**: Next target on roadmap (`~/.gemini/antigravity`).
+3. **Claude CLI**: Next target on roadmap (`~/.claude`).
+

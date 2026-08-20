@@ -1,190 +1,72 @@
 # SDD Workflow
 
-Spec-Driven Development (SDD) is a structured 9-phase pipeline (Phase 0 init prerequisite + 8 main phases, 1-8) for substantial software changes. ForgeSpec owns contracts and authoritative task state, Cortex owns durable evidence, and runtime-native dispatch owns child transport only. cortex-ia compiles and installs workflow assets but does not schedule or execute the pipeline.
+Spec-Driven Development (SDD) is the 9-phase workflow that the installed
+skill, agent, and command assets implement. cortex-ia installs the assets;
+it does not schedule or execute the pipeline — your OpenCode runtime, the
+ForgeSpec MCP, and the Cortex MCP do the work.
 
-## Pipeline
+## Authority Boundaries
 
-<p align="center">
-  <img src="assets/sdd-pipeline.svg" alt="SDD Pipeline" width="100%" />
-</p>
+| Owner | Responsibility |
+|-------|----------------|
+| **ForgeSpec** (MCP preset) | Contracts, task board, dependency readiness, claims, status, file reservation |
+| **Cortex** (MCP preset) | Durable memory: evidence, decisions, summaries, provenance |
+| OpenCode runtime | Skill/agent/command discovery and dispatch (transport only) |
+| cortex-ia | Installs and updates the assets; configures the MCP bindings |
 
-### Dependency Graph
+## Phase Map
 
-```
-proposal → spec ──┐
-         ↘        ├→ tasks → apply → verify → archive
-         design ──┘
-```
+| Phase | Skill | Installed agents | What happens |
+|-------|-------|------------------|--------------|
+| 0 · init | `bootstrap` | `bootstrap` | Detect the stack, bootstrap persistence, open the SDD session |
+| 1 · explore | `investigate` | `investigate` | Map the codebase, compare approaches, rate effort/risk |
+| 2 · propose | `draft-proposal` | `draft-proposal` | Change proposal with scope, risks, rollback plan |
+| 3 · spec | `write-specs` | `write-specs` | Delta specs as Given/When/Then scenarios |
+| 4 · design | `architect` | `architect` | Technical design with architecture decisions |
+| 5 · tasks | `decompose` | `decompose` | Dependency-ordered task DAG on the ForgeSpec board |
+| 6 · apply | `implement` | `implement` | One bounded work unit per minion: claim → execute → verify → receipt |
+| 7 · verify | `validate` | `validate` | Run the scenario oracles, produce the compliance matrix |
+| 8 · archive | `finalize` | `finalize` | Merge specs, close the change, archive the change set |
 
-Spec and design depend on the proposal but are independent of each other.
-
-## Phases
-
-### 0. Init (`/sdd-init`) — prerequisite
-**Agent**: bootstrap | **Confidence threshold**: 0.5
-
-Detects project stack (languages, frameworks, test runners), bootstraps persistence mode (cortex/openspec/hybrid/none), builds skill registry.
-
-### 1. Explore (`/sdd-explore <topic>`)
-**Agent**: investigate | **Confidence threshold**: 0.5
-
-Reads codebase, compares approaches, and rates effort/risk. Uses Context7 for library docs and Cortex retrieval for durable project context. No files created.
-
-### 2. Propose (`/sdd-new <change>`)
-**Agent**: draft-proposal | **Confidence threshold**: 0.7
-
-Creates change proposal with intent, scope, approach, affected areas, risks, rollback plan, success criteria. Uses Skeleton-of-Thought: outline → validate → expand.
-
-### 3. Spec (`/sdd-continue`)
-**Agent**: write-specs | **Confidence threshold**: 0.8
-
-Writes delta specifications (ADDED/MODIFIED/REMOVED) with Given/When/Then scenarios. Uses RFC 2119 keywords.
-
-### 4. Design (`/sdd-continue`)
-**Agent**: architect | **Confidence threshold**: 0.7
-
-Technical design with architecture decisions, data flow, file changes, interfaces. Uses Extended Thinking with explicit trade-off analysis of 2+ alternatives.
-
-### 5. Tasks (`/sdd-continue`)
-**Agent**: decompose | **Confidence threshold**: 0.8
-
-Breaks specs + design into phased, dependency-ordered tasks. Identifies parallel groups and integration points.
-
-### 6. Apply (`/sdd-implement`)
-**Agent**: implement | **Confidence threshold**: 0.6
-
-The orchestrator routes a ForgeSpec-ready task directly to `implement`. The implement agent reserves only its files, owns one bounded vertical work unit, verifies it, reports status, and releases reservations. The historical `team-lead` role is retired and removed from every current profile.
-
-### 7. Verify (`/sdd-validate`)
-**Agent**: validate | **Confidence threshold**: 0.9
-
-Validates implementation against specs. Runs tests, generates compliance matrix. Uses Chain-of-Verification: list claims → verify independently → correct.
-
-### 8. Archive (`/sdd-finalize`)
-**Agent**: finalize | **Confidence threshold**: 0.9
-
-Merges delta specs, closes the change cycle, and generates a retrospective. Durable observations remain governed by the configured Cortex profile.
-
-## Task Routing
-
-<p align="center">
-  <img src="assets/task-routing.svg" alt="Task Routing" width="100%" />
-</p>
+Cross-phase roles installed as agents and skills: `orchestrator` (the only
+delegating role), `planner`, `reviewer`, `debate`, `code-review-adversary`,
+`parallel-dispatch`.
 
 ## Commands
 
-### Skill commands (appear in autocomplete)
-- `/sdd-init` — Initialize SDD context
-- `/sdd-explore <topic>` — Investigate an idea
-- `/sdd-apply [change]` — Implement tasks
-- `/sdd-verify [change]` — Validate implementation
-- `/sdd-archive [change]` — Close change
+Installed under `~/.config/opencode/commands/`: `sdd`, `work`, `status`,
+`resume`, `review`, `tdd`, `spike`, `investigate`, `hotfix`. They are
+thin entry points that route into the phase skills above.
 
-### Meta-commands (orchestrator handles directly)
-- `/sdd-new <change>` — Start new change (explore → propose)
-- `/sdd-continue [change]` — Run next dependency-ready phase
-- `/sdd-ff <name>` — Fast-forward planning (propose → spec → design → tasks)
+## Utility Skills
 
-## Contract Validation
+| Skill | Trigger |
+|-------|---------|
+| `fast-tdd`, `property-based-testing`, `mutation-testing`, `ast-impact-analysis` | Verification acceleration and adversarial test validation |
+| `context-distiller` | Condensing verbose output into compact evidence |
+| `spike-prototype` | Bounded uncertainty-reduction experiments |
+| `hotfix-triage` | Incident containment with a strict diff |
 
-Every phase produces a JSON contract validated by the external ForgeSpec service. ForgeSpec is an explicit upstream dependency; cortex-ia configures the binding and does not implement a local substitute:
+## Contracts
 
-```json
-{
-  "schema_version": "1.0",
-  "phase": "explore",
-  "change_name": "add-auth",
-  "project": "my-project",
-  "status": "success",
-  "confidence": 0.85,
-  "executive_summary": "...",
-  "artifacts_saved": [{"topic_key": "sdd/add-auth/explore", "type": "cortex"}],
-  "next_recommended": ["propose"],
-  "risks": [{"description": "...", "level": "medium"}]
-}
+Every phase transition is recorded as a ForgeSpec contract (init → explore
+→ propose → spec → design → tasks → apply → verify → archive) and validated
+by the ForgeSpec MCP server. The shared phase-contract documents under
+`internal/assets/_shared/` in the repository are compile-time data for the
+asset set; they are not installed as runtime files.
+
+## Where the Assets Live
+
+After `cortex-ia install`:
+
+```text
+~/.config/opencode/
+  opencode.jsonc                # Merged config & managed MCP catalog
+  AGENTS.md                     # System prompt (authority, routing & shell policy)
+  agents/*.md                   # 5 native sub-agents (orchestrator, planner, implement, investigate, reviewer)
+  commands/*.md                 # 9 slash commands (/sdd, /hotfix, /work, /tdd, /review, ...)
+  skills/<name>/SKILL.md        # 12 native SDD & utility skills
+  plugin/*.ts                   # 5 runtime plugins (background-supervisor, cortex, model-variants, ...)
 ```
 
-Validation flow:
-1. `sdd_validate(phase, contract)` — verify schema and confidence threshold
-2. `sdd_save(contract, project)` — persist to ForgeSpec history
-3. `sdd_history(project)` — audit trail across sessions
-
-## Artifact Persistence
-
-### Topic Key Format
-```
-sdd/{change-name}/{artifact-type}
-```
-
-| Phase | Topic Key | Example |
-|-------|-----------|---------|
-| init | `bootstrap/{project}` | `bootstrap/auth-service` |
-| explore | `sdd/{change}/explore` | `sdd/add-auth/explore` |
-| propose | `sdd/{change}/proposal` | `sdd/add-auth/proposal` |
-| spec | `sdd/{change}/spec` | `sdd/add-auth/spec` |
-| design | `sdd/{change}/design` | `sdd/add-auth/design` |
-| tasks | `sdd/{change}/tasks` | `sdd/add-auth/tasks` |
-| apply | `sdd/{change}/apply-progress` | `sdd/add-auth/apply-progress` |
-| verify | `sdd/{change}/verify-report` | `sdd/add-auth/verify-report` |
-| archive | `sdd/{change}/archive-report` | `sdd/add-auth/archive-report` |
-| retrospective | `sdd/{change}/retrospective` | `sdd/add-auth/retrospective` |
-
-### Two-Step Read (Critical)
-`cortex_search` returns 300-character previews only. Always follow with:
-```
-1. cortex_search(query: "{topic-key}", project: "{project}") → observation ID
-2. cortex_get_observation(id: {id}) → full content
-```
-
-## Capability Profiles
-
-| Profile | Minimum qualified capability | Scheduling assumption |
-|---------|------------------------------|-----------------------|
-| `portable-sequential` | None | One agent follows dependency order; no delegation required |
-| `portable-flat` | Fresh proven direct-child delegation | Direct children only; no nesting or runtime DAG assumption |
-| `native-advanced` | Every requested native capability; explicit opt-in for each experimental capability | Only the target-specific behavior recorded in its manifest |
-
-Experimental native behavior is always opt-in, even after qualification. Stale facts, documentation-only evidence, or prompt-only guidance cannot upgrade a profile. The generated security and degradation manifests show the selected profile, capability states (`native|emulated|advisory|unsupported`), enforcement (`runtime|hook|mcp|prompt|none`), substitutions, evidence, permissions, service requirements, and findings before installation.
-
-## Apply Phase
-
-1. ForgeSpec determines task dependencies/readiness and owns claim/status state.
-2. The orchestrator selects a ready task reference and dispatches `implement` directly.
-3. `implement` reserves its exact files, completes one bounded work unit, and records evidence/status.
-4. `validate` independently checks the resulting behavior and evidence.
-
-Runtime-native dispatch and Agent Mailbox are non-authoritative transport. ForgeSpec remains authoritative for task state.
-
-## Direct Coordination
-
-<p align="center">
-  <img src="assets/agent-coordination.svg" alt="Agent Coordination" width="100%" />
-</p>
-
-ForgeSpec `direct-v1` is selected only from fresh compatible P0 capability evidence. ForgeSpec 1.2.x may run visibly as `legacy-sequential`; missing or stale required evidence blocks. Optional file-reservation capability may degrade to sequential/no-concurrent-write execution. No local scheduler or competing task-state authority is created.
-
-Agent Mailbox user data, WAL/SHM files, caches, archives, and repository checkout are never automatically deleted.
-
-## Quality Policy
-
-Planning depth depends on change type, observable behavior, risk, reversibility, trust boundary, dependency breadth, migration impact, and required evidence—not model confidence alone. Behavior-changing work uses vertical RED/GREEN/REFACTOR only when a deterministic focused runner, writable tests, and baseline evidence are available; otherwise it records an explicit recognized exception with compensating evidence.
-
-Use Gherkin selectively for stakeholder-visible generation, installation, diagnostic, degradation, or rollback behavior. Use unit, contract, property, fuzz, or golden tests for schemas and internal invariants. Mutation is conditional and budgeted; property/fuzz tests require meaningful invariants or untrusted input surfaces. Timeout, flakes, missing capability, cancellation, insufficient trials, and exhausted budgets remain inconclusive or degraded and must never be converted to pass.
-
-## Installation, Migration, and Rollback
-
-The compiler emits deterministic target assets and semantic/security/degradation manifests. Dry-run and apply share the same immutable install plan. Doctor must qualify the planned profile, service versions, evidence freshness, bindings, permissions, hashes, ownership, and manifests before mutation. Installation creates a verified backup, preserves content outside managed regions, uses three-way merge for managed customization, and blocks conflicts.
-
-Major cutover migrates generated assets and configuration only. It does **not** migrate live sessions, in-flight tasks, attempts, leases, scheduler state, or runtime telemetry. Rollback requires an explicitly selected backup, restores managed bytes and compatibility metadata, preserves conflict-free unmanaged changes, reports conflicts, and re-runs doctor against the restored bundle.
-
-## Prompting Techniques
-
-| Technique | Where | Why |
-|-----------|-------|-----|
-| Chain-of-Verification | validate | Verify claims independently before output (30-50% fewer hallucinations) |
-| Constitutional Self-Critique | implement | Critique code against specs, design, patterns, security before submitting |
-| Skeleton-of-Thought | draft-proposal, write-specs | Outline → validate completeness → expand (fewer omissions) |
-| Extended Thinking | architect, decompose | Explicit 2+ alternatives with trade-off matrix |
-| ReAct | debug | Thought → Action → Observation loops grounded in evidence |
-| Step-Back | architect | Abstract principles before specific design (7-27% better reasoning) |
-| Inline WHY | all rules | Motivation on every rule improves compliance |
+Update them with `cortex-ia sync` after upgrading the binary.

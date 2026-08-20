@@ -16,9 +16,19 @@ OpenSpec mode reads and writes the selected change directory. Hybrid mode checks
 
 Handoffs carry Cortex topic keys and ForgeSpec IDs, not copied transcripts. Save only durable decisions, bug fixes, configuration changes, conventions, user constraints, and non-obvious discoveries. Do not save secrets, raw tool output, routine progress, or speculative conclusions as facts.
 
-## Artifact keys and lineage
+## Artifact keys, categories and taxonomy
 
-Use `bootstrap/{project}` for initialization and `sdd/{change}/{artifact}` for explore, proposal, spec, design, tasks, apply-progress, verify-report, and archive-report. Connect meaningful upstream/downstream observations with `cortex_relate`; supported relations are `references`, `relates_to`, `follows`, `supersedes`, and `contradicts`.
+All durable observations persisted to Cortex MUST follow this deterministic taxonomy:
+
+1. **Architecture & ADRs** (`type: decision | architecture`, `topic_key: architecture/<module>`): Choices of libraries, design patterns, state management, DB engines and discarded alternatives.
+2. **Gotchas & Quirks** (`type: discovery`, `topic_key: gotchas/<issue>`): Non-obvious edge cases, OS/PowerShell traps, tricky framework quirks, race conditions.
+3. **Project DNA & Stack** (`type: config`, `topic_key: dna/<project>`): Test runner commands, linters, folder conventions, runtime versions.
+4. **Domain & Business Rules** (`type: architecture`, `topic_key: domain/<entity>`): Meaning of data models, lifecycle states, business invariants.
+5. **Bug Fixes & Root Cause** (`type: bugfix`, `topic_key: bugfix/<issue>`): Root cause of fixed bugs and why the fix works.
+6. **Hotfix & Tech Debt** (`type: bugfix`, `topic_key: hotfix/<incident>`): Emergency containment and pending structural refactorings.
+7. **User Preferences** (`type: preference`, `scope: personal`): User's preferred language, tooling, formatting, or working style.
+
+SDD artifacts use `sdd/{change}/{artifact}` (`explore`, `proposal`, `spec`, `design`, `tasks`, `apply-progress`, `verify-report`, `archive-report`). Connect meaningful upstream/downstream observations with `cortex_relate`; supported relations are `references`, `relates_to`, `follows`, `supersedes`, and `contradicts`.
 
 ## Sessions and recovery
 

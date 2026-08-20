@@ -1,6 +1,6 @@
 # Contributing to cortex-ia
 
-Thank you for your interest in contributing to **cortex-ia** — a Go CLI/TUI ecosystem configurator that supercharges Claude Code, OpenCode, VS Code Copilot, and Codex with persistent memory (Cortex), spec-driven development (SDD) skills, MCP servers, personas, and permissions.
+Thank you for your interest in contributing to **cortex-ia** — a Go CLI/TUI configurator for **OpenCode**. It installs the embedded workflow asset set (agents, skills, commands, plugin, base config) under `~/.config/opencode/`, manages the MCP server entries (Cortex, ForgeSpec, Context7), and does it all transactionally: plan first, verified backup before any write, rollback on failure.
 
 Before you dive in, please read this guide fully. We have a structured workflow to keep the project organized and maintainable.
 
@@ -72,29 +72,29 @@ PRs that are not linked to an approved issue will be **automatically rejected** 
 
 ## Project Architecture
 
-cortex-ia uses a **2-stage installation pipeline** (Prepare → Apply with rollback) and a granular **component model**. Familiarize yourself with these concepts before opening a non-trivial PR.
+cortex-ia installs a single embedded asset set into the OpenCode config root, transactionally: it plans first, captures a verified backup, applies, and restores from the backup if the apply phase fails. Familiarize yourself with these concepts before opening a non-trivial PR.
 
-### Supported Agents (8)
+### Supported Agents
 
-`claude-code`, `opencode`, `vscode-copilot`, `codex`. Each agent has its own adapter under `internal/agents/<id>/`.
+`opencode` — the product configures OpenCode only and never writes anywhere else. The OpenCode native layout and pure asset mapping live in `internal/agents/opencode/`.
 
-### Components
+### Key Packages
 
-- **`cortex`** — Persistent memory (31 MCP tools): observations, sessions, knowledge graph, FTS5 search, importance scoring, temporal reasoning.
-- **`forgespec`** — Spec-driven artifact contracts (15 tools).
-- **`mailbox`** — Inter-agent messaging (21 tools).
-- **`mcpinject`** — Generic MCP injector (per-agent strategy: JSON / merge / TOML / config-file).
-- **`context7`** — Live docs lookup MCP (2 tools).
-- **`conventions`** — Shared memory protocol & convention file.
-- **`persona`** — Tone presets: `professional`, `mentor`, `minimal`.
-- **`permissions`** — Security guardrails.
-- **`sdd`** — Spec-Driven Development workflow injection (roles, skills, prompts).
-- **`skills`** — 19 SDD skills loader (embedded + community + project layers).
-- **`theme`** — Per-agent theme overlay.
+- **`internal/install`** — service facade: `install`, `sync`, `doctor`, `rollback`, `uninstall`, and every MCP operation.
+- **`internal/pipeline`** — plans and applies the asset copy transactionally.
+- **`internal/backup`** — snapshots, manifests, verification, dedup, retention pruning.
+- **`internal/mcpmanager`** — managed MCP catalog (`cortex`, `forgespec`, `context7`), desired-entry validation, and conflict errors.
+- **`internal/components/filemerge`** — JSONC decode/merge and atomic writes.
+- **`internal/state` / `internal/installmeta`** — installation metadata, lock, and MCP digests under `~/.cortex-ia/`.
+- **`internal/tui`** — Bubble Tea terminal UI (launched with no arguments).
 
-### Healthchecks (`cortex-ia doctor`)
+### Embedded Assets
 
-Six checks: managed files, cortex binary, node/npx, skills layout, convention file, state/lock integrity.
+Skills, agents, commands, and the plugin under `internal/assets/` are embedded via `go:embed` and copied byte-for-byte at install time (14 agents, 9 commands, 21 skills, 1 plugin). Changing them requires rebuilding the binary.
+
+### Healthcheck (`cortex-ia doctor`)
+
+A strictly read-only report: state/lock presence and agreement, per-artifact digest checks, MCP ownership per preset, and an overall verdict. Doctor never mutates anything.
 
 ---
 
@@ -102,8 +102,7 @@ Six checks: managed files, cortex binary, node/npx, skills layout, convention fi
 
 ### Prerequisites
 
-- Go 1.24+
-- Docker (for E2E tests)
+- Go 1.26.1+ (`go.mod` is authoritative)
 - Git
 
 ### Clone and Build
@@ -119,73 +118,37 @@ go build -o cortex-ia ./cmd/cortex-ia
 ```bash
 ./cortex-ia            # interactive TUI
 ./cortex-ia --help     # CLI reference
-./cortex-ia detect     # detect installed agents + runtime deps
-./cortex-ia install --dry-run --preset full
+./cortex-ia doctor     # read-only health report
+./cortex-ia install --dry-run
 ```
 
 ---
 
 ## Testing
 
-### Unit Tests
+### Full Local Gates
 
-Run the full unit test suite:
-
-```bash
-go test ./...
-```
-
-Run tests for a specific package:
+Run the complete gate set in hook order before opening a PR:
 
 ```bash
-go test ./internal/pipeline/...
-go test ./internal/components/...
+gofmt -s -w .
+go vet ./...
+golangci-lint run ./...
+go test -count=1 ./...
 ```
 
-Run with verbose output:
+### Test Scope
+
+Persistent tests cover exactly the TUI (`internal/tui/...`) and the pipeline install behavior (`internal/pipeline/install_test.go`). Do not add test suites elsewhere without maintainer agreement; deeper transactional oracles run as ephemeral smokes and are deleted after execution.
+
+Focus a package or a single test:
 
 ```bash
-go test -v ./...
+go test ./internal/tui/...
+go test ./internal/pipeline -run '^TestInstall_DryRun$' -count=1
 ```
 
-### Golden File Tests
-
-Component injection output is verified against golden fixtures in `testdata/golden/`. To regenerate after intentional changes:
-
-```bash
-go test -update ./internal/components/...
-```
-
-CI runs without `-update` and fails on any drift.
-
-### E2E Tests
-
-E2E tests are Docker-based shell scripts. Docker must be running.
-
-```bash
-cd e2e
-chmod +x docker-test.sh
-./docker-test.sh             # all distros (ubuntu, fedora)
-./docker-test.sh ubuntu      # specific distro
-```
-
-> E2E tests spin up containers to simulate real installation environments. They may take a few minutes to complete.
-
-### Windows — Known Test Limitations
-
-Some unit tests require OS-level capabilities that are restricted on Windows by default.
-
-#### Symlink tests (`SeCreateSymbolicLinkPrivilege`)
-
-Tests that create symbolic links (e.g. in `internal/components/filemerge`) will be **skipped automatically** on Windows builds where the process lacks `SeCreateSymbolicLinkPrivilege` (`ERROR_PRIVILEGE_NOT_HELD`, errno 1314). This is a Windows security policy, not a bug in the code.
-
-To run these tests without restrictions, choose one of:
-
-- **Enable Developer Mode** — Settings → System → For developers → Developer Mode. Grants symlink creation to all processes without admin rights.
-- **Run as Administrator** — open your terminal as Administrator before running `go test ./...`.
-- **Grant the privilege explicitly** via Group Policy: `Local Security Policy → User Rights Assignment → Create symbolic links`.
-
-> On Linux and macOS these tests always run without any extra setup.
+Tests use temporary home directories. Never point tests at your real OpenCode configuration.
 
 ---
 
@@ -228,17 +191,17 @@ Commit messages **must** match this pattern:
 ### Examples
 
 ```
-feat(tui): add agent-builder TUI flow
+feat(tui): add MCP preset picker to install review
 fix(pipeline): rollback on apply failure preserves prior state
-docs: document opencode SDD profiles
+docs: document managed MCP presets
 chore(deps): bump bubbletea to v1.4
-refactor(components): extract MCP injector strategy interface
-style: gofmt internal/agents/*
-perf(verify): cache health check results within a single doctor run
-test(backup): cover compression dedup path
-build: add Dockerfile.arch for e2e matrix
+refactor(mcpmanager): extract desired-entry validation
+style: gofmt internal/agents/opencode
+perf(doctor): reuse tolerant state load in one report
+test(backup): cover checksum dedup path
+build: pin goreleaser build image
 ci: add check-branch-name to pr-check workflow
-revert: undo persona auto-detection
+revert: undo custom MCP header support
 ```
 
 ### Breaking Changes
@@ -246,10 +209,10 @@ revert: undo persona auto-detection
 Add `!` after the type/scope and include a `BREAKING CHANGE:` footer:
 
 ```
-feat(cli)!: rename --preset flag to --profile
+feat(cli)!: require --yes for uninstall
 
-BREAKING CHANGE: the --preset flag has been renamed to --profile.
-Update your scripts and aliases accordingly.
+BREAKING CHANGE: `cortex-ia uninstall` now requires an explicit `--yes`
+confirmation. Update your scripts and aliases accordingly.
 ```
 
 Breaking changes map to the `type:breaking` label.
@@ -269,7 +232,7 @@ Branch names **must** match this pattern:
 - Use hyphens, dots, or underscores as separators (no spaces, no uppercase)
 - Description must be short and descriptive
 
-**Examples:** `feat/agent-builder-tui`, `fix/persona-injection-windows`, `docs/cortex-memory-tools`, `ci/add-arch-dockerfile`
+**Examples:** `feat/mcp-preset-import`, `fix/backup-dedup-windows`, `docs/cortex-memory-tools`, `ci/pin-go-version`
 
 ---
 
@@ -278,9 +241,7 @@ Branch names **must** match this pattern:
 ### Before Opening a PR
 
 - [ ] There is a linked approved issue (`Closes #<N>`)
-- [ ] All unit tests pass (`go test ./...`)
-- [ ] Golden tests pass (`go test ./internal/components/...`)
-- [ ] E2E tests pass (`cd e2e && ./docker-test.sh`)
+- [ ] Full gates pass (`gofmt -s -w .`, `go vet ./...`, `golangci-lint run ./...`, `go test -count=1 ./...`)
 - [ ] Commits follow Conventional Commits format
 - [ ] Code is self-reviewed
 
@@ -289,7 +250,7 @@ Branch names **must** match this pattern:
 Use the same Conventional Commits format as commit messages:
 
 ```
-feat(tui): add agent-builder preview screen
+feat(tui): add MCP preset picker to install review
 fix(pipeline): handle empty selection gracefully
 ```
 
@@ -302,8 +263,9 @@ All PRs go through automated checks:
 | **Check Issue Reference** | PR body contains `Closes/Fixes/Resolves #N` |
 | **Check Issue Has status:approved** | The linked issue has been approved by a maintainer |
 | **Check PR Has type:* Label** | Exactly one `type:*` label is applied |
+| **Check Branch Name Convention** | Branch matches `<type>/<lowercase-name>` |
 
-In addition, **Unit Tests**, **Golden Tests**, and **E2E Tests** run via the `ci.yml` workflow and must pass on the PR branch.
+In addition, the **CI** workflow runs Go quality and security scans on the PR branch.
 
 **All checks must pass** before a PR can be merged.
 

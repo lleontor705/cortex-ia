@@ -1,43 +1,45 @@
 # Supported Platforms
 
-cortex-ia targets the same matrix as the agents it configures.
+Release binaries are published for the platforms declared in
+`.goreleaser.yaml`: **linux**, **darwin**, and **windows** (amd64/arm64 as
+configured per release).
 
-| OS | Status | Notes |
-|---|---|---|
-| **macOS** Intel | ✅ Full | Tested on every release |
-| **macOS** Apple Silicon | ✅ Full | Native arm64 build; QEMU fallback for Arch E2E |
-| **Linux** Ubuntu/Debian | ✅ Full | apt + npm; primary Linux target |
-| **Linux** Fedora/RHEL | ✅ Full | dnf + npm; Docker E2E `Dockerfile.fedora` |
-| **Linux** Arch/Manjaro | ✅ Full | pacman + npm; Docker E2E `Dockerfile.arch` (forces `--platform=linux/amd64`) |
-| **Linux** Other | ⚠️ Best-effort | Should work; not in CI |
-| **Windows** native | ✅ Full | PowerShell-aware; symlink fallback for filemerge tests |
-| **Windows** WSL2 | ✅ Full | Treat as Linux |
+## Notes by Platform
 
-## Per-OS notes
+- **Windows**: all destination writes use atomic file replacement and
+  reject paths that traverse symlinks or reparse points. Case-insensitive
+  destination collisions are detected and fail closed at mapping time, so
+  two assets differing only by case can never overwrite each other. No
+  symlink creation privilege is required for install, sync, or tests.
+- **macOS**: case-insensitive destination collision detection applies for
+  the same reason as Windows.
+- **Linux**: standard behavior; case-sensitive filesystems get the strict
+  collision check.
 
-### Windows symlink privilege
+## Paths
 
-Tests in `internal/components/filemerge` create symbolic links. Without `SeCreateSymbolicLinkPrivilege`, Windows returns `ERROR_PRIVILEGE_NOT_HELD` (errno 1314) and the tests skip themselves. To run them:
+All writes are confined to two roots beneath the user's home directory:
 
-- **Enable Developer Mode** (Settings → System → For developers → Developer Mode), or
-- **Run the test process as Administrator**, or
-- **Grant the privilege explicitly** via `Local Security Policy → User Rights Assignment → Create symbolic links`.
+| Root | Contents |
+|------|----------|
+| `~/.config/opencode/` | Config, `AGENTS.md`, agents, commands, skills, plugin |
+| `~/.cortex-ia/` | Installation metadata, lock, MCP digests, backups |
 
-cortex-ia's runtime install path uses an atomic copy fallback when symlinks aren't available, so Windows installs work without admin rights even without the privilege.
+The transactional pipeline validates every destination against the layout
+declaration before writing; absolute paths and traversal outside these
+roots fail closed.
 
-### Apple Silicon — Arch Linux E2E
+## Target AI Platforms
 
-`Dockerfile.arch` forces `--platform=linux/amd64` so Docker uses QEMU emulation on M-series Macs. The pacman seccomp sandbox is disabled in that Dockerfile (`DisableSandbox`) because it's incompatible with QEMU user-mode.
+| Platform | Support Tier | Configuration Directory | Notes |
+| :--- | :---: | :--- | :--- |
+| **OpenCode** | **Active (Native)** | `~/.config/opencode/` | Full SDD stack: 5 sub-agents, 9 commands, 12 skills, 5 plugins, managed MCPs. |
+| **Google Antigravity** | *Roadmap* | `~/.gemini/antigravity/` | Native rules, custom skills, sidecar orchestration. |
+| **Claude CLI** | *Roadmap* | `~/.claude/` | Native prompts, tool definitions, stdio MCPs. |
 
-### Path conventions
+## Shells and Terminals
 
-| Platform | `~/.cortex-ia/` | Skills root | Backups root |
-|---|---|---|---|
-| Linux/macOS | `$HOME/.cortex-ia/` | `$HOME/.cortex-ia/skills/` | `$HOME/.cortex-ia/backups/` |
-| Windows | `%USERPROFILE%\.cortex-ia\` | `%USERPROFILE%\.cortex-ia\skills\` | `%USERPROFILE%\.cortex-ia\backups\` |
-
-Per-agent config paths are documented in [`agents.md`](agents.md).
-
-## Architectures
-
-`darwin/amd64`, `darwin/arm64`, `linux/amd64`, `linux/arm64`, `windows/amd64` are released by goreleaser. `windows/arm64` builds are published on a best-effort basis.
+The TUI runs in any terminal Bubble Tea supports. Destructive CLI
+operations (`--overwrite`, `mcp remove`, `rollback`, `uninstall`) require
+an **interactive terminal** for their confirmation prompt; piped input
+fails closed by design — scripts should use `--dry-run`.

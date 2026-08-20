@@ -148,6 +148,10 @@ func mutateJSONC(base []byte, mutation JSONMutation) ([]byte, error) {
 	return after, nil
 }
 
+// replaceSentinel is the reserved overlay key that replaces (instead of
+// deep-merges) the object it wraps.
+const replaceSentinel = "__replace__"
+
 func mergeHUJSONObjects(base, overlay *hujson.Object) {
 	for _, overlayMember := range overlay.Members {
 		key := memberName(overlayMember)

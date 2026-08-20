@@ -30,15 +30,17 @@ strict-tdd: false
 
 # Restrict cortex-ia to these agents on this project. Omit (or leave empty)
 # to apply to every detected agent.
-# Supported IDs: claude-code, opencode, vscode-copilot, codex
+# Supported IDs: claude-code, opencode, gemini-cli, cursor, vscode-copilot,
+#                codex, windsurf, antigravity, kilocode, kimi, kiro-ide, qwen-code
 agents:
   - claude-code
   - opencode
 
 # Opt out of specific components even when `preset: full`.
-# Current IDs: cortex, forgespec, sdd, skills, context7,
+# Valid IDs: cortex, agent-mailbox, forgespec, sdd, skills, context7,
 #            conventions, gga, persona, permissions, theme
 disabled-components:
+  - agent-mailbox
 
 # Layer project-specific custom skills on top of the embedded set.
 # Each entry points at a directory containing a SKILL.md.

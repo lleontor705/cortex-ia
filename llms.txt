@@ -1,12 +1,28 @@
 # cortex-ia
 
-cortex-ia compiles and safely installs evidence-backed workflow assets for four coding-agent targets.
+cortex-ia is a single Go binary that installs the embedded OpenCode workflow
+asset set into your home configuration and manages its MCP server entries.
+It configures OpenCode only and never writes anywhere else.
 
-- ForgeSpec: authoritative contracts, task DAG/readiness/claim/status, qualified file reservations.
-- Cortex: durable evidence, provenance, memory, and relationships.
-- Runtime-native dispatch: direct bounded child transport only.
-- Profiles: `portable-sequential`, `portable-flat`, and qualified `native-advanced`.
-- ForgeSpec modes: capability-qualified `direct-v1` or visible `legacy-sequential`.
-- Provider-neutral remote A2A: unsupported and unbound.
+- Installs the base config, AGENTS.md, 14 agents, 9 commands, 21 skills,
+  and the plugin under `~/.config/opencode/` from `go:embed` assets; nothing
+  is generated at install time.
+- Managed MCP services, all registered as native local servers
+  (`{"type":"local","command":[...],"enabled":true}`): `cortex`
+  (`cortex mcp --tools=agent`) and `forgespec` (`npx -y forgespec-mcp`) by
+  default, `context7` (`npx -y @upstash/context7-mcp`) as an unselected
+  catalog preset, plus custom local (argv) / remote (URL) servers.
+- Transactional by default: plan first, digest-bound confirmation, verified
+  backup before any write, one cross-process home lock per mutation,
+  rollback on failure, recover for interrupted journals, fail-closed on
+  conflicts it does not own.
+- CLI: `install`, `sync`, `mcp add|list|remove`, `doctor`, `rollback`,
+  `recover [list]|<journal-id>`, `uninstall`, `version`, `help`; running
+  with no arguments launches the interactive TUI.
+- Installation state, lock, and backups live under `~/.cortex-ia/`.
+- Former multi-agent, persona, profile, model, skill-registry, and
+  SDD-compiler surfaces were removed and fail with an explicit
+  retired-surface error.
 
-The historical Agent Mailbox built-in and `team-lead` role are retired. External Mailbox data and repositories are never automatically mutated or deleted; cleanup is operator-controlled.
+Entry points: README.md, docs/quickstart.md, docs/installation.md,
+docs/mcp.md, docs/security.md, docs/architecture.md.

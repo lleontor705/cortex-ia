@@ -52,27 +52,18 @@ If the user forces a workflow, check eligibility. Honor it when safe; otherwise 
 
 ## ForgeSpec protocol
 
-Use no ForgeSpec state for ephemeral read-only work. Use a simple task for one resumable change, the `direct-v1` board for concurrency or recovery, and SDD contracts only when the selected route needs them.
+Canonical source: `skills/_shared/forgespec-protocol.md` — negotiation, CAS/idempotency, implementer lifecycle, legacy versus direct-v1, and the role matrix are normative there; this file keeps only orchestrator deltas. Never copy normative protocol text into role files.
 
-Before any direct-v1 mutation:
+Use no ForgeSpec state for ephemeral read-only work. Use a simple task for one resumable change, a board for concurrency or recovery, and SDD contracts only when the selected route needs them.
 
-1. Call `forgespec_capabilities` with `requested_mode: direct-v1` and the capabilities required by the route.
-2. Stop if compatibility is false. Use the returned API/schema versions and limits; do not silently fall back to legacy coordination.
-3. Query current board/task revisions before compare-and-swap mutations.
-4. Generate a unique idempotency key per logical mutation and reuse it only to retry that same mutation.
+Orchestrator-only surface (it never claims, heartbeats, or holds file leases itself):
 
-Each implementation minion must claim its own task and retain, only in its live execution context:
+- Board and DAG: create with `tb_create_board`, `tb_add_task`, and `tb_set_dependencies`; inspect with `tb_list_boards` and `tb_query`.
+- Resume and reconciliation: read deltas with `tb_events` and `tb_batch_status`; SDD lineage with `sdd_history`.
+- Recovery: query state, then `tb_recover_claims` and explicit `tb_requeue` (with `recover_active_dependents` for cascades). Never reuse authority from an earlier attempt.
+- Approvals and authority: `tb_approve` only against an existing gate with explicit asserted provenance; attenuated `tb_grant`, `tb_handoff`, and `tb_revoke`; audit through `tb_audit_log`.
 
-```text
-task_id, task_revision, attempt_id, claim_token, claim_expires_at
-lease_id, lease_revision, lease_token, lease_expires_at
-```
-
-The minion claims with `tb_claim` using `coordination_mode: direct-v1`, an expected revision, and an idempotency key. It reserves declared file scopes with `file_reserve` bound to the task, attempt, claim token, workspace, and expected task revision. Long work renews task authority with `tb_heartbeat` and every file lease with `file_renew` before expiry.
-
-If a claim expires, a lease is lost, or CAS reports a stale revision, the minion stops writing and returns `BLOCKED`. The orchestrator re-queries state; it may recover expired attempts with `tb_recover_claims` and explicitly requeue with `tb_requeue`. Never reuse authority from an earlier attempt.
-
-Completion order is: verify -> save sanitized evidence -> `tb_update` with current revision, attempt authority, and evidence links -> `file_release`. Cleanup is mandatory on success, failure, and interruption. A failed cleanup is reported as risk; it is never hidden by a successful test.
+Each implementation minion owns its own claim, attempt, and file leases under the canonical lifecycle, keeps authority tokens only in live memory, and returns `BLOCKED` on expired or stale authority for orchestrator reconciliation. Validate minion receipts against the canonical completion order — verify, sanitized evidence, `tb_update`, `file_release` — and report failed cleanup as risk; it is never hidden by a successful test.
 
 ## Cortex protocol
 
@@ -111,6 +102,12 @@ Keep these dimensions independent:
 - `verification_verdict`: `PASS | FAIL | BLOCKED | INCONCLUSIVE`
 
 Every receipt includes `workflow`, `objective`, `artifact_refs`, `evidence_refs`, `risks`, and `next_route`. Implementation receipts also include `task_id`, changed files, checks with commands and exit codes, cleanup status, and deviations. Do not expose authority tokens.
+
+## Native background supervision
+
+When `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`, follow `skills/_shared/background-supervisor-protocol.md`. Native `task(background=true)` is the only transport; the supervisor adds strict dispatch validation, reader/writer backpressure, bounded diagnostics, cancellation, recovery, and compaction context while ForgeSpec remains authoritative. Include the protocol's `role` field in the marked envelope, dispatch no nested coordinators, and do not poll after launch.
+
+Recovered native sessions are advisory. Reconcile ForgeSpec readiness and fresh authority before resuming any writer; never treat idle, cancelled, a tail, or an unvalidated receipt as PASS.
 
 ## Resume and status
 

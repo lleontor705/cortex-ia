@@ -55,7 +55,7 @@ func (s Snapshotter) snapshotPath(snapshotDir string, sourcePath string) (Manife
 	cleanSource := filepath.Clean(sourcePath)
 	entry := ManifestEntry{OriginalPath: cleanSource}
 
-	info, err := os.Stat(cleanSource)
+	info, err := os.Lstat(cleanSource)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return entry, nil
@@ -63,8 +63,19 @@ func (s Snapshotter) snapshotPath(snapshotDir string, sourcePath string) (Manife
 		return ManifestEntry{}, fmt.Errorf("stat source path %q: %w", cleanSource, err)
 	}
 
+	// No-follow capture: links and reparse-like indirections are rejected
+	// before any byte is read, both for the target and its parents.
+	if info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeIrregular != 0 {
+		return ManifestEntry{}, fmt.Errorf("%w: %q", ErrUnsupportedLink, cleanSource)
+	}
 	if info.IsDir() {
 		return entry, nil
+	}
+	if !info.Mode().IsRegular() {
+		return ManifestEntry{}, fmt.Errorf("snapshot source %q is not a regular file", cleanSource)
+	}
+	if err := rejectLinkChain(cleanSource, cleanSource); err != nil {
+		return ManifestEntry{}, err
 	}
 
 	// Strip volume name (e.g. "C:") on Windows for safe relative paths.

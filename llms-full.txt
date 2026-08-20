@@ -1,22 +1,136 @@
 # cortex-ia — Full Context
 
-cortex-ia detects supported coding-agent targets, compiles canonical Go workflow IR, renders target-specific assets, diagnoses compatibility, and installs one immutable plan with backup, receipt, post-doctor, and receipt-backed rollback.
+cortex-ia is an OpenCode-only installer: a single Go binary that copies the
+embedded workflow asset set into OpenCode's config root, manages MCP entries
+inside the OpenCode config, and does both transactionally. It is not a
+workflow scheduler and not a resident process — after a run, only files
+exist. It configures OpenCode only and never writes anywhere else.
 
-## Authority
+## Architecture
 
-- ForgeSpec owns versioned SDD contracts and authoritative task readiness/claim/status.
-- Cortex owns durable evidence, provenance, memory, and relationships.
-- Runtime-native dispatch owns child execution transport only.
-- cortex-ia owns compilation, configuration, diagnosis, installation, backup, receipts, and restoration.
+```
+cmd/cortex-ia            main(): release version + internal/app
+internal/app             CLI dispatch, flags, receipts, retired-surface guard
+internal/tui             Bubble Tea TUI (Install/Sync, MCPs, Doctor/Recovery, Uninstall)
+internal/install         Service facade: install, sync, doctor, rollback, uninstall, MCP ops
+internal/pipeline        Plan/apply transaction: InstallV2, effects, journal, Rollback
+internal/backup          Snapshots, manifests, verification, dedup, retention pruning
+internal/mcpmanager      Managed MCP catalog, desired-entry validation, qualification, conflicts
+internal/state           Installation metadata, lock, v2 agreement under ~/.cortex-ia/
+internal/installmeta     MCP identity digests and install accreditation
+internal/agents/opencode OpenCode native layout + pure asset mapping
+internal/components/filemerge  JSONC decode/merge, atomic writes
+internal/assets          go:embed runtime assets (config, AGENTS.md, agents, commands, skills, plugin)
+```
 
-## Execution profiles
+`internal/app` owns no install, merge, or ownership logic: it parses intent,
+delegates to `internal/install.Service`, and renders receipts. All ownership
+decisions live in the service and its collaborators. The dispatcher fails
+closed on retired surfaces via a preflight scan that stops at the `--`
+verbatim separator.
 
-`portable-sequential` requires no delegation. `portable-flat` requires fresh direct-child evidence. `native-advanced` uses only independently qualified capabilities. ForgeSpec `direct-v1` requires every P0 capability; ForgeSpec 1.2.x may run only as `legacy-sequential`. Missing optional P1 file reservations forces disclosed sequential/no-concurrent-write execution. Phase routing uses versioned semantic route IDs and typed capability requirements; concrete provider/model values come only from explicit configuration or qualified discovery evidence.
+## Asset mapping
 
-The orchestrator dispatches one ForgeSpec-ready bounded reference directly to `implement`. The historical `team-lead` role is retired and absent from every current profile.
+`internal/agents/opencode/layout.go` is the single declaration of OpenCode's
+native discovery surface (config, agents-doc, agent, command, skill, plugin).
+`assetmap.go` maps embedded sources with `dest = path.Join(config root,
+source)` validated against that one declaration. The mapping fails closed on
+unsafe paths, kinds without a native destination (`_shared` contracts are
+compile-time only), destinations off the native surface, and collisions —
+including case-insensitive collisions on Windows and macOS.
 
-## Retired compatibility and external data
+## Transactional pipeline
 
-The historical Agent Mailbox identifier remains only for bounded legacy decode, exact owned-registration migration, rollback, and operator cleanup guidance. Provider-neutral remote A2A is unsupported and unbound. External Mailbox database, WAL/SHM files, caches, archives, and repository checkout are never automatically mutated or deleted; cleanup is operator-controlled after preservation checks.
+`InstallV2` runs in three phases:
 
-Counts for components, services, tools, adapters, profiles, and goldens are derived from source inventories and negotiated schemas rather than caller-declared documentation values.
+1. Plan — build the complete effect set plus conflict detection; dry-run and
+   apply share this plan and a dry run writes nothing at all.
+2. Backup — snapshot everything the apply phase may touch and verify it before
+   any write. A failed verification aborts before any write.
+3. Apply — write files atomically (temp file + rename), merge the config via
+   `filemerge` (comments and user keys survive), journal the transaction,
+   commit metadata + lock last. Any apply failure restores the pre-run state
+   from that verified backup.
+
+`internal/backup` also exports checksum-based dedup and retention-prune helpers,
+but these helpers are not wired into the production Install/Sync/Rollback flow,
+so the product currently does not promise automatic dedup/prune.
+
+`sync` uses the same path and additionally plans removals for stale owned
+artifacts from older versions.
+
+## Managed MCP services
+
+`install` registers the default managed selection: `cortex`
+(`cortex mcp --tools=agent`) and `forgespec` (`npx -y forgespec-mcp`), both
+native local servers. `context7` (`npx -y @upstash/context7-mcp`) is a
+local catalog preset not selected by default; no preset ships a URL.
+Custom servers are first-class via the typed `Desired` contract: a catalog
+preset, a local exact command vector, or a remote URL, with `--env` and
+`--header KEY=VALUE` assignments bound to exactly one kind each. Present
+entries are qualified against recorded identity digests plus the secret-free
+`mcpv2` full-postimage fingerprint (salt-keyed HMAC covering type, argv,
+URL, env/header names and keyed value hashes, enabled, config path) and
+reported as `managed`, `unmanaged-equivalent`, `conflict`, or `absent`;
+conflict errors never contain secrets, legacy mcpv1-only records fail
+closed for destructive accreditation (manual re-add remedy), and
+`mcp list --json` is allow-listed to identity evidence only.
+
+## CLI and TUI
+
+```
+cortex-ia                          Interactive TUI
+cortex-ia install [--dry-run] [--overwrite]
+cortex-ia sync [--dry-run] [--overwrite]
+cortex-ia mcp add <name> (--preset | --local ... -- <cmd> | --remote <url>) [--dry-run]
+cortex-ia mcp list [--json]
+cortex-ia mcp remove <name> [--dry-run]
+cortex-ia doctor
+cortex-ia rollback [backup-id]
+cortex-ia recover [list]        # read-only journal listing
+cortex-ia recover <journal-id>  # typing the exact ID confirms recovery
+cortex-ia uninstall [--dry-run]
+cortex-ia version | help
+```
+
+## Safety rules
+
+- Plan before write; `--dry-run` creates nothing, not even directories.
+- Digest-bound confirmation: the real run re-plans with identical options
+  and aborts with a typed stale-plan error on any drift before writing.
+- One writer per home: every mutation holds a cross-process lock keyed by
+  the canonical home (LockFileEx/flock) after confirmation; contention
+  returns a typed busy result. Read-only commands never steal the lock.
+- Fail-closed conflicts: unmanaged files at a managed destination abort the
+  run; `--overwrite` must be given explicitly and confirmed on an
+  interactive TTY after a verified backup.
+- `rollback`, `recover`, `uninstall`, `mcp remove`, and `--overwrite`
+  require an interactive terminal and an explicit confirmation; piped or
+  closed input always fails closed.
+- Rollback/recover restoration validates manifest containment, restores in
+  reverse order under a journal, and reports success only after complete
+  verified restoration; corrupt/foreign/drifted journals fail closed.
+- `uninstall` removes only files whose digest matches the installation
+  metadata; anything unverifiable or co-owned is retained and reported.
+
+## Testing and gates
+
+Persistent tests are deliberately scoped to the TUI (`internal/tui/`) and
+simple existence/copy validation in `internal/pipeline/install_test.go`,
+both against temporary homes. Deeper transactional oracles run as ephemeral
+smokes and are deleted after execution. Full local gates, in hook order:
+`gofmt -s -w .`, `go vet ./...`, `golangci-lint run ./...`,
+`go test -count=1 ./...`.
+
+Former multi-agent, persona, profile, model, skill-registry, and
+SDD-compiler surfaces were removed and fail with an explicit
+retired-surface error.
+
+## Documentation
+
+README.md — overview and command surface; docs/quickstart.md — three-command
+setup; docs/installation.md — install methods; docs/mcp.md — MCP presets,
+custom servers, ownership; docs/security.md — backups, rollback, uninstall
+ownership; docs/sdd-workflow.md — the 9-phase workflow the installed skills
+implement; docs/architecture.md — codebase structure and asset mapping;
+docs/platforms.md — OS support matrix.

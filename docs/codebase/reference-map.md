@@ -29,6 +29,7 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | `cortex-ia repair` | Repair a crashed/incomplete installation |
 | `cortex-ia rollback` | Restore files from a backup snapshot |
 | `cortex-ia uninstall` | Remove cortex-ia managed files |
+| `cortex-ia gga` | Guardian Angel pre-commit review config |
 | `cortex-ia profiles` | Manage named preset profiles |
 | `cortex-ia agent-builder` | Build a custom agent adapter |
 | `cortex-ia update` | Self-update to latest release |
@@ -82,7 +83,7 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | Server | Binary | Purpose | Injection |
 |--------|--------|---------|-----------|
 | Cortex | `cortex` | Persistent memory + knowledge graph | `internal/components/cortex/` |
-| Historical Mailbox compatibility | none | Retired decode/migration/rollback only | `internal/components/mcpinject/removal.go` |
+| Mailbox | (npm) | Agent messaging + A2A task protocol | `internal/components/mailbox/` |
 | ForgeSpec | (npm) | SDD contracts + task boards + file reservations | `internal/components/forgespec/` |
 | Context7 | (npm/remote) | Library documentation lookup | `internal/components/context7/` |
 
@@ -141,7 +142,7 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | Maintainer Playbook | `docs/codebase/maintainer-playbook.md` | Release & dependency process |
 | Reference Map | `docs/codebase/reference-map.md` | This page — quick lookup index |
 | Architecture | `docs/architecture.md` | High-level architecture overview |
-| Agents | `docs/AGENTS.md` | Per-agent reference (4 agents) |
+| Agents | `docs/AGENTS.md` | Per-agent reference (12 agents) |
 | SDD Workflow | `docs/sdd-workflow.md` | SDD skills & workflow docs |
 
 ## Invariants

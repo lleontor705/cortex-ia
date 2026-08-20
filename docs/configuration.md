@@ -17,6 +17,7 @@ cortex-ia repair [--dry-run]           # Re-apply from state
 cortex-ia rollback [--backup ID]       # Restore from backup
 cortex-ia update                       # Check for updates
 cortex-ia uninstall [flags]            # Reverse cortex-ia injections (with snapshot)
+cortex-ia gga --provider <id>          # Switch GGA provider
 cortex-ia profiles list|create|set|apply|delete   # OpenCode SDD profiles
 cortex-ia agent-builder list|create|remove        # AI-generated custom skills
 cortex-ia version                      # Show version
@@ -29,7 +30,7 @@ cortex-ia help                         # Show usage
 |------|-------------|---------|
 | `--agent <id>` | Target specific agent (repeatable) | `--agent claude-code --agent opencode` |
 | `--preset <id>` | Installation preset | `--preset minimal` |
-| `--profile <id>` | Apply a configured semantic route bundle | `--profile default` |
+| `--model-preset <id>` | Per-phase model routing | `--model-preset economy` |
 | `--persona <id>` | Communication style | `--persona mentor` |
 | `--local` | Load project .cortex-ia.yaml config | `--local` |
 | `--dry-run` | Preview without making changes | `--dry-run` |
@@ -38,7 +39,7 @@ If no `--agent` is specified, cortex-ia auto-detects all installed agents.
 
 If no `--preset` is specified, defaults to `full`.
 
-Valid `--agent` values: `claude-code`, `opencode`, `vscode-copilot`, `codex`.
+Valid `--agent` values: `claude-code`, `opencode`, `gemini-cli`, `cursor`, `vscode-copilot`, `codex`, `windsurf`, `antigravity`, `kilocode`, `kimi`, `kiro-ide`, `qwen-code`.
 
 ### Uninstall Flags
 
@@ -53,23 +54,35 @@ Valid `--agent` values: `claude-code`, `opencode`, `vscode-copilot`, `codex`.
 
 A snapshot tagged `BackupSourceUninstall` is taken before any change so rollback works exactly like an install rollback.
 
+### GGA Switcher
+
+```bash
+cortex-ia gga --provider anthropic    # Anthropic API directly
+cortex-ia gga --provider ollama       # Local Ollama (sets API_BASE)
+cortex-ia gga --provider claude       # Route via Claude Code (default)
+cortex-ia gga --list                  # List supported providers
+cortex-ia gga --show                  # Print current ~/.config/gga/config
+```
+
+Direct-LLM providers (`anthropic`, `openai`, `google`, `ollama`) emit a `MODEL=` line; agent-routed providers (`claude`, `opencode`, `gemini`, `codex`) do not.
+
 ### OpenCode SDD Profiles
 
 ```bash
-# Create a profile with a semantic route
-cortex-ia profiles create default:route/v1/implementation
+# Create a profile that maps every SDD phase to one model
+cortex-ia profiles create cheap:openai/gpt-4o-mini
 
-# Override one phase with a semantic route
-cortex-ia profiles set default:sdd-design:route/v1/architecture
+# Override one phase
+cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
 
-# Resolve configured routes into the effective global OpenCode config
-cortex-ia profiles apply default
+# Write the profile's per-phase models into ~/.config/opencode/opencode.json
+cortex-ia profiles apply cheap
 
 cortex-ia profiles list
-cortex-ia profiles delete default
+cortex-ia profiles delete cheap
 ```
 
-Profile values are versioned semantic route IDs. `apply` resolves them only from explicit user/provider configuration or fresh qualified discovery evidence, then writes the resulting evidence-backed assignments to direct SDD agent entries (`architect`, `decompose`, `implement`, etc.). If `opencode.jsonc` exists it is patched in place because OpenCode loads it after `opencode.json`; otherwise cortex-ia uses or creates `opencode.json`. Comments and trailing commas in JSONC are preserved, and unresolved routes fail closed before mutation.
+Profile values may be either a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`) or a fully-qualified `provider/model` string. `apply` writes them to the real SDD agent entries in `opencode.json` (`architect`, `decompose`, `team-lead`, `implement`, etc.). The `sdd-apply` phase maps to both `team-lead` and `implement`.
 
 ### Agent Builder
 
@@ -84,7 +97,7 @@ cortex-ia agent-builder list
 cortex-ia agent-builder remove <name>
 ```
 
-Supported `--engine` values: `claude-code`, `opencode`, `codex`. The engine binary must be on `PATH`. The default `--timeout` is 120 s; `--dry-run` prints the prompt that would be sent to the engine. The persisted registry lives at `~/.cortex-ia/agentbuilder/registry.json`.
+Supported `--engine` values: `claude-code`, `opencode`, `gemini-cli`, `codex`. The engine binary must be on `PATH`. The default `--timeout` is 120 s; `--dry-run` prints the prompt that would be sent to the engine. The persisted registry lives at `~/.cortex-ia/agentbuilder/registry.json`.
 
 ## Interactive TUI
 
@@ -101,16 +114,21 @@ When run without arguments, cortex-ia launches an 8-screen interactive installer
 
 Navigation: `Esc` goes back, `q` quits, `Enter` confirms.
 
-## Provider-Neutral Route Resolution
+## Per-Phase Model Routing
 
-Assign versioned semantic routes and typed capability requirements to SDD phases. Provider/model values are resolved only from explicit configuration with provenance, freshness, and qualification evidence.
+Assign Claude model tiers (opus/sonnet/haiku) to SDD phases for cost/quality optimization:
+
+| Preset | Orchestrator | Architect | Implement | Validate | Finalize |
+|--------|:-:|:-:|:-:|:-:|:-:|
+| **balanced** (default) | opus | opus | sonnet | opus | haiku |
+| **performance** | opus | opus | sonnet | opus | haiku |
+| **economy** | sonnet | sonnet | sonnet | sonnet | haiku |
 
 ```bash
-cortex-ia profiles set default:sdd-design:route/v1/architecture
-cortex-ia profiles set default:sdd-apply:route/v1/implementation
+cortex-ia install --model-preset economy
 ```
 
-There is no phase-to-provider assignment table and no implicit model preset. Missing or ineligible mappings fail closed before generation or installation.
+For OpenCode, these assignments are written to each agent's `model` field in `opencode.json`; the orchestrator no longer passes model names as text in delegation prompts.
 
 ## Persona System
 
@@ -143,6 +161,8 @@ model-preset: balanced
 agents:
   - claude-code
   - opencode
+disabled-components:
+  - mailbox
 custom-skills:
   - path: ./skills/domain-validator
 ```
@@ -178,7 +198,7 @@ cortex-ia persists installation state at `~/.cortex-ia/state.json`:
 {
   "installed_agents": ["claude-code", "opencode"],
   "preset": "full",
-  "components": ["cortex", "forgespec", "context7", "conventions", "sdd", "skills"],
+  "components": ["cortex", "forgespec", "agent-mailbox", "context7", "conventions", "sdd"],
   "last_install": "2026-03-31T00:00:00Z",
   "last_backup_id": "20260331-000000",
   "version": "0.2.0"
@@ -236,9 +256,9 @@ Default retention is **5 unpinned backups** (`backup.DefaultRetentionCount`). `P
 Uses Kahn's algorithm (topological sort) with parallel group detection:
 
 ```
-Level 0 (parallel): cortex, forgespec, context7, skills
+Level 0 (parallel): cortex, forgespec, mailbox, context7, skills
 Level 1 (after cortex): conventions
-Level 2 (after cortex+forgespec): sdd
+Level 2 (after cortex+forgespec+mailbox): sdd
 ```
 
 ## Idempotency

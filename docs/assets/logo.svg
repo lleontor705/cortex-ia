@@ -33,5 +33,5 @@
   <!-- Text -->
   <text x="76" y="36" fill="#c0caf5" font-size="28" font-weight="700" letter-spacing="-0.5">cortex</text>
   <text x="198" y="36" fill="#4A90D9" font-size="28" font-weight="300">-ia</text>
-  <text x="76" y="56" fill="#565f89" font-size="12" letter-spacing="0.5">AI Agent Ecosystem Configurator</text>
+  <text x="76" y="56" fill="#565f89" font-size="12" letter-spacing="0.5">OpenCode Ecosystem Configurator</text>
 </svg>

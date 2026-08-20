@@ -1,11 +1,92 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="240" viewBox="0 0 960 240">
-  <rect width="960" height="240" fill="#1a1b26"/>
-  <g fill="#c0caf5" font-family="sans-serif" text-anchor="middle">
-    <text x="480" y="30" font-size="18">Runtime-Native Direct Dispatch</text>
-    <text x="180" y="120" font-size="15">ForgeSpec authoritative DAG</text>
-    <text x="480" y="120" font-size="15">Orchestrator routes bounded work</text>
-    <text x="780" y="120" font-size="15">Direct implement child</text>
-    <text x="480" y="205" font-size="11">No local scheduler or second task authority</text>
-  </g>
-  <g stroke="#7aa2f7" stroke-width="3"><path d="M300 115 H355"/><path d="M610 115 H665"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" font-family="'Segoe UI',system-ui,sans-serif">
+  <rect width="960" height="560" rx="12" fill="#0f1117"/>
+
+  <!-- Title -->
+  <text x="480" y="32" text-anchor="middle" fill="#c0caf5" font-size="18" font-weight="700">OpenCode Multi-Agent Orchestration</text>
+  <text x="480" y="50" text-anchor="middle" fill="#565f89" font-size="11">Orchestrator routes work via typed envelopes · 4 specialized leaf minions execute with least privilege</text>
+
+  <!-- User -->
+  <rect x="390" y="66" width="180" height="36" rx="18" fill="#1e2030" stroke="#7aa2f7" stroke-width="2"/>
+  <text x="480" y="89" text-anchor="middle" fill="#7aa2f7" font-size="13" font-weight="600">User / Slash Command</text>
+
+  <line x1="480" y1="102" x2="480" y2="124" stroke="#4A90D9" stroke-width="2"/>
+  <polygon points="476,122 480,130 484,122" fill="#4A90D9"/>
+
+  <!-- Orchestrator -->
+  <rect x="280" y="130" width="400" height="56" rx="8" fill="#1e2030" stroke="#4A90D9" stroke-width="2"/>
+  <text x="480" y="153" text-anchor="middle" fill="#c0caf5" font-size="15" font-weight="700">@orchestrator (Primary Agent)</text>
+  <text x="480" y="171" text-anchor="middle" fill="#7dcfff" font-size="10">Model: openai/gpt-5.6-sol · State Machine · Envelopes · Authority Delegation</text>
+
+  <!-- Dispatch arrows -->
+  <line x1="330" y1="186" x2="140" y2="235" stroke="#78909C" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="138,230 134,238 143,237" fill="#78909C"/>
+
+  <line x1="430" y1="186" x2="360" y2="235" stroke="#546E7A" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="358,230 354,238 363,237" fill="#546E7A"/>
+
+  <line x1="530" y1="186" x2="600" y2="235" stroke="#2E7D32" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="597,237 606,238 602,230" fill="#2E7D32"/>
+
+  <line x1="630" y1="186" x2="820" y2="235" stroke="#D32F2F" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="817,237 826,238 822,230" fill="#D32F2F"/>
+
+  <!-- Minion 1: Investigate -->
+  <rect x="30" y="240" width="210" height="110" rx="8" fill="#1e2030" stroke="#78909C" stroke-width="1.5"/>
+  <rect x="40" y="248" width="85" height="18" rx="4" fill="#28333e"/>
+  <text x="82" y="261" text-anchor="middle" fill="#90A4AE" font-size="9" font-weight="600">SUB-AGENT</text>
+  <text x="135" y="278" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="700">@investigate</text>
+  <text x="135" y="295" text-anchor="middle" fill="#78909C" font-size="9">Model: zai-coding-plan/glm-5.3</text>
+  <text x="135" y="312" text-anchor="middle" fill="#565f89" font-size="9">Root-cause · Audit · Spikes</text>
+  <text x="135" y="328" text-anchor="middle" fill="#e0af68" font-size="8">READ-ONLY (Scratch Writes)</text>
+
+  <!-- Minion 2: Planner -->
+  <rect x="255" y="240" width="210" height="110" rx="8" fill="#1e2030" stroke="#546E7A" stroke-width="1.5"/>
+  <rect x="265" y="248" width="85" height="18" rx="4" fill="#24333c"/>
+  <text x="307" y="261" text-anchor="middle" fill="#78909C" font-size="9" font-weight="600">SUB-AGENT</text>
+  <text x="360" y="278" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="700">@planner</text>
+  <text x="360" y="295" text-anchor="middle" fill="#78909C" font-size="9">Model: openai/gpt-5.6-sol</text>
+  <text x="360" y="312" text-anchor="middle" fill="#565f89" font-size="9">Proposals · Specs · Task DAG</text>
+  <text x="360" y="328" text-anchor="middle" fill="#7aa2f7" font-size="8">Review Budget Guard &lt;= 350L</text>
+
+  <!-- Minion 3: Implement -->
+  <rect x="480" y="240" width="210" height="110" rx="8" fill="#1e2030" stroke="#2E7D32" stroke-width="1.5"/>
+  <rect x="490" y="248" width="85" height="18" rx="4" fill="#1b3320"/>
+  <text x="532" y="261" text-anchor="middle" fill="#81C784" font-size="9" font-weight="600">SUB-AGENT</text>
+  <text x="585" y="278" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="700">@implement</text>
+  <text x="585" y="295" text-anchor="middle" fill="#81C784" font-size="9">Model: zai-coding-plan/glm-5.3</text>
+  <text x="585" y="312" text-anchor="middle" fill="#565f89" font-size="9">Task Claim · File Leases · TDD</text>
+  <text x="585" y="328" text-anchor="middle" fill="#9ece6a" font-size="8">Atomic Edits · Fast-TDD Oracle</text>
+
+  <!-- Minion 4: Reviewer -->
+  <rect x="705" y="240" width="210" height="110" rx="8" fill="#1e2030" stroke="#D32F2F" stroke-width="1.5"/>
+  <rect x="715" y="248" width="85" height="18" rx="4" fill="#3a1c1c"/>
+  <text x="757" y="261" text-anchor="middle" fill="#E57373" font-size="9" font-weight="600">SUB-AGENT</text>
+  <text x="810" y="278" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="700">@reviewer</text>
+  <text x="810" y="295" text-anchor="middle" fill="#E57373" font-size="9">Model: openai/gpt-5.6-sol</text>
+  <text x="810" y="312" text-anchor="middle" fill="#565f89" font-size="9">Adversarial Review · Mutation</text>
+  <text x="810" y="328" text-anchor="middle" fill="#f7768e" font-size="8">Empirical Verdict · Blind Judge</text>
+
+  <!-- Control & Evidence Plane Infrastructure -->
+  <text x="480" y="388" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="700">Dual-Plane Runtime Infrastructure</text>
+
+  <!-- ForgeSpec Box -->
+  <rect x="50" y="405" width="410" height="70" rx="8" fill="#1e2030" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="255" y="427" text-anchor="middle" fill="#9ece6a" font-size="13" font-weight="700">ForgeSpec MCP — Control Plane</text>
+  <text x="255" y="445" text-anchor="middle" fill="#c0caf5" font-size="9.5">Authoritative for Task DAG, CAS Revisions, tb_claim, tb_heartbeat</text>
+  <text x="255" y="461" text-anchor="middle" fill="#565f89" font-size="8.5">file_reserve / file_renew / file_release leases prevent file collision races</text>
+
+  <!-- Cortex Box -->
+  <rect x="495" y="405" width="415" height="70" rx="8" fill="#1e2030" stroke="#4A90D9" stroke-width="1.5"/>
+  <text x="702" y="427" text-anchor="middle" fill="#7dcfff" font-size="13" font-weight="700">Cortex MCP — Evidence Plane</text>
+  <text x="702" y="445" text-anchor="middle" fill="#c0caf5" font-size="9.5">Persistent Memory, Knowledge Graph, Bug Lineage, Decisions</text>
+  <text x="702" y="461" text-anchor="middle" fill="#565f89" font-size="8.5">context-distiller saves minimal failure locality &amp; test exit codes</text>
+
+  <!-- Connectors from minions to infrastructure -->
+  <line x1="585" y1="350" x2="255" y2="405" stroke="#2E7D32" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+  <line x1="585" y1="350" x2="702" y2="405" stroke="#4A90D9" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+  <line x1="810" y1="350" x2="702" y2="405" stroke="#4A90D9" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+
+  <!-- Footer -->
+  <text x="480" y="512" text-anchor="middle" fill="#565f89" font-size="9.5">Supervised by OpenCode Plugin (plugin/background-supervisor.ts) · Typed Minion Envelopes &amp; Receipts</text>
+  <text x="480" y="530" text-anchor="middle" fill="#3b3f54" font-size="8.5">cortex-ia · OpenCode Native SDD Architecture</text>
 </svg>

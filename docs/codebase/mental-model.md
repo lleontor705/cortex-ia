@@ -2,102 +2,77 @@
 
 ← [Codebase Guide](../CODEBASE-GUIDE.md)
 
-How cortex-ia works end-to-end: a user selects AI coding agents and ecosystem components, the pipeline injects configs into agent-specific paths, and managed files are written to disk with backup and rollback. This page covers the big-picture data flow only — for per-directory detail see [repository-map.md](repository-map.md), for module contracts see [interfaces.md](interfaces.md).
+How `cortex-ia` works end-to-end: a user executes an interactive TUI or CLI command, the transactional pipeline plans all required file and MCP mutations, captures a verified snapshot backup, applies atomic writes and 3-way JSONC merges to `~/.config/opencode/`, and commits state to `~/.cortex-ia/`.
 
-## End-to-End Flow
+---
 
+## 1. End-to-End Execution Flow
+
+```text
+┌────────────────────────────────────────────────────────┐
+│ Front End (TUI / CLI Dispatcher: internal/app)         │
+└──────────────────────────┬─────────────────────────────┘
+                           │ Request {Home, MCPSelection, Overwrite, DryRun}
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ Installation Service (internal/install.Service)        │
+│  - Acquires Home Mutation Lock (~/.cortex-ia/lock.json)│
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ Transactional Pipeline (internal/pipeline)             │
+│                                                        │
+│  Phase 1: Pure Planning (PlanInstall / PlanSync)       │
+│    ├── Asset Map: layout.go ──▶ mappings               │
+│    ├── Preimage Inspection: checksum disk state        │
+│    ├── MCP Planning: mcpmanager qualification          │
+│    └── Compute Deterministic Plan Digest (SHA-256)     │
+│                                                        │
+│  Phase 2: Snapshot & Verification (internal/backup)    │
+│    ├── Capture pre-mutation byte copies of targets     │
+│    └── Verify backup manifest integrity before writes  │
+│                                                        │
+│  Phase 3: Atomic Apply & Journaling                    │
+│    ├── Write embedded assets via temp file + rename    │
+│    ├── Merge opencode.jsonc (preserve user comments)   │
+│    └── Update managed MCP presets                      │
+│                                                        │
+│  Phase 4: Commit & Verification                        │
+│    ├── Write journal commit marker                     │
+│    ├── Write Metadata V2 + Lock V2 (~/.cortex-ia/)     │
+│    └── Return InstallReceipt to front end              │
+└────────────────────────────────────────────────────────┘
 ```
- ┌─────────────┐    ┌──────────────────┐    ┌─────────────────────────┐
- │   User /    │    │   catalog        │    │   pipeline              │
- │   TUI       │───▶│   ResolveDeps()  │───▶│   2-stage:              │
- │  selection  │    │   (dep order)    │    │   Prepare → Apply       │
- └─────────────┘    └──────────────────┘    └────────────┬────────────┘
-                                                       │
-                          ┌────────────────────────────┴────────────────────┐
-                          │  one sequential chain PER agent (run parallel)   │
-                          │                                                  │
-                          │  adapter.X()  ──▶  component.Inject()  ──▶  files│
-                          │     ▲                                  ▲          │
-                          │     │ paths &                          │ injects  │
-                          │     │ strategies                        │ via      │
-                          │     │                                  │ filemerge│
-                          └──────────────────────────────────────────────────┘
-                                                       │
-                          ┌────────────────────────────┴────────────────────┐
-                          │  state.Save + lockfile   backup manifest         │
-                          │  (rollback available on failure)                 │
-                          └──────────────────────────────────────────────────┘
-```
 
-## Core Concepts
+---
 
-| Concept | Package | What it is |
-|---------|---------|------------|
-| Adapter | `internal/agents` | Per-agent implementation of a 23-method interface. Knows paths + strategies; no agent-specific switches in component code. |
-| Component | `internal/components/*` | A self-contained injector. Each writes its slice of config (MCP servers, skills, prompts, hooks) using the adapter for paths. |
-| ComponentMap | `internal/catalog` | Registry of installable components indexed by `model.ComponentID`, with dependency declarations. |
-| Injector | `pipeline.buildInjectors` | Ordered list of component injectors built per agent; filtered by the resolved component set. |
-| Strategy | `internal/model` | `MCPStrategy` and `SystemPromptStrategy` enums. The adapter picks HOW content is injected; the component never branches on agent. |
-| Golden files | `testdata/golden/` | Expected output fixtures for component tests. Regenerate with `go test -update ./internal/components/...`. |
+## 2. Core Architectural Concepts
 
-## Component Map (14 packages, 11 installable IDs)
+| Concept | Package | Responsibility |
+| :--- | :--- | :--- |
+| **Pure Planning** | `internal/pipeline` | Derives the exact set of effects (`create`, `managed-update`, `safe-merge`, `delete`, `mcp-add`, `mcp-remove`) without modifying the filesystem. |
+| **Plan Digest** | `internal/pipeline` | Cryptographic SHA-256 commitment of all planned effects, preimages, and targets. Binds user confirmation to the exact execution set. |
+| **Atomic File Merge** | `internal/components/filemerge` | Decodes JSONC, performs 3-way object merging with comments and formatting preserved, and writes via temporary atomic swap. |
+| **MCP Management** | `internal/mcpmanager` | Manages local command vector registrations, checks identity accreditation, and isolates user-added MCP servers. |
+| **Journaled Rollback** | `internal/backup` | In the event of an apply or verification error, rolls back all modified files to the exact preimage bytes captured in Phase 2. |
 
-| Component package | ComponentID | MCP server? | Purpose |
-|-------------------|-------------|-------------|---------|
-| `components/cortex` | `cortex` | Yes (Go binary) | Persistent memory + knowledge graph (19 tools) |
-| Historical Mailbox compatibility | retired identifier only | No current provider | Legacy decode, exact migration, rollback, operator cleanup |
-| `components/forgespec` | `forgespec` | Yes (npm) | SDD contracts, task boards, file reservations (15 tools) |
-| `components/context7` | `context7` | Yes (npm/remote) | Live framework/library docs via MCP |
-| `components/sdd` | `sdd` | — | SDD orchestrator prompt + 19 skills + commands + sub-agents |
-| `components/skills` | `skills` | — | Non-SDD utility skills injection |
-| `components/conventions` | `conventions` | — | Cortex convention + memory protocol |
-| `components/persona` | `persona` | — | Communication-style persona injection |
-| `components/permissions` | `permissions` | — | Permissions component |
-| `components/theme` | `theme` | — | Terminal theme |
-| `components/mcpinject` | — | — | Shared MCP injection engine (library, not installed) |
-| `components/filemerge` | — | — | File-operation primitives (library, not installed) |
-| `components/uninstall` | — | — | Uninstall command support (not installed) |
+---
 
-## Dependency Resolution
+## 3. Platform Support Strategy
 
-`catalog.ResolveDeps()` performs a DFS topological sort so dependencies install before dependents.
+1. **OpenCode (Primary Active)**: Full native SDD asset set and MCP management under `~/.config/opencode/`.
+2. **Google Antigravity (Planned)**: Native rules, skills, and sidecar integration under `~/.gemini/antigravity/`.
+3. **Claude CLI (Planned)**: Native prompts and tool definitions under `~/.claude/`.
 
-| Component | Depends on |
-|-----------|------------|
-| `conventions` | `cortex` |
-| `sdd` | `cortex`, `forgespec` |
-| all others | none |
+---
 
-Presets:
-- **full** — all components in `AllComponents()`.
-- **minimal** — `cortex`, `forgespec`, `context7`, `sdd` (conventions auto-pulled via deps).
+## 4. Key Invariants
 
-## Pipeline Stages
-
-| Stage | Runner | Failure behavior |
-|-------|--------|------------------|
-| Prepare | `RunStage` (sequential) | Stop on error; rollback completed steps in reverse order. |
-| Apply | `RunParallelChains` (per-agent parallel, components sequential within agent) | `ContinueOnError` — collects errors, continues remaining agents/components. |
-
-Agents run in parallel (different config dirs). Within an agent, components run sequentially (same config files). A per-agent chain is built by filtering `buildInjectors()` against the resolved component set.
-
-## Invariants
-
-- Components NEVER branch on `AgentID`. Path and strategy logic lives in the adapter.
-- Content outside `<!-- cortex-ia:ID --> ... <!-- /cortex-ia:ID -->` markers is never modified.
-- Marker-based injection is idempotent — re-running replaces only the marked block.
-- Prepare failure always rolls back; Apply failure never rolls back managed files (leaves them in place, marks install "in-progress" for `doctor` to detect).
-- Dependencies are installed before dependents within every chain.
-- Shared files (orchestrator prompt, shared skills) are written once via `sync.Once` to avoid file-lock races across parallel agents (Windows safety).
-
-## Contributor Checklist
-
-- [ ] Adding an agent? Create `internal/agents/<name>/adapter.go`, implement the full `Adapter` interface, register in `factory.go`. No component changes needed.
-- [ ] Adding a component? Create `internal/components/<name>/`, add a `ComponentID` constant in `model/types.go`, add a `ComponentInfo` entry in `catalog/components.go`, and wire an `injectorEntry` in `pipeline.buildInjectors()`.
-- [ ] Adding an MCP server? Add per-strategy templates in a `config.go` + an `inject.go` that delegates to `mcpinject.Inject()`.
-- [ ] Changing injection logic? Use `filemerge` primitives (`WriteFileAtomic`, `InjectSection`) — never raw `os.WriteFile` on managed paths.
-- [ ] After changing expected outputs, regenerate golden files: `go test -update ./internal/components/...`.
-- [ ] Parallel-write safety: shared, cross-agent files must go through the `sync.Once` guard in the SDD injector or an equivalent single-writer pattern.
+1. **Read-Only Planning**: Calling `PlanInstall` or `PlanSync` never touches disk or writes state.
+2. **Deterministic Digests**: Effect lists are sorted strictly by `effectOrder`, then `Kind`, then `Dest`.
+3. **Fail-Closed on Unmanaged Files**: If an unmanaged file collides with a destination, planning reports a `ConflictUnmanagedExisting` blocker unless `--overwrite` is explicitly authorized.
+4. **Never Block on Drift**: The service never appropriates or overwrites drifted user files without consent.
 
 ---
 

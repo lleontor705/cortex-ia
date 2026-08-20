@@ -1,6 +1,0 @@
-go test fuzz v1
-[]byte("managed: old\n")
-[]byte("managed: old\n")
-[]byte("managed: new\n")
-[]byte("user-prefix\x00\n")
-[]byte("\xffuser-suffix\n")

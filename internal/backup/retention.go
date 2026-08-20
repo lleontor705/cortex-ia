@@ -122,6 +122,10 @@ func Prune(backupDir string, retentionCount int) ([]string, error) {
 	if retentionCount <= 0 {
 		return nil, nil
 	}
+	base, err := filepath.Abs(backupDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve backup dir %q: %w", backupDir, err)
+	}
 
 	manifests, err := listManifestsForRetention(backupDir)
 	if err != nil {
@@ -146,6 +150,12 @@ func Prune(backupDir string, retentionCount int) ([]string, error) {
 	toDelete := unpinned[retentionCount:]
 	var deleted []string
 	for _, m := range toDelete {
+		// A manifest is only prunable when its root is contained in the
+		// backups directory being pruned; anything else fails closed.
+		if err := containedPath(base, filepath.Clean(m.RootDir)); err != nil {
+			log.Printf("backup: prune: refusing uncontained root %q: %v", m.RootDir, err)
+			continue
+		}
 		if err := DeleteBackup(m); err != nil {
 			log.Printf("backup: prune: failed to delete %q: %v", m.RootDir, err)
 			continue

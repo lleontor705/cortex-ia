@@ -15,7 +15,7 @@ Audit correctness and acceptance, security and secrets, reliability and concurre
 
 For every finding include severity (`BLOCKER`, `WARNING`, `NIT`), path and line where applicable, evidence, impact, and remediation. A secret in the diff, destructive data risk, unmet acceptance criterion, or reproducible critical regression is a BLOCKER. Do not mark every skipped test as a blocker without understanding repository policy and relevance.
 
-Save a concise sanitized audit in Cortex when it is durable. Never store secrets found during review, raw output, or ForgeSpec authority tokens. The reviewer may read ForgeSpec state but does not claim implementation tasks, release another worker's leases, or mark work done unless explicitly granted that authority.
+Save a concise sanitized audit in Cortex when it is durable. Never store secrets found during review, raw output, or ForgeSpec authority tokens. The canonical protocol is `skills/_shared/forgespec-protocol.md`: read SDD contracts and task/event/audit state through the direct-v1 reads (`tb_list_boards`, `tb_query`, `tb_batch_status`, `tb_events`, `tb_audit_log`); the only permitted mutation is `tb_approve`, and only for a configured gate that names this role as an allowed actor with explicit asserted provenance. Never claim implementation tasks, release another worker's leases, or mark work done.
 
 ```json
 {

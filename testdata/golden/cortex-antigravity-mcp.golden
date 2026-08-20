@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cortex": {
+      "args": [
+        "mcp"
+      ],
+      "command": "cortex"
+    }
+  }
+}

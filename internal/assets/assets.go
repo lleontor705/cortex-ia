@@ -5,9 +5,15 @@ import (
 	"fmt"
 )
 
-// FS embeds all OpenCode copy-paste assets.
+// FS embeds every OpenCode copy-paste asset: the AGENTS.md system prompt,
+// the opencode.jsonc settings template, shared workflow contracts, and the
+// agent, command, skill, and plugin trees.
 //
-//go:embed AGENTS.md all:_shared all:agents all:commands all:skills
+// The embedded file set is derived at runtime by walking this FS (see
+// Inventory). Do not hardcode file catalogs that duplicate what the walk
+// already proves.
+//
+//go:embed AGENTS.md opencode.jsonc all:agents all:commands all:plugin all:skills
 var FS embed.FS
 
 // Read reads the content of an embedded asset file.

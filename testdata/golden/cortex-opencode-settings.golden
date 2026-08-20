@@ -1,12 +1,12 @@
 {
   "mcp": {
     "cortex": {
-      "type": "local",
       "command": [
         "cortex",
-        "mcp",
-        "--tools=agent"
+        "mcp"
       ],
-      "enabled": true
+      "enabled": true,
+      "type": "local"
     }
-  }}
+  }
+}

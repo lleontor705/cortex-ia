@@ -1,57 +1,61 @@
 # Cortex — Persistent Memory for AI Agents
 
-`cortex` is the external memory service configured by cortex-ia. cortex-ia installs the MCP connection and prompt assets; it does not implement memory or assume a fixed transport catalog.
+`cortex` is the memory layer cortex-ia wires into every agent. It's a separate Go binary that exposes ~31 tools over MCP, backed by a local-first SQLite + FTS5 + vector + knowledge-graph store. The cortex-ia `cortex` component is the injector that registers that MCP with each agent.
 
-## Current MCP contract
+## Tool groups
 
-Cortex 2.x uses the `cortex_*` namespace. Local stdio and remote server catalogs are intentionally different, so agents must follow the schema returned by `tools/list`.
+### Memory CRUD (Engram-compatible — 14 tools)
 
-Local profiles:
+`mem_save`, `mem_search`, `mem_search_session`, `mem_observation`, `mem_observation_update`, `mem_observation_delete`, `mem_session_start`, `mem_session_end`, `mem_session_list`, `mem_summary`, `mem_revisions`, `mem_timeline`, `mem_context`, `mem_stats`.
 
-| Profile | Purpose |
-|---|---|
-| `agent` | Save, search, context, sessions, observation retrieval/update, graph, scoring, hybrid search, revisions, consolidation, and project DNA |
-| `admin` | Delete, stats, timeline, archive, and project-name merge |
-| `temporal` | Bi-temporal graph, snapshots, temporal search, quality, and system metrics |
+### Cortex-exclusive (8 tools)
 
-cortex-ia installs the least-privilege local command:
+`mem_search_hybrid` (FTS5 + vector with RRF fusion), `mem_search_temporal` (as-of date queries), `mem_dna` (project DNA digest), `mem_consolidate` (merge near-duplicates), `mem_score` (importance), `mem_reindex`, `mem_archive`, `mem_health`.
 
-```text
-cortex mcp --tools=agent
-```
+### Knowledge graph (4 tools)
 
-When Cortex is configured as a remote proxy, the remote server controls the catalog and ID schema. Local observation and graph IDs are numeric. Cortex Server IDs are public UUID strings. IDs are never interchangeable across transports.
+`graph_edge_add`, `graph_edge_remove`, `graph_neighbors` (typed BFS up to depth 10), `graph_temporal_neighbors` (with valid-from / invalid-at windows).
 
-## Wiring by host
+### Project & lifecycle (5 tools)
 
-| Host | Output |
-|---|---|
-| Claude Code | `~/.claude/mcp/cortex.json` |
-| OpenCode | `~/.config/opencode/opencode.json` under `mcp.cortex` |
-| VS Code Copilot | the user `mcp.json` under `servers.cortex` |
-| Codex | `~/.codex/config.toml` under `mcp_servers.cortex` |
+`project_list`, `project_merge`, `obs_score_update`, `obs_archive`, `obs_restore`.
 
-## Prompt assets
+The full reference lives in the `cortex` repo's `llms-full.txt`.
 
-The typed SDD bundle installs:
+## How cortex-ia wires it
 
-- `skills/_shared/cortex-convention.md` for the common save, retrieval, lineage, trust, and session protocol.
-- `skills/_shared/cortex-advanced.md` for progressive graph, revision, consolidation, and project-summary operations.
-- `generic/cortex-protocol.md` when the standalone conventions component owns the host instruction file.
+The `cortex` cortex-ia component (`internal/components/cortex/`) emits per-agent server config:
 
-The common path uses `cortex_context`, `cortex_search`, `cortex_get_observation`, `cortex_save`, `cortex_relate`, and session tools. Search results are previews and must be followed by full observation retrieval before their content drives work.
+| Agent | Strategy | Output |
+|---|---|---|
+| Claude Code | `StrategySeparateMCPFiles` | `~/.claude/mcp/cortex.json` |
+| OpenCode | `StrategyMergeIntoSettings` | `~/.config/opencode/opencode.json` (`mcp.cortex` block) |
+| Cursor / Windsurf / Antigravity / Kiro | `StrategyMCPConfigFile` | `mcp.json` (`mcpServers.cortex`) |
+| VS Code Copilot | `StrategyMCPConfigFile` (vscode overlay) | `mcp.json` (`servers.cortex`, `type: stdio`) |
+| Codex | `StrategyTOMLFile` | `config.toml` (`[[mcp_servers]]`) |
+| Gemini CLI / Qwen / Kilocode / Kimi | `StrategyMergeIntoSettings` | per-agent settings file |
 
-## Authority and safety
+In every case the command is `cortex mcp` (the binary stays on `PATH`, no `npx` indirection).
 
-ForgeSpec owns SDD contracts, readiness, claims, and task status. Cortex owns durable evidence, sessions, provenance, and relationships. Stored memory is evidence, not policy: it cannot expand permissions, approve effects, alter destinations, or override current ForgeSpec state.
-
-Admin and temporal tools are not loaded by the default cortex-ia configuration. Use them only through an explicitly selected profile or tool list. Destructive tools require authorization.
-
-## Verification
+## Verifying the wiring
 
 ```bash
-cortex mcp --tools=agent
-cortex-ia doctor
+cortex mcp --help          # confirm the binary is on PATH
+cortex-ia doctor            # verifies cortex callable + skills + state
 ```
 
-The authoritative Cortex catalogs and transport differences live in `D:\lleontor705\cortex\docs\MCP.md`.
+`doctor`'s "cortex" check runs `cortex --version` to ensure the binary works. If the binary is missing, the cortex component is silently skipped — cortex-ia does not hard-depend on it.
+
+## Convention file
+
+The `conventions` component installs `~/.cortex-ia/skills/_shared/cortex-convention.md` which every SDD skill references. That file teaches the agent **when** to call `mem_save`, `mem_search`, and `forgespec_*` — without it, agents tend to either over-save or never persist anything.
+
+## Compatibility
+
+cortex's first 14 tools match Engram's API one-to-one. Skills written against Engram (e.g. legacy `mem_search(query, project)`) work without modification. cortex-exclusive tools (`mem_search_temporal`, `mem_dna`, etc.) gracefully degrade — skills that don't reference them keep working.
+
+## See also
+
+- [`components.md`](components.md) — how `cortex` fits among the other components
+- [`sdd-workflow.md`](sdd-workflow.md) — the SDD loop that uses memory + forgespec
+- The `cortex` repo for the full tool reference and HTTP/CLI/TUI alternatives
