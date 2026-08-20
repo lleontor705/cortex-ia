@@ -97,14 +97,7 @@ body:
       label: AI Agent / Client
       description: Which AI agent or client are you using?
       options:
-        - Claude Code
         - OpenCode
-        - Gemini CLI
-        - Codex
-        - Cursor
-        - VS Code (Copilot)
-        - Windsurf
-        - Antigravity
         - Other
     validations:
       required: true
@@ -116,13 +109,11 @@ body:
       options:
         - CLI (commands, flags)
         - TUI (terminal UI)
-        - Installation Pipeline (2-stage)
-        - Agent Detection
-        - Doctor / Health Checks
-        - Backup / Rollback
-        - Components (cortex, forgespec, mailbox, etc.)
-        - Skills / SDD
-        - Persona / Model Preset
+        - Installation / Sync Pipeline
+        - Doctor / Health Report
+        - Backup / Rollback / Uninstall
+        - MCP Management (presets, custom servers)
+        - Assets (agents, skills, commands, plugin)
         - Documentation
         - Other
     validations:

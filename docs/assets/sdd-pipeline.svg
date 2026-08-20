@@ -142,14 +142,14 @@
   <text x="905" y="343" text-anchor="middle" fill="#565f89" font-size="8">full pipeline + archive</text>
 
   <!-- MCP footer -->
-  <text x="530" y="385" text-anchor="middle" fill="#c0caf5" font-size="12" font-weight="600">Powered by 3 MCP Servers</text>
+  <text x="530" y="385" text-anchor="middle" fill="#c0caf5" font-size="12" font-weight="600">Powered by OpenCode Managed MCP Servers</text>
 
-  <rect x="100" y="398" width="200" height="26" rx="5" fill="#1e2030" stroke="#4A90D9" stroke-width="1"/>
-  <text x="200" y="416" text-anchor="middle" fill="#7dcfff" font-size="10">Cortex · 31 tools · memory</text>
+  <rect x="70" y="398" width="280" height="28" rx="6" fill="#1e2030" stroke="#4A90D9" stroke-width="1.2"/>
+  <text x="210" y="416" text-anchor="middle" fill="#7dcfff" font-size="10" font-weight="600">Cortex · 31 tools · Persistent Memory &amp; Graph</text>
 
-  <rect x="340" y="398" width="230" height="26" rx="5" fill="#1e2030" stroke="#2E7D32" stroke-width="1"/>
-  <text x="455" y="416" text-anchor="middle" fill="#9ece6a" font-size="10">ForgeSpec · 19 tools · contracts</text>
+  <rect x="390" y="398" width="280" height="28" rx="6" fill="#1e2030" stroke="#2E7D32" stroke-width="1.2"/>
+  <text x="530" y="416" text-anchor="middle" fill="#9ece6a" font-size="10" font-weight="600">ForgeSpec · 19 tools · Contracts, Board &amp; Leases</text>
 
-  <rect x="610" y="398" width="230" height="26" rx="5" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
-  <text x="725" y="416" text-anchor="middle" fill="#e0af68" font-size="10">Mailbox · 14 tools · messaging</text>
+  <rect x="710" y="398" width="280" height="28" rx="6" fill="#1e2030" stroke="#e0af68" stroke-width="1.2"/>
+  <text x="850" y="416" text-anchor="middle" fill="#e0af68" font-size="10" font-weight="600">Context7 · Live Framework &amp; Library Docs</text>
 </svg>

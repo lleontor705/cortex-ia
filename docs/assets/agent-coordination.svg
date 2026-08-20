@@ -1,132 +1,103 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" font-family="'Segoe UI',system-ui,sans-serif">
   <rect width="960" height="480" rx="12" fill="#0f1117"/>
 
-  <text x="480" y="32" text-anchor="middle" fill="#c0caf5" font-size="17" font-weight="700">Agent Coordination — 26 Mailbox Tools</text>
-  <text x="480" y="50" text-anchor="middle" fill="#565f89" font-size="10">Messaging · A2A Tasks · Resource Locks · Dead-Letter Queue</text>
+  <text x="480" y="32" text-anchor="middle" fill="#c0caf5" font-size="18" font-weight="700">OpenCode Agent Coordination &amp; Protocols</text>
+  <text x="480" y="50" text-anchor="middle" fill="#565f89" font-size="11">ForgeSpec CAS Control Plane · Cortex Persistent Evidence · File Reservation Leases · Typed Receipts</text>
 
-  <!-- Messaging Column -->
-  <rect x="30" y="72" width="210" height="280" rx="8" fill="#1a1b26" stroke="#e0af68" stroke-width="1.5"/>
-  <text x="135" y="94" text-anchor="middle" fill="#e0af68" font-size="12" font-weight="700">Messaging</text>
-  <text x="135" y="108" text-anchor="middle" fill="#565f89" font-size="9">14 tools · P2P communication</text>
+  <!-- Column 1: ForgeSpec Control Plane -->
+  <rect x="25" y="72" width="215" height="280" rx="8" fill="#1a1b26" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="132" y="94" text-anchor="middle" fill="#9ece6a" font-size="12" font-weight="700">ForgeSpec (Control Plane)</text>
+  <text x="132" y="108" text-anchor="middle" fill="#565f89" font-size="9">DAG State &amp; Task Claims</text>
 
-  <text x="50" y="132" fill="#c0caf5" font-size="9">msg_send</text>
-  <text x="170" y="132" fill="#565f89" font-size="8" text-anchor="end">send P2P</text>
-  <text x="50" y="148" fill="#c0caf5" font-size="9">msg_read_inbox</text>
-  <text x="170" y="148" fill="#565f89" font-size="8" text-anchor="end">poll inbox</text>
-  <text x="50" y="164" fill="#c0caf5" font-size="9">msg_broadcast</text>
-  <text x="170" y="164" fill="#565f89" font-size="8" text-anchor="end">notify all</text>
-  <text x="50" y="180" fill="#c0caf5" font-size="9">msg_request</text>
-  <text x="170" y="180" fill="#565f89" font-size="8" text-anchor="end">sync reply</text>
-  <text x="50" y="196" fill="#c0caf5" font-size="9">msg_search</text>
-  <text x="170" y="196" fill="#565f89" font-size="8" text-anchor="end">find msgs</text>
-  <text x="50" y="212" fill="#c0caf5" font-size="9">msg_count</text>
-  <text x="170" y="212" fill="#565f89" font-size="8" text-anchor="end">inbox stats</text>
-  <text x="50" y="228" fill="#c0caf5" font-size="9">msg_list_threads</text>
-  <text x="170" y="228" fill="#565f89" font-size="8" text-anchor="end">conversations</text>
-  <text x="50" y="244" fill="#c0caf5" font-size="9">msg_activity_feed</text>
-  <text x="170" y="244" fill="#565f89" font-size="8" text-anchor="end">recent activity</text>
-  <line x1="50" y1="288" x2="220" y2="288" stroke="#1e2030" stroke-width="1"/>
-  <text x="50" y="304" fill="#c0caf5" font-size="9">agent_register</text>
-  <text x="170" y="304" fill="#565f89" font-size="8" text-anchor="end">join session</text>
-  <text x="50" y="320" fill="#c0caf5" font-size="9">msg_list_agents</text>
-  <text x="170" y="320" fill="#565f89" font-size="8" text-anchor="end">discover</text>
-  <text x="50" y="336" fill="#c0caf5" font-size="9">msg_activity_feed</text>
-  <text x="170" y="336" fill="#565f89" font-size="8" text-anchor="end">recent log</text>
+  <text x="45" y="132" fill="#c0caf5" font-size="9.5">forgespec_capabilities</text>
+  <text x="225" y="132" fill="#565f89" font-size="8" text-anchor="end">direct-v1 mode</text>
+  <text x="45" y="152" fill="#c0caf5" font-size="9.5">tb_create_board</text>
+  <text x="225" y="152" fill="#565f89" font-size="8" text-anchor="end">init DAG</text>
+  <text x="45" y="172" fill="#c0caf5" font-size="9.5">tb_add_task</text>
+  <text x="225" y="172" fill="#565f89" font-size="8" text-anchor="end">add bounded node</text>
+  <text x="45" y="192" fill="#c0caf5" font-size="9.5">tb_query</text>
+  <text x="225" y="192" fill="#565f89" font-size="8" text-anchor="end">read DAG state</text>
+  <text x="45" y="212" fill="#c0caf5" font-size="9.5">tb_claim</text>
+  <text x="225" y="212" fill="#81C784" font-size="8" text-anchor="end">acquire attempt</text>
+  <text x="45" y="232" fill="#c0caf5" font-size="9.5">tb_heartbeat</text>
+  <text x="225" y="232" fill="#81C784" font-size="8" text-anchor="end">renew claim TTL</text>
+  <text x="45" y="252" fill="#c0caf5" font-size="9.5">tb_update</text>
+  <text x="225" y="252" fill="#81C784" font-size="8" text-anchor="end">CAS status change</text>
+  <text x="45" y="272" fill="#c0caf5" font-size="9.5">tb_events</text>
+  <text x="225" y="272" fill="#565f89" font-size="8" text-anchor="end">audit trail</text>
+  <text x="45" y="292" fill="#c0caf5" font-size="9.5">tb_approve</text>
+  <text x="225" y="292" fill="#f7768e" font-size="8" text-anchor="end">review gate</text>
 
-  <!-- A2A Column -->
-  <rect x="260" y="72" width="210" height="280" rx="8" fill="#1a1b26" stroke="#bb9af7" stroke-width="1.5"/>
-  <text x="365" y="94" text-anchor="middle" fill="#bb9af7" font-size="12" font-weight="700">A2A Tasks</text>
-  <text x="365" y="108" text-anchor="middle" fill="#565f89" font-size="9">5 tools · formal delegation</text>
+  <!-- Column 2: File Reservation Leases -->
+  <rect x="255" y="72" width="215" height="280" rx="8" fill="#1a1b26" stroke="#7aa2f7" stroke-width="1.5"/>
+  <text x="362" y="94" text-anchor="middle" fill="#7aa2f7" font-size="12" font-weight="700">File Leases (Concurrency)</text>
+  <text x="362" y="108" text-anchor="middle" fill="#565f89" font-size="9">Atomic Advisory Locks</text>
 
-  <rect x="278" y="122" width="174" height="44" rx="5" fill="#1e2030" stroke="#bb9af7" stroke-width="1"/>
-  <text x="365" y="140" text-anchor="middle" fill="#bb9af7" font-size="10" font-weight="600">a2a_submit_task</text>
-  <text x="365" y="156" text-anchor="middle" fill="#565f89" font-size="8">delegate work with tracking</text>
+  <rect x="270" y="122" width="185" height="42" rx="5" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
+  <text x="362" y="140" text-anchor="middle" fill="#7aa2f7" font-size="10" font-weight="600">file_reserve</text>
+  <text x="362" y="155" text-anchor="middle" fill="#565f89" font-size="8">Acquire exclusive lease per path</text>
 
-  <rect x="278" y="176" width="174" height="44" rx="5" fill="#1e2030" stroke="#bb9af7" stroke-width="1"/>
-  <text x="365" y="194" text-anchor="middle" fill="#bb9af7" font-size="10" font-weight="600">a2a_respond_task</text>
-  <text x="365" y="210" text-anchor="middle" fill="#565f89" font-size="8">return structured result</text>
+  <rect x="270" y="172" width="185" height="42" rx="5" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
+  <text x="362" y="190" text-anchor="middle" fill="#7aa2f7" font-size="10" font-weight="600">file_renew</text>
+  <text x="362" y="205" text-anchor="middle" fill="#565f89" font-size="8">Extend lease TTL while editing</text>
 
-  <rect x="278" y="230" width="174" height="32" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
-  <text x="365" y="250" text-anchor="middle" fill="#c0caf5" font-size="10">a2a_get_task</text>
+  <rect x="270" y="222" width="185" height="42" rx="5" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
+  <text x="362" y="240" text-anchor="middle" fill="#7aa2f7" font-size="10" font-weight="600">file_release</text>
+  <text x="362" y="255" text-anchor="middle" fill="#565f89" font-size="8">Release files on PASS / FAIL / BLOCKED</text>
 
-  <rect x="278" y="270" width="174" height="32" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
-  <text x="365" y="290" text-anchor="middle" fill="#c0caf5" font-size="10">a2a_list_tasks</text>
+  <text x="362" y="295" text-anchor="middle" fill="#e0af68" font-size="9" font-style="italic">Prevents cross-minion races</text>
+  <text x="362" y="312" text-anchor="middle" fill="#565f89" font-size="8">Strictly disjoint allowed_files per minion</text>
 
-  <rect x="278" y="310" width="174" height="32" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
-  <text x="365" y="330" text-anchor="middle" fill="#c0caf5" font-size="10">a2a_cancel_task</text>
+  <!-- Column 3: Cortex Evidence Plane -->
+  <rect x="485" y="72" width="215" height="280" rx="8" fill="#1a1b26" stroke="#4A90D9" stroke-width="1.5"/>
+  <text x="592" y="94" text-anchor="middle" fill="#7dcfff" font-size="12" font-weight="700">Cortex (Evidence Plane)</text>
+  <text x="592" y="108" text-anchor="middle" fill="#565f89" font-size="9">Cross-Session Durable Memory</text>
 
-  <!-- Resources Column -->
-  <rect x="490" y="72" width="210" height="280" rx="8" fill="#1a1b26" stroke="#7dcfff" stroke-width="1.5"/>
-  <text x="595" y="94" text-anchor="middle" fill="#7dcfff" font-size="12" font-weight="700">Resource Locks</text>
-  <text x="595" y="108" text-anchor="middle" fill="#565f89" font-size="9">4 tools · advisory leasing</text>
+  <text x="505" y="132" fill="#c0caf5" font-size="9.5">cortex_session_start</text>
+  <text x="685" y="132" fill="#565f89" font-size="8" text-anchor="end">bind session</text>
+  <text x="505" y="155" fill="#c0caf5" font-size="9.5">cortex_search</text>
+  <text x="685" y="155" fill="#565f89" font-size="8" text-anchor="end">hybrid query</text>
+  <text x="505" y="178" fill="#c0caf5" font-size="9.5">cortex_save</text>
+  <text x="685" y="178" fill="#7dcfff" font-size="8" text-anchor="end">persist evidence</text>
+  <text x="505" y="201" fill="#c0caf5" font-size="9.5">cortex_session_summary</text>
+  <text x="685" y="201" fill="#565f89" font-size="8" text-anchor="end">checkpoint</text>
+  <text x="505" y="224" fill="#c0caf5" font-size="9.5">cortex_session_end</text>
+  <text x="685" y="224" fill="#565f89" font-size="8" text-anchor="end">close &amp; flush</text>
 
-  <rect x="508" y="122" width="174" height="44" rx="5" fill="#1e2030" stroke="#7dcfff" stroke-width="1"/>
-  <text x="595" y="140" text-anchor="middle" fill="#7dcfff" font-size="10" font-weight="600">resource_acquire</text>
-  <text x="595" y="156" text-anchor="middle" fill="#565f89" font-size="8">exclusive/shared · TTL · metadata</text>
+  <rect x="500" y="250" width="185" height="42" rx="5" fill="#1e2030" stroke="#4A90D9" stroke-width="1"/>
+  <text x="592" y="268" text-anchor="middle" fill="#7dcfff" font-size="9.5" font-weight="600">context-distiller</text>
+  <text x="592" y="283" text-anchor="middle" fill="#565f89" font-size="8">Minimizes failure locality &amp; diffs</text>
 
-  <rect x="508" y="176" width="174" height="44" rx="5" fill="#1e2030" stroke="#7dcfff" stroke-width="1"/>
-  <text x="595" y="194" text-anchor="middle" fill="#7dcfff" font-size="10" font-weight="600">resource_release</text>
-  <text x="595" y="210" text-anchor="middle" fill="#565f89" font-size="8">release after work completes</text>
+  <!-- Column 4: Background Supervisor -->
+  <rect x="715" y="72" width="220" height="280" rx="8" fill="#1a1b26" stroke="#e0af68" stroke-width="1.5"/>
+  <text x="825" y="94" text-anchor="middle" fill="#e0af68" font-size="12" font-weight="700">Supervisor &amp; Receipts</text>
+  <text x="825" y="108" text-anchor="middle" fill="#565f89" font-size="9">Asynchronous Minion Lifecycle</text>
 
-  <rect x="508" y="230" width="174" height="32" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
-  <text x="595" y="250" text-anchor="middle" fill="#c0caf5" font-size="10">resource_check</text>
+  <text x="735" y="132" fill="#c0caf5" font-size="9.5">task(..., background=true)</text>
+  <text x="735" y="155" fill="#c0caf5" font-size="9.5">background_status</text>
+  <text x="735" y="178" fill="#c0caf5" font-size="9.5">background_tail</text>
+  <text x="735" y="201" fill="#c0caf5" font-size="9.5">background_recover</text>
+  <text x="735" y="224" fill="#c0caf5" font-size="9.5">background_cancel</text>
 
-  <rect x="508" y="270" width="174" height="32" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
-  <text x="595" y="290" text-anchor="middle" fill="#c0caf5" font-size="10">resource_check</text>
+  <rect x="730" y="250" width="190" height="42" rx="5" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
+  <text x="825" y="268" text-anchor="middle" fill="#e0af68" font-size="9.5" font-weight="600">Receipt v2.0 Contract</text>
+  <text x="825" y="283" text-anchor="middle" fill="#565f89" font-size="8">PASS | FAIL | BLOCKED | INCONCLUSIVE</text>
 
-  <!-- Use case labels -->
-  <text x="595" y="324" text-anchor="middle" fill="#565f89" font-size="9" font-style="italic">Deploy · CI · APIs · DB</text>
-  <text x="595" y="340" text-anchor="middle" fill="#565f89" font-size="8">NOT for file locks (use ForgeSpec)</text>
+  <!-- Protocols Guide Footer -->
+  <text x="480" y="380" text-anchor="middle" fill="#c0caf5" font-size="12.5" font-weight="600">Coordination Invariants</text>
 
-  <!-- DLQ Column -->
-  <rect x="720" y="72" width="210" height="280" rx="8" fill="#1a1b26" stroke="#f7768e" stroke-width="1.5"/>
-  <text x="825" y="94" text-anchor="middle" fill="#f7768e" font-size="12" font-weight="700">Dead-Letter Queue</text>
-  <text x="825" y="108" text-anchor="middle" fill="#565f89" font-size="9">3 tools · failure recovery</text>
+  <rect x="25" y="396" width="215" height="30" rx="5" fill="#1e2030" stroke="#2E7D32" stroke-width="1"/>
+  <text x="132" y="415" text-anchor="middle" fill="#9ece6a" font-size="9">Orchestrator never edits code</text>
 
-  <rect x="738" y="122" width="174" height="44" rx="5" fill="#1e2030" stroke="#f7768e" stroke-width="1"/>
-  <text x="825" y="140" text-anchor="middle" fill="#f7768e" font-size="10" font-weight="600">dlq_list</text>
-  <text x="825" y="156" text-anchor="middle" fill="#565f89" font-size="8">view failed/expired messages</text>
+  <rect x="255" y="396" width="215" height="30" rx="5" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
+  <text x="362" y="415" text-anchor="middle" fill="#7aa2f7" font-size="9">File leases mandatory before writes</text>
 
-  <rect x="738" y="176" width="174" height="44" rx="5" fill="#1e2030" stroke="#f7768e" stroke-width="1"/>
-  <text x="825" y="194" text-anchor="middle" fill="#f7768e" font-size="10" font-weight="600">dlq_retry</text>
-  <text x="825" y="210" text-anchor="middle" fill="#565f89" font-size="8">replay lost coordination</text>
+  <rect x="485" y="396" width="215" height="30" rx="5" fill="#1e2030" stroke="#4A90D9" stroke-width="1"/>
+  <text x="592" y="415" text-anchor="middle" fill="#7dcfff" font-size="9">Reviewer never trusts prose claims</text>
 
-  <rect x="738" y="230" width="174" height="44" rx="5" fill="#1e2030" stroke="#f7768e" stroke-width="1"/>
-  <text x="825" y="248" text-anchor="middle" fill="#f7768e" font-size="10" font-weight="600">dlq_purge</text>
-  <text x="825" y="264" text-anchor="middle" fill="#565f89" font-size="8">clear stale entries</text>
-
-  <!-- Use case labels DLQ -->
-  <text x="825" y="300" text-anchor="middle" fill="#565f89" font-size="9" font-style="italic">Compaction recovery</text>
-  <text x="825" y="316" text-anchor="middle" fill="#565f89" font-size="9" font-style="italic">Timeout diagnostics</text>
-  <text x="825" y="332" text-anchor="middle" fill="#565f89" font-size="9" font-style="italic">Lost broadcast replay</text>
-
-  <!-- Decision Guide -->
-  <text x="480" y="380" text-anchor="middle" fill="#c0caf5" font-size="12" font-weight="600">When to Use What</text>
-
-  <rect x="30" y="396" width="210" height="28" rx="5" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
-  <text x="135" y="414" text-anchor="middle" fill="#e0af68" font-size="9">Quick clarification → msg_request</text>
-
-  <rect x="260" y="396" width="210" height="28" rx="5" fill="#1e2030" stroke="#bb9af7" stroke-width="1"/>
-  <text x="365" y="414" text-anchor="middle" fill="#bb9af7" font-size="9">Formal delegation → a2a_submit_task</text>
-
-  <rect x="490" y="396" width="210" height="28" rx="5" fill="#1e2030" stroke="#7dcfff" stroke-width="1"/>
-  <text x="595" y="414" text-anchor="middle" fill="#7dcfff" font-size="9">Deploy/CI lock → resource_acquire</text>
-
-  <rect x="720" y="396" width="210" height="28" rx="5" fill="#1e2030" stroke="#f7768e" stroke-width="1"/>
-  <text x="825" y="414" text-anchor="middle" fill="#f7768e" font-size="9">Lost message → dlq_list + retry</text>
-
-  <rect x="30" y="432" width="210" height="28" rx="5" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
-  <text x="135" y="450" text-anchor="middle" fill="#e0af68" font-size="9">Broadcast to all → msg_broadcast</text>
-
-  <rect x="260" y="432" width="210" height="28" rx="5" fill="#1e2030" stroke="#bb9af7" stroke-width="1"/>
-  <text x="365" y="450" text-anchor="middle" fill="#bb9af7" font-size="9">Audit trail → a2a_list_tasks</text>
-
-  <rect x="490" y="432" width="210" height="28" rx="5" fill="#1e2030" stroke="#2E7D32" stroke-width="1"/>
-  <text x="595" y="450" text-anchor="middle" fill="#9ece6a" font-size="9">File conflict → file_reserve</text>
-
-  <rect x="720" y="432" width="210" height="28" rx="5" fill="#1e2030" stroke="#f7768e" stroke-width="1"/>
-  <text x="825" y="450" text-anchor="middle" fill="#f7768e" font-size="9">Cleanup → dlq_purge</text>
+  <rect x="715" y="396" width="220" height="30" rx="5" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
+  <text x="825" y="415" text-anchor="middle" fill="#e0af68" font-size="9">Deterministic verification oracles</text>
 
   <!-- Footer -->
-  <text x="480" y="474" text-anchor="middle" fill="#3b3f54" font-size="8">agent-mailbox-mcp v1.5.0 · 26 tools across 4 categories · SQLite WAL · zero external services</text>
+  <text x="480" y="455" text-anchor="middle" fill="#3b3f54" font-size="8.5">cortex-ia · OpenCode Multi-Agent Runtime</text>
 </svg>

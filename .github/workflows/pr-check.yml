@@ -131,7 +131,7 @@ jobs:
               core.setFailed(
                 `❌ Branch name "${branch}" does not match the required pattern.\n` +
                 'Expected: <type>/<kebab-case>\n' +
-                'Examples: feat/agent-builder-tui, fix/persona-injection-windows.'
+                'Examples: feat/doctor-tui-report, fix/mcp-merge-conflict.'
               );
             } else {
               core.info(`✅ Branch name "${branch}" matches the convention.`);

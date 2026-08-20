@@ -173,8 +173,6 @@ func stripTrailingCommas(raw []byte) []byte {
 	return out
 }
 
-const replaceSentinel = "__replace__"
-
 func asSentinel(v any) (any, bool) {
 	m, isMap := v.(map[string]any)
 	if !isMap {

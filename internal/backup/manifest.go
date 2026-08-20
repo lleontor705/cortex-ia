@@ -83,6 +83,103 @@ type ManifestEntry struct {
 	SnapshotPath string `json:"snapshot_path"`
 	Existed      bool   `json:"existed"`
 	Mode         uint32 `json:"mode,omitempty"`
+	SHA256       string `json:"sha256,omitempty"`
+}
+
+// Validate proves a manifest is accredited before anyone may act on it:
+// RootDir must be an existing real directory reachable through a no-follow
+// Lstat chain (no symlink/reparse component below the first real anchor),
+// every OriginalPath must be a clean absolute path without alias vectors,
+// every recorded snapshot must be contained in RootDir, accredited with the
+// same no-follow Lstat chain, and carry a valid SHA-256; no exact or
+// case-folded duplicate originals are allowed. It performs no filesystem
+// mutation.
+func (m Manifest) Validate() error {
+	if err := validateAbsolutePath(m.RootDir, "manifest root_dir"); err != nil {
+		return fmt.Errorf("%w: %v", ErrManifestInvalid, err)
+	}
+	if err := rejectLinkChain(m.RootDir, "manifest root_dir"); err != nil {
+		return err
+	}
+	info, err := os.Lstat(m.RootDir)
+	if err != nil {
+		return fmt.Errorf("%w: inspect root_dir %q: %v", ErrManifestInvalid, m.RootDir, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("%w: root_dir %q is not a real directory", ErrManifestInvalid, m.RootDir)
+	}
+	seen := make(map[string]bool, len(m.Entries))
+	seenFold := make(map[string]bool, len(m.Entries))
+	for i := range m.Entries {
+		entry := m.Entries[i]
+		if err := validateAbsolutePath(entry.OriginalPath, fmt.Sprintf("entry %d original_path", i)); err != nil {
+			return fmt.Errorf("%w: %v", ErrManifestInvalid, err)
+		}
+		if seen[entry.OriginalPath] {
+			return fmt.Errorf("%w: duplicate original %q", ErrManifestInvalid, entry.OriginalPath)
+		}
+		if seenFold[foldKey(entry.OriginalPath)] {
+			return fmt.Errorf("%w: case-alias original %q", ErrManifestInvalid, entry.OriginalPath)
+		}
+		seen[entry.OriginalPath] = true
+		seenFold[foldKey(entry.OriginalPath)] = true
+		if entry.Existed {
+			if err := validateAbsolutePath(entry.SnapshotPath, fmt.Sprintf("entry %d snapshot_path", i)); err != nil {
+				return fmt.Errorf("%w: %v", ErrManifestInvalid, err)
+			}
+			if err := containedPath(m.RootDir, entry.SnapshotPath); err != nil {
+				return fmt.Errorf("%w: snapshot for %q: %v", ErrManifestInvalid, entry.OriginalPath, err)
+			}
+			if err := rejectLinkChain(entry.SnapshotPath, fmt.Sprintf("snapshot for %q", entry.OriginalPath)); err != nil {
+				return err
+			}
+			if !isHexSHA256(entry.SHA256) {
+				return fmt.Errorf("%w: entry %q lacks a valid SHA-256", ErrManifestInvalid, entry.OriginalPath)
+			}
+			continue
+		}
+		if entry.SnapshotPath != "" || entry.SHA256 != "" {
+			return fmt.Errorf("%w: missing source %q records snapshot evidence", ErrManifestInvalid, entry.OriginalPath)
+		}
+	}
+	return nil
+}
+
+// ValidateForRestore validates a manifest against an expected backup root and
+// optional expected ID before any write may occur. It keeps the base
+// accreditation checks and adds explicit linkage to the expected checkpoint.
+func (m Manifest) ValidateForRestore(expectedRoot, expectedBackupID string) error {
+	if expectedRoot == "" {
+		return fmt.Errorf("%w: expected backup root is empty", ErrManifestInvalid)
+	}
+	if err := m.Validate(); err != nil {
+		return err
+	}
+	if err := validateAbsolutePath(expectedRoot, "expected backup root"); err != nil {
+		return fmt.Errorf("%w: %v", ErrManifestInvalid, err)
+	}
+	if err := rejectLinkChain(expectedRoot, "expected backup root"); err != nil {
+		return err
+	}
+	if !equalManifestPath(expectedRoot, m.RootDir) {
+		return fmt.Errorf("%w: manifest root_dir %q does not match expected %q", ErrManifestInvalid, m.RootDir, expectedRoot)
+	}
+	if expectedBackupID == "" {
+		return nil
+	}
+	if m.ID != expectedBackupID {
+		return fmt.Errorf("%w: manifest id %q does not match expected backup %q", ErrManifestInvalid, m.ID, expectedBackupID)
+	}
+	return nil
+}
+
+func equalManifestPath(left, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if caseInsensitivePaths {
+		return foldKey(left) == foldKey(right)
+	}
+	return left == right
 }
 
 func WriteManifest(path string, manifest Manifest) error {
@@ -119,7 +216,14 @@ func DeleteBackup(manifest Manifest) error {
 	if manifest.RootDir == "" {
 		return fmt.Errorf("backup has no root directory")
 	}
-	return os.RemoveAll(manifest.RootDir)
+	root := filepath.Clean(manifest.RootDir)
+	if !filepath.IsAbs(root) {
+		return fmt.Errorf("backup root %q must be absolute", root)
+	}
+	if parent := filepath.Dir(root); parent == root {
+		return fmt.Errorf("backup root %q is a filesystem root", root)
+	}
+	return os.RemoveAll(root)
 }
 
 func RenameBackup(manifest Manifest, newDescription string) error {

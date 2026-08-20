@@ -1,35 +1,26 @@
-// Package assets provides embedded filesystem access to all injectable content:
-// skills, orchestrator prompts, conventions, commands, and protocols.
 package assets
 
 import (
 	"embed"
 	"fmt"
-	"io/fs"
 )
 
-//go:embed all:skills all:generic all:opencode all:gga
+// FS embeds every OpenCode copy-paste asset: the AGENTS.md system prompt,
+// the opencode.jsonc settings template, shared workflow contracts, and the
+// agent, command, skill, and plugin trees.
+//
+// The embedded file set is derived at runtime by walking this FS (see
+// Inventory). Do not hardcode file catalogs that duplicate what the walk
+// already proves.
+//
+//go:embed AGENTS.md opencode.jsonc all:agents all:commands all:plugin all:skills
 var FS embed.FS
 
-// Read returns the content of an embedded asset file.
-func Read(path string) (string, error) {
-	data, err := fs.ReadFile(FS, path)
+// Read reads the content of an embedded asset file.
+func Read(name string) (string, error) {
+	data, err := FS.ReadFile(name)
 	if err != nil {
-		return "", fmt.Errorf("read embedded asset %q: %w", path, err)
+		return "", fmt.Errorf("read asset %q: %w", name, err)
 	}
 	return string(data), nil
-}
-
-// ReadBytes returns the raw bytes of an embedded asset file.
-func ReadBytes(path string) ([]byte, error) {
-	data, err := fs.ReadFile(FS, path)
-	if err != nil {
-		return nil, fmt.Errorf("read embedded asset %q: %w", path, err)
-	}
-	return data, nil
-}
-
-// ListDir returns all entries in an embedded directory.
-func ListDir(path string) ([]fs.DirEntry, error) {
-	return fs.ReadDir(FS, path)
 }

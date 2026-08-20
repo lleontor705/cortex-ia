@@ -8,7 +8,7 @@ import (
 )
 
 // version is set by GoReleaser via ldflags at build time.
-var version = "dev"
+var version = "v1.0.0"
 
 func main() {
 	app.Version = app.ResolveVersion(version)

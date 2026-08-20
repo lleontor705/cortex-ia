@@ -1,96 +1,74 @@
 # Installation
 
+## Prerequisites
+
+- **OpenCode** — the only configured target.
+- **Node.js 18+ with `npx`** — required by the `forgespec` and `context7`
+  local MCP presets. Optional if you manage neither.
+- **`cortex` on PATH** — required by the `cortex` local MCP preset, which
+  launches `cortex mcp --tools=agent`. Optional if you do not manage that
+  preset.
+- Nothing else: the binary is self-contained; all assets are embedded.
+
 ## Methods
 
-### Go Install (recommended)
+### Go
+
+Requires Go `1.26.1` or newer (`go.mod` is authoritative):
 
 ```bash
 go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
 ```
 
-Requires Go 1.22+. Binary is placed in `$GOPATH/bin`.
-
-### Homebrew (macOS/Linux)
+### Homebrew (macOS / Linux)
 
 ```bash
 brew install lleontor705/tap/cortex-ia
 ```
 
-### Pre-built Binaries
-
-Download from [GitHub Releases](https://github.com/lleontor705/cortex-ia/releases):
-
-| Platform | Architecture | File |
-|----------|-------------|------|
-| Linux | x86_64 | `cortex-ia_X.Y.Z_linux_amd64.tar.gz` |
-| Linux | ARM64 | `cortex-ia_X.Y.Z_linux_arm64.tar.gz` |
-| macOS | Intel | `cortex-ia_X.Y.Z_darwin_amd64.tar.gz` |
-| macOS | Apple Silicon | `cortex-ia_X.Y.Z_darwin_arm64.tar.gz` |
-| Windows | x86_64 | `cortex-ia_X.Y.Z_windows_amd64.zip` |
-| Windows | ARM64 | `cortex-ia_X.Y.Z_windows_arm64.zip` |
-
-### Install Script (Linux/macOS)
+### Install script (Linux / macOS)
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh | bash
-
-# Specific version
-curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh | bash -s -- v0.1.0
 ```
 
-### Docker
+### From source
 
 ```bash
-docker build -t cortex-ia .
-docker run cortex-ia detect
+git clone https://github.com/lleontor705/cortex-ia.git
+cd cortex-ia
+go build -o bin/cortex-ia ./cmd/cortex-ia
 ```
 
-## Prerequisites
+Release archives for supported platforms are attached to each
+[release](https://github.com/lleontor705/cortex-ia/releases).
 
-### Required
-
-- **Node.js 18+** with `npx` on PATH — required for npm-based MCP servers (forgespec-mcp, agent-mailbox-mcp, @upstash/context7-mcp)
-- **Cortex binary** — the persistent memory MCP server:
-  ```bash
-  go install github.com/lleontor705/cortex/cmd/cortex@latest
-  # or
-  brew install lleontor705/tap/cortex
-  ```
-- At least one supported AI coding agent installed
-
-### Optional
-
-- **Go 1.22+** — only needed if installing cortex-ia via `go install`
-- **Docker** — only for containerized usage
-
-## Verify Installation
+## Verify the Install
 
 ```bash
-# Check version
 cortex-ia version
-
-# Detect installed agents and system info
-cortex-ia detect
-
-# Preview what install would do
-cortex-ia install --dry-run
 ```
 
-## Platform Notes
+## First Run
 
-### Windows
+```bash
+cortex-ia            # interactive TUI
+cortex-ia install    # or headless
+```
 
-- Uses `winget` as package manager
-- Agent config paths use `%APPDATA%` for VS Code and Windsurf
-- Cortex data stored in `~/.cortex/`
+Both paths install the same asset set with the same transactional
+guarantees — see [Safety & Recovery](security.md). Uninstalling later is
+ownership-accredited and safe: `cortex-ia uninstall --dry-run` previews
+exactly what would be removed.
 
-### macOS
+## Upgrading
 
-- Uses `brew` as package manager
-- VS Code config at `~/Library/Application Support/Code/User/`
-- Windsurf config at `~/Library/Application Support/Windsurf/User/`
+Install the new binary and run:
 
-### Linux
+```bash
+cortex-ia sync
+```
 
-- Supports `apt` (Ubuntu/Debian), `pacman` (Arch), `dnf` (Fedora), and `brew`
-- VS Code config at `~/.config/Code/User/` (respects `$XDG_CONFIG_HOME`)
+`sync` reconciles your home with the current embedded asset set: updated
+files are rewritten, stale owned artifacts from previous versions are
+removed, and conflicts fail closed exactly like `install`.

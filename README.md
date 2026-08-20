@@ -2,7 +2,7 @@
   <br>
   <img src="docs/assets/logo.svg" alt="cortex-ia" width="400" />
   <br><br>
-  <em>One command. Any agent. Full SDD stack.</em>
+  <em>One command. OpenCode only. Transactional by default.</em>
   <br><br>
   <a href="https://github.com/lleontor705/cortex-ia/actions/workflows/ci.yml"><img src="https://github.com/lleontor705/cortex-ia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/lleontor705/cortex-ia/releases/latest"><img src="https://img.shields.io/github/v/release/lleontor705/cortex-ia" alt="Release"></a>
@@ -12,12 +12,18 @@
 
 ---
 
-cortex-ia detects your installed AI coding agents and configures them with a complete development ecosystem: persistent memory, SDD workflow, inter-agent messaging, and live documentation — all via a single Go binary with an interactive TUI.
+cortex-ia is a single Go binary that installs the embedded OpenCode workflow
+asset set into your home configuration and manages its MCP server entries.
+It copies skills, agents, commands, the plugin, and the base config under
+`~/.config/opencode/`, registers the managed MCP selection, and does all of
+it transactionally: plan first, verified backup before any write, rollback on
+failure, and fail-closed on anything it does not own. It configures OpenCode
+only and never writes anywhere else.
 
 ## Quick Start
 
 ```bash
-# Install via Go
+# Install via Go (requires Go 1.26.1+)
 go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
 
 # Install via Homebrew
@@ -28,354 +34,165 @@ curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/i
 ```
 
 ```bash
-# Interactive TUI installer
-cortex-ia
-
-# CLI: auto-detect agents, full preset
-cortex-ia install
-
-# CLI: specific agent + minimal preset
-cortex-ia install --agent claude-code --preset minimal
-
-# Cost-optimize with model routing
-cortex-ia install --model-preset economy
-
-# Set persona (professional/mentor/minimal)
-cortex-ia install --persona mentor
-
-# Use project-level config
-cortex-ia init                        # Create .cortex-ia.yaml
-cortex-ia install --local             # Apply project config
-
-# Preview without changes
+cortex-ia                 # Interactive TUI
+cortex-ia install         # Install assets + default managed MCPs
 cortex-ia install --dry-run
-
-# Show detected agents + runtime deps
-cortex-ia detect
-
-# Reverse a previous install (snapshot first; use --all to wipe everything)
-cortex-ia uninstall --component persona --component cortex
-cortex-ia uninstall --all --dry-run
-
-# Switch GGA provider (anthropic, openai, google, ollama, claude, opencode, gemini, codex)
-cortex-ia gga --provider ollama
-
-# OpenCode SDD profiles (per-phase model assignment)
-cortex-ia profiles create cheap:openai/gpt-4o-mini
-cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
-cortex-ia profiles list
-
-# Build a custom skill via an installed AI engine
-cortex-ia agent-builder create \
-  --engine claude \
-  --purpose "review go diffs against project conventions" \
-  --target claude-code --target opencode
-cortex-ia agent-builder list
+cortex-ia doctor          # Read-only health report
 ```
 
-## What It Configures
+See [Quickstart](docs/quickstart.md) for the guided path.
 
-cortex-ia injects **4 MCP servers** + **19 SDD skills** + **orchestrator prompts** into any supported agent:
+## What Gets Installed
 
-| Component | MCP Tools | What It Does |
-|-----------|:---------:|-------------|
-| [**Cortex**](https://github.com/lleontor705/cortex) | 31 | Persistent memory with knowledge graph, FTS5, revision history, temporal tracking |
-| [**ForgeSpec**](https://npmjs.com/package/forgespec-mcp) | 15 | SDD contract validation (Zod), task board with inline creation, file reservation |
-| [**Agent Mailbox**](https://npmjs.com/package/agent-mailbox-mcp) | 21 | Messaging, A2A task delegation, resource locks, dead-letter queue, registry |
-| [**Context7**](https://github.com/upstash/context7) | 2 | Live framework and library documentation via MCP |
+Every installed asset is embedded in the binary and copied
+structure-preserving under the OpenCode config root — **33 native assets**
+in total: the base config template, `AGENTS.md`, 5 sub-agents, 9 commands,
+12 skills, and 5 plugins. Nothing is generated at install time, and
+copied assets land byte-for-byte. Two deliberate exceptions: the base
+`opencode.jsonc` is three-way merged (your keys and comments survive)
+instead of replaced, and the `internal/assets/_shared/` contracts are
+compile-time only — they are never installed.
 
-Plus **3 content components**:
+| Asset kind | Source | Destination under `~/.config/opencode/` |
+|------------|--------|------------------------------------------|
+| Base config | `opencode.jsonc` template | `opencode.jsonc` (three-way merge, comments preserved) |
+| System prompt | `AGENTS.md` | `AGENTS.md` |
+| Sub-Agents | `agents/*.md` (5 roles) | `agents/<name>.md` |
+| Commands | `commands/*.md` (9 commands) | `commands/<name>.md` |
+| Skills | `skills/<name>/SKILL.md` (12 skills) | `skills/<name>/SKILL.md` |
+| Plugins | `plugin/*.ts` (5 files) | `plugin/*.ts` |
+| State & backups | — | `~/.cortex-ia/` (metadata, lock, backups) |
 
-| Component | What It Does |
-|-----------|-------------|
-| **SDD Workflow** | 9-phase Spec-Driven Development with orchestrator + 19 specialized skills |
-| **Conventions** | Shared cortex memory protocol + naming conventions for all agents |
-| **Extra Skills** | Non-SDD utility skills (injected separately from SDD) |
+The full mapping rules (single-source layout, collision and path-safety
+checks) are documented in [Architecture](docs/architecture.md).
 
-**Total: 69 MCP tools across 3 MCPs + Context7**, all documented in skills and orchestrator prompts.
+## Managed MCP Services
 
-## Supported Agents
+`install` registers the default managed selection: **Cortex** and
+**ForgeSpec**. **Context7** is available as a catalog preset but is not
+selected by default.
 
-| Agent | MCP Config | Prompt Strategy | Task Delegation | Sub-Agents | Slash Commands |
-|-------|-----------|----------------|:-:|:-:|:-:|
-| **Claude Code** | Separate JSON files | Markdown sections | ✅ | — | — |
-| **OpenCode** | Merge into settings | File replace | ✅ | ✅ | ✅ |
-| **Gemini CLI** | Merge into settings | File replace | — | — | — |
-| **Cursor** | MCP config file | File replace (.mdc) | — | ✅ | — |
-| **VS Code Copilot** | MCP config file | File replace | ✅ | — | — |
-| **Codex** | TOML file | File replace | — | — | — |
-| **Windsurf** | MCP config file | Append to file | — | — | — |
-| **Antigravity** | MCP config file | Append to file | — | — | — |
-| **Kilocode** | Merge into settings | File replace | — | — | ✅ |
-| **Kimi** | MCP config file | File replace | ✅ | ✅ | — |
-| **Kiro IDE** | MCP config file | File replace (steering) | ✅ | ✅ | — |
-| **Qwen Code** | Merge into settings | File replace | — | — | ✅ |
+| Preset | Kind | Launches | What it does |
+|--------|------|----------|--------------|
+| `cortex` | local | `cortex mcp --tools=agent` | Persistent memory with knowledge graph, FTS5, revision history |
+| `forgespec` | local | `npx -y forgespec-mcp` | SDD contracts, task board, claims, file reservation |
+| `context7` | local | `npx -y @upstash/context7-mcp` | Live framework and library documentation via MCP |
 
-Agents with **Task Delegation** get a multi-agent orchestrator that delegates work to sub-agents. Others get a single-agent prompt that executes SDD phases sequentially.
+Every preset is registered in OpenCode's native local-server shape
+(`{"type":"local","command":[...],"enabled":true}`) with the exact argv
+above — no remote URLs, no hidden fields.
 
-## Presets
-
-| Preset | Components | Use Case |
-|--------|-----------|----------|
-| **full** | All 7 components | Complete ecosystem (default) |
-| **minimal** | Cortex + ForgeSpec + Context7 + SDD | Essential SDD workflow (auto-pulls Mailbox via deps) |
-| **custom** | User-selected via TUI | Pick exactly what you need |
-
-## SDD Pipeline
-
-Spec-Driven Development structures substantial changes through 9 phases:
-
-<p align="center">
-  <img src="docs/assets/sdd-pipeline.svg" alt="SDD Pipeline" width="100%" />
-</p>
-
-### 19 Specialized Skills
-
-| Phase | Skill | Role |
-|-------|-------|------|
-| init | `bootstrap` | Detect stack, bootstrap persistence, build skill registry |
-| explore | `investigate` | Read codebase, compare approaches, rate effort/risk |
-| propose | `draft-proposal` | Create change proposal with scope, risks, rollback plan |
-| spec | `write-specs` | Write delta specs with Given/When/Then scenarios |
-| design | `architect` | Technical design with architecture decisions |
-| tasks | `decompose` | Break specs + design into dependency-ordered tasks |
-| apply | `team-lead` | Coordinate parallel @implement agents |
-| apply | `implement` | Write production code satisfying specs |
-| verify | `validate` | Run tests, generate spec compliance matrix |
-| archive | `finalize` | Merge specs, close change, generate retrospective |
-
-**Utility Skills**: `debug`, `ideate`, `debate`, `monitor`, `execute-plan`, `open-pr`, `file-issue`, `parallel-dispatch`, `scan-registry`
-
-## Multi-Agent Orchestration
-
-<p align="center">
-  <img src="docs/assets/multi-agent-orchestration.svg" alt="Multi-Agent Orchestration" width="100%" />
-</p>
-
-## Task Routing
-
-<p align="center">
-  <img src="docs/assets/task-routing.svg" alt="Task Routing" width="100%" />
-</p>
-
-## Apply Phase Workflow
-
-The apply phase is the heart of the system — where parallel team-leads coordinate implement agents to write code:
-
-<p align="center">
-  <img src="docs/assets/apply-phase-workflow.svg" alt="Apply Phase Workflow" width="100%" />
-</p>
-
-1. **Decompose** creates the task board directly via `tb_create_board` with inline tasks; **Orchestrator** reads `board_id` and launches all team-leads in a single turn
-2. **Independent team-leads** reserve files, launch @implement agents in parallel, release locks on completion
-3. **Dependent team-leads** wait for upstream groups via `msg_read_inbox` polling (with `dlq_list` fallback on timeout)
-4. **Implement agents** write code, acquire resource locks for deploy/CI tasks, report status via `tb_update`
-5. **Completion broadcasts** (`msg_broadcast`) unblock downstream team-leads
-6. **A2A responses** (`a2a_respond_task`) provide structured results back to orchestrator
-
-## Agent Coordination
-
-21 tools across 4 categories for inter-agent communication:
-
-<p align="center">
-  <img src="docs/assets/agent-coordination.svg" alt="Agent Coordination" width="100%" />
-</p>
-
-| Need | Tool | Category |
-|------|------|----------|
-| Quick clarification | `msg_request` | Messaging |
-| Broadcast to all | `msg_broadcast` | Messaging |
-| Formal delegation with tracking | `a2a_submit_task` → `a2a_respond_task` | A2A Tasks |
-| Deploy/CI/API lock | `resource_acquire` → `resource_release` | Resources |
-| File conflict prevention | `file_reserve` → `file_release` | ForgeSpec |
-| Lost message recovery | `dlq_list` → `dlq_retry` | Dead-Letter Queue |
-
-### Modern Prompting Techniques
-
-Skills incorporate research-backed techniques for better AI performance:
-
-| Technique | Applied To | Impact |
-|-----------|-----------|--------|
-| **Chain-of-Verification** | validate | 30-50% fewer hallucinations in verification |
-| **Constitutional Self-Critique** | implement | Code critiqued against specs before submission |
-| **Skeleton-of-Thought** | draft-proposal, write-specs | Outline → validate → expand reduces omissions |
-| **Extended Thinking** | architect, decompose | Explicit trade-off analysis, 2+ alternatives |
-| **ReAct** (Thought/Action/Observation) | debug | Grounded debugging with evidence loops |
-| **Step-Back Prompting** | architect | Abstract principles before specific design |
-| **Inline WHY** | orchestrator, all rules | Motivation on every rule improves compliance |
-
-## Per-Phase Model Routing
-
-Assign different Claude model tiers to SDD phases for cost/quality optimization:
+Custom servers are first-class:
 
 ```bash
-cortex-ia install --model-preset economy    # Sonnet everywhere, Haiku for archive
-cortex-ia install --model-preset balanced   # Opus for design+validate, Sonnet for apply
-cortex-ia install --model-preset performance # Opus for critical phases, Sonnet for rest
+# Catalog preset
+cortex-ia mcp add forgespec --preset
+
+# Custom local server from an exact command vector
+cortex-ia mcp add my-server --local --env API_TOKEN=secret -- npx -y my-mcp
+
+# Custom remote endpoint (headers use KEY=VALUE syntax)
+cortex-ia mcp add my-remote --remote https://mcp.example.com/sse --header "Authorization=Bearer secret"
+
+# Ownership listing (plain or sanitized JSON)
+cortex-ia mcp list
+cortex-ia mcp list --json
+
+# Deregister (interactive confirmation required for the real run)
+cortex-ia mcp remove my-server --dry-run
+cortex-ia mcp remove my-server
 ```
 
-| Preset | Orchestrator | Investigate | Architect | Implement | Validate | Finalize |
-|--------|:-:|:-:|:-:|:-:|:-:|:-:|
-| **balanced** | opus | sonnet | opus | sonnet | opus | haiku |
-| **performance** | opus | sonnet | opus | sonnet | opus | haiku |
-| **economy** | sonnet | sonnet | sonnet | sonnet | sonnet | haiku |
+Full reference — flags, statuses (`managed`, `unmanaged-equivalent`,
+`conflict`, `absent`), secret handling, and ownership rules — lives in
+[MCP Manager](docs/mcp.md).
 
-## OpenCode SDD Profiles
+## Transactional Safety
 
-For OpenCode users who want per-phase models from any provider (not just Claude), profiles let you save named bundles of `provider/model` assignments and apply them to `opencode.json` automatically.
+- **Plan before write.** `--dry-run` and the real run share the same plan;
+  a dry run creates nothing, not even directories.
+- **Digest-bound confirmation.** The confirmed run re-plans with identical
+  options and must reproduce the previewed plan digest exactly. If anything
+  drifts between preview and apply, the run aborts with a typed stale-plan
+  error and nothing is written.
+- **One writer per home.** Every mutating command holds a cross-process lock
+  keyed by the canonical home (LockFileEx on Windows, flock on Unix) after
+  confirmation and before any write; a concurrent writer gets a typed busy
+  result, never a race.
+- **Fail-closed conflicts.** Unmanaged files at a managed destination abort
+  the run with nothing written. `--overwrite` must be given explicitly and
+  confirmed on an interactive TTY; a verified backup is captured first.
+- **Verified backups.** Every mutating run snapshots affected files under
+  `~/.cortex-ia/backups/` and verifies the snapshot before the apply phase;
+  a backup that cannot be proven complete fails the run. Snapshots
+  accumulate — automatic deduplication and retention pruning are library
+  capabilities not yet enabled in the product.
+- **Rollback on failure.** If an apply phase fails mid-way, the transaction
+  restores the pre-run state from the backup before reporting the error.
+  Rollback itself fails closed: every manifest entry is validated for
+  containment and duplicates before any write, restoration runs in reverse
+  order under a journal, and success is reported only after the complete
+  result is verified.
+- **Recoverable journals.** `doctor` detects interrupted transactions and
+  reports them as a degraded (recoverable) finding without exposing secrets.
+  `cortex-ia recover list` is read-only; `cortex-ia recover <journal-id>`
+  restores one journal only after you type its exact ID, and the receipt is
+  PASS only after complete verified restoration. Corrupt, foreign-home, or
+  drifted journals are rejected with typed errors and nothing written.
+- **Ownership-accredited uninstall.** `uninstall` removes only files whose
+  digest matches the installation metadata; anything unverifiable or
+  co-owned is retained and reported, never guessed.
+- **Destructive commands confirm.** `rollback`, `recover`, `uninstall`,
+  `mcp remove`, and `--overwrite` require an interactive terminal and an
+  explicit confirmation; piped or closed input always fails closed.
 
-```bash
-# Create a profile that maps every SDD phase to one model
-cortex-ia profiles create cheap:openai/gpt-4o-mini
-
-# Override specific phases
-cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
-cortex-ia profiles set cheap:sdd-apply:anthropic/claude-haiku-4-5
-
-# Use the profile during install — auto-applied to opencode.json
-cortex-ia install --profile cheap
-
-# Or apply to an existing install without re-injecting everything
-cortex-ia profiles apply cheap
-
-cortex-ia profiles list
-cortex-ia profiles delete cheap
-```
-
-Values can be either a fully-qualified `provider/model` (e.g. `openai/gpt-4o-mini`) or a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`). Profiles persist in `~/.cortex-ia/profiles.json` and the active one is recorded in `state.json` so `cortex-ia sync` keeps using it.
-
-## Persona System
-
-Choose the communication style for all configured agents:
-
-| Persona | Style |
-|---------|-------|
-| `professional` | Direct, concise, technical terminology (default) |
-| `mentor` | Teaching-oriented, explains trade-offs and patterns |
-| `minimal` | Code only, no explanations unless asked |
-
-```bash
-cortex-ia install --persona mentor
-cortex-ia sync --persona minimal    # Change persona without reinstalling
-```
-
-## Project Configuration
-
-Create a `.cortex-ia.yaml` in your repo root to standardize settings across your team:
-
-```bash
-cortex-ia init    # Creates .cortex-ia.yaml with defaults
-```
-
-```yaml
-# .cortex-ia.yaml
-preset: full
-persona: professional
-model-preset: balanced
-profile: cheap          # optional: name of a saved OpenCode SDD profile
-strict-tdd: false       # optional: enforce TDD across SDD apply/verify
-agents:
-  - claude-code
-  - opencode
-disabled-components:
-  - agent-mailbox       # optional: opt-out per project
-custom-skills:
-  - path: ./skills/domain-validator
-```
-
-```bash
-cortex-ia install --local    # Applies project config
-```
-
-Full schema reference: [`docs/cortex-ia.yaml.example`](docs/cortex-ia.yaml.example) — every field documented with valid values and behavior notes. CLI flags always override yaml; yaml overrides CLI defaults.
-
-## How It Works
-
-### Installation Flow
-
-```
-cortex-ia install
-    │
-    ├─ Stage 1: PREPARE (stops on error, rolls back)
-    │   ├─ Validate agents exist in registry
-    │   └─ Create backup snapshot (~/.cortex-ia/backups/)
-    │
-    ├─ Stage 2: APPLY (continues on error, agents in parallel)
-    │   ├─ For each agent (concurrent via RunParallelChains):
-    │   │   ├─ Inject MCP configs (strategy-specific: JSON / merge / TOML)
-    │   │   ├─ Inject orchestrator prompt (markdown sections / file replace / append)
-    │   │   ├─ Inject permissions & security guardrails
-    │   │   ├─ Inject persona (professional / mentor / minimal)
-    │   │   ├─ Inject theme overlay
-    │   │   └─ Write sub-agent definitions (OpenCode, Cursor)
-    │   ├─ Write SDD skills to shared dir (~/.cortex-ia/skills/)
-    │   ├─ Write convention + orchestrator prompt to shared dir
-    │   └─ Load community skills (~/.cortex-ia/skills-community/)
-    │
-    └─ Save state + lock (~/.cortex-ia/)
-```
-
-### Key Design Principles
-
-- **Non-destructive**: Uses `<!-- cortex-ia:ID -->` markers. Content outside markers is never touched.
-- **Backup-first**: Automatic snapshot before every install with restore capability.
-- **Idempotent**: Running install twice produces identical results with zero file changes.
-- **Adapter pattern**: Each agent implements an interface. Adding a new agent requires zero changes to components.
-- **Strategy dispatch**: MCP injection is template-based — adding a new MCP server is one file.
+Details in [Safety & Recovery](docs/security.md).
 
 ## CLI Commands
 
 ```
-cortex-ia                    Interactive TUI
-cortex-ia install            Install ecosystem (auto-detect agents)
-cortex-ia sync               Refresh managed files from current state
-cortex-ia detect             Detect agents + runtime dependencies (Node, npx, Git, Go, Cortex)
-cortex-ia config             Show current configuration
-cortex-ia list agents        List detected agents with status
-cortex-ia list components    List installed components
-cortex-ia list backups       List available backups
-cortex-ia init               Create .cortex-ia.yaml in current dir
-cortex-ia skill add <path>   Add community skill from directory
-cortex-ia skill list         List installed community skills
-cortex-ia skill remove <id>  Remove community skill
-cortex-ia auto-install       Install missing agents via package managers
-cortex-ia doctor             Run 6 health checks against installation
-cortex-ia repair             Re-apply from lockfile/state
-cortex-ia rollback           Restore from backup
-cortex-ia uninstall          Reverse cortex-ia injections (with pre-uninstall snapshot)
-cortex-ia gga --provider <id>      Switch GGA provider (anthropic, openai, google, ollama, claude, opencode, gemini, codex)
-cortex-ia profiles list|create|set|apply|delete   Manage OpenCode SDD profiles
-cortex-ia agent-builder list|create|remove        Generate custom skills via an installed AI engine
-cortex-ia update             Check for available updates
+cortex-ia                          Interactive TUI
+cortex-ia install [--dry-run] [--overwrite]
+                                   Install assets + default managed MCPs
+cortex-ia sync [--dry-run] [--overwrite]
+                                   Reconcile an installed home with the
+                                   current embedded asset set
+cortex-ia mcp add <name> (--preset | --local ... -- <cmd> | --remote <url>) [--dry-run]
+cortex-ia mcp list [--json]        List managed MCP entries and ownership
+cortex-ia mcp remove <name> [--dry-run]
+cortex-ia doctor                   Read-only health report
+cortex-ia rollback [backup-id]     Restore the recorded (or given) backup
+cortex-ia recover [list]           List pending recovery journals (read-only)
+cortex-ia recover <journal-id>     Restore one pending journal; typing its
+                                    exact ID confirms the recovery
+cortex-ia uninstall [--dry-run]    Remove the accredited installation
+cortex-ia version | help
 ```
+
+`sync` also removes stale artifacts from previous versions that the current
+asset set no longer ships. Former multi-agent, persona, profile, model,
+skill-registry, and SDD-compiler surfaces were removed and fail with an
+explicit retired-surface error.
 
 ## Documentation
 
 | Doc | Description |
 |-----|-------------|
-| [Installation](docs/installation.md) | All installation methods, prerequisites, platform notes |
-| [Agents](docs/agents.md) | Per-agent configuration details, paths, strategies |
-| [Components](docs/components.md) | Component catalog, dependencies, what each injects |
-| [SDD Workflow](docs/sdd-workflow.md) | 9-phase pipeline, commands, contract validation, prompting techniques |
-| [Architecture](docs/architecture.md) | Codebase structure, patterns, testing, contributing |
-| [Configuration](docs/configuration.md) | Presets, CLI flags, model routing, personas, project config |
 | [Quickstart](docs/quickstart.md) | Three-command setup |
-| [Platforms](docs/platforms.md) | OS support matrix, Windows symlink note |
-| [Cortex memory](docs/cortex-memory.md) | The cortex MCP — 31 tools across 4 groups |
-| [Rollback](docs/rollback.md) | Backups, retention, dedup, pinning, uninstall snapshots |
-| [Non-interactive](docs/non-interactive.md) | CLI-only recipes for CI |
-| [Docker E2E](docs/docker-e2e-testing.md) | Three-distro test harness (ubuntu/fedora/arch) |
-| [PRD](PRD.md) | Project requirements + relationship to gentle-ai |
-| [PRD Agent Builder](PRD-AGENT-BUILDER.md) | Agent Builder design contract |
-| [Changelog](CHANGELOG.md) | Version history (v0.1.0 → v0.3.0) |
-| [llms.txt](llms.txt) | LLM-readable project index |
+| [Installation](docs/installation.md) | Install methods, prerequisites |
+| [MCP Manager](docs/mcp.md) | Presets, custom local/remote servers, ownership |
+| [Safety & Recovery](docs/security.md) | Backups, rollback, uninstall ownership, fail-closed rules |
+| [SDD Workflow](docs/sdd-workflow.md) | The 9-phase workflow the installed skills implement |
+| [Architecture](docs/architecture.md) | Codebase structure, asset mapping, testing |
+| [Platforms](docs/platforms.md) | OS support matrix |
+| [Changelog](CHANGELOG.md) | Version history |
 
 ## Prerequisites
 
-- **Go 1.22+** — for building cortex-ia
-- **Node.js 18+** with `npx` — for npm-based MCP servers (forgespec, mailbox, context7)
-- **Cortex binary** — `go install github.com/lleontor705/cortex/cmd/cortex@latest` or `brew install lleontor705/tap/cortex`
-- At least one [supported agent](#supported-agents) installed
+- **Go 1.26.1+** — only for building from source (`go.mod` is authoritative)
+- **Node.js 18+ with `npx`** — for the `forgespec` and `context7` local MCP presets
+- **`cortex` on PATH** — for the `cortex` local MCP preset (`cortex mcp --tools=agent`)
+- **OpenCode** — the only configured target
 
 ## Related Projects
 
@@ -383,8 +200,7 @@ cortex-ia update             Check for available updates
 |---------|-------------|
 | [cortex](https://github.com/lleontor705/cortex) | Persistent memory MCP server (Go binary) |
 | [forgespec-mcp](https://github.com/lleontor705/forgespec-mcp) | SDD contracts + task board + file reservation |
-| [agent-mailbox-mcp](https://github.com/lleontor705/agent-mailbox-mcp) | Inter-agent messaging system |
-
+| [OpenCode](https://opencode.ai) | The AI coding agent cortex-ia configures |
 
 ## License
 

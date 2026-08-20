@@ -5,471 +5,203 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"time"
+	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/agents"
 	"github.com/lleontor705/cortex-ia/internal/backup"
-	"github.com/lleontor705/cortex-ia/internal/catalog"
-	"github.com/lleontor705/cortex-ia/internal/components/context7"
-	"github.com/lleontor705/cortex-ia/internal/components/conventions"
-	cortexcomp "github.com/lleontor705/cortex-ia/internal/components/cortex"
-	forgespeccomp "github.com/lleontor705/cortex-ia/internal/components/forgespec"
-	ggacomp "github.com/lleontor705/cortex-ia/internal/components/gga"
-	"github.com/lleontor705/cortex-ia/internal/components/mailbox"
-	"github.com/lleontor705/cortex-ia/internal/components/persona"
-	"github.com/lleontor705/cortex-ia/internal/components/sdd"
-	skillscomp "github.com/lleontor705/cortex-ia/internal/components/skills"
-	"github.com/lleontor705/cortex-ia/internal/model"
-	"github.com/lleontor705/cortex-ia/internal/opencode"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
 // validBackupID matches safe backup IDs (alphanumeric, hyphens, underscores).
 var validBackupID = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
 
-// ProgressFunc is called by the pipeline to report step-level progress.
-// Implementations must be safe for concurrent use.
-type ProgressFunc func(stepID string, status string, err error)
-
-// InstallResult describes the outcome of a full installation.
-type InstallResult struct {
-	BackupID       string
-	FilesChanged   []string
-	ComponentsDone []model.ComponentID
-	Errors         []string
-}
-
-// Repair reapplies the previously installed configuration from lock/state metadata.
-func Repair(homeDir string, registry *agents.Registry, version string, dryRun bool) (InstallResult, error) {
-	s, err := state.Load(homeDir)
-	if err != nil {
-		return InstallResult{}, err
-	}
-	lock, err := state.LoadLock(homeDir)
-	if err != nil {
-		return InstallResult{}, err
-	}
-
-	selection, err := selectionFromMetadata(s, lock)
-	if err != nil {
-		return InstallResult{}, err
-	}
-	selection.DryRun = dryRun
-
-	return Install(homeDir, registry, selection, version, dryRun)
-}
-
-// Rollback restores managed files from a previous backup manifest.
-func Rollback(homeDir, backupID string) (backup.Manifest, error) {
+// ResolveRollback resolves a rollback request to its manifest without
+// restoring anything. An empty backupID resolves to the backup recorded in
+// the legacy v1 state and lock; v2 homes resolve their backup through the
+// install service, which reads the v2 metadata first and only falls back to
+// this legacy resolution when no v2 metadata exists. The returned ID is the
+// validated backup identifier the manifest was read from; callers pass it
+// back into JournaledRestore so the journal checkpoint root can never be
+// steered by manifest-supplied data.
+func ResolveRollback(homeDir, backupID string) (string, backup.Manifest, error) {
 	if backupID == "" {
-		s, err := state.Load(homeDir)
+		installed, err := state.Load(homeDir)
 		if err != nil {
-			return backup.Manifest{}, err
+			return "", backup.Manifest{}, err
 		}
 		lock, err := state.LoadLock(homeDir)
 		if err != nil {
-			return backup.Manifest{}, err
+			return "", backup.Manifest{}, err
 		}
-		backupID = firstNonEmptyString(lock.LastBackupID, s.LastBackupID)
+		backupID = firstNonEmptyString(lock.LastBackupID, installed.LastBackupID)
 	}
 
 	if backupID == "" {
-		return backup.Manifest{}, fmt.Errorf("no backup available for rollback")
+		return "", backup.Manifest{}, fmt.Errorf("no backup available for rollback")
 	}
 	if !validBackupID.MatchString(backupID) {
-		return backup.Manifest{}, fmt.Errorf("invalid backup ID format: %q", backupID)
+		return "", backup.Manifest{}, fmt.Errorf("invalid backup ID format: %q", backupID)
 	}
 
-	manifestPath := filepath.Join(homeDir, ".cortex-ia", "backups", backupID, backup.ManifestFilename)
+	checkpointRoot := filepath.Join(homeDir, ".cortex-ia", "backups", backupID)
+	manifestPath := filepath.Join(checkpointRoot, backup.ManifestFilename)
 	manifest, err := backup.ReadManifest(manifestPath)
+	if err != nil {
+		return "", backup.Manifest{}, err
+	}
+	if err := manifest.ValidateForRestore(checkpointRoot, backupID); err != nil {
+		return "", backup.Manifest{}, fmt.Errorf("rollback manifest does not match expected checkpoint: %w", err)
+	}
+	if err := backup.Verify(manifest); err != nil {
+		return "", backup.Manifest{}, fmt.Errorf("backup is not restorable: %w", err)
+	}
+	return backupID, manifest, nil
+}
+
+// Rollback restores managed files from a previous backup manifest through
+// the same containment-validated, journaled restore every service rollback
+// uses: the manifest must prove restorable, every entry must be a
+// home-contained file target, the pre-rollback bytes of every target are
+// journaled before the first write, and any later restore, verification, or
+// commit failure reverts the partial restoration to the exact pre-rollback
+// bytes (the rollback of the rollback). An empty backupID resolves to the
+// backup recorded in the legacy v1 state and lock; v2 homes resolve their
+// backup through the install service, which additionally runs the ownership
+// preflight and holds the canonical home lock around this restore. Callers
+// of this engine-level entry must already serialize the home.
+func Rollback(homeDir, backupID string) (backup.Manifest, error) {
+	id, manifest, err := ResolveRollback(homeDir, backupID)
 	if err != nil {
 		return backup.Manifest{}, err
 	}
-
-	restore := backup.RestoreService{}
-	if err := restore.Restore(manifest); err != nil {
+	if err := JournaledRestore(homeDir, id, manifest); err != nil {
 		return backup.Manifest{}, err
 	}
-
 	return manifest, nil
 }
 
-// Install runs the full installation pipeline using a 2-stage orchestrator:
-// Stage 1 (Prepare): validate agents + create backup (stops on error, rolls back)
-// Stage 2 (Apply): inject components per agent + save state (continues on error)
-func Install(homeDir string, registry *agents.Registry, selection model.Selection, version string, dryRun bool, onProgress ...ProgressFunc) (InstallResult, error) {
-	var progress ProgressFunc
-	if len(onProgress) > 0 {
-		progress = onProgress[0]
+// RestoreManifestFn is the manifest restoration seam. Production code
+// always routes through backup.RestoreService; the exported indirection
+// exists so adversarial verification in other packages can prove the
+// rollback-of-rollback contract under injected partial restoration failures
+// without ever touching a real home, mirroring backup.BackupRootFn.
+var RestoreManifestFn = func(manifest backup.Manifest) error {
+	return (backup.RestoreService{}).Restore(manifest)
+}
+
+// JournaledRestore executes the manifest restoration as a journaled
+// transaction. Every manifest entry must be a home-contained file target
+// (absolute, traversal, alias, duplicate, or escaping manifests fail closed
+// before any write); the journal then captures the current bytes of every
+// target as preimages before the first restore write, and any later
+// restore, verification, or commit failure reverts the partial restoration
+// to the exact pre-rollback bytes. The journal checkpoint lives inside the
+// backup's own journal root, so a crash mid-rollback leaves a recoverable
+// candidate exactly like every other transaction. Callers must already hold
+// the canonical home lock.
+func JournaledRestore(homeDir, backupID string, manifest backup.Manifest) error {
+	checkpointRoot := filepath.Join(homeDir, ".cortex-ia", "backups", backupID)
+	if err := manifest.ValidateForRestore(checkpointRoot, backupID); err != nil {
+		return fmt.Errorf("rollback: %w", err)
+	}
+	if err := backup.Verify(manifest); err != nil {
+		return fmt.Errorf("rollback: backup is not restorable: %w", err)
 	}
 
-	result := InstallResult{}
-
-	// Resolve profile if specified.
-	if selection.ProfileName != "" && selection.ModelAssignments == nil {
-		profiles, err := state.LoadProfiles(homeDir)
-		if err == nil {
-			for _, p := range profiles {
-				if p.Name == selection.ProfileName {
-					selection.ModelAssignments = p.ModelAssignments
-					break
-				}
-			}
-		}
+	targets, err := rollbackJournalTargets(homeDir, manifest)
+	if err != nil {
+		return fmt.Errorf("rollback: %w", err)
 	}
-
-	// 1. Resolve components with dependencies.
-	components := selection.Components
-	if len(components) == 0 {
-		components = catalog.ComponentsForPreset(selection.Preset)
-	}
-	resolved := catalog.ResolveDeps(components)
-
-	if dryRun {
-		if progress == nil {
-			fmt.Println("=== DRY RUN ===")
-			fmt.Printf("Agents: %v\n", selection.Agents)
-			fmt.Printf("Preset: %s\n", selection.Preset)
-			fmt.Printf("Components (resolved): %v\n", resolved)
-			fmt.Println("No changes will be made.")
-		}
-		result.ComponentsDone = resolved
-		return result, nil
-	}
-
-	// 2. Ensure ~/.cortex-ia/ base directory exists before any component runs.
-	if err := state.EnsureDir(homeDir); err != nil {
-		return result, fmt.Errorf("ensure cortex-ia directory: %w", err)
-	}
-
-	// 3. Build prepare steps.
-	bkStep := &backupStep{
-		homeDir: homeDir, registry: registry,
-		agentIDs: selection.Agents, resolved: resolved, version: version,
-		progress: progress,
-	}
-	prepareSteps := []Step{
-		&validateStep{registry: registry, agentIDs: selection.Agents},
-		bkStep,
-	}
-
-	// 4. Build apply steps: one sequential chain per agent, agents run in parallel.
-	componentSet := make(map[model.ComponentID]bool)
-	for _, c := range resolved {
-		componentSet[c] = true
-	}
-
-	var allComponentSteps []*componentStep
-
-	// Build one sequential step chain per agent. Each chain applies
-	// components in dependency order for that agent.
-	var agentChains [][]Step
-	for _, agentID := range selection.Agents {
-		adapter, err := registry.Get(agentID)
+	var journal *InstallJournal
+	if len(targets) > 0 {
+		journalRoot := filepath.Join(checkpointRoot, "journal")
+		journal, err = BeginInstallJournal(homeDir, journalRoot, targets)
 		if err != nil {
-			continue // validateStep already catches this
-		}
-
-		if progress == nil {
-			fmt.Printf("\nConfiguring %s...\n", agentID)
-		}
-		var chain []Step
-		for _, inj := range buildInjectors(homeDir, adapter, selection) {
-			if !componentSet[inj.id] {
-				continue
-			}
-			cs := &componentStep{
-				homeDir: homeDir, adapter: adapter,
-				componentID: inj.id, injectorFn: inj.fn,
-				progress: progress,
-			}
-			chain = append(chain, cs)
-			allComponentSteps = append(allComponentSteps, cs)
-		}
-		if len(chain) > 0 {
-			agentChains = append(agentChains, chain)
+			return fmt.Errorf("rollback: begin journaled restore: %w", err)
 		}
 	}
-
-	// 5. Run 2-stage: prepare sequentially, then agents in parallel.
-	// Within each agent, components run sequentially (same config files).
-	// Different agents run in parallel (different config dirs).
-	prepResult := RunStage(prepareSteps)
-	if prepResult.Error != nil {
-		result.BackupID = bkStep.BackupID
-		result.ComponentsDone = resolved
-		return result, prepResult.Error
+	restoreErr := RestoreManifestFn(manifest)
+	if restoreErr == nil {
+		restoreErr = verifyRestoredManifest(manifest)
 	}
-
-	// 5a. Mark installation as in-progress (after backup succeeds).
-	// If the process crashes or components fail, the marker stays so
-	// that "cortex-ia doctor" can detect the incomplete install.
-	statusStep := &installStatusStep{homeDir: homeDir, backupID: bkStep.BackupID}
-	if err := statusStep.Run(); err != nil {
-		// Non-fatal: warn but continue — the install itself is more important.
-		result.Errors = append(result.Errors, fmt.Sprintf("install status marker: %v", err))
-	}
-
-	applyResult := RunParallelChains(agentChains)
-
-	// 6. Inject persona for each agent (non-component injection).
-	if selection.Persona != "" {
-		for _, agentID := range selection.Agents {
-			adapter, err := registry.Get(agentID)
-			if err != nil {
-				continue
-			}
-			pResult, pErr := persona.Inject(homeDir, adapter, selection.Persona)
-			if pErr != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("persona/%s: %v", agentID, pErr))
-				continue
-			}
-			result.FilesChanged = append(result.FilesChanged, pResult.Files...)
+	if restoreErr == nil && journal != nil {
+		if err := journal.Commit(); err != nil {
+			// The restoration cannot be durably recorded as complete, so
+			// the home must not keep an unprovable postimage: revert to
+			// the verified pre-rollback bytes and report failure.
+			restoreErr = fmt.Errorf("commit rollback journal: %w", err)
 		}
 	}
-
-	// 7a. Auto-apply model assignments to opencode.json so per-agent model
-	// routing lands without requiring a separate `profiles apply` call.
-	// Only runs when (a) model assignments exist, (b) OpenCode is in the
-	// selected agents, and (c) Apply succeeded.
-	if applyResult.Error == nil && len(selection.ModelAssignments) > 0 {
-		hasOpenCode := false
-		for _, id := range selection.Agents {
-			if id == model.AgentOpenCode {
-				hasOpenCode = true
-				break
-			}
-		}
-		if hasOpenCode {
-			ocAssignments := sdd.ProfileToOpenCodeAssignments(model.Profile{
-				Name:             firstNonEmptyString(selection.ProfileName, "active"),
-				ModelAssignments: selection.ModelAssignments,
-			})
-			if len(ocAssignments) > 0 {
-				if err := opencode.ApplyToOpenCodeConfig(homeDir, ocAssignments); err != nil {
-					result.Errors = append(result.Errors, fmt.Sprintf("apply model assignments to opencode.json: %v", err))
-				}
-			}
-		}
-	}
-
-	// 7b. Translate results.
-	result.BackupID = bkStep.BackupID
-	result.ComponentsDone = resolved
-	for _, cs := range allComponentSteps {
-		result.FilesChanged = append(result.FilesChanged, cs.Files...)
-	}
-
-	if applyResult.Error != nil {
-		// Leave install-status as "in-progress" so doctor can detect the failure.
-		if applyResult.Failed != "" {
-			result.Errors = append(result.Errors, applyResult.Failed)
-		}
-		return result, fmt.Errorf("installation completed with errors")
-	}
-
-	// 8. Save state (after successful apply).
-	s := state.State{
-		InstalledAgents: selection.Agents,
-		Preset:          selection.Preset,
-		Components:      resolved,
-		LastInstall:     time.Now(),
-		LastBackupID:    result.BackupID,
-		Version:         version,
-		LastProfile:     selection.ProfileName,
-		StrictTDD:       selection.StrictTDD,
-	}
-	if err := state.Save(homeDir, s); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("save state: %v", err))
-	}
-
-	lock := state.Lockfile{
-		InstalledAgents: selection.Agents,
-		Preset:          selection.Preset,
-		Components:      resolved,
-		Files:           dedupeStrings(result.FilesChanged),
-		GeneratedAt:     time.Now(),
-		LastBackupID:    result.BackupID,
-		Version:         version,
-	}
-	if err := state.SaveLock(homeDir, lock); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("save lock: %v", err))
-	}
-
-	// 9. Clear the in-progress marker — installation succeeded.
-	if err := state.ClearInstallStatus(homeDir); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("clear install status: %v", err))
-	}
-
-	if len(result.Errors) > 0 {
-		return result, fmt.Errorf("installation completed with %d warning(s)", len(result.Errors))
-	}
-
-	return result, nil
-}
-
-type injectorEntry struct {
-	id model.ComponentID
-	fn func() ([]string, error)
-}
-
-// buildInjectors returns the ordered list of component injectors for an agent.
-func buildInjectors(homeDir string, adapter agents.Adapter, selection model.Selection) []injectorEntry {
-	return []injectorEntry{
-		{model.ComponentCortex, func() ([]string, error) {
-			r, err := cortexcomp.Inject(homeDir, adapter)
-			return r.Files, err
-		}},
-		{model.ComponentMailbox, func() ([]string, error) {
-			r, err := mailbox.Inject(homeDir, adapter)
-			return r.Files, err
-		}},
-		{model.ComponentForgeSpec, func() ([]string, error) {
-			r, err := forgespeccomp.Inject(homeDir, adapter)
-			return r.Files, err
-		}},
-		{model.ComponentContext7, func() ([]string, error) {
-			r, err := context7.Inject(homeDir, adapter)
-			return r.Files, err
-		}},
-		{model.ComponentConventions, func() ([]string, error) {
-			r, err := conventions.Inject(homeDir, adapter)
-			return r.Files, err
-		}},
-		{model.ComponentSDD, func() ([]string, error) {
-			r, err := sdd.Inject(homeDir, adapter, selection.ModelAssignments, selection.StrictTDD)
-			return r.Files, err
-		}},
-		{model.ComponentSkills, func() ([]string, error) {
-			r, err := skillscomp.Inject(homeDir, adapter, selection.CommunitySkills)
-			return r.Files, err
-		}},
-		{model.ComponentGGA, func() ([]string, error) {
-			r, err := ggacomp.Inject(homeDir, selection.Agents)
-			return r.Files, err
-		}},
-	}
-}
-
-func collectBackupPaths(homeDir string, registry *agents.Registry, agentIDs []model.AgentID, components []model.ComponentID) []string {
-	var paths []string
-	componentSet := make(map[model.ComponentID]bool)
-	for _, c := range components {
-		componentSet[c] = true
-	}
-
-	for _, agentID := range agentIDs {
-		adapter, err := registry.Get(agentID)
-		if err != nil {
-			continue
-		}
-
-		// System prompt file.
-		if f := adapter.SystemPromptFile(homeDir); f != "" {
-			paths = append(paths, f)
-		}
-		// Settings file.
-		if f := adapter.SettingsPath(homeDir); f != "" {
-			paths = append(paths, f)
-		}
-		// MCP config files.
-		for _, name := range []string{"cortex", "agent-mailbox", "forgespec", "context7"} {
-			if f := adapter.MCPConfigPath(homeDir, name); f != "" {
-				if _, err := os.Stat(f); err == nil {
-					paths = append(paths, f)
-				}
-			}
-		}
-		// SDD files.
-		if componentSet[model.ComponentSDD] {
-			paths = append(paths, sdd.FilesToBackup(homeDir, adapter)...)
-		}
-	}
-
-	return paths
-}
-
-func dedupeStrings(values []string) []string {
-	if len(values) == 0 {
+	if restoreErr == nil {
 		return nil
 	}
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		if value == "" {
+	if journal == nil {
+		return fmt.Errorf("rollback: %w", restoreErr)
+	}
+	if revertErr := journal.RestoreAndVerify(); revertErr != nil {
+		return fmt.Errorf("rollback: %w; reverting the partial restoration also failed, journal retained for safe retry: %v", restoreErr, revertErr)
+	}
+	return fmt.Errorf("rollback: %w; the partial restoration was reverted to the pre-rollback bytes", restoreErr)
+}
+
+// rollbackJournalTargets converts manifest entries into declared journal
+// targets relative to the home. Every entry must be strictly
+// home-contained: absolute, traversal, alias, duplicate, or
+// checkpoint-escaping manifests fail closed here, before any write.
+func rollbackJournalTargets(homeDir string, manifest backup.Manifest) ([]ManagedTarget, error) {
+	targets := make([]ManagedTarget, 0, len(manifest.Entries))
+	seen := make(map[string]bool, len(manifest.Entries))
+	for _, entry := range manifest.Entries {
+		clean := filepath.Clean(entry.OriginalPath)
+		if !pathUnderHome(homeDir, clean) {
+			return nil, fmt.Errorf("backup entry %q escapes the service home; failing closed", entry.OriginalPath)
+		}
+		rel, err := filepath.Rel(homeDir, clean)
+		if err != nil {
+			return nil, fmt.Errorf("resolve backup entry %q: %w", entry.OriginalPath, err)
+		}
+		slash := filepath.ToSlash(rel)
+		if seen[slash] {
+			return nil, fmt.Errorf("backup entry %q is declared more than once; failing closed", slash)
+		}
+		seen[slash] = true
+		targets = append(targets, ManagedTarget{Path: slash, Kind: TargetFile, Owner: "rollback"})
+	}
+	return targets, nil
+}
+
+// verifyRestoredManifest proves the restore actually converged: every entry
+// that existed pre-backup owns its snapshot bytes again and every created
+// target is gone.
+func verifyRestoredManifest(manifest backup.Manifest) error {
+	for _, entry := range manifest.Entries {
+		if !entry.Existed {
+			_, statErr := os.Lstat(entry.OriginalPath)
+			if statErr == nil {
+				return fmt.Errorf("restored target %q must be absent", entry.OriginalPath)
+			}
+			if !os.IsNotExist(statErr) {
+				return fmt.Errorf("verify absence of %q: %w", entry.OriginalPath, statErr)
+			}
 			continue
 		}
-		if _, ok := seen[value]; ok {
-			continue
+		exists, digest, err := inspectFileTarget(entry.OriginalPath)
+		if err != nil {
+			return fmt.Errorf("verify restored %q: %w", entry.OriginalPath, err)
 		}
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-	return result
-}
-
-// SelectionFromState reconstructs a Selection from persisted state/lock metadata.
-func SelectionFromState(s state.State, lock state.Lockfile) (model.Selection, error) {
-	return selectionFromMetadata(s, lock)
-}
-
-func selectionFromMetadata(s state.State, lock state.Lockfile) (model.Selection, error) {
-	selection := model.Selection{
-		Agents:     dedupeAgents(lock.InstalledAgents, s.InstalledAgents),
-		Preset:     firstNonEmptyPreset(lock.Preset, s.Preset, model.PresetFull),
-		Components: dedupeComponents(lock.Components, s.Components),
-	}
-
-	if len(selection.Agents) == 0 {
-		return model.Selection{}, fmt.Errorf("no cortex-ia installation metadata found")
-	}
-
-	return selection, nil
-}
-
-func dedupeAgents(groups ...[]model.AgentID) []model.AgentID {
-	seen := make(map[model.AgentID]struct{})
-	result := make([]model.AgentID, 0)
-	for _, group := range groups {
-		for _, value := range group {
-			if value == "" {
-				continue
-			}
-			if _, ok := seen[value]; ok {
-				continue
-			}
-			seen[value] = struct{}{}
-			result = append(result, value)
+		if !exists || digest != entry.SHA256 {
+			return fmt.Errorf("restored target %q does not match the backup bytes", entry.OriginalPath)
 		}
 	}
-	return result
+	return nil
 }
 
-func dedupeComponents(groups ...[]model.ComponentID) []model.ComponentID {
-	seen := make(map[model.ComponentID]struct{})
-	result := make([]model.ComponentID, 0)
-	for _, group := range groups {
-		for _, value := range group {
-			if value == "" {
-				continue
-			}
-			if _, ok := seen[value]; ok {
-				continue
-			}
-			seen[value] = struct{}{}
-			result = append(result, value)
-		}
+// pathUnderHome reports whether abs is strictly inside home.
+func pathUnderHome(home, abs string) bool {
+	rel, err := filepath.Rel(home, abs)
+	if err != nil {
+		return false
 	}
-	return result
-}
-
-func firstNonEmptyPreset(values ...model.PresetID) model.PresetID {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return model.PresetFull
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func firstNonEmptyString(values ...string) string {

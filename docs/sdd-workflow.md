@@ -1,200 +1,72 @@
 # SDD Workflow
 
-Spec-Driven Development (SDD) is a structured 9-phase pipeline for substantial software changes. It enforces typed contracts, tracks dependencies, and provides artifact persistence across sessions.
+Spec-Driven Development (SDD) is the 9-phase workflow that the installed
+skill, agent, and command assets implement. cortex-ia installs the assets;
+it does not schedule or execute the pipeline — your OpenCode runtime, the
+ForgeSpec MCP, and the Cortex MCP do the work.
 
-## Pipeline
+## Authority Boundaries
 
-<p align="center">
-  <img src="assets/sdd-pipeline.svg" alt="SDD Pipeline" width="100%" />
-</p>
+| Owner | Responsibility |
+|-------|----------------|
+| **ForgeSpec** (MCP preset) | Contracts, task board, dependency readiness, claims, status, file reservation |
+| **Cortex** (MCP preset) | Durable memory: evidence, decisions, summaries, provenance |
+| OpenCode runtime | Skill/agent/command discovery and dispatch (transport only) |
+| cortex-ia | Installs and updates the assets; configures the MCP bindings |
 
-### Dependency Graph
+## Phase Map
 
-```
-proposal → spec ──┐
-         ↘        ├→ tasks → apply → verify → archive
-         design ──┘
-```
+| Phase | Skill | Installed agents | What happens |
+|-------|-------|------------------|--------------|
+| 0 · init | `bootstrap` | `bootstrap` | Detect the stack, bootstrap persistence, open the SDD session |
+| 1 · explore | `investigate` | `investigate` | Map the codebase, compare approaches, rate effort/risk |
+| 2 · propose | `draft-proposal` | `draft-proposal` | Change proposal with scope, risks, rollback plan |
+| 3 · spec | `write-specs` | `write-specs` | Delta specs as Given/When/Then scenarios |
+| 4 · design | `architect` | `architect` | Technical design with architecture decisions |
+| 5 · tasks | `decompose` | `decompose` | Dependency-ordered task DAG on the ForgeSpec board |
+| 6 · apply | `implement` | `implement` | One bounded work unit per minion: claim → execute → verify → receipt |
+| 7 · verify | `validate` | `validate` | Run the scenario oracles, produce the compliance matrix |
+| 8 · archive | `finalize` | `finalize` | Merge specs, close the change, archive the change set |
 
-Spec and design depend on the proposal but are independent of each other.
-
-## Phases
-
-### 1. Init (`/sdd-init`)
-**Agent**: bootstrap | **Confidence threshold**: 0.5
-
-Detects project stack (languages, frameworks, test runners), bootstraps persistence mode (cortex/openspec/hybrid/none), builds skill registry.
-
-### 2. Explore (`/sdd-explore <topic>`)
-**Agent**: investigate | **Confidence threshold**: 0.5
-
-Reads codebase, compares approaches, rates effort/risk. Uses Context7 for library docs and `mem_timeline` for temporal context. No files created.
-
-### 3. Propose (`/sdd-new <change>`)
-**Agent**: draft-proposal | **Confidence threshold**: 0.7
-
-Creates change proposal with intent, scope, approach, affected areas, risks, rollback plan, success criteria. Uses Skeleton-of-Thought: outline → validate → expand.
-
-### 4. Spec (`/sdd-continue`)
-**Agent**: write-specs | **Confidence threshold**: 0.8
-
-Writes delta specifications (ADDED/MODIFIED/REMOVED) with Given/When/Then scenarios. Uses RFC 2119 keywords.
-
-### 5. Design (`/sdd-continue`)
-**Agent**: architect | **Confidence threshold**: 0.7
-
-Technical design with architecture decisions, data flow, file changes, interfaces. Uses Extended Thinking with explicit trade-off analysis of 2+ alternatives.
-
-### 6. Tasks (`/sdd-continue`)
-**Agent**: decompose | **Confidence threshold**: 0.8
-
-Breaks specs + design into phased, dependency-ordered tasks. Identifies parallel groups and integration points.
-
-### 7. Apply (`/sdd-implement`)
-**Agent**: team-lead → implement | **Confidence threshold**: 0.6
-
-Team-lead coordinates parallel @implement agents via task board. Uses `file_reserve(check_only: true)` → `file_reserve()` to prevent conflicts. Each implement agent uses Constitutional Self-Critique before submitting.
-
-### 8. Verify (`/sdd-validate`)
-**Agent**: validate | **Confidence threshold**: 0.9
-
-Validates implementation against specs. Runs tests, generates compliance matrix. Uses Chain-of-Verification: list claims → verify independently → correct.
-
-### 9. Archive (`/sdd-finalize`)
-**Agent**: finalize | **Confidence threshold**: 0.9
-
-Merges delta specs, closes change cycle, generates retrospective. Cleans up obsolete Cortex observations via `mem_archive`.
-
-## Task Routing
-
-<p align="center">
-  <img src="assets/task-routing.svg" alt="Task Routing" width="100%" />
-</p>
+Cross-phase roles installed as agents and skills: `orchestrator` (the only
+delegating role), `planner`, `reviewer`, `debate`, `code-review-adversary`,
+`parallel-dispatch`.
 
 ## Commands
 
-### Skill commands (appear in autocomplete)
-- `/sdd-init` — Initialize SDD context
-- `/sdd-explore <topic>` — Investigate an idea
-- `/sdd-apply [change]` — Implement tasks
-- `/sdd-verify [change]` — Validate implementation
-- `/sdd-archive [change]` — Close change
+Installed under `~/.config/opencode/commands/`: `sdd`, `work`, `status`,
+`resume`, `review`, `tdd`, `spike`, `investigate`, `hotfix`. They are
+thin entry points that route into the phase skills above.
 
-### Meta-commands (orchestrator handles directly)
-- `/sdd-new <change>` — Start new change (explore → propose)
-- `/sdd-continue [change]` — Run next dependency-ready phase
-- `/sdd-ff <name>` — Fast-forward planning (propose → spec → design → tasks)
+## Utility Skills
 
-## Contract Validation
+| Skill | Trigger |
+|-------|---------|
+| `fast-tdd`, `property-based-testing`, `mutation-testing`, `ast-impact-analysis` | Verification acceleration and adversarial test validation |
+| `context-distiller` | Condensing verbose output into compact evidence |
+| `spike-prototype` | Bounded uncertainty-reduction experiments |
+| `hotfix-triage` | Incident containment with a strict diff |
 
-Every phase produces a JSON contract validated by ForgeSpec:
+## Contracts
 
-```json
-{
-  "schema_version": "1.0",
-  "phase": "explore",
-  "change_name": "add-auth",
-  "project": "my-project",
-  "status": "success",
-  "confidence": 0.85,
-  "executive_summary": "...",
-  "artifacts_saved": [{"topic_key": "sdd/add-auth/explore", "type": "cortex"}],
-  "next_recommended": ["propose"],
-  "risks": [{"description": "...", "level": "medium"}]
-}
+Every phase transition is recorded as a ForgeSpec contract (init → explore
+→ propose → spec → design → tasks → apply → verify → archive) and validated
+by the ForgeSpec MCP server. The shared phase-contract documents under
+`internal/assets/_shared/` in the repository are compile-time data for the
+asset set; they are not installed as runtime files.
+
+## Where the Assets Live
+
+After `cortex-ia install`:
+
+```text
+~/.config/opencode/
+  opencode.jsonc                # Merged config & managed MCP catalog
+  AGENTS.md                     # System prompt (authority, routing & shell policy)
+  agents/*.md                   # 5 native sub-agents (orchestrator, planner, implement, investigate, reviewer)
+  commands/*.md                 # 9 slash commands (/sdd, /hotfix, /work, /tdd, /review, ...)
+  skills/<name>/SKILL.md        # 12 native SDD & utility skills
+  plugin/*.ts                   # 5 runtime plugins (background-supervisor, cortex, model-variants, ...)
 ```
 
-Validation flow:
-1. `sdd_validate(phase, contract)` — verify schema and confidence threshold
-2. `sdd_save(contract, project)` — persist to ForgeSpec history
-3. `sdd_history(project)` — audit trail across sessions
-
-## Artifact Persistence
-
-### Topic Key Format
-```
-sdd/{change-name}/{artifact-type}
-```
-
-| Phase | Topic Key | Example |
-|-------|-----------|---------|
-| init | `bootstrap/{project}` | `bootstrap/auth-service` |
-| explore | `sdd/{change}/explore` | `sdd/add-auth/explore` |
-| propose | `sdd/{change}/proposal` | `sdd/add-auth/proposal` |
-| spec | `sdd/{change}/spec` | `sdd/add-auth/spec` |
-| design | `sdd/{change}/design` | `sdd/add-auth/design` |
-| tasks | `sdd/{change}/tasks` | `sdd/add-auth/tasks` |
-| apply | `sdd/{change}/apply-progress` | `sdd/add-auth/apply-progress` |
-| verify | `sdd/{change}/verify-report` | `sdd/add-auth/verify-report` |
-| archive | `sdd/{change}/archive-report` | `sdd/add-auth/archive-report` |
-
-### Two-Step Read (Critical)
-`mem_search` returns 300-char previews only. Always follow with:
-```
-1. mem_search(query: "{topic-key}", project: "{project}") → observation ID
-2. mem_get_observation(id: {id}) → full content
-```
-
-## Apply Phase
-
-<p align="center">
-  <img src="assets/apply-phase-workflow.svg" alt="Apply Phase Workflow" width="100%" />
-</p>
-
-## Agent Coordination Tools
-
-<p align="center">
-  <img src="assets/agent-coordination.svg" alt="Agent Coordination" width="100%" />
-</p>
-
-### Messaging vs A2A Tasks
-
-| Need | Tool | Notes |
-|------|------|-------|
-| Quick message | `msg_send` / `msg_request` | Synchronous or fire-and-forget |
-| Broadcast | `msg_broadcast` | Completion notifications |
-| Formal delegation | `a2a_submit_task` | Status tracking lifecycle |
-| Structured response | `a2a_respond_task` | Machine-parseable results |
-| Audit trail | `a2a_list_tasks` | Full history per agent |
-| Cancel stalled work | `a2a_cancel_task` | Replaces timeout heuristics |
-
-### File Locks vs Resource Locks
-
-| Concern | Tool | Source |
-|---------|------|--------|
-| Concurrent file edits | `file_reserve` / `file_release` | ForgeSpec |
-| Deploy/CI/APIs | `resource_acquire` / `resource_release` | Agent Mailbox |
-
-**Rule**: `file_reserve` for file glob patterns. `resource_acquire` for everything else (deploy, CI, APIs, DB).
-
-### Dead-Letter Queue
-
-Failed deliveries go to DLQ. Check after compaction, timeouts, or unexplained message loss.
-Tools: `dlq_list()`, `dlq_retry(dlq_id)`, `dlq_purge()`
-
-## Orchestrator Variants
-
-<p align="center">
-  <img src="assets/multi-agent-orchestration.svg" alt="Multi-Agent Orchestration" width="100%" />
-</p>
-
-### Multi-Agent (Claude Code, OpenCode)
-The orchestrator is a pure coordinator — delegates ALL work to sub-agents via Task tool. Uses:
-- `agent_register` for P2P discovery
-- `mem_capture_passive` for automatic learning extraction
-- `tb_list_boards` for board recovery after compaction
-
-### Single-Agent (Gemini, Codex, Windsurf, Cursor, VS Code, Antigravity)
-The agent executes all 9 phases sequentially itself. Uses the same Cortex, ForgeSpec, and Mailbox tools but without delegation.
-
-## Prompting Techniques
-
-| Technique | Where | Why |
-|-----------|-------|-----|
-| Chain-of-Verification | validate | Verify claims independently before output (30-50% fewer hallucinations) |
-| Constitutional Self-Critique | implement | Critique code against specs, design, patterns, security before submitting |
-| Skeleton-of-Thought | draft-proposal, write-specs | Outline → validate completeness → expand (fewer omissions) |
-| Extended Thinking | architect, decompose | Explicit 2+ alternatives with trade-off matrix |
-| ReAct | debug | Thought → Action → Observation loops grounded in evidence |
-| Step-Back | architect | Abstract principles before specific design (7-27% better reasoning) |
-| Inline WHY | all rules | Motivation on every rule improves compliance |
+Update them with `cortex-ia sync` after upgrading the binary.
