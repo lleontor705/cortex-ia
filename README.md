@@ -23,17 +23,6 @@ only and never writes anywhere else.
 ## Quick Start
 
 ```bash
-# Install via Go (requires Go 1.26.1+)
-go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
-
-# Install via Homebrew
-brew install lleontor705/tap/cortex-ia
-
-# Install via script (Linux/macOS)
-curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh | bash
-```
-
-```bash
 cortex-ia                 # Interactive TUI
 cortex-ia install         # Install assets + default managed MCPs
 cortex-ia install --dry-run
@@ -41,6 +30,36 @@ cortex-ia doctor          # Read-only health report
 ```
 
 See [Quickstart](docs/quickstart.md) for the guided path.
+
+## Installation
+
+### Homebrew (macOS / Linux)
+
+```bash
+brew install lleontor705/tap/cortex-ia
+```
+
+### Go
+
+Requires Go `1.26.1` or newer (`go.mod` is authoritative):
+
+```bash
+go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
+```
+
+### Install Script (Linux / macOS)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh | bash
+```
+
+### From Source
+
+```bash
+git clone https://github.com/lleontor705/cortex-ia.git
+cd cortex-ia
+go build -o bin/cortex-ia ./cmd/cortex-ia
+```
 
 ## What Gets Installed
 
@@ -191,7 +210,8 @@ explicit retired-surface error.
 
 - **Go 1.26.1+** — only for building from source (`go.mod` is authoritative)
 - **Node.js 18+ with `npx`** — for the `forgespec` and `context7` local MCP presets
-- **`cortex` on PATH** — for the `cortex` local MCP preset (`cortex mcp --tools=agent`)
+- **`cortex` on PATH** — for the `cortex` local MCP preset (`cortex mcp --tools=agent`):
+  `go install github.com/lleontor705/cortex/cmd/cortex@latest` or `brew install lleontor705/tap/cortex`
 - **OpenCode** — the only configured target
 
 ## Related Projects
