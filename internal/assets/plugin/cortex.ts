@@ -18,8 +18,10 @@
  *     forbidden, conflict, validation, unavailable, timeout,
  *     invalid_response, config, durable_rejected) and logged bounded.
  *   - Sessions are confirmed before use: ensureSession caches a session only
- *     on a persisted-identity echo or an explicit 409, and classifies every
- *     failure instead of silently assuming continuity.
+ *     on a persisted-identity echo or a 409 proven by reading the exact
+ *     persisted identity back, and classifies every failure instead of
+ *     silently assuming continuity. Protected writes and trusted context
+ *     require that confirmation (SEC-04).
  *   - Logs never contain tokens, payloads, or response bodies.
  *   - Hooks always return control; every delivery is deadline-bounded.
  *   - Prompts and passive captures are truncated by UTF-8 runes before JSON
@@ -34,7 +36,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 const CORTEX_HTTP_PORT = parseInt(process.env.CORTEX_HTTP_PORT ?? "7438")
-const CORTEX_URL = `http://127.0.0.1:${CORTEX_HTTP_PORT}`
+const CORTEX_URL = (process.env.CORTEX_SERVER_URL ?? process.env.CORTEX_URL ?? `http://127.0.0.1:${CORTEX_HTTP_PORT}`).replace(/\/+$/, "")
 const CORTEX_HTTP_TOKEN = (process.env.CORTEX_HTTP_TOKEN ?? "").trim()
 const CORTEX_BIN = process.env.CORTEX_BIN ?? (() => {
   // Try Bun.which for PATH lookup, fall back to bare command
@@ -48,6 +50,29 @@ const CORTEX_BIN = process.env.CORTEX_BIN ?? (() => {
 const REQUEST_TIMEOUT_MS = 2000
 const PAYLOAD_BYTE_LIMIT = 2000
 const encoder = new TextEncoder()
+
+export type CortexMode = "server" | "local"
+
+let cachedMode: CortexMode | null = null
+
+export async function detectCortexMode(): Promise<CortexMode> {
+  if (cachedMode) return cachedMode
+  if (!CORTEX_HTTP_TOKEN) {
+    cachedMode = "local"
+    return "local"
+  }
+  try {
+    const res = await boundedFetch("/api/me", {
+      headers: { Authorization: `Bearer ${CORTEX_HTTP_TOKEN}` },
+    })
+    if (res.status === 200 || res.status === 403) {
+      cachedMode = "server"
+      return "server"
+    }
+  } catch {}
+  cachedMode = "local"
+  return "local"
+}
 
 // Cortex's own MCP tools — don't count these as "tool calls" for session stats.
 // cortex_handoff is handled separately before this set is consulted.
@@ -67,13 +92,26 @@ const CORTEX_TOOLS = new Set([
   "cortex_session_start",
   "cortex_session_end",
   "cortex_capture_passive",
-  // Knowledge graph
+  // Knowledge graph & Architecture
   "cortex_relate",
   "cortex_graph",
+  "cortex_graph_relationships",
+  "cortex_graph_path",
+  "cortex_graph_subgraph",
   "cortex_score",
   "cortex_archive",
   "cortex_search_hybrid",
-  // Cortex additions
+  "cortex_get_blast_radius",
+  "cortex_analyze_architecture",
+  "cortex_detect_cycles",
+  "cortex_ingest_code",
+  // Governance, Skills & System Context
+  "cortex_get_project_context",
+  "cortex_list_skills",
+  "cortex_get_skill",
+  "cortex_resolve_query",
+  "cortex_get_status",
+  // History & Hygiene
   "cortex_revision_history",
   "cortex_consolidate",
   "cortex_project_dna",
@@ -90,88 +128,114 @@ const CORTEX_TOOLS = new Set([
   "cortex_temporal_health_check",
   "cortex_temporal_evolution_path",
   "cortex_temporal_fact_state",
+  "cortex_search_temporal",
 ])
 
-// ─── Memory Instructions ─────────────────────────────────────────────────────
+// ─── Mode-Aware Memory Instructions ──────────────────────────────────────────
 
-const MEMORY_INSTRUCTIONS = `## Cortex Persistent Memory — Protocol
+export function buildMemoryInstructions(mode: CortexMode = "server"): string {
+  if (mode === "server") {
+    return `## Cortex Persistent Memory — Protocol (Mode: SERVER / PostgreSQL Multi-Tenant)
 
-You have access to Cortex, a persistent memory system with knowledge graph, importance scoring,
-full-text search, revision history, and temporal tracking that survives across sessions and compactions.
+You have access to Cortex Server via authenticated MCP tools (PostgreSQL RLS, PGVector semantic search, knowledge graph, corporate governance, and dynamic skills).
 
-TRANSPORT IDS: Follow the active MCP tool schema. Local observation and graph IDs are numeric; Cortex Server IDs are public UUID strings. Never convert or reuse IDs across transports.
+TRANSPORT IDENTIFIERS:
+- In Server Mode, all observation IDs and node IDs are public UUID strings (e.g. "6b806a41-9e9b-4298-a39a-7887a71e94e0").
+- Never use or fabricate numeric IDs.
 
-### WHEN TO SAVE (mandatory — not optional)
+### 1. STARTUP: PROJECT CONTEXT & GOVERNANCE (Mandatory at session start)
+At the beginning of any session or when switching projects:
+1. IMMEDIATELY call \`cortex_get_project_context(project)\` to retrieve corporate governance rules, architectural constraints, and available skill playbooks.
+2. Call \`cortex_list_skills(project)\` and \`cortex_get_skill(key, project)\` to inspect and follow approved domain skills.
 
-Call `cortex_save` IMMEDIATELY after any of these:
-1. **Architecture & ADRs** (`type: decision | architecture`, `topic_key: architecture/<module>`): Choices of libraries, design patterns, state management, DB engines and discarded alternatives.
-2. **Gotchas & Quirks** (`type: discovery`, `topic_key: gotchas/<issue>`): Non-obvious edge cases, OS/PowerShell traps, tricky framework quirks, race conditions.
-3. **Project DNA & Stack** (`type: config`, `topic_key: dna/<project>`): Test runner commands, linters, folder conventions, runtime versions.
-4. **Domain & Business Rules** (`type: architecture`, `topic_key: domain/<entity>`): Meaning of data models, lifecycle states, business invariants.
-5. **Bug Fixes & Root Cause** (`type: bugfix`, `topic_key: bugfix/<issue>`): Root cause of fixed bugs and why the fix works.
-6. **Hotfix & Tech Debt** (`type: bugfix`, `topic_key: hotfix/<incident>`): Emergency containment and pending structural refactorings.
-7. **User Preferences** (`type: preference`, `scope: personal`): User's preferred language, tooling, formatting, or working style.
+### 2. WHEN TO SAVE (Mandatory after completing work)
+Call \`cortex_save\` IMMEDIATELY after any of these:
+- Bug fix completed (type: "bugfix")
+- Architectural/design decision made (type: "decision")
+- Non-obvious discovery in codebase (type: "discovery")
+- Pattern or convention established (type: "pattern")
+- Configuration/environment rule (type: "config")
+- Domain learning (type: "learning")
 
-Format for `cortex_save`:
-- **title**: Verb + what — short, searchable (e.g. "Chose SQLite WAL over Postgres for local Cortex")
-- **type**: bugfix | decision | architecture | discovery | pattern | config | preference
-- **scope**: `project` (default) | `personal`
-- **topic_key** (recommended for evolving topics): stable key like `architecture/auth-model`
-- **content**:
-  **What**: One sentence — what was done
-  **Why**: What motivated it (user request, bug, performance, etc.)
-  **Where**: Files or paths affected
-  **Learned**: Gotchas, edge cases, things that surprised you (omit if none)
+Format for \`cortex_save\`:
+- **title**: Verb + object — short, searchable (e.g. "Fixed N+1 query in PgBouncer pool")
+- **type**: bugfix | decision | pattern | discovery | config | learning
+- **scope**: \`project\` (default) | \`personal\`
+- **topic_key** (optional): stable key for evolving topics (e.g. \`auth/jwt-rotation\`)
+- **content**: What was done, Why it was done, Affected files, and Lessons learned.
 
-Topic rules:
-- Different topics must not overwrite each other (e.g. architecture vs bugfix)
-- Reuse the same `topic_key` to update an evolving topic (upsert)
-- If unsure about the key, call `cortex_suggest_topic_key` first
-- Use `cortex_update` when you have an exact observation ID to correct
+### 3. CODEBASE INTELLIGENCE & BLAST RADIUS
+- Before refactoring or renaming symbols, call \`cortex_get_blast_radius(node_id)\` to calculate all impacted downstream callers, files, and dependencies.
+- Call \`cortex_detect_cycles(project)\` to ensure no circular import dependencies or architectural violations.
+- Call \`cortex_analyze_architecture(project)\` to inspect code communities and god nodes.
+- Use \`cortex_relate\` to link related observations (references, relates_to, follows, supersedes, contradicts).
 
-### KNOWLEDGE GRAPH & RELATIONSHIPS
-After saving related observations, use `cortex_relate` to connect them:
-- `references`, `relates_to`, `follows`, `supersedes`, `contradicts`
-Use `cortex_graph` to explore connections from any observation.
-Use `cortex_score` to check/recalculate observation importance.
+### 4. UNIFIED SEARCH & QUERY RESOLUTION
+- For complex questions or domain lookups, call \`cortex_resolve_query(query, project)\` for a unified retrieval across corporate rules, skills, and observations.
+- Call \`cortex_search\` for keyword/FTS search, or \`cortex_context\` for recent session history.
+- If you find an observation match, call \`cortex_get_observation(id)\` to read its complete full text.
 
-### SEARCH & RETRIEVAL
-
-When the user asks to recall something — "remember", "recall", "what did we do":
-1. First call \`cortex_context\` — checks recent session history (fast)
-2. If not found, call \`cortex_search\` with relevant keywords (FTS5)
-3. If still not found, try \`cortex_search_hybrid\` for FTS5 + vector combined search
-4. If you find a match, use \`cortex_get_observation\` for full content (search returns 300-char previews only)
-
-Also search memory PROACTIVELY when:
-- Starting work on something that might have done before
-- The user mentions a topic you have no context on
-- The user's FIRST message references the project
-
-### REVISION HISTORY & TIMELINE
-- \`cortex_revision_history(observation_id)\` — see how an observation evolved across upserts
-- \`cortex_timeline(observation_id, before, after)\` — chronological context around an observation
-- Use these when an artifact seems stale or when auditing changes
-
-### PROJECT HYGIENE
-- If project name fragmented: \`cortex_merge_projects(from: "variant1,variant2", to: "canonical")\`
-- To archive obsolete observations: \`cortex_archive(observation_id)\`
-- To permanently delete: \`cortex_delete(id, hard_delete: true)\`
-
-### SESSION CLOSE PROTOCOL (mandatory)
-
-Before ending a session or saying "done":
+### 5. SESSION CLOSE PROTOCOL (Mandatory before ending)
+Before saying "done" or finishing a session:
 1. Call \`cortex_session_summary\` with: Goal, Discoveries, Accomplished, Next Steps, Relevant Files.
-This is NOT optional. If you skip this, the next session starts blind.
+This is NOT optional. Without this, the next session or agent starts blind.
 
-### AFTER COMPACTION
+### 6. AFTER COMPACTION
+1. IMMEDIATELY call \`cortex_session_summary\` with the compacted summary content.
+2. Then call \`cortex_context\` to recover context from previous sessions before continuing.`
+  }
 
-If you see a message about compaction or context reset:
-1. IMMEDIATELY call \`cortex_session_summary\` with the compacted summary content
-2. Then call \`cortex_context\` to recover context from previous sessions
-3. Use \`cortex_search_hybrid\` if more detail needed
-4. Only THEN continue working
-`
+  return `## Cortex Persistent Memory — Protocol (Mode: LOCAL / SQLite Zero-CGO)
+
+You have access to Cortex Local, a high-performance local memory system (zero-CGO SQLite, FTS5 full-text search, knowledge graph, and temporal tracking).
+
+TRANSPORT IDENTIFIERS:
+- In Local Mode, observation and graph IDs are numeric integers (e.g. 1, 42).
+- Follow active MCP tool schema.
+
+### 1. WHEN TO SAVE (Mandatory after completing work)
+Call \`cortex_save\` IMMEDIATELY after any of these:
+- Bug fix completed (type: "bugfix")
+- Architecture decision made (type: "decision")
+- Non-obvious discovery about codebase (type: "discovery")
+- Pattern established (type: "pattern")
+- Configuration/environment rule (type: "config")
+- Learning (type: "learning")
+
+Format for \`cortex_save\`:
+- **title**: Verb + object — short, searchable (e.g. "Fixed N+1 query in UserList")
+- **type**: bugfix | decision | pattern | discovery | config | learning
+- **scope**: \`project\` (default) | \`personal\`
+- **topic_key** (optional, recommended): stable key like \`architecture/auth-model\`
+- **content**: What was done, Why, Where (files affected), and Gotchas.
+
+### 2. KNOWLEDGE GRAPH & RELATIONS
+- After saving related observations, call \`cortex_relate\` (references, relates_to, follows, supersedes, contradicts).
+- Call \`cortex_graph\` to traverse connections from any observation.
+- Call \`cortex_score\` to recalculate observation importance.
+
+### 3. SEARCH & RETRIEVAL
+1. First call \`cortex_context\` to check recent session history.
+2. If not found, call \`cortex_search\` with keywords (FTS5).
+3. If needed, call \`cortex_search_hybrid\` for combined vector + FTS search.
+4. Call \`cortex_get_observation(id)\` to fetch the complete full-text observation.
+
+### 4. REVISION HISTORY & HYGIENE
+- \`cortex_revision_history(id)\`: View evolution across upserts.
+- \`cortex_timeline(id)\`: Chronological context.
+- \`cortex_archive(id)\`: Archive obsolete observations.
+- \`cortex_delete(id, hard_delete: true)\`: Permanently delete.
+
+### 5. SESSION CLOSE PROTOCOL (Mandatory before ending)
+Before saying "done" or finishing a session:
+1. Call \`cortex_session_summary\` with: Goal, Discoveries, Accomplished, Next Steps, Relevant Files.
+
+### 6. AFTER COMPACTION
+1. Call \`cortex_session_summary\` with the compacted summary content.
+2. Call \`cortex_context\` to recover context before resuming work.`
+}
+
+const MEMORY_INSTRUCTIONS = buildMemoryInstructions("server")
 
 // ─── Delivery classification ─────────────────────────────────────────────────
 
@@ -405,10 +469,22 @@ function isJsonObject(body: unknown): boolean {
 
 const SESSION_REQUIRED_KEYS = ["id", "project", "directory", "started_at"] as const
 
+// Context injected into the host prompt is trusted only when every item is
+// an object with string title and type; anything else is invalid_response.
+function isObservationSummaryList(body: unknown): body is Array<{ title: string; type: string }> {
+  return (
+    Array.isArray(body) &&
+    body.every(
+      (item) => isJsonObject(item) &&
+        typeof (item as Record<string, unknown>).title === "string" &&
+        typeof (item as Record<string, unknown>).type === "string"
+    )
+  )
+}
+
 // The persisted Session echo is validated by identity: the server returns the
 // session that was sent (optional omitempty fields are not asserted).
-function persistedSession(sent: {
-  id: string
+function persistedSession(sent: {  id: string
   project: string
   directory: string
 }): (body: unknown) => boolean {
@@ -470,7 +546,6 @@ export const Cortex: Plugin = async (ctx) => {
   const toolCounts = new Map<string, number>()
   const knownSessions = new Set<string>()
   const subAgentSessions = new Set<string>()
-  const lastNudgeTime = new Map<string, number>()
 
   type SessionEnsureResult = {
     confirmed: boolean
@@ -478,9 +553,11 @@ export const Cortex: Plugin = async (ctx) => {
   }
 
   // A session counts as known only after the server confirmed it: a 2xx
-  // persisted echo of the exact session identity, or an explicit 409
-  // conflict proving it already exists. Failures are classified, never
-  // cached, and a later event retries instead of assuming continuity.
+  // persisted echo of the exact session identity, or a 409 conflict proven
+  // by reading the exact persisted identity back. A bare 409 body is an
+  // error object and cannot prove which session exists, so it is never
+  // trusted on its own. Failures are classified, never cached, and a later
+  // event retries instead of assuming continuity.
   async function ensureSession(sessionId: string): Promise<SessionEnsureResult> {
     if (!sessionId || subAgentSessions.has(sessionId)) {
       return { confirmed: false, classification: "validation" }
@@ -489,6 +566,7 @@ export const Cortex: Plugin = async (ctx) => {
       return { confirmed: true, classification: "success" }
     }
     if (!CORTEX_HTTP_TOKEN) {
+      report("session", "config", "missing CORTEX_HTTP_TOKEN")
       return { confirmed: false, classification: "config" }
     }
     const sent = { id: sessionId, project, directory: ctx.directory }
@@ -502,8 +580,16 @@ export const Cortex: Plugin = async (ctx) => {
       return { confirmed: false, classification: "invalid_response" }
     }
     if (result.classification === "conflict") {
-      knownSessions.add(sessionId)
-      return { confirmed: true, classification: "success" }
+      // Contract-proven conflict: confirm the exact existing identity through
+      // the read endpoint before trusting the session.
+      const existing = await request(`/api/sessions/${encodeURIComponent(sessionId)}`)
+      if (existing.ok && persistedSession(sent)(existing.body)) {
+        knownSessions.add(sessionId)
+        return { confirmed: true, classification: "success" }
+      }
+      const classification = existing.ok ? "invalid_response" : existing.classification
+      report("session", classification)
+      return { confirmed: false, classification }
     }
     report("session", result.classification)
     return { confirmed: false, classification: result.classification }
@@ -559,7 +645,6 @@ export const Cortex: Plugin = async (ctx) => {
           toolCounts.delete(sessionId)
           knownSessions.delete(sessionId)
           subAgentSessions.delete(sessionId)
-          lastNudgeTime.delete(sessionId)
         }
       }
     },
@@ -584,7 +669,11 @@ export const Cortex: Plugin = async (ctx) => {
         const finalContent = content || fallback
 
         if (finalContent.length > 10) {
-          await ensureSession(sessionId)
+          // SEC-04: no protected write unless the exact session was
+          // positively confirmed. Failures stay uncached and retryable on a
+          // later host event.
+          const session = await ensureSession(sessionId)
+          if (!session.confirmed) return
           const redacted = stripPrivateTags(finalContent)
           const record = truncateUtf8(redacted)
           await deliver(
@@ -617,13 +706,16 @@ export const Cortex: Plugin = async (ctx) => {
         if (CORTEX_TOOLS.has(tool)) return
 
         const sessionId = input.sessionID
+        let sessionConfirmed = false
         if (sessionId) {
-          await ensureSession(sessionId)
+          const session = await ensureSession(sessionId)
+          sessionConfirmed = session.confirmed
           toolCounts.set(sessionId, (toolCounts.get(sessionId) ?? 0) + 1)
         }
 
-        // Passive capture from Task tool output
-        if (input.tool === "Task" && output && sessionId) {
+        // Passive capture from Task tool output — protected write, so it
+        // requires the same confirmed session.
+        if (input.tool === "Task" && output && sessionId && sessionConfirmed) {
           const text = typeof output === "string" ? output : JSON.stringify(output)
           if (text.length > 50) {
             const redacted = stripPrivateTags(text)
@@ -658,77 +750,50 @@ export const Cortex: Plugin = async (ctx) => {
 
     // ─── System Prompt: Always-on memory instructions ──────────
 
-    "experimental.chat.system.transform": async (input, output) => {
+    "experimental.chat.system.transform": async (_input, output) => {
+      const mode = await detectCortexMode()
+      const instructions = buildMemoryInstructions(mode)
       if (output.system.length > 0) {
-        output.system[output.system.length - 1] += "\n\n" + MEMORY_INSTRUCTIONS
+        output.system[output.system.length - 1] += "\n\n" + instructions
       } else {
-        output.system.push(MEMORY_INSTRUCTIONS)
+        output.system.push(instructions)
       }
-
-      // Save nudge: remind agent if it has been working without saving memories for > 15 minutes
-      try {
-        const sessionId: string = input.sessionID ?? ""
-        if (!sessionId || subAgentSessions.has(sessionId)) return
-
-        const nowSecs = Math.floor(Date.now() / 1000)
-        const lastNudge = lastNudgeTime.get(sessionId)
-        if (lastNudge !== undefined && nowSecs - lastNudge < 900) return
-
-        if (CORTEX_HTTP_TOKEN) {
-          const res = await request(
-            `/api/observations?project=${encodeURIComponent(project)}&limit=1&sort=created_at:desc`
-          )
-          if (res.ok && Array.isArray(res.body) && res.body.length > 0) {
-            const createdAt: string = (res.body[0] as any)?.created_at ?? ""
-            if (createdAt) {
-              const normalized = createdAt.includes("T") ? createdAt : createdAt.replace(" ", "T") + "Z"
-              const lastObsEpoch = Math.floor(new Date(normalized).getTime() / 1000)
-              if (!Number.isNaN(lastObsEpoch) && lastObsEpoch > 0 && nowSecs - lastObsEpoch >= 900) {
-                const nudge =
-                  "\n\nMEMORY REMINDER: It has been over 15 minutes since your last Cortex memory save. " +
-                  "If you have made decisions, solved bugs, found gotchas, or established conventions, call cortex_save now."
-                if (output.system.length > 0) {
-                  output.system[output.system.length - 1] += nudge
-                } else {
-                  output.system.push(nudge)
-                }
-                lastNudgeTime.set(sessionId, nowSecs)
-              }
-            }
-          }
-        }
-      } catch {}
     },
 
     // ─── Compaction Hook ──────────────────────────────────────────
 
     "experimental.session.compacting": async (input, output) => {
-      if (input.sessionID) {
-        await ensureSession(input.sessionID)
-      }
-
-      if (CORTEX_HTTP_TOKEN) {
-        const result = await request(
-          `/api/observations?project=${encodeURIComponent(project)}&limit=20`
-        )
-        if (!result.ok) {
-          report("observation", result.classification)
-        } else if (!Array.isArray(result.body)) {
-          report("observation", "invalid_response")
-        } else if (result.body.length > 0) {
-          const ctx = (result.body as any[]).map((o) => `- [${o.type}] ${o.title}`).join("\n")
-          output.context.push(`Recent Cortex memories for ${project}:\n${ctx}`)
+      try {
+        // SEC-04: returned context is trusted only when a credential is
+        // configured and the exact session was positively confirmed.
+        const session = input.sessionID
+          ? await ensureSession(input.sessionID)
+          : { confirmed: false, classification: "validation" as Classification }
+        if (CORTEX_HTTP_TOKEN && session.confirmed) {
+          const result = await request(
+            `/api/observations?project=${encodeURIComponent(project)}&limit=20`
+          )
+          if (!result.ok) {
+            report("observation", result.classification)
+          } else if (!isObservationSummaryList(result.body)) {
+            report("observation", "invalid_response")
+          } else if (result.body.length > 0) {
+            const ctx = (result.body as any[]).map((o) => `- [${o.type}] ${o.title}`).join("\n")
+            output.context.push(`Recent Cortex memories for ${project}:\n${ctx}`)
+          }
         }
-      }
 
-      output.context.push(
-        `CRITICAL INSTRUCTION FOR COMPACTED SUMMARY:\n` +
-        `The agent has access to Cortex persistent memory via MCP tools.\n` +
-        `You MUST include the following instruction at the TOP of the compacted summary:\n\n` +
-        `"FIRST ACTION REQUIRED: Call cortex_session_summary with the content of this compacted summary. ` +
-        `Use project: '${project}'. This preserves what was accomplished before compaction. Do this BEFORE any other work."\n\n` +
-        `This is NOT optional. Without this, everything done before compaction is lost from memory.`
-      )
+        output.context.push(
+          `CRITICAL INSTRUCTION FOR COMPACTED SUMMARY:\n` +
+          `The agent has access to Cortex persistent memory via MCP tools.\n` +
+          `You MUST include the following instruction at the TOP of the compacted summary:\n\n` +
+          `"FIRST ACTION REQUIRED: Call cortex_session_summary with the content of this compacted summary. ` +
+          `Use project: '${project}'. This preserves what was accomplished before compaction. Do this BEFORE any other work."\n\n` +
+          `This is NOT optional. Without this, everything done before compaction is lost from memory.`
+        )
+      } catch {
+        // Non-blocking: a hook failure must never break the host compaction.
+      }
     },
   }
 }

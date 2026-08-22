@@ -9,7 +9,16 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
+
+	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
+	"github.com/lleontor705/cortex-ia/internal/state"
 )
+
+// artifactAbs returns the absolute destination path for a recorded artifact.
+func (s *Service) artifactAbs(artifact state.ArtifactV2) string {
+	rel := opencode.DestinationForArtifact(artifact.Path, string(artifact.Kind))
+	return filepath.Join(s.homeDir, filepath.FromSlash(rel))
+}
 
 // validBackupID matches the safe backup ID grammar shared with the engine
 // (alphanumeric, hyphens, underscores).

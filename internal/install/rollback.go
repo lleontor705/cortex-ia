@@ -156,7 +156,7 @@ func (s *Service) rollbackPreflight(manifest backup.Manifest, meta state.Metadat
 		if artifact.Ownership != state.OwnershipManaged || artifact.Kind == state.KindMCPConfig {
 			continue
 		}
-		abs := filepath.Join(meta.OpencodeRoot, filepath.FromSlash(artifact.Path))
+		abs := s.artifactAbs(artifact)
 		rel := homeRelative(s.homeDir, abs)
 		exists, digest, err := fileDigest(abs)
 		switch {
@@ -180,7 +180,7 @@ func (s *Service) rollbackPreflight(manifest backup.Manifest, meta state.Metadat
 	}
 	for _, artifact := range meta.Artifacts {
 		if artifact.Ownership == state.OwnershipManaged {
-			known[filepath.Clean(filepath.Join(meta.OpencodeRoot, filepath.FromSlash(artifact.Path)))] = true
+			known[filepath.Clean(s.artifactAbs(artifact))] = true
 		}
 	}
 	candidates := make(map[string]bool, 2)

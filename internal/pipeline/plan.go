@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -272,7 +271,7 @@ func planStaleEffects(plan *Plan) error {
 		if _, wanted := desired[artifact.Path]; wanted {
 			continue
 		}
-		rel := path.Join(filepath.ToSlash(".config/opencode"), artifact.Path)
+		rel := opencode.DestinationForArtifact(artifact.Path, string(artifact.Kind))
 		abs := filepath.Join(home, filepath.FromSlash(rel))
 		exists, digest, err := inspectFileTarget(abs)
 		if err != nil {

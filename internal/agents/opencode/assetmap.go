@@ -35,6 +35,24 @@ func HasNativeKind(kind assets.Kind) bool {
 	}
 }
 
+// Destination returns the slash-separated home-relative destination for an
+// embedded asset given its source path and structural kind.
+func Destination(source string, kind assets.Kind) string {
+	if kind == assets.KindSkill {
+		return path.Join(NativeLayout().SkillsRoot, strings.TrimPrefix(source, "skills/"))
+	}
+	return path.Join(NativeLayout().ConfigRoot, source)
+}
+
+// DestinationForArtifact returns the slash-separated home-relative destination
+// for an artifact given its recorded path and kind.
+func DestinationForArtifact(source string, kind string) string {
+	if kind == "skill" {
+		return path.Join(NativeLayout().SkillsRoot, strings.TrimPrefix(source, "skills/"))
+	}
+	return path.Join(NativeLayout().ConfigRoot, source)
+}
+
 // IsNativeAsset reports whether an embedded inventory file maps to a
 // native OpenCode destination. It is the single filtering predicate
 // callers must use before MapAssets: it applies HasNativeKind and then
@@ -46,18 +64,18 @@ func IsNativeAsset(file assets.File) bool {
 	if !HasNativeKind(file.Kind) {
 		return false
 	}
-	dest := path.Join(NativeLayout().ConfigRoot, file.Path)
-	return BeneathConfigRoot(dest) && NativeLayout().IsNativePath(dest)
+	dest := Destination(file.Path, file.Kind)
+	return BeneathAllowedRoots(dest) && NativeLayout().IsNativePath(dest)
 }
 
 // Mapping pairs one embedded asset with its deterministic home-relative,
-// slash-separated destination beneath the OpenCode config root.
+// slash-separated destination beneath the OpenCode config root or skills root.
 type Mapping struct {
 	// Source is the embedded asset path, for example
 	// "skills/implement/SKILL.md".
 	Source string
 	// Dest is the home-relative destination, for example
-	// ".config/opencode/skills/implement/SKILL.md".
+	// ".agents/skills/implement/SKILL.md".
 	Dest string
 	// Kind is the structural asset kind re-derived from Source.
 	Kind assets.Kind
@@ -65,14 +83,13 @@ type Mapping struct {
 	SHA256 string
 }
 
-// MapAssets maps embedded asset files beneath the OpenCode config root.
+// MapAssets maps embedded asset files beneath their native destinations.
 // The mapping is pure and structure-preserving: every destination equals
-// path.Join(NativeLayout().ConfigRoot, source) and is validated against
-// the same NativeLayout, the single source of the native surface. It
-// fails closed on unsafe paths, kinds without a native destination,
-// destinations off the native surface, kind/path disagreement, and
-// destination collisions, and never returns a partial result. On
-// platforms with case-insensitive filesystems, destinations that differ
+// Destination(source, kind) and is validated against the same NativeLayout,
+// the single source of the native surface. It fails closed on unsafe paths,
+// kinds without a native destination, destinations off the native surface,
+// kind/path disagreement, and destination collisions, and never returns a partial result.
+// On platforms with case-insensitive filesystems, destinations that differ
 // only by case are rejected as collisions.
 func MapAssets(files []assets.File) ([]Mapping, error) {
 	return mapAssets(files, caseInsensitiveFS())
@@ -94,9 +111,9 @@ func mapAssets(files []assets.File, foldCase bool) ([]Mapping, error) {
 		if !HasNativeKind(kind) {
 			return nil, fmt.Errorf("%w: %q of kind %s has no native OpenCode destination", assets.ErrUnmappedRoot, file.Path, kind)
 		}
-		dest := path.Join(layout.ConfigRoot, file.Path)
-		if !BeneathConfigRoot(dest) {
-			return nil, fmt.Errorf("%w: %q maps outside the OpenCode config root", assets.ErrUnsafePath, file.Path)
+		dest := Destination(file.Path, kind)
+		if !BeneathAllowedRoots(dest) {
+			return nil, fmt.Errorf("%w: %q maps outside the allowed roots", assets.ErrUnsafePath, file.Path)
 		}
 		if !layout.IsNativePath(dest) {
 			return nil, fmt.Errorf("%w: %q of kind %s has no native OpenCode destination", assets.ErrUnmappedRoot, file.Path, kind)
@@ -130,14 +147,23 @@ func caseInsensitiveFS() bool {
 	}
 }
 
-// BeneathConfigRoot reports whether dest, after slash normalization and
-// cleaning, denotes the OpenCode config root itself or a path strictly
-// beneath it. Absolute paths and traversal outside the root are rejected.
-func BeneathConfigRoot(dest string) bool {
-	root := NativeLayout().ConfigRoot
+// BeneathAllowedRoots reports whether dest, after slash normalization and
+// cleaning, denotes a path strictly beneath one of the declared native roots.
+// Absolute paths and traversal outside the roots are rejected.
+func BeneathAllowedRoots(dest string) bool {
 	clean := path.Clean(strings.ReplaceAll(dest, "\\", "/"))
 	if path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
 		return false
 	}
+	layout := NativeLayout()
+	return isBeneath(clean, layout.ConfigRoot) || isBeneath(clean, layout.SkillsRoot)
+}
+
+func isBeneath(clean, root string) bool {
 	return clean == root || strings.HasPrefix(clean, root+"/")
+}
+
+// BeneathConfigRoot reports whether dest denotes a safe native destination root.
+func BeneathConfigRoot(dest string) bool {
+	return BeneathAllowedRoots(dest)
 }

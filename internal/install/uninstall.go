@@ -189,7 +189,7 @@ func (s *Service) Uninstall(opts UninstallOptions) (*UninstallReceipt, error) {
 			return receipt, abort(err)
 		}
 		receipt.Removed = append(receipt.Removed, item.rel)
-		s.pruneEmptyDirs(meta.OpencodeRoot, item.abs, receipt)
+		s.pruneEmptyDirs(item.abs, receipt)
 	}
 
 	// MCP deregistration goes through the manager, which enforces the same
@@ -347,7 +347,7 @@ func (s *Service) classifyRemovals(meta state.MetadataV2, receipt *UninstallRece
 		if artifact.Ownership != state.OwnershipManaged {
 			continue
 		}
-		abs := filepath.Join(meta.OpencodeRoot, filepath.FromSlash(artifact.Path))
+		abs := s.artifactAbs(artifact)
 		rel := homeRelative(s.homeDir, abs)
 		exists, digest, err := fileDigest(abs)
 		switch {
@@ -394,7 +394,7 @@ func (s *Service) retainedArtifacts(meta state.MetadataV2, receipt *UninstallRec
 	}
 	kept := make([]state.ArtifactV2, 0, len(meta.Artifacts))
 	for _, artifact := range meta.Artifacts {
-		abs := filepath.Join(meta.OpencodeRoot, filepath.FromSlash(artifact.Path))
+		abs := s.artifactAbs(artifact)
 		if !dropped[homeRelative(s.homeDir, abs)] {
 			kept = append(kept, artifact)
 		}
@@ -403,13 +403,18 @@ func (s *Service) retainedArtifacts(meta state.MetadataV2, receipt *UninstallRec
 }
 
 // pruneEmptyDirs removes now-empty parent directories of a deleted artifact,
-// strictly inside the OpenCode root. It uses os.Remove only, so a directory
-// holding anything else is never removed, and the OpenCode root itself is
-// kept.
-func (s *Service) pruneEmptyDirs(opencodeRoot, removedAbs string, receipt *UninstallReceipt) {
+// strictly inside the OpenCode root or skills root. It uses os.Remove only, so a directory
+// holding anything else is never removed, and the roots themselves are kept.
+func (s *Service) pruneEmptyDirs(removedAbs string, receipt *UninstallReceipt) {
 	dir := filepath.Dir(removedAbs)
 	for {
-		if dir == opencodeRoot || len(dir) <= len(opencodeRoot) {
+		if dir == s.homeDir || len(dir) <= len(s.homeDir) {
+			return
+		}
+		if dir == filepath.Join(s.homeDir, ".config", "opencode") ||
+			dir == filepath.Join(s.homeDir, ".config") ||
+			dir == filepath.Join(s.homeDir, ".agents", "skills") ||
+			dir == filepath.Join(s.homeDir, ".agents") {
 			return
 		}
 		if err := os.Remove(dir); err != nil {

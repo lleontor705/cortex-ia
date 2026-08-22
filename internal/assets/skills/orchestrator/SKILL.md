@@ -39,16 +39,33 @@ Do not force SDD for routine work. Do not force TDD for documentation, declarati
 
 If the user forces a workflow, check eligibility. Honor it when safe; otherwise explain the failed gate and propose the closest safe route. A spike may end with `stop`; a hotfix may end with containment plus a later SDD task.
 
+## Session alignment & operating conditions
+
+At the start of every session or new coordinated initiative, establish:
+1. **Execution Mode**:
+   - `auto`: Autonomous execution through DAG completion; only pauses on blockers, missing requirements, or destructive operations requiring approval.
+   - `interactive`: Pauses at phase gates (e.g. after planning, before applying changes, after review) for explicit user sign-off.
+2. **Spec & Memory Plane**:
+   - `openspec`: File-based specifications under `openspec/specs/` and `openspec/changes/<change-name>/` (proposals, delta specs, design, tasks, archive).
+   - `cortex`: SQLite durable knowledge graph for root causes, taxonomy, and debugging memory.
+   - `hybrid`: (Recommended) OpenSpec for human-verifiable markdown specs in the repository + Cortex for persistent root-cause and test failure lineage.
+3. **Design Grilling (`grill-me`)**:
+   - When encountering unstated architectural trade-offs, ambiguous requirements, or multiple implementation paths, load `grill-me`.
+   - Interview the user in rounds (`❓ Q1` + `➡️ Recomendación`) across the decision frontier until fully resolved.
+   - The orchestrator holds no code inspection or shell tools: it **MUST dispatch the `investigate` subagent** to gather any necessary codebase facts before formulating decision rounds for the user. Never ask the user for data that `investigate` can look up.
+
 ## Route procedure
 
-1. Capture objective, scope, non-goals, urgency, observable acceptance, project, and known constraints. Ask only when a missing choice materially changes the result.
-2. Search Cortex narrowly for relevant durable context. Retrieve full observations only when summaries are relevant.
-3. Inspect ForgeSpec state only when persistent coordination is useful. Do not create SDD state for a simple answer.
-4. Score the routing axes as `low`, `medium`, or `high`; record the selected route and short reasons. State why heavier plausible routes were rejected.
-5. For SDD, dispatch `investigate`, then `planner`. Use Lite unless Full is justified by risk or coordination. Planning artifacts may be reasoned about concurrently, but writes sharing one expected revision must be serialized and joined before task creation.
-6. Query ready tasks. Dispatch independent tasks directly as separate instances of `implement`; each minion owns exactly one task, has disjoint file scope, and cannot delegate.
-7. Dispatch independent verification when risk, workflow, or acceptance gates require it.
-8. Reconcile receipts against ForgeSpec and observed evidence. Never infer PASS from prose or from a minion's confidence.
+1. Align on operating conditions (Execution Mode and Spec/Memory Plane).
+2. If design uncertainty is high, dispatch `investigate` for repository facts and run `grill-me` rounds to resolve the decision frontier.
+3. Capture objective, scope, non-goals, urgency, observable acceptance, project, and known constraints.
+4. Search Cortex or inspect OpenSpec specs for relevant durable context.
+5. Inspect ForgeSpec state only when persistent coordination is useful. Do not create SDD state for a simple answer.
+6. Score the routing axes as `low`, `medium`, or `high`; record the selected route and short reasons. State why heavier plausible routes were rejected.
+7. For SDD, dispatch `investigate`, then `planner` (which writes OpenSpec/ForgeSpec contracts). Planning artifacts may be reasoned about concurrently, but writes sharing one expected revision must be serialized and joined before task creation.
+8. Query ready tasks. Dispatch independent tasks directly as separate instances of `implement`; each minion owns exactly one task, has disjoint file scope, and cannot delegate.
+9. Dispatch independent verification when risk, workflow, or acceptance gates require it.
+10. Reconcile receipts against ForgeSpec/OpenSpec and observed evidence. Never infer PASS from prose or from a minion's confidence.
 
 ## ForgeSpec protocol
 
@@ -56,18 +73,39 @@ Canonical source: `skills/_shared/forgespec-protocol.md` — negotiation, CAS/id
 
 Use no ForgeSpec state for ephemeral read-only work. Use a simple task for one resumable change, a board for concurrency or recovery, and SDD contracts only when the selected route needs them.
 
-Orchestrator-only surface (it never claims, heartbeats, or holds file leases itself):
+Orchestrator-only surface (it never claims attempts or holds file leases itself):
 
-- Board and DAG: create with `tb_create_board`, `tb_add_task`, and `tb_set_dependencies`; inspect with `tb_list_boards` and `tb_query`.
-- Resume and reconciliation: read deltas with `tb_events` and `tb_batch_status`; SDD lineage with `sdd_history`.
-- Recovery: query state, then `tb_recover_claims` and explicit `tb_requeue` (with `recover_active_dependents` for cascades). Never reuse authority from an earlier attempt.
-- Approvals and authority: `tb_approve` only against an existing gate with explicit asserted provenance; attenuated `tb_grant`, `tb_handoff`, and `tb_revoke`; audit through `tb_audit_log`.
+- Board and DAG: create with `board_create` and `task_define`; inspect with `task_query`.
+- Resume and reconciliation: read state and deltas with `event_query`, `task_query`, and `contract_query`.
+- Recovery: query state, then `attempt_recover` to reclaim expired attempt locks.
+- Approvals and authority: delegated authority via `authority_manage`; audit through `event_query`.
 
-Each implementation minion owns its own claim, attempt, and file leases under the canonical lifecycle, keeps authority tokens only in live memory, and returns `BLOCKED` on expired or stale authority for orchestrator reconciliation. Validate minion receipts against the canonical completion order — verify, sanitized evidence, `tb_update`, `file_release` — and report failed cleanup as risk; it is never hidden by a successful test.
+Each implementation minion owns its own claim, attempt, and file leases under the canonical lifecycle, keeps authority tokens only in live memory, and returns `BLOCKED` on expired or stale authority for orchestrator reconciliation. Validate minion receipts against the canonical completion order — verify, sanitized evidence, `task_transition(in_review)`, `lease_release`, `task_transition(done)` — and report failed cleanup as risk.
 
-## Cortex protocol
+## Cortex protocol & memory plane
 
-The orchestrator owns the Cortex session lifecycle. Minions may search, retrieve, save concise evidence, and relate observations. Save durable decisions, root causes, non-obvious findings, spike measurements, review summaries, and reproducible verification facts. Do not save routine progress.
+The orchestrator owns the Cortex session lifecycle (`cortex_session_start` ➔ `cortex_session_summary` ➔ `cortex_session_end`):
+
+1. **Mode Identification (`cortex_get_status`):**
+   - Call `cortex_get_status` to determine whether Cortex is operating in `local` (SQLite) or `server` (PostgreSQL + Vector RLS) mode.
+   - *In Server Mode*: Dispatch envelopes can mandate `cortex_search_hybrid` (FTS5 + semantic embeddings) and `cortex_search_temporal` for cross-session and corporate knowledge retrieval.
+   - *In Local Mode*: Use fast native FTS5 searches (`cortex_search`), local graph traversal (`cortex_graph`), and project DNA.
+
+2. **AST Knowledge Graph & Project DNA:**
+   - Query `cortex_project_dna(project)` to determine if AST structural symbols, hubs, and community clusters are populated.
+   - When present: Inspect structural coupling and blast radius before dispatching high-risk refactors.
+   - When absent: Dispatch `investigate` to perform initial repository mapping and record baseline architecture observations.
+
+3. **Historical Problem Resolution & Triage:**
+   - Before routing a defect or regression, execute `cortex_search(query: "<error/symptom>", type: "bugfix", project)` or check `gotchas/<module>`.
+   - Pass referenced historical findings (**What**, **Why**, **Where**, **Learned**) in the dispatch envelope so implementation minions avoid known traps.
+   - Save only durable decisions, root causes, non-obvious findings, spike measurements, and review summaries. Use `cortex_relate(relation_type: "supersedes")` when a new fix replaces an earlier pattern.
+
+4. **Dynamic Skills, Governance & Prompts per Application (`Project Context Protocol`):**
+   - In Server/Enterprise mode, Cortex provides dynamic application-specific skills (`kind: "skill"`), corporate governance rules (`kind: "rule"`), and historical prompts.
+   - At session startup, invoke `cortex_get_project_context(project)` to resolve the effective rule/skill bundle and `cortex_list_skills(project)` / `cortex_get_skill(key, project)` to load application-tailored playbooks.
+   - Project-scope skills override workspace defaults through deterministic `project-over-workspace` resolution.
+   - User prompts and successful patterns are captured via `cortex_save_prompt` and `/api/prompts` per application for replay and few-shot guidance.
 
 Use stable topic keys such as `investigate/{project}/{topic}`, `tdd/{change}/{task}`, `hotfix/{project}/{incident}`, `review/{project}/{change}`, and `sdd/{change}/{artifact}`. Evidence includes command, exit code, revision, timestamp, and a bounded summary; it excludes authority tokens and large stdout.
 

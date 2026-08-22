@@ -330,7 +330,7 @@ func (s *Service) doctorInstalled(report *DoctorReport, meta state.MetadataV2) {
 			userOwned++
 			continue
 		}
-		abs := filepath.Join(meta.OpencodeRoot, filepath.FromSlash(artifact.Path))
+		abs := s.artifactAbs(artifact)
 		check := ArtifactCheck{
 			Path:           artifact.Path,
 			Dest:           homeRelative(s.homeDir, abs),

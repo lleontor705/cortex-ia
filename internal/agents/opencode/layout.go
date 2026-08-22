@@ -33,7 +33,7 @@ func NativeLayout() Layout {
 	)
 	return Layout{
 		ConfigRoot: config, WorkflowRoot: workflow,
-		SkillsRoot: path.Join(config, "skills"), AgentsRoot: path.Join(config, "agents"), CommandsRoot: path.Join(config, "commands"),
+		SkillsRoot: ".agents/skills", AgentsRoot: path.Join(config, "agents"), CommandsRoot: path.Join(config, "commands"),
 		PluginRoot:     path.Join(config, "plugin"),
 		RootModuleRoot: path.Join(workflow, "root"), ContractRoot: path.Join(workflow, "contracts"), RoleRoot: path.Join(workflow, "roles"),
 		OverlayRoot: path.Join(workflow, "overlays"), QualityRoot: path.Join(workflow, "quality"), ManifestRoot: path.Join(workflow, "manifests"),

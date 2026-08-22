@@ -112,10 +112,10 @@ To maintain clarity and protect context windows:
 
 ## 5. Execution Procedure with ForgeSpec & Cortex
 
-1. **Capabilities**: Negotiate `direct-v1` via `forgespec_capabilities`.
+1. **Capabilities**: Negotiate `profile: "planner"` via `forge_negotiate`.
 2. **Context & Evidence**: Read the request and cited Cortex evidence (`cortex_search`).
 3. **Draft Contracts**: Formulate proposal, delta specifications, concise design, and task DAG.
-4. **Validation & Save**: Validate with `sdd_validate`, then save via `sdd_save`. Materialize the DAG using `tb_create_board`, `tb_add_task`, and `tb_set_dependencies`.
+4. **Validation & Commit**: Validate with `contract_validate`, then commit via `contract_commit`. Materialize the DAG using `board_create` and `task_define`.
 5. **OpenSpec Mirror**: When configured, the plugin automatically mirrors contracts into `openspec/changes/<change-name>/`.
 6. **No Execution**: Planning never executes code or takes file leases.
 

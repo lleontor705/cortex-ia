@@ -92,6 +92,11 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 		t.Fatalf("expected cortex+forgespec MCP records, got %d", len(metaLoad.Metadata.MCPs))
 	}
 
+	// Verify distinct target roots for skills vs config/agents/commands.
+	engineAssertRegular(t, engineJoin(home, ".agents/skills/implement/SKILL.md"))
+	engineAssertRegular(t, engineJoin(home, ".config/opencode/agents/orchestrator.md"))
+	engineAssertRegular(t, engineJoin(home, ".config/opencode/commands/sdd.md"))
+
 	// Selected MCP entries exist in the OpenCode config; context7 stays out.
 	config := engineAssertRegular(t, engineJoin(home, ".config/opencode/opencode.jsonc"))
 	decoded, err := filemerge.DecodeJSONObject([]byte(config))
