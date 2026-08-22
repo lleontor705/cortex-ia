@@ -18,9 +18,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/homelock"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
@@ -264,4 +266,15 @@ func planDigestForReceipt(plan *pipeline.Plan) string {
 		return ""
 	}
 	return plan.Digest
+}
+
+// ListBackups returns all available backup manifests sorted from newest to oldest.
+func (s *Service) ListBackups() ([]backup.Manifest, error) {
+	backupsDir := filepath.Join(s.homeDir, ".cortex-ia", "backups")
+	result := backup.ListManifests(backupsDir)
+	manifests := result.Manifests
+	sort.Slice(manifests, func(i, j int) bool {
+		return manifests[i].CreatedAt.After(manifests[j].CreatedAt)
+	})
+	return manifests, nil
 }

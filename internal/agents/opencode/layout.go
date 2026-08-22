@@ -1,6 +1,7 @@
 package opencode
 
 import (
+	"os"
 	"path"
 	"strings"
 )
@@ -39,6 +40,41 @@ func NativeLayout() Layout {
 		OverlayRoot: path.Join(workflow, "overlays"), QualityRoot: path.Join(workflow, "quality"), ManifestRoot: path.Join(workflow, "manifests"),
 		ModelRoot: path.Join(workflow, "models"), PermissionRoot: path.Join(workflow, "permissions"), CompositionPath: path.Join(workflow, "composition.json"),
 	}
+}
+
+// ResolveConfigRelPath resolves the active OpenCode configuration file path relative
+// to the home directory. If opencode.jsonc exists, it takes precedence; otherwise,
+// if opencode.json exists, it is used; if neither exists, opencode.jsonc is returned.
+func (l Layout) ResolveConfigRelPath(homeDir string) string {
+	return path.Join(l.ConfigRoot, l.ResolveConfigFilename(homeDir))
+}
+
+// ResolveConfigFilename returns "opencode.json" if it exists and "opencode.jsonc" does not;
+// otherwise it returns "opencode.jsonc".
+func (l Layout) ResolveConfigFilename(homeDir string) string {
+	if homeDir == "" {
+		return "opencode.jsonc"
+	}
+	// Check if opencode.jsonc exists
+	jsoncPath := path.Join(homeDir, filepathToSlash(path.Join(l.ConfigRoot, "opencode.jsonc")))
+	if fileExists(jsoncPath) {
+		return "opencode.jsonc"
+	}
+	// Check if opencode.json exists
+	jsonPath := path.Join(homeDir, filepathToSlash(path.Join(l.ConfigRoot, "opencode.json")))
+	if fileExists(jsonPath) {
+		return "opencode.json"
+	}
+	return "opencode.jsonc"
+}
+
+func filepathToSlash(p string) string {
+	return strings.ReplaceAll(p, "\\", "/")
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 func (l Layout) IsWorkflowPath(relative string) bool {

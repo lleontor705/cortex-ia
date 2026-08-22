@@ -16,7 +16,7 @@ import (
 
 // artifactAbs returns the absolute destination path for a recorded artifact.
 func (s *Service) artifactAbs(artifact state.ArtifactV2) string {
-	rel := opencode.DestinationForArtifact(artifact.Path, string(artifact.Kind))
+	rel := opencode.DestinationForArtifactWithHome(artifact.Path, string(artifact.Kind), s.homeDir)
 	return filepath.Join(s.homeDir, filepath.FromSlash(rel))
 }
 

@@ -427,7 +427,7 @@ func buildMetadata(req Request, plan *Plan, records []state.MCPV2, backupID, txn
 
 	artifacts := make([]state.ArtifactV2, 0, len(desired))
 	for path, artifact := range desired {
-		mappingDest := opencode.DestinationForArtifact(path, string(artifact.Kind))
+		mappingDest := opencode.DestinationForArtifactWithHome(path, string(artifact.Kind), plan.HomeDir)
 		if effect, ok := priors[mappingDest]; ok && effect.PriorExists {
 			digest := effect.CurrentSHA
 			artifact.Prior = &state.ArtifactPrior{Existed: true, Digest: digest}

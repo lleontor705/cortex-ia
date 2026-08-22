@@ -38,8 +38,17 @@ func HasNativeKind(kind assets.Kind) bool {
 // Destination returns the slash-separated home-relative destination for an
 // embedded asset given its source path and structural kind.
 func Destination(source string, kind assets.Kind) string {
+	return DestinationWithHome(source, kind, "")
+}
+
+// DestinationWithHome returns the slash-separated home-relative destination for an
+// embedded asset given its source path, structural kind, and target home directory.
+func DestinationWithHome(source string, kind assets.Kind, homeDir string) string {
 	if kind == assets.KindSkill {
 		return path.Join(NativeLayout().SkillsRoot, strings.TrimPrefix(source, "skills/"))
+	}
+	if kind == assets.KindConfig {
+		return NativeLayout().ResolveConfigRelPath(homeDir)
 	}
 	return path.Join(NativeLayout().ConfigRoot, source)
 }
@@ -47,8 +56,17 @@ func Destination(source string, kind assets.Kind) string {
 // DestinationForArtifact returns the slash-separated home-relative destination
 // for an artifact given its recorded path and kind.
 func DestinationForArtifact(source string, kind string) string {
+	return DestinationForArtifactWithHome(source, kind, "")
+}
+
+// DestinationForArtifactWithHome returns the slash-separated home-relative destination
+// for an artifact given its recorded path, kind, and target home directory.
+func DestinationForArtifactWithHome(source string, kind string, homeDir string) string {
 	if kind == "skill" {
 		return path.Join(NativeLayout().SkillsRoot, strings.TrimPrefix(source, "skills/"))
+	}
+	if kind == "config" || kind == "mcp-config" || source == "opencode.jsonc" || source == "opencode.json" {
+		return NativeLayout().ResolveConfigRelPath(homeDir)
 	}
 	return path.Join(NativeLayout().ConfigRoot, source)
 }
@@ -84,18 +102,17 @@ type Mapping struct {
 }
 
 // MapAssets maps embedded asset files beneath their native destinations.
-// The mapping is pure and structure-preserving: every destination equals
-// Destination(source, kind) and is validated against the same NativeLayout,
-// the single source of the native surface. It fails closed on unsafe paths,
-// kinds without a native destination, destinations off the native surface,
-// kind/path disagreement, and destination collisions, and never returns a partial result.
-// On platforms with case-insensitive filesystems, destinations that differ
-// only by case are rejected as collisions.
 func MapAssets(files []assets.File) ([]Mapping, error) {
-	return mapAssets(files, caseInsensitiveFS())
+	return MapAssetsForHome(files, "")
 }
 
-func mapAssets(files []assets.File, foldCase bool) ([]Mapping, error) {
+// MapAssetsForHome maps embedded asset files beneath their native destinations,
+// resolving config destinations based on existing files in homeDir.
+func MapAssetsForHome(files []assets.File, homeDir string) ([]Mapping, error) {
+	return mapAssets(files, caseInsensitiveFS(), homeDir)
+}
+
+func mapAssets(files []assets.File, foldCase bool, homeDir string) ([]Mapping, error) {
 	layout := NativeLayout()
 	seen := make(map[string]string, len(files))
 	seenFold := make(map[string]string, len(files))
@@ -111,7 +128,7 @@ func mapAssets(files []assets.File, foldCase bool) ([]Mapping, error) {
 		if !HasNativeKind(kind) {
 			return nil, fmt.Errorf("%w: %q of kind %s has no native OpenCode destination", assets.ErrUnmappedRoot, file.Path, kind)
 		}
-		dest := Destination(file.Path, kind)
+		dest := DestinationWithHome(file.Path, kind, homeDir)
 		if !BeneathAllowedRoots(dest) {
 			return nil, fmt.Errorf("%w: %q maps outside the allowed roots", assets.ErrUnsafePath, file.Path)
 		}

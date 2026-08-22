@@ -253,10 +253,14 @@ func NewFingerprinting(homeDir string, fingerprintSalt []byte) *Manager {
 func (m *Manager) ConfigPath() string {
 	dir := filepath.Join(m.homeDir, filepath.FromSlash(configRoot))
 	jsonc := filepath.Join(dir, jsoncName)
-	if _, err := os.Stat(jsonc); err == nil || !os.IsNotExist(err) {
+	if _, err := os.Stat(jsonc); err == nil {
 		return jsonc
 	}
-	return filepath.Join(dir, jsonName)
+	jsonFile := filepath.Join(dir, jsonName)
+	if _, err := os.Stat(jsonFile); err == nil {
+		return jsonFile
+	}
+	return jsonc
 }
 
 // Add installs the managed preset entry for name and evaluates explicit

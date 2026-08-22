@@ -45,7 +45,7 @@ func planCommon(req Request) (*Plan, error) {
 			native = append(native, file)
 		}
 	}
-	mappings, err := opencode.MapAssets(native)
+	mappings, err := opencode.MapAssetsForHome(native, home)
 	if err != nil {
 		return nil, fmt.Errorf("map OpenCode destinations: %w", err)
 	}
@@ -271,7 +271,7 @@ func planStaleEffects(plan *Plan) error {
 		if _, wanted := desired[artifact.Path]; wanted {
 			continue
 		}
-		rel := opencode.DestinationForArtifact(artifact.Path, string(artifact.Kind))
+		rel := opencode.DestinationForArtifactWithHome(artifact.Path, string(artifact.Kind), home)
 		abs := filepath.Join(home, filepath.FromSlash(rel))
 		exists, digest, err := inspectFileTarget(abs)
 		if err != nil {

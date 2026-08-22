@@ -17,6 +17,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 )
@@ -30,6 +31,7 @@ type ServiceAPI interface {
 	Sync(opts install.Options) (*install.InstallReceipt, error)
 	Doctor() (*install.DoctorReport, error)
 	Rollback(backupID string) (*install.RollbackReceipt, error)
+	ListBackups() ([]backup.Manifest, error)
 	Uninstall(opts install.UninstallOptions) (*install.UninstallReceipt, error)
 	MCPList() (*install.MCPListReport, error)
 	MCPAdd(name string, opts install.MCPOptions) (*install.MCPReceipt, error)

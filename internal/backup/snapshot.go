@@ -33,6 +33,7 @@ func (s Snapshotter) Create(snapshotDir string, paths []string) (Manifest, error
 		Entries:   make([]ManifestEntry, 0, len(paths)),
 	}
 
+	var archiveEntries []ArchiveEntry
 	for _, path := range paths {
 		entry, err := s.snapshotPath(snapshotDir, path)
 		if err != nil {
@@ -41,6 +42,22 @@ func (s Snapshotter) Create(snapshotDir string, paths []string) (Manifest, error
 		manifest.Entries = append(manifest.Entries, entry)
 		if entry.Existed {
 			manifest.FileCount++
+			relInsideSnapshot, _ := filepath.Rel(snapshotDir, entry.SnapshotPath)
+			archiveEntries = append(archiveEntries, ArchiveEntry{
+				RelPath:    filepath.ToSlash(relInsideSnapshot),
+				SourcePath: entry.SnapshotPath,
+				Mode:       os.FileMode(entry.Mode),
+			})
+		}
+	}
+
+	if len(archiveEntries) > 0 {
+		archivePath := filepath.Join(snapshotDir, "archive.tar.gz")
+		if err := CreateArchive(archivePath, archiveEntries); err == nil {
+			manifest.ArchiveFile = "archive.tar.gz"
+			if info, statErr := os.Stat(archivePath); statErr == nil {
+				manifest.ArchiveSize = info.Size()
+			}
 		}
 	}
 

@@ -64,6 +64,12 @@ type Manifest struct {
 	// Manifests written before pinning was supported lack this field; absent ⇒ false.
 	Pinned bool `json:"pinned,omitempty"`
 
+	// ArchiveFile optionally points to the compressed archive inside RootDir.
+	ArchiveFile string `json:"archive_file,omitempty"`
+
+	// ArchiveSize is the compressed archive size in bytes.
+	ArchiveSize int64 `json:"archive_size,omitempty"`
+
 	// Checksum is the SHA-256 digest of the snapshot inputs (per ComputeChecksum).
 	// Absent on legacy manifests; an empty string disables dedup for that backup.
 	Checksum string `json:"checksum,omitempty"`
@@ -72,9 +78,26 @@ type Manifest struct {
 func (m Manifest) DisplayLabel() string {
 	base := fmt.Sprintf("%s — %s", m.Source.Label(), m.CreatedAt.Local().Format("2006-01-02 15:04"))
 	if m.FileCount > 0 {
+		if m.ArchiveSize > 0 {
+			return fmt.Sprintf("%s (%d files, %s)", base, m.FileCount, FormatBytes(m.ArchiveSize))
+		}
 		return fmt.Sprintf("%s (%d files)", base, m.FileCount)
 	}
 	return base
+}
+
+// FormatBytes returns human-readable byte sizes.
+func FormatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // ManifestEntry describes a single backed-up file.

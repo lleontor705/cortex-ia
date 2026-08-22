@@ -274,6 +274,78 @@ func TestRollback_RestoresFromEngineBackup(t *testing.T) {
 	}
 }
 
+// Pre-existing opencode.json is merged in-place and opencode.jsonc is not created.
+func TestInstall_SupportsPreexistingOpenCodeJSON(t *testing.T) {
+	home := engineHome(t)
+	configDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	jsonPath := filepath.Join(configDir, "opencode.json")
+	initialContent := `{"custom_key": "custom_val"}`
+	if err := os.WriteFile(jsonPath, []byte(initialContent), 0o644); err != nil {
+		t.Fatalf("write opencode.json: %v", err)
+	}
+
+	plan, receipt, err := InstallV2(engineRequest(home))
+	if err != nil {
+		t.Fatalf("install failed: %v", err)
+	}
+	if plan == nil || receipt == nil {
+		t.Fatal("install must return a plan and a receipt")
+	}
+
+	// opencode.json must still exist and contain the custom key
+	merged := engineAssertRegular(t, jsonPath)
+	if !strings.Contains(merged, "custom_key") {
+		t.Fatalf("opencode.json lost user keys: %s", merged)
+	}
+
+	// opencode.jsonc must NOT have been created
+	jsoncPath := filepath.Join(configDir, "opencode.jsonc")
+	if _, err := os.Stat(jsoncPath); err == nil {
+		t.Fatal("opencode.jsonc should not be created when opencode.json pre-exists")
+	}
+}
+
+// Every install creates a verified compressed archive.tar.gz in the backup directory.
+func TestInstall_CreatesCompressedBackupArchive(t *testing.T) {
+	home := engineHome(t)
+	configDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	jsonPath := filepath.Join(configDir, "opencode.json")
+	if err := os.WriteFile(jsonPath, []byte(`{"pre_existing": true}`), 0o644); err != nil {
+		t.Fatalf("write opencode.json: %v", err)
+	}
+
+	_, receipt, err := InstallV2(engineRequest(home))
+	if err != nil {
+		t.Fatalf("install failed: %v", err)
+	}
+	if receipt.BackupID == "" {
+		t.Fatal("expected BackupID in receipt")
+	}
+
+	archivePath := filepath.Join(home, ".cortex-ia", "backups", receipt.BackupID, "archive.tar.gz")
+	if _, err := os.Stat(archivePath); err != nil {
+		t.Fatalf("expected compressed backup at %s: %v", archivePath, err)
+	}
+
+	manifestPath := filepath.Join(home, ".cortex-ia", "backups", receipt.BackupID, "manifest.json")
+	manifest, err := backup.ReadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if manifest.ArchiveFile != "archive.tar.gz" {
+		t.Fatalf("expected ArchiveFile to be archive.tar.gz, got %q", manifest.ArchiveFile)
+	}
+	if manifest.ArchiveSize <= 0 {
+		t.Fatalf("expected ArchiveSize > 0, got %d", manifest.ArchiveSize)
+	}
+}
+
 // engineHomeSnapshot fingerprints every regular file beneath the home so
 // zero-churn claims are executable, not narrative.
 func engineHomeSnapshot(t *testing.T, home string) string {

@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 )
@@ -19,6 +20,7 @@ type fakeService struct {
 	syncCalls     []install.Options
 	doctorCalls   int
 	rollbackCalls []string
+	listBackupsFn func() ([]backup.Manifest, error)
 	uninstallCals int
 	mcpListCalls  int
 	mcpAddNames   []string
@@ -73,6 +75,13 @@ func (f *fakeService) Rollback(backupID string) (*install.RollbackReceipt, error
 		return f.rollbackFn(backupID)
 	}
 	return &RollbackReceiptOK, nil
+}
+
+func (f *fakeService) ListBackups() ([]backup.Manifest, error) {
+	if f.listBackupsFn != nil {
+		return f.listBackupsFn()
+	}
+	return []backup.Manifest{{ID: "bkp-1"}}, nil
 }
 
 var RollbackReceiptOK = install.RollbackReceipt{BackupID: "bkp-1", Verified: true}

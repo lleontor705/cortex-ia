@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
@@ -644,21 +645,42 @@ func artifactCounts(checks []install.ArtifactCheck) string {
 // line. The real run is destructive and requires interactive confirmation;
 // piped or closed input fails closed before the service is called.
 func runRollback(args []string) error {
+	service, err := newService()
+	if err != nil {
+		return err
+	}
+
+	if len(args) == 1 && (strings.EqualFold(args[0], "list") || strings.EqualFold(args[0], "--list")) {
+		manifests, err := service.ListBackups()
+		if err != nil {
+			return err
+		}
+		if len(manifests) == 0 {
+			fmt.Println("No backups found.")
+			return nil
+		}
+		fmt.Printf("Available Backups (%d):\n", len(manifests))
+		for _, m := range manifests {
+			archiveInfo := ""
+			if m.ArchiveFile != "" && m.ArchiveSize > 0 {
+				archiveInfo = fmt.Sprintf(" [compressed: %s]", backup.FormatBytes(m.ArchiveSize))
+			}
+			fmt.Printf("  %-38s %s%s\n", m.ID, m.DisplayLabel(), archiveInfo)
+		}
+		fmt.Println("\nTo restore a backup, run: cortex-ia rollback <backup-id>")
+		return nil
+	}
+
 	var backupID string
 	switch len(args) {
 	case 0:
 	case 1:
 		if strings.HasPrefix(args[0], "-") {
-			return fmt.Errorf("unknown flag: %s (cortex-ia rollback takes an optional backup ID)", args[0])
+			return fmt.Errorf("unknown flag: %s (cortex-ia rollback takes an optional backup ID or 'list')", args[0])
 		}
 		backupID = args[0]
 	default:
 		return fmt.Errorf("unexpected argument: %s (cortex-ia rollback takes at most one backup ID)", args[1])
-	}
-
-	service, err := newService()
-	if err != nil {
-		return err
 	}
 	if err := confirmDestructive("rollback (restore the recorded backup; managed files written after it are removed or reverted)"); err != nil {
 		return fmt.Errorf("rollback: %w", err)
