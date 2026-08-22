@@ -21,7 +21,7 @@ func tryLock(path string) (*Lock, error) {
 		return nil, fmt.Errorf("homelock: open lock file: %w", err)
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
+		_ = f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) ||
 			errors.Is(err, syscall.EAGAIN) ||
 			errors.Is(err, syscall.EINTR) {
@@ -32,9 +32,12 @@ func tryLock(path string) (*Lock, error) {
 	return &Lock{
 		path: path,
 		release: func() error {
-			defer f.Close()
 			if err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN); err != nil {
+				_ = f.Close()
 				return fmt.Errorf("homelock: flock unlock: %w", err)
+			}
+			if err := f.Close(); err != nil {
+				return fmt.Errorf("homelock: close lock file: %w", err)
 			}
 			return nil
 		},

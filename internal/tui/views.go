@@ -12,19 +12,15 @@ import (
 var spinnerFrames = styles.SpinnerFrames
 
 var (
-	styleTitle     = lipgloss.NewStyle().Bold(true).Foreground(styles.Primary)
-	styleSubtitle  = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
-	styleDim       = lipgloss.NewStyle().Foreground(styles.Muted)
-	styleSelected  = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
-	stylePass      = lipgloss.NewStyle().Bold(true).Foreground(styles.Success)
-	styleFail      = lipgloss.NewStyle().Bold(true).Foreground(styles.Error)
-	styleWarn      = lipgloss.NewStyle().Bold(true).Foreground(styles.Warning)
-	styleConflict  = lipgloss.NewStyle().Bold(true).Foreground(styles.Error)
-	styleFrame     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.Primary).Padding(0, 1)
-	styleBadgePass = lipgloss.NewStyle().Bold(true).Foreground(styles.White).Background(styles.Success).Padding(0, 1)
-	styleBadgeFail = lipgloss.NewStyle().Bold(true).Foreground(styles.White).Background(styles.Error).Padding(0, 1)
-	styleBadgeWarn = lipgloss.NewStyle().Bold(true).Foreground(styles.White).Background(styles.Warning).Padding(0, 1)
-	styleKeyBadge  = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
+	styleTitle    = lipgloss.NewStyle().Bold(true).Foreground(styles.Primary)
+	styleSubtitle = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
+	styleDim      = lipgloss.NewStyle().Foreground(styles.Muted)
+	styleSelected = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
+	stylePass     = lipgloss.NewStyle().Bold(true).Foreground(styles.Success)
+	styleFail     = lipgloss.NewStyle().Bold(true).Foreground(styles.Error)
+	styleWarn     = lipgloss.NewStyle().Bold(true).Foreground(styles.Warning)
+	styleConflict = lipgloss.NewStyle().Bold(true).Foreground(styles.Error)
+	styleFrame    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.Primary).Padding(0, 1)
 )
 
 var homeDescriptions = []string{
