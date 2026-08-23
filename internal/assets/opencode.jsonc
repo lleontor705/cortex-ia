@@ -47,9 +47,6 @@
       "*.env": "deny",
       "*.env.*": "deny"
     }
-  }
-   ,"plugin": [
-    "opencode-forgespec"
-  ],
-  "share": "disabled",
+  },
+  "share": "disabled"
 }

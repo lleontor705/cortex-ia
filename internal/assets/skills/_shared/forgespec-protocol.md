@@ -55,6 +55,51 @@ When initializing, each agent calls `forgespec_forge_negotiate` with `{"profile"
 
 ---
 
+### Governance: `forgespec_authority_manage` Usage
+`forgespec_authority_manage` supports 4 discriminated actions (`grant`, `handoff`, `revoke`, `query`):
+1. **`grant`**: Delegate board or task operations to another worker:
+   ```json
+   {
+     "action": "grant",
+     "resource": { "kind": "board", "board_id": "<board_id>" },
+     "operations": ["read_board", "read_task", "add", "update"],
+     "grantee_handle": "lineage:sha256:<grantee_worker_digest>",
+     "expires_at": 1819047044976,
+     "idempotency_key": "grant-planner-<timestamp>"
+   }
+   ```
+2. **`handoff`**: Transfer task ownership to a new worker:
+   ```json
+   {
+     "action": "handoff",
+     "resource": { "kind": "task", "board_id": "<board_id>", "task_id": "<task_id>" },
+     "operations": ["read_task", "update"],
+     "to_handle": "lineage:sha256:<target_worker_digest>",
+     "expires_at": 1819047044976,
+     "idempotency_key": "handoff-task-<timestamp>"
+   }
+   ```
+3. **`revoke`**: Cancel delegated authority:
+   ```json
+   {
+     "action": "revoke",
+     "board_id": "<board_id>",
+     "authority_id": "<authority_id>",
+     "reason": "Task completed",
+     "idempotency_key": "revoke-<authority_id>-<timestamp>"
+   }
+   ```
+4. **`query`**: Inspect active authorities:
+   ```json
+   {
+     "action": "query",
+     "resource": { "kind": "board", "board_id": "<board_id>" },
+     "operation": "read_board"
+   }
+   ```
+
+---
+
 ## 3. SDD 2.0 Lifecycle Pipeline
 
 ForgeSpec contracts strictly progress through 8 deterministic phases:

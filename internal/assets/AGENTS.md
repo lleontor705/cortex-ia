@@ -369,15 +369,18 @@ Call `cortex_save` IMMEDIATELY after:
 - Any gotcha or non-obvious learning (`type: discovery`, `topic_key: gotchas/<feature>`).
 - Any pattern or convention established (`type: pattern`).
 
-### G. Session Continuity & Compaction Recovery
-1. **Startup**: Call `cortex_session_start`, fetch `cortex_get_project_context(project)`, and check `cortex_get_rules(project)`.
-2. **Close (MANDATORY before saying "done")**: Call `cortex_session_summary` with:
+### G. Session Continuity & Orchestrator Session Ownership
+1. **Orchestrator Session Ownership (STRICT)**:
+   - ONLY the `orchestrator` owns the session lifecycle (`cortex_session_start` at startup, `cortex_session_summary` / `cortex_session_end` at final close).
+   - **SUBAGENTS MUST NEVER CALL `cortex_session_start` OR `cortex_session_end`**: Subagents (`investigate`, `planner`, `implement`, `reviewer`, `spike-prototype`) execute as ephemeral leaf minions within the orchestrator's active session. They use memory tools (`cortex_search`, `cortex_save`, `cortex_get_code_symbols`, `cortex_get_blast_radius`, etc.) WITHOUT starting separate sessions.
+2. **Startup (Orchestrator Only)**: Call `cortex_session_start`, fetch `cortex_get_project_context(project)`, and check `cortex_get_rules(project)`.
+3. **Close (Orchestrator Only, MANDATORY before final turn)**: Call `cortex_session_summary` with:
    - `## Goal`: Intent of the session
    - `## Discoveries`: Gotchas and technical findings
    - `## Accomplished`: Completed deliverables
    - `## Next Steps`: Remaining follow-up items
    - `## Relevant Files`: Paths modified or created
-3. **Compaction Recovery**: When context reset/compaction occurs:
+4. **Compaction Recovery**: When context reset/compaction occurs:
    - Call `cortex_session_summary` with the compacted text immediately.
    - Call `cortex_context` to restore session continuity.
    - Call `cortex_search` for specific topics before resuming work.

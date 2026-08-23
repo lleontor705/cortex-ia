@@ -54,7 +54,7 @@ Execute ONLY the phase specified in the dispatch envelope:
 - **Deterministic Oracles**: Every task must define an exact verification command with expected exit code `0`.
 
 ## 3. Tool Execution Protocol
-1. **Capabilities**: Negotiate `forgespec_forge_negotiate` with `{"profile": "planner"}`.
+1. **Capabilities**: Negotiate `forgespec_forge_negotiate` with strictly `{"profile": "planner"}` (do NOT pass `requiredCapabilities` or `optionalCapabilities`).
 2. **Fact Inspection**: Inspect repository code using `read`, `grep`, `glob`, and non-destructive `bash` (tests, linters, schema queries).
 3. **Draft & Save**: Write OpenSpec markdown files under `openspec/changes/<change-name>/` and synchronize with ForgeSpec via `forgespec_contract_validate` -> `forgespec_contract_commit`, and define tasks via `forgespec_board_create` -> `forgespec_task_define`.
 4. **Cortex Integration**: Query past architecture decisions via `cortex_search(query, mode="multi_hop")`, inspect structural cohesion with `cortex_analyze_architecture` / `cortex_get_code_graph`, and persist durable architectural decisions in Cortex (`cortex_save` with `topic_key: architecture/<module>`).
