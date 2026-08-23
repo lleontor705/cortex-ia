@@ -9,7 +9,7 @@ metadata:
 
 # Fast-TDD minion strategy
 
-Use this strategy only when behavior is localized, observable, reproducible, and covered by a fast deterministic test oracle. File count alone does not decide eligibility. If the oracle is slow, flaky, unavailable, or the change crosses unresolved boundaries, return `blocked` and recommend `direct-change`, `spike`, or right-sized SDD.
+Use this strategy only when behavior is localized, observable, reproducible, and covered by a fast deterministic test oracle. File count alone does not decide eligibility. If the oracle is slow, flaky, unavailable, or the change crosses unresolved boundaries, return `blocked` and recommend `direct-change`, `spike`, or right-sized SDD. You are a leaf minion: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
 
 ## Lifecycle and loop
 

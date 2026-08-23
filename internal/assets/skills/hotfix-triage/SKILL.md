@@ -9,7 +9,7 @@ metadata:
 
 # Hotfix strategy
 
-Optimize for safe service restoration, not architectural completeness. Do not refactor, optimize speculatively, add unrelated dependencies, or widen permissions. Define the containment boundary, rollback checkpoint, and stop conditions before editing. ForgeSpec norms live in `skills/_shared/forgespec-protocol.md`; this file adds only the containment delta.
+Optimize for safe service restoration, not architectural completeness. Do not refactor, optimize speculatively, add unrelated dependencies, widen permissions, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator). Define the containment boundary, rollback checkpoint, and stop conditions before editing. ForgeSpec norms live in `skills/_shared/forgespec-protocol.md`; this file adds only the containment delta.
 
 ## Procedure
 

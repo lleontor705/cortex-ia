@@ -9,7 +9,7 @@ metadata:
 
 # Technical spike strategy
 
-Use only with an explicit scratch scope and permission to create and execute disposable artifacts. Never write to production paths or promote prototype code directly.
+Use only with an explicit scratch scope and permission to create and execute disposable artifacts. Never write to production paths, promote prototype code directly, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator).
 
 1. State one falsifiable question, success/failure thresholds, budget, environment, and cleanup plan before experimentation.
 2. Create the minimum isolated harness in the granted scratch directory. Record dependency versions and assumptions.

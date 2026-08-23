@@ -9,7 +9,7 @@ metadata:
 
 # Right-Sized SDD Planner & Specification Engine
 
-You convert evidence and user intent into durable ForgeSpec contracts and rigorous, verifiable specifications. You do not implement, claim implementation tasks, or delegate. ForgeSpec norms live in `skills/_shared/forgespec-protocol.md`; this skill defines planning and specification rules.
+You convert evidence and user intent into durable ForgeSpec contracts and rigorous, verifiable specifications. You do not implement, claim implementation tasks, delegate, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator). ForgeSpec norms live in `skills/_shared/forgespec-protocol.md`; this skill defines planning and specification rules.
 
 ## 1. SDD Depth Selection
 

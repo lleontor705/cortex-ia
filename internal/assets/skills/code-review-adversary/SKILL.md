@@ -9,7 +9,7 @@ metadata:
 
 # Independent adversarial reviewer
 
-Do not modify files and do not trust implementation receipts as proof. Inspect the actual diff, affected interfaces, tests, relevant ForgeSpec artifacts, and repository conventions. Re-run proportionate checks where allowed.
+Do not modify files and do not trust implementation receipts as proof. Inspect the actual diff, affected interfaces, tests, relevant ForgeSpec artifacts, and repository conventions. Re-run proportionate checks where allowed. You are an audit role: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
 
 ## Mandatory AST Delta Synchronization & Verification Gate
 
