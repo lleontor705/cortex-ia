@@ -13,13 +13,14 @@ You are a read-only leaf investigator. Answer a bounded technical question from 
 
 ## Method
 
-1. **Cortex Mode & DNA Discovery:**
-   - Call `cortex_get_status` to determine the active runtime mode (`local` SQLite vs `server` PostgreSQL with vectors/RLS).
-   - In `server` mode: Use `cortex_search_hybrid` (FTS5 + vector embeddings via RRF) and `cortex_search_temporal`.
-   - In `local` mode: Use `cortex_search` (FTS5 + graph expansion).
-   - Check AST / Knowledge Graph state with `cortex_project_dna(project)`. If populated, explore structural dependencies with `cortex_graph`, find connection paths with `cortex_graph_path`, and inspect incoming/outgoing edges with `cortex_graph_relationships`.
+1. **Mandatory AST Ingestion Check & DNA Discovery:**
+   - Query `cortex_get_code_symbols(project, limit: 1)` or `cortex_project_dna(project)`.
+   - **Auto-Ingestion Gate**: If no symbols are indexed and `cortex watch` is not active in background, immediately run `cortex_ingest_code(".", project)` to build the Zero-CGO 2-Pass Static AST baseline.
+   - Explore structural dependencies with `cortex_get_code_graph`, find call hierarchies, and compute initial baseline blast radius via `cortex_get_blast_radius(symbol_or_path)`.
+   - Inspect potential circular imports with `cortex_detect_cycles(project)`.
 
-2. **Historical Bug & Gotchas Triage:**
+2. **Adaptive-RAG Memory & Historical Gotchas Triage:**
+   - Use `cortex_search(query, mode="auto"|"multi_hop"|"semantic")` for multi-hop graph retrieval (HippoRAG) or ColBERT MaxSim semantic matching.
    - When investigating a defect or regression, search prior root causes: `cortex_search(query: "<symptom/error>", type: "bugfix", project)` and check `gotchas/<module>`.
    - Extract past **What**, **Why**, **Where**, and **Learned** structured fields to identify recurring patterns, previous fixes, and affected file paths before touching code.
 
@@ -29,7 +30,7 @@ You are a read-only leaf investigator. Answer a bounded technical question from 
    - Cite repository claims as `path:line`; record command, exit code, revision, and timestamp for runtime evidence.
 
 4. **Diagnosis & Causal Chain:**
-   - Format findings as: `Symptom` -> `Trigger` -> `Failing Boundary` -> `Root Cause` -> `Blast Radius`.
+   - Format findings as: `Symptom` -> `Trigger` -> `Failing Boundary` -> `Root Cause` -> `Blast Radius Baseline`.
    - If root cause is unproven, label ranked hypotheses and propose discriminating diagnostic probes.
 
 5. **Architecture & Trade-Off Comparison:**

@@ -105,38 +105,65 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 ```mermaid
 sequenceDiagram
     autonumber
+    actor User as User Request
     participant Orch as Orchestrator
+    participant Inv as Investigate Subagent
+    participant Cortex as Cortex MCP & AST Graph
     participant Plan as Planner Subagent
     participant FS as ForgeSpec Protocol 2.0
     participant Imp as Implement Minions
     participant Rev as Reviewer Subagent
 
-    Note over Orch,Rev: Phase 1: Preflight & Planning
-    Orch->>Plan: Dispatch SDD Plan Request (intent, bounds, budget)
+    User->>Orch: User Prompt Received
+    Orch->>Cortex: cortex_get_rules(project) (Retrieve Active Governance Directives)
+    Orch->>Inv: Dispatch Fact-Finding & Investigation
+
+    rect rgb(235, 245, 255)
+    Note over Inv,Cortex: Phase 1: Investigation & AST Ingestion Gate
+    Inv->>Cortex: cortex_get_code_symbols(project, limit: 1) (Check AST status)
+    alt AST symbols missing and cortex watch not running
+        Inv->>Cortex: cortex_ingest_code(".", project) (Trigger 2-Pass Static AST Ingestion)
+    end
+    Inv->>Cortex: cortex_get_blast_radius + cortex_search(mode="multi_hop")
+    Inv-->>Orch: Diagnostic Evidence & Baseline AST Topology Receipt
+    end
+
+    Note over Orch,FS: Phase 2: Preflight & Planning (if SDD route)
+    Orch->>Plan: Dispatch SDD Plan (intent, project_rules, blast_radius_baseline)
     Plan->>FS: contract_validate -> contract_commit (Proposal, Requirements, Design)
     Plan->>FS: board_create + task_define (DAG nodes <= 350 LOC)
     Plan-->>Orch: Planning Receipt (board_id, task_refs, DAG readiness)
 
-    Note over Orch,Rev: Phase 2: Parallel Implementation
+    Note over Orch,Imp: Phase 3: Implementation
     loop For Each Ready DAG Task
-        Orch->>Imp: Dispatch Minion Envelope (task_id, allowed_files, checks)
+        Orch->>Imp: Dispatch Minion Envelope (task_id, allowed_files, project_rules, checks)
         Imp->>FS: attempt_claim (lease attempt) + lease_reserve (lock files)
+        Imp->>Cortex: cortex_get_blast_radius(symbol) (Pre-edit boundary check)
         Imp->>Imp: Implement Code + Proportional Verification (Tests)
         Imp->>FS: task_transition (in_review) + lease_release + task_transition (done)
-        Imp-->>Orch: Task Execution Receipt
+        Imp-->>Orch: Task Execution Receipt (changed_files)
     end
 
-    Note over Orch,Rev: Phase 3: Adversarial Review & Archive
-    Orch->>Rev: Dispatch Review Envelope (board_id, diff_summary, spec_refs)
+    rect rgb(255, 245, 235)
+    Note over Rev,Cortex: Phase 4: Adversarial Review & AST Delta Sync Gate
+    Orch->>Rev: Dispatch Review Envelope (board_id, changed_files, blast_radius_baseline)
+    Rev->>Cortex: cortex_ingest_code(".", project) [Delta Ingestion: <50ms]
+    Rev->>Cortex: cortex_get_blast_radius (Compare Blast Radius Delta: detect unapproved coupling)
+    Rev->>Cortex: cortex_detect_cycles (Verify no circular import regressions)
     Rev->>Rev: Independent Checks & Mutation Testing
     alt Verdict is PASS
         Rev->>FS: approval_record (gate approval with provenance)
+        Rev->>Cortex: cortex_save(topic_key: "review/task_id")
         Rev-->>Orch: Review Receipt (Verdict: PASS)
         Orch->>FS: contract_commit (Archive change set)
     else Verdict is FAIL / BLOCKED
-        Rev-->>Orch: Review Receipt (Verdict: FAIL, specific failure locality)
-        Orch->>Imp: Re-dispatch Targeted Fix Minion
+        Rev->>Cortex: cortex_save(type: "bugfix", topic_key: "gotchas/task_id", content: minimal_failure_locality)
+        Rev-->>Orch: Review Receipt (Verdict: FAIL, evidence_ref: "gotchas/task_id")
+        Orch->>Imp: Re-dispatch Targeted Fix Minion (with evidence_ref from Cortex)
     end
+    end
+
+    Orch-->>User: Final Response + Cortex Session Summary
 ```
 
 ### Review Workload Guard & Stacked Units
@@ -198,6 +225,14 @@ stateDiagram-v2
   "task_id": "task-auth-001",
   "artifact_refs": ["specs/auth/REQ-AUTH-001.md"],
   "evidence_refs": ["cortex/gotchas/jwt-expiry"],
+  "project_rules": [
+    "No CGO dependencies allowed",
+    "Preserve Zero-Bloat configuration"
+  ],
+  "blast_radius_baseline": {
+    "target_symbol": "AuthMiddleware",
+    "initial_downstream_callers": 3
+  },
   "non_goals": ["OAuth2 multi-tenant providers"],
   "allowed_files": [
     "internal/auth/middleware.go",
@@ -290,4 +325,91 @@ flowchart LR
   - Package uninstallation, `git clean -fd`, `git reset --hard`, `git push --force`.
   - Deployment or remote publishing.
 - **Orchestrator Shell Rule**: The orchestrator holds NO shell permission directly; it always delegates operational work to leaf minions.
+
+---
+
+## 8. Cortex Persistent Memory & Code Graph Protocol (v2.2.5)
+
+Cortex provides durable cognitive memory, AST structural knowledge graphs, and SOTA multi-hop retrieval. All agents MUST follow these mandatory operational rules:
+
+### A. SOTA Adaptive-RAG & HippoRAG Retrieval
+When searching memory or repository context:
+1. `cortex_search(query, mode="auto"|"direct"|"semantic"|"multi_hop")`:
+   - `auto` *(default)*: 4-tier query complexity classifier routing directly to the optimal engine.
+   - `direct`: Ultra-fast FTS5 exact lexical keyword search ($<0.1\text{ms}$).
+   - `semantic`: FTS5 + Dense Vector RRF fusion ($k=60$) with ColBERT MaxSim token-level re-ranking.
+   - `multi_hop`: HippoRAG Personalized PageRank (PPR) knowledge graph activation.
+2. `cortex_search_hybrid(query, limit, scope)`: Direct RRF dense+lexical fusion.
+3. `cortex_graph(observation_id, depth)`: Traverse multi-hop associative chains.
+4. `cortex_relate(from_id, to_id, relation_type)`: Connect related memories (`references`, `relates_to`, `follows`, `supersedes`, `contradicts`).
+5. `cortex_score(observation_id)`: Inspect mathematical importance score ($S = I \cdot R(t) \cdot G$).
+
+### B. Incremental Delta AST Ingestion & Watcher Synergy
+1. **Startup Check**: `investigate` queries `cortex_get_code_symbols(project, limit: 1)`. If empty and `cortex watch` is not running, run `cortex_ingest_code(".", project)` once to establish the AST baseline.
+2. **Review Delta Ingestion (<50ms)**: `reviewer` executes `cortex_ingest_code(".", project)` upon receiving edited files, utilizing SHA-256 incremental caching to re-index only the modified files without full repository scan penalty.
+3. **Watcher Daemon**: When `cortex watch` is running in background, all file edits are indexed continuously in <500ms debounce.
+
+### C. Blast Radius Delta Auditing (No Coupling Spikes)
+1. **Baseline**: During `investigate` / `planner`, capture the initial blast radius of target symbols via `cortex_get_blast_radius`.
+2. **Review Comparison**: `reviewer` computes post-edit `cortex_get_blast_radius`. If an edit significantly expands the downstream blast radius without explicit plan justification (e.g. accidental global type leak), `reviewer` raises an architectural warning.
+3. **Cycle Regression**: `reviewer` MUST run `cortex_detect_cycles(project)` before emitting `PASS`.
+
+### D. Automated Project Directives (`cortex_get_rules`)
+1. **Orchestrator Injection**: `orchestrator` pulls `cortex_get_rules(project)` at session startup and injects applicable governance constraints into the `project_rules` array of minion dispatch envelopes.
+2. **Minion Compliance**: `implement` minions must treat `project_rules` as hard invariants alongside acceptance tests.
+
+### E. Closed-Loop Failure Memory
+1. **Failure Extraction**: When `reviewer` or tests detect a failure, `reviewer` persists the minimal failure locality in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"`).
+2. **Targeted Fix Minion**: `orchestrator` includes `evidence_refs: ["gotchas/<task_id>"]` in the fix minion envelope so the next minion avoids repeating the same root cause.
+
+### F. Proactive Save & Topic Taxonomy (MANDATORY)
+Call `cortex_save` IMMEDIATELY after:
+- Any architectural or design decision made (`type: decision`, `topic_key: architecture/<module>`).
+- Any bug fixed (`type: bugfix`, `topic_key: bugfix/<issue>` — include root cause).
+- Any gotcha or non-obvious learning (`type: discovery`, `topic_key: gotchas/<feature>`).
+- Any pattern or convention established (`type: pattern`).
+
+### G. Session Continuity & Compaction Recovery
+1. **Startup**: Call `cortex_session_start`, fetch `cortex_get_project_context(project)`, and check `cortex_get_rules(project)`.
+2. **Close (MANDATORY before saying "done")**: Call `cortex_session_summary` with:
+   - `## Goal`: Intent of the session
+   - `## Discoveries`: Gotchas and technical findings
+   - `## Accomplished`: Completed deliverables
+   - `## Next Steps`: Remaining follow-up items
+   - `## Relevant Files`: Paths modified or created
+3. **Compaction Recovery**: When context reset/compaction occurs:
+   - Call `cortex_session_summary` with the compacted text immediately.
+   - Call `cortex_context` to restore session continuity.
+   - Call `cortex_search` for specific topics before resuming work.
+
+### H. Cortex CLI & Continuous Watcher Workflows
+Agents with terminal / bash capabilities can invoke the Cortex CLI for macro project operations:
+
+```bash
+# 1. Full AST Code Ingestion:
+cortex ingest . --project=<project-name>
+# Scans Go, TS, JS, Python, Rust, C++ using Zero-CGO 2-Pass Static Extractor
+
+# 2. Continuous Live File Watcher Daemon:
+cortex watch . --project=<project-name> --debounce=500ms
+# Runs in background, automatically re-indexing modified files incrementally
+
+# 3. Structural Code & Graph CLI Inspection:
+cortex code graph --project=<project-name>
+cortex code blast-radius <symbol-or-path> --project=<project-name>
+cortex code cycles --project=<project-name>
+cortex code architecture --project=<project-name>
+cortex code search "<symbol-query>" --project=<project-name>
+
+# 4. SOTA Multi-Mode Search:
+cortex search "auth tokens" --mode=auto
+cortex search "distributed consensus" --mode=multi_hop --limit=15
+
+# 5. Diagnostics & Agent Setup:
+cortex doctor
+cortex setup opencode
+cortex setup claude-code
+```
+
+
 

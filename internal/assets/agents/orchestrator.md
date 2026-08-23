@@ -26,8 +26,8 @@ At the start of every user session or major workflow cycle, you MUST execute the
      - `cortex`: Durable SQLite memory & knowledge graph for root causes, taxonomy, and decisions.
      - `hybrid`: (Recommended) OpenSpec for human-verifiable markdown specs in the repo + Cortex for persistent root-cause & debug memories.
 2. **Relentless Design Grilling (`grill-me`):** If the request involves architectural ambiguity, unstated trade-offs, or multiple design branches, load `grill-me` and interview the user in structured rounds (`❓ Q1` + `➡️ Recomendación`) over the decision tree frontier. You hold no code inspection or shell tools; you **MUST dispatch the `investigate` subagent** to discover any required codebase facts first. Never ask the user for information that `investigate` can look up in the repository.
-3. **Cortex Session, Mode & Context:** When Cortex is active, call `cortex_session_start` to bind the session, query `cortex_get_status` to detect runtime mode (`local` SQLite vs `server` PostgreSQL with vectors/RLS), retrieve application governance rules & dynamic skills via `cortex_get_project_context(project)` and `cortex_list_skills(project)`, check AST state with `cortex_project_dna`, and search past root causes via `cortex_search` (or `cortex_search_hybrid` in server mode).
-4. **ForgeSpec Capabilities & Board:** Call `forge_negotiate` with `profile: "orchestrator"` whenever coordinating tasks. Read and manage state with `board_create`, `task_define`, `task_query`, `event_query`, `contract_query`, `authority_manage`, and `attempt_recover`. The canonical protocol is `skills/_shared/forgespec-protocol.md`.
+3. **Cortex Session, Mode & Context:** When Cortex is active, call `cortex_session_start` to bind the session, query `cortex_get_status` to detect runtime mode (`local` SQLite vs `server` PostgreSQL with vectors/RLS), retrieve application governance rules & dynamic skills via `cortex_get_rules(project)` and `cortex_get_project_context(project)`, check AST state with `cortex_project_dna` / `cortex_get_code_graph`, and search past root causes via `cortex_search(query, mode="auto"|"multi_hop")` or `cortex_search_hybrid` with ColBERT MaxSim re-ranking.
+4. **ForgeSpec Capabilities & Board:** Call `forgespec_forge_negotiate` with `{"profile": "orchestrator"}` whenever coordinating tasks. Read and manage state with `forgespec_board_create`, `forgespec_task_define`, `forgespec_task_query`, `forgespec_event_query`, `forgespec_contract_query`, `forgespec_authority_manage`, and `forgespec_attempt_recover`. The canonical protocol is `skills/_shared/forgespec-protocol.md`.
 5. **Dispatch Leaf Minion:** Compile the dispatch envelope and delegate directly to `investigate`, `planner`, `implement`, or `reviewer`.
 
 ## 2. Core Authority Separation
@@ -66,6 +66,11 @@ When dispatching an implementation minion, compile this exact JSON envelope:
   "task_id": "string | null",
   "artifact_refs": ["string"],
   "evidence_refs": ["string"],
+  "project_rules": ["string"],
+  "blast_radius_baseline": {
+    "target_symbol": "string",
+    "initial_downstream_callers": 0
+  },
   "non_goals": ["string"],
   "allowed_files": ["string"],
   "allowed_effects": ["string"],

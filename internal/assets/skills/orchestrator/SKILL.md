@@ -86,26 +86,22 @@ Each implementation minion owns its own claim, attempt, and file leases under th
 
 The orchestrator owns the Cortex session lifecycle (`cortex_session_start` ➔ `cortex_session_summary` ➔ `cortex_session_end`):
 
-1. **Mode Identification (`cortex_get_status`):**
-   - Call `cortex_get_status` to determine whether Cortex is operating in `local` (SQLite) or `server` (PostgreSQL + Vector RLS) mode.
-   - *In Server Mode*: Dispatch envelopes can mandate `cortex_search_hybrid` (FTS5 + semantic embeddings) and `cortex_search_temporal` for cross-session and corporate knowledge retrieval.
-   - *In Local Mode*: Use fast native FTS5 searches (`cortex_search`), local graph traversal (`cortex_graph`), and project DNA.
-
-2. **AST Knowledge Graph & Project DNA:**
-   - Query `cortex_project_dna(project)` to determine if AST structural symbols, hubs, and community clusters are populated.
-   - When present: Inspect structural coupling and blast radius before dispatching high-risk refactors.
-   - When absent: Dispatch `investigate` to perform initial repository mapping and record baseline architecture observations.
-
-3. **Historical Problem Resolution & Triage:**
-   - Before routing a defect or regression, execute `cortex_search(query: "<error/symptom>", type: "bugfix", project)` or check `gotchas/<module>`.
-   - Pass referenced historical findings (**What**, **Why**, **Where**, **Learned**) in the dispatch envelope so implementation minions avoid known traps.
-   - Save only durable decisions, root causes, non-obvious findings, spike measurements, and review summaries. Use `cortex_relate(relation_type: "supersedes")` when a new fix replaces an earlier pattern.
-
-4. **Dynamic Skills, Governance & Prompts per Application (`Project Context Protocol`):**
-   - In Server/Enterprise mode, Cortex provides dynamic application-specific skills (`kind: "skill"`), corporate governance rules (`kind: "rule"`), and historical prompts.
-   - At session startup, invoke `cortex_get_project_context(project)` to resolve the effective rule/skill bundle and `cortex_list_skills(project)` / `cortex_get_skill(key, project)` to load application-tailored playbooks.
+1. **Governance & Rule Directives (`cortex_get_rules`):**
+   - At session startup, pull `cortex_get_rules(project)` and inject all active project and global directives into the `project_rules` array of dispatched minion envelopes.
    - Project-scope skills override workspace defaults through deterministic `project-over-workspace` resolution.
-   - User prompts and successful patterns are captured via `cortex_save_prompt` and `/api/prompts` per application for replay and few-shot guidance.
+
+2. **Adaptive-RAG & SOTA Multi-Mode Search:**
+   - Use `cortex_search(query, mode="auto"|"direct"|"semantic"|"multi_hop")` to intelligently route queries through FTS5, ColBERT MaxSim, or HippoRAG graph traversal.
+   - In server mode: Leverage `cortex_search_hybrid` (FTS5 + dense vectors with RRF $k=60$).
+
+3. **AST Knowledge Graph & Project DNA:**
+   - Query `cortex_project_dna(project)` or `cortex_get_code_symbols` to determine if AST structural symbols, hubs, and call graphs are populated.
+   - When present: Inspect structural coupling and blast radius before dispatching high-risk refactors.
+   - When absent: Dispatch `investigate` to trigger initial AST ingestion (`cortex_ingest_code`).
+
+4. **Historical Triage & Closed-Loop Remediation:**
+   - Before routing a defect or regression, search prior root causes: `cortex_search(query: "<error/symptom>", type: "bugfix", project)` or check `gotchas/<module>`.
+   - When a task fails review, `reviewer` records the defect in `gotchas/<task_id>`. Orchestrator re-dispatches the fix minion with `evidence_refs: ["gotchas/<task_id>"]` for targeted surgical resolution.
 
 Use stable topic keys such as `investigate/{project}/{topic}`, `tdd/{change}/{task}`, `hotfix/{project}/{incident}`, `review/{project}/{change}`, and `sdd/{change}/{artifact}`. Evidence includes command, exit code, revision, timestamp, and a bounded summary; it excludes authority tokens and large stdout.
 
@@ -118,6 +114,11 @@ Use stable topic keys such as `investigate/{project}/{topic}`, `tdd/{change}/{ta
   "task_id": null,
   "artifact_refs": [],
   "evidence_refs": [],
+  "project_rules": [],
+  "blast_radius_baseline": {
+    "target_symbol": "",
+    "initial_downstream_callers": 0
+  },
   "non_goals": [],
   "allowed_files": [],
   "allowed_effects": [],

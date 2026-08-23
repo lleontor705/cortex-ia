@@ -76,7 +76,9 @@ The system MUST {behavior description using RFC 2119 keywords}.
 
 Decompose planned work into modular, dependency-ordered phases. Every task must be specific, actionable, verifiable, and bounded to **<= 350 changed lines**.
 
-### Phase Organization
+### Phase Organization (AST & Modular Cohesion Driven)
+Use `cortex_analyze_architecture(project)` and `cortex_get_code_graph(project)` to decompose tasks strictly along natural modular cohesion boundaries:
+
 ```
 Phase 1: Foundation / Infrastructure & Types
   └─ New types, interfaces, schemas, migrations, test scaffolding
@@ -92,6 +94,7 @@ Phase 5: Cleanup & Documentation
 
 ### Task Definition Rules
 - Use hierarchical numbering: `1.1`, `1.2`, `2.1`, `2.2`, etc.
+- Query prior design patterns via `cortex_search(query, mode="multi_hop")` to maintain architectural consistency.
 - Explicitly name concrete file paths and test oracles in every task.
 - Ensure every task is independently verifiable with exit code `0`.
 

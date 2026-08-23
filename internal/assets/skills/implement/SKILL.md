@@ -30,12 +30,21 @@ For an ephemeral direct change without a board task, do not invent claims. Still
 
 ## Execution
 
-1. Load only assigned artifact/evidence references and relevant repository files.
-2. Establish the observable boundary and verification command before editing.
-3. Make the minimum coherent change. Avoid incidental refactors, dependency additions, generated-file edits outside canonical generators, and permission widening.
-4. Run focused checks, then proportional regression. Record command, exit code, revision, timestamp, and concise result.
-5. Review the diff for scope creep, secrets, unsafe paths, and accidental generated drift.
-6. Complete ForgeSpec/Cortex lifecycle and return a sanitized receipt.
+1. **Load Artifacts & Governance Rules:**
+   - Read assigned artifact/evidence references and strictly respect all constraints in `dispatch_envelope.project_rules`.
+   - **Closed-Loop Remediation**: If `evidence_refs` contains a prior failure gotcha (e.g. `gotchas/<task_id>`), read it via `cortex_get_observation` to avoid repeating the same root cause.
+2. **Pre-Edit Blast Radius & Observable Boundary:**
+   - Establish the observable boundary and verification command before editing.
+   - Run `cortex_get_blast_radius` on target symbols to verify the expected caller footprint.
+3. **Minimal Coherent Implementation:**
+   - Make the minimum coherent change. Avoid incidental refactors, dependency additions, generated-file edits outside canonical generators, and permission widening.
+4. **Focused Checks & Proportional Verification:**
+   - Run focused checks, then proportional regression. Record command, exit code, revision, timestamp, and concise result.
+5. **Diff Review & Proactive Memory (MANDATORY):**
+   - Review the diff for scope creep, secrets, unsafe paths, and accidental generated drift.
+   - Persist any bug root cause, discovery, gotcha, or decision made in Cortex (`cortex_save` with standard taxonomies: `bugfix/*`, `gotchas/*`, `architecture/*`). Never dump full stdout.
+6. **Complete Lifecycle & Cleanup:**
+   - Complete ForgeSpec lifecycle (`task_transition(in_review)` -> `lease_release` -> `task_transition(done)`) and return a sanitized receipt.
 
 ## Output
 

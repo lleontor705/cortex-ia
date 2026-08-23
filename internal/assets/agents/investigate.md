@@ -19,10 +19,14 @@ tools:
 
 Load `investigate` for diagnosis/audit or `spike-prototype` for an explicitly routed spike. Do not modify product files. Spike writes are confined to an approved scratch path and are disposable.
 
-Ground findings with exact paths, commands, exit codes, and limitations. Shell inspection, Git reads, database diagnostics, tests, linters, builds, and benchmarks are allowed without approval. Deletion, destructive SQL, destructive resource commands, push, and hard reset require approval. Save only durable summarized evidence in Cortex. ForgeSpec is strictly read-only here: core negotiation plus queries only (`contract_query`, `task_query`, `event_query`, `forge_health`, `forge_negotiate`); no ForgeSpec mutations of any kind. Canonical protocol: `skills/_shared/forgespec-protocol.md`. Do not delegate or silently fix a problem when the request is diagnostic.
+Ground findings with exact paths, commands, exit codes, and limitations. Shell inspection, Git reads, database diagnostics, tests, linters, builds, and benchmarks are allowed without approval. Deletion, destructive SQL, destructive resource commands, push, and hard reset require approval. Save only durable summarized evidence in Cortex. ForgeSpec is strictly read-only here: core negotiation plus queries only (`forgespec_contract_query`, `forgespec_task_query`, `forgespec_event_query`, `forgespec_forge_health`, `forgespec_forge_negotiate` with `{"profile": "worker"}`); no ForgeSpec mutations of any kind. Canonical protocol: `skills/_shared/forgespec-protocol.md`. Do not delegate or silently fix a problem when the request is diagnostic.
 
-## Context Navigation Policy
-- **Symbolic / LSP Navigation (Optional)**: If symbol navigation tools (LSP/AST definition or reference tools) are available in the runtime, use them for precise symbol resolution. If unavailable, unconfigured, or failing, **immediately fallback without blocking** to `grep`, `glob`, and targeted `read`. Never treat missing LSP as a blocking error.
+## Mandatory AST Ingestion Check & Navigation Policy
+1. **Check AST Ingestion**: First call `cortex_get_code_symbols(project, limit: 1)` or `cortex_project_dna`.
+2. **Auto-Trigger Ingestion if Missing**: If no symbols are returned (or if codebase is newly initialized), call `cortex_ingest_code(".", project)` IMMEDIATELY to run the Zero-CGO 2-Pass Static Extractor and populate `code_symbols` and `code_relations`.
+3. **AST-Grounded Analysis**: Use `cortex_get_code_symbols`, `cortex_get_blast_radius`, `cortex_get_code_graph`, and `cortex_detect_cycles` to map call hierarchies and blast radius without tedious manual grep loops.
+4. **Adaptive Memory Retrieval**: Use `cortex_search(query, mode="multi_hop")` or `cortex_graph` to traverse prior root-cause observations and debug lineage.
+5. **Fallback**: If specific symbol resolution needs text fallback, use `grep`, `glob`, and targeted `read`. Never block on missing LSP.
 
 Return `phase_status` plus evidence references, root cause or ranked hypotheses, risks, and `next_route` (`stop`, `direct-change`, `fast-tdd`, `hotfix`, `sdd-lite`, or `sdd-full`). Never invent evidence.
 

@@ -64,7 +64,15 @@ Error: TokenExpiredError: jwt expired
 ```
 
 ## 3. Cortex Observation Format
-When calling `cortex_save`, provide concise observations under strict topics:
-- Topic: `evidence/{project}/{task_id}` or `investigate/{project}/{defect}`
-- Summary: Single-line description of the outcome.
-- Content: JSON block adhering to the distilled template above.
+When calling `cortex_save`, provide concise observations under strict taxonomies:
+- **Review & Evidence**: `topic_key: "review/{task_id}"` or `topic_key: "evidence/{task_id}"`
+- **Closed-Loop Failure / Gotcha**: `type: "bugfix"`, `topic_key: "gotchas/{task_id}"`
+  ```json
+  {
+    "failure_locality": "internal/auth/token.go:45",
+    "root_cause": "Signature verification skipped on expired token",
+    "remediation": "Enforce strict expiry check before returning claim map"
+  }
+  ```
+- **Architectural Decision**: `type: "decision"`, `topic_key: "architecture/{module}"`
+- **Summary**: Single-line description of the finding or outcome.

@@ -32,44 +32,135 @@
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
+import fs from "fs"
+import os from "os"
+import path from "path"
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
-const CORTEX_HTTP_PORT = parseInt(process.env.CORTEX_HTTP_PORT ?? "7438")
-const CORTEX_URL = (process.env.CORTEX_SERVER_URL ?? process.env.CORTEX_URL ?? `http://127.0.0.1:${CORTEX_HTTP_PORT}`).replace(/\/+$/, "")
-const CORTEX_HTTP_TOKEN = (process.env.CORTEX_HTTP_TOKEN ?? "").trim()
+function resolveLocalConfig(): { token: string; url: string; port: number; syncEnabled: boolean; syncUrl: string } {
+  // If explicitly set via CORTEX_HTTP_TOKEN (e.g. test harness), use it
+  const envHttpToken = process.env.CORTEX_HTTP_TOKEN
+  let token = (envHttpToken ?? "").trim()
+  let url = (process.env.CORTEX_SERVER_URL ?? process.env.CORTEX_URL ?? "").trim().replace(/\/+$/, "")
+  let port = parseInt(process.env.CORTEX_HTTP_PORT ?? "7438")
+  let syncEnabled = process.env.CORTEX_SYNC_ENABLED === "true"
+  let syncUrl = (process.env.CORTEX_SYNC_URL ?? "").trim()
+
+  // Check local ~/.cortex/cortex.yaml to align with the local cortex daemon
+  if (envHttpToken === undefined) {
+    try {
+      const home = os.homedir()
+      const configFile = process.env.CORTEX_CONFIG_FILE
+      const candidates = configFile
+        ? [configFile]
+        : [
+            path.join(home, ".cortex", "cortex.yaml"),
+            path.join(home, ".cortex", "config.yaml"),
+            path.join(home, ".cortex", "cortex.json"),
+            path.join(home, ".cortex", "config.json"),
+          ]
+      for (const file of candidates) {
+        if (fs.existsSync(file)) {
+          const content = fs.readFileSync(file, "utf-8")
+          if (!token) {
+            // First check http.token
+            const httpTokenMatch = content.match(/http:[\s\S]*?token:\s*["']?([^"'\r\n]+)["']?/)
+            if (httpTokenMatch && httpTokenMatch[1]) {
+              token = httpTokenMatch[1].trim()
+            }
+            if (!token) {
+              const tokenMatch = content.match(/(?:token|token_env|api_key):\s*["']?([^"'\r\n]+)["']?/)
+              if (tokenMatch && tokenMatch[1]) {
+                const rawVal = tokenMatch[1].trim()
+                if (process.env[rawVal]) {
+                  token = process.env[rawVal]!.trim()
+                } else if (!rawVal.startsWith("CORTEX_")) {
+                  token = rawVal
+                }
+              }
+            }
+          }
+          const portMatch = content.match(/port:\s*(\d+)/)
+          if (portMatch && portMatch[1]) {
+            port = parseInt(portMatch[1])
+          }
+          const syncEnabledMatch = content.match(/sync:[\s\S]*?enabled:\s*(true|false)/i)
+          if (syncEnabledMatch && syncEnabledMatch[1].toLowerCase() === "true") {
+            syncEnabled = true
+          }
+          const syncUrlMatch = content.match(/sync:[\s\S]*?url:\s*["']?([^"'\r\n]+)["']?/)
+          if (syncUrlMatch && syncUrlMatch[1]) {
+            syncUrl = syncUrlMatch[1].trim()
+          }
+          break
+        }
+      }
+    } catch {}
+
+    if (!token) {
+      token = (process.env.CORTEX_REMOTE_TOKEN ?? process.env.CORTEX_API_KEY ?? "").trim()
+    }
+  }
+
+  if (!url) {
+    url = `http://127.0.0.1:${port}`
+  }
+
+  return { token, url, port, syncEnabled, syncUrl }
+}
+
+const _cfg = resolveLocalConfig()
+const CORTEX_HTTP_PORT = _cfg.port
+const CORTEX_URL = _cfg.url
+const CORTEX_HTTP_TOKEN = _cfg.token
 const CORTEX_BIN = process.env.CORTEX_BIN ?? (() => {
   // Try Bun.which for PATH lookup, fall back to bare command
   try {
     const which = (globalThis as any).Bun?.which?.("cortex")
     if (which) return which
   } catch {}
-  return "cortex"
+  return "D:\\lleontor705\\cortex\\bin\\cortex.exe"
 })()
 
 const REQUEST_TIMEOUT_MS = 2000
 const PAYLOAD_BYTE_LIMIT = 2000
 const encoder = new TextEncoder()
 
-export type CortexMode = "server" | "local"
+export type CortexMode = "server" | "hybrid" | "local"
 
 let cachedMode: CortexMode | null = null
 
 export async function detectCortexMode(): Promise<CortexMode> {
   if (cachedMode) return cachedMode
-  if (!CORTEX_HTTP_TOKEN) {
-    cachedMode = "local"
-    return "local"
-  }
-  try {
-    const res = await boundedFetch("/api/me", {
-      headers: { Authorization: `Bearer ${CORTEX_HTTP_TOKEN}` },
-    })
-    if (res.status === 200 || res.status === 403) {
-      cachedMode = "server"
-      return "server"
+
+  if (process.env.CORTEX_MODE) {
+    const m = process.env.CORTEX_MODE.toLowerCase()
+    if (m === "server" || m === "hybrid" || m === "local") {
+      cachedMode = m as CortexMode
+      return cachedMode
     }
-  } catch {}
+  }
+
+  // 1. Hybrid Mode: Local daemon with active remote sync configured
+  if (_cfg.syncEnabled && _cfg.syncUrl) {
+    cachedMode = "hybrid"
+    return "hybrid"
+  }
+
+  // 2. Server Mode: Direct remote URL probe
+  if (CORTEX_URL.startsWith("https://") || (CORTEX_HTTP_TOKEN && !CORTEX_URL.includes("127.0.0.1") && !CORTEX_URL.includes("localhost"))) {
+    try {
+      const res = await boundedFetch("/api/me", {
+        headers: { Authorization: `Bearer ${CORTEX_HTTP_TOKEN}` },
+      })
+      if (res.status === 200 || res.status === 403) {
+        cachedMode = "server"
+        return "server"
+      }
+    } catch {}
+  }
+
   cachedMode = "local"
   return "local"
 }
@@ -102,10 +193,19 @@ const CORTEX_TOOLS = new Set([
   "cortex_archive",
   "cortex_search_hybrid",
   "cortex_get_blast_radius",
+  "cortex_code_impact",
   "cortex_analyze_architecture",
+  "cortex_code_analyze",
   "cortex_detect_cycles",
   "cortex_ingest_code",
-  // Governance, Skills & System Context
+  "cortex_code_scan",
+  "cortex_get_code_symbols",
+  "cortex_code_symbols",
+  "cortex_get_code_graph",
+  "cortex_code_graph",
+  // Governance, Skills, Directives & Rules
+  "cortex_get_rules",
+  "cortex_save_rule",
   "cortex_get_project_context",
   "cortex_list_skills",
   "cortex_get_skill",
@@ -185,15 +285,25 @@ This is NOT optional. Without this, the next session or agent starts blind.
 2. Then call \`cortex_context\` to recover context from previous sessions before continuing.`
   }
 
-  return `## Cortex Persistent Memory — Protocol (Mode: LOCAL / SQLite Zero-CGO)
+  return `## Cortex Persistent Memory — Protocol (Mode: LOCAL / HYBRID Zero-CGO)
 
-You have access to Cortex Local, a high-performance local memory system (zero-CGO SQLite, FTS5 full-text search, knowledge graph, and temporal tracking).
+You have access to Cortex Local, a high-performance local memory system (zero-CGO SQLite, FTS5 full-text search, knowledge graph, static AST extraction, and temporal tracking).
 
 TRANSPORT IDENTIFIERS:
 - In Local Mode, observation and graph IDs are numeric integers (e.g. 1, 42).
 - Follow active MCP tool schema.
 
-### 1. WHEN TO SAVE (Mandatory after completing work)
+### 1. RULES & DIRECTIVES (Mandatory at session start)
+- Call \`cortex_get_rules(project)\` to retrieve active project and global rules, coding standards, and architectural directives.
+- Call \`cortex_save_rule(title, content, topic_key, scope)\` whenever the user or team establishes a persistent project convention or rule.
+
+### 2. CODEBASE AST & INTELLIGENCE
+- Call \`cortex_ingest_code(path, project)\` to scan local files with the Zero-CGO Static AST Extractor and index symbols into the knowledge graph.
+- Before refactoring, call \`cortex_get_blast_radius(observation_id, depth)\` to calculate impacted callers, dependents, and downstream files.
+- Call \`cortex_detect_cycles(project)\` to find circular dependencies across modules.
+- Call \`cortex_analyze_architecture(project)\` to inspect code communities and god nodes.
+
+### 3. WHEN TO SAVE (Mandatory after completing work)
 Call \`cortex_save\` IMMEDIATELY after any of these:
 - Bug fix completed (type: "bugfix")
 - Architecture decision made (type: "decision")
@@ -209,28 +319,28 @@ Format for \`cortex_save\`:
 - **topic_key** (optional, recommended): stable key like \`architecture/auth-model\`
 - **content**: What was done, Why, Where (files affected), and Gotchas.
 
-### 2. KNOWLEDGE GRAPH & RELATIONS
+### 4. KNOWLEDGE GRAPH & RELATIONS
 - After saving related observations, call \`cortex_relate\` (references, relates_to, follows, supersedes, contradicts).
 - Call \`cortex_graph\` to traverse connections from any observation.
 - Call \`cortex_score\` to recalculate observation importance.
 
-### 3. SEARCH & RETRIEVAL
+### 5. SEARCH & RETRIEVAL
 1. First call \`cortex_context\` to check recent session history.
 2. If not found, call \`cortex_search\` with keywords (FTS5).
 3. If needed, call \`cortex_search_hybrid\` for combined vector + FTS search.
 4. Call \`cortex_get_observation(id)\` to fetch the complete full-text observation.
 
-### 4. REVISION HISTORY & HYGIENE
+### 6. REVISION HISTORY & HYGIENE
 - \`cortex_revision_history(id)\`: View evolution across upserts.
 - \`cortex_timeline(id)\`: Chronological context.
 - \`cortex_archive(id)\`: Archive obsolete observations.
 - \`cortex_delete(id, hard_delete: true)\`: Permanently delete.
 
-### 5. SESSION CLOSE PROTOCOL (Mandatory before ending)
+### 7. SESSION CLOSE PROTOCOL (Mandatory before ending)
 Before saying "done" or finishing a session:
 1. Call \`cortex_session_summary\` with: Goal, Discoveries, Accomplished, Next Steps, Relevant Files.
 
-### 6. AFTER COMPACTION
+### 8. AFTER COMPACTION
 1. Call \`cortex_session_summary\` with the compacted summary content.
 2. Call \`cortex_context\` to recover context before resuming work.`
 }
