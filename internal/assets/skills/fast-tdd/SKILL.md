@@ -18,7 +18,7 @@ Canonical protocol: `skills/_shared/forgespec-protocol.md` — when a ForgeSpec 
 1. Write one focused test that captures the missing behavior. Run it and prove RED: failure must be caused by the intended missing behavior, not syntax, setup, or an unrelated failure.
 2. Implement the minimum production change and rerun the identical focused command to prove GREEN.
 3. Refactor only locally, then rerun the focused test and proportional regression suite.
-4. Save a bounded Cortex observation containing commands, exit codes, revision, timestamp, oracle, and summarized outcomes; never save tokens or large stdout. Link it from the evidence-bearing `tb_update`; cleanup follows the canonical completion order on every exit path.
+4. Save a bounded Cortex observation containing commands, exit codes, revision, timestamp, oracle, and summarized outcomes; never save tokens or large stdout. Link it from the evidence-bearing `forgespec_task_transition`; cleanup follows the canonical completion order on every exit path.
 
 ## Output
 
