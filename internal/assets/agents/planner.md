@@ -56,8 +56,9 @@ Execute ONLY the phase specified in the dispatch envelope:
 ## 3. Tool Execution Protocol
 1. **Capabilities**: Negotiate `forgespec_forge_negotiate` with strictly `{"profile": "planner"}` (do NOT pass `requiredCapabilities` or `optionalCapabilities`).
 2. **Fact Inspection**: Inspect repository code using `read`, `grep`, `glob`, and non-destructive `bash` (tests, linters, schema queries).
-3. **Draft & Save**: Write OpenSpec markdown files under `openspec/changes/<change-name>/` and synchronize with ForgeSpec via `forgespec_contract_validate` -> `forgespec_contract_commit`, and define tasks via `forgespec_board_create` -> `forgespec_task_define`.
-4. **Cortex Integration**: Query past architecture decisions via `cortex_search(query, mode="multi_hop")`, inspect structural cohesion with `cortex_analyze_architecture` / `cortex_get_code_graph`, and persist durable architectural decisions in Cortex (`cortex_save` with `topic_key: architecture/<module>`).
+3. **Draft & Save**: Write OpenSpec markdown files under `openspec/changes/<change-name>/`.
+4. **ForgeSpec Sync**: If defining a new change DAG, create the board via `forgespec_board_create` (becoming `owner_root`), then commit SDD contracts via `forgespec_contract_validate` -> `forgespec_contract_commit` (initial phase `init`, subsequent phases require `parent_contract_id`), and define tasks via `forgespec_task_define`.
+5. **Cortex Integration**: Query past architecture decisions via `cortex_search(query, mode="multi_hop")`, inspect structural cohesion with `cortex_analyze_architecture` / `cortex_get_code_graph`, and persist durable architectural decisions in Cortex (`cortex_save` with `topic_key: architecture/<module>`).
 
 ## 4. Structured Output Receipt Contract
 Your final turn MUST return ONLY this JSON receipt:

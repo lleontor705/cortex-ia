@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/backup"
+	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/homelock"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
@@ -97,6 +98,8 @@ type Options struct {
 	// identical options and rejects any digest mismatch as a typed
 	// stale-plan error before backup or mutation.
 	ExpectedPlanDigest string
+	// DelegationConfig optionally carries user choices for Herdr and external CLI delegation.
+	DelegationConfig *delegation.DelegationConfig
 }
 
 // DefaultOptions returns the recommended OpenCode selection as data: Cortex
@@ -206,6 +209,7 @@ func (s *Service) Install(opts Options) (*InstallReceipt, error) {
 	}
 	defer release()
 	plan, receipt, err := pipeline.ApplyConfirmed(req, pipeline.PlanInstall)
+	s.maybeSaveDelegation(opts, err)
 	return newInstallReceipt(plan, receipt), err
 }
 
@@ -216,6 +220,7 @@ func (s *Service) applyPlanWithConfirmation(opts Options, req pipeline.Request, 
 	}
 	defer release()
 	plan, receipt, err := pipeline.ApplyConfirmed(req, planner)
+	s.maybeSaveDelegation(opts, err)
 	return newInstallReceipt(plan, receipt), err
 }
 
@@ -258,7 +263,14 @@ func (s *Service) Sync(opts Options) (*InstallReceipt, error) {
 	}
 	defer release()
 	plan, receipt, err := pipeline.ApplyConfirmed(req, pipeline.PlanSync)
+	s.maybeSaveDelegation(opts, err)
 	return newInstallReceipt(plan, receipt), err
+}
+
+func (s *Service) maybeSaveDelegation(opts Options, err error) {
+	if err == nil && !opts.DryRun && opts.DelegationConfig != nil {
+		_ = delegation.Save(filepath.Join(s.homeDir, ".config", "opencode"), *opts.DelegationConfig)
+	}
 }
 
 func planDigestForReceipt(plan *pipeline.Plan) string {

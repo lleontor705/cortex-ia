@@ -100,7 +100,8 @@ func clampScreen(top, content, bottom []string, budget, offset int, scrollKeys s
 		}
 	}
 	visible := content[offset:]
-	if len(visible) > contentBudget {
+	needsIndicator := offset > 0 || len(visible) > contentBudget
+	if needsIndicator && contentBudget > 0 {
 		keep := contentBudget - 1
 		if keep < 0 {
 			keep = 0
@@ -108,6 +109,8 @@ func clampScreen(top, content, bottom []string, budget, offset int, scrollKeys s
 		if len(visible) > keep {
 			visible = visible[:keep]
 		}
+	} else if len(visible) > contentBudget {
+		visible = visible[:contentBudget]
 	}
 	hidden := len(content) - offset - len(visible)
 	lines := append(append([]string{}, top...), visible...)
@@ -127,6 +130,12 @@ func (m model) View() string {
 	switch m.screen {
 	case screenHome:
 		body = m.viewHome()
+	case screenWizardHerdr:
+		body = m.viewWizardHerdr()
+	case screenWizardDelegation:
+		body = m.viewWizardDelegation()
+	case screenWizardRoles:
+		body = m.viewWizardRoles()
 	case screenReview:
 		body = m.viewReview()
 	case screenRunning:
@@ -187,7 +196,7 @@ func (m model) viewReview() string {
 	} else if m.planErr != nil {
 		top = append(top, styleFail.Render("✖ plan error: "+m.planErr.Error()))
 	}
-	top = append(top, "MCP selection (space toggles, replans):")
+	top = append(top, "MCP selection (space toggles, replans, d delegation):")
 	states := []bool{m.opts.Cortex, m.opts.ForgeSpec, m.opts.Context7}
 	for i, name := range managedNames {
 		mark := " "
@@ -224,7 +233,7 @@ func (m model) viewReview() string {
 	} else if m.plan != nil {
 		bottom = append(bottom, styleDim.Render("no blocking conflicts"))
 	}
-	bottom = append(bottom, m.footer("enter run · o overwrite · pgup/pgdn scroll · esc home"))
+	bottom = append(bottom, m.footer("enter run · b back to wizard · o overwrite · pgup/pgdn scroll · esc home"))
 	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), m.reviewScroll, "pgup/pgdn"), "\n")
 }
 

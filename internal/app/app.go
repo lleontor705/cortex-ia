@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lleontor705/cortex-ia/internal/herdr"
 	"github.com/lleontor705/cortex-ia/internal/tui"
 )
 
@@ -39,6 +40,9 @@ func runCLI(args []string) error {
 
 	case "sync":
 		return runSync(rest)
+
+	case "herdr":
+		return runHerdr(rest)
 
 	case "mcp":
 		return runMCP(rest)
@@ -159,6 +163,8 @@ Usage:
                                       (--json prints a sanitized JSON report)
   cortex-ia mcp remove <name> [--dry-run]
                                       Deregister a managed MCP entry
+  cortex-ia herdr [install|setup|status]
+                                      Manage Herdr workspace multiplexer setup
   cortex-ia doctor                   Assess installation health (read-only)
   cortex-ia rollback [backup-id]     Restore the recorded (or given) backup
   cortex-ia recover [list]           List pending recovery journals
@@ -202,3 +208,22 @@ The CLI configures OpenCode only. Former multi-agent, persona, profile, and
 model flags and commands were removed.
 `, Version, presetNames())
 }
+
+func runHerdr(args []string) error {
+	if len(args) == 0 {
+		return herdr.Status()
+	}
+
+	sub := strings.ToLower(args[0])
+	switch sub {
+	case "install":
+		return herdr.Install()
+	case "setup":
+		return herdr.Setup()
+	case "status":
+		return herdr.Status()
+	default:
+		return fmt.Errorf("unknown herdr subcommand: %s (valid: install, setup, status)", args[0])
+	}
+}
+

@@ -1,20 +1,26 @@
 package tui
 
 import (
+	"path/filepath"
+
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
-// screen enumerates the five conceptual screens of the TUI. Confirmation is
-// an overlay state on the current screen, not a sixth screen.
+// screen enumerates the conceptual screens of the TUI. Confirmation is
+// an overlay state on the current screen, not a separate screen.
 type screen int
 
 const (
 	screenHome screen = iota
+	screenWizardHerdr
+	screenWizardDelegation
+	screenWizardRoles
 	screenReview
 	screenRunning
 	screenResult
@@ -97,6 +103,10 @@ type model struct {
 	mcpReport *install.MCPListReport
 	mcpErr    error
 
+	// Delegation and Wizard state.
+	delegationCfg delegation.DelegationConfig
+	wizardCursor  int
+
 	// Confirmation overlay (valid on any screen).
 	confirm confirmState
 
@@ -112,13 +122,17 @@ type model struct {
 
 // newModel builds the model bound to a service implementation.
 func newModel(svc ServiceAPI, homeDir, version string) model {
-	return model{
-		svc:     svc,
-		homeDir: homeDir,
-		version: version,
-		screen:  screenHome,
-		opts:    install.DefaultOptions(),
+	cfg, _ := delegation.Load(filepath.Join(homeDir, ".config", "opencode"))
+	m := model{
+		svc:           svc,
+		homeDir:       homeDir,
+		version:       version,
+		screen:        screenHome,
+		opts:          install.DefaultOptions(),
+		delegationCfg: cfg,
 	}
+	m.opts.DelegationConfig = &m.delegationCfg
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -159,6 +173,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.screen {
 		case screenHome:
 			return m.updateHome(msg)
+		case screenWizardHerdr:
+			return m.updateWizardHerdr(msg)
+		case screenWizardDelegation:
+			return m.updateWizardDelegation(msg)
+		case screenWizardRoles:
+			return m.updateWizardRoles(msg)
 		case screenReview:
 			return m.updateReview(msg)
 		case screenRunning:
@@ -206,10 +226,21 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 	m.cursor = index
 	switch index {
-	case 0: // Install / Sync → Review
-		m.screen = screenReview
+	case 0: // Install / Sync → Wizard Step 1 (Herdr)
+		m.screen = screenWizardHerdr
+		m.wizardCursor = 0
+		if !m.delegationCfg.UseHerdr {
+			m.wizardCursor = 1
+		}
 		m.opts = install.DefaultOptions()
 		m.opts.Version = m.version
+		m.opts.DelegationConfig = &m.delegationCfg
+		meta := state.LoadMetadataV2(m.homeDir)
+		if meta.Presence == state.PresenceV2 {
+			m.opts.Cortex = meta.Metadata.Selection.Cortex
+			m.opts.ForgeSpec = meta.Metadata.Selection.ForgeSpec
+			m.opts.Context7 = meta.Metadata.Selection.Context7
+		}
 		m.overwrite = false
 		m.hadConflict = false
 		m.installMode = ""
@@ -217,8 +248,7 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.planErr = nil
 		m.replanning = false
 		m.mcpCursor = 0
-		m.replanning = true
-		return m, planCmd(m.svc, m.reviewOptions())
+		return m, nil
 	case 1: // Manage MCPs
 		m.screen = screenMCP
 		m.mcpReport = nil
@@ -272,16 +302,27 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 2:
 			m.opts.Context7 = !m.opts.Context7
 		}
+		m.plan = nil
 		m.replanning = true
 		return m, planCmd(m.svc, m.reviewOptions())
 	case "o":
 		if m.plan != nil && len(m.plan.Conflicts) > 0 {
 			m.overwrite = !m.overwrite
+			m.plan = nil
 			m.replanning = true
 			return m, planCmd(m.svc, m.reviewOptions())
 		}
+	case "b", "B", "d", "D":
+		if m.delegationCfg.DelegationEnabled {
+			m.screen = screenWizardRoles
+			m.wizardCursor = 0
+		} else {
+			m.screen = screenWizardDelegation
+			m.wizardCursor = 1
+		}
+		return m, nil
 	case "enter":
-		if m.planErr != nil || m.plan == nil {
+		if m.replanning || m.planErr != nil || m.plan == nil {
 			return m, nil
 		}
 		if len(m.plan.Conflicts) > 0 {

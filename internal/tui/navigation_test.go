@@ -21,17 +21,17 @@ func TestHomeMenuEntries(t *testing.T) {
 	}
 }
 
-// TestOnlyFiveScreens pins the conceptual screen set.
-func TestOnlyFiveScreens(t *testing.T) {
+// TestScreenSet pins the conceptual screen set.
+func TestScreenSet(t *testing.T) {
 	got := map[screen]bool{}
-	for _, s := range []screen{screenHome, screenReview, screenRunning, screenResult, screenMCP} {
+	for _, s := range []screen{screenHome, screenWizardHerdr, screenWizardDelegation, screenWizardRoles, screenReview, screenRunning, screenResult, screenMCP} {
 		if got[s] {
 			t.Fatalf("duplicate screen constant %v", s)
 		}
 		got[s] = true
 	}
-	if len(got) != 5 {
-		t.Fatalf("expected exactly five screens, got %d", len(got))
+	if len(got) != 8 {
+		t.Fatalf("expected exactly eight screens, got %d", len(got))
 	}
 }
 
@@ -40,7 +40,38 @@ func TestOnlyFiveScreens(t *testing.T) {
 func TestNavigationWalksAllScreens(t *testing.T) {
 	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
 
-	// Home → Review.
+	// Home → Wizard Step 1 (Herdr).
+	m = press(m, "enter")
+	if m.screen != screenWizardHerdr {
+		t.Fatalf("expected wizard step 1 (Herdr), got %v", m.screen)
+	}
+	herdrView := m.View()
+	if !strings.Contains(herdrView, "Paso 1 de 3") {
+		t.Fatalf("expected wizard step 1 view header, got:\n%s", herdrView)
+	}
+
+	// Step 1 → Step 2 (Delegation).
+	m = press(m, "enter")
+	if m.screen != screenWizardDelegation {
+		t.Fatalf("expected wizard step 2 (Delegation), got %v", m.screen)
+	}
+	delView := m.View()
+	if !strings.Contains(delView, "Paso 2 de 3") {
+		t.Fatalf("expected wizard step 2 view header, got:\n%s", delView)
+	}
+
+	// Select "Sí, configurar delegación" (option 1 / cursor 0) → Step 3 (Roles).
+	m = press(m, "1")
+	m = press(m, "enter")
+	if m.screen != screenWizardRoles {
+		t.Fatalf("expected wizard step 3 (Roles), got %v", m.screen)
+	}
+	rolesView := m.View()
+	if !strings.Contains(rolesView, "Paso 3 de 3") {
+		t.Fatalf("expected wizard step 3 view header, got:\n%s", rolesView)
+	}
+
+	// Step 3 → Review.
 	m = pressDrive(t, m, "enter")
 	if m.screen != screenReview {
 		t.Fatalf("expected review screen, got %v", m.screen)
@@ -48,6 +79,26 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	if m.plan == nil {
 		t.Fatal("expected plan to be recorded from the real returned command")
 	}
+
+	// Review → Back to Step 3.
+	m = press(m, "b")
+	if m.screen != screenWizardRoles {
+		t.Fatalf("expected 'b' to return to wizard roles, got %v", m.screen)
+	}
+
+	// Step 3 → Back to Step 2.
+	m = press(m, "b")
+	if m.screen != screenWizardDelegation {
+		t.Fatalf("expected 'b' to return to wizard delegation, got %v", m.screen)
+	}
+
+	// Step 2 → Back to Step 1.
+	m = press(m, "b")
+	if m.screen != screenWizardHerdr {
+		t.Fatalf("expected 'b' to return to wizard herdr, got %v", m.screen)
+	}
+
+	// Step 1 → Home.
 	m = press(m, "esc")
 	if m.screen != screenHome {
 		t.Fatalf("expected esc to return home, got %v", m.screen)
@@ -139,10 +190,10 @@ func TestQuitKeyQuitsFromHome(t *testing.T) {
 func TestHomeNumericHotkeys(t *testing.T) {
 	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
 
-	// Key '1' opens Review.
-	m1 := pressDrive(t, m, "1")
-	if m1.screen != screenReview {
-		t.Fatalf("key 1 should open Review, got %v", m1.screen)
+	// Key '1' opens Wizard Step 1 (Herdr).
+	m1 := press(m, "1")
+	if m1.screen != screenWizardHerdr {
+		t.Fatalf("key 1 should open Wizard Step 1, got %v", m1.screen)
 	}
 
 	// Key '2' opens MCP.

@@ -11,12 +11,17 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
-// openReview presses Home → Install/Sync and drains the returned plan
-// command, so the model sits on a loaded Review screen.
+// openReview presses Home → Install/Sync, walks through the wizard steps,
+// and drains the returned plan command, so the model sits on a loaded Review screen.
 func openReview(t *testing.T, svc ServiceAPI) model {
 	t.Helper()
 	m := sized(newModel(svc, "/home/test", "vtest"))
-	m = pressDrive(t, m, "enter")
+	m = press(m, "enter")         // Home -> screenWizardHerdr
+	m = press(m, "enter")         // screenWizardHerdr -> screenWizardDelegation
+	m = pressDrive(t, m, "enter") // screenWizardDelegation -> screenReview (draining planCmd)
+	if m.screen == screenWizardRoles {
+		m = pressDrive(t, m, "enter")
+	}
 	if m.screen != screenReview {
 		t.Fatalf("expected review screen, got %v", m.screen)
 	}

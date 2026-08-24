@@ -907,3 +907,6 @@ export const Cortex: Plugin = async (ctx) => {
     },
   }
 }
+
+export default Cortex;
+

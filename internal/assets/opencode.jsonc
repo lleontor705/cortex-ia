@@ -1,38 +1,48 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "default_agent": "orchestrator",
-  "agent": {
-    "orchestrator": {
-      "model": "openai/gpt-5.6-sol"
-    },
-    "investigate": {
-      "model": "zai-coding-plan/glm-5.3"
-    },
-    "planner": {
-      "model": "openai/gpt-5.6-sol"
-    },
-    "implement": {
-      "model": "zai-coding-plan/glm-5.3"
-    },
-    "reviewer": {
-      "model": "openai/gpt-5.6-sol"
-    }
-  },
-  "mcp": {
-  "context7": {"command":["npx","-y","@upstash/context7-mcp"],"enabled":true,"type":"local"},
-  "cortex": {"command":["cortex","mcp","--tools=agent"],"enabled":true,"type":"local"}},
   "permission": {
-    "bash": {
+    "external_directory": {
       "*": "allow",
-      "git commit *": "ask",
-      "git push": "ask",
-      "git push *": "ask",
-      "git push --force *": "ask",
-      "git rebase *": "ask",
-      "git reset --hard *": "ask"
+      "~/.agents/**": "allow",
+      "**/.agents/**": "allow",
+      "**/.agents/skills/**": "allow",
+      "C:/**/.agents/**": "allow",
+      "C:/**/.agents/skills/**": "allow",
+      "**/.config/opencode/**": "allow"
+    },
+    "skill": {
+      "*": "allow"
+    },
+    "list": {
+      "*": "allow",
+      "~/.agents/**": "allow",
+      "**/.agents/**": "allow",
+      "**/.agents/skills/**": "allow",
+      "C:/**/.agents/**": "allow"
+    },
+    "glob": {
+      "*": "allow",
+      "~/.agents/**": "allow",
+      "**/.agents/**": "allow",
+      "**/.agents/skills/**": "allow",
+      "C:/**/.agents/**": "allow"
+    },
+    "grep": {
+      "*": "allow",
+      "~/.agents/**": "allow",
+      "**/.agents/**": "allow",
+      "**/.agents/skills/**": "allow",
+      "C:/**/.agents/**": "allow"
     },
     "read": {
       "*": "allow",
+      "~/.agents/**": "allow",
+      "**/.agents/**": "allow",
+      "**/.agents/skills/**": "allow",
+      "C:/**/.agents/**": "allow",
+      "C:/**/.agents/skills/**": "allow",
+      "**/.config/opencode/**": "allow",
       "**/*.key": "deny",
       "**/*.pem": "deny",
       "**/.aws/credentials": "deny",
@@ -46,6 +56,20 @@
       "**/secrets/**": "deny",
       "*.env": "deny",
       "*.env.*": "deny"
+    },
+    "edit": {
+      "*": "allow",
+      "~/.agents/**": "allow",
+      "**/.agents/**": "allow"
+    },
+    "bash": {
+      "*": "allow",
+      "git commit *": "ask",
+      "git push": "ask",
+      "git push *": "ask",
+      "git push --force *": "ask",
+      "git rebase *": "ask",
+      "git reset --hard *": "ask"
     }
   },
   "share": "disabled"

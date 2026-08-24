@@ -283,3 +283,5 @@ export default async function forgeSpecPlugin(context: PluginContext = {}): Prom
 }
 
 export { forgeSpecPlugin };
+export default forgeSpecPlugin;
+

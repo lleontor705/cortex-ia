@@ -50,6 +50,11 @@ func DestinationWithHome(source string, kind assets.Kind, homeDir string) string
 	if kind == assets.KindConfig {
 		return NativeLayout().ResolveConfigRelPath(homeDir)
 	}
+	if kind == assets.KindPlugin {
+		p := strings.TrimPrefix(source, "plugin/")
+		p = strings.TrimPrefix(p, "plugins/")
+		return path.Join(NativeLayout().PluginRoot, p)
+	}
 	return path.Join(NativeLayout().ConfigRoot, source)
 }
 
@@ -67,6 +72,11 @@ func DestinationForArtifactWithHome(source string, kind string, homeDir string) 
 	}
 	if kind == "config" || kind == "mcp-config" || source == "opencode.jsonc" || source == "opencode.json" {
 		return NativeLayout().ResolveConfigRelPath(homeDir)
+	}
+	if kind == "plugin" {
+		p := strings.TrimPrefix(source, "plugin/")
+		p = strings.TrimPrefix(p, "plugins/")
+		return path.Join(NativeLayout().PluginRoot, p)
 	}
 	return path.Join(NativeLayout().ConfigRoot, source)
 }

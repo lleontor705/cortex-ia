@@ -127,7 +127,7 @@ func Classify(rel string) (Kind, error) {
 		return KindCommand, nil
 	case "skills":
 		return KindSkill, nil
-	case "plugin":
+	case "plugins", "plugin":
 		return KindPlugin, nil
 	}
 	return "", fmt.Errorf("%w: %q is not a known asset root", ErrUnmappedRoot, rel)

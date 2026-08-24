@@ -348,6 +348,9 @@ func (m *Manager) Add(name string, evidence []OwnershipRecord, probes ...ProbeFu
 		}
 		result.Action = "already-present"
 		result.Configured = true
+		if len(probes) == 0 {
+			probes = []ProbeFunc{LocalCommandProbe}
+		}
 		qualified, outcome := qualify(preset, probes)
 		result.Qualified = qualified
 		result.Qualification = outcome
@@ -370,6 +373,9 @@ func (m *Manager) Add(name string, evidence []OwnershipRecord, probes ...ProbeFu
 	result.Changed = mutation.Changed
 	result.Created = mutation.Created
 	result.Configured = true
+	if len(probes) == 0 {
+		probes = []ProbeFunc{LocalCommandProbe}
+	}
 	qualified, outcome := qualify(preset, probes)
 	result.Qualified = qualified
 	result.Qualification = outcome
