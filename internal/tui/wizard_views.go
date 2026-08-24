@@ -212,12 +212,12 @@ func (m model) updateWizardRoles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				r.Delegate = true
 				r.CLI = "agy"
 				r.Command = "agy"
-				r.Args = []string{"--prompt-file"}
+				r.Args = []string{"--dangerously-skip-permissions", "-p"}
 			} else if r.CLI == "agy" {
 				r.Delegate = true
 				r.CLI = "claude"
 				r.Command = "claude"
-				r.Args = []string{"-p"}
+				r.Args = []string{"--dangerously-skip-permissions", "-p"}
 			} else {
 				r.Delegate = false
 				r.CLI = "native"

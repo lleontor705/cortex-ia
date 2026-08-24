@@ -1,6 +1,7 @@
 import { type Plugin, tool } from "@opencode-ai/plugin";
 import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 interface DelegationConfigFile {
@@ -131,9 +132,10 @@ export const CortexDelegationBridge: Plugin = async (ctx) => {
           allowed_files: tool.schema.array(tool.schema.string()).optional().describe("Allowed files"),
           acceptance_checks: tool.schema.array(tool.schema.string()).optional().describe("Checks to verify"),
           context_data: tool.schema.string().optional().describe("Additional context"),
+          session_id: tool.schema.string().optional().describe("Active Cortex session ID"),
         },
         async execute(args, context) {
-          logDelegation(context.directory, "INFO", `Tool cortex_delegate_role called for role '${args.role}'`, { task_id: args.task_id, objective: args.objective });
+          logDelegation(context.directory, "INFO", `Tool cortex_delegate_role called for role '${args.role}'`, { task_id: args.task_id, objective: args.objective, session_id: args.session_id });
 
           const config = loadConfig();
 
@@ -168,6 +170,9 @@ export const CortexDelegationBridge: Plugin = async (ctx) => {
             `## Objective:`,
             args.objective,
           ];
+          if (args.session_id) {
+            promptLines.push(`\n## Active Cortex Session ID:\n${args.session_id}`);
+          }
           if (args.allowed_files && args.allowed_files.length > 0) {
             promptLines.push(`\n## Allowed Files:\n${args.allowed_files.map(f => "- " + f).join("\n")}`);
           }
@@ -177,58 +182,28 @@ export const CortexDelegationBridge: Plugin = async (ctx) => {
           if (args.context_data) {
             promptLines.push(`\n## Context:\n${args.context_data}`);
           }
-          promptLines.push(`\n## Available MCP Tools:`);
-          promptLines.push(`- **Cortex MCP**: Use \`cortex_save_observation\` / \`cortex_search_hybrid\` to record evidence and query memory.`);
-          promptLines.push(`- **ForgeSpec MCP**: Use \`forgespec_task_transition\` to update task status for task \`${args.task_id}\`.`);
+          promptLines.push(`\n## Available MCP Tools & Receipt Protocol:`);
+          promptLines.push(`- **Cortex MCP**: Use \`cortex_context\` and \`cortex_search_hybrid\` to query memory. When completed, save your findings using \`cortex_save_observation\` with session ID \`${args.session_id || "current"}\`.`);
+          promptLines.push(`- **ForgeSpec MCP**: If needed, update task status with \`forgespec_task_transition(task_id="${args.task_id}", ...)\`.`);
           promptLines.push(`\n## Expected Outcome:`);
           promptLines.push(`Execute the objective within the allowed constraints. Return a structured receipt with \`phase_status\`, \`task_status\`, and \`verification_verdict\`.`);
           const promptPayload = promptLines.join("\n");
 
-          // Save prompt payload to a temporary task file for persistence
-          const promptTmpFile = path.resolve(context.directory, `.task-${args.task_id}-${args.role}-prompt.md`);
+          // Save prompt payload to temp folder to avoid cluttering the repository
+          const tempBaseDir = path.join(os.tmpdir(), "cortex-delegation");
+          try {
+            fs.mkdirSync(tempBaseDir, { recursive: true });
+          } catch {}
+
+          const promptTmpFile = path.join(tempBaseDir, `task-${args.task_id}-${args.role}-prompt.md`);
           try {
             fs.writeFileSync(promptTmpFile, promptPayload, "utf-8");
-            logDelegation(context.directory, "INFO", `Wrote prompt file: ${promptTmpFile}`);
+            logDelegation(context.directory, "INFO", `Wrote temporary prompt file: ${promptTmpFile}`);
           } catch (err: any) {
             logDelegation(context.directory, "WARN", `Could not write prompt file: ${err.message}`);
           }
 
-          // Generate runner script to avoid escaping/quoting issues in terminals
           const isWin = process.platform === "win32";
-          const runScriptFile = path.resolve(context.directory, `.task-${args.task_id}-${args.role}-run.${isWin ? "ps1" : "sh"}`);
-
-          if (isWin) {
-            const ps1Content = [
-              `# Cortex Delegation Runner`,
-              `$ErrorActionPreference = "Continue"`,
-              `$prompt = Get-Content -Path "${promptTmpFile.replace(/"/g, '`"')}" -Raw`,
-              `Write-Host "=================================================" -ForegroundColor Cyan`,
-              `Write-Host "  CORTEX DELEGATION: ${args.role.toUpperCase()} -> ${targetCLI.toUpperCase()}" -ForegroundColor Cyan`,
-              `Write-Host "  Task ID: ${args.task_id}" -ForegroundColor Cyan`,
-              `Write-Host "=================================================" -ForegroundColor Cyan`,
-              `& "${cliBin.replace(/"/g, '`"')}" ${customArgs.join(" ")} $prompt`,
-              `Write-Host "` + "\n" + `=================================================" -ForegroundColor Green`,
-              `Write-Host "  CORTEX DELEGATION FINISHED" -ForegroundColor Green`,
-              `Write-Host "=================================================" -ForegroundColor Green`
-            ].join("\r\n");
-            fs.writeFileSync(runScriptFile, ps1Content, "utf-8");
-          } else {
-            const shContent = [
-              `#!/usr/bin/env bash`,
-              `set -e`,
-              `echo "================================================="`,
-              `echo "  CORTEX DELEGATION: ${args.role.toUpperCase()} -> ${targetCLI.toUpperCase()}"`,
-              `echo "  Task ID: ${args.task_id}"`,
-              `echo "================================================="`,
-              `prompt=$(cat "${promptTmpFile}")`,
-              `"${cliBin}" ${customArgs.join(" ")} "$prompt"`,
-              `echo "================================================="`,
-              `echo "  CORTEX DELEGATION FINISHED"`,
-              `echo "================================================="`
-            ].join("\n");
-            fs.writeFileSync(runScriptFile, shContent, { encoding: "utf-8", mode: 0o755 });
-          }
-          logDelegation(context.directory, "INFO", `Created runner script: ${runScriptFile}`);
 
           // 2. Si se usa Herdr Workspace Multiplexer
           if (config.use_herdr) {
@@ -259,9 +234,10 @@ export const CortexDelegationBridge: Plugin = async (ctx) => {
               if (paneId) {
                 logDelegation(context.directory, "INFO", `Obtained pane_id '${paneId}' from Herdr`);
 
+                const cliFlags = customArgs.join(" ");
                 const runCmd = isWin
-                  ? `powershell -NoProfile -ExecutionPolicy Bypass -File "${runScriptFile}"`
-                  : `bash "${runScriptFile}"`;
+                  ? `$p = Get-Content -Raw "${promptTmpFile}"; & "${cliBin}" ${cliFlags} $p`
+                  : `prompt=$(cat '${promptTmpFile}'); "${cliBin}" ${cliFlags} "$prompt"`;
 
                 logDelegation(context.directory, "INFO", `Executing in Herdr pane '${paneId}': ${runCmd}`);
 
@@ -279,7 +255,6 @@ export const CortexDelegationBridge: Plugin = async (ctx) => {
                   status: "SPAWNED_HERDR_PANE",
                   pane_id: paneId,
                   prompt_file: promptTmpFile,
-                  run_script: runScriptFile,
                   message: `Role '${args.role}' successfully delegated to ${targetCLI.toUpperCase()} in Herdr pane '${paneId}'.`
                 }, null, 2);
               } else {
@@ -294,15 +269,12 @@ export const CortexDelegationBridge: Plugin = async (ctx) => {
           // 3. Delegación directa como subproceso CLI
           logDelegation(context.directory, "INFO", `Attempting direct subprocess delegation`);
           try {
-            const proc = isWin
-              ? spawn("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", runScriptFile], {
-                  cwd: context.directory,
-                  stdio: ["ignore", "pipe", "pipe"]
-                })
-              : spawn("bash", [runScriptFile], {
-                  cwd: context.directory,
-                  stdio: ["ignore", "pipe", "pipe"]
-                });
+            const finalArgs = [...customArgs, promptPayload];
+            const proc = spawn(cliBin, finalArgs, {
+              cwd: context.directory,
+              stdio: ["ignore", "pipe", "pipe"],
+              shell: true
+            });
 
             let stdout = "";
             let stderr = "";
