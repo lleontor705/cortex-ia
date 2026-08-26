@@ -25,6 +25,7 @@ const (
 	screenRunning
 	screenResult
 	screenMCP
+	screenWeb
 )
 
 // confirmKind identifies which destructive intent a confirmation modal guards.
@@ -42,13 +43,14 @@ const (
 var homeEntries = []string{
 	"Install / Sync",
 	"Manage MCPs",
+	"CortexIA Web Console",
 	"Doctor / Recovery",
 	"Uninstall",
 	"Quit",
 }
 
 // managedNames lists the managed MCP presets in toggle order.
-var managedNames = []string{"cortex", "forgespec", "context7"}
+var managedNames = []string{"cortex", "context7"}
 
 // confirmState is the active confirmation overlay. arg carries the MCP name
 // or backup ID the confirmed action applies to.
@@ -187,6 +189,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateResult(msg)
 		case screenMCP:
 			return m.updateMCP(msg)
+		case screenWeb:
+			return m.updateWeb(msg)
 		}
 	}
 	return m, nil
@@ -209,6 +213,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.selectHomeEntry(3)
 	case "5":
 		return m.selectHomeEntry(4)
+	case "6":
+		return m.selectHomeEntry(5)
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
@@ -238,7 +244,6 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		meta := state.LoadMetadataV2(m.homeDir)
 		if meta.Presence == state.PresenceV2 {
 			m.opts.Cortex = meta.Metadata.Selection.Cortex
-			m.opts.ForgeSpec = meta.Metadata.Selection.ForgeSpec
 			m.opts.Context7 = meta.Metadata.Selection.Context7
 		}
 		m.overwrite = false
@@ -254,14 +259,34 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.mcpReport = nil
 		m.mcpErr = nil
 		return m, mcpListCmd(m.svc)
-	case 2: // Doctor / Recovery
+	case 2: // CortexIA Web Console
+		m.screen = screenWeb
+		startWebBackground(m.homeDir)
+		return m, nil
+	case 3: // Doctor / Recovery
 		return m.startRunning("Doctor", []string{"Inspect state", "Compare digests", "Assess MCPs", "Report"}, doctorCmd(m.svc))
-	case 3: // Uninstall (destructive: explicit confirmation first)
+	case 4: // Uninstall (destructive: explicit confirmation first)
 		m.confirm = confirmState{kind: confirmUninstall}
 		return m, nil
-	case 4: // Quit
+	case 5: // Quit
 		m.quitting = true
 		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m model) updateWeb(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch key := msg.String(); key {
+	case "ctrl+c", "q":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc", "b", "B":
+		m.screen = screenHome
+		m.cursor = 2
+		return m, nil
+	case "o", "O", "enter", " ":
+		openBrowser("http://127.0.0.1:7331")
+		return m, nil
 	}
 	return m, nil
 }
@@ -298,8 +323,6 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 0:
 			m.opts.Cortex = !m.opts.Cortex
 		case 1:
-			m.opts.ForgeSpec = !m.opts.ForgeSpec
-		case 2:
 			m.opts.Context7 = !m.opts.Context7
 		}
 		m.plan = nil

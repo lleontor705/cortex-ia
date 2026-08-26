@@ -21,7 +21,7 @@ func engineHome(t *testing.T) string {
 }
 
 func engineRequest(home string) Request {
-	return Request{HomeDir: home, Version: "test", Cortex: true, ForgeSpec: true}
+	return Request{HomeDir: home, Version: "test", Cortex: true}
 }
 
 func engineJoin(home string, rel string) string {
@@ -88,8 +88,8 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 	if len(metaLoad.Metadata.Artifacts) != len(plan.mappings) {
 		t.Fatalf("metadata must record every installed artifact: %d vs %d", len(metaLoad.Metadata.Artifacts), len(plan.mappings))
 	}
-	if len(metaLoad.Metadata.MCPs) != 2 {
-		t.Fatalf("expected cortex+forgespec MCP records, got %d", len(metaLoad.Metadata.MCPs))
+	if len(metaLoad.Metadata.MCPs) != 1 {
+		t.Fatalf("expected only the cortex MCP record, got %d", len(metaLoad.Metadata.MCPs))
 	}
 
 	// Verify distinct target roots for skills vs config/agents/commands.
@@ -107,13 +107,16 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 	if !ok {
 		t.Fatal("installed config must carry the mcp object")
 	}
-	for _, name := range []string{"cortex", "forgespec"} {
+	for _, name := range []string{"cortex"} {
 		if _, ok := mcp[name].(map[string]any); !ok {
 			t.Errorf("managed MCP %q must be configured", name)
 		}
 	}
 	if _, present := mcp["context7"]; present {
 		t.Error("unselected context7 must not be configured")
+	}
+	if _, present := mcp["forgespec"]; present {
+		t.Error("retired forgespec MCP must not be configured")
 	}
 }
 

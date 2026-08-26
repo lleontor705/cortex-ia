@@ -36,7 +36,7 @@ Directory-by-directory map of the active `cortex-ia` codebase.
 - **Key Files**: `engine.go`, `plan.go`, `apply.go`, `journal.go`, `pipeline.go`.
 
 ### `internal/mcpmanager`
-- **Role**: MCP server catalog (`cortex`, `forgespec`, `context7`), desired-entry validation, qualification, and conflict detection.
+- **Role**: MCP server catalog (`cortex`, `context7`), retired-preset cleanup, desired-entry validation, qualification, and conflict detection.
 - **Key Files**: `mcpmanager.go`, `presets.go`, `evidence.go`.
 
 ### `internal/state` & `internal/installmeta`

@@ -72,10 +72,9 @@ func (s *Service) HomeDir() string {
 // and no managed MCP selected. Nothing in the service upgrades these values
 // implicitly; Overwrite and DryRun travel to the engine exactly as supplied.
 type Options struct {
-	// Cortex, ForgeSpec, and Context7 select the managed MCP presets.
-	Cortex    bool
-	ForgeSpec bool
-	Context7  bool
+	// Cortex and Context7 select the active managed MCP presets.
+	Cortex   bool
+	Context7 bool
 	// Overwrite explicitly authorizes replacing unmanaged conflicting
 	// files. The engine still captures and verifies a restorable backup
 	// of every overwritten target before mutating it.
@@ -103,11 +102,11 @@ type Options struct {
 }
 
 // DefaultOptions returns the recommended OpenCode selection as data: Cortex
-// and ForgeSpec on, Context7 optional and therefore off. Returning this
+// on and Context7 optional. Work control is built into cortex-ia. Returning this
 // value is the only place the default exists — no service method injects or
 // extends a selection implicitly.
 func DefaultOptions() Options {
-	return Options{Cortex: true, ForgeSpec: true, Context7: false}
+	return Options{Cortex: true, Context7: false}
 }
 
 // request projects the service options onto the engine request type.
@@ -116,7 +115,6 @@ func (s *Service) request(opts Options) pipeline.Request {
 		HomeDir:            s.homeDir,
 		Version:            opts.Version,
 		Cortex:             opts.Cortex,
-		ForgeSpec:          opts.ForgeSpec,
 		Context7:           opts.Context7,
 		Overwrite:          opts.Overwrite,
 		DryRun:             opts.DryRun,
@@ -198,7 +196,13 @@ func (s *Service) Install(opts Options) (*InstallReceipt, error) {
 		return s.applyPlanWithConfirmation(opts, req, plan, pipeline.PlanInstall, "install")
 	}
 	if plan.Converged {
-		return newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest, Converged: true}), nil
+		receipt := newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest, Converged: true})
+		changed, err := s.saveDelegationWithLock(opts)
+		if changed {
+			receipt.Converged = false
+			receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/cortex-delegation.json")
+		}
+		return receipt, err
 	}
 	if len(plan.Conflicts) > 0 {
 		return newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest, Conflicts: plan.Conflicts}), &pipeline.ConflictError{Conflicts: plan.Conflicts}
@@ -209,7 +213,13 @@ func (s *Service) Install(opts Options) (*InstallReceipt, error) {
 	}
 	defer release()
 	plan, receipt, err := pipeline.ApplyConfirmed(req, pipeline.PlanInstall)
-	s.maybeSaveDelegation(opts, err)
+	if err == nil {
+		var changed bool
+		changed, err = s.saveDelegation(opts)
+		if changed && receipt != nil {
+			receipt.Changes = append(receipt.Changes, "managed-update .config/opencode/cortex-delegation.json")
+		}
+	}
 	return newInstallReceipt(plan, receipt), err
 }
 
@@ -220,7 +230,13 @@ func (s *Service) applyPlanWithConfirmation(opts Options, req pipeline.Request, 
 	}
 	defer release()
 	plan, receipt, err := pipeline.ApplyConfirmed(req, planner)
-	s.maybeSaveDelegation(opts, err)
+	if err == nil {
+		var changed bool
+		changed, err = s.saveDelegation(opts)
+		if changed && receipt != nil {
+			receipt.Changes = append(receipt.Changes, "managed-update .config/opencode/cortex-delegation.json")
+		}
+	}
 	return newInstallReceipt(plan, receipt), err
 }
 
@@ -252,7 +268,13 @@ func (s *Service) Sync(opts Options) (*InstallReceipt, error) {
 		return s.applyPlanWithConfirmation(opts, req, plan, pipeline.PlanSync, "sync")
 	}
 	if plan.Converged {
-		return newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest, Converged: true}), nil
+		receipt := newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest, Converged: true})
+		changed, err := s.saveDelegationWithLock(opts)
+		if changed {
+			receipt.Converged = false
+			receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/cortex-delegation.json")
+		}
+		return receipt, err
 	}
 	if len(plan.Conflicts) > 0 {
 		return newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest, Conflicts: plan.Conflicts}), &pipeline.ConflictError{Conflicts: plan.Conflicts}
@@ -263,14 +285,58 @@ func (s *Service) Sync(opts Options) (*InstallReceipt, error) {
 	}
 	defer release()
 	plan, receipt, err := pipeline.ApplyConfirmed(req, pipeline.PlanSync)
-	s.maybeSaveDelegation(opts, err)
+	if err == nil {
+		var changed bool
+		changed, err = s.saveDelegation(opts)
+		if changed && receipt != nil {
+			receipt.Changes = append(receipt.Changes, "managed-update .config/opencode/cortex-delegation.json")
+		}
+	}
 	return newInstallReceipt(plan, receipt), err
 }
 
-func (s *Service) maybeSaveDelegation(opts Options, err error) {
-	if err == nil && !opts.DryRun && opts.DelegationConfig != nil {
-		_ = delegation.Save(filepath.Join(s.homeDir, ".config", "opencode"), *opts.DelegationConfig)
+func (s *Service) saveDelegation(opts Options) (bool, error) {
+	if opts.DryRun {
+		return false, nil
 	}
+	// Configure OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS="true" across OS
+	_ = ConfigureEnvironment(s.homeDir)
+
+	if opts.DelegationConfig == nil {
+		return false, nil
+	}
+	configDir := filepath.Join(s.homeDir, ".config", "opencode")
+	needed, err := delegation.NeedsSave(configDir, *opts.DelegationConfig)
+	if err != nil {
+		return false, fmt.Errorf("inspect delegation bridge configuration: %w", err)
+	}
+	if !needed {
+		return false, nil
+	}
+	if err := delegation.Save(configDir, *opts.DelegationConfig); err != nil {
+		return false, fmt.Errorf("save delegation bridge configuration: %w", err)
+	}
+	return true, nil
+}
+
+func (s *Service) saveDelegationWithLock(opts Options) (bool, error) {
+	if opts.DryRun || opts.DelegationConfig == nil {
+		return false, nil
+	}
+	configDir := filepath.Join(s.homeDir, ".config", "opencode")
+	needed, err := delegation.NeedsSave(configDir, *opts.DelegationConfig)
+	if err != nil {
+		return false, fmt.Errorf("inspect delegation bridge configuration: %w", err)
+	}
+	if !needed {
+		return false, nil
+	}
+	release, err := s.lockForMutation(opts.LockTimeout)
+	if err != nil {
+		return false, fmt.Errorf("save delegation bridge configuration: %w", err)
+	}
+	defer release()
+	return s.saveDelegation(opts)
 }
 
 func planDigestForReceipt(plan *pipeline.Plan) string {

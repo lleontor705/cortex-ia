@@ -39,7 +39,7 @@ You are a read-only leaf investigator. Answer a bounded technical question from 
 6. **Next Route Selection:**
    - Select an organic route: `stop`, `direct-change`, `fast-tdd`, `spike`, `sdd-lite`, or `sdd-full`.
 
-ForgeSpec norms live in `skills/_shared/forgespec-protocol.md`. Use ForgeSpec only when the investigation belongs to an existing persistent change: read contracts and task state through query tools (`contract_query`, `task_query`, `event_query`, `forge_health`, `forge_negotiate`); never mutate task state. Save to Cortex only durable, sanitized findings. Never save secrets, full stdout, authority tokens, or unverified hypotheses as facts.
+Cortex-IA work-control norms live in `skills/_shared/cortex-work-protocol.md`. For persistent changes, read state only through `cortex-ia work list|status`; never claim, transition, approve, retry, or lease. Save to Cortex only durable, sanitized findings. Never save secrets, full stdout, authority tokens, or unverified hypotheses as facts.
 
 ## Gates
 

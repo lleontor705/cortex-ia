@@ -4,7 +4,7 @@ Load after `cortex-convention.md` when standard retrieval is insufficient.
 
 ## Authority and mandatory behavior
 
-ForgeSpec owns SDD contracts, tasks, and readiness; Cortex owns evidence, memory, and lineage. Keep them separate: board/phase facts are ForgeSpec; observations/provenance are Cortex.
+OpenSpec owns SDD contracts; `cortex-ia work` owns tasks and readiness; Cortex MCP owns evidence, memory, and lineage. Keep them separate: task state comes from the CLI, contract facts from files, and observations/provenance from Cortex MCP.
 
 Save decisions, fixes, discoveries, config, and patterns immediately. Start with context/search; retrieve focused records and preserve provenance; end with a summary. Destructive administration requires authorization.
 

@@ -748,7 +748,10 @@ func qualifyDesired(desired Desired, preset Preset, probes []ProbeFunc) (bool, *
 func (m *Manager) Remove(name string, evidence []OwnershipRecord) (Result, error) {
 	preset, ok := Lookup(name)
 	if !ok {
-		return Result{}, &ConflictError{Name: name, Kind: ConflictUnmanaged}
+		preset, ok = lookupRetired(name)
+		if !ok {
+			return Result{}, &ConflictError{Name: name, Kind: ConflictUnmanaged}
+		}
 	}
 
 	path := m.ConfigPath()
@@ -870,6 +873,36 @@ func (m *Manager) List(evidence []OwnershipRecord) (ListResult, error) {
 				} else {
 					report.Status = StatusUnmanagedEquivalent
 				}
+			}
+		}
+		listing.Entries = append(listing.Entries, report)
+	}
+	for _, preset := range RetiredPresets() {
+		observed, present := entries[preset.Name]
+		if !present {
+			continue
+		}
+		managedNames[preset.Name] = struct{}{}
+		report := EntryReport{Name: preset.Name, Status: StatusConflict}
+		observedMap, isMap := observed.(map[string]any)
+		if !isMap {
+			return ListResult{}, &ConflictError{Name: preset.Name, Kind: ConflictMalformed, Detail: "retired entry is not a JSON object"}
+		}
+		digest, err := SemanticDigest(preset.Name, observedMap)
+		if err != nil {
+			return ListResult{}, err
+		}
+		report.Digest = digest
+		fillSanitizedIdentity(&report, preset.Name, observedMap)
+		equal, err := semanticEqual(observedMap, preset.Entry)
+		if err != nil {
+			return ListResult{}, err
+		}
+		if equal {
+			if _, accredited := accredit(evidence, preset.Name, digest, path); accredited {
+				report.Status = StatusManaged
+			} else {
+				report.Status = StatusUnmanagedEquivalent
 			}
 		}
 		listing.Entries = append(listing.Entries, report)

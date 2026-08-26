@@ -48,7 +48,7 @@ cortex-ia doctor            # verifies cortex callable + skills + state
 
 ## Convention file
 
-The `conventions` component installs `~/.cortex-ia/skills/_shared/cortex-convention.md` which every SDD skill references. That file teaches the agent **when** to call `mem_save`, `mem_search`, and `forgespec_*` — without it, agents tend to either over-save or never persist anything.
+The shared `cortex-convention.md` teaches agents when to use Cortex memory and when to read authoritative `cortex-ia work` state, keeping evidence separate from task control.
 
 ## Compatibility
 
@@ -57,5 +57,5 @@ cortex's first 14 tools match Engram's API one-to-one. Skills written against En
 ## See also
 
 - [`components.md`](components.md) — how `cortex` fits among the other components
-- [`sdd-workflow.md`](sdd-workflow.md) — the SDD loop that uses memory + forgespec
+- [`sdd-workflow.md`](sdd-workflow.md) — the SDD loop using Cortex memory, OpenSpec, and `cortex-ia work`
 - The `cortex` repo for the full tool reference and HTTP/CLI/TUI alternatives

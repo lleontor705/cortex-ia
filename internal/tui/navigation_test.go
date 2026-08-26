@@ -118,8 +118,19 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 		t.Fatalf("expected esc to return home from MCP, got %v", m.screen)
 	}
 
+	// Home → Web Console → Home.
+	m = press(m, "down") // cursor was 1 (MCP); now cursor 2: CortexIA Web Console
+	m = press(m, "enter")
+	if m.screen != screenWeb {
+		t.Fatalf("expected screenWeb, got %v", m.screen)
+	}
+	m = press(m, "b")
+	if m.screen != screenHome {
+		t.Fatalf("expected b to return home from web, got %v", m.screen)
+	}
+
 	// Home → Doctor/Recovery (running) → Result → Home.
-	m = press(m, "down") // cursor 2: Doctor / Recovery
+	m = press(m, "down") // cursor was 2; now cursor 3: Doctor / Recovery
 	updated, cmd := m.Update(key("enter"))
 	m = updated.(model)
 	if m.screen != screenRunning || m.running.title != "Doctor" {
@@ -141,10 +152,11 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Uninstall opens a confirmation overlay, not the running screen.
-	// (Result returns Home with cursor 0; Uninstall is entry 3.)
+	// (Result returns Home with cursor 0; Uninstall is entry 4.)
 	m = press(m, "down")
 	m = press(m, "down")
-	m = press(m, "down") // cursor 3: Uninstall
+	m = press(m, "down")
+	m = press(m, "down") // cursor 4: Uninstall
 	m = press(m, "enter")
 	if m.confirm.kind != confirmUninstall || m.screen != screenHome {
 		t.Fatalf("expected uninstall confirmation on home, got screen=%v confirm=%v", m.screen, m.confirm.kind)
@@ -155,7 +167,7 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Quit entry quits.
-	m = press(m, "down") // cursor 4: Quit (cursor stayed on 3 after cancel)
+	m = press(m, "down") // cursor 5: Quit (cursor stayed on 4 after cancel)
 	updated, cmd = m.Update(key("enter"))
 	if cmd == nil || !updated.(model).quitting {
 		t.Fatal("expected Quit entry to quit")
@@ -186,7 +198,7 @@ func TestQuitKeyQuitsFromHome(t *testing.T) {
 	}
 }
 
-// TestHomeNumericHotkeys verifies keys 1-5 jump directly to actions from Home.
+// TestHomeNumericHotkeys verifies keys 1-6 jump directly to actions from Home.
 func TestHomeNumericHotkeys(t *testing.T) {
 	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
 
@@ -202,22 +214,28 @@ func TestHomeNumericHotkeys(t *testing.T) {
 		t.Fatalf("key 2 should open MCP, got %v", m2.screen)
 	}
 
-	// Key '3' starts Doctor (running).
-	updated, _ := m.Update(key("3"))
-	m3 := updated.(model)
-	if m3.screen != screenRunning || m3.running.title != "Doctor" {
-		t.Fatalf("key 3 should start Doctor, got %v %q", m3.screen, m3.running.title)
+	// Key '3' opens Web Console.
+	m3 := press(m, "3")
+	if m3.screen != screenWeb {
+		t.Fatalf("key 3 should open Web Console, got %v", m3.screen)
 	}
 
-	// Key '4' opens Uninstall confirmation.
-	m4 := press(m, "4")
-	if m4.confirm.kind != confirmUninstall {
-		t.Fatalf("key 4 should trigger uninstall confirmation, got %v", m4.confirm.kind)
+	// Key '4' starts Doctor (running).
+	updated, _ := m.Update(key("4"))
+	m4 := updated.(model)
+	if m4.screen != screenRunning || m4.running.title != "Doctor" {
+		t.Fatalf("key 4 should start Doctor, got %v %q", m4.screen, m4.running.title)
 	}
 
-	// Key '5' quits.
-	updated5, cmd5 := m.Update(key("5"))
-	if cmd5 == nil || !updated5.(model).quitting {
-		t.Fatal("key 5 should quit")
+	// Key '5' opens Uninstall confirmation.
+	m5 := press(m, "5")
+	if m5.confirm.kind != confirmUninstall {
+		t.Fatalf("key 5 should trigger uninstall confirmation, got %v", m5.confirm.kind)
+	}
+
+	// Key '6' quits.
+	updated6, cmd6 := m.Update(key("6"))
+	if cmd6 == nil || !updated6.(model).quitting {
+		t.Fatal("key 6 should quit")
 	}
 }

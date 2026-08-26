@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
 
@@ -26,15 +27,15 @@ var (
 var homeDescriptions = []string{
 	"Deploy or reconcile skills, agents, commands & MCPs",
 	"Inspect and configure managed OpenCode MCP server presets",
+	"Open interactive local web dashboard (http://127.0.0.1:7331)",
 	"Assess installation health, digests & recovery journals",
 	"Remove accredited cortex-ia installation with backup",
 	"Exit cortex-ia",
 }
 
 var mcpDescriptions = map[string]string{
-	"cortex":    "Persistent Memory & Adaptive Context",
-	"forgespec": "SDD Task Board & Spec Coordination",
-	"context7":  "Upstash Documentation & Library Context",
+	"cortex":   "Persistent Memory, AST Knowledge Graph & Epistemic Control",
+	"context7": "Upstash Documentation & Library Context",
 }
 
 // contentWidth clamps the layout to the terminal for basic responsiveness.
@@ -144,6 +145,8 @@ func (m model) View() string {
 		body = m.viewResult()
 	case screenMCP:
 		body = m.viewMCP()
+	case screenWeb:
+		body = m.viewWeb()
 	}
 	if m.confirm.kind != confirmNone {
 		body = body + "\n" + m.viewConfirm()
@@ -197,7 +200,7 @@ func (m model) viewReview() string {
 		top = append(top, styleFail.Render("✖ plan error: "+m.planErr.Error()))
 	}
 	top = append(top, "MCP selection (space toggles, replans, d delegation):")
-	states := []bool{m.opts.Cortex, m.opts.ForgeSpec, m.opts.Context7}
+	states := []bool{m.opts.Cortex, m.opts.Context7}
 	for i, name := range managedNames {
 		mark := " "
 		if states[i] {
@@ -411,4 +414,26 @@ func (m model) viewConfirm() string {
 		styleDim.Render("[y] yes, proceed   [n]/esc no, cancel"),
 	}
 	return styleFrame.BorderForeground(styles.Warning).Render(strings.Join(lines, "\n"))
+}
+
+func (m model) viewWeb() string {
+	width := m.contentWidth()
+	var lines []string
+
+	lines = append(lines, truncate(m.header("CortexIA Web Console"), width), "")
+	lines = append(lines, styleSubtitle.Render("🌐 Tablero Kanban y Supervisión en Tiempo Real"))
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("  • Estado:  %s", stylePass.Render("🟢 Servidor Activo")))
+	lines = append(lines, fmt.Sprintf("  • URL:     %s", styleSelected.Render("http://127.0.0.1:7331")))
+	lines = append(lines, fmt.Sprintf("  • Storage: %s", styleDim.Render(delegation.DefaultDBPath(m.homeDir))))
+	lines = append(lines, "")
+	lines = append(lines, styleDim.Render("Funcionalidades disponibles en el navegador:"))
+	lines = append(lines, "  📊 Tablero de Tareas (Kanban DAG: backlog, ready, in_progress, in_review, done)")
+	lines = append(lines, "  ⚡ Monitor de Subagentes (Background subagents, duración en vivo y receipts)")
+	lines = append(lines, "  🛡️ Control de Concurrencia (Active File Leases y Claims)")
+	lines = append(lines, "  🧠 Grafo de Conocimiento Cortex (AST, símbolos y memoria episódica)")
+	lines = append(lines, "")
+	lines = append(lines, styleSelected.Render("  [ Presiona 'o' o 'Enter' para abrir en tu navegador predeterminado ]"))
+	lines = append(lines, "", m.footer("enter / o abrir navegador · b / esc volver al menú inicio · q salir"))
+	return strings.Join(lines, "\n")
 }

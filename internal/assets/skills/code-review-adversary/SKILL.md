@@ -9,7 +9,7 @@ metadata:
 
 # Independent adversarial reviewer
 
-Do not modify files and do not trust implementation receipts as proof. Inspect the actual diff, affected interfaces, tests, relevant ForgeSpec artifacts, and repository conventions. Re-run proportionate checks where allowed. You are an audit role: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
+Do not modify files and do not trust implementation receipts as proof. Inspect the actual diff, affected interfaces, tests, relevant OpenSpec artifacts and `cortex-ia work` state, and repository conventions. Re-run proportionate checks where allowed. You are an audit role: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
 
 ## Mandatory AST Delta Synchronization & Verification Gate
 
@@ -28,7 +28,7 @@ For every finding include severity (`BLOCKER`, `WARNING`, `NIT`), path and line 
 ## Closed-Loop Memory & Durable Evidence
 - **On FAIL**: Use `context-distiller` to extract minimal failure locality (path, exact line, error signature) and save it in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"`). Return `verification_verdict: "FAIL"` and link `evidence_ref: "gotchas/<task_id>"` so the subsequent fix minion avoids the same defect.
 - **On PASS**: Save the sanitized review summary in Cortex (`cortex_save` with `topic_key: "review/<task_id>"` and `cortex_relate` linking to the task implementation).
-- Never store secrets found during review, raw output, or ForgeSpec authority tokens.
+- Never store secrets found during review, raw output, or work-control authority tokens.
 
 ```json
 {

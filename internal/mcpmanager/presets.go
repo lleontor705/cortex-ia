@@ -65,18 +65,23 @@ var managedPresets = []Preset{
 		},
 	},
 	{
-		Name: "forgespec",
-		Entry: map[string]any{
-			"type":    "local",
-			"command": []any{"npx", "-y", "forgespec-mcp"},
-			"enabled": true,
-		},
-	},
-	{
 		Name: "context7",
 		Entry: map[string]any{
 			"type":    "local",
 			"command": []any{"npx", "-y", "@upstash/context7-mcp"},
+			"enabled": true,
+		},
+	},
+}
+
+// retiredPresets exist only so sync can safely remove entries accredited by
+// an older cortex-ia installation. They are never selectable or addable.
+var retiredPresets = []Preset{
+	{
+		Name: "forgespec",
+		Entry: map[string]any{
+			"type":    "local",
+			"command": []any{"npx", "-y", "forgespec-mcp"},
 			"enabled": true,
 		},
 	},
@@ -105,15 +110,39 @@ func Lookup(name string) (Preset, bool) {
 	return Preset{}, false
 }
 
+// RetiredPresets returns removal-only legacy templates. Callers must never
+// expose them as install choices.
+func RetiredPresets() []Preset {
+	presets := make([]Preset, len(retiredPresets))
+	for i, preset := range retiredPresets {
+		presets[i] = Preset{Name: preset.Name, Entry: deepCopyEntry(preset.Entry)}
+	}
+	return presets
+}
+
+func lookupRetired(name string) (Preset, bool) {
+	for _, preset := range retiredPresets {
+		if preset.Name == name {
+			return Preset{Name: preset.Name, Entry: deepCopyEntry(preset.Entry)}, true
+		}
+	}
+	return Preset{}, false
+}
+
+// IsRetired reports whether name is recognized only for accredited removal.
+func IsRetired(name string) bool {
+	_, ok := lookupRetired(name)
+	return ok
+}
+
 // DefaultSelection returns the default preset selection for fresh installs:
-// Cortex and ForgeSpec are selected, Context7 is optional and starts
-// unselected. The simplified TUI consumes this when its MCP screen lands.
+// Cortex is selected; Context7 is optional and starts unselected. Task
+// control is built into the cortex-ia CLI and is not an MCP preset.
 // A fresh map is returned on every call.
 func DefaultSelection() map[string]bool {
 	return map[string]bool{
-		"cortex":    true,
-		"forgespec": true,
-		"context7":  false,
+		"cortex":   true,
+		"context7": false,
 	}
 }
 

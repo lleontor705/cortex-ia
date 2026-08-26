@@ -4,9 +4,10 @@
 - **Version**: `2.3.0`
 - **Active roles**: `orchestrator`, `investigate`, `planner`, `implement`, `reviewer`
 - **Specification plane**: OpenSpec (`openspec/specs/`, `openspec/changes/<change-name>/`)
-- **Control plane**: ForgeSpec Protocol 2.0 (`forgespec-mcp@2.0.0`, 18 tools, signed identity broker)
+- **Control plane**: `cortex-ia work` CLI (SQLite DAG, CAS revisions, claims, leases, recovery, approvals)
+- **Task-board plane**: `cortex-ia board` (durable grouping + embedded loopback web view; never an authority substitute)
 - **Evidence & Graph plane**: Cortex (Durable SQLite memory, AST knowledge graph & blast radius, 28 tools)
-- **Canonical ForgeSpec protocol**: `skills/_shared/forgespec-protocol.md` (single normative source: 18-tool catalog, 4 deterministic profiles, signed identity broker, attempt lifecycle, optimistic file leases, gate approvals)
+- **Canonical work protocol**: `skills/_shared/cortex-work-protocol.md` (single normative source for role boundaries, task lifecycle, leases, and approvals)
 
 ---
 
@@ -40,7 +41,7 @@ flowchart TD
         RouteDecision -->|sdd-lite / sdd-full| SubPlan[Subagent: planner]
     end
 
-    subgraph SDD_Flow ["SDD Task Execution (OpenSpec + ForgeSpec)"]
+    subgraph SDD_Flow ["SDD Task Execution (OpenSpec + cortex-ia work)"]
         SubPlan -->|OpenSpec Delta Specs & Task DAG| Minions[Ephemeral Implement Minions]
         Minions -->|Code Changes & Evidence| SubRev[Subagent: reviewer]
     end
@@ -75,10 +76,24 @@ flowchart TD
 | Role | Mode | Primary Responsibility | Permitted Delegations | Tool Surface Highlights |
 |---|---|---|---|---|
 | **`orchestrator`** | `primary` | Request triage, startup alignment, organic routing, Cortex session lifecycle, DAG dispatch, final response synthesis | `investigate`, `planner`, `implement`, `reviewer` | `cortex_*`, `board_create`, `task_define`, `task_query`, `attempt_recover`, `authority_manage`, `event_query`, `contract_query`, `task` (subagent dispatch), `skill` (`grill-me`) |
-| **`investigate`** | `subagent` | Repository diagnostics, root-cause analysis, exploratory spikes, read-only audit | *None (Leaf)* | `read`, `grep`, `glob`, `list`, `bash` (read-only diagnostics), `cortex_*`, `contract_query`, `task_query`, `event_query` |
-| **`planner`** | `subagent` | OpenSpec delta requirements (RFC 2119), Given/When/Then scenarios, task DAG decomposition (<=350 LOC) | *None (Leaf)* | `read`, `grep`, `glob`, `list`, `edit` (`openspec/`), `bash`, `board_create`, `task_define`, `task_query`, `contract_validate`, `contract_commit`, `cortex_*` |
-| **`implement`** | `subagent` | Ephemeral minion: claims single task, reserves file lease, implements code, runs unit oracles, releases lease | *None (Leaf)* | `read`, `grep`, `glob`, `list`, `edit`, `bash` (tests, builds, linters), `attempt_claim`, `attempt_renew`, `lease_reserve`, `lease_renew`, `lease_release`, `task_transition`, `cortex_*` |
-| **`reviewer`** | `subagent` | Independent adversarial verification, mutation testing, invariant checking, gate approvals (`approval_record`) | *None (Leaf)* | `read`, `grep`, `glob`, `list`, `bash` (independent test runs), `contract_query`, `task_query`, `event_query`, `approval_record`, `cortex_*` |
+| **`investigate`** | `subagent/controller` | Repository diagnostics, root-cause analysis, exploratory spikes, read-only audit | One optional read-only AGY leaf through Cortex-IA | `read`, `grep`, `glob`, `list`, `bash` (read-only diagnostics), `cortex_*`, `contract_query`, `task_query`, `event_query` |
+| **`planner`** | `subagent/controller` | OpenSpec delta requirements (RFC 2119), Given/When/Then scenarios, task DAG decomposition (<=350 LOC) | One optional plan-only AGY leaf through Cortex-IA | `read`, `grep`, `glob`, `list`, `edit` (`openspec/`), `bash`, `board_create`, `task_define`, `task_query`, `contract_validate`, `contract_commit`, `cortex_*` |
+| **`implement`** | `subagent/controller` | Claims one task, reserves file leases, supervises execution, verifies, and releases authority | One optional sandboxed AGY leaf after claim, leases, and worktree isolation | `read`, `grep`, `glob`, `list`, `edit`, `bash`, `cortex-ia work claim|renew|lease|lease-renew|release|transition`, `cortex_*` |
+| **`reviewer`** | `subagent/controller` | Independent adversarial verification, mutation testing, invariant checking, gate approvals (`approval_record`) | One optional read-only AGY leaf through Cortex-IA | `read`, `grep`, `glob`, `list`, `bash` (independent test runs), `contract_query`, `task_query`, `event_query`, `approval_record`, `cortex_*` |
+
+The orchestrator always routes through a native controller and never launches an external executor directly. Cortex-IA is the only process bridge and local task authority. External leaves receive no work-control CLI, Cortex MCP, session lifecycle, authority tokens, or nested-delegation capability; their SQLite job state is operational evidence only.
+
+### Effective Execution Mode Contract
+
+The value returned by `cortex_delegate_start` is authoritative. Agents MUST NOT derive the effective mode from installer selections, `use_herdr`, CLI availability, or pane visibility.
+
+| Mode | Agent behavior |
+|---|---|
+| `native` | No external job was accepted; the native role controller executes the objective. |
+| `direct_cli` | Cortex accepted and launched AGY directly; the controller only supervises, validates, and retains control-plane authority. |
+| `herdr_multiplexed` | Cortex accepted and launched AGY through Herdr; controller behavior is identical to `direct_cli`, with the pane serving only as presentation and multiplexing. |
+
+After `delegated=true` plus `job_id`, no controller may perform the same objective concurrently or fall back natively because of failure, timeout, cancellation, a missing pane, or `lost`. It MUST reconcile the durable job first and may retry only explicitly under fresh authority. `use_herdr=true` is only a preference; Cortex may return `direct_cli` after a safe pre-acceptance fallback.
 
 ---
 
@@ -110,7 +125,7 @@ sequenceDiagram
     participant Inv as Investigate Subagent
     participant Cortex as Cortex MCP & AST Graph
     participant Plan as Planner Subagent
-    participant FS as ForgeSpec Protocol 2.0
+    participant Work as cortex-ia work CLI
     participant Imp as Implement Minions
     participant Rev as Reviewer Subagent
 
@@ -128,19 +143,19 @@ sequenceDiagram
     Inv-->>Orch: Diagnostic Evidence & Baseline AST Topology Receipt
     end
 
-    Note over Orch,FS: Phase 2: Preflight & Planning (if SDD route)
+    Note over Orch,Work: Phase 2: Preflight & Planning (if SDD route)
     Orch->>Plan: Dispatch SDD Plan (intent, project_rules, blast_radius_baseline)
-    Plan->>FS: contract_validate -> contract_commit (Proposal, Requirements, Design)
-    Plan->>FS: board_create + task_define (DAG nodes <= 350 LOC)
-    Plan-->>Orch: Planning Receipt (board_id, task_refs, DAG readiness)
+    Plan->>Plan: Validate and write OpenSpec contracts
+    Plan->>Work: work create (dependency DAG nodes <= 350 LOC)
+    Plan-->>Orch: Planning Receipt (artifact refs, task refs, DAG readiness)
 
     Note over Orch,Imp: Phase 3: Implementation
     loop For Each Ready DAG Task
         Orch->>Imp: Dispatch Minion Envelope (task_id, allowed_files, project_rules, checks)
-        Imp->>FS: attempt_claim (lease attempt) + lease_reserve (lock files)
+        Imp->>Work: work claim + work lease (lock files)
         Imp->>Cortex: cortex_get_blast_radius(symbol) (Pre-edit boundary check)
         Imp->>Imp: Implement Code + Proportional Verification (Tests)
-        Imp->>FS: task_transition (in_review) + lease_release + task_transition (done)
+        Imp->>Work: transition in_review; reviewer approval produces done
         Imp-->>Orch: Task Execution Receipt (changed_files)
     end
 
@@ -152,10 +167,10 @@ sequenceDiagram
     Rev->>Cortex: cortex_detect_cycles (Verify no circular import regressions)
     Rev->>Rev: Independent Checks & Mutation Testing
     alt Verdict is PASS
-        Rev->>FS: approval_record (gate approval with provenance)
+        Rev->>Work: work approve PASS (gate approval with evidence)
         Rev->>Cortex: cortex_save(topic_key: "review/task_id")
         Rev-->>Orch: Review Receipt (Verdict: PASS)
-        Orch->>FS: contract_commit (Archive change set)
+        Orch->>Plan: Archive OpenSpec change set
     else Verdict is FAIL / BLOCKED
         Rev->>Cortex: cortex_save(type: "bugfix", topic_key: "gotchas/task_id", content: minimal_failure_locality)
         Rev-->>Orch: Review Receipt (Verdict: FAIL, evidence_ref: "gotchas/task_id")
@@ -184,26 +199,26 @@ An implementation minion is an ephemeral instance of `implement`. It owns strict
 ```mermaid
 stateDiagram-v2
     [*] --> PreClaim: Dispatch Envelope Received
-    PreClaim --> Claimed: forge_negotiate(profile: worker) + attempt_claim
-    Claimed --> Reserved: lease_reserve (exclusive file locks)
+    PreClaim --> Claimed: work status + work claim
+    Claimed --> Reserved: work lease (exclusive file locks)
     
     state Execution_Loop {
         [*] --> Red_Green_Refactor
-        Red_Green_Refactor --> Heartbeat_Renew: attempt_renew + lease_renew
+        Red_Green_Refactor --> Heartbeat_Renew: work renew + lease-renew
         Heartbeat_Renew --> Red_Green_Refactor
     }
     
     Reserved --> Execution_Loop: Edit & Test
     Execution_Loop --> Verifying: Proportional Verification (Unit/Build/Lint)
     Verifying --> EvidenceSaved: context-distiller -> cortex_save
-    EvidenceSaved --> InReview: task_transition (status: in_review)
-    InReview --> Released: lease_release (release locks)
-    Released --> DoneState: task_transition (status: done)
+    EvidenceSaved --> InReview: work transition --to in_review
+    InReview --> Released: reviewer verifies and work approve PASS
+    Released --> DoneState: CLI atomically releases locks and marks done
     DoneState --> ReceiptReturned: Return Typed Receipt
     ReceiptReturned --> [*]
 
     Execution_Loop --> Blocked: Lease Expired / Unresolvable Conflict
-    Blocked --> Cleanup: lease_release
+    Blocked --> Cleanup: work release
     Cleanup --> ReceiptReturned
 ```
 
@@ -413,6 +428,3 @@ cortex doctor
 cortex setup opencode
 cortex setup claude-code
 ```
-
-
-

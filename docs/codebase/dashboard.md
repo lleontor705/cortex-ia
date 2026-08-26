@@ -34,7 +34,7 @@ The TUI is strictly organized around 5 conceptual screens with a global destruct
 ### Screen Details
 
 1. **`screenHome`**: Landing dashboard with stylized ASCII logo banner, OpenCode status indicator, numbered menu options (`1-5`), and direct hotkey navigation.
-2. **`screenReview`**: Reactive plan inspector. Displays MCP toggles (`[x] cortex`, `[x] forgespec`, `[ ] context7`) with live re-planning, categorized operation badges (+Create, ⚡Merge, ↻Update), and overwrite warning toggle (`[ o ]`).
+2. **`screenReview`**: Reactive plan inspector. Displays MCP toggles (`[x] cortex`, `[ ] context7`) with live re-planning, delegation choices, categorized operation badges, and overwrite warning toggle.
 3. **`screenRunning`**: Asynchronous execution timeline with high-framerate dot spinner (`⠋ ⠙ ⠹ ...`) and numbered stage progression (`Plan` → `Backup` → `Apply` → `Verify` → `Commit`).
 4. **`screenResult`**: Comprehensive receipt card with `PASS`/`FAIL` Hero badge, changed artifact count, verified backup ID, detailed scrollable log, and one-key rollback trigger (`[ r ]`).
 5. **`screenMCP`**: Interactive MCP catalog table with accreditation badges (`managed`, `absent`, `conflict`) and single-key add/remove toggling (`space`/`enter`).

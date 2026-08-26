@@ -15,21 +15,20 @@ report without writing. `mcp list` is read-only and takes a single flag:
 | Preset | Kind | Launches | Description |
 |--------|------|----------|-------------|
 | `cortex` | local | `cortex mcp --tools=agent` | Persistent memory with knowledge graph, FTS5, and revision history |
-| `forgespec` | local | `npx -y forgespec-mcp` | SDD contracts, task board, claims, file reservation |
 | `context7` | local | `npx -y @upstash/context7-mcp` | Live framework and library documentation |
 
 All presets use OpenCode's native local-server shape —
 `{"type":"local","command":["<argv>..."],"enabled":true}` — with the exact
 argv listed above. No preset ships a URL.
 
-`install` and `sync` configure the default selection: `cortex` and
-`forgespec`. `context7` is opt-in via `mcp add`.
+`install` and `sync` configure `cortex` by default. `context7` is opt-in via
+`mcp add`; task coordination comes from the built-in `cortex-ia work` CLI.
 
 ```bash
 cortex-ia mcp add context7 --preset [--dry-run]
 ```
 
-Catalog preset names (`cortex`, `forgespec`, `context7`) are reserved: a
+Catalog preset names (`cortex`, `context7`) are reserved: a
 custom `--local` or `--remote` entry cannot take a catalog name, and a
 preset entry must use its exact catalog name (no aliasing).
 

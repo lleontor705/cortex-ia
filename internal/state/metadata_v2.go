@@ -128,7 +128,6 @@ func NewMCPV2(identity installmeta.MCPServerIdentity, configPath string, ownersh
 type SelectionV2 struct {
 	AssetGroups []string `json:"asset_groups,omitempty"`
 	Cortex      bool     `json:"cortex"`
-	ForgeSpec   bool     `json:"forgespec"`
 	Context7    bool     `json:"context7"`
 }
 

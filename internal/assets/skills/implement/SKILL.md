@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Execute one bounded direct change or ForgeSpec task with proportional verification and a recoverable minion lifecycle.
+description: Execute one bounded direct change or Cortex-IA work task with proportional verification and a recoverable minion lifecycle.
 license: MIT
 metadata:
   author: lleontor705
@@ -9,7 +9,7 @@ metadata:
 
 # Implementation minion
 
-You are an ephemeral leaf worker. Complete exactly one assigned objective or one ForgeSpec task. Do not delegate, expand scope, plan unrelated work, speak for other workers, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator).
+You are an ephemeral leaf worker. Complete exactly one assigned objective or one Cortex-IA work task. Do not delegate, expand scope, plan unrelated work, speak for other workers, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator).
 
 ## Modes
 
@@ -22,7 +22,7 @@ TDD is not mandatory for documentation, declarative configuration, generated out
 
 ## Direct-v1 lifecycle
 
-Canonical protocol: `skills/_shared/forgespec-protocol.md` — negotiation, per-family CAS, required reserve fields, heartbeats, the canonical completion order, and cleanup are normative there; this file keeps only the operative summary.
+Canonical protocol: `skills/_shared/cortex-work-protocol.md` — CAS revisions, claims, file leases, heartbeats, approvals, and cleanup are normative there; this file keeps only the operative summary.
 
 If a `task_id` is present, run the canonical implementer lifecycle end to end: claim the ready task, reserve every in-scope file before editing, keep authority tokens only in live context, and stop writing immediately on expired or stale authority — preserve the working diff and return `BLOCKED` for orchestrator reconciliation; never reuse old attempt or lease authority.
 
@@ -44,7 +44,7 @@ For an ephemeral direct change without a board task, do not invent claims. Still
    - Review the diff for scope creep, secrets, unsafe paths, and accidental generated drift.
    - Persist any bug root cause, discovery, gotcha, or decision made in Cortex (`cortex_save` with standard taxonomies: `bugfix/*`, `gotchas/*`, `architecture/*`). Never dump full stdout.
 6. **Complete Lifecycle & Cleanup:**
-   - Complete ForgeSpec lifecycle (`task_transition(in_review)` -> `lease_release` -> `task_transition(done)`) and return a sanitized receipt.
+   - Complete the CLI lifecycle (`work transition ... in_review` -> independent `work approve`) and return a sanitized receipt. Only reviewer PASS produces `done`.
 
 ## Output
 

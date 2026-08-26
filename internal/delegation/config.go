@@ -1,27 +1,36 @@
 package delegation
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 )
 
-// RoleConfig defines the delegation settings for an individual agent role / workflow phase.
-type RoleConfig struct {
-	Delegate bool     `json:"delegate"`
-	CLI      string   `json:"cli"` // "agy" | "claude" | "native"
-	Command  string   `json:"command"`
-	Args     []string `json:"args"`
+const ConfigFilename = "cortex-delegation.json"
+
+var supportedRoles = map[string]bool{
+	"implement": true, "investigate": true, "planner": true, "reviewer": true,
 }
 
-// HerdrSettings defines workspace and pane behavior for Herdr.
+// RoleConfig is deliberately declarative. Cortex owns the executable and
+// argument vector so configuration cannot become an arbitrary shell surface.
+type RoleConfig struct {
+	Delegate bool   `json:"delegate"`
+	CLI      string `json:"cli"` // native | agy
+	Mode     string `json:"mode,omitempty"`
+}
+
 type HerdrSettings struct {
 	AutoSplit      bool   `json:"auto_split"`
 	SplitDirection string `json:"split_direction"`
 	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
-// DelegationConfig represents the complete configuration saved in cortex-delegation.json.
 type DelegationConfig struct {
 	Version           string                `json:"version"`
 	DelegationEnabled bool                  `json:"delegation_enabled"`
@@ -30,72 +39,101 @@ type DelegationConfig struct {
 	Roles             map[string]RoleConfig `json:"roles"`
 }
 
-// NormalConfig returns a clean configuration without external delegation.
 func NormalConfig() DelegationConfig {
 	return DelegationConfig{
-		Version:           "1.0.0",
-		DelegationEnabled: false,
-		UseHerdr:          false,
-		HerdrSettings: HerdrSettings{
-			AutoSplit:      false,
-			SplitDirection: "right",
-			TimeoutSeconds: 300,
-		},
+		Version:       "2.0.0",
+		HerdrSettings: HerdrSettings{SplitDirection: "right", TimeoutSeconds: 300},
 		Roles: map[string]RoleConfig{
-			"implement":   {Delegate: false, CLI: "native"},
-			"investigate": {Delegate: false, CLI: "native"},
-			"reviewer":    {Delegate: false, CLI: "native"},
-			"planner":     {Delegate: false, CLI: "native"},
+			"implement": {CLI: "native"}, "investigate": {CLI: "native"},
+			"reviewer": {CLI: "native"}, "planner": {CLI: "native"},
 		},
 	}
 }
 
-// DefaultDelegationConfig returns a default delegation configuration with Herdr enabled.
 func DefaultDelegationConfig(useHerdr bool) DelegationConfig {
-	return DelegationConfig{
-		Version:           "1.0.0",
-		DelegationEnabled: true,
-		UseHerdr:          useHerdr,
-		HerdrSettings: HerdrSettings{
-			AutoSplit:      true,
-			SplitDirection: "right",
-			TimeoutSeconds: 300,
-		},
-		Roles: map[string]RoleConfig{
-			"implement":   {Delegate: true, CLI: "agy", Command: "agy", Args: []string{"--dangerously-skip-permissions", "-p"}},
-			"investigate": {Delegate: false, CLI: "native"},
-			"reviewer":    {Delegate: true, CLI: "claude", Command: "claude", Args: []string{"--dangerously-skip-permissions", "-p"}},
-			"planner":     {Delegate: false, CLI: "native"},
-		},
-	}
+	cfg := NormalConfig()
+	cfg.DelegationEnabled = true
+	cfg.UseHerdr = useHerdr
+	cfg.HerdrSettings.AutoSplit = useHerdr
+	cfg.Roles["implement"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "accept-edits"}
+	cfg.Roles["investigate"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
+	cfg.Roles["reviewer"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
+	return cfg
 }
 
-// ConfigFilename is the canonical configuration file name.
-const ConfigFilename = "cortex-delegation.json"
-
-// ResolveConfigPath returns the absolute path to the delegation configuration file.
-func ResolveConfigPath(configRoot string) string {
-	return filepath.Join(configRoot, ConfigFilename)
+func (c DelegationConfig) Validate() error {
+	if c.Version != "2.0.0" {
+		return fmt.Errorf("unsupported delegation config version %q", c.Version)
+	}
+	if c.HerdrSettings.SplitDirection != "right" && c.HerdrSettings.SplitDirection != "down" {
+		return errors.New("herdr split_direction must be right or down")
+	}
+	if c.HerdrSettings.TimeoutSeconds < 1 || c.HerdrSettings.TimeoutSeconds > 3600 {
+		return errors.New("delegation timeout_seconds must be between 1 and 3600")
+	}
+	for role, cfg := range c.Roles {
+		if !supportedRoles[role] {
+			return fmt.Errorf("unsupported delegation role %q", role)
+		}
+		if cfg.CLI != "native" && cfg.CLI != "agy" {
+			return fmt.Errorf("role %q: cli must be native or agy", role)
+		}
+		if cfg.CLI == "agy" && cfg.Mode != "plan" && cfg.Mode != "accept-edits" {
+			return fmt.Errorf("role %q: agy mode must be plan or accept-edits", role)
+		}
+	}
+	return nil
 }
 
-// Save writes the delegation configuration to disk with formatted JSON.
-func Save(configDir string, cfg DelegationConfig) error {
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return err
+func ResolveConfigPath(configRoot string) string { return filepath.Join(configRoot, ConfigFilename) }
+
+func encodedConfig(cfg DelegationConfig) ([]byte, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
 	}
-	filePath := ResolveConfigPath(configDir)
 	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func NeedsSave(configDir string, cfg DelegationConfig) (bool, error) {
+	data, err := encodedConfig(cfg)
+	if err != nil {
+		return false, err
+	}
+	current, err := os.ReadFile(ResolveConfigPath(configDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return !bytes.Equal(current, data), nil
+}
+
+func Save(configDir string, cfg DelegationConfig) error {
+	data, err := encodedConfig(cfg)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filePath, data, 0644)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return err
+	}
+	current, readErr := os.ReadFile(ResolveConfigPath(configDir))
+	if readErr == nil && bytes.Equal(current, data) {
+		return nil
+	}
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return readErr
+	}
+	_, err = filemerge.WriteFileAtomic(ResolveConfigPath(configDir), data, 0o600)
+	return err
 }
 
-// Load reads and parses the delegation configuration from disk.
-// If the file does not exist, it returns a default NormalConfig without error.
 func Load(configDir string) (DelegationConfig, error) {
-	filePath := ResolveConfigPath(configDir)
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(ResolveConfigPath(configDir))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return NormalConfig(), nil
@@ -104,6 +142,22 @@ func Load(configDir string) (DelegationConfig, error) {
 	}
 	var cfg DelegationConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
+		return NormalConfig(), err
+	}
+	if cfg.Version == "1.0.0" {
+		cfg.Version = "2.0.0"
+		for role, roleCfg := range cfg.Roles {
+			if roleCfg.CLI != "agy" {
+				roleCfg.Delegate, roleCfg.CLI, roleCfg.Mode = false, "native", ""
+			} else if role == "implement" {
+				roleCfg.Mode = "accept-edits"
+			} else {
+				roleCfg.Mode = "plan"
+			}
+			cfg.Roles[role] = roleCfg
+		}
+	}
+	if err := cfg.Validate(); err != nil {
 		return NormalConfig(), err
 	}
 	return cfg, nil

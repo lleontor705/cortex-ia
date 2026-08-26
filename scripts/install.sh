@@ -121,6 +121,22 @@ else
   sudo /bin/mv "${TMPDIR}/cortex-ia" "${INSTALL_DIR}/cortex-ia"
 fi
 
+info "Configuring OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true..."
+for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+  if [ -f "$rc" ]; then
+    if ! grep -q "OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS" "$rc"; then
+      echo "" >> "$rc"
+      echo "# cortex-ia: OpenCode background subagents" >> "$rc"
+      echo 'export OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS="true"' >> "$rc"
+    fi
+  fi
+done
+export OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS="true"
+success "Environment variable configured"
+
+info "Running cortex-ia sync to configure OpenCode, Herdr, and agents..."
+"${INSTALL_DIR}/cortex-ia" sync || true
+
 if command -v cortex-ia &> /dev/null; then
   success "cortex-ia installed: $(cortex-ia version 2>/dev/null || echo "$VERSION")"
 else
@@ -131,8 +147,8 @@ fi
 printf "\n${BOLD}${GREEN}Installation complete!${NC}\n\n"
 echo "  Quick start:"
 echo "    cortex-ia              # Interactive TUI"
-echo "    cortex-ia install      # Auto-detect and configure all agents"
-echo "    cortex-ia detect       # Show detected agents"
+echo "    cortex-ia web          # Web Console"
+echo "    cortex-ia herdr        # Diagnose Herdr & AGY delegation"
 echo ""
 echo "  Docs: https://github.com/${REPO}"
 echo ""

@@ -442,7 +442,6 @@ func buildMetadata(req Request, plan *Plan, records []state.MCPV2, backupID, txn
 		Selection: state.SelectionV2{
 			AssetGroups: []string{"native"},
 			Cortex:      req.Cortex,
-			ForgeSpec:   req.ForgeSpec,
 			Context7:    req.Context7,
 		},
 		Artifacts:     artifacts,

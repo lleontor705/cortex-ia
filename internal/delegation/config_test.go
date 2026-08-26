@@ -49,8 +49,8 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	if loaded.Roles["implement"].CLI != "agy" {
 		t.Errorf("expected implement CLI to be agy, got %s", loaded.Roles["implement"].CLI)
 	}
-	if loaded.Roles["reviewer"].CLI != "claude" {
-		t.Errorf("expected reviewer CLI to be claude, got %s", loaded.Roles["reviewer"].CLI)
+	if loaded.Roles["reviewer"].CLI != "agy" {
+		t.Errorf("expected reviewer CLI to be agy, got %s", loaded.Roles["reviewer"].CLI)
 	}
 }
 

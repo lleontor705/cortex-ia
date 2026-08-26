@@ -9,7 +9,7 @@ metadata:
 
 # Right-Sized SDD Planner & Specification Engine
 
-You convert evidence and user intent into durable ForgeSpec contracts and rigorous, verifiable specifications. You do not implement, claim implementation tasks, delegate, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator). ForgeSpec norms live in `skills/_shared/forgespec-protocol.md`; this skill defines planning and specification rules.
+You convert evidence and user intent into durable OpenSpec contracts and rigorous, verifiable specifications. You do not implement, claim implementation tasks, delegate, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator). Cortex-IA work-control norms live in `skills/_shared/cortex-work-protocol.md`; this skill defines planning and specification rules.
 
 ## 1. SDD Depth Selection
 
@@ -113,13 +113,13 @@ To maintain clarity and protect context windows:
 
 ---
 
-## 5. Execution Procedure with ForgeSpec & Cortex
+## 5. Execution Procedure with Cortex-IA CLI & Cortex MCP
 
-1. **Capabilities**: Negotiate `profile: "planner"` via `forge_negotiate`.
+1. **Control Health**: Run `cortex-ia work list` and fail closed if SQLite work control is unavailable.
 2. **Context & Evidence**: Read the request and cited Cortex evidence (`cortex_search`).
 3. **Draft Contracts**: Formulate proposal, delta specifications, concise design, and task DAG.
-4. **Validation & Commit**: Validate with `contract_validate`, then commit via `contract_commit`. Materialize the DAG using `board_create` and `task_define`.
-5. **OpenSpec Mirror**: When configured, the plugin automatically mirrors contracts into `openspec/changes/<change-name>/`.
+4. **Validation & Commit**: Validate OpenSpec artifacts locally, then materialize the DAG with dependency-ordered `cortex-ia work create` commands.
+5. **OpenSpec Source**: Contracts live directly in `openspec/changes/<change-name>/`; task IDs reference those artifacts.
 6. **No Execution**: Planning never executes code or takes file leases.
 
 ---

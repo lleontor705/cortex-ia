@@ -251,6 +251,20 @@ func planMCPEffects(plan *Plan, req Request) error {
 			plan.Effects = append(plan.Effects, Effect{Kind: EffectMCPRemove, Dest: name})
 		}
 	}
+	for _, preset := range mcpmanager.RetiredPresets() {
+		status := statuses[preset.Name]
+		if status == mcpmanager.StatusManaged {
+			plan.Effects = append(plan.Effects, Effect{Kind: EffectMCPRemove, Dest: preset.Name})
+			continue
+		}
+		if _, previouslyManaged := mcpIndex(plan.Metadata.MCPs)[preset.Name]; previouslyManaged && status != "" && status != mcpmanager.StatusAbsent {
+			plan.Conflicts = append(plan.Conflicts, Conflict{
+				Target: preset.Name,
+				Kind:   ConflictMCP,
+				Reason: fmt.Sprintf("retired MCP entry %q drifted from its accredited value; sync will not remove user-modified data", preset.Name),
+			})
+		}
+	}
 	return nil
 }
 

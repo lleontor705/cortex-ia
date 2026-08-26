@@ -1,113 +1,130 @@
-# Architecture
+﻿# Architecture Deep-Dive
 
-cortex-ia is an OpenCode-only installer: it copies the embedded workflow
-asset set into OpenCode's config root, manages MCP entries inside the
-OpenCode config, and does both transactionally. It is not a workflow
-scheduler and not a resident process — after a run, only files exist.
+**Cortex-IA** is the deterministic multi-agent control plane, transactional installer, and local process bridge for **OpenCode** and **Herdr**.
 
+```text
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   CORTEX-IA LAYERED ARCHITECTURE                            │
+│                                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
+│  │ 1. PRESENTATION PLANE                                                                 │  │
+│  │    • Interactive TUI (BubbleTea wizard)        • Embedded Web Console (SSE / REST)   │  │
+│  │    • Multiplexed Herdr Terminal Panes          • Universal CLI Dispatcher            │  │
+│  └───────────────────────────────────────────────────────────────────────────────────────┘  │
+│                                            │                                                │
+│                                            ▼                                                │
+│  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
+│  │ 2. CONTROL & COORDINATION PLANE (internal/delegation)                                 │  │
+│  │    • SQLite STRICT + WAL ACID Store            • Monotonic CAS Revision Locks         │  │
+│  │    • Task DAG (backlog ➔ ready ➔ in_progress)  • Ephemeral Claim Tokens (SHA-256)     │  │
+│  │    • Exclusive Workspace File Leases           • Independent Review Gates (Approve)   │  │
+│  └───────────────────────────────────────────────────────────────────────────────────────┘  │
+│                                            │                                                │
+│                                            ▼                                                │
+│  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
+│  │ 3. SPECIFICATION PLANE (OpenSpec)                                                     │  │
+│  │    • RFC 2119 Delta Requirements               • Change Proposals & Design Docs       │  │
+│  │    • Tasks Specification (DAG Decompositions)  • Schema & Contract Validator          │  │
+│  └───────────────────────────────────────────────────────────────────────────────────────┘  │
+│                                            │                                                │
+│                                            ▼                                                │
+│  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
+│  │ 4. EPISTEMIC & EVIDENCE PLANE (Cortex MCP)                                            │  │
+│  │    • AST Code Symbol Graph & Relationships     • Blast Radius Impact Tree Engine      │  │
+│  │    • Durable Bug & ADR Observations            • Session Lifecycle Demarcation        │  │
+│  └───────────────────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
-cmd/cortex-ia            main(): release version + internal/app
-internal/app             CLI dispatch, flags, receipts, retired-surface guard
-internal/tui             Bubble Tea TUI (Install/Sync, MCPs, Doctor/Recovery, Uninstall)
-internal/install         Service facade: install, sync, doctor, rollback, uninstall, MCP ops
-internal/pipeline        Plan/apply transaction: InstallV2, effects, journal, Rollback
-internal/backup          Snapshots, manifests, verification, dedup, retention pruning
-internal/mcpmanager      Managed MCP catalog, desired-entry validation, qualification, conflicts
-internal/state           Installation metadata, lock, v2 agreement under ~/.cortex-ia/
-internal/installmeta     MCP identity digests and install accreditation
-internal/agents/opencode OpenCode native layout + pure asset mapping
-internal/components/filemerge  JSONC decode/merge, atomic writes, symlink-parent rejection
-internal/assets          go:embed runtime assets (config, AGENTS.md, agents, commands, skills, plugin)
+
+---
+
+## 1. Package Structure & Responsibilities
+
+```text
+cmd/cortex-ia/               Entry point main(): release versioning + app bootstrap
+internal/
+├── app/                     CLI command routers (board, work, delegate, openspec, mcp, web)
+├── delegation/              ACID SQLite engine: DAG, claims, leases, reviews, worker runner
+├── cortexiaweb/             Embedded HTTP web server with SSE live event stream
+├── herdr/                   Herdr workspace discovery, pane splitting & multiplexing
+├── agents/opencode/         OpenCode configuration layout & safe asset path mapping
+├── components/filemerge/    Safe JSONC three-way merger with comment preservation
+├── mcpmanager/              Managed MCP server catalog (cortex, context7)
+├── pipeline/                Transactional engine: Plan, Backup, Apply, Rollback
+├── backup/                  Snapshot capture, manifest verification & restore
+├── state/                   Home metadata, installation accreditation & cross-process locks
+├── tui/                     Terminal User Interface (BubbleTea)
+└── assets/                  Embedded runtime assets (AGENTS.md, agents, commands, skills, plugins)
+web/                         Preact SPA source (compiled into internal/cortexiaweb/static)
 ```
 
-## Layering Rules
+---
 
-- `internal/app` owns no install, merge, or ownership logic. It parses
-  intent, delegates to `internal/install.Service`, and renders receipts.
-- All ownership decisions live in the service and its collaborators
-  (`pipeline`, `backup`, `mcpmanager`, `state`, `installmeta`).
-- The dispatcher fails closed on retired surfaces (multi-agent, persona,
-  profile, model, skill-registry, SDD compiler) via a preflight scan that
-  stops at the `--` verbatim separator.
+## 2. Concurrency & Optimistic Locking Engine (`internal/delegation`)
 
-## Asset Mapping
+Cortex-IA uses zero-CGO SQLite (`modernc.org/sqlite`) configured in `WAL` journal mode with `busy_timeout=5000` and a single-connection mutex (`SetMaxOpenConns(1)`):
 
-`internal/agents/opencode/layout.go` is the single declaration of
-OpenCode's native discovery surface:
+### A. Monotonic CAS Revisions
+Every work item tracks an integer `revision`. State transitions (`claim`, `transition`, `approve`, `retry`) use atomic `BEGIN IMMEDIATE` transactions with Compare-And-Swap (CAS) checks:
+```sql
+UPDATE work_items 
+SET status = ?, revision = revision + 1, updated_at = ? 
+WHERE id = ? AND revision = ?;
+```
+If a concurrent process modified the task in the interim, the operation fails with a typed `ErrStaleRevision` conflict rather than creating a silent race condition.
 
-| Kind | Destination under `~/.config/opencode/` |
-|------|------------------------------------------|
-| config | `opencode.json` / `opencode.jsonc` (three-way merge) |
-| agents-doc | `AGENTS.md` |
-| agent | `agents/<name>.md` |
-| command | `commands/<name>.md` |
-| skill | `skills/<name>/SKILL.md` |
-| plugin | `plugin/...` |
+### B. Cryptographic Token Hashes
+- **Claims**: When an agent claims a task (`work claim`), a 256-bit secure random token is generated and returned to the caller. Only the SHA-256 digest (`tokenHash`) is stored in SQLite.
+- **File Leases**: When reserving exclusive files (`work lease`), a distinct `lease_token` is generated.
+- **Verification**: To renew or transition a task, the agent must present the raw in-memory token. Tokens are never persisted to disk, git, or Cortex MCP.
 
-`assetmap.go` maps embedded sources to destinations with
-`dest = path.Join(config root, source)` and validates each one against the
-same layout declaration, so selection and mapping can never disagree. The
-mapping fails closed on:
+### C. Automated Dependency Unlocking
+When a reviewer records a `PASS` approval via `work approve`:
+1. The task status atomically shifts from `in_review` to `done`.
+2. All active file leases are purged.
+3. The engine invokes `unlockDependents`, finding all downstream tasks in `backlog` whose dependencies are now 100% satisfied and transitioning them to `ready`.
 
-- unsafe paths (absolute paths, traversal outside the root),
-- kinds without a native destination (`internal/assets/_shared` contracts
-  are compile-time only and never installed),
-- destinations off the native surface (non-`SKILL.md` skill fragments,
-  nested agents/commands),
-- destination collisions, including case-insensitive collisions on Windows
-  and macOS.
+---
 
-## Transactional Pipeline
+## 3. Real-Time Worker Streaming (`internal/delegation/runner.go`)
 
-`InstallV2` runs in three phases:
+When an external leaf worker (e.g. `agy`) is launched in a Herdr pane or background process:
 
-1. **Plan** — build the complete effect set (create/update/managed-update
-   per artifact) plus conflict detection. Dry-run and apply share this
-   plan; a dry run writes nothing at all.
-2. **Backup** — snapshot every path the apply phase may touch and verify that
-   manifest before any write begins. A failed verification aborts before any
-   mutation.
-3. **Apply** — write files atomically (temp file + rename), merge the
-   config via `filemerge` (comments and user keys survive), journal the
-   transaction, and commit v2 metadata + lock last. Any apply failure
-   restores the pre-run state from that verified backup and reports the restore
-   result in the receipt.
+```mermaid
+sequenceDiagram
+    participant OpenCode as OpenCode Implement Minion
+    participant Bridge as herdr-bridge.ts
+    participant CLI as cortex-ia delegate worker
+    participant Engine as agy CLI
+    participant Pane as Herdr Terminal Pane
 
-`internal/backup` also contains snapshot helpers for checksum-based dedup and
-retention pruning. These helpers are present but **not wired into the production
-Install/Sync/Rollback flow**, so no automatic dedup/prune behavior is promised
-today.
+    OpenCode->>Bridge: cortex_delegate_start(role, task_id, allowed_files)
+    Bridge->>CLI: Spawns in dedicated Herdr pane
+    CLI->>Pane: Renders Header Banner (Role, Dir, Objective)
+    CLI->>Engine: agy --output-format stream-json --print <prompt>
+    
+    loop Real-time NDJSON Stream
+        Engine->>CLI: {"event":"step_update","step_type":"tool",...}
+        CLI->>Pane: ⚡ [investigate] Executing tool (params)
+        Engine->>CLI: {"event":"step_update","step_type":"agent_response",...}
+        CLI->>Pane: Streams response text live
+    end
 
-`sync` uses the same path and additionally plans removals for stale owned
-artifacts from older versions.
+    Engine->>CLI: {"event":"result","result":{...}}
+    CLI->>CLI: Stores structured receipt in SQLite
+    CLI->>Pane: ✅ Completed in Xs (exit code 0, Token summary)
+    OpenCode->>Bridge: Polls cortex_delegation_result()
+    Bridge->>OpenCode: Returns structured typed receipt
+```
 
-## MCP Manager
+---
 
-`internal/mcpmanager` owns the catalog (`cortex`, `forgespec`,
-`context7`), the typed `Desired` contract (preset / local argv vector /
-remote http URL, with `--env` and `--header` assignments bound to exactly
-one kind each), qualification of present entries against recorded identity
-digests, and typed conflict errors that never contain secrets. The CLI's
-sanitized `mcp list --json` projection is allow-listed to identity
-evidence: names, statuses, digests, entry types, and env/header variable
-names.
+## 4. Transactional File Installation Pipeline (`internal/pipeline`)
 
-## Embedded Assets
+Every configuration modification follows an ACID pipeline:
 
-`internal/assets/` is the runtime source of truth: `opencode.jsonc`,
-`AGENTS.md`, 5 sub-agent definitions, 9 commands, 12 skills, and the
-5 plugin runtimes (33 assets total). Assets are embedded with `go:embed`; changing
-them requires rebuilding the binary. Nothing is generated at install time —
-the installed bytes are the repository bytes.
-
-## Testing
-
-Persistent tests are deliberately scoped (anti-overengineering rule):
-
-1. TUI behavior in `internal/tui/`.
-2. Simple existence/copy validation toward OpenCode in
-   `internal/pipeline/install_test.go` (temp homes only).
-
-Deeper transactional oracles run as ephemeral smokes and are deleted after
-execution. Full gates, in hook order: `gofmt -s -w .`, `go vet ./...`,
-`golangci-lint run ./...`, `go test -count=1 ./...`.
+1. **Plan**: Analyzes target home, detects unmanaged conflicts, and generates an immutable execution plan.
+2. **Lock**: Acquires a cross-process lock (`LockFileEx` on Windows, `flock` on Unix) on `~/.cortex-ia/lock`.
+3. **Backup**: Captures a snapshot manifest of every file to be touched into `~/.cortex-ia/backups/<timestamp>/`.
+4. **Apply**: Atomically applies writes using temporary files and filesystem renames. JSONC configuration files are three-way merged, preserving user comments.
+5. **Rollback on Error**: If any step in Apply fails, the engine immediately reverts all touched files from the verified backup snapshot before returning an error.

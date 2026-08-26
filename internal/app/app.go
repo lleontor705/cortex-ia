@@ -22,10 +22,9 @@ func Run() error {
 	return runCLI(args)
 }
 
-// runCLI dispatches the minimal OpenCode-only command surface: install, sync,
-// mcp add/list/remove, doctor, rollback, uninstall, version, and help. Every
-// mutating command delegates to internal/install.Service; the dispatcher owns
-// no install, merge, or ownership logic of its own.
+// runCLI dispatches the OpenCode installer and local delegation bridge. Install
+// mutations stay in internal/install.Service; delegation lifecycle mutations
+// stay in internal/delegation. The dispatcher owns neither policy.
 func runCLI(args []string) error {
 	if err := preflightCLI(args); err != nil {
 		return err
@@ -43,6 +42,21 @@ func runCLI(args []string) error {
 
 	case "herdr":
 		return runHerdr(rest)
+
+	case "delegate":
+		return runDelegate(rest)
+
+	case "work":
+		return runWork(rest)
+
+	case "board":
+		return runBoard(rest)
+
+	case "openspec":
+		return runOpenSpec(rest)
+
+	case "web":
+		return runWeb(rest)
 
 	case "mcp":
 		return runMCP(rest)
@@ -116,7 +130,7 @@ type RetiredSurfaceError struct {
 
 func (e RetiredSurfaceError) Error() string {
 	return fmt.Sprintf(
-		"%q was removed from the OpenCode-only CLI; available commands: install, sync, mcp add|list|remove, doctor, rollback, recover, uninstall, version, help",
+		"%q was removed from the OpenCode CLI; available commands: install, sync, mcp add|list|remove, herdr, delegate, work, board, doctor, rollback, recover, uninstall, version, help",
 		e.Surface,
 	)
 }
@@ -165,6 +179,22 @@ Usage:
                                       Deregister a managed MCP entry
   cortex-ia herdr [install|setup|status]
                                       Manage Herdr workspace multiplexer setup
+  cortex-ia delegate create --request-file <path> --transport <herdr|direct>
+                                      Accept a validated external leaf job
+  cortex-ia delegate status|result|cancel <job-id>
+                                      Inspect or cancel a delegated leaf job
+  cortex-ia delegate recover         Mark workers with expired leases as lost
+  cortex-ia work create|list|status  Manage the local task DAG in Cortex SQLite
+  cortex-ia work claim|renew         Acquire or renew bounded task authority
+  cortex-ia work lease|lease-renew|release
+                                      Reserve workspace-relative file scopes
+  cortex-ia work transition|approve|retry|recover
+                                      Advance, review, or reconcile task state
+  cortex-ia board create|list|status  Group task DAGs into local task boards
+  cortex-ia board serve [--addr 127.0.0.1:7331]
+                                      Serve the embedded Cortex-IA operations console
+  cortex-ia web [--addr 127.0.0.1:7331] [--open]
+                                      Launch local Cortex-IA web dashboard in browser
   cortex-ia doctor                   Assess installation health (read-only)
   cortex-ia rollback [backup-id]     Restore the recorded (or given) backup
   cortex-ia recover [list]           List pending recovery journals
@@ -204,8 +234,8 @@ overwrite via --overwrite — require an interactive terminal and an explicit
 confirmation. Piped or closed input always fails closed without writing
 anything.
 
-The CLI configures OpenCode only. Former multi-agent, persona, profile, and
-model flags and commands were removed.
+The CLI configures OpenCode, owns local task/lease control, and can supervise an optional AGY execution leaf.
+Former platform adapters, persona, profile, and model-routing flags remain removed.
 `, Version, presetNames())
 }
 
@@ -226,4 +256,3 @@ func runHerdr(args []string) error {
 		return fmt.Errorf("unknown herdr subcommand: %s (valid: install, setup, status)", args[0])
 	}
 }
-

@@ -15,25 +15,25 @@ All workflow assets are embedded directly inside the `cortex-ia` binary via `go:
 | **Sub-Agents (5)** | `agents/*.md` | `agents/<name>.md` | `orchestrator`, `planner`, `implement`, `investigate`, `reviewer`. |
 | **Slash Commands (9)**| `commands/*.md` | `commands/<name>.md` | `/hotfix`, `/sdd`, `/work`, `/review`, `/tdd`, `/spike`, `/status`, `/resume`, `/investigate`. |
 | **Native Skills (12)**| `skills/<name>/SKILL.md`| `skills/<name>/SKILL.md` | SDD phase skills & utility skills (`fast-tdd`, `ast-impact-analysis`, `property-based-testing`, etc.). |
-| **Plugins (5)** | `plugin/*.ts` | `plugin/*.ts` | `background-supervisor`, `cortex`, `model-variants`, `openspec-mirror`. |
+| **Plugins** | `plugin/*.ts` | `plugin/*.ts` | Cortex integration, model variants, and optional delegation bridge. |
 
 ---
 
 ## 2. Managed MCP Server Presets
 
-`cortex-ia` manages three official catalog presets:
+`cortex-ia` manages two official catalog presets. Task coordination is built into the Go CLI and SQLite store.
 
 ### 1. Cortex (`cortex`) — *Default: ON*
 - **Execution Vector**: `["cortex", "mcp", "--tools=agent"]`
 - **Capabilities**: Cross-session persistent memory, knowledge graph, hybrid search (FTS5 + semantic), temporal evolution history.
 
-### 2. ForgeSpec (`forgespec`) — *Default: ON*
-- **Execution Vector**: `["npx", "-y", "forgespec-mcp"]`
-- **Capabilities**: SDD specification validation, task board synchronization, file locks and concurrent claim coordination.
-
-### 3. Context7 (`context7`) — *Default: OFF (Optional)*
+### 2. Context7 (`context7`) — *Default: OFF (Optional)*
 - **Execution Vector**: `["npx", "-y", "@upstash/context7-mcp"]`
 - **Capabilities**: Live framework and library documentation lookup via MCP.
+
+### Built-in Work Control
+
+`cortex-ia work` provides the task DAG, optimistic revisions, TTL claims, exclusive file leases, recovery, approvals, and append-only events in `~/.cortex-ia/delegation.db`. It requires no MCP server.
 
 ---
 

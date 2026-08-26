@@ -26,7 +26,7 @@ type ServiceAPI interface {
 
 ### Options and Receipts
 
-- **`install.Options`**: Request configuration (`HomeDir`, `Version`, `DryRun`, `Overwrite`, `Cortex`, `ForgeSpec`, `Context7`, `ExpectedPlanDigest`, `LockTimeout`).
+- **`install.Options`**: Request configuration (`HomeDir`, `Version`, `DryRun`, `Overwrite`, `Cortex`, `Context7`, `ExpectedPlanDigest`, `LockTimeout`).
 - **`install.InstallReceipt`**: Execution result (`Status`, `PlanDigest`, `BackupID`, `BackupVerified`, `ChangedCount`, `ConfiguredMCPs`, `Effects`, `Conflicts`).
 - **`install.DoctorReport`**: System health (`Verdict`: Healthy/Degraded/Blocked, `ArtifactCounts`, `ManagedMCPs`, `Findings`).
 
@@ -45,7 +45,6 @@ type Request struct {
     DryRun             bool
     Overwrite          bool
     Cortex             bool
-    ForgeSpec          bool
     Context7           bool
     ExpectedPlanDigest string
     Now                time.Time

@@ -27,6 +27,7 @@ func (m model) updateWizardHerdr(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.wizardCursor = 1
 	case " ", "enter":
 		m.delegationCfg.UseHerdr = (m.wizardCursor == 0)
+		m.delegationCfg.HerdrSettings.AutoSplit = m.delegationCfg.UseHerdr
 		m.screen = screenWizardDelegation
 		if m.delegationCfg.DelegationEnabled {
 			m.wizardCursor = 0
@@ -45,8 +46,8 @@ func (m model) viewWizardHerdr() string {
 		"",
 		styleSubtitle.Render("¿Deseas utilizar Herdr como multiplexor de paneles y workspaces?"),
 		"",
-		styleDim.Render("Herdr permite dividir paneles automáticamente y supervisar la ejecución"),
-		styleDim.Render("de subagentes y CLIs en tiempo real con monitores de estado."),
+		styleDim.Render("Herdr divide paneles automáticamente y supervisa subagentes en vivo."),
+		styleDim.Render("Cortex-IA instalará el plugin 'cortex-sync' y configurará los hooks."),
 		"",
 	}
 
@@ -56,11 +57,11 @@ func (m model) viewWizardHerdr() string {
 	}{
 		{
 			title: "Sí, habilitar Herdr Workspace Multiplexer",
-			desc:  "Divide paneles en vivo (split right) y supervisa estados de agentes",
+			desc:  "División de paneles en vivo (split right), plugin cortex-sync y monitor de estado",
 		},
 		{
 			title: "No, trabajar en terminal estándar",
-			desc:  "Ejecuta directamente sin multiplexación visual de paneles",
+			desc:  "Ejecución directa en OpenCode con subagentes en background y guarda de leases",
 		},
 	}
 
@@ -121,8 +122,7 @@ func (m model) updateWizardDelegation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			r := m.delegationCfg.Roles[role]
 			r.Delegate = false
 			r.CLI = "native"
-			r.Command = ""
-			r.Args = nil
+			r.Mode = ""
 			m.delegationCfg.Roles[role] = r
 		}
 		m.screen = screenReview
@@ -141,8 +141,8 @@ func (m model) viewWizardDelegation() string {
 		"",
 		styleSubtitle.Render("¿Deseas delegar fases del flujo de trabajo a CLIs externas?"),
 		"",
-		styleDim.Render("Permite enviar roles (como implement o reviewer) a Antigravity CLI (agy)"),
-		styleDim.Render("o Claude Code (claude) de forma transparente o mediante Herdr."),
+		styleDim.Render("Permite enviar hojas implement, investigate o reviewer a Antigravity CLI"),
+		styleDim.Render("bajo supervisión de Cortex-IA, directamente o mediante Herdr."),
 		"",
 	}
 
@@ -152,11 +152,11 @@ func (m model) viewWizardDelegation() string {
 	}{
 		{
 			title: "Sí, configurar delegación a CLIs externas",
-			desc:  "Personaliza qué fases se envían a Antigravity (agy) o Claude Code",
+			desc:  "Personaliza qué fases se delegan a Antigravity CLI (agy) bajo supervisión",
 		},
 		{
 			title: "No, instalación estándar (100% nativo OpenCode)",
-			desc:  "Todos los roles se ejecutan exclusivamente con subagentes nativos",
+			desc:  "Subagentes en background automáticos con protección de leases y memoria Cortex",
 		},
 	}
 
@@ -207,22 +207,19 @@ func (m model) updateWizardRoles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.delegationCfg.Roles = make(map[string]delegation.RoleConfig)
 			}
 			r := m.delegationCfg.Roles[role]
-			// Cycle: Native -> agy -> claude -> Native
+			// Cycle: Native -> AGY (safe role mode) -> Native.
 			if !r.Delegate {
 				r.Delegate = true
 				r.CLI = "agy"
-				r.Command = "agy"
-				r.Args = []string{"--dangerously-skip-permissions", "-p"}
-			} else if r.CLI == "agy" {
-				r.Delegate = true
-				r.CLI = "claude"
-				r.Command = "claude"
-				r.Args = []string{"--dangerously-skip-permissions", "-p"}
+				if role == "implement" {
+					r.Mode = "accept-edits"
+				} else {
+					r.Mode = "plan"
+				}
 			} else {
 				r.Delegate = false
 				r.CLI = "native"
-				r.Command = ""
-				r.Args = nil
+				r.Mode = ""
 			}
 			m.delegationCfg.Roles[role] = r
 			m.opts.DelegationConfig = &m.delegationCfg
@@ -245,7 +242,7 @@ func (m model) viewWizardRoles() string {
 		"",
 		styleSubtitle.Render("Asignación de Motores por Fase / Subagente:"),
 		"",
-		styleDim.Render("Presiona Espacio o Tab para ciclar entre [Nativo], [agy] y [claude]:"),
+		styleDim.Render("Presiona Espacio o Tab para alternar entre [Nativo] y [agy supervisado]:"),
 		"",
 	}
 
@@ -256,8 +253,6 @@ func (m model) viewWizardRoles() string {
 		if r.Delegate {
 			if r.CLI == "agy" {
 				status = stylePass.Render("[ Antigravity CLI (agy) ]")
-			} else if r.CLI == "claude" {
-				status = styleSubtitle.Render("[ Claude Code (claude) ]")
 			}
 		}
 		line := fmt.Sprintf("  • %-12s ➔ %s", role, status)

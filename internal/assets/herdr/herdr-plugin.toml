@@ -1,0 +1,9 @@
+[plugin]
+name = "cortex-sync"
+version = "1.0.0"
+description = "Syncs Herdr terminal pane lifecycle and agent states with cortex-ia SQLite Control Plane"
+author = "usrLuisLeon & Antigravity"
+
+[hooks]
+on_agent_state_change = "cortex-ia delegate sync-herdr"
+on_pane_close = "cortex-ia delegate recover"

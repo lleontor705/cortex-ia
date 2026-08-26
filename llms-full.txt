@@ -1,136 +1,77 @@
-# cortex-ia — Full Context
+﻿# cortex-ia — Full System Context
 
-cortex-ia is an OpenCode-only installer: a single Go binary that copies the
-embedded workflow asset set into OpenCode's config root, manages MCP entries
-inside the OpenCode config, and does both transactionally. It is not a
-workflow scheduler and not a resident process — after a run, only files
-exist. It configures OpenCode only and never writes anywhere else.
+cortex-ia is the deterministic multi-agent control plane, transactional OpenCode installer, and Herdr process multiplexer.
 
-## Architecture
+## Architecture Packages
 
-```
-cmd/cortex-ia            main(): release version + internal/app
-internal/app             CLI dispatch, flags, receipts, retired-surface guard
-internal/tui             Bubble Tea TUI (Install/Sync, MCPs, Doctor/Recovery, Uninstall)
-internal/install         Service facade: install, sync, doctor, rollback, uninstall, MCP ops
-internal/pipeline        Plan/apply transaction: InstallV2, effects, journal, Rollback
-internal/backup          Snapshots, manifests, verification, dedup, retention pruning
-internal/mcpmanager      Managed MCP catalog, desired-entry validation, qualification, conflicts
-internal/state           Installation metadata, lock, v2 agreement under ~/.cortex-ia/
-internal/installmeta     MCP identity digests and install accreditation
-internal/agents/opencode OpenCode native layout + pure asset mapping
-internal/components/filemerge  JSONC decode/merge, atomic writes
-internal/assets          go:embed runtime assets (config, AGENTS.md, agents, commands, skills, plugin)
+```text
+cmd/cortex-ia/               main(): release version + internal/app
+internal/app/                CLI command dispatch (board, work, delegate, openspec, mcp, web)
+internal/delegation/         ACID SQLite engine: DAG, CAS revisions, claims, file leases, reviews
+internal/cortexiaweb/        Embedded Preact web console with SSE real-time event streaming
+internal/herdr/              Herdr workspace discovery, pane splitting & process multiplexing
+internal/tui/                Bubble Tea interactive wizard
+internal/install/            Service facade: install, sync, doctor, rollback, uninstall
+internal/pipeline/           Transactional plan, backup, apply, rollback engine
+internal/backup/             Snapshot manifests and restoration
+internal/mcpmanager/         Managed MCP catalog (cortex, context7)
+internal/state/              Installation metadata, accreditation digests & cross-process locks
+internal/components/filemerge JSONC three-way merger with comment preservation
+internal/assets/             go:embed runtime assets (AGENTS.md, agents, commands, skills, plugins)
 ```
 
-`internal/app` owns no install, merge, or ownership logic: it parses intent,
-delegates to `internal/install.Service`, and renders receipts. All ownership
-decisions live in the service and its collaborators. The dispatcher fails
-closed on retired surfaces via a preflight scan that stops at the `--`
-verbatim separator.
+## Planes & Boundaries
 
-## Asset mapping
+1. **Epistemic & Evidence Plane (Cortex MCP)**:
+   - Evaluates code symbols, call hierarchies, and AST blast radius (`cortex_code_scan`, `cortex_get_blast_radius`).
+   - Stores durable gotchas, bug root causes, ADRs, and session milestones (`cortex_save`, `cortex_search`).
+   - Advisory only: never bypasses review gates or grants write authority.
 
-`internal/agents/opencode/layout.go` is the single declaration of OpenCode's
-native discovery surface (config, agents-doc, agent, command, skill, plugin).
-`assetmap.go` maps embedded sources with `dest = path.Join(config root,
-source)` validated against that one declaration. The mapping fails closed on
-unsafe paths, kinds without a native destination (`_shared` contracts are
-compile-time only), destinations off the native surface, and collisions —
-including case-insensitive collisions on Windows and macOS.
+2. **Control & Coordination Plane (Cortex-IA CLI)**:
+   - Authoritative SQLite ACID state machine (`~/.cortex-ia/delegation.db`).
+   - Task DAG: `backlog ➔ ready ➔ in_progress ➔ in_review ➔ done`.
+   - CAS monotonic revision locking: prevents concurrent race conditions between subagents.
+   - Exclusive file leases: mandatory workspace-relative path locks before writing.
+   - Independent peer review: implementers cannot approve their own work.
 
-## Transactional pipeline
+3. **Specification Plane (OpenSpec)**:
+   - Markdown delta specifications with RFC 2119 keywords (`openspec/changes/`).
+   - Validated natively via `openspec validate` / `cortex-ia openspec validate`.
 
-`InstallV2` runs in three phases:
+4. **Delegation & Multiplexing Plane (Herdr / AGY)**:
+   - Dedicated terminal panes running external workers.
+   - Sub-second NDJSON stream telemetry: tool calls, live activity spinners, and streamed textual reasoning.
 
-1. Plan — build the complete effect set plus conflict detection; dry-run and
-   apply share this plan and a dry run writes nothing at all.
-2. Backup — snapshot everything the apply phase may touch and verify it before
-   any write. A failed verification aborts before any write.
-3. Apply — write files atomically (temp file + rename), merge the config via
-   `filemerge` (comments and user keys survive), journal the transaction,
-   commit metadata + lock last. Any apply failure restores the pre-run state
-   from that verified backup.
+## Complete CLI Reference
 
-`internal/backup` also exports checksum-based dedup and retention-prune helpers,
-but these helpers are not wired into the production Install/Sync/Rollback flow,
-so the product currently does not promise automatic dedup/prune.
-
-`sync` uses the same path and additionally plans removals for stale owned
-artifacts from older versions.
-
-## Managed MCP services
-
-`install` registers the default managed selection: `cortex`
-(`cortex mcp --tools=agent`) and `forgespec` (`npx -y forgespec-mcp`), both
-native local servers. `context7` (`npx -y @upstash/context7-mcp`) is a
-local catalog preset not selected by default; no preset ships a URL.
-Custom servers are first-class via the typed `Desired` contract: a catalog
-preset, a local exact command vector, or a remote URL, with `--env` and
-`--header KEY=VALUE` assignments bound to exactly one kind each. Present
-entries are qualified against recorded identity digests plus the secret-free
-`mcpv2` full-postimage fingerprint (salt-keyed HMAC covering type, argv,
-URL, env/header names and keyed value hashes, enabled, config path) and
-reported as `managed`, `unmanaged-equivalent`, `conflict`, or `absent`;
-conflict errors never contain secrets, legacy mcpv1-only records fail
-closed for destructive accreditation (manual re-add remedy), and
-`mcp list --json` is allow-listed to identity evidence only.
-
-## CLI and TUI
-
-```
-cortex-ia                          Interactive TUI
-cortex-ia install [--dry-run] [--overwrite]
-cortex-ia sync [--dry-run] [--overwrite]
-cortex-ia mcp add <name> (--preset | --local ... -- <cmd> | --remote <url>) [--dry-run]
-cortex-ia mcp list [--json]
-cortex-ia mcp remove <name> [--dry-run]
-cortex-ia doctor
-cortex-ia rollback [backup-id]
-cortex-ia recover [list]        # read-only journal listing
-cortex-ia recover <journal-id>  # typing the exact ID confirms recovery
-cortex-ia uninstall [--dry-run]
-cortex-ia version | help
-```
-
-## Safety rules
-
-- Plan before write; `--dry-run` creates nothing, not even directories.
-- Digest-bound confirmation: the real run re-plans with identical options
-  and aborts with a typed stale-plan error on any drift before writing.
-- One writer per home: every mutation holds a cross-process lock keyed by
-  the canonical home (LockFileEx/flock) after confirmation; contention
-  returns a typed busy result. Read-only commands never steal the lock.
-- Fail-closed conflicts: unmanaged files at a managed destination abort the
-  run; `--overwrite` must be given explicitly and confirmed on an
-  interactive TTY after a verified backup.
-- `rollback`, `recover`, `uninstall`, `mcp remove`, and `--overwrite`
-  require an interactive terminal and an explicit confirmation; piped or
-  closed input always fails closed.
-- Rollback/recover restoration validates manifest containment, restores in
-  reverse order under a journal, and reports success only after complete
-  verified restoration; corrupt/foreign/drifted journals fail closed.
-- `uninstall` removes only files whose digest matches the installation
-  metadata; anything unverifiable or co-owned is retained and reported.
-
-## Testing and gates
-
-Persistent tests are deliberately scoped to the TUI (`internal/tui/`) and
-simple existence/copy validation in `internal/pipeline/install_test.go`,
-both against temporary homes. Deeper transactional oracles run as ephemeral
-smokes and are deleted after execution. Full local gates, in hook order:
-`gofmt -s -w .`, `go vet ./...`, `golangci-lint run ./...`,
-`go test -count=1 ./...`.
-
-Former multi-agent, persona, profile, model, skill-registry, and
-SDD-compiler surfaces were removed and fail with an explicit
-retired-surface error.
-
-## Documentation
-
-README.md — overview and command surface; docs/quickstart.md — three-command
-setup; docs/installation.md — install methods; docs/mcp.md — MCP presets,
-custom servers, ownership; docs/security.md — backups, rollback, uninstall
-ownership; docs/sdd-workflow.md — the 9-phase workflow the installed skills
-implement; docs/architecture.md — codebase structure and asset mapping;
-docs/platforms.md — OS support matrix.
+- `cortex-ia`: Launch interactive TUI
+- `cortex-ia board create <id> "<title>" "[desc]"`
+- `cortex-ia board list`
+- `cortex-ia board status <id>` (aliases: `show`, `get`)
+- `cortex-ia board serve [--addr 127.0.0.1:7331]`
+- `cortex-ia work create <id> "<title>" --board <id> [--depends <id>]...`
+- `cortex-ia work list [--board <id>]`
+- `cortex-ia work status <id>` (aliases: `show`, `get`)
+- `cortex-ia work claim <id> --owner <owner> [--ttl 15m]`
+- `cortex-ia work renew <id> --claim-token <tok> [--ttl 15m]`
+- `cortex-ia work lease <id> --claim-token <tok> --path <file> [--ttl 15m]`
+- `cortex-ia work lease-renew --path <file> --lease-token <tok>`
+- `cortex-ia work release --path <file> --lease-token <tok>`
+- `cortex-ia work transition <id> --claim-token <tok> --to <in_review|in_progress|blocked>`
+- `cortex-ia work approve <id> --reviewer <id> --verdict <PASS|FAIL> [--evidence <ref>]`
+- `cortex-ia work retry <id>`
+- `cortex-ia work recover`
+- `cortex-ia delegate create --request-file <req.json> [--transport direct|herdr]`
+- `cortex-ia delegate worker --job <id> --request-file <req.json>`
+- `cortex-ia delegate status <id>`
+- `cortex-ia delegate result <id>`
+- `cortex-ia delegate recover`
+- `cortex-ia openspec validate [dir]`
+- `cortex-ia openspec list`
+- `cortex-ia openspec status [dir]`
+- `cortex-ia web [--open] [--addr 127.0.0.1:7331]`
+- `cortex-ia install [--dry-run] [--overwrite]`
+- `cortex-ia sync [--dry-run]`
+- `cortex-ia doctor`
+- `cortex-ia mcp add|list|remove`
+- `cortex-ia rollback <snapshot-id>`

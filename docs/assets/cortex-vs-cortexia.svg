@@ -1,0 +1,133 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080B11"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+
+    <linearGradient id="cortexGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+
+    <linearGradient id="cortexiaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A855F7"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+
+    <filter id="shadow2" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <style>
+    .header { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 26px; font-weight: 800; fill: #F8FAFC; text-anchor: middle; }
+    .sub { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; fill: #94A3B8; text-anchor: middle; }
+    .card-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 700; }
+    .card-sub { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+    .item-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 700; fill: #E2E8F0; }
+    .item-desc { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11.5px; fill: #94A3B8; }
+    .rule-box { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  </style>
+
+  <!-- Background -->
+  <rect width="1000" height="520" rx="14" fill="url(#bg2)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Title Header -->
+  <text x="500" y="45" class="header">CORTEX vs CORTEX-IA · System Plane Separation</text>
+  <text x="500" y="68" class="sub">Clear distinction between the Epistemic/Evidence Plane and the Operational Control Plane</text>
+
+  <!-- Left Column: CORTEX MCP -->
+  <g transform="translate(45, 95)" filter="url(#shadow2)">
+    <rect width="435" height="385" rx="12" fill="#0F172A" stroke="#0284C7" stroke-width="1.5"/>
+    
+    <!-- Top Banner -->
+    <rect width="435" height="60" rx="12" fill="#0369A1" fill-opacity="0.2"/>
+    <path d="M 0 45 L 0 60 L 435 60 L 435 45 Z" fill="#0369A1" fill-opacity="0.2"/>
+    
+    <circle cx="35" cy="30" r="16" fill="url(#cortexGrad)"/>
+    <text x="35" y="36" font-family="system-ui" font-size="18" fill="#FFF" text-anchor="middle">🧠</text>
+    <text x="65" y="27" class="card-title" fill="#38BDF8">CORTEX</text>
+    <text x="65" y="45" class="card-sub" fill="#7DD3FC">Epistemic &amp; Evidence Plane (MCP)</text>
+
+    <!-- Item 1 -->
+    <g transform="translate(25, 80)">
+      <circle cx="6" cy="6" r="4" fill="#38BDF8"/>
+      <text x="18" y="9" class="item-title">Knowledge Graph &amp; AST Analysis</text>
+      <text x="18" y="25" class="item-desc">Indexes symbol graphs, call hierarchies, and blast radius impact.</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#0284C7">cortex_code_scan · cortex_get_blast_radius</text>
+    </g>
+
+    <!-- Item 2 -->
+    <g transform="translate(25, 140)">
+      <circle cx="6" cy="6" r="4" fill="#38BDF8"/>
+      <text x="18" y="9" class="item-title">Cross-Session Durable Memory</text>
+      <text x="18" y="25" class="item-desc">Stores bug root causes, architecture ADRs, gotchas &amp; discoveries.</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#0284C7">cortex_save · cortex_search · cortex_get_observation</text>
+    </g>
+
+    <!-- Item 3 -->
+    <g transform="translate(25, 200)">
+      <circle cx="6" cy="6" r="4" fill="#38BDF8"/>
+      <text x="18" y="9" class="item-title">Initiative Session Demarcation</text>
+      <text x="18" y="25" class="item-desc">Exclusively owned by the Orchestrator for full project context.</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#0284C7">cortex_session_start · cortex_session_end</text>
+    </g>
+
+    <!-- Invariant Warning Box -->
+    <g transform="translate(20, 275)">
+      <rect width="395" height="90" rx="8" fill="#082F49" stroke="#0284C7" stroke-width="1"/>
+      <text x="16" y="24" font-family="system-ui" font-size="12" font-weight="700" fill="#38BDF8">🔒 CRITICAL INVARIANT</text>
+      <text x="16" y="44" class="rule-box" fill="#BAE6FD">Cortex is purely informative &amp; advisory.</text>
+      <text x="16" y="60" class="rule-box" fill="#94A3B8">Memories or scores NEVER grant authority</text>
+      <text x="16" y="76" class="rule-box" fill="#94A3B8">to edit code or transition task state.</text>
+    </g>
+  </g>
+
+  <!-- Right Column: CORTEX-IA CLI -->
+  <g transform="translate(520, 95)" filter="url(#shadow2)">
+    <rect width="435" height="385" rx="12" fill="#0F172A" stroke="#7C3AED" stroke-width="1.5"/>
+    
+    <!-- Top Banner -->
+    <rect width="435" height="60" rx="12" fill="#581C87" fill-opacity="0.2"/>
+    <path d="M 0 45 L 0 60 L 435 60 L 435 45 Z" fill="#581C87" fill-opacity="0.2"/>
+    
+    <circle cx="35" cy="30" r="16" fill="url(#cortexiaGrad)"/>
+    <text x="35" y="36" font-family="system-ui" font-size="18" fill="#FFF" text-anchor="middle">⚙️</text>
+    <text x="65" y="27" class="card-title" fill="#C084FC">CORTEX-IA</text>
+    <text x="65" y="45" class="card-sub" fill="#E9D5FF">Operational Control Plane (CLI &amp; Engine)</text>
+
+    <!-- Item 1 -->
+    <g transform="translate(25, 80)">
+      <circle cx="6" cy="6" r="4" fill="#A855F7"/>
+      <text x="18" y="9" class="item-title">Task DAG State Machine &amp; CAS Revisions</text>
+      <text x="18" y="25" class="item-desc">Deterministic transitions: backlog ➔ ready ➔ in_progress ➔ done.</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#A855F7">cortex-ia work create · claim · transition · approve</text>
+    </g>
+
+    <!-- Item 2 -->
+    <g transform="translate(25, 140)">
+      <circle cx="6" cy="6" r="4" fill="#A855F7"/>
+      <text x="18" y="9" class="item-title">Atomic File Leases &amp; Race Prevention</text>
+      <text x="18" y="25" class="item-desc">Exclusive path locks per claim token with automatic TTL expiry.</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#A855F7">cortex-ia work lease · lease-renew · release</text>
+    </g>
+
+    <!-- Item 3 -->
+    <g transform="translate(25, 200)">
+      <circle cx="6" cy="6" r="4" fill="#A855F7"/>
+      <text x="18" y="9" class="item-title">Herdr Multiplexing &amp; Live Telemetry</text>
+      <text x="18" y="25" class="item-desc">Spawns external workers in dedicated panes with NDJSON streaming.</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#A855F7">cortex-ia delegate create · worker · result · web</text>
+    </g>
+
+    <!-- Invariant Box -->
+    <g transform="translate(20, 275)">
+      <rect width="395" height="90" rx="8" fill="#3B0764" stroke="#7C3AED" stroke-width="1"/>
+      <text x="16" y="24" font-family="system-ui" font-size="12" font-weight="700" fill="#C084FC">⚡ SINGLE SOURCE OF TRUTH</text>
+      <text x="16" y="44" class="rule-box" fill="#F3E8FF">Task readiness, claims, leases &amp; approvals</text>
+      <text x="16" y="60" class="rule-box" fill="#94A3B8">exist ONLY in SQLite via cortex-ia CLI.</text>
+      <text x="16" y="76" class="rule-box" fill="#94A3B8">Exit code 0 is the only operational success.</text>
+    </g>
+  </g>
+</svg>

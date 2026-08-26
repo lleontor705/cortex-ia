@@ -1,6 +1,6 @@
 # Contributing to cortex-ia
 
-Thank you for your interest in contributing to **cortex-ia** — a Go CLI/TUI configurator for **OpenCode**. It installs the embedded workflow asset set (agents, skills, commands, plugin, base config) under `~/.config/opencode/`, manages the MCP server entries (Cortex, ForgeSpec, Context7), and does it all transactionally: plan first, verified backup before any write, rollback on failure.
+Thank you for your interest in contributing to **cortex-ia** — a Go CLI/TUI configurator for **OpenCode**. It installs the embedded workflow asset set under `~/.config/opencode/`, manages Cortex and Context7 MCP entries, and provides its own SQLite task/lease control through `cortex-ia work`.
 
 Before you dive in, please read this guide fully. We have a structured workflow to keep the project organized and maintainable.
 
@@ -83,7 +83,8 @@ cortex-ia installs a single embedded asset set into the OpenCode config root, tr
 - **`internal/install`** — service facade: `install`, `sync`, `doctor`, `rollback`, `uninstall`, and every MCP operation.
 - **`internal/pipeline`** — plans and applies the asset copy transactionally.
 - **`internal/backup`** — snapshots, manifests, verification, dedup, retention pruning.
-- **`internal/mcpmanager`** — managed MCP catalog (`cortex`, `forgespec`, `context7`), desired-entry validation, and conflict errors.
+- **`internal/mcpmanager`** — managed MCP catalog (`cortex`, `context7`), legacy ForgeSpec removal, desired-entry validation, and conflict errors.
+- **`internal/delegation`** — SQLite WAL store for work-control tasks/claims/leases and external delegation jobs.
 - **`internal/components/filemerge`** — JSONC decode/merge and atomic writes.
 - **`internal/state` / `internal/installmeta`** — installation metadata, lock, and MCP digests under `~/.cortex-ia/`.
 - **`internal/tui`** — Bubble Tea terminal UI (launched with no arguments).

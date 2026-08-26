@@ -15,7 +15,7 @@ Use only with an explicit scratch scope and permission to create and execute dis
 2. Create the minimum isolated harness in the granted scratch directory. Record dependency versions and assumptions.
 3. Run reproducible probes or benchmarks. Include warm-up/sample method when performance is claimed; report variance and limitations rather than false precision.
 4. Remove disposable artifacts unless the user requested retention. Verify that production paths remain unchanged.
-5. Save only durable, sanitized findings in Cortex: question, method, measurements, revision, timestamp, limitations, and recommendation. Never store credentials, raw logs, or ForgeSpec authority tokens.
+5. Save only durable, sanitized findings in Cortex: question, method, measurements, revision, timestamp, limitations, and recommendation. Never store credentials, raw logs, or work-control authority tokens.
 6. End with an organic decision: `stop`, `direct-change`, `fast-tdd`, `sdd-lite`, or `sdd-full`. A valid spike may recommend doing nothing.
 
 ```json

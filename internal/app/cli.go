@@ -584,8 +584,8 @@ func runDoctor() error {
 	fmt.Printf("  Verdict: %s\n", report.Verdict)
 	if report.OpencodeRoot != "" {
 		fmt.Printf("  OpenCode root: %s\n", report.OpencodeRoot)
-		fmt.Printf("  Selection: cortex=%v forgespec=%v context7=%v\n",
-			report.Selection.Cortex, report.Selection.ForgeSpec, report.Selection.Context7)
+		fmt.Printf("  Selection: cortex=%v context7=%v; work-control=builtin\n",
+			report.Selection.Cortex, report.Selection.Context7)
 	}
 	if counts := artifactCounts(report.Artifacts); len(counts) > 0 {
 		fmt.Printf("  Artifacts: %s\n", counts)

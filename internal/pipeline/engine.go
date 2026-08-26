@@ -203,12 +203,11 @@ type Request struct {
 	HomeDir string
 	// Version labels the install in receipts.
 	Version string
-	// Cortex, ForgeSpec, and Context7 select managed MCP presets. Names are
+	// Cortex and Context7 select managed MCP presets. Names are
 	// never hardcoded by the engine: it resolves presets from the manager
 	// catalog and fails closed on unknown selections.
-	Cortex    bool
-	ForgeSpec bool
-	Context7  bool
+	Cortex   bool
+	Context7 bool
 	// Overwrite explicitly authorizes replacing unmanaged conflicting
 	// files. Apply still captures and verifies a restorable backup of every
 	// overwritten target before mutating it.
@@ -238,9 +237,8 @@ func (r Request) now() time.Time {
 // the selection is still derived from Presets(), never from a local catalog.
 func (r Request) mcpSelection() map[string]bool {
 	requested := map[string]bool{
-		"cortex":    r.Cortex,
-		"forgespec": r.ForgeSpec,
-		"context7":  r.Context7,
+		"cortex":   r.Cortex,
+		"context7": r.Context7,
 	}
 	selection := make(map[string]bool, len(requested))
 	for _, preset := range mcpmanager.Presets() {
@@ -418,7 +416,6 @@ func planConverged(plan *Plan, req Request) bool {
 		return false
 	}
 	if plan.Metadata.Selection.Cortex != req.Cortex ||
-		plan.Metadata.Selection.ForgeSpec != req.ForgeSpec ||
 		plan.Metadata.Selection.Context7 != req.Context7 {
 		return false
 	}

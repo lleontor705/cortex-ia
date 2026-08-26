@@ -463,9 +463,8 @@ func (s *Service) doctorInstalled(report *DoctorReport, meta state.MetadataV2) {
 	// mutations mean degraded, and a planning error means the ownership
 	// picture cannot be trusted.
 	plan, err := pipeline.PlanSync(s.request(Options{
-		Cortex:    meta.Selection.Cortex,
-		ForgeSpec: meta.Selection.ForgeSpec,
-		Context7:  meta.Selection.Context7,
+		Cortex:   meta.Selection.Cortex,
+		Context7: meta.Selection.Context7,
 	}))
 	if err != nil {
 		report.Verdict = DoctorBlocked
