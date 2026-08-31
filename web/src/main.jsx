@@ -8,6 +8,7 @@ const states = [
   ['in_progress', 'En progreso'],
   ['in_review', 'En revisión'],
   ['blocked', 'Bloqueada'],
+  ['superseded', 'Descompuesta'],
   ['done', 'Completada']
 ];
 const stateLabels = Object.fromEntries(states);
@@ -491,73 +492,217 @@ function SettingsView({ configData, onRefresh }) {
   );
 }
 
-function TaskCard({ item, onOpen }) {
+const isLive = value => value && new Date(value).getTime() > Date.now();
+
+function TaskCard({ item, itemsByID, onOpen }) {
+  const pendingDependencies = (item.dependencies || []).filter(id => itemsByID.get(id)?.status !== 'done');
+  const liveClaim = isLive(item.claim?.expires_at);
   return (
-    <button class="task-card" onClick={() => onOpen(item)}>
-      <div>
+    <button class={`task-card ${item.status}`} onClick={() => onOpen(item)}>
+      <div class="task-card-topline">
         <code>{item.task_id}</code>
-        <span class={`status-dot ${safeStatus(item.status)}`}></span>
+        <span>r{item.revision}</span>
       </div>
       <h3>{item.title}</h3>
-      <footer>
-        <span>{item.claim?.owner || 'sin owner'}</span>
-        <span>{item.dependencies?.length ? `${item.dependencies.length} dep.` : `rev. ${item.revision}`}</span>
-      </footer>
+      <p class="task-objective">{item.objective || 'Objetivo detallado pendiente de definir.'}</p>
+      <div class="task-signals">
+        <span class={liveClaim ? 'signal active' : 'signal'}><i></i>{liveClaim ? item.claim.owner : 'sin claim'}</span>
+        <span>{item.allowed_files?.length || item.leases?.length || 0} archivos</span>
+      </div>
+      {(item.dependencies?.length || 0) > 0 && (
+        <footer>
+          <span>{pendingDependencies.length ? `${pendingDependencies.length} dependencias pendientes` : 'dependencias resueltas'}</span>
+          <span>→</span>
+        </footer>
+      )}
     </button>
   );
 }
 
-function Board({ snapshot, onNewTask, onTask }) {
+function DependencyView({ items, itemsByID, onTask }) {
+  return (
+    <div class="dependency-list">
+      {items.map(item => {
+        const dependencies = item.dependencies || [];
+        return (
+          <button class="dependency-row" key={item.task_id} onClick={() => onTask(item)}>
+            <span class={`dependency-state ${safeStatus(item.status)}`}></span>
+            <span class="dependency-copy">
+              <code>{item.task_id}</code>
+              <b>{item.title}</b>
+              <small>{item.objective || 'Objetivo no documentado'}</small>
+            </span>
+            <span class="dependency-links">
+              {dependencies.length ? dependencies.map(id => (
+                <span class={itemsByID.get(id)?.status === 'done' ? 'resolved' : ''} key={id}>{id}</span>
+              )) : <small>raíz del DAG</small>}
+            </span>
+            <StatusChip status={item.status} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Board({ snapshot, activity, delegations, onNewTask, onTask }) {
   const board = snapshot?.board;
   const items = snapshot?.items || [];
   const counts = board?.counts || {};
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [mode, setMode] = useState('flow');
+  const itemsByID = useMemo(() => new Map(items.map(item => [item.task_id, item])), [items]);
+  const taskIDs = useMemo(() => new Set(items.map(item => item.task_id)), [items]);
+  const filteredItems = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return items.filter(item => {
+      if (statusFilter !== 'all' && item.status !== statusFilter) return false;
+      if (!needle) return true;
+      return [item.task_id, item.title, item.objective, item.acceptance_criteria, item.verification, item.claim?.owner, ...(item.allowed_files || []), ...(item.leases || []).map(lease => lease.path)]
+        .filter(Boolean)
+        .some(value => value.toLowerCase().includes(needle));
+    });
+  }, [items, query, statusFilter]);
+  const liveClaims = items.filter(item => isLive(item.claim?.expires_at));
+  const leasedFiles = items.reduce((total, item) => total + (item.leases?.filter(lease => isLive(lease.expires_at)).length || 0), 0);
+  const completed = (counts.done || 0) + (counts.superseded || 0);
+  const progress = items.length ? Math.round((completed / items.length) * 100) : 0;
+  const boardActivity = (activity || []).filter(event => taskIDs.has(event.entity_id)).slice(0, 7);
+  const boardDelegations = (delegations || []).filter(job => taskIDs.has(job.task_id)).slice(0, 5);
+  const attention = items.filter(item => item.status === 'blocked' || (item.status === 'in_progress' && !isLive(item.claim?.expires_at)));
+  const upcoming = items
+    .filter(item => ['in_progress', 'ready', 'backlog'].includes(item.status))
+    .sort((a, b) => ['in_progress', 'ready', 'backlog'].indexOf(a.status) - ['in_progress', 'ready', 'backlog'].indexOf(b.status))
+    .slice(0, 4);
   if (!board) return <Empty title="Cargando sesión">Consultando el task board local.</Empty>;
   return (
     <>
-      <PageHeader
-        eyebrow="TASK BOARD"
-        title={board.title}
-        description={board.description || `Sesión ${board.board_id}`}
-        action={<button class="button primary" onClick={onNewTask}>+ Nueva tarea</button>}
-      />
-      <div class="metrics four">
-        <article>
-          <span>Activas</span>
-          <strong>{(counts.ready || 0) + (counts.in_progress || 0) + (counts.backlog || 0)}</strong>
-        </article>
-        <article>
-          <span>En revisión</span>
-          <strong>{counts.in_review || 0}</strong>
-        </article>
-        <article>
-          <span>Bloqueadas</span>
-          <strong>{counts.blocked || 0}</strong>
-        </article>
-        <article>
-          <span>Completadas</span>
-          <strong>{counts.done || 0}</strong>
-        </article>
-      </div>
-      {items.length ? (
-        <section class="kanban">
-          {states.map(([status, label]) => {
-            const cards = items.filter(item => item.status === status);
-            return (
-              <section class={`column ${status}`} key={status}>
-                <header class="column-head">
-                  <h2>{label}</h2>
-                  <span>{cards.length}</span>
-                </header>
-                <div class="cards">
-                  {cards.map(item => (
-                    <TaskCard key={item.task_id} item={item} onOpen={onTask} />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+      <header class="board-hero">
+        <div class="board-identity">
+          <p class="eyebrow">DURABLE TASK BOARD · <code>{board.board_id}</code></p>
+          <h1>{board.title}</h1>
+          <p>{board.description || 'Sesión coordinada del plano de control local.'}</p>
+          <div class="board-meta">
+            <span>rev. {board.revision}</span>
+            <span>{items.length} tareas</span>
+            <span>actualizado {relativeTime(board.updated_at)}</span>
+          </div>
+        </div>
+        <div class="board-progress">
+          <span><b>{progress}%</b> completado</span>
+          <div class="progress-track"><i style={{ width: `${progress}%` }}></i></div>
+          <small>{completed} de {items.length} tareas aprobadas</small>
+          <button class="button primary" onClick={onNewTask}>+ Nueva tarea</button>
+        </div>
+      </header>
+
+      <section class="board-kpis" aria-label="Estado del tablero">
+        <article><small>Lista para tomar</small><strong>{counts.ready || 0}</strong><span class="kpi-mark ready"></span></article>
+        <article><small>Agentes con claim</small><strong>{liveClaims.length}</strong><span class="kpi-mark in_progress"></span></article>
+        <article><small>Archivos reservados</small><strong>{leasedFiles}</strong><span class="kpi-mark in_review"></span></article>
+        <article class={counts.blocked ? 'alert' : ''}><small>Requieren atención</small><strong>{attention.length}</strong><span class="kpi-mark blocked"></span></article>
+      </section>
+
+      {upcoming.length > 0 && <section class="execution-plan">
+        <header>
+          <div><p class="eyebrow">EXECUTION PLAN</p><h2>Qué se va a hacer</h2></div>
+          <span>Ordenado por disponibilidad y dependencias</span>
+        </header>
+        <div class="plan-steps">
+          {upcoming.map((item, index) => (
+            <button key={item.task_id} onClick={() => onTask(item)}>
+              <span class="step-number">{String(index + 1).padStart(2, '0')}</span>
+              <span class="step-copy">
+                <span><code>{item.task_id}</code><StatusChip status={item.status} /></span>
+                <b>{item.title}</b>
+                <p>{item.objective || 'Esta tarea aún no tiene un objetivo operativo documentado.'}</p>
+                <small>
+                  {item.allowed_files?.length ? `${item.allowed_files.length} archivos previstos` : 'alcance de archivos pendiente'}
+                  {' · '}
+                  {item.verification ? `verifica: ${item.verification}` : 'verificación pendiente'}
+                </small>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>}
+
+      {items.length ? <div class="board-layout">
+        <section class="board-workspace">
+          <header class="board-toolbar">
+            <div class="view-switch" aria-label="Vista del tablero">
+              <button class={mode === 'flow' ? 'active' : ''} onClick={() => setMode('flow')}>Flujo</button>
+              <button class={mode === 'dependencies' ? 'active' : ''} onClick={() => setMode('dependencies')}>Dependencias</button>
+            </div>
+            <div class="board-filters">
+              <select value={statusFilter} onChange={event => setStatusFilter(event.currentTarget.value)} aria-label="Filtrar por estado">
+                <option value="all">Todos los estados</option>
+                {states.map(([status, label]) => <option value={status} key={status}>{label}</option>)}
+              </select>
+              <input value={query} onInput={event => setQuery(event.currentTarget.value)} placeholder="Buscar tarea, owner o archivo…" aria-label="Buscar tareas" />
+            </div>
+          </header>
+          <div class="result-count">{filteredItems.length} de {items.length} tareas visibles</div>
+          {mode === 'flow' ? (
+            <section class="kanban">
+              {states.map(([status, label]) => {
+                const cards = filteredItems.filter(item => item.status === status);
+                return (
+                  <section class={`column ${status}`} key={status}>
+                    <header class="column-head">
+                      <span class={`status-dot ${status}`}></span>
+                      <h2>{label}</h2>
+                      <b>{cards.length}</b>
+                    </header>
+                    <div class="cards">
+                      {cards.length ? cards.map(item => (
+                        <TaskCard key={item.task_id} item={item} itemsByID={itemsByID} onOpen={onTask} />
+                      )) : <span class="empty-column">Sin tareas</span>}
+                    </div>
+                  </section>
+                );
+              })}
+            </section>
+          ) : <DependencyView items={filteredItems} itemsByID={itemsByID} onTask={onTask} />}
         </section>
-      ) : (
+
+        <aside class="control-rail">
+          <section class="rail-panel attention-panel">
+            <header><div><p class="eyebrow">CONTROL PLANE</p><h2>Atención requerida</h2></div><b>{attention.length}</b></header>
+            {attention.length ? attention.slice(0, 5).map(item => (
+              <button class="rail-task" key={item.task_id} onClick={() => onTask(item)}>
+                <span class={`status-dot ${safeStatus(item.status)}`}></span>
+                <span><b>{item.task_id}</b><small>{item.status === 'blocked' ? 'Bloqueada' : 'Claim ausente o vencido'}</small></span>
+              </button>
+            )) : <Empty title="Sin alertas">Claims y bloqueos están bajo control.</Empty>}
+          </section>
+
+          <section class="rail-panel">
+            <header><div><p class="eyebrow">AUTHORITY</p><h2>Claims y reservas</h2></div><b>{liveClaims.length}</b></header>
+            <div class="authority-list">
+              {liveClaims.length ? liveClaims.slice(0, 6).map(item => (
+                <button key={item.task_id} onClick={() => onTask(item)}>
+                  <span><b>{item.claim.owner}</b><small>{item.task_id}</small></span>
+                  <span><strong>{item.leases?.length || 0}</strong><small>archivos</small></span>
+                </button>
+              )) : <Empty title="Sin claims activos">Ningún agente posee autoridad de escritura.</Empty>}
+            </div>
+          </section>
+
+          <section class="rail-panel">
+            <header><div><p class="eyebrow">EXTERNAL LEAVES</p><h2>Delegaciones</h2></div><b>{boardDelegations.length}</b></header>
+            {boardDelegations.length ? <div class="mini-jobs">{boardDelegations.map(job => (
+              <div key={job.job_id}><span>{job.role}</span><StatusChip status={job.status} /><small>{shortID(job.job_id)}</small></div>
+            ))}</div> : <Empty title="Sin delegaciones">No hay jobs vinculados a este board.</Empty>}
+          </section>
+
+          <section class="rail-panel board-events">
+            <header><div><p class="eyebrow">LIVE AUDIT</p><h2>Actividad reciente</h2></div></header>
+            <EventList events={boardActivity} compact />
+          </section>
+        </aside>
+      </div> : (
         <div class="empty">
           <strong>Esta sesión está lista.</strong>
           <span>Crea la primera tarea para materializar su DAG.</span>
@@ -636,6 +781,7 @@ function TaskForm({ open, onClose, onCreated, onError, boards, currentBoard }) {
     try {
       const data = Object.fromEntries(new FormData(event.currentTarget));
       data.dependencies = data.dependencies.split(',').map(value => value.trim()).filter(Boolean);
+      data.allowed_files = data.allowed_files.split(/[\r\n,]+/).map(value => value.trim()).filter(Boolean);
       const task = await request('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -673,6 +819,22 @@ function TaskForm({ open, onClose, onCreated, onError, boards, currentBoard }) {
           <input name="title" required maxlength="512" placeholder="Implementar el adaptador" />
         </label>
         <label>
+          Qué se va a hacer
+          <textarea name="objective" required maxlength="4096" placeholder="Objetivo operativo, límites y resultado esperado"></textarea>
+        </label>
+        <label>
+          Criterios de aceptación
+          <textarea name="acceptance_criteria" maxlength="4096" placeholder="Condiciones observables que deben cumplirse"></textarea>
+        </label>
+        <label>
+          Verificación prevista
+          <input name="verification" maxlength="2048" placeholder="go test ./internal/tui/..." />
+        </label>
+        <label>
+          Archivos previstos <small>(uno por línea; rutas relativas exactas)</small>
+          <textarea name="allowed_files" placeholder={'internal/example/service.go\ninternal/example/service_test.go'}></textarea>
+        </label>
+        <label>
           Dependencias <small>(IDs separados por coma)</small>
           <input name="dependencies" placeholder="TASK-099, TASK-100" />
         </label>
@@ -702,6 +864,16 @@ function TaskDetail({ item, onClose }) {
             <span>Revisión<b>{item.revision}</b></span>
             <span>Owner<b>{item.claim?.owner || 'Sin claim'}</b></span>
             <span>Expira<b>{item.claim ? relativeTime(item.claim.expires_at) : '—'}</b></span>
+          </div>
+          <h3>Qué se va a hacer</h3>
+          <p class="definition-copy">{item.objective || 'Objetivo operativo no documentado.'}</p>
+          <h3>Criterios de aceptación</h3>
+          <p class="definition-copy">{item.acceptance_criteria || 'Criterios de aceptación no documentados.'}</p>
+          <h3>Verificación prevista</h3>
+          <div class="verification-command"><code>{item.verification || 'Comando no definido'}</code></div>
+          <h3>Archivos previstos</h3>
+          <div class="planned-files">
+            {item.allowed_files?.length ? item.allowed_files.map(path => <code key={path}>{path}</code>) : <span>Alcance de archivos no documentado</span>}
           </div>
           <h3>Dependencias</h3>
           <div class="token-list">
@@ -847,8 +1019,14 @@ function App() {
   }, [boards, currentBoard]);
 
   useEffect(() => {
-    if (view === 'board') loadBoard(currentBoard);
     history.replaceState(null, '', `#${view}`);
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== 'board' || !currentBoard) return;
+    loadBoard(currentBoard);
+    const timer = setInterval(() => !document.hidden && loadBoard(currentBoard), 5000);
+    return () => clearInterval(timer);
   }, [view, currentBoard, loadBoard]);
 
   const openBoard = id => {
@@ -953,7 +1131,13 @@ function App() {
 
         <section class={`view ${view === 'board' ? 'active' : ''}`}>
           {view === 'board' && (
-            <Board snapshot={snapshot} onNewTask={() => setTaskModal(true)} onTask={setDetail} />
+            <Board
+              snapshot={snapshot}
+              activity={dashboard.activity}
+              delegations={dashboard.delegations}
+              onNewTask={() => setTaskModal(true)}
+              onTask={setDetail}
+            />
           )}
         </section>
 

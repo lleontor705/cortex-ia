@@ -52,8 +52,8 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 		t.Fatalf("apply must verify a backup, got %+v", receipt)
 	}
 
-	// Existence checks across every native asset kind derived by the plan.
-	sawConfig, sawDoc, sawSkill, sawAgent, sawCommand, sawPlugin := false, false, false, false, false, false
+	// Existence checks across every managed asset kind derived by the plan.
+	sawConfig, sawDoc, sawShared, sawSkill, sawAgent, sawCommand, sawPlugin, sawTUI := false, false, false, false, false, false, false, false
 	for _, mapping := range plan.mappings {
 		engineAssertRegular(t, engineJoin(home, mapping.Dest))
 		switch mapping.Kind {
@@ -61,6 +61,8 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 			sawConfig = true
 		case "agents-doc":
 			sawDoc = true
+		case "shared":
+			sawShared = true
 		case "skill":
 			sawSkill = true
 		case "agent":
@@ -69,11 +71,13 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 			sawCommand = true
 		case "plugin":
 			sawPlugin = true
+		case "tui":
+			sawTUI = true
 		}
 	}
-	if !sawConfig || !sawDoc || !sawSkill || !sawAgent || !sawCommand || !sawPlugin {
-		t.Fatalf("expected assets of every native kind, got config=%v doc=%v skill=%v agent=%v command=%v plugin=%v",
-			sawConfig, sawDoc, sawSkill, sawAgent, sawCommand, sawPlugin)
+	if !sawConfig || !sawDoc || !sawShared || !sawSkill || !sawAgent || !sawCommand || !sawPlugin || !sawTUI {
+		t.Fatalf("expected assets of every managed kind, got config=%v doc=%v shared=%v skill=%v agent=%v command=%v plugin=%v tui=%v",
+			sawConfig, sawDoc, sawShared, sawSkill, sawAgent, sawCommand, sawPlugin, sawTUI)
 	}
 
 	// Metadata commits last and agrees.
@@ -94,8 +98,17 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 
 	// Verify distinct target roots for skills vs config/agents/commands.
 	engineAssertRegular(t, engineJoin(home, ".agents/skills/implement/SKILL.md"))
+	engineAssertRegular(t, engineJoin(home, ".agents/skills/discovery/SKILL.md"))
+	engineAssertRegular(t, engineJoin(home, ".agents/skills/workflow-retrospective/SKILL.md"))
+	engineAssertRegular(t, engineJoin(home, ".cortex-ia/opencode/contracts/agent-writing-contract.md"))
+	engineAssertRegular(t, engineJoin(home, ".cortex-ia/opencode/contracts/codebase-design-contract.md"))
+	engineAssertRegular(t, engineJoin(home, ".cortex-ia/opencode/contracts/cortex-work-protocol.md"))
+	engineAssertRegular(t, engineJoin(home, ".cortex-ia/opencode/contracts/diagnosis-loop-contract.md"))
 	engineAssertRegular(t, engineJoin(home, ".config/opencode/agents/orchestrator.md"))
+	engineAssertRegular(t, engineJoin(home, ".config/opencode/agents/discovery.md"))
 	engineAssertRegular(t, engineJoin(home, ".config/opencode/commands/sdd.md"))
+	engineAssertRegular(t, engineJoin(home, ".config/opencode/commands/discover.md"))
+	engineAssertRegular(t, engineJoin(home, ".config/opencode/tui-plugins/cortex-ia-tui.js"))
 
 	// Selected MCP entries exist in the OpenCode config; context7 stays out.
 	config := engineAssertRegular(t, engineJoin(home, ".config/opencode/opencode.jsonc"))

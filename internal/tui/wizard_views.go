@@ -47,7 +47,8 @@ func (m model) viewWizardHerdr() string {
 		styleSubtitle.Render("¿Deseas utilizar Herdr como multiplexor de paneles y workspaces?"),
 		"",
 		styleDim.Render("Herdr divide paneles automáticamente y supervisa subagentes en vivo."),
-		styleDim.Render("Cortex-IA instalará el plugin 'cortex-sync' y configurará los hooks."),
+		styleDim.Render("La integración oficial reporta sesiones a Herdr; Cortex-IA añade estado visual separado en OpenCode."),
+		styleDim.Render("Después de instalar, ejecuta 'cortex-ia herdr setup' para registrar ambas integraciones."),
 		"",
 	}
 
@@ -57,7 +58,7 @@ func (m model) viewWizardHerdr() string {
 	}{
 		{
 			title: "Sí, habilitar Herdr Workspace Multiplexer",
-			desc:  "División de paneles en vivo (split right), plugin cortex-sync y monitor de estado",
+			desc:  "División de paneles en vivo, integración oficial Herdr y notificaciones Cortex-IA",
 		},
 		{
 			title: "No, trabajar en terminal estándar",
@@ -141,7 +142,7 @@ func (m model) viewWizardDelegation() string {
 		"",
 		styleSubtitle.Render("¿Deseas delegar fases del flujo de trabajo a CLIs externas?"),
 		"",
-		styleDim.Render("Permite enviar hojas implement, investigate o reviewer a Antigravity CLI"),
+		styleDim.Render("Permite enviar hojas implement, investigate, planner o reviewer a Antigravity CLI"),
 		styleDim.Render("bajo supervisión de Cortex-IA, directamente o mediante Herdr."),
 		"",
 	}

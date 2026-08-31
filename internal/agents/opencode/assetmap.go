@@ -11,24 +11,23 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/assets"
 )
 
-// ErrAssetCollision reports two embedded assets claiming the same
-// home-relative destination beneath the OpenCode config root.
+// ErrAssetCollision reports two embedded assets claiming the same managed
+// home-relative destination.
 var ErrAssetCollision = errors.New("opencode asset mapping collision")
 
-// HasNativeKind reports whether an embedded asset kind has a native
-// destination on OpenCode's discovery surface. Top-level _shared workflow
-// contracts are compile-time data for Cortex, not installable files, so
-// they carry no native destination and must be filtered out of a
-// selection before mapping. It is a pure predicate: callers can never
-// mutate global mapping policy.
-func HasNativeKind(kind assets.Kind) bool {
+// HasManagedKind reports whether an embedded asset kind has a managed
+// OpenCode or Cortex-IA support destination. Shared contracts are installed
+// below WorkflowRoot even though OpenCode does not discover them directly.
+func HasManagedKind(kind assets.Kind) bool {
 	switch kind {
 	case assets.KindAgentsDoc,
 		assets.KindConfig,
+		assets.KindShared,
 		assets.KindAgent,
 		assets.KindCommand,
 		assets.KindSkill,
-		assets.KindPlugin:
+		assets.KindPlugin,
+		assets.KindTUI:
 		return true
 	default:
 		return false
@@ -44,6 +43,9 @@ func Destination(source string, kind assets.Kind) string {
 // DestinationWithHome returns the slash-separated home-relative destination for an
 // embedded asset given its source path, structural kind, and target home directory.
 func DestinationWithHome(source string, kind assets.Kind, homeDir string) string {
+	if kind == assets.KindShared {
+		return path.Join(NativeLayout().ContractRoot, sharedContractRelative(source))
+	}
 	if kind == assets.KindSkill {
 		return path.Join(NativeLayout().SkillsRoot, strings.TrimPrefix(source, "skills/"))
 	}
@@ -54,6 +56,9 @@ func DestinationWithHome(source string, kind assets.Kind, homeDir string) string
 		p := strings.TrimPrefix(source, "plugin/")
 		p = strings.TrimPrefix(p, "plugins/")
 		return path.Join(NativeLayout().PluginRoot, p)
+	}
+	if kind == assets.KindTUI {
+		return path.Join(NativeLayout().TUIPluginRoot, strings.TrimPrefix(source, "tui/"))
 	}
 	return path.Join(NativeLayout().ConfigRoot, source)
 }
@@ -67,6 +72,9 @@ func DestinationForArtifact(source string, kind string) string {
 // DestinationForArtifactWithHome returns the slash-separated home-relative destination
 // for an artifact given its recorded path, kind, and target home directory.
 func DestinationForArtifactWithHome(source string, kind string, homeDir string) string {
+	if kind == "shared" {
+		return path.Join(NativeLayout().ContractRoot, sharedContractRelative(source))
+	}
 	if kind == "skill" {
 		return path.Join(NativeLayout().SkillsRoot, strings.TrimPrefix(source, "skills/"))
 	}
@@ -78,26 +86,24 @@ func DestinationForArtifactWithHome(source string, kind string, homeDir string) 
 		p = strings.TrimPrefix(p, "plugins/")
 		return path.Join(NativeLayout().PluginRoot, p)
 	}
+	if kind == "tui" {
+		return path.Join(NativeLayout().TUIPluginRoot, strings.TrimPrefix(source, "tui/"))
+	}
 	return path.Join(NativeLayout().ConfigRoot, source)
 }
 
-// IsNativeAsset reports whether an embedded inventory file maps to a
-// native OpenCode destination. It is the single filtering predicate
-// callers must use before MapAssets: it applies HasNativeKind and then
-// validates the would-be destination against NativeLayout, the one
-// declaration of the native surface, so selection and mapping can never
-// disagree about plugin files, non-SKILL.md skill fragments such as
-// skills/_shared, or any other off-surface path.
-func IsNativeAsset(file assets.File) bool {
-	if !HasNativeKind(file.Kind) {
+// IsManagedAsset reports whether an embedded inventory file maps to a managed
+// OpenCode destination or the declared Cortex-IA contract root.
+func IsManagedAsset(file assets.File) bool {
+	if !HasManagedKind(file.Kind) {
 		return false
 	}
 	dest := Destination(file.Path, file.Kind)
-	return BeneathAllowedRoots(dest) && NativeLayout().IsNativePath(dest)
+	return BeneathAllowedRoots(dest) && managedDestination(file.Kind, dest)
 }
 
 // Mapping pairs one embedded asset with its deterministic home-relative,
-// slash-separated destination beneath the OpenCode config root or skills root.
+// slash-separated managed destination.
 type Mapping struct {
 	// Source is the embedded asset path, for example
 	// "skills/implement/SKILL.md".
@@ -111,7 +117,7 @@ type Mapping struct {
 	SHA256 string
 }
 
-// MapAssets maps embedded asset files beneath their native destinations.
+// MapAssets maps embedded asset files beneath their managed destinations.
 func MapAssets(files []assets.File) ([]Mapping, error) {
 	return MapAssetsForHome(files, "")
 }
@@ -123,7 +129,6 @@ func MapAssetsForHome(files []assets.File, homeDir string) ([]Mapping, error) {
 }
 
 func mapAssets(files []assets.File, foldCase bool, homeDir string) ([]Mapping, error) {
-	layout := NativeLayout()
 	seen := make(map[string]string, len(files))
 	seenFold := make(map[string]string, len(files))
 	mapped := make([]Mapping, 0, len(files))
@@ -135,14 +140,14 @@ func mapAssets(files []assets.File, foldCase bool, homeDir string) ([]Mapping, e
 		if kind != file.Kind {
 			return nil, fmt.Errorf("opencode asset mapping: %q derives kind %s but carried %s", file.Path, kind, file.Kind)
 		}
-		if !HasNativeKind(kind) {
+		if !HasManagedKind(kind) {
 			return nil, fmt.Errorf("%w: %q of kind %s has no native OpenCode destination", assets.ErrUnmappedRoot, file.Path, kind)
 		}
 		dest := DestinationWithHome(file.Path, kind, homeDir)
 		if !BeneathAllowedRoots(dest) {
 			return nil, fmt.Errorf("%w: %q maps outside the allowed roots", assets.ErrUnsafePath, file.Path)
 		}
-		if !layout.IsNativePath(dest) {
+		if !managedDestination(kind, dest) {
 			return nil, fmt.Errorf("%w: %q of kind %s has no native OpenCode destination", assets.ErrUnmappedRoot, file.Path, kind)
 		}
 		if previous, dup := seen[dest]; dup {
@@ -175,7 +180,7 @@ func caseInsensitiveFS() bool {
 }
 
 // BeneathAllowedRoots reports whether dest, after slash normalization and
-// cleaning, denotes a path strictly beneath one of the declared native roots.
+// cleaning, denotes a path strictly beneath one of the declared managed roots.
 // Absolute paths and traversal outside the roots are rejected.
 func BeneathAllowedRoots(dest string) bool {
 	clean := path.Clean(strings.ReplaceAll(dest, "\\", "/"))
@@ -183,14 +188,35 @@ func BeneathAllowedRoots(dest string) bool {
 		return false
 	}
 	layout := NativeLayout()
-	return isBeneath(clean, layout.ConfigRoot) || isBeneath(clean, layout.SkillsRoot)
+	return isBeneath(clean, layout.ConfigRoot) || isBeneath(clean, layout.SkillsRoot) || isBeneath(clean, layout.WorkflowRoot)
 }
 
 func isBeneath(clean, root string) bool {
 	return clean == root || strings.HasPrefix(clean, root+"/")
 }
 
-// BeneathConfigRoot reports whether dest denotes a safe native destination root.
-func BeneathConfigRoot(dest string) bool {
-	return BeneathAllowedRoots(dest)
+func sharedContractRelative(source string) string {
+	value := strings.TrimPrefix(source, "skills/_shared/")
+	value = strings.TrimPrefix(value, "_shared/")
+	return value
+}
+
+func managedDestination(kind assets.Kind, dest string) bool {
+	layout := NativeLayout()
+	if kind == assets.KindShared {
+		return nativeMarkdownChild(dest, layout.ContractRoot)
+	}
+	if kind == assets.KindTUI {
+		return nativeScriptChild(dest, layout.TUIPluginRoot)
+	}
+	return layout.IsNativePath(dest)
+}
+
+func nativeScriptChild(relative, root string) bool {
+	value := strings.TrimPrefix(relative, root+"/")
+	if value == relative || value == "" || strings.Contains(value, "/") {
+		return false
+	}
+	ext := strings.ToLower(path.Ext(value))
+	return ext == ".js" || ext == ".ts" || ext == ".tsx"
 }

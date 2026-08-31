@@ -121,8 +121,8 @@ func (s *Store) initialize(ctx context.Context) error {
 		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 			return fmt.Errorf("read migration ledger: %w", err)
 		}
-		if version > 3 {
-			return fmt.Errorf("cortex database schema %d is newer than supported schema 3", version)
+		if version > 6 {
+			return fmt.Errorf("cortex database schema %d is newer than supported schema 6", version)
 		}
 		statements := []string{
 			`CREATE TABLE IF NOT EXISTS delegation_jobs (
@@ -249,6 +249,73 @@ func (s *Store) initialize(ctx context.Context) error {
 			}
 			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(3, ?)`, now); err != nil {
 				return fmt.Errorf("record task-board migration: %w", err)
+			}
+		}
+		if version < 4 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_definitions (
+				item_id TEXT PRIMARY KEY REFERENCES work_items(id) ON DELETE CASCADE,
+				objective TEXT NOT NULL DEFAULT '',
+				acceptance_criteria TEXT NOT NULL DEFAULT '',
+				verification TEXT NOT NULL DEFAULT '',
+				allowed_files_json TEXT NOT NULL DEFAULT '[]'
+			) STRICT`); err != nil {
+				return fmt.Errorf("create work definitions: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(4, ?)`, now); err != nil {
+				return fmt.Errorf("record work-definition migration: %w", err)
+			}
+		}
+		if version < 5 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE work_items ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`); err != nil {
+				return fmt.Errorf("add work project ownership: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `UPDATE work_items
+				SET workspace = (
+					SELECT MIN(j.workspace) FROM delegation_jobs j
+					WHERE j.task_id = work_items.id AND TRIM(j.workspace) <> ''
+				)
+				WHERE workspace = '' AND 1 = (
+					SELECT COUNT(DISTINCT LOWER(j.workspace)) FROM delegation_jobs j
+					WHERE j.task_id = work_items.id AND TRIM(j.workspace) <> ''
+				)`); err != nil {
+				return fmt.Errorf("backfill work project ownership from delegations: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `UPDATE work_items
+				SET workspace = (
+					SELECT MIN(seed.workspace) FROM work_items seed
+					WHERE seed.board_id = work_items.board_id AND TRIM(seed.workspace) <> ''
+				)
+				WHERE workspace = '' AND 1 = (
+					SELECT COUNT(DISTINCT LOWER(seed.workspace)) FROM work_items seed
+					WHERE seed.board_id = work_items.board_id AND TRIM(seed.workspace) <> ''
+				)`); err != nil {
+				return fmt.Errorf("backfill board project ownership: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX work_items_workspace_status_idx ON work_items(workspace, status, updated_at)`); err != nil {
+				return fmt.Errorf("index work project ownership: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(5, ?)`, now); err != nil {
+				return fmt.Errorf("record work project migration: %w", err)
+			}
+		}
+		if version < 6 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `CREATE TABLE work_decomposition_steps (
+				parent_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+				child_id TEXT NOT NULL UNIQUE REFERENCES work_items(id) ON DELETE RESTRICT,
+				position INTEGER NOT NULL CHECK(position >= 1 AND position <= 8),
+				PRIMARY KEY(parent_id, position),
+				CHECK(parent_id <> child_id)
+			) STRICT`); err != nil {
+				return fmt.Errorf("create work decomposition steps: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX work_decomposition_parent_idx ON work_decomposition_steps(parent_id, position)`); err != nil {
+				return fmt.Errorf("index work decomposition steps: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(6, ?)`, now); err != nil {
+				return fmt.Errorf("record work decomposition migration: %w", err)
 			}
 		}
 		if _, err := conn.ExecContext(ctx, `PRAGMA optimize`); err != nil {

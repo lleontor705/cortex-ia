@@ -1,61 +1,111 @@
 import { type Plugin } from "@opencode-ai/plugin";
 import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 
-/**
- * cortex-lease-guard: Prevents destructive write collisions among concurrent background subagents.
- * Intercepts write/edit tool execution and ensures the caller holds a valid lease in cortex-ia.
- */
-export const CortexLeaseGuardPlugin: Plugin = async (ctx) => {
-  return {
-    "tool.execute.before": async (input, output) => {
-      const toolName = input?.tool?.toLowerCase() || "";
-      
-      // Only guard file mutation tools
-      if (toolName !== "edit" && toolName !== "write_to_file" && toolName !== "write") {
-        return;
-      }
+interface AuthorityEntry {
+  task_id: string;
+  session_id: string;
+}
 
-      const args = output?.args as Record<string, any> | undefined;
-      const targetFile = args?.TargetFile || args?.targetFile || args?.path || args?.file || "";
-      if (!targetFile || typeof targetFile !== "string") {
-        return;
-      }
-
-      // Check if lease enforcement is enabled in environment or delegation config
-      const enforceLeases = process.env.CORTEX_ENFORCE_LEASES === "true" || process.env.CORTEX_LEASES_STRICT === "1";
-      if (!enforceLeases) {
-        return;
-      }
-
-      const normTarget = path.normalize(targetFile).toLowerCase();
-
+function firstCortexIA(): string {
+  const home = process.env.USERPROFILE || process.env.HOME || "";
+  const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+  const candidates = [
+    path.join(home, "go", "bin", "cortex-ia.exe"),
+    "cortex-ia",
+    path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
+    path.join(home, ".local", "bin", "cortex-ia"),
+    "/usr/local/bin/cortex-ia",
+    "/usr/bin/cortex-ia",
+  ];
+  for (const candidate of candidates) {
+    if (candidate !== "cortex-ia" && fs.existsSync(candidate)) return candidate;
+    if (candidate === "cortex-ia") {
       try {
-        // Query cortex-ia work list for active leases
-        const out = execFileSync("cortex-ia", ["work", "list", "--json"], {
-          encoding: "utf-8",
-          stdio: ["ignore", "pipe", "ignore"],
-          timeout: 2000
-        });
-        
-        const data = JSON.parse(out);
-        const activeLeases = data?.leases || [];
-        
-        // If the file is reserved by another task or not leased
-        for (const lease of activeLeases) {
-          const leasedPath = path.normalize(lease.path || "").toLowerCase();
-          if (normTarget.includes(leasedPath) && lease.is_active && !lease.is_caller_owner) {
-            throw new Error(`LEASE_COLLISION: File '${targetFile}' is currently locked under exclusive lease by task '${lease.task_id}' (Owner: ${lease.owner}). Modification denied to prevent concurrency conflicts.`);
-          }
-        }
-      } catch (err: any) {
-        if (err.message && err.message.includes("LEASE_COLLISION")) {
-          throw err;
-        }
-        // If cortex-ia query failed or work list had no active locks, allow fallback
-      }
+        execFileSync(candidate, ["version"], { stdio: "ignore", windowsHide: true });
+        return candidate;
+      } catch {}
     }
-  };
-};
+  }
+  throw new Error("cortex-ia executable not found");
+}
+
+function authoritiesForSession(sessionID: string): AuthorityEntry[] {
+  const home = process.env.USERPROFILE || process.env.HOME || "";
+  const statePath = path.resolve(home, ".config", "opencode", `cortex-authority-state-${process.pid}.json`);
+  const state = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+  return (state?.authorities || []).filter((entry: AuthorityEntry) => entry?.session_id === sessionID);
+}
+
+function targetFiles(toolName: string, args: Record<string, any>): string[] {
+  const direct = args?.TargetFile || args?.targetFile || args?.filePath || args?.file_path || args?.path || args?.file;
+  if (typeof direct === "string" && direct) return [direct];
+  if (toolName === "apply_patch" && typeof args?.patch === "string") {
+    return [...args.patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((match) => match[1].trim());
+  }
+  return [];
+}
+
+function normalizedAbsolute(root: string, value: string): string {
+  const absolute = path.isAbsolute(value) ? path.resolve(value) : path.resolve(root, value);
+  return process.platform === "win32" || process.platform === "darwin" ? absolute.toLowerCase() : absolute;
+}
+
+/**
+ * Enforces session-owned Cortex-IA leases for file mutation tools when strict
+ * lease mode is enabled. Authority tokens stay inside herdr-bridge; this guard
+ * reads only a sanitized session-to-task handle and durable lease metadata.
+ */
+export const CortexLeaseGuardPlugin: Plugin = async (ctx) => ({
+  "tool.execute.before": async (input, output) => {
+    const toolName = input?.tool?.toLowerCase() || "";
+    if (!["edit", "write_to_file", "write", "apply_patch"].includes(toolName)) return;
+
+    const strict = process.env.CORTEX_ENFORCE_LEASES === "true" || process.env.CORTEX_LEASES_STRICT === "1";
+    let matches: AuthorityEntry[] = [];
+    try {
+      matches = authoritiesForSession(input.sessionID);
+    } catch (error: any) {
+      if (!strict) return;
+      throw new Error(`LEASE_CHECK_FAILED: ${error?.message || "unable to read authority state"}`);
+    }
+    if (!strict && matches.length === 0) return;
+    if (matches.length !== 1) {
+      throw new Error(`LEASE_AUTHORITY_REQUIRED: session has ${matches.length} live task authorities; expected exactly one`);
+    }
+
+    const targets = targetFiles(toolName, (output?.args || {}) as Record<string, any>);
+    if (targets.length === 0) {
+      throw new Error(`LEASE_CHECK_FAILED: ${toolName} did not expose a verifiable target path`);
+    }
+
+    try {
+      const authority = matches[0];
+      const raw = execFileSync(firstCortexIA(), ["work", "status", authority.task_id], {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 2000,
+        windowsHide: true,
+      });
+      const item = JSON.parse(raw);
+      const now = Date.now();
+      const leased = new Set(
+        (item?.leases || [])
+          .filter((lease: any) => lease?.task_id === authority.task_id && Date.parse(lease?.expires_at || "") > now)
+          .map((lease: any) => normalizedAbsolute(ctx.directory, lease.path)),
+      );
+      for (const target of targets) {
+        const normalized = normalizedAbsolute(ctx.directory, target);
+        if (!leased.has(normalized)) {
+          throw new Error(`LEASE_REQUIRED: '${target}' has no active lease owned by task '${authority.task_id}' in this session`);
+        }
+      }
+    } catch (error: any) {
+      if (String(error?.message || "").startsWith("LEASE_")) throw error;
+      throw new Error(`LEASE_CHECK_FAILED: ${error?.message || "unable to verify durable lease authority"}`);
+    }
+  },
+});
 
 export default CortexLeaseGuardPlugin;

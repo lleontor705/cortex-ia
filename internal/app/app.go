@@ -52,6 +52,9 @@ func runCLI(args []string) error {
 	case "board":
 		return runBoard(rest)
 
+	case "ui":
+		return runUI(rest)
+
 	case "openspec":
 		return runOpenSpec(rest)
 
@@ -130,7 +133,7 @@ type RetiredSurfaceError struct {
 
 func (e RetiredSurfaceError) Error() string {
 	return fmt.Sprintf(
-		"%q was removed from the OpenCode CLI; available commands: install, sync, mcp add|list|remove, herdr, delegate, work, board, doctor, rollback, recover, uninstall, version, help",
+		"%q was removed from the OpenCode CLI; available commands: install, sync, mcp add|list|remove, herdr, delegate, work, board, ui, doctor, rollback, recover, uninstall, version, help",
 		e.Surface,
 	)
 }
@@ -186,13 +189,14 @@ Usage:
   cortex-ia delegate recover         Mark workers with expired leases as lost
   cortex-ia work create|list|status  Manage the local task DAG in Cortex SQLite
   cortex-ia work claim|renew         Acquire or renew bounded task authority
-  cortex-ia work lease|lease-renew|release
+  cortex-ia work reserve|lease|lease-renew|release
                                       Reserve workspace-relative file scopes
   cortex-ia work transition|approve|retry|recover
                                       Advance, review, or reconcile task state
   cortex-ia board create|list|status  Group task DAGs into local task boards
   cortex-ia board serve [--addr 127.0.0.1:7331]
                                       Serve the embedded Cortex-IA operations console
+  cortex-ia ui snapshot              Print a bounded read-only TUI snapshot
   cortex-ia web [--addr 127.0.0.1:7331] [--open]
                                       Launch local Cortex-IA web dashboard in browser
   cortex-ia doctor                   Assess installation health (read-only)

@@ -132,13 +132,19 @@ func (a *API) createTask(w http.ResponseWriter, r *http.Request) {
 		BoardID      string   `json:"board_id"`
 		ID           string   `json:"task_id"`
 		Title        string   `json:"title"`
+		Objective    string   `json:"objective"`
+		Acceptance   string   `json:"acceptance_criteria"`
+		Verification string   `json:"verification"`
+		AllowedFiles []string `json:"allowed_files"`
 		Dependencies []string `json:"dependencies"`
 	}
 	if err := decodeJSON(w, r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	item, err := a.store.CreateWorkInBoard(r.Context(), input.BoardID, input.ID, input.Title, input.Dependencies)
+	item, err := a.store.CreateWorkInBoardWithDefinition(r.Context(), input.BoardID, input.ID, input.Title, input.Dependencies, delegation.WorkDefinition{
+		Objective: input.Objective, Acceptance: input.Acceptance, Verification: input.Verification, AllowedFiles: input.AllowedFiles,
+	})
 	writeCreated(w, item, err)
 }
 
@@ -147,9 +153,9 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 	cfg, err := delegation.Load(filepath.Join(home, ".config", "opencode"))
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"delegation_config": map[string]any{"delegation_enabled": false, "roles": map[string]any{}},
-			"herdr_installed":   false,
-			"herdr_active":      false,
+			"delegation_config":            map[string]any{"delegation_enabled": false, "roles": map[string]any{}},
+			"herdr_installed":              false,
+			"herdr_active":                 false,
 			"background_subagents_enabled": false,
 		})
 		return
@@ -159,9 +165,9 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 	bgEnv := os.Getenv("OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS") == "true"
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"delegation_config": cfg,
-		"herdr_installed":   herdrExe != "",
-		"herdr_active":      herdrActive,
+		"delegation_config":            cfg,
+		"herdr_installed":              herdrExe != "",
+		"herdr_active":                 herdrActive,
 		"background_subagents_enabled": bgEnv,
 	})
 }

@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,22 +23,24 @@ import (
 const maxRequestBytes = 256 * 1024
 const maxOutputBytes = 1024 * 1024
 
-type AuthorityProof struct {
-	ClaimConfirmed bool `json:"claim_confirmed"`
-	LeaseConfirmed bool `json:"lease_confirmed"`
-}
+const (
+	WorkspaceIsolated = "isolated_worktree"
+	WorkspaceCurrent  = "current_workspace"
+)
+
+var errInvalidReceipt = errors.New("invalid delegation receipt")
 
 // Request is a transient handoff document. The bridge deletes it before AGY
 // starts; only its objective digest and operational metadata enter SQLite.
 type Request struct {
-	Role         string          `json:"role"`
-	TaskID       string          `json:"task_id,omitempty"`
-	Objective    string          `json:"objective"`
-	Workspace    string          `json:"workspace"`
-	Worktree     string          `json:"worktree,omitempty"`
-	AllowedFiles []string        `json:"allowed_files,omitempty"`
-	Authority    AuthorityProof  `json:"authority"`
-	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
+	Role          string          `json:"role"`
+	TaskID        string          `json:"task_id,omitempty"`
+	Objective     string          `json:"objective"`
+	Workspace     string          `json:"workspace"`
+	Worktree      string          `json:"worktree,omitempty"`
+	WorkspaceMode string          `json:"workspace_strategy,omitempty"`
+	AllowedFiles  []string        `json:"allowed_files,omitempty"`
+	OutputSchema  json.RawMessage `json:"output_schema,omitempty"`
 }
 
 func ReadRequest(path string) (Request, error) {
@@ -80,19 +83,39 @@ func (r Request) Validate() error {
 		return errors.New("workspace must be an existing directory")
 	}
 	if r.Role == "implement" {
-		if !r.Authority.ClaimConfirmed || !r.Authority.LeaseConfirmed {
-			return errors.New("implement delegation requires a confirmed cortex-ia work claim and file lease")
+		if strings.TrimSpace(r.TaskID) == "" {
+			return errors.New("implement delegation requires a task id")
 		}
-		if r.Worktree == "" {
-			return errors.New("implement delegation requires worktree")
+		if len(r.AllowedFiles) == 0 {
+			return errors.New("implement delegation requires at least one allowed file")
 		}
-		worktree, err := filepath.Abs(r.Worktree)
-		if err != nil || worktree != filepath.Clean(r.Worktree) {
-			return errors.New("worktree must be an absolute normalized path")
-		}
-		info, err := os.Stat(worktree)
-		if err != nil || !info.IsDir() {
-			return errors.New("worktree must be an existing directory")
+		switch r.WorkspaceMode {
+		case WorkspaceIsolated:
+			if r.Worktree == "" {
+				return errors.New("isolated_worktree strategy requires worktree")
+			}
+			worktree, err := filepath.Abs(r.Worktree)
+			if err != nil || worktree != filepath.Clean(r.Worktree) {
+				return errors.New("worktree must be an absolute normalized path")
+			}
+			info, err := os.Stat(worktree)
+			if err != nil || !info.IsDir() {
+				return errors.New("worktree must be an existing directory")
+			}
+			if samePath(workspace, worktree) {
+				return errors.New("isolated_worktree must differ from the controller workspace")
+			}
+			if _, err := os.Lstat(filepath.Join(worktree, ".git")); err != nil {
+				return errors.New("isolated_worktree must be a git worktree")
+			}
+		case WorkspaceCurrent:
+			if r.Worktree != "" {
+				return errors.New("current_workspace strategy must not include worktree")
+			}
+		case "":
+			return errors.New("implement delegation requires explicit workspace_strategy")
+		default:
+			return fmt.Errorf("unsupported workspace_strategy %q", r.WorkspaceMode)
 		}
 	}
 	for _, allowed := range r.AllowedFiles {
@@ -106,6 +129,13 @@ func (r Request) Validate() error {
 	return nil
 }
 
+func (r Request) executionDirectory() string {
+	if r.Role == "implement" && r.WorkspaceMode == WorkspaceIsolated {
+		return r.Worktree
+	}
+	return r.Workspace
+}
+
 func ObjectiveDigest(objective string) string {
 	digest := sha256.Sum256([]byte(objective))
 	return "sha256:" + hex.EncodeToString(digest[:])
@@ -115,9 +145,17 @@ func CreateFromRequest(ctx context.Context, store *Store, request Request, trans
 	if err := request.Validate(); err != nil {
 		return Job{}, err
 	}
+	if request.Role == "implement" && request.WorkspaceMode == WorkspaceIsolated {
+		if err := validateRelatedWorktree(request.Workspace, request.Worktree); err != nil {
+			return Job{}, err
+		}
+		if err := store.ValidateDelegationAuthority(ctx, request.TaskID, request.AllowedFiles); err != nil {
+			return Job{}, fmt.Errorf("validate implementation authority: %w", err)
+		}
+	}
 	return store.Create(ctx, NewJob{
 		Role: request.Role, TaskID: request.TaskID, ObjectiveDigest: ObjectiveDigest(request.Objective),
-		Transport: transport, Workspace: request.Workspace, Worktree: request.Worktree,
+		Transport: transport, Workspace: request.Workspace, Worktree: request.executionDirectory(),
 	})
 }
 
@@ -141,6 +179,14 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	}
 	if job.Role != request.Role || job.ObjectiveDigest != ObjectiveDigest(request.Objective) {
 		return errors.New("delegation request does not match accepted job")
+	}
+	if request.Role == "implement" && request.WorkspaceMode == WorkspaceIsolated {
+		if err := validateRelatedWorktree(request.Workspace, request.Worktree); err != nil {
+			return err
+		}
+		if err := store.ValidateDelegationAuthority(ctx, request.TaskID, request.AllowedFiles); err != nil {
+			return fmt.Errorf("revalidate implementation authority: %w", err)
+		}
 	}
 	cfg, err := Load(filepath.Join(home, ".config", "opencode"))
 	if err != nil {
@@ -173,11 +219,17 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	hash := sha256.Sum256(output)
 	receipt := Receipt{Output: normalizeJSON(output), OutputHash: "sha256:" + hex.EncodeToString(hash[:]), ExitCode: exitCode}
 	if runErr == nil {
-		return store.Complete(ctx, id, StatusSucceeded, receipt, "", "")
+		if receiptErr := validateStructuredReceipt(output, request.OutputSchema); receiptErr == nil {
+			return store.Complete(ctx, id, StatusSucceeded, receipt, "", "")
+		} else {
+			runErr = receiptErr
+		}
 	}
 	status, code := StatusFailed, "AGY_FAILED"
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 		status, code = StatusTimedOut, "TIMEOUT"
+	} else if errors.Is(runErr, errInvalidReceipt) {
+		code = "INVALID_RECEIPT"
 	}
 	message := runErr.Error()
 	if completeErr := store.Complete(context.Background(), id, status, receipt, code, message); completeErr != nil {
@@ -247,8 +299,19 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 
 	cmd := exec.CommandContext(ctx, agy, args...)
 	cmd.Dir = request.Workspace
+	var workspaceBaseline map[string]string
 	if request.Role == "implement" {
-		cmd.Dir = request.Worktree
+		cmd.Dir = request.executionDirectory()
+		if request.WorkspaceMode == WorkspaceIsolated {
+			if err := ensureCleanWorktree(cmd.Dir); err != nil {
+				return nil, -1, err
+			}
+		} else {
+			workspaceBaseline, err = captureWorkspaceBaseline(cmd.Dir)
+			if err != nil {
+				return nil, -1, err
+			}
+		}
 	}
 	sandboxHome, err := os.MkdirTemp("", "cortex-ia-agy-home-*")
 	if err != nil {
@@ -350,7 +413,8 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 				if name == "" {
 					name = msg.StepUpdate.ToolInfo.Name
 				}
-				if msg.StepUpdate.State == "ACTIVE" {
+				switch msg.StepUpdate.State {
+				case "ACTIVE":
 					var rawParams map[string]any
 					actionSummary := ""
 					if len(msg.StepUpdate.ToolInfo.Parameters) > 0 {
@@ -382,7 +446,7 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 						fmt.Printf("🔧 [%s] Tool: %s %s\n", request.Role, name, paramsSummary)
 					}
 					_ = os.Stdout.Sync()
-				} else if msg.StepUpdate.State == "DONE" {
+				case "DONE":
 					outSummary := ""
 					if msg.StepUpdate.ToolInfo.Output != "" {
 						cleanOut := strings.ReplaceAll(msg.StepUpdate.ToolInfo.Output, "\n", " ")
@@ -418,6 +482,21 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 
 	err = cmd.Wait()
 	elapsed := time.Since(startTime).Round(time.Millisecond)
+	if request.Role == "implement" && (err == nil || request.WorkspaceMode == WorkspaceCurrent) {
+		var allowErr error
+		if request.WorkspaceMode == WorkspaceIsolated {
+			allowErr = validateWorktreeChanges(request.executionDirectory(), request.AllowedFiles)
+		} else {
+			allowErr = validateWorkspaceChanges(request.executionDirectory(), request.AllowedFiles, workspaceBaseline)
+		}
+		if allowErr != nil {
+			if err != nil {
+				err = errors.Join(err, allowErr)
+			} else {
+				err = allowErr
+			}
+		}
+	}
 
 	exitCode := 0
 	if err != nil {
@@ -460,7 +539,7 @@ func printResultSummary(output []byte) {
 		StructuredOutput struct {
 			Summary             string `json:"summary"`
 			PhaseStatus         string `json:"phase_status"`
-			TaskStatus          string `json:"task_status"`
+			ExecutionStatus     string `json:"execution_status"`
 			VerificationVerdict string `json:"verification_verdict"`
 		} `json:"structured_output"`
 		Usage struct {
@@ -488,11 +567,16 @@ func printResultSummary(output []byte) {
 }
 
 func isolatedAGYEnvironment(home string) []string {
-	blocked := map[string]bool{"HOME": true, "USERPROFILE": true, "HOMEDRIVE": true, "HOMEPATH": true}
-	environment := make([]string, 0, len(os.Environ())+4)
+	allowed := map[string]bool{
+		"PATH": true, "PATHEXT": true, "SYSTEMROOT": true, "WINDIR": true, "COMSPEC": true,
+		"TEMP": true, "TMP": true, "TMPDIR": true, "LANG": true, "LC_ALL": true, "TERM": true,
+		"COLORTERM": true, "NO_COLOR": true, "HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true,
+		"SSL_CERT_FILE": true, "SSL_CERT_DIR": true,
+	}
+	environment := make([]string, 0, len(allowed)+4)
 	for _, item := range os.Environ() {
 		key, _, _ := strings.Cut(item, "=")
-		if !blocked[strings.ToUpper(key)] {
+		if allowed[strings.ToUpper(key)] {
 			environment = append(environment, item)
 		}
 	}
@@ -501,6 +585,234 @@ func isolatedAGYEnvironment(home string) []string {
 		environment = append(environment, "HOMEDRIVE="+volume, "HOMEPATH="+strings.TrimPrefix(home, volume))
 	}
 	return environment
+}
+
+func samePath(left, right string) bool {
+	left, right = filepath.Clean(left), filepath.Clean(right)
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
+}
+
+func gitOutput(directory string, args ...string) ([]byte, error) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return nil, errors.New("git executable not found")
+	}
+	cmd := exec.Command(git, args...)
+	cmd.Dir = directory
+	output, err := cmd.Output()
+	if err != nil {
+		stderr := ""
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			stderr = string(exitErr.Stderr)
+		}
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, bounded(stderr, 512))
+	}
+	return output, nil
+}
+
+func ensureCleanWorktree(directory string) error {
+	paths, err := changedWorktreePaths(directory)
+	if err != nil {
+		return fmt.Errorf("validate isolated worktree: %w", err)
+	}
+	if len(paths) != 0 {
+		return errors.New("implement worktree must be clean before delegation")
+	}
+	return nil
+}
+
+func validateRelatedWorktree(workspace, worktree string) error {
+	workspaceCommon, err := gitOutput(workspace, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return fmt.Errorf("controller workspace is not a git repository: %w", err)
+	}
+	worktreeCommon, err := gitOutput(worktree, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return fmt.Errorf("isolated worktree is not a git repository: %w", err)
+	}
+	if !samePath(strings.TrimSpace(string(workspaceCommon)), strings.TrimSpace(string(worktreeCommon))) {
+		return errors.New("implement worktree must belong to the controller repository")
+	}
+	workspaceHead, err := gitOutput(workspace, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	worktreeHead, err := gitOutput(worktree, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(workspaceHead)) != strings.TrimSpace(string(worktreeHead)) {
+		return errors.New("implement worktree must start at the controller HEAD")
+	}
+	return nil
+}
+
+func validateWorktreeChanges(directory string, allowedFiles []string) error {
+	changed, err := changedWorktreePaths(directory)
+	if err != nil {
+		return fmt.Errorf("validate delegated changes: %w", err)
+	}
+	allowed := make(map[string]struct{}, len(allowedFiles))
+	for _, value := range allowedFiles {
+		clean, pathErr := canonicalLeasePath(value)
+		if pathErr != nil {
+			return pathErr
+		}
+		allowed[clean] = struct{}{}
+	}
+	for _, pathValue := range changed {
+		clean, pathErr := canonicalLeasePath(pathValue)
+		if pathErr != nil {
+			return fmt.Errorf("delegated change has unsafe path %q: %w", pathValue, pathErr)
+		}
+		if _, ok := allowed[clean]; !ok {
+			return fmt.Errorf("delegated worker modified unleased path %q", clean)
+		}
+	}
+	return nil
+}
+
+func captureWorkspaceBaseline(directory string) (map[string]string, error) {
+	changed, err := changedWorktreePaths(directory)
+	if err != nil {
+		return nil, fmt.Errorf("capture current workspace baseline: %w", err)
+	}
+	baseline := make(map[string]string, len(changed))
+	for _, value := range changed {
+		clean, pathErr := canonicalLeasePath(value)
+		if pathErr != nil {
+			return nil, pathErr
+		}
+		fingerprint, fingerprintErr := workspacePathFingerprint(directory, clean)
+		if fingerprintErr != nil {
+			return nil, fingerprintErr
+		}
+		baseline[clean] = fingerprint
+	}
+	return baseline, nil
+}
+
+func validateWorkspaceChanges(directory string, allowedFiles []string, baseline map[string]string) error {
+	changed, err := changedWorktreePaths(directory)
+	if err != nil {
+		return fmt.Errorf("validate current workspace changes: %w", err)
+	}
+	allowed := make(map[string]struct{}, len(allowedFiles))
+	for _, value := range allowedFiles {
+		clean, pathErr := canonicalLeasePath(value)
+		if pathErr != nil {
+			return pathErr
+		}
+		allowed[clean] = struct{}{}
+	}
+	after := make(map[string]struct{}, len(changed))
+	for _, value := range changed {
+		clean, pathErr := canonicalLeasePath(value)
+		if pathErr != nil {
+			return fmt.Errorf("delegated change has unsafe path %q: %w", value, pathErr)
+		}
+		after[clean] = struct{}{}
+	}
+	paths := make(map[string]struct{}, len(baseline)+len(after))
+	for value := range baseline {
+		paths[value] = struct{}{}
+	}
+	for value := range after {
+		paths[value] = struct{}{}
+	}
+	ordered := make([]string, 0, len(paths))
+	for value := range paths {
+		ordered = append(ordered, value)
+	}
+	sort.Strings(ordered)
+	for _, value := range ordered {
+		if _, ok := allowed[value]; ok {
+			continue
+		}
+		beforeFingerprint, existedBefore := baseline[value]
+		_, existsAfter := after[value]
+		if existedBefore != existsAfter {
+			return fmt.Errorf("delegated worker changed unleased path %q relative to workspace baseline", value)
+		}
+		if !existedBefore {
+			continue
+		}
+		afterFingerprint, fingerprintErr := workspacePathFingerprint(directory, value)
+		if fingerprintErr != nil {
+			return fingerprintErr
+		}
+		if beforeFingerprint != afterFingerprint {
+			return fmt.Errorf("delegated worker modified pre-existing unleased path %q", value)
+		}
+	}
+	return nil
+}
+
+func workspacePathFingerprint(directory, relativePath string) (string, error) {
+	clean, err := canonicalLeasePath(relativePath)
+	if err != nil {
+		return "", err
+	}
+	target := filepath.Join(directory, filepath.FromSlash(clean))
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return "missing", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		value, readErr := os.Readlink(target)
+		if readErr != nil {
+			return "", readErr
+		}
+		digest := sha256.Sum256([]byte("symlink:" + value))
+		return hex.EncodeToString(digest[:]), nil
+	}
+	if !info.Mode().IsRegular() {
+		digest := sha256.Sum256([]byte("mode:" + info.Mode().String()))
+		return hex.EncodeToString(digest[:]), nil
+	}
+	file, err := os.Open(target)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = file.Close() }()
+	digest := sha256.New()
+	if _, err := io.Copy(digest, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(digest.Sum(nil)), nil
+}
+
+func changedWorktreePaths(directory string) ([]string, error) {
+	tracked, err := gitOutput(directory, "diff", "--name-only", "--no-renames", "-z", "HEAD", "--")
+	if err != nil {
+		return nil, err
+	}
+	untracked, err := gitOutput(directory, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, err
+	}
+	combined := append(tracked, untracked...)
+	paths := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, raw := range bytes.Split(combined, []byte{0}) {
+		if len(raw) == 0 {
+			continue
+		}
+		value := filepath.ToSlash(string(raw))
+		if _, duplicate := seen[value]; duplicate {
+			continue
+		}
+		seen[value] = struct{}{}
+		paths = append(paths, value)
+	}
+	return paths, nil
 }
 
 func externalPrompt(request Request) string {
@@ -535,6 +847,146 @@ func normalizeJSON(output []byte) json.RawMessage {
 	}
 	wrapped, _ := json.Marshal(map[string]string{"text": string(output)})
 	return wrapped
+}
+
+type receiptSchemaNode struct {
+	Type                 string                     `json:"type"`
+	Required             []string                   `json:"required"`
+	Properties           map[string]json.RawMessage `json:"properties"`
+	Items                json.RawMessage            `json:"items"`
+	Enum                 []json.RawMessage          `json:"enum"`
+	AdditionalProperties *bool                      `json:"additionalProperties"`
+}
+
+func validateStructuredReceipt(output, schemaJSON json.RawMessage) error {
+	if len(schemaJSON) == 0 {
+		return nil
+	}
+	var envelope struct {
+		StructuredOutput json.RawMessage `json:"structured_output"`
+	}
+	if err := json.Unmarshal(output, &envelope); err != nil {
+		return fmt.Errorf("%w: decode AGY result envelope: %v", errInvalidReceipt, err)
+	}
+	if len(envelope.StructuredOutput) == 0 || bytes.Equal(bytes.TrimSpace(envelope.StructuredOutput), []byte("null")) {
+		return fmt.Errorf("%w: structured_output is missing", errInvalidReceipt)
+	}
+	if err := validateReceiptValue(envelope.StructuredOutput, schemaJSON, "structured_output", true); err != nil {
+		return fmt.Errorf("%w: %v", errInvalidReceipt, err)
+	}
+	return nil
+}
+
+func validateReceiptValue(valueJSON, schemaJSON json.RawMessage, field string, required bool) error {
+	var schema receiptSchemaNode
+	if err := json.Unmarshal(schemaJSON, &schema); err != nil {
+		return fmt.Errorf("decode schema for %s: %w", field, err)
+	}
+	if schema.Type == "" {
+		return fmt.Errorf("schema for %s has no supported type", field)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(valueJSON))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return fmt.Errorf("decode %s: %w", field, err)
+	}
+	if len(schema.Enum) > 0 && !receiptEnumContains(value, schema.Enum) {
+		return fmt.Errorf("%s is outside the allowed enum", field)
+	}
+
+	switch schema.Type {
+	case "object":
+		object, ok := value.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s must be an object", field)
+		}
+		requiredFields := make(map[string]bool, len(schema.Required))
+		for _, name := range schema.Required {
+			requiredFields[name] = true
+			if _, exists := object[name]; !exists {
+				return fmt.Errorf("%s.%s is required", field, name)
+			}
+		}
+		if schema.AdditionalProperties != nil && !*schema.AdditionalProperties {
+			for name := range object {
+				if _, allowed := schema.Properties[name]; !allowed {
+					return fmt.Errorf("%s.%s is not allowed", field, name)
+				}
+			}
+		}
+		for name, propertySchema := range schema.Properties {
+			property, exists := object[name]
+			if !exists {
+				continue
+			}
+			propertyJSON, err := json.Marshal(property)
+			if err != nil {
+				return fmt.Errorf("encode %s.%s: %w", field, name, err)
+			}
+			if err := validateReceiptValue(propertyJSON, propertySchema, field+"."+name, requiredFields[name]); err != nil {
+				return err
+			}
+		}
+	case "array":
+		items, ok := value.([]any)
+		if !ok {
+			return fmt.Errorf("%s must be an array", field)
+		}
+		if len(schema.Items) > 0 {
+			for index, item := range items {
+				itemJSON, err := json.Marshal(item)
+				if err != nil {
+					return fmt.Errorf("encode %s[%d]: %w", field, index, err)
+				}
+				if err := validateReceiptValue(itemJSON, schema.Items, fmt.Sprintf("%s[%d]", field, index), false); err != nil {
+					return err
+				}
+			}
+		}
+	case "string":
+		text, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("%s must be a string", field)
+		}
+		if required && strings.TrimSpace(text) == "" {
+			return fmt.Errorf("%s must not be empty", field)
+		}
+	case "number":
+		if _, ok := value.(json.Number); !ok {
+			return fmt.Errorf("%s must be a number", field)
+		}
+	case "integer":
+		number, ok := value.(json.Number)
+		if !ok || strings.ContainsAny(string(number), ".eE") {
+			return fmt.Errorf("%s must be an integer", field)
+		}
+	case "boolean":
+		if _, ok := value.(bool); !ok {
+			return fmt.Errorf("%s must be a boolean", field)
+		}
+	case "null":
+		if value != nil {
+			return fmt.Errorf("%s must be null", field)
+		}
+	default:
+		return fmt.Errorf("schema type %q for %s is unsupported", schema.Type, field)
+	}
+	return nil
+}
+
+func receiptEnumContains(value any, allowed []json.RawMessage) bool {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return false
+	}
+	for _, candidate := range allowed {
+		var compact bytes.Buffer
+		if json.Compact(&compact, candidate) == nil && bytes.Equal(encoded, compact.Bytes()) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveAGY() (string, error) {

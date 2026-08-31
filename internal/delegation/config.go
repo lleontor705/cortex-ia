@@ -57,6 +57,7 @@ func DefaultDelegationConfig(useHerdr bool) DelegationConfig {
 	cfg.HerdrSettings.AutoSplit = useHerdr
 	cfg.Roles["implement"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "accept-edits"}
 	cfg.Roles["investigate"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
+	cfg.Roles["planner"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
 	cfg.Roles["reviewer"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
 	return cfg
 }

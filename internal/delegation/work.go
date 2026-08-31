@@ -6,9 +6,11 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -17,21 +19,32 @@ import (
 type WorkStatus string
 
 const (
-	WorkBacklog    WorkStatus = "backlog"
-	WorkReady      WorkStatus = "ready"
-	WorkInProgress WorkStatus = "in_progress"
-	WorkInReview   WorkStatus = "in_review"
-	WorkDone       WorkStatus = "done"
-	WorkBlocked    WorkStatus = "blocked"
+	WorkBacklog       WorkStatus = "backlog"
+	WorkReady         WorkStatus = "ready"
+	WorkInProgress    WorkStatus = "in_progress"
+	WorkInReview      WorkStatus = "in_review"
+	WorkDone          WorkStatus = "done"
+	WorkBlocked       WorkStatus = "blocked"
+	WorkSuperseded    WorkStatus = "superseded"
+	maxLeasePathBytes            = 1024
+	MaxWorkAttempts   int64      = 5
 )
 
 var ErrWorkNotFound = errors.New("work item not found")
 var ErrWorkConflict = errors.New("work control conflict")
+var ErrWorkAttemptLimit = errors.New("work attempt limit reached")
 
 type WorkItem struct {
 	ID           string      `json:"task_id"`
 	BoardID      string      `json:"board_id"`
+	Workspace    string      `json:"workspace,omitempty"`
 	Title        string      `json:"title"`
+	Objective    string      `json:"objective,omitempty"`
+	Acceptance   string      `json:"acceptance_criteria,omitempty"`
+	Verification string      `json:"verification,omitempty"`
+	AllowedFiles []string    `json:"allowed_files,omitempty"`
+	Replaces     string      `json:"replaces,omitempty"`
+	ReplacedBy   []string    `json:"replaced_by,omitempty"`
 	Status       WorkStatus  `json:"status"`
 	Revision     int64       `json:"revision"`
 	Dependencies []string    `json:"dependencies,omitempty"`
@@ -39,6 +52,13 @@ type WorkItem struct {
 	Leases       []WorkLease `json:"leases,omitempty"`
 	CreatedAt    string      `json:"created_at"`
 	UpdatedAt    string      `json:"updated_at"`
+}
+
+type WorkDefinition struct {
+	Objective    string
+	Acceptance   string
+	Verification string
+	AllowedFiles []string
 }
 
 type WorkClaim struct {
@@ -85,6 +105,18 @@ func (s *Store) CreateWork(ctx context.Context, id, title string, dependencies [
 }
 
 func (s *Store) CreateWorkInBoard(ctx context.Context, boardID, id, title string, dependencies []string) (WorkItem, error) {
+	return s.CreateWorkInBoardWithDefinition(ctx, boardID, id, title, dependencies, WorkDefinition{})
+}
+
+func (s *Store) CreateWorkInBoardWithDefinition(ctx context.Context, boardID, id, title string, dependencies []string, definition WorkDefinition) (WorkItem, error) {
+	workspace, err := ResolveProjectRoot("")
+	if err != nil {
+		return WorkItem{}, fmt.Errorf("resolve task project: %w", err)
+	}
+	return s.createWorkInBoardWithDefinition(ctx, workspace, boardID, id, title, dependencies, definition)
+}
+
+func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, boardID, id, title string, dependencies []string, definition WorkDefinition) (WorkItem, error) {
 	boardID = strings.TrimSpace(boardID)
 	if boardID == "" {
 		boardID = DefaultBoardID
@@ -96,12 +128,42 @@ func (s *Store) CreateWorkInBoard(ctx context.Context, boardID, id, title string
 	if len(id) > 128 || len(title) > 512 {
 		return WorkItem{}, errors.New("task id or title exceeds size limit")
 	}
+	definition.Objective = strings.TrimSpace(definition.Objective)
+	definition.Acceptance = strings.TrimSpace(definition.Acceptance)
+	definition.Verification = strings.TrimSpace(definition.Verification)
+	if len(definition.Objective) > 4096 || len(definition.Acceptance) > 4096 || len(definition.Verification) > 2048 {
+		return WorkItem{}, errors.New("task objective, acceptance criteria, or verification exceeds size limit")
+	}
+	if len(definition.AllowedFiles) > 128 {
+		return WorkItem{}, errors.New("task allowed file count exceeds limit")
+	}
+	allowedFiles := make([]string, 0, len(definition.AllowedFiles))
+	seenFiles := make(map[string]struct{}, len(definition.AllowedFiles))
+	for _, value := range definition.AllowedFiles {
+		path, err := canonicalLeasePath(value)
+		if err != nil {
+			return WorkItem{}, fmt.Errorf("invalid allowed file %q: %w", value, err)
+		}
+		if _, duplicate := seenFiles[path]; duplicate {
+			continue
+		}
+		seenFiles[path] = struct{}{}
+		allowedFiles = append(allowedFiles, path)
+	}
+	workspace, err := CanonicalWorkspace(workspace)
+	if err != nil || workspace == "" {
+		return WorkItem{}, errors.New("task project root is required")
+	}
+	allowedFilesJSON, err := json.Marshal(allowedFiles)
+	if err != nil {
+		return WorkItem{}, fmt.Errorf("encode allowed files: %w", err)
+	}
 	now := s.timestamp()
 	status := WorkReady
 	if len(dependencies) > 0 {
 		status = WorkBacklog
 	}
-	err := s.immediate(ctx, func(conn *sql.Conn) error {
+	err = s.immediate(ctx, func(conn *sql.Conn) error {
 		var boardExists int
 		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_boards WHERE id=?`, boardID).Scan(&boardExists); err != nil {
 			return err
@@ -109,8 +171,11 @@ func (s *Store) CreateWorkInBoard(ctx context.Context, boardID, id, title string
 		if boardExists != 1 {
 			return ErrBoardNotFound
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id) VALUES(?,?,?,?,?,?)`, id, title, status, now, now, boardID); err != nil {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id,workspace) VALUES(?,?,?,?,?,?,?)`, id, title, status, now, now, boardID, workspace); err != nil {
 			return fmt.Errorf("create work item: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, `INSERT INTO work_definitions(item_id,objective,acceptance_criteria,verification,allowed_files_json) VALUES(?,?,?,?,?)`, id, definition.Objective, definition.Acceptance, definition.Verification, string(allowedFilesJSON)); err != nil {
+			return fmt.Errorf("create work definition: %w", err)
 		}
 		seen := map[string]bool{}
 		for _, dependency := range dependencies {
@@ -119,12 +184,15 @@ func (s *Store) CreateWorkInBoard(ctx context.Context, boardID, id, title string
 				return fmt.Errorf("invalid dependency %q", dependency)
 			}
 			seen[dependency] = true
-			var dependencyBoard string
-			if err := conn.QueryRowContext(ctx, `SELECT board_id FROM work_items WHERE id=?`, dependency).Scan(&dependencyBoard); err != nil {
+			var dependencyBoard, dependencyWorkspace string
+			if err := conn.QueryRowContext(ctx, `SELECT board_id,workspace FROM work_items WHERE id=?`, dependency).Scan(&dependencyBoard, &dependencyWorkspace); err != nil {
 				return fmt.Errorf("read dependency %q: %w", dependency, err)
 			}
 			if dependencyBoard != boardID {
 				return fmt.Errorf("dependency %q belongs to board %q, not %q", dependency, dependencyBoard, boardID)
+			}
+			if dependencyWorkspace != "" && !sameWorkspace(dependencyWorkspace, workspace) {
+				return fmt.Errorf("dependency %q belongs to another project", dependency)
 			}
 			if _, err := conn.ExecContext(ctx, `INSERT INTO work_dependencies(item_id,depends_on) VALUES(?,?)`, id, dependency); err != nil {
 				return fmt.Errorf("add dependency %q: %w", dependency, err)
@@ -150,11 +218,11 @@ func (s *Store) ListWorkByBoard(ctx context.Context, boardID string) ([]WorkItem
 }
 
 func (s *Store) listWork(ctx context.Context, boardID string, filtered bool) ([]WorkItem, error) {
-	query := `SELECT id FROM work_items ORDER BY CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 WHEN 'blocked' THEN 2 WHEN 'in_review' THEN 3 WHEN 'backlog' THEN 4 ELSE 5 END, updated_at, id`
+	query := `SELECT id FROM work_items ORDER BY CASE WHEN EXISTS (SELECT 1 FROM work_decomposition_steps d WHERE d.parent_id=work_items.id) THEN 6 ELSE CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 WHEN 'blocked' THEN 2 WHEN 'in_review' THEN 3 WHEN 'backlog' THEN 4 ELSE 5 END END, updated_at, id`
 	var rows *sql.Rows
 	var err error
 	if filtered {
-		query = `SELECT id FROM work_items WHERE board_id=? ORDER BY CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 WHEN 'blocked' THEN 2 WHEN 'in_review' THEN 3 WHEN 'backlog' THEN 4 ELSE 5 END, updated_at, id`
+		query = `SELECT id FROM work_items WHERE board_id=? ORDER BY CASE WHEN EXISTS (SELECT 1 FROM work_decomposition_steps d WHERE d.parent_id=work_items.id) THEN 6 ELSE CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 WHEN 'blocked' THEN 2 WHEN 'in_review' THEN 3 WHEN 'backlog' THEN 4 ELSE 5 END END, updated_at, id`
 		rows, err = s.db.QueryContext(ctx, query, boardID)
 	} else {
 		rows, err = s.db.QueryContext(ctx, query)
@@ -190,11 +258,23 @@ func (s *Store) listWork(ctx context.Context, boardID string, filtered bool) ([]
 
 func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 	var item WorkItem
-	err := s.db.QueryRowContext(ctx, `SELECT id,board_id,title,status,revision,created_at,updated_at FROM work_items WHERE id=?`, id).Scan(&item.ID, &item.BoardID, &item.Title, &item.Status, &item.Revision, &item.CreatedAt, &item.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, `SELECT id,board_id,workspace,title,status,revision,created_at,updated_at FROM work_items WHERE id=?`, id).Scan(&item.ID, &item.BoardID, &item.Workspace, &item.Title, &item.Status, &item.Revision, &item.CreatedAt, &item.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WorkItem{}, ErrWorkNotFound
 	}
 	if err != nil {
+		return WorkItem{}, err
+	}
+	if canonical, canonicalErr := CanonicalWorkspace(item.Workspace); canonicalErr == nil {
+		item.Workspace = canonical
+	}
+	var allowedFilesJSON string
+	err = s.db.QueryRowContext(ctx, `SELECT objective,acceptance_criteria,verification,allowed_files_json FROM work_definitions WHERE item_id=?`, id).Scan(&item.Objective, &item.Acceptance, &item.Verification, &allowedFilesJSON)
+	if err == nil {
+		if err := json.Unmarshal([]byte(allowedFilesJSON), &item.AllowedFiles); err != nil {
+			return WorkItem{}, fmt.Errorf("decode task allowed files: %w", err)
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return WorkItem{}, err
 	}
 	deps, err := s.db.QueryContext(ctx, `SELECT depends_on FROM work_dependencies WHERE item_id=? ORDER BY depends_on`, id)
@@ -211,6 +291,27 @@ func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 	}
 	if err := deps.Close(); err != nil {
 		return WorkItem{}, err
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT parent_id FROM work_decomposition_steps WHERE child_id=?`, id).Scan(&item.Replaces); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return WorkItem{}, err
+	}
+	replacements, err := s.db.QueryContext(ctx, `SELECT child_id FROM work_decomposition_steps WHERE parent_id=? ORDER BY position`, id)
+	if err != nil {
+		return WorkItem{}, err
+	}
+	for replacements.Next() {
+		var childID string
+		if err := replacements.Scan(&childID); err != nil {
+			_ = replacements.Close()
+			return WorkItem{}, err
+		}
+		item.ReplacedBy = append(item.ReplacedBy, childID)
+	}
+	if err := replacements.Close(); err != nil {
+		return WorkItem{}, err
+	}
+	if len(item.ReplacedBy) > 0 {
+		item.Status = WorkSuperseded
 	}
 	var claim WorkClaim
 	err = s.db.QueryRowContext(ctx, `SELECT owner,attempt,expires_at FROM work_claims WHERE item_id=?`, id).Scan(&claim.Owner, &claim.Attempt, &claim.ExpiresAt)
@@ -238,6 +339,56 @@ func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 		return WorkItem{}, err
 	}
 	return item, nil
+}
+
+// ValidateDelegationAuthority verifies that an implementation delegation is
+// backed by live durable authority. The transient handoff never carries claim
+// or lease tokens: the worker only needs proof that the task is in progress and
+// that every writable path is reserved for that task.
+func (s *Store) ValidateDelegationAuthority(ctx context.Context, id string, allowedFiles []string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("implement delegation requires a task id")
+	}
+	if len(allowedFiles) == 0 {
+		return errors.New("implement delegation requires at least one allowed file")
+	}
+
+	item, err := s.GetWork(ctx, id)
+	if err != nil {
+		return err
+	}
+	if item.Status != WorkInProgress || item.Claim == nil {
+		return fmt.Errorf("%w: task %s has no active implementation claim", ErrWorkConflict, id)
+	}
+	now := s.now().UTC()
+	claimExpiry, err := time.Parse(time.RFC3339Nano, item.Claim.ExpiresAt)
+	if err != nil || !claimExpiry.After(now) {
+		return fmt.Errorf("%w: task %s claim is expired", ErrWorkConflict, id)
+	}
+
+	activeLeases := make(map[string]struct{}, len(item.Leases))
+	for _, lease := range item.Leases {
+		expires, parseErr := time.Parse(time.RFC3339Nano, lease.ExpiresAt)
+		if parseErr == nil && expires.After(now) {
+			activeLeases[filepath.ToSlash(lease.Path)] = struct{}{}
+		}
+	}
+	seen := make(map[string]struct{}, len(allowedFiles))
+	for _, allowed := range allowedFiles {
+		leasePath, pathErr := canonicalLeasePath(allowed)
+		if pathErr != nil {
+			return pathErr
+		}
+		if _, duplicate := seen[leasePath]; duplicate {
+			return fmt.Errorf("duplicate allowed file %q", leasePath)
+		}
+		seen[leasePath] = struct{}{}
+		if _, leased := activeLeases[leasePath]; !leased {
+			return fmt.Errorf("%w: allowed file %s has no active lease for task %s", ErrWorkConflict, leasePath, id)
+		}
+	}
+	return nil
 }
 
 func (s *Store) ClaimWork(ctx context.Context, id, owner string, ttl time.Duration) (WorkClaim, error) {
@@ -269,10 +420,21 @@ func (s *Store) ClaimWork(ctx context.Context, id, owner string, ttl time.Durati
 		if unresolved != 0 {
 			return fmt.Errorf("%w: task has %d unresolved dependencies", ErrWorkConflict, unresolved)
 		}
-		var attempt int64
-		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*)+1 FROM work_events WHERE item_id=? AND kind='claimed'`, id).Scan(&attempt); err != nil {
+		var decomposition int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_decomposition_steps WHERE parent_id=?`, id).Scan(&decomposition); err != nil {
 			return err
 		}
+		if decomposition != 0 {
+			return fmt.Errorf("%w: task %s was superseded by atomic decomposition", ErrWorkConflict, id)
+		}
+		attempts, err := workAttemptCount(ctx, conn, id)
+		if err != nil {
+			return err
+		}
+		if attempts >= MaxWorkAttempts {
+			return workAttemptLimitError(id, attempts)
+		}
+		attempt := attempts + 1
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
 		if _, err := conn.ExecContext(ctx, `INSERT INTO work_claims(item_id,owner,token_hash,attempt,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`, id, owner, tokenHash(plain), attempt, expires, now, now); err != nil {
@@ -321,6 +483,12 @@ func canonicalLeasePath(value string) (string, error) {
 	value = filepath.ToSlash(filepath.Clean(strings.TrimSpace(value)))
 	if value == "" || value == "." || value == ".." || strings.HasPrefix(value, "../") || filepath.IsAbs(value) || strings.Contains(value, ":") {
 		return "", errors.New("lease path must be a safe workspace-relative path")
+	}
+	if len(value) > maxLeasePathBytes {
+		return "", errors.New("lease path exceeds size limit")
+	}
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		value = strings.ToLower(value)
 	}
 	return value, nil
 }
@@ -598,6 +766,20 @@ func (s *Store) RetryWork(ctx context.Context, id string, expectedRevision int64
 		if unresolved != 0 {
 			return fmt.Errorf("%w: task has %d unresolved dependencies", ErrWorkConflict, unresolved)
 		}
+		var decomposition int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_decomposition_steps WHERE parent_id=?`, id).Scan(&decomposition); err != nil {
+			return err
+		}
+		if decomposition != 0 {
+			return fmt.Errorf("%w: task %s was superseded by atomic decomposition", ErrWorkConflict, id)
+		}
+		attempts, err := workAttemptCount(ctx, conn, id)
+		if err != nil {
+			return err
+		}
+		if attempts >= MaxWorkAttempts {
+			return workAttemptLimitError(id, attempts)
+		}
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
 		result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='ready',revision=revision+1,updated_at=? WHERE id=? AND status='blocked' AND revision=?`, now, id, revision)
@@ -614,6 +796,18 @@ func (s *Store) RetryWork(ctx context.Context, id string, expectedRevision int64
 		return WorkItem{}, err
 	}
 	return s.GetWork(ctx, id)
+}
+
+func workAttemptCount(ctx context.Context, conn *sql.Conn, id string) (int64, error) {
+	var attempts int64
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_events WHERE item_id=? AND kind='claimed'`, id).Scan(&attempts); err != nil {
+		return 0, err
+	}
+	return attempts, nil
+}
+
+func workAttemptLimitError(id string, attempts int64) error {
+	return fmt.Errorf("%w: task %s used %d of %d attempts; create a replacement task or reconcile manually", ErrWorkAttemptLimit, id, attempts, MaxWorkAttempts)
 }
 
 func (s *Store) addWorkEvent(ctx context.Context, conn *sql.Conn, id, kind, from, to, detail string) error {

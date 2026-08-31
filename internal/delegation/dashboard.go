@@ -31,6 +31,7 @@ type DelegationView struct {
 	ID             string `json:"job_id"`
 	Role           string `json:"role"`
 	TaskID         string `json:"task_id,omitempty"`
+	Workspace      string `json:"-"`
 	Status         Status `json:"status"`
 	Transport      string `json:"transport"`
 	Attempt        int    `json:"attempt"`
@@ -62,6 +63,21 @@ type Dashboard struct {
 }
 
 func (s *Store) Dashboard(ctx context.Context) (Dashboard, error) {
+	return s.dashboard(ctx, "")
+}
+
+// DashboardForWorkspace returns only durable work and delegations owned by
+// one project root. The unscoped Dashboard remains available to the web
+// operations console and administrative CLI surfaces.
+func (s *Store) DashboardForWorkspace(ctx context.Context, workspace string) (Dashboard, error) {
+	workspace, err := CanonicalWorkspace(workspace)
+	if err != nil || workspace == "" {
+		return Dashboard{}, fmt.Errorf("valid dashboard project root is required")
+	}
+	return s.dashboard(ctx, workspace)
+}
+
+func (s *Store) dashboard(ctx context.Context, workspace string) (Dashboard, error) {
 	boards, err := s.ListBoards(ctx)
 	if err != nil {
 		return Dashboard{}, err
@@ -78,6 +94,52 @@ func (s *Store) Dashboard(ctx context.Context) (Dashboard, error) {
 	if err != nil {
 		return Dashboard{}, err
 	}
+	if workspace != "" {
+		matchedTaskIDs := make(map[string]bool)
+		filteredDelegations := make([]DelegationView, 0, len(delegations))
+		for _, job := range delegations {
+			if sameWorkspace(job.Workspace, workspace) {
+				filteredDelegations = append(filteredDelegations, job)
+				if job.TaskID != "" {
+					matchedTaskIDs[job.TaskID] = true
+				}
+			}
+		}
+		delegations = filteredDelegations
+
+		filteredItems := make([]WorkItem, 0, len(items))
+		boardIDs := make(map[string]bool)
+		for _, item := range items {
+			if sameWorkspace(item.Workspace, workspace) || (item.Workspace == "" && matchedTaskIDs[item.ID]) {
+				filteredItems = append(filteredItems, item)
+				boardIDs[item.BoardID] = true
+			}
+		}
+		items = filteredItems
+
+		filteredBoards := make([]WorkBoard, 0, len(boards))
+		for _, board := range boards {
+			if boardIDs[board.ID] {
+				filteredBoards = append(filteredBoards, board)
+			}
+		}
+		boards = filteredBoards
+
+		visibleEntities := make(map[string]bool, len(items)+len(delegations))
+		for _, item := range items {
+			visibleEntities[item.ID] = true
+		}
+		for _, job := range delegations {
+			visibleEntities[job.ID] = true
+		}
+		filteredActivity := make([]ActivityEvent, 0, len(activity))
+		for _, event := range activity {
+			if visibleEntities[event.EntityID] {
+				filteredActivity = append(filteredActivity, event)
+			}
+		}
+		activity = filteredActivity
+	}
 
 	itemsByBoard := make(map[string][]WorkItem)
 	activeWork := make([]WorkItem, 0)
@@ -85,7 +147,7 @@ func (s *Store) Dashboard(ctx context.Context) (Dashboard, error) {
 	blocked := 0
 	for _, item := range items {
 		itemsByBoard[item.BoardID] = append(itemsByBoard[item.BoardID], item)
-		if item.Status != WorkDone {
+		if item.Status != WorkDone && item.Status != WorkSuperseded {
 			activeWork = append(activeWork, item)
 		}
 		if item.Status == WorkBlocked {
@@ -99,19 +161,23 @@ func (s *Store) Dashboard(ctx context.Context) (Dashboard, error) {
 	sessions := make([]WorkSession, 0, len(boards))
 	for _, board := range boards {
 		boardItems := itemsByBoard[board.ID]
+		counts := make(map[WorkStatus]int64)
+		for _, item := range boardItems {
+			counts[item.Status]++
+		}
 		session := WorkSession{
 			BoardID:     board.ID,
 			Title:       board.Title,
 			Description: board.Description,
 			Status:      "empty",
 			TaskCount:   len(boardItems),
-			Counts:      board.Counts,
+			Counts:      counts,
 			UpdatedAt:   board.UpdatedAt,
 		}
 		done := 0
 		sessionOwners := make(map[string]bool)
 		for _, item := range boardItems {
-			if item.Status == WorkDone {
+			if item.Status == WorkDone || item.Status == WorkSuperseded {
 				done++
 			}
 			if item.UpdatedAt > session.UpdatedAt {
@@ -160,7 +226,7 @@ func (s *Store) ListDelegations(ctx context.Context, limit int) ([]DelegationVie
 	if limit < 1 || limit > 200 {
 		limit = 50
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,role,task_id,status,transport,attempt,lease_owner,COALESCE(lease_expires_at,''),error_code,error_message,created_at,updated_at FROM delegation_jobs ORDER BY updated_at DESC,id LIMIT ?`, limit)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,role,task_id,workspace,status,transport,attempt,lease_owner,COALESCE(lease_expires_at,''),error_code,error_message,created_at,updated_at FROM delegation_jobs ORDER BY updated_at DESC,id LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +234,7 @@ func (s *Store) ListDelegations(ctx context.Context, limit int) ([]DelegationVie
 	views := make([]DelegationView, 0)
 	for rows.Next() {
 		var view DelegationView
-		if err := rows.Scan(&view.ID, &view.Role, &view.TaskID, &view.Status, &view.Transport, &view.Attempt, &view.LeaseOwner, &view.LeaseExpiresAt, &view.ErrorCode, &view.ErrorMessage, &view.CreatedAt, &view.UpdatedAt); err != nil {
+		if err := rows.Scan(&view.ID, &view.Role, &view.TaskID, &view.Workspace, &view.Status, &view.Transport, &view.Attempt, &view.LeaseOwner, &view.LeaseExpiresAt, &view.ErrorCode, &view.ErrorMessage, &view.CreatedAt, &view.UpdatedAt); err != nil {
 			return nil, err
 		}
 		view.ErrorMessage = bounded(view.ErrorMessage, 160)

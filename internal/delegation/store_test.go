@@ -288,19 +288,17 @@ func TestRunnerValidationAndPrompts(t *testing.T) {
 	tempDir := t.TempDir()
 	wt := filepath.Join(tempDir, "wt")
 	_ = os.MkdirAll(wt, 0755)
+	_ = os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: test\n"), 0600)
 
 	// 1. Valid request
 	validReq := Request{
-		Role:         "implement",
-		TaskID:       "t-valid",
-		Objective:    "Implement test feature",
-		Workspace:    tempDir,
-		Worktree:     wt,
-		AllowedFiles: []string{"src/main.go"},
-		Authority: AuthorityProof{
-			ClaimConfirmed: true,
-			LeaseConfirmed: true,
-		},
+		Role:          "implement",
+		TaskID:        "t-valid",
+		Objective:     "Implement test feature",
+		Workspace:     tempDir,
+		Worktree:      wt,
+		WorkspaceMode: WorkspaceIsolated,
+		AllowedFiles:  []string{"src/main.go"},
 	}
 	if err := validReq.Validate(); err != nil {
 		t.Fatalf("expected valid request, got: %v", err)
@@ -313,17 +311,17 @@ func TestRunnerValidationAndPrompts(t *testing.T) {
 		t.Error("expected error for invalid role")
 	}
 
-	// 3. Implement role requires worktree and authority
+	// 3. Implement role requires an isolated worktree and writable paths.
 	noWorktree := validReq
 	noWorktree.Worktree = ""
 	if err := noWorktree.Validate(); err == nil {
 		t.Error("expected error for implement role without worktree")
 	}
 
-	noAuth := validReq
-	noAuth.Authority.ClaimConfirmed = false
-	if err := noAuth.Validate(); err == nil {
-		t.Error("expected error for implement role without claim confirmation")
+	noAllowedFiles := validReq
+	noAllowedFiles.AllowedFiles = nil
+	if err := noAllowedFiles.Validate(); err == nil {
+		t.Error("expected error for implement role without allowed files")
 	}
 
 	// 4. File reading & JSON validation

@@ -89,7 +89,10 @@ func (s *Store) GetBoard(ctx context.Context, id string) (WorkBoard, error) {
 		return WorkBoard{}, err
 	}
 	board.Counts = map[WorkStatus]int64{}
-	rows, err := s.db.QueryContext(ctx, `SELECT status,COUNT(*) FROM work_items WHERE board_id=? GROUP BY status`, board.ID)
+	rows, err := s.db.QueryContext(ctx, `SELECT CASE WHEN EXISTS (
+		SELECT 1 FROM work_decomposition_steps d WHERE d.parent_id=work_items.id
+	) THEN 'superseded' ELSE status END AS effective_status,COUNT(*)
+		FROM work_items WHERE board_id=? GROUP BY effective_status`, board.ID)
 	if err != nil {
 		return WorkBoard{}, err
 	}

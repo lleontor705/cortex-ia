@@ -22,7 +22,8 @@ const (
 	// KindConfig is the opencode.jsonc settings template at the embedded
 	// root.
 	KindConfig Kind = "config"
-	// KindShared is a top-level workflow contract under _shared/.
+	// KindShared is a workflow contract under skills/_shared/ (or the
+	// legacy top-level _shared/ shape accepted by Classify).
 	KindShared Kind = "shared"
 	// KindAgent is a sub-agent definition under agents/.
 	KindAgent Kind = "agent"
@@ -32,6 +33,8 @@ const (
 	KindSkill Kind = "skill"
 	// KindPlugin is an OpenCode plugin file under plugin/.
 	KindPlugin Kind = "plugin"
+	// KindTUI is a TUI-only OpenCode plugin under tui/.
+	KindTUI Kind = "tui"
 )
 
 // Asset file classification and inventory errors. They are wrapped with
@@ -126,9 +129,14 @@ func Classify(rel string) (Kind, error) {
 	case "commands":
 		return KindCommand, nil
 	case "skills":
+		if strings.HasPrefix(rest, "_shared/") {
+			return KindShared, nil
+		}
 		return KindSkill, nil
 	case "plugins", "plugin":
 		return KindPlugin, nil
+	case "tui":
+		return KindTUI, nil
 	}
 	return "", fmt.Errorf("%w: %q is not a known asset root", ErrUnmappedRoot, rel)
 }

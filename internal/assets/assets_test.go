@@ -15,13 +15,15 @@ func TestInventory(t *testing.T) {
 		t.Fatal("Inventory() returned 0 files")
 	}
 
-	foundConfig, foundDoc, foundAgent, foundCommand, foundSkill, foundPlugin := false, false, false, false, false, false
+	foundConfig, foundDoc, foundShared, foundAgent, foundCommand, foundSkill, foundPlugin, foundTUI := false, false, false, false, false, false, false, false
 	for _, f := range files {
 		switch f.Kind {
 		case KindConfig:
 			foundConfig = true
 		case KindAgentsDoc:
 			foundDoc = true
+		case KindShared:
+			foundShared = true
 		case KindAgent:
 			foundAgent = true
 		case KindCommand:
@@ -30,12 +32,14 @@ func TestInventory(t *testing.T) {
 			foundSkill = true
 		case KindPlugin:
 			foundPlugin = true
+		case KindTUI:
+			foundTUI = true
 		}
 	}
 
-	if !foundConfig || !foundDoc || !foundAgent || !foundCommand || !foundSkill || !foundPlugin {
-		t.Fatalf("inventory missing kinds: config=%v doc=%v agent=%v command=%v skill=%v plugin=%v",
-			foundConfig, foundDoc, foundAgent, foundCommand, foundSkill, foundPlugin)
+	if !foundConfig || !foundDoc || !foundShared || !foundAgent || !foundCommand || !foundSkill || !foundPlugin || !foundTUI {
+		t.Fatalf("inventory missing kinds: config=%v doc=%v shared=%v agent=%v command=%v skill=%v plugin=%v tui=%v",
+			foundConfig, foundDoc, foundShared, foundAgent, foundCommand, foundSkill, foundPlugin, foundTUI)
 	}
 }
 
@@ -54,7 +58,7 @@ func TestReadConvention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(content, "Cortex Convention") {
+	if !strings.Contains(content, "Cortex Evidence Convention") {
 		t.Error("expected cortex convention content")
 	}
 }
@@ -117,10 +121,12 @@ func TestClassify(t *testing.T) {
 		{"AGENTS.md", KindAgentsDoc},
 		{"opencode.jsonc", KindConfig},
 		{"_shared/contract.md", KindShared},
+		{"skills/_shared/contract.md", KindShared},
 		{"agents/implement.md", KindAgent},
 		{"commands/work.md", KindCommand},
 		{"skills/test/SKILL.md", KindSkill},
 		{"plugins/cortex.ts", KindPlugin},
+		{"tui/status.js", KindTUI},
 	}
 
 	for _, tc := range cases {
