@@ -43,63 +43,25 @@ function configRoot(): string {
   return path.resolve(home, ".config", "opencode");
 }
 
-function delegationEventsPath(): string {
-  return path.join(configRoot(), "cortex-delegation-events.jsonl");
-}
-
-function delegationPanesPath(): string {
-  return path.join(configRoot(), `cortex-delegation-panes-${process.pid}.json`);
-}
-
-function authorityStatePath(): string {
-  return path.join(configRoot(), `cortex-authority-state-${process.pid}.json`);
-}
-
-function saveAuthorityState() {
-  try {
-    const target = authorityStatePath();
-    const temporary = `${target}.${process.pid}.tmp`;
-    const authorities = [...workAuthority.entries()].map(([taskID, authority]) => ({ task_id: taskID, session_id: authority.sessionID }));
-    fs.writeFileSync(temporary, JSON.stringify({ pid: process.pid, authorities }), { encoding: "utf-8", mode: 0o600 });
-    fs.renameSync(temporary, target);
-  } catch {}
-}
-
-function emitDelegationEvent(event: Record<string, unknown>) {
-  try {
-    fs.appendFileSync(delegationEventsPath(), `${JSON.stringify({ timestamp: new Date().toISOString(), ...event })}\n`, "utf-8");
-  } catch {}
-}
-
-function loadJobPanes(): Map<string, string> {
-  try {
-    const value = JSON.parse(fs.readFileSync(delegationPanesPath(), "utf-8"));
-    return new Map(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
-  } catch {
-    return new Map();
-  }
-}
-
-const activeJobPanes = loadJobPanes();
-saveAuthorityState();
-
-function saveJobPanes() {
-  try {
-    const target = delegationPanesPath();
-    const temporary = `${target}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, JSON.stringify(Object.fromEntries(activeJobPanes)), { encoding: "utf-8", mode: 0o600 });
-    fs.renameSync(temporary, target);
-  } catch {}
-}
+const activeJobPanes = new Map<string, string>();
 
 function rememberJobPane(jobID: string, paneID: string) {
   activeJobPanes.set(jobID, paneID);
-  saveJobPanes();
+  try {
+    cortex(["delegate", "set-pane", jobID, paneID]);
+  } catch {}
 }
 
 function forgetJobPane(jobID: string) {
   activeJobPanes.delete(jobID);
-  saveJobPanes();
+}
+
+function saveAuthorityState() {
+  // Pure in-memory authority tracking; SQLite delegation.db is authoritative
+}
+
+function emitDelegationEvent(_event: Record<string, unknown>) {
+  // SQLite delegation_events is authoritative; no flat file needed
 }
 
 function withoutToken(value: any, tokenField: string): any {

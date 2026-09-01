@@ -46,7 +46,14 @@ func TestStoreAndJobsLifecycle(t *testing.T) {
 		t.Errorf("fetched job mismatch: %+v", fetched)
 	}
 
-	// 3. Claim and Mark Running
+	// 3. Claim, SetPaneID and Mark Running
+	if err := store.SetPaneID(ctx, job.ID, "%42"); err != nil {
+		t.Fatalf("SetPaneID failed: %v", err)
+	}
+	fetchedWithPane, _ := store.Get(ctx, job.ID)
+	if fetchedWithPane.PaneID != "%42" {
+		t.Errorf("expected pane %%42, got %s", fetchedWithPane.PaneID)
+	}
 	if err := store.Claim(ctx, job.ID, "worker-1", 1234, 5*time.Minute); err != nil {
 		t.Fatalf("Claim failed: %v", err)
 	}
@@ -240,6 +247,21 @@ func TestWorkItemsClaimsAndLeases(t *testing.T) {
 		t.Fatalf("RenewWorkLease failed: %v", err)
 	}
 
+	// 6b. Extend Task Authority (claim + all leases)
+	if err := store.ExtendTaskAuthority(ctx, "t-1", 15*time.Minute); err != nil {
+		t.Fatalf("ExtendTaskAuthority failed: %v", err)
+	}
+
+	// 6c. Verify Work Lease against SQLite
+	verified, err := store.VerifyWorkLease(ctx, "src/main.go", "t-1", "agent-impl-1")
+	if err != nil || !verified.Valid {
+		t.Fatalf("expected valid lease verification, got: %+v, err: %v", verified, err)
+	}
+	unverified, _ := store.VerifyWorkLease(ctx, "src/other.go", "t-1", "agent-impl-1")
+	if unverified.Valid {
+		t.Errorf("expected invalid lease for unleased file")
+	}
+
 	// 7. Transition to in_review with CAS
 	itemClaimed, _ := store.GetWork(ctx, "t-1")
 	itemReview, err := store.TransitionWork(ctx, "t-1", claim.Token, itemClaimed.Revision, WorkInReview)
@@ -324,7 +346,25 @@ func TestRunnerValidationAndPrompts(t *testing.T) {
 		t.Error("expected error for implement role without allowed files")
 	}
 
-	// 4. File reading & JSON validation
+	// 4. Current workspace strategy validation
+	currentReq := Request{
+		Role:          "implement",
+		TaskID:        "t-valid",
+		Objective:     "Implement test feature",
+		Workspace:     tempDir,
+		WorkspaceMode: WorkspaceCurrent,
+		AllowedFiles:  []string{"src/main.go"},
+	}
+	if err := currentReq.Validate(); err != nil {
+		t.Fatalf("expected valid current_workspace request, got: %v", err)
+	}
+	currentReqWithWorktree := currentReq
+	currentReqWithWorktree.Worktree = wt
+	if err := currentReqWithWorktree.Validate(); err == nil {
+		t.Error("expected error for current_workspace with worktree specified")
+	}
+
+	// 5. File reading & JSON validation
 	reqFile := filepath.Join(tempDir, "request.json")
 	data, _ := json.Marshal(validReq)
 	_ = os.WriteFile(reqFile, data, 0600)

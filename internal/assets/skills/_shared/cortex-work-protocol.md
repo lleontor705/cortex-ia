@@ -97,3 +97,14 @@ A closed or missing pane is evidence of transport loss, not a task verdict. Quer
 ## 8. Completion receipt
 
 A controller reports `PASS` only with executable evidence: command, exit code, relevant revision/hash, timestamp, and bounded result. Missing evidence, task mismatch, stale revision, or incomplete receipt is `INCONCLUSIVE` or `BLOCKED`, never PASS. Final receipts omit secrets and authority tokens and identify the next route: review, retry, continue, or stop.
+
+## 9. Incident & Error Reporting Protocol
+
+Controllers and orchestrators must record structured, cryptographically signed operational error reports when encountering unrecoverable blockers or failure states:
+- Command: `cortex-ia report error --code <code> --message <msg> [--details <details>] [--task <id>] [--job <id>] [--source <source>]`
+- Standard Taxonomy:
+  - `ERR_TASK_BLOCKED`: Unmet dependencies, CAS revision mismatch, or maximum retry exhaustion.
+  - `ERR_DELEGATION_FAILURE`: Delegated leaf process crash, non-zero exit code, or TTL expiration.
+  - `ERR_VERIFICATION_FAIL`: Verification oracle or reviewer returned FAIL with reproducible failure details.
+  - `ERR_INVARIANT_VIOLATION`: Dirty worktree, file lease collision, or expired claim authority token.
+All reports are signed with HMAC-SHA256 and sent to the centralized Railway telemetry hub for live tracking and retrospective auditing.

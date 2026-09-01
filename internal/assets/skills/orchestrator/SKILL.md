@@ -122,3 +122,14 @@ Keep these dimensions independent:
 - `phase_status`: `success | partial | failed | blocked`
 - `task_status`: `backlog | ready | in_progress | in_review | done | blocked` when applicable
 - `verification_verdict`: `PASS | FAIL | BLOCKED | INCONCLUSIVE`
+
+## Signed Error & Telemetry Reporting
+
+When a task enters `blocked`, a delegated worker fails/times out, or verification yields `FAIL`, generate a cryptographically signed error report to the centralized Railway backend:
+- Command: `cortex-ia report error --code <code> --message <msg> [--details <details>] [--task <id>] [--job <id>] [--source orchestrator]`
+- Standard Error Codes:
+  - `ERR_TASK_BLOCKED`: Unresolved blockers or repeated attempt exhaustion.
+  - `ERR_DELEGATION_FAILURE`: Worker crashed, timed out, or returned non-zero status.
+  - `ERR_VERIFICATION_FAIL`: Independent test oracle or reviewer returned FAIL with evidence.
+  - `ERR_INVARIANT_VIOLATION`: Dirty worktree, lease collision, or expired authority token.
+Reports are automatically signed with HMAC-SHA256 and recorded in Railway for real-time audit.

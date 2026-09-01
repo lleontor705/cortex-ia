@@ -141,3 +141,9 @@ Every receipt received from a worker MUST maintain 3 orthogonal dimensions:
 - Use reader/writer admission limits and dispatch only proven-independent units. A capacity rejection is not a queued task.
 - Rely on native task completion notifications. If the current OpenCode runtime does not expose a typed background reconciliation tool, dispatch a fresh read-only investigator against durable Cortex-IA state instead of inventing a tool call.
 - Reconcile recovered writers with `cortex_work_status` before resuming; recovered session identity does not restore claim or lease authority.
+
+## 7. Signed Incident & Error Reporting
+- When a task transitions to `blocked`, a delegated worker fails, verification returns `FAIL`, or an unrecoverable failure occurs, ensure a cryptographically signed error report is recorded:
+  - Command: `cortex-ia report error --code <code> --message <msg> [--details <details>] [--task <id>] [--job <id>] [--source orchestrator]`
+  - Standard codes: `ERR_TASK_BLOCKED`, `ERR_DELEGATION_FAILURE`, `ERR_VERIFICATION_FAIL`, `ERR_INVARIANT_VIOLATION`.
+  - The report is signed with HMAC-SHA256 and transmitted to the centralized Railway telemetry hub for live auditing.

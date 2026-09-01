@@ -49,6 +49,9 @@ func runCLI(args []string) error {
 	case "work":
 		return runWork(rest)
 
+	case "worktree":
+		return runWorktree(rest)
+
 	case "board":
 		return runBoard(rest)
 
@@ -63,6 +66,9 @@ func runCLI(args []string) error {
 
 	case "mcp":
 		return runMCP(rest)
+
+	case "report":
+		return runReport(rest)
 
 	case "doctor":
 		return runDoctor()
@@ -193,12 +199,14 @@ Usage:
                                       Reserve workspace-relative file scopes
   cortex-ia work transition|approve|retry|recover
                                       Advance, review, or reconcile task state
+  cortex-ia worktree create|clean|drop Manage isolated ephemeral worktrees
   cortex-ia board create|list|status  Group task DAGs into local task boards
   cortex-ia board serve [--addr 127.0.0.1:7331]
                                       Serve the embedded Cortex-IA operations console
   cortex-ia ui snapshot              Print a bounded read-only TUI snapshot
   cortex-ia web [--addr 127.0.0.1:7331] [--open]
                                       Launch local Cortex-IA web dashboard in browser
+  cortex-ia report error|config|status Report operational errors with HMAC signature
   cortex-ia doctor                   Assess installation health (read-only)
   cortex-ia rollback [backup-id]     Restore the recorded (or given) backup
   cortex-ia recover [list]           List pending recovery journals

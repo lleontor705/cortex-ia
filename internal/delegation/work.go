@@ -589,6 +589,36 @@ func (s *Store) ReleaseWorkLease(ctx context.Context, path, leaseToken string) e
 	})
 }
 
+// ExtendTaskAuthority extends the active claim and all active file leases of an in_progress task.
+// This is used by active supervisors/workers during execution to ensure leases do not expire
+// during extended execution times.
+func (s *Store) ExtendTaskAuthority(ctx context.Context, id string, ttl time.Duration) error {
+	id = strings.TrimSpace(id)
+	if id == "" || ttl <= 0 {
+		return errors.New("task id and positive ttl are required")
+	}
+	now := s.timestamp()
+	expires := s.now().UTC().Add(ttl).Format(time.RFC3339Nano)
+	return s.immediate(ctx, func(conn *sql.Conn) error {
+		var status WorkStatus
+		if err := conn.QueryRowContext(ctx, `SELECT status FROM work_items WHERE id=?`, id).Scan(&status); err != nil {
+			return err
+		}
+		if status != WorkInProgress {
+			return fmt.Errorf("%w: task %s must be in_progress to extend authority", ErrWorkConflict, id)
+		}
+		result, err := conn.ExecContext(ctx, `UPDATE work_claims SET expires_at=?,updated_at=? WHERE item_id=? AND expires_at>?`, expires, now, id, now)
+		if err != nil {
+			return err
+		}
+		if n, _ := result.RowsAffected(); n == 0 {
+			return fmt.Errorf("%w: task %s has no active claim to extend", ErrWorkConflict, id)
+		}
+		_, err = conn.ExecContext(ctx, `UPDATE work_leases SET expires_at=?,updated_at=? WHERE item_id=? AND expires_at>?`, expires, now, id, now)
+		return err
+	})
+}
+
 func validWorkTransition(from, to WorkStatus) bool {
 	switch from {
 	case WorkInProgress:
@@ -845,4 +875,43 @@ func (s *Store) unlockDependents(ctx context.Context, conn *sql.Conn, completedI
 		}
 	}
 	return nil
+}
+
+type LeaseVerification struct {
+	Valid     bool   `json:"valid"`
+	TaskID    string `json:"task_id,omitempty"`
+	Path      string `json:"path"`
+	Owner     string `json:"owner,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+// VerifyWorkLease checks whether the given file path has an active, unexpired lease in SQLite.
+func (s *Store) VerifyWorkLease(ctx context.Context, filePath, taskID, owner string) (LeaseVerification, error) {
+	clean, err := canonicalLeasePath(filePath)
+	if err != nil {
+		return LeaseVerification{Valid: false, Path: filePath, Reason: err.Error()}, nil
+	}
+	now := s.timestamp()
+	var itemID, expiresAt, claimOwner string
+	row := s.db.QueryRowContext(ctx, `
+		SELECT l.item_id, l.expires_at, COALESCE(c.owner, '')
+		FROM work_leases l
+		LEFT JOIN work_claims c ON c.item_id = l.item_id AND c.expires_at > ?
+		WHERE l.path = ? AND l.expires_at > ?
+	`, now, clean, now)
+	err = row.Scan(&itemID, &expiresAt, &claimOwner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return LeaseVerification{Valid: false, Path: clean, Reason: "no active lease found for file"}, nil
+	}
+	if err != nil {
+		return LeaseVerification{Valid: false, Path: clean, Reason: err.Error()}, err
+	}
+	if taskID != "" && itemID != taskID {
+		return LeaseVerification{Valid: false, Path: clean, TaskID: itemID, Reason: fmt.Sprintf("file is leased to task %s, not %s", itemID, taskID)}, nil
+	}
+	if owner != "" && claimOwner != "" && claimOwner != owner {
+		return LeaseVerification{Valid: false, Path: clean, TaskID: itemID, Owner: claimOwner, Reason: fmt.Sprintf("file is claimed by %s, not %s", claimOwner, owner)}, nil
+	}
+	return LeaseVerification{Valid: true, Path: clean, TaskID: itemID, Owner: claimOwner, ExpiresAt: expiresAt}, nil
 }

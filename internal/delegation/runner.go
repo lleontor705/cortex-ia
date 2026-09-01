@@ -145,9 +145,14 @@ func CreateFromRequest(ctx context.Context, store *Store, request Request, trans
 	if err := request.Validate(); err != nil {
 		return Job{}, err
 	}
-	if request.Role == "implement" && request.WorkspaceMode == WorkspaceIsolated {
-		if err := validateRelatedWorktree(request.Workspace, request.Worktree); err != nil {
-			return Job{}, err
+	if request.Role == "implement" {
+		if request.WorkspaceMode == WorkspaceIsolated {
+			if err := validateRelatedWorktree(request.Workspace, request.Worktree); err != nil {
+				return Job{}, err
+			}
+			if err := ensureCleanWorktree(request.Worktree); err != nil {
+				return Job{}, err
+			}
 		}
 		if err := store.ValidateDelegationAuthority(ctx, request.TaskID, request.AllowedFiles); err != nil {
 			return Job{}, fmt.Errorf("validate implementation authority: %w", err)
@@ -180,9 +185,14 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	if job.Role != request.Role || job.ObjectiveDigest != ObjectiveDigest(request.Objective) {
 		return errors.New("delegation request does not match accepted job")
 	}
-	if request.Role == "implement" && request.WorkspaceMode == WorkspaceIsolated {
-		if err := validateRelatedWorktree(request.Workspace, request.Worktree); err != nil {
-			return err
+	if request.Role == "implement" {
+		if request.WorkspaceMode == WorkspaceIsolated {
+			if err := validateRelatedWorktree(request.Workspace, request.Worktree); err != nil {
+				return err
+			}
+			if err := ensureCleanWorktree(request.Worktree); err != nil {
+				return err
+			}
 		}
 		if err := store.ValidateDelegationAuthority(ctx, request.TaskID, request.AllowedFiles); err != nil {
 			return fmt.Errorf("revalidate implementation authority: %w", err)
@@ -212,6 +222,9 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	watchDone := make(chan struct{})
 	defer close(watchDone)
 	go watchCancellation(runCtx, store, id, cancel, watchDone)
+	if request.TaskID != "" {
+		go keepAliveAuthority(runCtx, store, request.TaskID, watchDone)
+	}
 	output, exitCode, runErr := runAGY(runCtx, request, role, timeout)
 	if current, getErr := store.Get(context.Background(), id); getErr == nil && current.Status == StatusCancelled {
 		return nil
@@ -236,6 +249,21 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 		return errors.Join(runErr, completeErr)
 	}
 	return runErr
+}
+
+func keepAliveAuthority(ctx context.Context, store *Store, taskID string, done <-chan struct{}) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+			return
+		case <-ticker.C:
+			_ = store.ExtendTaskAuthority(context.Background(), taskID, 5*time.Minute)
+		}
+	}
 }
 
 func watchCancellation(ctx context.Context, store *Store, id string, cancel context.CancelFunc, done <-chan struct{}) {
@@ -617,10 +645,19 @@ func gitOutput(directory string, args ...string) ([]byte, error) {
 func ensureCleanWorktree(directory string) error {
 	paths, err := changedWorktreePaths(directory)
 	if err != nil {
-		return fmt.Errorf("validate isolated worktree: %w", err)
+		return fmt.Errorf("validate isolated worktree %q: %w", directory, err)
 	}
 	if len(paths) != 0 {
-		return errors.New("implement worktree must be clean before delegation")
+		sample := paths
+		if len(sample) > 5 {
+			sample = sample[:5]
+		}
+		more := ""
+		if len(paths) > 5 {
+			more = fmt.Sprintf(" (+%d more)", len(paths)-5)
+		}
+		return fmt.Errorf("implement worktree %q must be clean before delegation; found %d uncommitted/untracked file(s): %s%s (clean worktree via git clean/reset/stash or use 'current_workspace' strategy if working directly in the workspace)",
+			directory, len(paths), strings.Join(sample, ", "), more)
 	}
 	return nil
 }
@@ -628,25 +665,26 @@ func ensureCleanWorktree(directory string) error {
 func validateRelatedWorktree(workspace, worktree string) error {
 	workspaceCommon, err := gitOutput(workspace, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
-		return fmt.Errorf("controller workspace is not a git repository: %w", err)
+		return fmt.Errorf("controller workspace %q is not a git repository: %w", workspace, err)
 	}
 	worktreeCommon, err := gitOutput(worktree, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
-		return fmt.Errorf("isolated worktree is not a git repository: %w", err)
+		return fmt.Errorf("isolated worktree %q is not a git repository: %w", worktree, err)
 	}
 	if !samePath(strings.TrimSpace(string(workspaceCommon)), strings.TrimSpace(string(worktreeCommon))) {
-		return errors.New("implement worktree must belong to the controller repository")
+		return fmt.Errorf("isolated worktree %q does not belong to controller repository %q", worktree, workspace)
 	}
 	workspaceHead, err := gitOutput(workspace, "rev-parse", "HEAD")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to determine controller HEAD in %q: %w", workspace, err)
 	}
 	worktreeHead, err := gitOutput(worktree, "rev-parse", "HEAD")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to determine isolated worktree HEAD in %q: %w", worktree, err)
 	}
 	if strings.TrimSpace(string(workspaceHead)) != strings.TrimSpace(string(worktreeHead)) {
-		return errors.New("implement worktree must start at the controller HEAD")
+		return fmt.Errorf("isolated worktree %q HEAD (%s) must start at controller HEAD (%s); sync worktree before delegation",
+			worktree, strings.TrimSpace(string(worktreeHead)), strings.TrimSpace(string(workspaceHead)))
 	}
 	return nil
 }
@@ -654,7 +692,7 @@ func validateRelatedWorktree(workspace, worktree string) error {
 func validateWorktreeChanges(directory string, allowedFiles []string) error {
 	changed, err := changedWorktreePaths(directory)
 	if err != nil {
-		return fmt.Errorf("validate delegated changes: %w", err)
+		return fmt.Errorf("validate delegated changes in %q: %w", directory, err)
 	}
 	allowed := make(map[string]struct{}, len(allowedFiles))
 	for _, value := range allowedFiles {
@@ -664,14 +702,27 @@ func validateWorktreeChanges(directory string, allowedFiles []string) error {
 		}
 		allowed[clean] = struct{}{}
 	}
+	var unleased []string
 	for _, pathValue := range changed {
 		clean, pathErr := canonicalLeasePath(pathValue)
 		if pathErr != nil {
 			return fmt.Errorf("delegated change has unsafe path %q: %w", pathValue, pathErr)
 		}
 		if _, ok := allowed[clean]; !ok {
-			return fmt.Errorf("delegated worker modified unleased path %q", clean)
+			unleased = append(unleased, clean)
 		}
+	}
+	if len(unleased) > 0 {
+		sample := unleased
+		if len(sample) > 5 {
+			sample = sample[:5]
+		}
+		more := ""
+		if len(unleased) > 5 {
+			more = fmt.Sprintf(" (+%d more)", len(unleased)-5)
+		}
+		return fmt.Errorf("delegated worker modified %d unleased path(s): %s%s (allowed files: %s)",
+			len(unleased), strings.Join(sample, ", "), more, strings.Join(allowedFiles, ", "))
 	}
 	return nil
 }
@@ -699,7 +750,7 @@ func captureWorkspaceBaseline(directory string) (map[string]string, error) {
 func validateWorkspaceChanges(directory string, allowedFiles []string, baseline map[string]string) error {
 	changed, err := changedWorktreePaths(directory)
 	if err != nil {
-		return fmt.Errorf("validate current workspace changes: %w", err)
+		return fmt.Errorf("validate current workspace changes in %q: %w", directory, err)
 	}
 	allowed := make(map[string]struct{}, len(allowedFiles))
 	for _, value := range allowedFiles {
@@ -729,6 +780,7 @@ func validateWorkspaceChanges(directory string, allowedFiles []string, baseline 
 		ordered = append(ordered, value)
 	}
 	sort.Strings(ordered)
+	var violations []string
 	for _, value := range ordered {
 		if _, ok := allowed[value]; ok {
 			continue
@@ -736,7 +788,8 @@ func validateWorkspaceChanges(directory string, allowedFiles []string, baseline 
 		beforeFingerprint, existedBefore := baseline[value]
 		_, existsAfter := after[value]
 		if existedBefore != existsAfter {
-			return fmt.Errorf("delegated worker changed unleased path %q relative to workspace baseline", value)
+			violations = append(violations, fmt.Sprintf("unleased path %q was created or deleted", value))
+			continue
 		}
 		if !existedBefore {
 			continue
@@ -746,8 +799,20 @@ func validateWorkspaceChanges(directory string, allowedFiles []string, baseline 
 			return fingerprintErr
 		}
 		if beforeFingerprint != afterFingerprint {
-			return fmt.Errorf("delegated worker modified pre-existing unleased path %q", value)
+			violations = append(violations, fmt.Sprintf("pre-existing unleased path %q was modified", value))
 		}
+	}
+	if len(violations) > 0 {
+		sample := violations
+		if len(sample) > 5 {
+			sample = sample[:5]
+		}
+		more := ""
+		if len(violations) > 5 {
+			more = fmt.Sprintf(" (+%d more)", len(violations)-5)
+		}
+		return fmt.Errorf("delegated worker violated workspace baseline on %d unleased path(s): %s%s (allowed files: %s)",
+			len(violations), strings.Join(sample, "; "), more, strings.Join(allowedFiles, ", "))
 	}
 	return nil
 }

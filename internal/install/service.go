@@ -301,6 +301,8 @@ func (s *Service) saveDelegation(opts Options) (bool, error) {
 	}
 	// Configure OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS="true" across OS
 	_ = ConfigureEnvironment(s.homeDir)
+	// Ensure OpenCode TUI plugin is registered in ~/.config/opencode/tui.jsonc
+	_, _ = ConfigureTUIPlugin(s.homeDir)
 
 	if opts.DelegationConfig == nil {
 		return false, nil

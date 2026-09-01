@@ -43,6 +43,7 @@ type Job struct {
 	Workspace       string  `json:"workspace"`
 	Worktree        string  `json:"worktree,omitempty"`
 	PID             int     `json:"pid,omitempty"`
+	PaneID          string  `json:"pane_id,omitempty"`
 	LeaseOwner      string  `json:"lease_owner,omitempty"`
 	LeaseExpiresAt  *string `json:"lease_expires_at,omitempty"`
 	Attempt         int     `json:"attempt"`
@@ -121,8 +122,8 @@ func (s *Store) initialize(ctx context.Context) error {
 		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 			return fmt.Errorf("read migration ledger: %w", err)
 		}
-		if version > 6 {
-			return fmt.Errorf("cortex database schema %d is newer than supported schema 6", version)
+		if version > 7 {
+			return fmt.Errorf("cortex database schema %d is newer than supported schema 7", version)
 		}
 		statements := []string{
 			`CREATE TABLE IF NOT EXISTS delegation_jobs (
@@ -318,6 +319,15 @@ func (s *Store) initialize(ctx context.Context) error {
 				return fmt.Errorf("record work decomposition migration: %w", err)
 			}
 		}
+		if version < 7 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE delegation_jobs ADD COLUMN pane_id TEXT NOT NULL DEFAULT ''`); err != nil {
+				return fmt.Errorf("add pane_id to delegation_jobs: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(7, ?)`, now); err != nil {
+				return fmt.Errorf("record delegation pane migration: %w", err)
+			}
+		}
 		if _, err := conn.ExecContext(ctx, `PRAGMA optimize`); err != nil {
 			return fmt.Errorf("optimize cortex database: %w", err)
 		}
@@ -358,6 +368,14 @@ func newID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(raw), nil
+}
+
+func (s *Store) SetPaneID(ctx context.Context, jobID, paneID string) error {
+	now := s.timestamp()
+	return s.immediate(ctx, func(conn *sql.Conn) error {
+		_, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET pane_id=?, updated_at=? WHERE id=?`, paneID, now, jobID)
+		return err
+	})
 }
 
 func (s *Store) Create(ctx context.Context, input NewJob) (Job, error) {
@@ -471,10 +489,10 @@ func (s *Store) Cancel(ctx context.Context, id string) error {
 }
 
 func (s *Store) Get(ctx context.Context, id string) (Job, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id,role,task_id,objective_digest,status,transport,workspace,worktree,pid,lease_owner,lease_expires_at,attempt,error_code,error_message,created_at,updated_at,started_at,finished_at FROM delegation_jobs WHERE id=?`, id)
+	row := s.db.QueryRowContext(ctx, `SELECT id,role,task_id,objective_digest,status,transport,workspace,worktree,pid,pane_id,lease_owner,lease_expires_at,attempt,error_code,error_message,created_at,updated_at,started_at,finished_at FROM delegation_jobs WHERE id=?`, id)
 	var job Job
 	var lease sql.NullString
-	if err := row.Scan(&job.ID, &job.Role, &job.TaskID, &job.ObjectiveDigest, &job.Status, &job.Transport, &job.Workspace, &job.Worktree, &job.PID, &job.LeaseOwner, &lease, &job.Attempt, &job.ErrorCode, &job.ErrorMessage, &job.CreatedAt, &job.UpdatedAt, &job.StartedAt, &job.FinishedAt); err != nil {
+	if err := row.Scan(&job.ID, &job.Role, &job.TaskID, &job.ObjectiveDigest, &job.Status, &job.Transport, &job.Workspace, &job.Worktree, &job.PID, &job.PaneID, &job.LeaseOwner, &lease, &job.Attempt, &job.ErrorCode, &job.ErrorMessage, &job.CreatedAt, &job.UpdatedAt, &job.StartedAt, &job.FinishedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Job{}, ErrJobNotFound
 		}

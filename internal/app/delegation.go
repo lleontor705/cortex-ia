@@ -105,6 +105,14 @@ func runDelegate(args []string) error {
 			return err
 		}
 		return printJSON(map[string]int64{"recovered": count})
+	case "set-pane":
+		if len(args) != 3 {
+			return errors.New("usage: cortex-ia delegate set-pane <job-id> <pane-id>")
+		}
+		if err := store.SetPaneID(ctx, args[1], args[2]); err != nil {
+			return err
+		}
+		return printJSON(map[string]string{"job_id": args[1], "pane_id": args[2], "status": "updated"})
 	default:
 		return fmt.Errorf("unknown delegate subcommand %q", args[0])
 	}

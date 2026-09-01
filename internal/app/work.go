@@ -34,6 +34,7 @@ func runWork(args []string) error {
 		fmt.Println("  retry <task-id> --revision <n>                              Retry a task")
 		fmt.Println("  decompose <task-id> --revision <n> --plan <file|@stdin>       Replace a blocked task with atomic tasks")
 		fmt.Println("  recover                                                     Recover expired claims/leases")
+		fmt.Println("  verify-lease --path <file> [--task <id>] [--owner <owner>]  Verify active file lease")
 		return nil
 	}
 	home, err := cortexStateHome()
@@ -321,6 +322,29 @@ func runWork(args []string) error {
 			return err
 		}
 		return printJSON(map[string]int64{"recovered": count})
+	case "verify-lease", "check-lease":
+		if len(args) > 1 && isHelp(args[1]) {
+			return workUsage("verify-lease --path <file> [--task <task-id>] [--owner <owner>]", nil)
+		}
+		opts, _, err := workOptions(args[1:], map[string]bool{"--path": false, "--task": false, "--owner": false})
+		if err != nil {
+			return workUsage("verify-lease --path <file> [--task <task-id>] [--owner <owner>]", err)
+		}
+		pathVal := oneOption(opts, "--path")
+		if pathVal == "" {
+			return errors.New("work verify-lease requires --path <file>")
+		}
+		res, err := store.VerifyWorkLease(ctx, pathVal, oneOption(opts, "--task"), oneOption(opts, "--owner"))
+		if err != nil {
+			return err
+		}
+		if err := printJSON(res); err != nil {
+			return err
+		}
+		if !res.Valid {
+			return fmt.Errorf("lease verification failed: %s", res.Reason)
+		}
+		return nil
 	default:
 		return fmt.Errorf("unknown work subcommand %q (see 'cortex-ia work --help')", args[0])
 	}
