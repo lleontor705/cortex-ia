@@ -21,17 +21,31 @@ func TestWorktreeLifecycle(t *testing.T) {
 	if out, err := cmdInit.CombinedOutput(); err != nil {
 		t.Skipf("git not available or init failed: %v (%s)", err, string(out))
 	}
-	_ = exec.Command("git", "config", "user.email", "test@test.com").Run()
-	_ = exec.Command("git", "config", "user.name", "Test").Run()
+	cmdEmail := exec.Command("git", "config", "user.email", "test@test.com")
+	cmdEmail.Dir = repoDir
+	if out, err := cmdEmail.CombinedOutput(); err != nil {
+		t.Fatalf("git config user.email failed: %v (%s)", err, string(out))
+	}
+	cmdName := exec.Command("git", "config", "user.name", "Test")
+	cmdName.Dir = repoDir
+	if out, err := cmdName.CombinedOutput(); err != nil {
+		t.Fatalf("git config user.name failed: %v (%s)", err, string(out))
+	}
 
 	testFile := filepath.Join(repoDir, "README.md")
-	_ = os.WriteFile(testFile, []byte("# Initial Repo\n"), 0644)
+	if err := os.WriteFile(testFile, []byte("# Initial Repo\n"), 0644); err != nil {
+		t.Fatalf("create test file: %v", err)
+	}
 	cmdAdd := exec.Command("git", "add", ".")
 	cmdAdd.Dir = repoDir
-	_ = cmdAdd.Run()
+	if out, err := cmdAdd.CombinedOutput(); err != nil {
+		t.Fatalf("git add failed: %v (%s)", err, string(out))
+	}
 	cmdCommit := exec.Command("git", "commit", "-m", "initial commit")
 	cmdCommit.Dir = repoDir
-	_ = cmdCommit.Run()
+	if out, err := cmdCommit.CombinedOutput(); err != nil {
+		t.Fatalf("git commit failed: %v (%s)", err, string(out))
+	}
 
 	// 2. Create Ephemeral Worktree
 	wt, err := CreateEphemeralWorktree(repoDir, wtDir)
