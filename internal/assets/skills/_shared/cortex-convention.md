@@ -14,7 +14,13 @@ Use only tools and parameters exposed by the active MCP schema. Local observatio
 
 Search first, then retrieve the full focused observation; search hits are previews. Save only durable decisions, root causes, configuration, user constraints, conventions, and non-obvious discoveries with a stable `topic_key`. Reuse a key when the same subject evolves; update a known ID only to correct it.
 
+`cortex_save_rule` is strictly reserved for permanent project directives and architectural rules (e.g. `rules/go-version`). NEVER use `cortex_save_rule` or topic key `rules/` for ephemeral task logs, worktree creations, test executions, or code reviews.
+
+When saving an observation with `cortex_save`, always call `cortex_relate` to connect it to the relevant parent decision, feature, or previous observation in the knowledge graph.
+
 Never persist secrets, claim/lease tokens, full prompts, transcripts, raw stdout, routine progress, or unverified hypotheses as facts. Handoffs carry topic keys, work task IDs, and artifact references instead of copied transcripts.
+
+When running AST ingestion via `cortex_ingest_code(path, project)`, always provide the absolute workspace root path (e.g. `d:/cortex-ia`). Never pass relative `.` because the Cortex MCP daemon executes in its own isolated working directory.
 
 Use this deterministic taxonomy:
 
@@ -30,9 +36,11 @@ Use this deterministic taxonomy:
 
 OpenSpec evidence uses `sdd/{change}/{artifact}` for `explore`, `proposal`, `spec`, `design`, `tasks`, `apply-progress`, `verify-report`, and `archive-report`. Relate meaningful records only with relations accepted by the active schema.
 
-## Sessions and recovery
+## Sessions, boards and recovery
 
-Only the orchestrator starts, summarizes, and ends Cortex sessions. After restart or compaction, restore bounded context, reconcile current `cortex_work_status`, retrieve the complete referenced observations, and resume only incomplete work. Never replay terminal tasks or fabricate missing evidence.
+Only the orchestrator starts, summarizes, and ends Cortex sessions. Maintain **EXACTLY ONE stable session ID and ONE stable board ID** throughout the whole initiative. At startup, reuse the active session from `cortex_context` if one exists; do not create multiple session IDs (e.g. creating successor sessions mid-flow). Subagents are ephemeral and must never call session start or end.
+
+After restart or compaction, restore bounded context, reconcile current `cortex_work_status`, retrieve the complete referenced observations, and resume only incomplete work. Never replay terminal tasks or fabricate missing evidence.
 
 Optional revision, graph, path, scoring, hybrid-search, consolidation, and project-DNA tools are accelerators, not mandatory surface. Call them only when exposed and relevant; edges, scores, and summaries remain evidence rather than authority.
 

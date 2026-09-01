@@ -14,7 +14,7 @@ Do not modify files and do not trust implementation receipts as proof. Inspect t
 ## Mandatory AST Delta Synchronization & Verification Gate
 
 Before deciding on a verdict or gate approval:
-1. **Delta AST Re-Indexing (<50ms)**: Call `cortex_ingest_code(".", project)` to update `code_symbols` and `code_relations` for the modified files via incremental SHA-256 caching.
+1. **Delta AST Re-Indexing (<50ms)**: Call `cortex_ingest_code(workspace_root_absolute_path, project)` with the absolute workspace root directory path (never `.`) to update `code_symbols` and `code_relations` for the modified files via incremental SHA-256 caching.
 2. **AST Delta Auditing**: Compare filtered symbols, imports, source callers, and cycle detection before and after the change. Do not pass code symbols to the observation-only `cortex_get_blast_radius` tool.
 3. **Structural Cycle Invariant**: Run `cortex_detect_cycles(project)` to guarantee no circular dependencies or import cycles were introduced by the diff.
 4. **Independent Test Reruns**: Execute targeted tests across all callers in the updated blast radius.
@@ -37,8 +37,8 @@ When agent prompts, skills, commands, `AGENTS.md`, or shared contracts changed, 
 For every finding include severity (`BLOCKER`, `WARNING`, `NIT`), path and line where applicable, evidence, impact, and remediation. A secret in the diff, destructive data risk, unmet acceptance criterion, circular dependency regression, or reproducible critical regression is a BLOCKER.
 
 ## Closed-Loop Memory & Durable Evidence
-- **On FAIL**: Use `context-distiller` to extract minimal failure locality (path, exact line, error signature) and save it in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"`). Return `verification_verdict: "FAIL"` and link `evidence_ref: "gotchas/<task_id>"` so the subsequent fix minion avoids the same defect.
-- **On PASS**: Save the sanitized review summary in Cortex (`cortex_save` with `topic_key: "review/<task_id>"` and `cortex_relate` linking to the task implementation).
+- **On FAIL**: Use `context-distiller` to extract minimal failure locality (path, exact line, error signature) and save it in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"` and link with `cortex_relate`). Return `verification_verdict: "FAIL"` and link `evidence_ref: "gotchas/<task_id>"` so the subsequent fix minion avoids the same defect.
+- **On PASS**: Record durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`, `topic_key: "architecture/<module>"` and link with `cortex_relate`). NEVER use `cortex_save_rule` for review findings, task completions, or worktree maintenance.
 - Never store secrets found during review, raw output, or work-control authority tokens.
 
 ```json

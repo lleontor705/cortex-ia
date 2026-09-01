@@ -62,7 +62,7 @@ Ground findings with exact paths, commands, exit codes, and limitations. For arc
 
 ## 2. Mandatory AST Ingestion Check & Navigation Policy
 1. **Check AST Ingestion**: First call `cortex_get_code_symbols(project, limit: 1)`. `cortex_project_dna` summarizes observations and is not an AST-ingestion oracle.
-2. **Auto-Trigger Ingestion if Missing**: If no symbols are returned (or if codebase is newly initialized), call `cortex_ingest_code(".", project)` IMMEDIATELY to run the Zero-CGO 2-Pass Static Extractor and populate `code_symbols` and `code_relations`.
+2. **Auto-Trigger Ingestion if Missing**: If no symbols are returned (or if codebase is newly initialized), call `cortex_ingest_code(workspace_root_absolute_path, project)` IMMEDIATELY using the **absolute path to the project root** to run the Zero-CGO 2-Pass Static Extractor and populate `code_symbols` and `code_relations`. Never pass `.` because the MCP server runs in an isolated directory.
 3. **AST-Grounded Analysis**: Use filtered `cortex_get_code_symbols`, bounded source reads, and `cortex_detect_cycles`. Do not call `cortex_get_blast_radius` with a symbol: its current contract accepts an observation ID.
 4. **Adaptive Memory Retrieval**: Use `cortex_search(query, graph_expand: true)` or `cortex_graph` to traverse prior root-cause observations and debug lineage.
 5. **Fallback**: If specific symbol resolution needs text fallback, use `grep`, `glob`, and targeted `read`. Never block on missing LSP.

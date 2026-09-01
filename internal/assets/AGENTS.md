@@ -157,7 +157,7 @@ sequenceDiagram
     Note over Inv,Cortex: Phase 1: Investigation & AST Ingestion Gate
     Inv->>Cortex: cortex_get_code_symbols(project, limit: 1) (Check AST status)
     alt AST symbols missing and cortex watch not running
-        Inv->>Cortex: cortex_ingest_code(".", project) (Trigger 2-Pass Static AST Ingestion)
+        Inv->>Cortex: cortex_ingest_code(workspace_root_absolute_path, project) (Trigger 2-Pass Static AST Ingestion)
     end
     Inv->>Cortex: filtered code symbols + cortex_search(graph_expand=true)
     Inv-->>Orch: Diagnostic Evidence & Baseline AST Topology Receipt
@@ -166,7 +166,7 @@ sequenceDiagram
     Note over Orch,Work: Phase 2: Preflight & Planning (if SDD route)
     Orch->>Plan: Dispatch SDD Plan (intent, project_rules, blast_radius_baseline)
     Plan->>Plan: Validate and write OpenSpec contracts
-    Plan->>Work: work create (dependency DAG nodes <= 350 LOC)
+    Plan->>Work: work create (dependency DAG nodes <= 350 LOC in stable initiative board)
     Plan-->>Orch: Planning Receipt (artifact refs, task refs, DAG readiness)
 
     Note over Orch,Imp: Phase 3: Implementation
@@ -182,17 +182,17 @@ sequenceDiagram
     rect rgb(255, 245, 235)
     Note over Rev,Cortex: Phase 4: Adversarial Review & AST Delta Sync Gate
     Orch->>Rev: Dispatch Review Envelope (board_id, changed_files, blast_radius_baseline)
-    Rev->>Cortex: cortex_ingest_code(".", project) [Delta Ingestion: <50ms]
+    Rev->>Cortex: cortex_ingest_code(workspace_root_absolute_path, project) [Delta Ingestion: <50ms]
     Rev->>Cortex: compare symbols/imports/callers (detect unapproved coupling)
     Rev->>Cortex: cortex_detect_cycles (Verify no circular import regressions)
     Rev->>Rev: Independent Checks & Mutation Testing
     alt Verdict is PASS
         Rev->>Work: work approve PASS (gate approval with evidence)
-        Rev->>Cortex: cortex_save(topic_key: "review/task_id")
+        Rev->>Cortex: cortex_save(type: "decision", topic_key: "architecture/feature") + cortex_relate
         Rev-->>Orch: Review Receipt (Verdict: PASS)
         Orch->>Plan: Archive OpenSpec change set
     else Verdict is FAIL / BLOCKED
-        Rev->>Cortex: cortex_save(type: "bugfix", topic_key: "gotchas/task_id", content: minimal_failure_locality)
+        Rev->>Cortex: cortex_save(type: "bugfix", topic_key: "gotchas/task_id", content: minimal_failure_locality) + cortex_relate
         Rev-->>Orch: Review Receipt (Verdict: FAIL, evidence_ref: "gotchas/task_id")
         Orch->>Imp: Re-dispatch Targeted Fix Minion (with evidence_ref from Cortex)
     end
@@ -379,35 +379,41 @@ When searching memory or repository context:
 5. `cortex_score(observation_id)`: Inspect mathematical importance score ($S = I \cdot R(t) \cdot G$).
 
 ### B. Incremental Delta AST Ingestion & Watcher Synergy
-1. **Startup Check**: `investigate` queries `cortex_get_code_symbols(project, limit: 1)`. If empty and `cortex watch` is not running, run `cortex_ingest_code(".", project)` once to establish the AST baseline.
-2. **Review Delta Ingestion (<50ms)**: `reviewer` executes `cortex_ingest_code(".", project)` upon receiving edited files, utilizing SHA-256 incremental caching to re-index only the modified files without full repository scan penalty.
-3. **Watcher Daemon**: When `cortex watch` is running in background, all file edits are indexed continuously in <500ms debounce.
+1. **Absolute Workspace Root**: Always pass the absolute project directory path (e.g. `d:/cortex-ia` or `D:/ITC/APIs_Externos`) to `cortex_ingest_code(path, project)`. NEVER pass relative `.` because the Cortex MCP server runs in an isolated process directory.
+2. **Startup Check**: `investigate` queries `cortex_get_code_symbols(project, limit: 1)`. If empty and `cortex watch` is not running, run `cortex_ingest_code(workspace_root_absolute_path, project)` once to establish the AST baseline.
+3. **Review Delta Ingestion (<50ms)**: `reviewer` executes `cortex_ingest_code(workspace_root_absolute_path, project)` upon receiving edited files, utilizing SHA-256 incremental caching to re-index only the modified files without full repository scan penalty.
+4. **Watcher Daemon**: When `cortex watch` is running in background, all file edits are indexed continuously in <500ms debounce.
 
 ### C. AST Delta Auditing (No Coupling Spikes)
 1. **Baseline**: During `investigate` / `planner`, capture filtered symbol definitions, imports, source callers, and relevant test packages.
 2. **Review Comparison**: `reviewer` compares the same bounded evidence after editing. `cortex_get_blast_radius` requires a numeric observation ID and must not be called with a code symbol or path.
 3. **Cycle Regression**: `reviewer` MUST run `cortex_detect_cycles(project)` before emitting `PASS`.
 
-### D. Automated Project Directives (`cortex_get_rules`)
-1. **Orchestrator Injection**: `orchestrator` pulls `cortex_get_rules(project)` at session startup and injects applicable governance constraints into the `project_rules` array of minion dispatch envelopes.
-2. **Minion Compliance**: `implement` minions must treat `project_rules` as hard invariants alongside acceptance tests.
+### D. Automated Project Directives (`cortex_get_rules`) vs Memory Observations
+1. **Directives vs Observations Boundary**: `cortex_save_rule` is STRICTLY reserved for permanent, persistent governance directives, coding standards, and architectural invariants (e.g. `rules/go-version`, `rules/auth-discipline`). NEVER use `cortex_save_rule` or prefix `rules/` for ephemeral task completions, git worktree creation, test outputs, or PR reviews.
+2. **Orchestrator Injection**: `orchestrator` pulls `cortex_get_rules(project)` at session startup and injects genuine governance constraints into the `project_rules` array of minion dispatch envelopes.
+3. **Minion Compliance**: `implement` minions must treat `project_rules` as hard invariants alongside acceptance tests.
 
-### E. Closed-Loop Failure Memory
+### E. Closed-Loop Failure Memory & Knowledge Graph
 1. **Failure Extraction**: When `reviewer` or tests detect a failure, `reviewer` persists the minimal failure locality in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"`).
-2. **Targeted Fix Minion**: `orchestrator` includes `evidence_refs: ["gotchas/<task_id>"]` in the fix minion envelope so the next minion avoids repeating the same root cause.
+2. **Graph Linking**: Always call `cortex_relate(from_id, to_id, relation_type)` to connect the bugfix/decision to the relevant entity, task, or previous observation.
+3. **Targeted Fix Minion**: `orchestrator` includes `evidence_refs: ["gotchas/<task_id>"]` in the fix minion envelope so the next minion avoids repeating the same root cause.
 
 ### F. Proactive Save & Topic Taxonomy (MANDATORY)
 Call `cortex_save` IMMEDIATELY after:
 - Any architectural or design decision made (`type: decision`, `topic_key: architecture/<module>`).
 - Any bug fixed (`type: bugfix`, `topic_key: bugfix/<issue>` — include root cause).
 - Any gotcha or non-obvious learning (`type: discovery`, `topic_key: gotchas/<feature>`).
-- Any pattern or convention established (`type: pattern`).
+- Any pattern or convention established (`type: pattern`, `topic_key: patterns/<domain>`).
+Never save ephemeral SQLite claim tokens, file lease states, diff hashes, or routine progress notes into Cortex.
 
-### G. Session Continuity & Orchestrator Session Ownership
-1. **Orchestrator Session Ownership (STRICT)**:
-   - ONLY the `orchestrator` owns the session lifecycle (`cortex_session_start` at startup, `cortex_session_summary` / `cortex_session_end` at final close).
-   - **SUBAGENTS MUST NEVER CALL `cortex_session_start`, `cortex_session_summary`, OR `cortex_session_end`**: Subagents execute as ephemeral leaf minions within the orchestrator's active session and may use ordinary memory/search tools without taking lifecycle ownership.
-2. **Startup (Orchestrator Only)**: Call `cortex_session_start`, fetch `cortex_get_project_context(project)`, and check `cortex_get_rules(project)`.
+### G. Single Stable Session & Board Continuity
+1. **One Session per Initiative**:
+   - The `orchestrator` owns the session lifecycle. It MUST maintain **EXACTLY ONE stable session ID and ONE stable board ID** throughout the entire initiative.
+   - At startup, check if an active session already exists for the project via `cortex_context`. If active, bind to the existing `session_id`. DO NOT call `cortex_session_start` with new IDs mid-flow or across conversational turns in the same initiative.
+   - **SUBAGENTS MUST NEVER CALL `cortex_session_start`, `cortex_session_summary`, OR `cortex_session_end`**.
+2. **One Authoritative Board per Initiative**:
+   - The board ID created by `planner`/`orchestrator` represents the initiative. Never spawn derivative successor boards (`-v2`, `-v3`, `-run2`). Blocked tasks must be decomposed in place with `cortex_work_decompose`.
 3. **Close (Orchestrator Only, MANDATORY before final turn)**: Call `cortex_session_summary` with:
    - `## Goal`: Intent of the session
    - `## Discoveries`: Gotchas and technical findings

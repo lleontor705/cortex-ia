@@ -25,7 +25,7 @@ The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observ
 | `reviewer` | Independently inspect and rerun checks; its only work mutation is `cortex_work_approve`. Never edit, claim, lease, or self-approve. | At most one optional review-only external leaf. |
 | external AGY leaf | Execute only the validated envelope in the explicitly selected isolated worktree or current workspace and return a bounded receipt. | No Cortex session, task-control, approval, MCP, or nested-delegation authority. |
 
-Only the orchestrator owns `cortex_session_start`, session summaries, and `cortex_session_end`. Dispatched controllers are ephemeral within that session.
+Only the orchestrator owns `cortex_session_start`, session summaries, and `cortex_session_end`. It MUST maintain exactly ONE stable session ID and ONE stable board ID throughout the entire initiative lifecycle (binding to existing active sessions from `cortex_context` upon startup). Dispatched controllers are ephemeral within that session and must never invoke session lifecycle tools.
 
 ## 3. Typed tools and token custody
 

@@ -54,7 +54,7 @@ Before native audit commands, call `cortex_delegate_start` once with `role: "rev
 
 ## Mandatory AST Delta Synchronization & Verification Gate
 Before approving or emitting a PASS verdict:
-1. **Delta AST Re-Indexing (<50ms)**: Call `cortex_ingest_code(".", project)` to update `code_symbols` and `code_relations` for the modified files via incremental SHA-256 caching.
+1. **Delta AST Re-Indexing (<50ms)**: Call `cortex_ingest_code(workspace_root_absolute_path, project)` with the **absolute workspace root directory path** (never `.`) to update `code_symbols` and `code_relations` for modified files via incremental SHA-256 caching.
 2. **AST Delta Comparison**: Compare filtered `cortex_get_code_symbols` results, imports, callers found in source, and `cortex_detect_cycles`. Do not call `cortex_get_blast_radius` with a symbol; its current contract accepts observation IDs.
 3. **Structural Cycle Invariant**: Run `cortex_detect_cycles(project)` to guarantee no circular dependencies or import cycles were introduced.
 4. **Caller & Oracle Verification**: Ensure all affected downstream callers pass their unit/integration test suites.
@@ -63,8 +63,8 @@ Before approving or emitting a PASS verdict:
 - **Two Independent Axes**: First assess Spec compliance against task/OpenSpec requirements; separately assess Standards compliance against project rules, architecture, security, regressions, and test quality. Keep findings and verdicts separate so one axis cannot mask the other. `verification_verdict=PASS` requires `spec_verdict=PASS`, `standards_verdict=PASS`, and successful mandatory checks.
 - **Blind Adversary Protocol**: When dispatched for high-risk changes, act as an independent blind judge focusing on security, edge-cases, invariants, and regressions.
 - **Mutation Testing**: Use `mutation-testing` to verify that existing and new tests catch deliberate faults (eliminating false-positive "vibe tests").
-- **Closed-Loop Failure Memory**: When defects are found, use `context-distiller` and persist the minimal failure locality in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"`). Return `verification_verdict: "FAIL"` and link `evidence_ref: "gotchas/<task_id>"` so the fix minion avoids repeating the error.
+- **Closed-Loop Failure Memory**: When defects are found, use `context-distiller` and persist the minimal failure locality in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"` and link with `cortex_relate`). Return `verification_verdict: "FAIL"` and link `evidence_ref: "gotchas/<task_id>"` so the fix minion avoids repeating the error.
 - **Selected-Design Compliance**: Verify one delivered implementation against the planner-selected design. Competing implementations are not an architecture-discovery mechanism; unresolved design ambiguity returns to `planner`.
-- Report findings with severity, file/line, evidence, and remediation. On PASS, save the review summary in Cortex (`cortex_save` with `topic_key: review/<task_id>` and `cortex_relate` linking to the task implementation).
+- Report findings with severity, file/line, evidence, and remediation. On PASS, record durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`, `topic_key: "architecture/<module>"` and link via `cortex_relate`). NEVER use `cortex_save_rule` for review findings, task completions, or worktree maintenance.
 
 Return `spec_verdict`, `standards_verdict`, and global `verification_verdict` as `PASS`, `FAIL`, `BLOCKED`, or `INCONCLUSIVE`, independently from phase/task state. A missing authoritative spec makes the Spec axis `INCONCLUSIVE`; missing evidence cannot pass and no axis may inherit the other's verdict.
