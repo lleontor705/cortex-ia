@@ -43,24 +43,28 @@ type ArtifactKind string
 
 const (
 	KindSkill     ArtifactKind = "skill"
+	KindShared    ArtifactKind = "shared"
 	KindAgent     ArtifactKind = "agent"
 	KindCommand   ArtifactKind = "command"
 	KindPrompt    ArtifactKind = "prompt"
 	KindMCPConfig ArtifactKind = "mcp-config"
 	KindRule      ArtifactKind = "rule"
 	KindOther     ArtifactKind = "other"
+	KindTUI       ArtifactKind = "tui"
 )
 
 // validArtifactKind is the closed set of artifact kinds accepted in v2
 // documents.
 var validArtifactKind = map[ArtifactKind]bool{
 	KindSkill:     true,
+	KindShared:    true,
 	KindAgent:     true,
 	KindCommand:   true,
 	KindPrompt:    true,
 	KindMCPConfig: true,
 	KindRule:      true,
 	KindOther:     true,
+	KindTUI:       true,
 }
 
 // ArtifactPrior records pre-install evidence for drift detection.
@@ -128,7 +132,6 @@ func NewMCPV2(identity installmeta.MCPServerIdentity, configPath string, ownersh
 type SelectionV2 struct {
 	AssetGroups []string `json:"asset_groups,omitempty"`
 	Cortex      bool     `json:"cortex"`
-	ForgeSpec   bool     `json:"forgespec"`
 	Context7    bool     `json:"context7"`
 }
 

@@ -10,7 +10,20 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 )
 
-// installToResult drives Home → Review → Running → Result for a clean
+func driveFromHomeToReview(t *testing.T, m model) model {
+	m = press(m, "enter")         // Home -> Wizard Step 1
+	m = press(m, "enter")         // Step 1 -> Step 2
+	m = pressDrive(t, m, "enter") // Step 2 (cursor=1: normal) -> Review (plan)
+	if m.screen == screenWizardRoles {
+		m = pressDrive(t, m, "enter")
+	}
+	if m.screen != screenReview {
+		t.Fatalf("expected review screen, got %v", m.screen)
+	}
+	return m
+}
+
+// installToResult drives Home → Wizard → Review → Running → Result for a clean
 // install whose selected MCPs all carried valid qualification evidence.
 func installToResult(t *testing.T, fake *fakeService) model {
 	t.Helper()
@@ -28,7 +41,7 @@ func installToResult(t *testing.T, fake *fakeService) model {
 		}, nil
 	}
 	m := sized(newModel(fake, "/home/test", "vtest"))
-	m = pressDrive(t, m, "enter") // Home → Review (plan)
+	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter") // Review → Running → Result
 	if m.screen != screenResult {
 		t.Fatalf("expected result screen, got %v", m.screen)
@@ -48,7 +61,9 @@ func TestResultShowsPassReceipt(t *testing.T) {
 		"PASS",
 		"Changed: 2",
 		"bkp-20260817-1",
-		"cortex-ia rollback bkp-20260817-1",
+		"rollback",
+		"enter/m home",
+		"q quit",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("result view missing %q:\n%s", want, view)
@@ -67,7 +82,7 @@ func TestResultShowsFailReceipt(t *testing.T) {
 		return nil, errors.New("apply failed; restoration verified")
 	}
 	m := sized(newModel(fake, "/home/test", "vtest"))
-	m = pressDrive(t, m, "enter")
+	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter")
 
 	if m.result.pass || m.result.canRollback {
@@ -106,7 +121,7 @@ func TestResultInstallUnqualifiedMCPIsVisibleFail(t *testing.T) {
 		}, nil
 	}
 	m := sized(newModel(fake, "/home/test", "vtest"))
-	m = pressDrive(t, m, "enter")
+	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter")
 
 	if m.screen != screenResult {
@@ -173,7 +188,7 @@ func TestResultInstallEmptySelectionPassesVacuously(t *testing.T) {
 		return &install.InstallReceipt{PlanDigest: "digest0001", Changed: []string{"create .config/opencode/AGENTS.md"}}, nil
 	}
 	m := sized(newModel(fake, "/home/test", "vtest"))
-	m = pressDrive(t, m, "enter")
+	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter")
 
 	if !m.result.pass {
@@ -221,7 +236,7 @@ func TestResultPlanDriftIsVisibleFail(t *testing.T) {
 		return nil, &pipeline.PlanDriftError{Expected: "digest0001", Observed: "drifted9999"}
 	}
 	m := sized(newModel(fake, "/home/test", "vtest"))
-	m = pressDrive(t, m, "enter")
+	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter")
 
 	if m.screen != screenResult || m.result.pass {
@@ -263,7 +278,7 @@ func TestResultLowHeightClipsDetailsKeepsVerdict(t *testing.T) {
 		return receipt, nil
 	}
 	m := sized(newModel(fake, "/home/test", "vtest"))
-	m = pressDrive(t, m, "enter")
+	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter")
 	m.height = 20
 
@@ -313,7 +328,8 @@ func TestUninstallRequiresConfirmationFromHome(t *testing.T) {
 
 	m = press(m, "down")
 	m = press(m, "down")
-	m = press(m, "down") // cursor 3: Uninstall
+	m = press(m, "down")
+	m = press(m, "down") // cursor 4: Uninstall
 	m = press(m, "enter")
 	if m.confirm.kind != confirmUninstall || fake.uninstallCals != 0 {
 		t.Fatalf("uninstall must wait for confirmation, got confirm=%v calls=%d", m.confirm.kind, fake.uninstallCals)

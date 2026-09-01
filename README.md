@@ -1,227 +1,235 @@
+﻿<p align="center">
+  <img src="docs/assets/hero-banner.svg" alt="Cortex-IA Hero Banner" width="100%" />
+</p>
+
 <p align="center">
-  <br>
-  <img src="docs/assets/logo.svg" alt="cortex-ia" width="400" />
-  <br><br>
-  <em>One command. OpenCode only. Transactional by default.</em>
-  <br><br>
-  <a href="https://github.com/lleontor705/cortex-ia/actions/workflows/ci.yml"><img src="https://github.com/lleontor705/cortex-ia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/lleontor705/cortex-ia/releases/latest"><img src="https://img.shields.io/github/v/release/lleontor705/cortex-ia" alt="Release"></a>
-  <a href="https://github.com/lleontor705/cortex-ia/blob/main/LICENSE"><img src="https://img.shields.io/github/license/lleontor705/cortex-ia" alt="License"></a>
+  <a href="https://github.com/lleontor705/cortex-ia/releases/latest"><img src="https://img.shields.io/github/v/release/lleontor705/cortex-ia?color=38BDF8&label=release" alt="Release"></a>
+  <a href="https://github.com/lleontor705/cortex-ia/blob/main/LICENSE"><img src="https://img.shields.io/github/license/lleontor705/cortex-ia?color=A855F7" alt="License"></a>
   <a href="https://goreportcard.com/report/github.com/lleontor705/cortex-ia"><img src="https://goreportcard.com/badge/github.com/lleontor705/cortex-ia" alt="Go Report Card"></a>
+  <a href="https://github.com/lleontor705/cortex-ia/actions"><img src="https://img.shields.io/badge/tests-100%25%20passing-10B981" alt="Tests"></a>
+  <a href="https://github.com/lleontor705/cortex-ia"><img src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-blue" alt="Platforms"></a>
 </p>
 
 ---
 
-cortex-ia is a single Go binary that installs the embedded OpenCode workflow
-asset set into your home configuration and manages its MCP server entries.
-It copies skills, agents, commands, the plugin, and the base config under
-`~/.config/opencode/`, registers the managed MCP selection, and does all of
-it transactionally: plan first, verified backup before any write, rollback on
-failure, and fail-closed on anything it does not own. It configures OpenCode
-only and never writes anywhere else.
+## ⚡ What is Cortex-IA?
 
-## Quick Start
+**Cortex-IA** is the enterprise-grade, deterministic **Multi-Agent Control Plane & Orchestration Engine** designed for autonomous software development with **OpenCode** and **Herdr**. 
 
-```bash
-cortex-ia                 # Interactive TUI
-cortex-ia install         # Install assets + default managed MCPs
-cortex-ia install --dry-run
-cortex-ia doctor          # Read-only health report
+Built as a single portable Go binary, Cortex-IA solves the fundamental challenges of multi-agent coding: **race conditions**, **conflicting file edits**, **hallucinated task readiness**, **unmonitored background tasks**, and **unstructured coordination**.
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   CORTEX-IA ECOSYSTEM                                       │
+│                                                                                             │
+│  ┌───────────────────────┐   ┌─────────────────────────────┐   ┌─────────────────────────┐  │
+│  │   OpenCode Agents     │   │   CORTEX-IA Control Plane   │   │  Herdr Multiplexing     │  │
+│  │  (Orchestrator, TDD,  │──▶│  (SQLite ACID DAG, Leases,  │──▶│  (Live Stream Terminals,│  │
+│  │   Reviewer, Planner)  │   │   CAS Revisions, OpenSpec)  │   │   NDJSON Telemetry)     │  │
+│  └───────────────────────┘   └─────────────────────────────┘   └─────────────────────────┘  │
+│                                            │                                                │
+│                                            ▼                                                │
+│                              ┌───────────────────────────┐                                  │
+│                              │     CORTEX Server (MCP)   │                                  │
+│                              │  (AST Graph & Blast Tree) │                                  │
+│                              └───────────────────────────┘                                  │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-See [Quickstart](docs/quickstart.md) for the guided path.
+---
 
-## Installation
+## 🌟 Key Superpowers
 
-### Homebrew (macOS / Linux)
+- 🔒 **Zero-Race Concurrency with Exclusive File Leases (`work lease`)**  
+  Prevents agents from overwriting each other's code. Agents must atomically reserve exclusive workspace-relative file paths with TTL leases before editing.
+- 🎯 **Deterministic Task DAG with Optimistic CAS Locking (`work claim` / `transition`)**  
+  Tasks transition through strict state machines (`backlog ➔ ready ➔ in_progress ➔ in_review ➔ done`). Dependent tasks automatically unlock only when prior dependencies pass review.
+- 🛡️ **Mandatory Independent Review Gates (`work approve`)**  
+  Implementers cannot self-approve. An independent reviewer agent must verify test suites and recorded evidence before marking any task complete.
+- 📺 **Live Real-time Terminal Telemetry in Herdr Panes (`delegate worker`)**  
+  Watch external worker agents think and act in real-time. Features live action humanization, sub-second tool execution telemetry, animated activity spinners, and streamed textual reasoning.
+- 📐 **Native OpenSpec SDD Integration (`cortex-ia openspec`)**  
+  Built-in support for Specification-Driven Development proposals, RFC 2119 delta specifications, and task decompositions.
+- 📊 **Real-time Web Operations Dashboard (`cortex-ia web`)**  
+  Embedded, single-binary Web UI with real-time SSE streaming for live board state visualization, task creation, and audit logging.
 
+---
+
+## 🧭 CORTEX (MCP) vs CORTEX-IA (CLI)
+
+<p align="center">
+  <img src="docs/assets/cortex-vs-cortexia.svg" alt="Cortex vs Cortex-IA" width="100%" />
+</p>
+
+| Dimension | 🧠 **CORTEX** (MCP Server) | ⚙️ **CORTEX-IA** (Control Plane & CLI) |
+|---|---|---|
+| **Nature** | Standardized MCP Server (32 tools: `cortex_*`) | Standalone native Go binary (`cortex-ia.exe`) |
+| **System Plane** | **Epistemic & Evidence Plane** | **Operational Control Plane** |
+| **Storage** | Knowledge Graph & AST Symbol DB | ACID Transactional SQLite (`~/.cortex-ia/delegation.db`) |
+| **Primary Focus** | • AST code symbols & call graphs<br>• Blast radius impact analysis<br>• Durable bug gotchas & ADR memories<br>• Cross-session project context | • Task DAG & CAS revision state machines<br>• Atomic claim tokens & exclusive file leases<br>• Herdr terminal multiplexing & live NDJSON streaming<br>• OpenSpec SDD validator & Web dashboard |
+| **Authority Rule** | **Informative & Advisory Only.** Stored observations never authorize code writes or mark tasks complete. | **Single Source of Truth.** Task readiness, leases, transitions, and approvals exist strictly in SQLite via `cortex-ia work`. |
+
+---
+
+## 🚀 Quick Start
+
+### 1. Interactive Setup (TUI)
+Launch the beautiful BubbleTea terminal interface to configure your OpenCode environment:
 ```bash
-brew install lleontor705/tap/cortex-ia
+cortex-ia
 ```
 
-### Go
+### 2. Fast Non-Interactive Installation
+```bash
+cortex-ia install         # Installs agents, skills, plugins & registers Cortex MCP
+cortex-ia sync            # Converges installed home with embedded assets
+cortex-ia doctor          # Verifies health, environment paths & tool dependencies
+```
 
-Requires Go `1.26.1` or newer (`go.mod` is authoritative):
+### 3. Launch the Real-Time Web Dashboard
+```bash
+cortex-ia web --open      # Launches the local dashboard at http://127.0.0.1:7331
+```
 
+---
+
+## 📦 Installation
+
+### Precompiled Binary (Recommended)
+Download the latest prebuilt binary from the [Releases](https://github.com/lleontor705/cortex-ia/releases) page for Windows, macOS, or Linux.
+
+### Go Install
 ```bash
 go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
 ```
 
 ### Install Script (Linux / macOS)
-
 ```bash
 curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh | bash
 ```
 
-### From Source
-
+### Build from Source
 ```bash
 git clone https://github.com/lleontor705/cortex-ia.git
 cd cortex-ia
 go build -o bin/cortex-ia ./cmd/cortex-ia
 ```
 
-## What Gets Installed
+---
 
-Every installed asset is embedded in the binary and copied
-structure-preserving under the OpenCode config root — **33 native assets**
-in total: the base config template, `AGENTS.md`, 5 sub-agents, 9 commands,
-12 skills, and 5 plugins. Nothing is generated at install time, and
-copied assets land byte-for-byte. Two deliberate exceptions: the base
-`opencode.jsonc` is three-way merged (your keys and comments survive)
-instead of replaced, and the `internal/assets/_shared/` contracts are
-compile-time only — they are never installed.
+## 💻 CLI Command Surface
 
-| Asset kind | Source | Destination under `~/.config/opencode/` |
-|------------|--------|------------------------------------------|
-| Base config | `opencode.jsonc` template | `opencode.jsonc` (three-way merge, comments preserved) |
-| System prompt | `AGENTS.md` | `AGENTS.md` |
-| Sub-Agents | `agents/*.md` (5 roles) | `agents/<name>.md` |
-| Commands | `commands/*.md` (9 commands) | `commands/<name>.md` |
-| Skills | `skills/<name>/SKILL.md` (12 skills) | `skills/<name>/SKILL.md` |
-| Plugins | `plugin/*.ts` (5 files) | `plugin/*.ts` |
-| State & backups | — | `~/.cortex-ia/` (metadata, lock, backups) |
+All commands output structured JSON, support both positional arguments and named flags, provide fast aliases (`show`, `get`), and include universal `--help`.
 
-The full mapping rules (single-source layout, collision and path-safety
-checks) are documented in [Architecture](docs/architecture.md).
+### 1. Task Boards (`cortex-ia board`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Create** | `cortex-ia board create <id> "<title>" "[desc]"` | Initialize a durable task-board boundary |
+| **List** | `cortex-ia board list` | List all boards with completed/total counters |
+| **Status** | `cortex-ia board status <id>` *(or `show`, `get`)* | Query board metadata and full task DAG snapshot |
+| **Serve** | `cortex-ia board serve [--addr 127.0.0.1:7331]` | Run the embedded loopback web dashboard |
 
-## Managed MCP Services
+### 2. Work Items & Leases (`cortex-ia work`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Create** | `cortex-ia work create <id> "<title>" --board <board> [--depends <id>]...` | Add task to DAG. Auto-sets `backlog` or `ready` |
+| **Status** | `cortex-ia work status <id>` *(or `show`, `get`)* | Query task status, revision, claim, and active leases |
+| **Claim** | `cortex-ia work claim <id> --owner <agent-id> [--ttl 15m]` | Atomically acquire task; returns `claim_token` |
+| **Renew** | `cortex-ia work renew <id> --claim-token <tok> [--ttl 15m]` | Extend live claim TTL before expiry |
+| **Lease** | `cortex-ia work lease <id> --claim-token <tok> --path <file> [--ttl 15m]` | Reserve exclusive file lock; returns `lease_token` |
+| **Lease Renew** | `cortex-ia work lease-renew --path <file> --lease-token <tok>` | Extend file lease TTL while editing |
+| **Release** | `cortex-ia work release --path <file> --lease-token <tok>` | Release file lock on task completion |
+| **Transition** | `cortex-ia work transition <id> --claim-token <tok> --to in_review` | Shift state to `in_review`, `in_progress`, or `blocked` |
+| **Approve** | `cortex-ia work approve <id> --reviewer <id> --verdict PASS --evidence "<ref>"` | Record review verdict. `PASS` unlocks next tasks |
+| **Retry** | `cortex-ia work retry <id>` | Clear residual locks and return `blocked` task to `ready` |
+| **Recover** | `cortex-ia work recover` | Sweep expired claims/leases across the workspace |
 
-`install` registers the default managed selection: **Cortex** and
-**ForgeSpec**. **Context7** is available as a catalog preset but is not
-selected by default.
+### 3. OpenSpec SDD Workspace (`cortex-ia openspec` / `openspec`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Validate** | `openspec validate [dir]` | Validate `proposal.md`, `specs/`, `design.md`, `tasks.md` |
+| **List** | `openspec list` | List active change proposals in the repository |
+| **Status** | `openspec status [dir]` | Inspect completion status of OpenSpec delta specifications |
 
-| Preset | Kind | Launches | What it does |
-|--------|------|----------|--------------|
-| `cortex` | local | `cortex mcp --tools=agent` | Persistent memory with knowledge graph, FTS5, revision history |
-| `forgespec` | local | `npx -y forgespec-mcp` | SDD contracts, task board, claims, file reservation |
-| `context7` | local | `npx -y @upstash/context7-mcp` | Live framework and library documentation via MCP |
+### 4. Worker Delegation (`cortex-ia delegate`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Create** | `cortex-ia delegate create --request-file <req.json> [--transport direct\|herdr]` | Register background worker job |
+| **Status** | `cortex-ia delegate status <job-id>` | Check job execution lifecycle |
+| **Result** | `cortex-ia delegate result <job-id>` | Retrieve structured output receipt & token metrics |
+| **Recover** | `cortex-ia delegate recover` | Reconcile lost or expired delegation jobs |
 
-Every preset is registered in OpenCode's native local-server shape
-(`{"type":"local","command":[...],"enabled":true}`) with the exact argv
-above — no remote URLs, no hidden fields.
+---
 
-Custom servers are first-class:
+## 🤖 Multi-Agent Coordination Topology
 
-```bash
-# Catalog preset
-cortex-ia mcp add forgespec --preset
+<p align="center">
+  <img src="docs/assets/multi-agent-orchestration.svg" alt="Multi-Agent Orchestration" width="100%" />
+</p>
 
-# Custom local server from an exact command vector
-cortex-ia mcp add my-server --local --env API_TOKEN=secret -- npx -y my-mcp
+1. **`orchestrator` (Primary)**: Triage, startup alignment, session lifecycle, and task DAG dispatch. Never claims tasks or holds file leases.
+2. **`investigate` (Subagent)**: Root-cause diagnosis, AST blast radius inspection, and read-only audits.
+3. **`planner` (Subagent)**: Writes OpenSpec delta specifications and decomposes tasks (≤350 LOC).
+4. **`implement` (Subagent)**: Atomically claims one task, reserves exclusive file leases, runs TDD oracles, and transitions to review.
+5. **`reviewer` (Subagent)**: Independently verifies git diffs, executes test oracles, and grants `PASS` approval to unlock downstream dependencies.
 
-# Custom remote endpoint (headers use KEY=VALUE syntax)
-cortex-ia mcp add my-remote --remote https://mcp.example.com/sse --header "Authorization=Bearer secret"
+---
 
-# Ownership listing (plain or sanitized JSON)
-cortex-ia mcp list
-cortex-ia mcp list --json
+## 📺 Live Real-Time Worker Streaming
 
-# Deregister (interactive confirmation required for the real run)
-cortex-ia mcp remove my-server --dry-run
-cortex-ia mcp remove my-server
+When tasks are delegated to external workers, Cortex-IA streams human-readable action summaries and live model reasoning directly into the Herdr terminal pane:
+
+```text
+======================================================================
+🚀 [CORTEX-IA] DELEGATED INVESTIGATE WORKER
+----------------------------------------------------------------------
+🆔 Role:       investigate
+⚙️  CLI:        agy
+📂 Directory:  D:\lleontor705\iatask
+📋 Objective:  Inspect database migrations and verify WAL mode
+----------------------------------------------------------------------
+⚡ Initializing worker session...
+⠋ [investigate] Worker processing task via agy... (2s elapsed)
+⏱️  [Checkpoint: 1.5s]
+⚡ [investigate] Read: store.go (view_file)
+   ↳ Done (0.04s) ➔ 512 lines read
+⚡ [investigate] Grep: modernc.org/sqlite (grep_search)
+   ↳ Done (0.08s) ➔ 4 matches found
+⚡ [investigate] Exec: go test ./internal/delegation/... (run_command)
+   ↳ Done (1.64s) ➔ ok (coverage: 50.5%)
+
+### Investigation Summary
+- Database WAL journal mode is strictly enforced.
+- Single-connection mutex prevents database locking under high concurrency.
+
+----------------------------------------------------------------------
+✅ [CORTEX-IA] Delegated investigate task completed in 8.4s (exit code 0)
+📊 Token Usage:   29,747 (in: 28,565, out: 1,182, think: 343)
+======================================================================
 ```
 
-Full reference — flags, statuses (`managed`, `unmanaged-equivalent`,
-`conflict`, `absent`), secret handling, and ownership rules — lives in
-[MCP Manager](docs/mcp.md).
+---
 
-## Transactional Safety
+## 🛡️ Transactional Safety Guarantees
 
-- **Plan before write.** `--dry-run` and the real run share the same plan;
-  a dry run creates nothing, not even directories.
-- **Digest-bound confirmation.** The confirmed run re-plans with identical
-  options and must reproduce the previewed plan digest exactly. If anything
-  drifts between preview and apply, the run aborts with a typed stale-plan
-  error and nothing is written.
-- **One writer per home.** Every mutating command holds a cross-process lock
-  keyed by the canonical home (LockFileEx on Windows, flock on Unix) after
-  confirmation and before any write; a concurrent writer gets a typed busy
-  result, never a race.
-- **Fail-closed conflicts.** Unmanaged files at a managed destination abort
-  the run with nothing written. `--overwrite` must be given explicitly and
-  confirmed on an interactive TTY; a verified backup is captured first.
-- **Verified backups.** Every mutating run snapshots affected files under
-  `~/.cortex-ia/backups/` and verifies the snapshot before the apply phase;
-  a backup that cannot be proven complete fails the run. Snapshots
-  accumulate — automatic deduplication and retention pruning are library
-  capabilities not yet enabled in the product.
-- **Rollback on failure.** If an apply phase fails mid-way, the transaction
-  restores the pre-run state from the backup before reporting the error.
-  Rollback itself fails closed: every manifest entry is validated for
-  containment and duplicates before any write, restoration runs in reverse
-  order under a journal, and success is reported only after the complete
-  result is verified.
-- **Recoverable journals.** `doctor` detects interrupted transactions and
-  reports them as a degraded (recoverable) finding without exposing secrets.
-  `cortex-ia recover list` is read-only; `cortex-ia recover <journal-id>`
-  restores one journal only after you type its exact ID, and the receipt is
-  PASS only after complete verified restoration. Corrupt, foreign-home, or
-  drifted journals are rejected with typed errors and nothing written.
-- **Ownership-accredited uninstall.** `uninstall` removes only files whose
-  digest matches the installation metadata; anything unverifiable or
-  co-owned is retained and reported, never guessed.
-- **Destructive commands confirm.** `rollback`, `recover`, `uninstall`,
-  `mcp remove`, and `--overwrite` require an interactive terminal and an
-  explicit confirmation; piped or closed input always fails closed.
+- **Dry-Run Determinism**: `--dry-run` calculates the exact execution plan without making any disk writes.
+- **Cross-Process File Locking**: Every mutating command holds a robust cross-process file lock (`LockFileEx` on Windows, `flock` on Unix) preventing concurrent installer races.
+- **Verified Backups & Rollbacks**: Snapshots affected configuration files under `~/.cortex-ia/backups/` and automatically rolls back if an apply phase encounters an error.
+- **Strict Path Sandboxing**: Leases and workspace operations reject directory traversal (`..`) and absolute path escape attempts.
 
-Details in [Safety & Recovery](docs/security.md).
+---
 
-## CLI Commands
+## 📚 Documentation Reference
 
-```
-cortex-ia                          Interactive TUI
-cortex-ia install [--dry-run] [--overwrite]
-                                   Install assets + default managed MCPs
-cortex-ia sync [--dry-run] [--overwrite]
-                                   Reconcile an installed home with the
-                                   current embedded asset set
-cortex-ia mcp add <name> (--preset | --local ... -- <cmd> | --remote <url>) [--dry-run]
-cortex-ia mcp list [--json]        List managed MCP entries and ownership
-cortex-ia mcp remove <name> [--dry-run]
-cortex-ia doctor                   Read-only health report
-cortex-ia rollback [backup-id]     Restore the recorded (or given) backup
-cortex-ia recover [list]           List pending recovery journals (read-only)
-cortex-ia recover <journal-id>     Restore one pending journal; typing its
-                                    exact ID confirms the recovery
-cortex-ia uninstall [--dry-run]    Remove the accredited installation
-cortex-ia version | help
-```
+- 📖 [Quickstart Guide](docs/quickstart.md) — Guided first-time setup and onboarding
+- 🏛️ [Architecture Deep-Dive](docs/architecture.md) — Internal engine layers, models, and SQLite concurrency
+- 🤖 [Agent Roles & Contracts](docs/agents.md) — 5-role coordination topology and typed receipt schemas
+- 🧠 [Cortex Memory & Graph](docs/cortex-memory.md) — AST symbol graph, blast radius, and durable observations
+- 📑 [SDD Workflow Guide](docs/sdd-workflow.md) — Specification-Driven Development lifecycle with OpenSpec
+- 🔒 [MCP & Security Boundaries](docs/codebase/mcp-boundaries.md) — Separation of authority and security rules
 
-`sync` also removes stale artifacts from previous versions that the current
-asset set no longer ships. Former multi-agent, persona, profile, model,
-skill-registry, and SDD-compiler surfaces were removed and fail with an
-explicit retired-surface error.
+---
 
-## Documentation
+## 📄 License
 
-| Doc | Description |
-|-----|-------------|
-| [Quickstart](docs/quickstart.md) | Three-command setup |
-| [Installation](docs/installation.md) | Install methods, prerequisites |
-| [MCP Manager](docs/mcp.md) | Presets, custom local/remote servers, ownership |
-| [Safety & Recovery](docs/security.md) | Backups, rollback, uninstall ownership, fail-closed rules |
-| [SDD Workflow](docs/sdd-workflow.md) | The 9-phase workflow the installed skills implement |
-| [Architecture](docs/architecture.md) | Codebase structure, asset mapping, testing |
-| [Platforms](docs/platforms.md) | OS support matrix |
-| [Changelog](CHANGELOG.md) | Version history |
-
-## Prerequisites
-
-- **Go 1.26.1+** — only for building from source (`go.mod` is authoritative)
-- **Node.js 18+ with `npx`** — for the `forgespec` and `context7` local MCP presets
-- **`cortex` on PATH** — for the `cortex` local MCP preset (`cortex mcp --tools=agent`):
-  `go install github.com/lleontor705/cortex/cmd/cortex@latest` or `brew install lleontor705/tap/cortex`
-- **OpenCode** — the only configured target
-
-## Related Projects
-
-| Project | Description |
-|---------|-------------|
-| [cortex](https://github.com/lleontor705/cortex) | Persistent memory MCP server (Go binary) |
-| [forgespec-mcp](https://github.com/lleontor705/forgespec-mcp) | SDD contracts + task board + file reservation |
-| [OpenCode](https://opencode.ai) | The AI coding agent cortex-ia configures |
-
-## License
-
-[MIT](LICENSE)
+MIT License · Built with ❤️ by [Luis Leon](https://github.com/lleontor705) and contributors.

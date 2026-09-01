@@ -84,7 +84,7 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 |--------|--------|---------|-----------|
 | Cortex | `cortex` | Persistent memory + knowledge graph | `internal/components/cortex/` |
 | Mailbox | (npm) | Agent messaging + A2A task protocol | `internal/components/mailbox/` |
-| ForgeSpec | (npm) | SDD contracts + task boards + file reservations | `internal/components/forgespec/` |
+| Cortex-IA work | built-in Go CLI | SQLite task DAG + claims + file leases + approvals | `internal/delegation/work.go` |
 | Context7 | (npm/remote) | Library documentation lookup | `internal/components/context7/` |
 
 ## Config & Build Files

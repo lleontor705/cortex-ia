@@ -39,13 +39,13 @@ func planCommon(req Request) (*Plan, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inventory embedded assets: %w", err)
 	}
-	native := make([]assets.File, 0, len(inventory))
+	managed := make([]assets.File, 0, len(inventory))
 	for _, file := range inventory {
-		if opencode.IsNativeAsset(file) {
-			native = append(native, file)
+		if opencode.IsManagedAsset(file) {
+			managed = append(managed, file)
 		}
 	}
-	mappings, err := opencode.MapAssetsForHome(native, home)
+	mappings, err := opencode.MapAssetsForHome(managed, home)
 	if err != nil {
 		return nil, fmt.Errorf("map OpenCode destinations: %w", err)
 	}
@@ -251,6 +251,20 @@ func planMCPEffects(plan *Plan, req Request) error {
 			plan.Effects = append(plan.Effects, Effect{Kind: EffectMCPRemove, Dest: name})
 		}
 	}
+	for _, preset := range mcpmanager.RetiredPresets() {
+		status := statuses[preset.Name]
+		if status == mcpmanager.StatusManaged {
+			plan.Effects = append(plan.Effects, Effect{Kind: EffectMCPRemove, Dest: preset.Name})
+			continue
+		}
+		if _, previouslyManaged := mcpIndex(plan.Metadata.MCPs)[preset.Name]; previouslyManaged && status != "" && status != mcpmanager.StatusAbsent {
+			plan.Conflicts = append(plan.Conflicts, Conflict{
+				Target: preset.Name,
+				Kind:   ConflictMCP,
+				Reason: fmt.Sprintf("retired MCP entry %q drifted from its accredited value; sync will not remove user-modified data", preset.Name),
+			})
+		}
+	}
 	return nil
 }
 
@@ -319,6 +333,10 @@ func desiredArtifacts(plan *Plan) map[string]state.ArtifactV2 {
 // semantic classification.
 func artifactKind(kind assets.Kind) state.ArtifactKind {
 	switch kind {
+	case assets.KindShared:
+		return state.KindShared
+	case assets.KindTUI:
+		return state.KindTUI
 	case assets.KindSkill:
 		return state.KindSkill
 	case assets.KindAgent:

@@ -410,6 +410,7 @@ func (s *Service) MCPAddDesired(desired mcpmanager.Desired, opts MCPOptions) (*M
 // stale pre-lock evidence. Dry-runs stay read-only and never lock.
 func (s *Service) MCPRemove(name string, opts MCPOptions) (*MCPReceipt, error) {
 	_, isCatalog := mcpmanager.Lookup(name)
+	isCatalog = isCatalog || mcpmanager.IsRetired(name)
 
 	if opts.DryRun {
 		meta, evidence, err := s.v2Context()

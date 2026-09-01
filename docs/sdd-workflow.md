@@ -1,72 +1,58 @@
-# SDD Workflow
+﻿# Specification-Driven Development (SDD) Workflow
 
-Spec-Driven Development (SDD) is the 9-phase workflow that the installed
-skill, agent, and command assets implement. cortex-ia installs the assets;
-it does not schedule or execute the pipeline — your OpenCode runtime, the
-ForgeSpec MCP, and the Cortex MCP do the work.
+**Cortex-IA** integrates **OpenSpec** contracts with a transactional **SQLite Task DAG** to provide deterministic, verifiable software evolution.
 
-## Authority Boundaries
+<p align="center">
+  <img src="assets/sdd-pipeline.svg" alt="SDD Pipeline" width="100%" />
+</p>
 
-| Owner | Responsibility |
-|-------|----------------|
-| **ForgeSpec** (MCP preset) | Contracts, task board, dependency readiness, claims, status, file reservation |
-| **Cortex** (MCP preset) | Durable memory: evidence, decisions, summaries, provenance |
-| OpenCode runtime | Skill/agent/command discovery and dispatch (transport only) |
-| cortex-ia | Installs and updates the assets; configures the MCP bindings |
+---
 
-## Phase Map
-
-| Phase | Skill | Installed agents | What happens |
-|-------|-------|------------------|--------------|
-| 0 · init | `bootstrap` | `bootstrap` | Detect the stack, bootstrap persistence, open the SDD session |
-| 1 · explore | `investigate` | `investigate` | Map the codebase, compare approaches, rate effort/risk |
-| 2 · propose | `draft-proposal` | `draft-proposal` | Change proposal with scope, risks, rollback plan |
-| 3 · spec | `write-specs` | `write-specs` | Delta specs as Given/When/Then scenarios |
-| 4 · design | `architect` | `architect` | Technical design with architecture decisions |
-| 5 · tasks | `decompose` | `decompose` | Dependency-ordered task DAG on the ForgeSpec board |
-| 6 · apply | `implement` | `implement` | One bounded work unit per minion: claim → execute → verify → receipt |
-| 7 · verify | `validate` | `validate` | Run the scenario oracles, produce the compliance matrix |
-| 8 · archive | `finalize` | `finalize` | Merge specs, close the change, archive the change set |
-
-Cross-phase roles installed as agents and skills: `orchestrator` (the only
-delegating role), `planner`, `reviewer`, `debate`, `code-review-adversary`,
-`parallel-dispatch`.
-
-## Commands
-
-Installed under `~/.config/opencode/commands/`: `sdd`, `work`, `status`,
-`resume`, `review`, `tdd`, `spike`, `investigate`, `hotfix`. They are
-thin entry points that route into the phase skills above.
-
-## Utility Skills
-
-| Skill | Trigger |
-|-------|---------|
-| `fast-tdd`, `property-based-testing`, `mutation-testing`, `ast-impact-analysis` | Verification acceleration and adversarial test validation |
-| `context-distiller` | Condensing verbose output into compact evidence |
-| `spike-prototype` | Bounded uncertainty-reduction experiments |
-| `hotfix-triage` | Incident containment with a strict diff |
-
-## Contracts
-
-Every phase transition is recorded as a ForgeSpec contract (init → explore
-→ propose → spec → design → tasks → apply → verify → archive) and validated
-by the ForgeSpec MCP server. The shared phase-contract documents under
-`internal/assets/_shared/` in the repository are compile-time data for the
-asset set; they are not installed as runtime files.
-
-## Where the Assets Live
-
-After `cortex-ia install`:
+## 1. The 5-Phase SDD Loop
 
 ```text
-~/.config/opencode/
-  opencode.jsonc                # Merged config & managed MCP catalog
-  AGENTS.md                     # System prompt (authority, routing & shell policy)
-  agents/*.md                   # 5 native sub-agents (orchestrator, planner, implement, investigate, reviewer)
-  commands/*.md                 # 9 slash commands (/sdd, /hotfix, /work, /tdd, /review, ...)
-  skills/<name>/SKILL.md        # 12 native SDD & utility skills
-  plugin/*.ts                   # 5 runtime plugins (background-supervisor, cortex, model-variants, ...)
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  1. PROPOSE  │ ──▶ │   2. SPEC    │ ──▶ │  3. DECOMPOSE│ ──▶ │   4. APPLY   │ ──▶ │  5. VERIFY   │
+│ (proposal.md)│     │ (RFC Delta)  │     │  (Tasks DAG) │     │ (Claim/Lease)│     │ (Review/PASS)│
+└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
 ```
 
-Update them with `cortex-ia sync` after upgrading the binary.
+### Phase 1: Propose & Align
+- The `orchestrator` coordinates the initiative.
+- If architectural ambiguity exists, the `orchestrator` runs structured interview rounds using `grill-me`.
+- The `planner` initializes the change proposal in `openspec/changes/<change-id>/proposal.md`.
+
+### Phase 2: Delta Specifications
+- The `planner` writes formal RFC 2119 delta requirements under `openspec/changes/<change-id>/specs/<domain>/spec.md`.
+- Scenarios use deterministic `Given / When / Then` acceptance criteria.
+- Validated via `openspec validate`.
+
+### Phase 3: Task DAG Decomposition
+- The `planner` breaks down the implementation into discrete, bounded slices (≤350 LOC per task) in `tasks.md`.
+- Materializes the tasks in SQLite using `cortex-ia work create`:
+  ```bash
+  cortex-ia board create <board-id> "<Title>"
+  cortex-ia work create task-1.1 "Scaffolding" --board <board-id>
+  cortex-ia work create task-1.2 "Domain Logic" --board <board-id> --depends task-1.1
+  ```
+
+### Phase 4: Atomic Implementation
+- The `implement` minion reads `cortex-ia work status task-1.1`.
+- Claims the task and reserves exclusive file locks:
+  ```bash
+  cortex-ia work claim task-1.1 --owner implement-minion-1
+  cortex-ia work lease task-1.1 --claim-token <tok> --path internal/core/handler.go
+  ```
+- Executes the code changes (natively or delegated via Herdr with live telemetry).
+- Runs unit tests and transitions the task to `in_review`:
+  ```bash
+  cortex-ia work transition task-1.1 --claim-token <tok> --to in_review
+  ```
+
+### Phase 5: Adversarial Review & Unlocking
+- The `reviewer` independently verifies git diffs, executes test suites, and checks invariants.
+- If verification passes, the reviewer approves the task:
+  ```bash
+  cortex-ia work approve task-1.1 --reviewer reviewer-agent --verdict PASS --evidence "All unit tests green"
+  ```
+- **Automatic Unlocking**: `task-1.1` becomes `done`, its file leases are purged, and `task-1.2` automatically transitions from `backlog` to `ready`.

@@ -198,7 +198,7 @@ cortex-ia persists installation state at `~/.cortex-ia/state.json`:
 {
   "installed_agents": ["claude-code", "opencode"],
   "preset": "full",
-  "components": ["cortex", "forgespec", "agent-mailbox", "context7", "conventions", "sdd"],
+  "components": ["cortex", "context7", "conventions", "sdd"],
   "last_install": "2026-03-31T00:00:00Z",
   "last_backup_id": "20260331-000000",
   "version": "0.2.0"
@@ -256,9 +256,9 @@ Default retention is **5 unpinned backups** (`backup.DefaultRetentionCount`). `P
 Uses Kahn's algorithm (topological sort) with parallel group detection:
 
 ```
-Level 0 (parallel): cortex, forgespec, mailbox, context7, skills
+Level 0 (parallel): cortex, context7, skills, built-in work control
 Level 1 (after cortex): conventions
-Level 2 (after cortex+forgespec+mailbox): sdd
+Level 2 (after cortex + built-in work control): sdd
 ```
 
 ## Idempotency

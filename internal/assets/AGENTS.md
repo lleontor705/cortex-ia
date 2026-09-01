@@ -1,12 +1,17 @@
 # OpenCode Adaptive Development Harness
 
 - **Primary engine**: `orchestrator`
-- **Version**: `2.3.0`
-- **Active roles**: `orchestrator`, `investigate`, `planner`, `implement`, `reviewer`
+- **Version**: `2.4.0`
+- **Active roles**: `orchestrator`, `discovery`, `investigate`, `planner`, `implement`, `reviewer`
 - **Specification plane**: OpenSpec (`openspec/specs/`, `openspec/changes/<change-name>/`)
-- **Control plane**: ForgeSpec Protocol 2.0 (`forgespec-mcp@2.0.0`, 18 tools, signed identity broker)
-- **Evidence & Graph plane**: Cortex (Durable SQLite memory, AST knowledge graph & blast radius, 28 tools)
-- **Canonical ForgeSpec protocol**: `skills/_shared/forgespec-protocol.md` (single normative source: 18-tool catalog, 4 deterministic profiles, signed identity broker, attempt lifecycle, optimistic file leases, gate approvals)
+- **Control plane**: `cortex-ia work` CLI (SQLite DAG, CAS revisions, claims, leases, recovery, approvals)
+- **Task-board plane**: `cortex-ia board` (durable grouping + embedded loopback web view; never an authority substitute)
+- **Evidence & Graph plane**: Cortex (durable SQLite memory and AST knowledge graph; the active MCP schema is authoritative for tool count and arguments)
+- **Canonical work protocol**: `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md` (single normative source for roles, authority, delegation, and completion)
+- **Evidence convention**: `~/.cortex-ia/opencode/contracts/cortex-convention.md` (durable memory, lineage, taxonomy, and recovery)
+- **Codebase design contract**: `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` (shared architecture vocabulary, dependency seams, design comparison, and task-graph boundaries)
+- **Diagnosis loop contract**: `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` (red-capable reproduction, minimization, falsifiable hypotheses, and regression-seam rules)
+- **Agent writing contract**: `~/.cortex-ia/opencode/contracts/agent-writing-contract.md` (context pointers, progressive disclosure, completion criteria, and single-source instruction design)
 
 ---
 
@@ -21,9 +26,11 @@ flowchart TD
     subgraph Alignment ["Operating Conditions Alignment"]
         StartGate -->|Ask if unset| ModeChoice[Execution Mode:\nAuto vs Interactive]
         StartGate -->|Ask if unset| PlaneChoice[Spec & Memory Plane:\nOpenSpec vs Cortex vs Hybrid]
+        StartGate -->|Ask if unset| WorkspaceChoice[External Implement Workspace:\nIsolated Worktree vs Current Workspace]
         
         ModeChoice --> AmbiguityCheck{High Design\nUncertainty?}
         PlaneChoice --> AmbiguityCheck
+        WorkspaceChoice --> AmbiguityCheck
         
         AmbiguityCheck -->|Yes: Unresolved branches| InvFact[Dispatch investigate:\nAutonomous Fact-Finding]
         InvFact --> GrillMe[Relentless Interview:\ngrill-me Rounds Q1..Qn]
@@ -33,6 +40,7 @@ flowchart TD
 
     subgraph Routing ["Organic Routing Engine"]
         RouteDecision -->|direct-answer| OrchSelf[Orchestrator: Direct Answer]
+        RouteDecision -->|discovery / onboarding| SubDiscovery[Subagent: discovery]
         RouteDecision -->|investigate / spike| SubInv[Subagent: investigate]
         RouteDecision -->|direct-change| SubImpDirect[Subagent: implement]
         RouteDecision -->|fast-tdd| SubImpTDD[Subagent: implement + fast-tdd]
@@ -40,7 +48,7 @@ flowchart TD
         RouteDecision -->|sdd-lite / sdd-full| SubPlan[Subagent: planner]
     end
 
-    subgraph SDD_Flow ["SDD Task Execution (OpenSpec + ForgeSpec)"]
+    subgraph SDD_Flow ["SDD Task Execution (OpenSpec + cortex-ia work)"]
         SubPlan -->|OpenSpec Delta Specs & Task DAG| Minions[Ephemeral Implement Minions]
         Minions -->|Code Changes & Evidence| SubRev[Subagent: reviewer]
     end
@@ -51,6 +59,7 @@ flowchart TD
 
     subgraph Convergence ["Convergence & Output"]
         SubInv -->|Diagnosis / Cortex Evidence| OrchFinal[Orchestrator Receipt Synthesis]
+        SubDiscovery -->|.cortex-ia/discovery.md| OrchFinal
         SubRev -->|Verdict: PASS / FAIL / BLOCKED| OrchFinal
         OrchSelf --> OrchFinal
         OrchFinal --> Done([Final Response to User])
@@ -65,20 +74,43 @@ flowchart TD
    - **`openspec`**: Human-readable markdown files under `openspec/specs/` and `openspec/changes/<name>/` (`proposal.md`, `specs/`, `design.md`, `tasks.md`, `archive/`).
    - **`cortex`**: Persistent SQLite knowledge graph (`cortex_save`/`cortex_search`/`cortex_graph`) for durable debugging memory, root causes, AST relationships, and blast radius analysis.
    - **`hybrid`**: *(Recommended)* OpenSpec for shared markdown specifications in the repo + Cortex for debugging memory and root-cause lineage.
-3. **Design Grilling (`grill-me`)**:
+3. **External Implement Workspace Strategy**:
+   - **`isolated_worktree`**: *(Recommended)* Run an external implement leaf in an existing clean related Git worktree.
+   - **`current_workspace`**: Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_file_reserve` calls made before editing each file. An external AGY leaf remains exclusive during its execution window; its native controller must not edit concurrently, and Cortex-IA compares the final workspace against a pre-run baseline.
+   - Ask when unset and carry the answer in every implement dispatch envelope. Never infer the strategy from an available worktree, Herdr, or delegation configuration.
+4. **Design Grilling (`grill-me`)**:
    - When encountering unstated architectural choices or trade-offs, execute structured interview rounds:
      `❓ Q1 - <Title>: <Options>` + `➡️ Recomendación: <Answer>`.
    - Autonomous fact-finding is strictly delegated to the `investigate` subagent: the orchestrator holds no inspection tools and never reads code directly, nor does it ask the user for data that `investigate` can discover in the repository.
+5. **Project Discovery Profile**:
+   - The native `discovery` role owns `./.cortex-ia/discovery.md`. Dispatch it for project onboarding, explicit refresh, environment uncertainty, or a known stale profile.
+   - The profile inventories installed skills, languages/project types, required engines, Cortex rule IDs/names, and evidence-backed architecture. It is a reviewable cache of observations, not authority: current manifests, repository evidence, active Cortex rules, and tool output win on conflict.
+   - Planner, implementer, and reviewer envelopes carry the profile as an artifact reference. No other role may write it.
 
 ### Role Consolidation Matrix
 
 | Role | Mode | Primary Responsibility | Permitted Delegations | Tool Surface Highlights |
 |---|---|---|---|---|
-| **`orchestrator`** | `primary` | Request triage, startup alignment, organic routing, Cortex session lifecycle, DAG dispatch, final response synthesis | `investigate`, `planner`, `implement`, `reviewer` | `cortex_*`, `board_create`, `task_define`, `task_query`, `attempt_recover`, `authority_manage`, `event_query`, `contract_query`, `task` (subagent dispatch), `skill` (`grill-me`) |
-| **`investigate`** | `subagent` | Repository diagnostics, root-cause analysis, exploratory spikes, read-only audit | *None (Leaf)* | `read`, `grep`, `glob`, `list`, `bash` (read-only diagnostics), `cortex_*`, `contract_query`, `task_query`, `event_query` |
-| **`planner`** | `subagent` | OpenSpec delta requirements (RFC 2119), Given/When/Then scenarios, task DAG decomposition (<=350 LOC) | *None (Leaf)* | `read`, `grep`, `glob`, `list`, `edit` (`openspec/`), `bash`, `board_create`, `task_define`, `task_query`, `contract_validate`, `contract_commit`, `cortex_*` |
-| **`implement`** | `subagent` | Ephemeral minion: claims single task, reserves file lease, implements code, runs unit oracles, releases lease | *None (Leaf)* | `read`, `grep`, `glob`, `list`, `edit`, `bash` (tests, builds, linters), `attempt_claim`, `attempt_renew`, `lease_reserve`, `lease_renew`, `lease_release`, `task_transition`, `cortex_*` |
-| **`reviewer`** | `subagent` | Independent adversarial verification, mutation testing, invariant checking, gate approvals (`approval_record`) | *None (Leaf)* | `read`, `grep`, `glob`, `list`, `bash` (independent test runs), `contract_query`, `task_query`, `event_query`, `approval_record`, `cortex_*` |
+| **`orchestrator`** | `primary` | Request triage, routing, Cortex session lifecycle, DAG dispatch, final synthesis | Native `discovery`, `investigate`, `planner`, `implement`, `reviewer` controllers | `task`, `skill`, `cortex_*`, `cortex_board_*`, read-only/recovery `cortex_work_*`; no decomposition, discovery writes, shell, or edits |
+| **`discovery`** | `subagent/controller` | Project onboarding profile: skills, stack, engines, Cortex governance, architecture | None; always native | repository/machine reads, bounded version probes, Cortex queries, `cortex_discovery_write`; no builds, installs, ingestion, product edits, or nested `task` |
+| **`investigate`** | `subagent/controller` | Repository diagnostics, red-capable reproduction, root-cause analysis, read-only workflow retrospective | One optional read-only AGY leaf | `read`, `grep`, `glob`, `list`, read-only `bash`, `cortex_*`, delegation read/wait tools; no edits or nested `task` |
+| **`planner`** | `subagent/controller` | Decision maps, OpenSpec contracts, vertical-slice DAGs, and blocked-task replacement plans | One optional plan-only AGY leaf | repository reads, OpenSpec edits, `cortex_board_create`, `cortex_work_create`, `cortex_work_decompose`, `cortex_*`; no claims or nested `task` |
+| **`implement`** | `subagent/controller` | Claims one task, leases paths, executes, verifies, transitions to review | One AGY leaf after durable authority and explicit workspace-strategy validation | edits plus hidden-token `cortex_work_claim|lease|renew|release|transition`, `cortex_*`; no nested `task` |
+| **`reviewer`** | `subagent/controller` | Independent verification and approval | One optional read-only AGY audit leaf | repository reads, tests, `cortex_work_status`, `cortex_work_approve`, `cortex_*`; no edits, claims, leases, or nested `task` |
+
+The orchestrator always routes through a native controller and never launches an external executor directly. Discovery is always native and cannot delegate. Cortex-IA is the only process bridge and local task authority. External leaves receive no work-control CLI, Cortex MCP, session lifecycle, authority tokens, or nested-delegation capability; their SQLite job state is operational evidence only.
+
+### Effective Execution Mode Contract
+
+The value returned by `cortex_delegate_start` is authoritative. Agents MUST NOT derive the effective mode from installer selections, `use_herdr`, CLI availability, or pane visibility.
+
+| Mode | Agent behavior |
+|---|---|
+| `native` | No external job was accepted; the native role controller executes the objective. |
+| `direct_cli` | Cortex accepted and launched AGY directly; the controller only supervises, validates, and retains control-plane authority. |
+| `herdr_multiplexed` | Cortex accepted and launched AGY through Herdr; controller behavior is identical to `direct_cli`, with the pane serving only as presentation and multiplexing. |
+
+After `delegated=true` plus `job_id`, no controller may perform the same objective concurrently or fall back natively because of failure, timeout, cancellation, a missing pane, or `lost`. It MUST reconcile the durable job first and may retry only explicitly under fresh authority. `use_herdr=true` is only a preference; Cortex may return `direct_cli` after a safe pre-acceptance fallback.
 
 ---
 
@@ -89,7 +121,9 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 | Route | Use when | Execution Sequence | Typical Skills |
 |---|---|---|---|
 | `direct-answer` | Read-only questions, documentation lookup, simple status | `orchestrator` | `orchestrator` |
+| `discovery` | Project onboarding, environment readiness, or refresh of technical and architectural context | `orchestrator -> discovery -> orchestrator` | `discovery` |
 | `investigate` | Diagnosis, root-cause audit without immediate file edits | `orchestrator -> investigate -> orchestrator` | `investigate`, `context-distiller` |
+| `decision-map` | Multi-session destination whose decision frontier is not yet specifiable as an implementation DAG | `orchestrator -> investigate/human input -> planner (one decision) -> orchestrator` | `planner`, `investigate`, `grill-me`, `spike-prototype` |
 | `spike` | Bounded experiment to reduce material technical uncertainty | `orchestrator -> investigate (spike) -> orchestrator` | `spike-prototype`, `investigate` |
 | `direct-change` | Clear, reversible, single-domain change with fast verification | `orchestrator -> implement -> (reviewer) -> orchestrator` | `implement` |
 | `fast-tdd` | Localized functional unit with deterministic oracle | `orchestrator -> implement -> reviewer -> orchestrator` | `fast-tdd`, `ast-impact-analysis` |
@@ -97,6 +131,7 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 | `sdd-lite` | Moderate risk, single domain, multi-file feature | `orchestrator -> planner -> implement minions -> reviewer -> orchestrator` | `planner`, `implement`, `reviewer` |
 | `sdd-full` | High risk, cross-domain, public API, security, migration | `orchestrator -> investigate -> planner -> implement minions -> dual reviewer -> orchestrator` | Full SDD skill suite |
 | `review` | Dedicated independent audit of an existing diff or branch | `orchestrator -> reviewer -> orchestrator` | `code-review-adversary`, `mutation-testing` |
+| `retrospective` | Repeated evidenced failure, exhausted durable attempts, or explicit workflow analysis | `orchestrator -> investigate (retrospective) -> orchestrator` | `workflow-retrospective`, `investigate` |
 
 ---
 
@@ -110,7 +145,7 @@ sequenceDiagram
     participant Inv as Investigate Subagent
     participant Cortex as Cortex MCP & AST Graph
     participant Plan as Planner Subagent
-    participant FS as ForgeSpec Protocol 2.0
+    participant Work as cortex-ia work CLI
     participant Imp as Implement Minions
     participant Rev as Reviewer Subagent
 
@@ -124,23 +159,23 @@ sequenceDiagram
     alt AST symbols missing and cortex watch not running
         Inv->>Cortex: cortex_ingest_code(".", project) (Trigger 2-Pass Static AST Ingestion)
     end
-    Inv->>Cortex: cortex_get_blast_radius + cortex_search(mode="multi_hop")
+    Inv->>Cortex: filtered code symbols + cortex_search(graph_expand=true)
     Inv-->>Orch: Diagnostic Evidence & Baseline AST Topology Receipt
     end
 
-    Note over Orch,FS: Phase 2: Preflight & Planning (if SDD route)
+    Note over Orch,Work: Phase 2: Preflight & Planning (if SDD route)
     Orch->>Plan: Dispatch SDD Plan (intent, project_rules, blast_radius_baseline)
-    Plan->>FS: contract_validate -> contract_commit (Proposal, Requirements, Design)
-    Plan->>FS: board_create + task_define (DAG nodes <= 350 LOC)
-    Plan-->>Orch: Planning Receipt (board_id, task_refs, DAG readiness)
+    Plan->>Plan: Validate and write OpenSpec contracts
+    Plan->>Work: work create (dependency DAG nodes <= 350 LOC)
+    Plan-->>Orch: Planning Receipt (artifact refs, task refs, DAG readiness)
 
     Note over Orch,Imp: Phase 3: Implementation
     loop For Each Ready DAG Task
         Orch->>Imp: Dispatch Minion Envelope (task_id, allowed_files, project_rules, checks)
-        Imp->>FS: attempt_claim (lease attempt) + lease_reserve (lock files)
-        Imp->>Cortex: cortex_get_blast_radius(symbol) (Pre-edit boundary check)
+        Imp->>Work: work claim + file_reserve per writable file
+        Imp->>Cortex: filtered symbols + bounded caller inspection
         Imp->>Imp: Implement Code + Proportional Verification (Tests)
-        Imp->>FS: task_transition (in_review) + lease_release + task_transition (done)
+        Imp->>Work: transition in_review; reviewer approval produces done
         Imp-->>Orch: Task Execution Receipt (changed_files)
     end
 
@@ -148,14 +183,14 @@ sequenceDiagram
     Note over Rev,Cortex: Phase 4: Adversarial Review & AST Delta Sync Gate
     Orch->>Rev: Dispatch Review Envelope (board_id, changed_files, blast_radius_baseline)
     Rev->>Cortex: cortex_ingest_code(".", project) [Delta Ingestion: <50ms]
-    Rev->>Cortex: cortex_get_blast_radius (Compare Blast Radius Delta: detect unapproved coupling)
+    Rev->>Cortex: compare symbols/imports/callers (detect unapproved coupling)
     Rev->>Cortex: cortex_detect_cycles (Verify no circular import regressions)
     Rev->>Rev: Independent Checks & Mutation Testing
     alt Verdict is PASS
-        Rev->>FS: approval_record (gate approval with provenance)
+        Rev->>Work: work approve PASS (gate approval with evidence)
         Rev->>Cortex: cortex_save(topic_key: "review/task_id")
         Rev-->>Orch: Review Receipt (Verdict: PASS)
-        Orch->>FS: contract_commit (Archive change set)
+        Orch->>Plan: Archive OpenSpec change set
     else Verdict is FAIL / BLOCKED
         Rev->>Cortex: cortex_save(type: "bugfix", topic_key: "gotchas/task_id", content: minimal_failure_locality)
         Rev-->>Orch: Review Receipt (Verdict: FAIL, evidence_ref: "gotchas/task_id")
@@ -184,26 +219,26 @@ An implementation minion is an ephemeral instance of `implement`. It owns strict
 ```mermaid
 stateDiagram-v2
     [*] --> PreClaim: Dispatch Envelope Received
-    PreClaim --> Claimed: forge_negotiate(profile: worker) + attempt_claim
-    Claimed --> Reserved: lease_reserve (exclusive file locks)
+    PreClaim --> Claimed: work status + work claim
+    Claimed --> Reserved: cortex_file_reserve (exclusive single file)
     
     state Execution_Loop {
         [*] --> Red_Green_Refactor
-        Red_Green_Refactor --> Heartbeat_Renew: attempt_renew + lease_renew
+        Red_Green_Refactor --> Heartbeat_Renew: work renew + lease-renew
         Heartbeat_Renew --> Red_Green_Refactor
     }
     
     Reserved --> Execution_Loop: Edit & Test
     Execution_Loop --> Verifying: Proportional Verification (Unit/Build/Lint)
     Verifying --> EvidenceSaved: context-distiller -> cortex_save
-    EvidenceSaved --> InReview: task_transition (status: in_review)
-    InReview --> Released: lease_release (release locks)
-    Released --> DoneState: task_transition (status: done)
+    EvidenceSaved --> InReview: work transition --to in_review
+    InReview --> Released: reviewer verifies and work approve PASS
+    Released --> DoneState: CLI atomically releases locks and marks done
     DoneState --> ReceiptReturned: Return Typed Receipt
     ReceiptReturned --> [*]
 
     Execution_Loop --> Blocked: Lease Expired / Unresolvable Conflict
-    Blocked --> Cleanup: lease_release
+    Blocked --> Cleanup: work release
     Cleanup --> ReceiptReturned
 ```
 
@@ -334,11 +369,10 @@ Cortex provides durable cognitive memory, AST structural knowledge graphs, and S
 
 ### A. SOTA Adaptive-RAG & HippoRAG Retrieval
 When searching memory or repository context:
-1. `cortex_search(query, mode="auto"|"direct"|"semantic"|"multi_hop")`:
-   - `auto` *(default)*: 4-tier query complexity classifier routing directly to the optimal engine.
-   - `direct`: Ultra-fast FTS5 exact lexical keyword search ($<0.1\text{ms}$).
-   - `semantic`: FTS5 + Dense Vector RRF fusion ($k=60$) with ColBERT MaxSim token-level re-ranking.
-   - `multi_hop`: HippoRAG Personalized PageRank (PPR) knowledge graph activation.
+1. `cortex_search(query, type, project, scope, limit, graph_expand)`:
+   - Use `graph_expand: false` or omit it for direct memory search.
+   - Use `graph_expand: true` to include graph-connected observations.
+   - Never pass a `mode` argument; it is not part of the current tool schema.
 2. `cortex_search_hybrid(query, limit, scope)`: Direct RRF dense+lexical fusion.
 3. `cortex_graph(observation_id, depth)`: Traverse multi-hop associative chains.
 4. `cortex_relate(from_id, to_id, relation_type)`: Connect related memories (`references`, `relates_to`, `follows`, `supersedes`, `contradicts`).
@@ -349,9 +383,9 @@ When searching memory or repository context:
 2. **Review Delta Ingestion (<50ms)**: `reviewer` executes `cortex_ingest_code(".", project)` upon receiving edited files, utilizing SHA-256 incremental caching to re-index only the modified files without full repository scan penalty.
 3. **Watcher Daemon**: When `cortex watch` is running in background, all file edits are indexed continuously in <500ms debounce.
 
-### C. Blast Radius Delta Auditing (No Coupling Spikes)
-1. **Baseline**: During `investigate` / `planner`, capture the initial blast radius of target symbols via `cortex_get_blast_radius`.
-2. **Review Comparison**: `reviewer` computes post-edit `cortex_get_blast_radius`. If an edit significantly expands the downstream blast radius without explicit plan justification (e.g. accidental global type leak), `reviewer` raises an architectural warning.
+### C. AST Delta Auditing (No Coupling Spikes)
+1. **Baseline**: During `investigate` / `planner`, capture filtered symbol definitions, imports, source callers, and relevant test packages.
+2. **Review Comparison**: `reviewer` compares the same bounded evidence after editing. `cortex_get_blast_radius` requires a numeric observation ID and must not be called with a code symbol or path.
 3. **Cycle Regression**: `reviewer` MUST run `cortex_detect_cycles(project)` before emitting `PASS`.
 
 ### D. Automated Project Directives (`cortex_get_rules`)
@@ -372,7 +406,7 @@ Call `cortex_save` IMMEDIATELY after:
 ### G. Session Continuity & Orchestrator Session Ownership
 1. **Orchestrator Session Ownership (STRICT)**:
    - ONLY the `orchestrator` owns the session lifecycle (`cortex_session_start` at startup, `cortex_session_summary` / `cortex_session_end` at final close).
-   - **SUBAGENTS MUST NEVER CALL `cortex_session_start` OR `cortex_session_end`**: Subagents (`investigate`, `planner`, `implement`, `reviewer`, `spike-prototype`) execute as ephemeral leaf minions within the orchestrator's active session. They use memory tools (`cortex_search`, `cortex_save`, `cortex_get_code_symbols`, `cortex_get_blast_radius`, etc.) WITHOUT starting separate sessions.
+   - **SUBAGENTS MUST NEVER CALL `cortex_session_start`, `cortex_session_summary`, OR `cortex_session_end`**: Subagents execute as ephemeral leaf minions within the orchestrator's active session and may use ordinary memory/search tools without taking lifecycle ownership.
 2. **Startup (Orchestrator Only)**: Call `cortex_session_start`, fetch `cortex_get_project_context(project)`, and check `cortex_get_rules(project)`.
 3. **Close (Orchestrator Only, MANDATORY before final turn)**: Call `cortex_session_summary` with:
    - `## Goal`: Intent of the session
@@ -413,6 +447,3 @@ cortex doctor
 cortex setup opencode
 cortex setup claude-code
 ```
-
-
-

@@ -36,6 +36,11 @@ func TestSnapshotAndRestore(t *testing.T) {
 		t.Errorf("Entries = %d, want 3", len(manifest.Entries))
 	}
 
+	// Verify snapshot
+	if err := Verify(manifest); err != nil {
+		t.Fatalf("Verify failed: %v", err)
+	}
+
 	// Verify non-existent entry
 	for _, e := range manifest.Entries {
 		if e.OriginalPath == filepath.Clean(nonExistent) && e.Existed {

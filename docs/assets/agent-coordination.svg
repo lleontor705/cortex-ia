@@ -1,103 +1,187 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" font-family="'Segoe UI',system-ui,sans-serif">
-  <rect width="960" height="480" rx="12" fill="#0f1117"/>
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgCoord" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080B11"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
 
-  <text x="480" y="32" text-anchor="middle" fill="#c0caf5" font-size="18" font-weight="700">OpenCode Agent Coordination &amp; Protocols</text>
-  <text x="480" y="50" text-anchor="middle" fill="#565f89" font-size="11">ForgeSpec CAS Control Plane · Cortex Persistent Evidence · File Reservation Leases · Typed Receipts</text>
+    <filter id="shadowCoord" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
 
-  <!-- Column 1: ForgeSpec Control Plane -->
-  <rect x="25" y="72" width="215" height="280" rx="8" fill="#1a1b26" stroke="#2E7D32" stroke-width="1.5"/>
-  <text x="132" y="94" text-anchor="middle" fill="#9ece6a" font-size="12" font-weight="700">ForgeSpec (Control Plane)</text>
-  <text x="132" y="108" text-anchor="middle" fill="#565f89" font-size="9">DAG State &amp; Task Claims</text>
+  <style>
+    .coord-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 20px; font-weight: 800; fill: #F8FAFC; text-anchor: middle; }
+    .coord-sub { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; fill: #64748B; text-anchor: middle; }
+    .col-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
+    .col-sub { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 9.5px; fill: #64748B; text-anchor: middle; }
+    .cmd-name { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; font-weight: 600; fill: #E2E8F0; }
+    .cmd-desc { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 8.5px; text-anchor: end; }
+  </style>
 
-  <text x="45" y="132" fill="#c0caf5" font-size="9.5">forgespec_capabilities</text>
-  <text x="225" y="132" fill="#565f89" font-size="8" text-anchor="end">direct-v1 mode</text>
-  <text x="45" y="152" fill="#c0caf5" font-size="9.5">tb_create_board</text>
-  <text x="225" y="152" fill="#565f89" font-size="8" text-anchor="end">init DAG</text>
-  <text x="45" y="172" fill="#c0caf5" font-size="9.5">tb_add_task</text>
-  <text x="225" y="172" fill="#565f89" font-size="8" text-anchor="end">add bounded node</text>
-  <text x="45" y="192" fill="#c0caf5" font-size="9.5">tb_query</text>
-  <text x="225" y="192" fill="#565f89" font-size="8" text-anchor="end">read DAG state</text>
-  <text x="45" y="212" fill="#c0caf5" font-size="9.5">tb_claim</text>
-  <text x="225" y="212" fill="#81C784" font-size="8" text-anchor="end">acquire attempt</text>
-  <text x="45" y="232" fill="#c0caf5" font-size="9.5">tb_heartbeat</text>
-  <text x="225" y="232" fill="#81C784" font-size="8" text-anchor="end">renew claim TTL</text>
-  <text x="45" y="252" fill="#c0caf5" font-size="9.5">tb_update</text>
-  <text x="225" y="252" fill="#81C784" font-size="8" text-anchor="end">CAS status change</text>
-  <text x="45" y="272" fill="#c0caf5" font-size="9.5">tb_events</text>
-  <text x="225" y="272" fill="#565f89" font-size="8" text-anchor="end">audit trail</text>
-  <text x="45" y="292" fill="#c0caf5" font-size="9.5">tb_approve</text>
-  <text x="225" y="292" fill="#f7768e" font-size="8" text-anchor="end">review gate</text>
+  <rect width="960" height="480" rx="12" fill="url(#bgCoord)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <text x="480" y="32" class="coord-title">OpenCode Agent Coordination &amp; Protocols</text>
+  <text x="480" y="48" class="coord-sub">Cortex-IA CAS Control Plane · Exclusive File Leases · Cortex Epistemic Evidence · Typed Receipts</text>
+
+  <!-- Column 1: Cortex-IA Control Plane -->
+  <g transform="translate(25, 68)" filter="url(#shadowCoord)">
+    <rect width="215" height="385" rx="8" fill="#111827" stroke="#10B981" stroke-width="1.5"/>
+    <text x="107" y="24" class="col-title" fill="#10B981">Cortex-IA (Control Plane)</text>
+    <text x="107" y="38" class="col-sub">Task DAG &amp; CAS Revisions</text>
+
+    <!-- Row 1 -->
+    <text x="16" y="65" class="cmd-name">board create|list</text>
+    <text x="200" y="65" class="cmd-desc" fill="#64748B">durable workspace</text>
+
+    <!-- Row 2 -->
+    <text x="16" y="90" class="cmd-name">work create</text>
+    <text x="200" y="90" class="cmd-desc" fill="#64748B">add DAG node</text>
+
+    <!-- Row 3 -->
+    <text x="16" y="115" class="cmd-name">work status|show</text>
+    <text x="200" y="115" class="cmd-desc" fill="#64748B">read live state</text>
+
+    <!-- Row 4 -->
+    <text x="16" y="140" class="cmd-name">work claim</text>
+    <text x="200" y="140" class="cmd-desc" fill="#34D399">acquire attempt</text>
+
+    <!-- Row 5 -->
+    <text x="16" y="165" class="cmd-name">work renew</text>
+    <text x="200" y="165" class="cmd-desc" fill="#34D399">extend claim TTL</text>
+
+    <!-- Row 6 -->
+    <text x="16" y="190" class="cmd-name">work transition</text>
+    <text x="200" y="190" class="cmd-desc" fill="#FBBF24">CAS status shift</text>
+
+    <!-- Row 7 -->
+    <text x="16" y="215" class="cmd-name">work approve</text>
+    <text x="200" y="215" class="cmd-desc" fill="#F43F5E">reviewer gate</text>
+
+    <!-- Row 8 -->
+    <text x="16" y="240" class="cmd-name">work retry</text>
+    <text x="200" y="240" class="cmd-desc" fill="#38BDF8">unblock task</text>
+
+    <!-- Row 9 -->
+    <text x="16" y="265" class="cmd-name">work recover</text>
+    <text x="200" y="265" class="cmd-desc" fill="#A855F7">sweep stale claims</text>
+
+    <!-- Bottom note -->
+    <rect x="12" y="295" width="190" height="75" rx="6" fill="#064E3B" fill-opacity="0.3" stroke="#059669" stroke-width="1"/>
+    <text x="107" y="318" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" fill="#34D399">SQLite STRICT + WAL</text>
+    <text x="107" y="335" text-anchor="middle" font-family="system-ui" font-size="8.5" fill="#A7F3D0">Optimistic Locking CAS</text>
+    <text x="107" y="350" text-anchor="middle" font-family="system-ui" font-size="8.5" fill="#A7F3D0">Monotonic Revisions</text>
+  </g>
 
   <!-- Column 2: File Reservation Leases -->
-  <rect x="255" y="72" width="215" height="280" rx="8" fill="#1a1b26" stroke="#7aa2f7" stroke-width="1.5"/>
-  <text x="362" y="94" text-anchor="middle" fill="#7aa2f7" font-size="12" font-weight="700">File Leases (Concurrency)</text>
-  <text x="362" y="108" text-anchor="middle" fill="#565f89" font-size="9">Atomic Advisory Locks</text>
+  <g transform="translate(255, 68)" filter="url(#shadowCoord)">
+    <rect width="215" height="385" rx="8" fill="#111827" stroke="#38BDF8" stroke-width="1.5"/>
+    <text x="107" y="24" class="col-title" fill="#38BDF8">File Leases (Concurrency)</text>
+    <text x="107" y="38" class="col-sub">Atomic Advisory Scope Locks</text>
 
-  <rect x="270" y="122" width="185" height="42" rx="5" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
-  <text x="362" y="140" text-anchor="middle" fill="#7aa2f7" font-size="10" font-weight="600">file_reserve</text>
-  <text x="362" y="155" text-anchor="middle" fill="#565f89" font-size="8">Acquire exclusive lease per path</text>
+    <g transform="translate(15, 60)">
+      <rect width="185" height="50" rx="6" fill="#0C4A6E" fill-opacity="0.4" stroke="#0284C7" stroke-width="1"/>
+      <text x="92" y="22" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#38BDF8">work lease</text>
+      <text x="92" y="38" text-anchor="middle" font-family="system-ui" font-size="8.5" fill="#BAE6FD">Acquire exclusive path scope</text>
+    </g>
 
-  <rect x="270" y="172" width="185" height="42" rx="5" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
-  <text x="362" y="190" text-anchor="middle" fill="#7aa2f7" font-size="10" font-weight="600">file_renew</text>
-  <text x="362" y="205" text-anchor="middle" fill="#565f89" font-size="8">Extend lease TTL while editing</text>
+    <g transform="translate(15, 125)">
+      <rect width="185" height="50" rx="6" fill="#0C4A6E" fill-opacity="0.4" stroke="#0284C7" stroke-width="1"/>
+      <text x="92" y="22" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#38BDF8">work lease-renew</text>
+      <text x="92" y="38" text-anchor="middle" font-family="system-ui" font-size="8.5" fill="#BAE6FD">Extend path TTL while writing</text>
+    </g>
 
-  <rect x="270" y="222" width="185" height="42" rx="5" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
-  <text x="362" y="240" text-anchor="middle" fill="#7aa2f7" font-size="10" font-weight="600">file_release</text>
-  <text x="362" y="255" text-anchor="middle" fill="#565f89" font-size="8">Release files on PASS / FAIL / BLOCKED</text>
+    <g transform="translate(15, 190)">
+      <rect width="185" height="50" rx="6" fill="#0C4A6E" fill-opacity="0.4" stroke="#0284C7" stroke-width="1"/>
+      <text x="92" y="22" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#38BDF8">work release</text>
+      <text x="92" y="38" text-anchor="middle" font-family="system-ui" font-size="8.5" fill="#BAE6FD">Release files on completion</text>
+    </g>
 
-  <text x="362" y="295" text-anchor="middle" fill="#e0af68" font-size="9" font-style="italic">Prevents cross-minion races</text>
-  <text x="362" y="312" text-anchor="middle" fill="#565f89" font-size="8">Strictly disjoint allowed_files per minion</text>
+    <rect x="15" y="260" width="185" height="110" rx="6" fill="#1E293B" stroke="#334155"/>
+    <text x="107" y="285" text-anchor="middle" font-family="system-ui" font-size="9.5" font-weight="700" fill="#FBBF24">Anti-Collision Guarantee</text>
+    <text x="107" y="305" text-anchor="middle" font-family="system-ui" font-size="8.5" fill="#94A3B8">Strictly disjoint allowed_files</text>
+    <text x="107" y="322" text-anchor="middle" font-family="system-ui" font-size="8.5" fill="#94A3B8">Conflicting lease returns</text>
+    <text x="107" y="338" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="8.5" fill="#F43F5E">LEASE_CONFLICT</text>
+  </g>
 
   <!-- Column 3: Cortex Evidence Plane -->
-  <rect x="485" y="72" width="215" height="280" rx="8" fill="#1a1b26" stroke="#4A90D9" stroke-width="1.5"/>
-  <text x="592" y="94" text-anchor="middle" fill="#7dcfff" font-size="12" font-weight="700">Cortex (Evidence Plane)</text>
-  <text x="592" y="108" text-anchor="middle" fill="#565f89" font-size="9">Cross-Session Durable Memory</text>
+  <g transform="translate(485, 68)" filter="url(#shadowCoord)">
+    <rect width="215" height="385" rx="8" fill="#111827" stroke="#818CF8" stroke-width="1.5"/>
+    <text x="107" y="24" class="col-title" fill="#818CF8">Cortex (Evidence Plane)</text>
+    <text x="107" y="38" class="col-sub">Knowledge &amp; AST Analysis</text>
 
-  <text x="505" y="132" fill="#c0caf5" font-size="9.5">cortex_session_start</text>
-  <text x="685" y="132" fill="#565f89" font-size="8" text-anchor="end">bind session</text>
-  <text x="505" y="155" fill="#c0caf5" font-size="9.5">cortex_search</text>
-  <text x="685" y="155" fill="#565f89" font-size="8" text-anchor="end">hybrid query</text>
-  <text x="505" y="178" fill="#c0caf5" font-size="9.5">cortex_save</text>
-  <text x="685" y="178" fill="#7dcfff" font-size="8" text-anchor="end">persist evidence</text>
-  <text x="505" y="201" fill="#c0caf5" font-size="9.5">cortex_session_summary</text>
-  <text x="685" y="201" fill="#565f89" font-size="8" text-anchor="end">checkpoint</text>
-  <text x="505" y="224" fill="#c0caf5" font-size="9.5">cortex_session_end</text>
-  <text x="685" y="224" fill="#565f89" font-size="8" text-anchor="end">close &amp; flush</text>
+    <!-- Row 1 -->
+    <text x="16" y="65" class="cmd-name">cortex_session_start</text>
+    <text x="200" y="65" class="cmd-desc" fill="#64748B">bind session</text>
 
-  <rect x="500" y="250" width="185" height="42" rx="5" fill="#1e2030" stroke="#4A90D9" stroke-width="1"/>
-  <text x="592" y="268" text-anchor="middle" fill="#7dcfff" font-size="9.5" font-weight="600">context-distiller</text>
-  <text x="592" y="283" text-anchor="middle" fill="#565f89" font-size="8">Minimizes failure locality &amp; diffs</text>
+    <!-- Row 2 -->
+    <text x="16" y="90" class="cmd-name">cortex_code_scan</text>
+    <text x="200" y="90" class="cmd-desc" fill="#64748B">AST indexing</text>
 
-  <!-- Column 4: Background Supervisor -->
-  <rect x="715" y="72" width="220" height="280" rx="8" fill="#1a1b26" stroke="#e0af68" stroke-width="1.5"/>
-  <text x="825" y="94" text-anchor="middle" fill="#e0af68" font-size="12" font-weight="700">Supervisor &amp; Receipts</text>
-  <text x="825" y="108" text-anchor="middle" fill="#565f89" font-size="9">Asynchronous Minion Lifecycle</text>
+    <!-- Row 3 -->
+    <text x="16" y="115" class="cmd-name">cortex_blast_radius</text>
+    <text x="200" y="115" class="cmd-desc" fill="#A5B4FC">impact tree</text>
 
-  <text x="735" y="132" fill="#c0caf5" font-size="9.5">task(..., background=true)</text>
-  <text x="735" y="155" fill="#c0caf5" font-size="9.5">background_status</text>
-  <text x="735" y="178" fill="#c0caf5" font-size="9.5">background_tail</text>
-  <text x="735" y="201" fill="#c0caf5" font-size="9.5">background_recover</text>
-  <text x="735" y="224" fill="#c0caf5" font-size="9.5">background_cancel</text>
+    <!-- Row 4 -->
+    <text x="16" y="140" class="cmd-name">cortex_save</text>
+    <text x="200" y="140" class="cmd-desc" fill="#A5B4FC">persist gotchas</text>
 
-  <rect x="730" y="250" width="190" height="42" rx="5" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
-  <text x="825" y="268" text-anchor="middle" fill="#e0af68" font-size="9.5" font-weight="600">Receipt v2.0 Contract</text>
-  <text x="825" y="283" text-anchor="middle" fill="#565f89" font-size="8">PASS | FAIL | BLOCKED | INCONCLUSIVE</text>
+    <!-- Row 5 -->
+    <text x="16" y="165" class="cmd-name">cortex_search</text>
+    <text x="200" y="165" class="cmd-desc" fill="#64748B">hybrid search</text>
 
-  <!-- Protocols Guide Footer -->
-  <text x="480" y="380" text-anchor="middle" fill="#c0caf5" font-size="12.5" font-weight="600">Coordination Invariants</text>
+    <!-- Row 6 -->
+    <text x="16" y="190" class="cmd-name">cortex_relate</text>
+    <text x="200" y="190" class="cmd-desc" fill="#64748B">knowledge graph</text>
 
-  <rect x="25" y="396" width="215" height="30" rx="5" fill="#1e2030" stroke="#2E7D32" stroke-width="1"/>
-  <text x="132" y="415" text-anchor="middle" fill="#9ece6a" font-size="9">Orchestrator never edits code</text>
+    <!-- Row 7 -->
+    <text x="16" y="215" class="cmd-name">cortex_context</text>
+    <text x="200" y="215" class="cmd-desc" fill="#64748B">context restore</text>
 
-  <rect x="255" y="396" width="215" height="30" rx="5" fill="#1e2030" stroke="#7aa2f7" stroke-width="1"/>
-  <text x="362" y="415" text-anchor="middle" fill="#7aa2f7" font-size="9">File leases mandatory before writes</text>
+    <!-- Row 8 -->
+    <text x="16" y="240" class="cmd-name">cortex_session_end</text>
+    <text x="200" y="240" class="cmd-desc" fill="#64748B">synthesize summary</text>
 
-  <rect x="485" y="396" width="215" height="30" rx="5" fill="#1e2030" stroke="#4A90D9" stroke-width="1"/>
-  <text x="592" y="415" text-anchor="middle" fill="#7dcfff" font-size="9">Reviewer never trusts prose claims</text>
+    <rect x="12" y="270" width="190" height="100" rx="6" fill="#312E81" fill-opacity="0.3" stroke="#4F46E5" stroke-width="1"/>
+    <text x="107" y="295" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" fill="#A5B4FC">Epistemic Storage</text>
+    <text x="107" y="312" text-anchor="middle" font-family="system-ui" font-size="8.5" fill="#C7D2FE">AST Symbols &amp; Relations</text>
+    <text x="107" y="328" text-anchor="middle" font-family="system-ui" font-size="8.5" fill="#C7D2FE">Bug Root Causes &amp; ADRs</text>
+    <text x="107" y="344" text-anchor="middle" font-family="system-ui" font-size="8.5" fill="#C7D2FE">Evidence Lineage</text>
+  </g>
 
-  <rect x="715" y="396" width="220" height="30" rx="5" fill="#1e2030" stroke="#e0af68" stroke-width="1"/>
-  <text x="825" y="415" text-anchor="middle" fill="#e0af68" font-size="9">Deterministic verification oracles</text>
+  <!-- Column 4: Delegation & Output -->
+  <g transform="translate(715, 68)" filter="url(#shadowCoord)">
+    <rect width="220" height="385" rx="8" fill="#111827" stroke="#EC4899" stroke-width="1.5"/>
+    <text x="110" y="24" class="col-title" fill="#EC4899">Delegation &amp; Receipts</text>
+    <text x="110" y="38" class="col-sub">Herdr Panes &amp; Verifiable Evidence</text>
 
-  <!-- Footer -->
-  <text x="480" y="455" text-anchor="middle" fill="#3b3f54" font-size="8.5">cortex-ia · OpenCode Multi-Agent Runtime</text>
+    <!-- Row 1 -->
+    <text x="16" y="65" class="cmd-name">delegate create</text>
+    <text x="204" y="65" class="cmd-desc" fill="#64748B">spawn worker</text>
+
+    <!-- Row 2 -->
+    <text x="16" y="90" class="cmd-name">delegate status</text>
+    <text x="204" y="90" class="cmd-desc" fill="#64748B">poll lifecycle</text>
+
+    <!-- Row 3 -->
+    <text x="16" y="115" class="cmd-name">delegate result</text>
+    <text x="204" y="115" class="cmd-desc" fill="#F472B6">fetch receipt</text>
+
+    <!-- Row 4 -->
+    <text x="16" y="140" class="cmd-name">openspec validate</text>
+    <text x="204" y="140" class="cmd-desc" fill="#F472B6">SDD delta check</text>
+
+    <g transform="translate(15, 170)">
+      <rect width="190" height="195" rx="6" fill="#0B111E" stroke="#334155"/>
+      <text x="12" y="22" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" fill="#38BDF8">TYPED RECEIPT V2</text>
+      <text x="12" y="42" font-family="'JetBrains Mono', monospace" font-size="8" fill="#94A3B8">"task_id": "activeboard-1.1"</text>
+      <text x="12" y="58" font-family="'JetBrains Mono', monospace" font-size="8" fill="#94A3B8">"phase_status": "success"</text>
+      <text x="12" y="74" font-family="'JetBrains Mono', monospace" font-size="8" fill="#94A3B8">"task_status": "ready"</text>
+      <text x="12" y="90" font-family="'JetBrains Mono', monospace" font-size="8" fill="#10B981">"verdict": "PASS"</text>
+      <text x="12" y="106" font-family="'JetBrains Mono', monospace" font-size="8" fill="#94A3B8">"changed_files": [...]</text>
+      <text x="12" y="122" font-family="'JetBrains Mono', monospace" font-size="8" fill="#94A3B8">"checks": ["go test ./..."]</text>
+      <text x="12" y="138" font-family="'JetBrains Mono', monospace" font-size="8" fill="#94A3B8">"token_usage": 29747</text>
+      <text x="12" y="154" font-family="'JetBrains Mono', monospace" font-size="8" fill="#10B981">"exit_code": 0</text>
+    </g>
+  </g>
 </svg>

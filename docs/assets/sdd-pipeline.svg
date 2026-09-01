@@ -1,155 +1,117 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 440" font-family="'Segoe UI',system-ui,sans-serif">
-  <rect width="1060" height="440" rx="12" fill="#0f1117"/>
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgSdd" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080B11"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
 
-  <text x="530" y="34" text-anchor="middle" fill="#c0caf5" font-size="17" font-weight="700">SDD Pipeline — Spec-Driven Development</text>
-  <text x="530" y="52" text-anchor="middle" fill="#565f89" font-size="10">9 phases · typed contracts · confidence thresholds · artifact persistence</text>
+    <linearGradient id="sddGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#34D399"/>
+    </linearGradient>
 
-  <!-- Phase boxes row -->
-  <rect x="20" y="80" width="90" height="50" rx="7" fill="#607D8B"/>
-  <text x="65" y="102" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">init</text>
-  <text x="65" y="118" text-anchor="middle" fill="#cfd8dc" font-size="8">bootstrap</text>
+    <filter id="shadowSdd" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
 
-  <rect x="130" y="80" width="90" height="50" rx="7" fill="#78909C"/>
-  <text x="175" y="102" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">explore</text>
-  <text x="175" y="118" text-anchor="middle" fill="#cfd8dc" font-size="8">investigate</text>
+  <style>
+    .sdd-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 22px; font-weight: 800; fill: #F8FAFC; text-anchor: middle; }
+    .sdd-sub { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; fill: #64748B; text-anchor: middle; }
+    .step-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 800; }
+    .step-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 700; fill: #FFFFFF; }
+    .step-sub { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 10px; fill: #94A3B8; }
+    .step-cmd { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; fill: #38BDF8; }
+  </style>
 
-  <rect x="240" y="80" width="90" height="50" rx="7" fill="#90A4AE"/>
-  <text x="285" y="102" text-anchor="middle" fill="#263238" font-size="12" font-weight="600">propose</text>
-  <text x="285" y="118" text-anchor="middle" fill="#37474F" font-size="8">draft-proposal</text>
+  <rect width="1000" height="400" rx="14" fill="url(#bgSdd)" stroke="#1E293B" stroke-width="1.5"/>
 
-  <!-- Fork: spec + design -->
-  <rect x="390" y="68" width="90" height="44" rx="7" fill="#B0BEC5"/>
-  <text x="435" y="88" text-anchor="middle" fill="#263238" font-size="12" font-weight="600">spec</text>
-  <text x="435" y="102" text-anchor="middle" fill="#37474F" font-size="8">write-specs</text>
+  <text x="500" y="38" class="sdd-title">Specification-Driven Development (SDD) Pipeline</text>
+  <text x="500" y="58" class="sdd-sub">OpenSpec Markdown Delta Contracts ➔ Deterministic SQLite Task DAG ➔ Atomic Execution &amp; Review</text>
 
-  <rect x="390" y="124" width="90" height="44" rx="7" fill="#546E7A"/>
-  <text x="435" y="144" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">design</text>
-  <text x="435" y="158" text-anchor="middle" fill="#cfd8dc" font-size="8">architect</text>
+  <!-- Flow Line -->
+  <path d="M 120 180 L 880 180" stroke="url(#sddGrad)" stroke-width="3" stroke-dasharray="6 6" opacity="0.6"/>
 
-  <!-- Merge target -->
-  <rect x="530" y="80" width="90" height="50" rx="7" fill="#455A64"/>
-  <text x="575" y="102" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">tasks</text>
-  <text x="575" y="118" text-anchor="middle" fill="#cfd8dc" font-size="8">decompose</text>
-
-  <rect x="640" y="80" width="90" height="50" rx="7" fill="#2E7D32"/>
-  <text x="685" y="102" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">apply</text>
-  <text x="685" y="118" text-anchor="middle" fill="#c8e6c9" font-size="8">team-lead</text>
-
-  <rect x="750" y="80" width="90" height="50" rx="7" fill="#E65100"/>
-  <text x="795" y="102" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">verify</text>
-  <text x="795" y="118" text-anchor="middle" fill="#fff3e0" font-size="8">validate</text>
-
-  <rect x="860" y="80" width="90" height="50" rx="7" fill="#37474F" stroke="#565f89" stroke-width="1"/>
-  <text x="905" y="102" text-anchor="middle" fill="#c0caf5" font-size="12" font-weight="600">archive</text>
-  <text x="905" y="118" text-anchor="middle" fill="#7f849c" font-size="8">finalize</text>
-
-  <!-- Arrows -->
-  <line x1="110" y1="105" x2="128" y2="105" stroke="#4A90D9" stroke-width="2"/>
-  <polygon points="128,101 136,105 128,109" fill="#4A90D9"/>
-
-  <line x1="220" y1="105" x2="238" y2="105" stroke="#4A90D9" stroke-width="2"/>
-  <polygon points="238,101 246,105 238,109" fill="#4A90D9"/>
-
-  <!-- Fork arrows -->
-  <path d="M330,95 C355,95 370,90 388,90" fill="none" stroke="#7aa2f7" stroke-width="2"/>
-  <polygon points="386,86 394,90 386,94" fill="#7aa2f7"/>
-  <path d="M330,110 C355,110 370,146 388,146" fill="none" stroke="#7aa2f7" stroke-width="2"/>
-  <polygon points="386,142 394,146 386,150" fill="#7aa2f7"/>
-  <text x="362" y="118" text-anchor="middle" fill="#7aa2f7" font-size="8" font-style="italic">parallel</text>
-
-  <!-- Merge arrows -->
-  <path d="M480,90 C500,90 515,105 528,105" fill="none" stroke="#7aa2f7" stroke-width="2"/>
-  <polygon points="526,101 534,105 526,109" fill="#7aa2f7"/>
-  <path d="M480,146 C500,146 515,105 528,105" fill="none" stroke="#7aa2f7" stroke-width="1.5"/>
-
-  <line x1="620" y1="105" x2="638" y2="105" stroke="#4A90D9" stroke-width="2"/>
-  <polygon points="636,101 644,105 636,109" fill="#4A90D9"/>
-  <line x1="730" y1="105" x2="748" y2="105" stroke="#4A90D9" stroke-width="2"/>
-  <polygon points="746,101 754,105 746,109" fill="#4A90D9"/>
-  <line x1="840" y1="105" x2="858" y2="105" stroke="#4A90D9" stroke-width="2"/>
-  <polygon points="856,101 864,105 856,109" fill="#4A90D9"/>
-
-  <!-- Confidence thresholds -->
-  <text x="530" y="210" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="600">Confidence Thresholds</text>
-
-  <g transform="translate(30,225)">
-    <rect x="0" y="0" width="100" height="20" rx="4" fill="#1e2030"/>
-    <rect x="0" y="0" width="50" height="20" rx="4" fill="#607D8B"/>
-    <text x="50" y="14" text-anchor="middle" fill="#fff" font-size="9">init 0.5</text>
-  </g>
-  <g transform="translate(140,225)">
-    <rect x="0" y="0" width="100" height="20" rx="4" fill="#1e2030"/>
-    <rect x="0" y="0" width="50" height="20" rx="4" fill="#78909C"/>
-    <text x="50" y="14" text-anchor="middle" fill="#fff" font-size="9">explore 0.5</text>
-  </g>
-  <g transform="translate(250,225)">
-    <rect x="0" y="0" width="100" height="20" rx="4" fill="#1e2030"/>
-    <rect x="0" y="0" width="70" height="20" rx="4" fill="#90A4AE"/>
-    <text x="50" y="14" text-anchor="middle" fill="#263238" font-size="9">propose 0.7</text>
-  </g>
-  <g transform="translate(360,225)">
-    <rect x="0" y="0" width="100" height="20" rx="4" fill="#1e2030"/>
-    <rect x="0" y="0" width="80" height="20" rx="4" fill="#B0BEC5"/>
-    <text x="50" y="14" text-anchor="middle" fill="#263238" font-size="9">spec 0.8</text>
-  </g>
-  <g transform="translate(470,225)">
-    <rect x="0" y="0" width="100" height="20" rx="4" fill="#1e2030"/>
-    <rect x="0" y="0" width="70" height="20" rx="4" fill="#546E7A"/>
-    <text x="50" y="14" text-anchor="middle" fill="#fff" font-size="9">design 0.7</text>
-  </g>
-  <g transform="translate(580,225)">
-    <rect x="0" y="0" width="100" height="20" rx="4" fill="#1e2030"/>
-    <rect x="0" y="0" width="80" height="20" rx="4" fill="#455A64"/>
-    <text x="50" y="14" text-anchor="middle" fill="#fff" font-size="9">tasks 0.8</text>
-  </g>
-  <g transform="translate(690,225)">
-    <rect x="0" y="0" width="100" height="20" rx="4" fill="#1e2030"/>
-    <rect x="0" y="0" width="60" height="20" rx="4" fill="#2E7D32"/>
-    <text x="50" y="14" text-anchor="middle" fill="#fff" font-size="9">apply 0.6</text>
-  </g>
-  <g transform="translate(800,225)">
-    <rect x="0" y="0" width="100" height="20" rx="4" fill="#1e2030"/>
-    <rect x="0" y="0" width="90" height="20" rx="4" fill="#E65100"/>
-    <text x="50" y="14" text-anchor="middle" fill="#fff" font-size="9">verify 0.9</text>
-  </g>
-  <g transform="translate(910,225)">
-    <rect x="0" y="0" width="100" height="20" rx="4" fill="#1e2030"/>
-    <rect x="0" y="0" width="90" height="20" rx="4" fill="#37474F"/>
-    <text x="50" y="14" text-anchor="middle" fill="#c0caf5" font-size="9">archive 0.9</text>
+  <!-- Step 1: Proposal & Delta Specs -->
+  <g transform="translate(45, 90)" filter="url(#shadowSdd)">
+    <rect width="165" height="180" rx="10" fill="#0F172A" stroke="#38BDF8" stroke-width="1.5"/>
+    <circle cx="82" cy="30" r="16" fill="#0284C7"/>
+    <text x="82" y="35" class="step-num" fill="#FFF" text-anchor="middle">01</text>
+    
+    <text x="82" y="65" class="step-title" text-anchor="middle">OpenSpec Design</text>
+    <text x="82" y="82" class="step-sub" text-anchor="middle">RFC 2119 Delta Specs</text>
+    
+    <rect x="12" y="95" width="141" height="65" rx="6" fill="#1E293B"/>
+    <text x="20" y="112" class="step-cmd">proposal.md</text>
+    <text x="20" y="128" class="step-cmd">specs/**/*.md</text>
+    <text x="20" y="144" class="step-cmd">design.md</text>
   </g>
 
-  <!-- Fast-track -->
-  <text x="530" y="280" text-anchor="middle" fill="#c0caf5" font-size="13" font-weight="600">Fast-Track Decision Logic</text>
+  <!-- Step 2: Task DAG Decomposition -->
+  <g transform="translate(230, 90)" filter="url(#shadowSdd)">
+    <rect width="165" height="180" rx="10" fill="#0F172A" stroke="#818CF8" stroke-width="1.5"/>
+    <circle cx="82" cy="30" r="16" fill="#4F46E5"/>
+    <text x="82" y="35" class="step-num" fill="#FFF" text-anchor="middle">02</text>
+    
+    <text x="82" y="65" class="step-title" text-anchor="middle">DAG Partition</text>
+    <text x="82" y="82" class="step-sub" text-anchor="middle">Slice Bounding (≤350 LOC)</text>
+    
+    <rect x="12" y="95" width="141" height="65" rx="6" fill="#1E293B"/>
+    <text x="20" y="115" class="step-cmd">board create</text>
+    <text x="20" y="132" class="step-cmd">work create</text>
+    <text x="20" y="148" font-family="'JetBrains Mono', monospace" font-size="8.5" fill="#A5B4FC">status: backlog</text>
+  </g>
 
-  <rect x="20" y="295" width="240" height="55" rx="7" fill="#1e2030" stroke="#2E7D32" stroke-width="1.5"/>
-  <text x="140" y="315" text-anchor="middle" fill="#9ece6a" font-size="11" font-weight="600">Trivial</text>
-  <text x="140" y="330" text-anchor="middle" fill="#7f849c" font-size="9">confidence >= 0.9 · &lt;= 2 files</text>
-  <text x="140" y="343" text-anchor="middle" fill="#565f89" font-size="8">implement → validate</text>
+  <!-- Step 3: Atomic Implementation -->
+  <g transform="translate(415, 90)" filter="url(#shadowSdd)">
+    <rect width="170" height="180" rx="10" fill="#0F172A" stroke="#F59E0B" stroke-width="1.5"/>
+    <circle cx="85" cy="30" r="16" fill="#D97706"/>
+    <text x="85" y="35" class="step-num" fill="#FFF" text-anchor="middle">03</text>
+    
+    <text x="85" y="65" class="step-title" text-anchor="middle">Implementation</text>
+    <text x="85" y="82" class="step-sub" text-anchor="middle">Claim &amp; Exclusive Leases</text>
+    
+    <rect x="12" y="95" width="146" height="65" rx="6" fill="#1E293B"/>
+    <text x="20" y="115" class="step-cmd" fill="#FBBF24">work claim</text>
+    <text x="20" y="132" class="step-cmd" fill="#FBBF24">work lease</text>
+    <text x="20" y="148" font-family="'JetBrains Mono', monospace" font-size="8.5" fill="#FCD34D">Herdr stream-json</text>
+  </g>
 
-  <rect x="275" y="295" width="240" height="55" rx="7" fill="#1e2030" stroke="#7aa2f7" stroke-width="1.5"/>
-  <text x="395" y="315" text-anchor="middle" fill="#7aa2f7" font-size="11" font-weight="600">Simple</text>
-  <text x="395" y="330" text-anchor="middle" fill="#7f849c" font-size="9">confidence >= 0.8 · &lt;= 5 files</text>
-  <text x="395" y="343" text-anchor="middle" fill="#565f89" font-size="8">propose → implement → validate</text>
+  <!-- Step 4: Adversarial Review -->
+  <g transform="translate(605, 90)" filter="url(#shadowSdd)">
+    <rect width="165" height="180" rx="10" fill="#0F172A" stroke="#F43F5E" stroke-width="1.5"/>
+    <circle cx="82" cy="30" r="16" fill="#E11D48"/>
+    <text x="82" y="35" class="step-num" fill="#FFF" text-anchor="middle">04</text>
+    
+    <text x="82" y="65" class="step-title" text-anchor="middle">Adversarial Review</text>
+    <text x="82" y="82" class="step-sub" text-anchor="middle">Independent Oracle Check</text>
+    
+    <rect x="12" y="95" width="141" height="65" rx="6" fill="#1E293B"/>
+    <text x="20" y="115" class="step-cmd" fill="#FB7185">work transition</text>
+    <text x="20" y="132" class="step-cmd" fill="#FB7185">work approve</text>
+    <text x="20" y="148" font-family="'JetBrains Mono', monospace" font-size="8.5" fill="#FDA4AF">verdict: PASS</text>
+  </g>
 
-  <rect x="530" y="295" width="240" height="55" rx="7" fill="#1e2030" stroke="#e0af68" stroke-width="1.5"/>
-  <text x="650" y="315" text-anchor="middle" fill="#e0af68" font-size="11" font-weight="600">Normal</text>
-  <text x="650" y="330" text-anchor="middle" fill="#7f849c" font-size="9">confidence >= 0.6 · multi-approach</text>
-  <text x="650" y="343" text-anchor="middle" fill="#565f89" font-size="8">full pipeline (no archive)</text>
+  <!-- Step 5: Verified Convergence -->
+  <g transform="translate(790, 90)" filter="url(#shadowSdd)">
+    <rect width="165" height="180" rx="10" fill="#0F172A" stroke="#10B981" stroke-width="1.5"/>
+    <circle cx="82" cy="30" r="16" fill="#059669"/>
+    <text x="82" y="35" class="step-num" fill="#FFF" text-anchor="middle">05</text>
+    
+    <text x="82" y="65" class="step-title" text-anchor="middle">DAG Unlocking</text>
+    <text x="82" y="82" class="step-sub" text-anchor="middle">Next Tasks Set to READY</text>
+    
+    <rect x="12" y="95" width="141" height="65" rx="6" fill="#1E293B"/>
+    <text x="20" y="115" class="step-cmd" fill="#34D399">atomic release</text>
+    <text x="20" y="132" class="step-cmd" fill="#34D399">unlockDependents</text>
+    <text x="20" y="148" font-family="'JetBrains Mono', monospace" font-size="8.5" fill="#A7F3D0">status: done</text>
+  </g>
 
-  <rect x="785" y="295" width="240" height="55" rx="7" fill="#1e2030" stroke="#f7768e" stroke-width="1.5"/>
-  <text x="905" y="315" text-anchor="middle" fill="#f7768e" font-size="11" font-weight="600">Complex</text>
-  <text x="905" y="330" text-anchor="middle" fill="#7f849c" font-size="9">confidence &lt; 0.6 · high risk</text>
-  <text x="905" y="343" text-anchor="middle" fill="#565f89" font-size="8">full pipeline + archive</text>
-
-  <!-- MCP footer -->
-  <text x="530" y="385" text-anchor="middle" fill="#c0caf5" font-size="12" font-weight="600">Powered by OpenCode Managed MCP Servers</text>
-
-  <rect x="70" y="398" width="280" height="28" rx="6" fill="#1e2030" stroke="#4A90D9" stroke-width="1.2"/>
-  <text x="210" y="416" text-anchor="middle" fill="#7dcfff" font-size="10" font-weight="600">Cortex · 31 tools · Persistent Memory &amp; Graph</text>
-
-  <rect x="390" y="398" width="280" height="28" rx="6" fill="#1e2030" stroke="#2E7D32" stroke-width="1.2"/>
-  <text x="530" y="416" text-anchor="middle" fill="#9ece6a" font-size="10" font-weight="600">ForgeSpec · 19 tools · Contracts, Board &amp; Leases</text>
-
-  <rect x="710" y="398" width="280" height="28" rx="6" fill="#1e2030" stroke="#e0af68" stroke-width="1.2"/>
-  <text x="850" y="416" text-anchor="middle" fill="#e0af68" font-size="10" font-weight="600">Context7 · Live Framework &amp; Library Docs</text>
+  <!-- Bottom Summary Card -->
+  <g transform="translate(45, 290)">
+    <rect width="910" height="85" rx="8" fill="#111827" stroke="#334155" stroke-width="1"/>
+    <text x="25" y="28" font-family="system-ui" font-size="12" font-weight="700" fill="#F8FAFC">⚡ Zero-Trust Multi-Agent Coordination</text>
+    <text x="25" y="48" font-family="system-ui" font-size="11" fill="#94A3B8">Every task transition is governed by optimistic CAS concurrency control in SQLite. An implementer can never approve their own changes; independent review gates guarantee deterministic quality before any dependency is unlocked.</text>
+  </g>
 </svg>

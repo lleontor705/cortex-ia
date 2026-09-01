@@ -11,22 +11,26 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
-// openReview presses Home → Install/Sync and drains the returned plan
-// command, so the model sits on a loaded Review screen.
+// openReview presses Home → Install/Sync, walks through the wizard steps,
+// and drains the returned plan command, so the model sits on a loaded Review screen.
 func openReview(t *testing.T, svc ServiceAPI) model {
 	t.Helper()
 	m := sized(newModel(svc, "/home/test", "vtest"))
-	m = pressDrive(t, m, "enter")
+	m = press(m, "enter")         // Home -> screenWizardHerdr
+	m = press(m, "enter")         // screenWizardHerdr -> screenWizardDelegation
+	m = pressDrive(t, m, "enter") // screenWizardDelegation -> screenReview (draining planCmd)
+	if m.screen == screenWizardRoles {
+		m = pressDrive(t, m, "enter")
+	}
 	if m.screen != screenReview {
 		t.Fatalf("expected review screen, got %v", m.screen)
 	}
 	return m
 }
 
-// TestReviewDefaultsProvesCortexAndForgeSpecSelected verifies the default
-// selection reaches the service and renders: Cortex+ForgeSpec on, Context7
-// optional and off.
-func TestReviewDefaultsProvesCortexAndForgeSpecSelected(t *testing.T) {
+// TestReviewDefaultsProvesBuiltinWorkControl verifies that Cortex is selected,
+// Context7 stays optional, and ForgeSpec is no longer an install choice.
+func TestReviewDefaultsProvesBuiltinWorkControl(t *testing.T) {
 	fake := &fakeService{}
 	m := openReview(t, fake)
 
@@ -34,18 +38,21 @@ func TestReviewDefaultsProvesCortexAndForgeSpecSelected(t *testing.T) {
 		t.Fatalf("expected one plan call, got %d", len(fake.planCalls))
 	}
 	opts := fake.planCalls[0]
-	if !opts.Cortex || !opts.ForgeSpec || opts.Context7 {
-		t.Fatalf("expected default cortex+forgespec without context7, got %+v", opts)
+	if !opts.Cortex || opts.Context7 {
+		t.Fatalf("expected default cortex without context7, got %+v", opts)
 	}
 	if !opts.DryRun {
 		t.Fatal("review planning must be read-only (DryRun)")
 	}
 
 	view := m.View()
-	for _, want := range []string{"[x] cortex", "[x] forgespec", "[ ] context7"} {
+	for _, want := range []string{"[x] cortex", "[ ] context7"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("review view missing toggle %q:\n%s", want, view)
 		}
+	}
+	if strings.Contains(view, "forgespec") {
+		t.Fatalf("retired ForgeSpec must not render as an install choice:\n%s", view)
 	}
 }
 
@@ -55,7 +62,6 @@ func TestReviewToggleReplansAndUpdatesSelection(t *testing.T) {
 	fake := &fakeService{}
 	m := openReview(t, fake)
 
-	m = press(m, "down")
 	m = press(m, "down") // cursor on context7
 	m = pressDrive(t, m, "space")
 

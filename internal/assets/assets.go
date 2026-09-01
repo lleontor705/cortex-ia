@@ -13,7 +13,7 @@ import (
 // Inventory). Do not hardcode file catalogs that duplicate what the walk
 // already proves.
 //
-//go:embed AGENTS.md opencode.jsonc all:agents all:commands all:plugin all:skills
+//go:embed AGENTS.md opencode.jsonc all:agents all:commands all:plugins all:skills all:tui
 var FS embed.FS
 
 // Read reads the content of an embedded asset file.

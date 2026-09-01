@@ -15,10 +15,10 @@ Use this skill to identify the exact downstream blast radius, affected call chai
 
 Always prefer Cortex Zero-CGO AST tools over manual regex grep loops:
 
-1. **Calculate Blast Radius**:
-   - MCP: `cortex_get_blast_radius(symbol_id | file_path)`
-   - CLI: `cortex code blast-radius <symbol_or_path> --project=<project>`
-   - Computes all direct and indirect downstream callers affected by a symbol modification.
+1. **Map the Impact Boundary**:
+   - MCP: `cortex_get_code_symbols(project, kind, file_path)` plus bounded source reads and `cortex_detect_cycles(project)`.
+   - CLI: use `cortex ingest`, `cortex symbols`, and repository-native caller searches supported by the current binary.
+   - Do not use `cortex_get_blast_radius` for code symbols: its current schema requires a numeric observation ID and traverses observation relationships.
 2. **Inspect Call Graphs & Hierarchies**:
    - MCP: `cortex_get_code_graph(project)` / `cortex_get_code_symbols(project, kind, file_path)`
    - CLI: `cortex code graph --project=<project>`
@@ -27,14 +27,14 @@ Always prefer Cortex Zero-CGO AST tools over manual regex grep loops:
    - CLI: `cortex code cycles --project=<project>`
 
 ## 2. Discovery Principles & Targeted Execution
-- **Baseline Blast Radius**: Before editing an interface or function, query `cortex_get_blast_radius` to capture the baseline caller count.
+- **Baseline Impact Boundary**: Before editing an interface or function, record its definitions, direct source callers, imports, and focused test packages.
 - **Targeted Execution:** Never run global test suites (`npm test`, `pytest`, `cargo test`, `go test ./...`) during iterative code-fix loops when the impacted blast radius can be isolated.
 - **Coupling Spike Warning**: If an edit increases downstream dependents beyond expected scope, evaluate whether an abstraction is leaking.
 
 ## 3. Language-Specific Impact & Test Execution Strategies
 
 ### Go
-- Query callers: `cortex_get_blast_radius("FunctionName")`
+- Query definitions with `cortex_get_code_symbols`; locate direct callers with bounded repository search.
 - Targeted Test: `go test -v -run ^TestFunctionName$ ./internal/pkg/...`
 - Package Sweep: `go test -v ./internal/pkg/...`
 

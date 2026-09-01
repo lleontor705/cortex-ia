@@ -1,13 +1,12 @@
 version: 2
 
-project_name: cortex-ia
-
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - main: ./cmd/cortex-ia
+  - id: cortex-ia
+    main: ./cmd/cortex-ia
     binary: cortex-ia
     env:
       - CGO_ENABLED=0
@@ -19,53 +18,32 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w
+      - -X github.com/lleontor705/cortex-ia/internal/app.Version={{.Version}}
+      - -X github.com/lleontor705/cortex-ia/internal/app.Commit={{.Commit}}
+      - -X github.com/lleontor705/cortex-ia/internal/app.Date={{.Date}}
 
 archives:
-  - formats:
-      - tar.gz
+  - id: default
+    format: tar.gz
     format_overrides:
       - goos: windows
-        formats:
-          - zip
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+        format: zip
+    name_template: "cortex-ia_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - scripts/*
 
 checksum:
   name_template: "checksums.txt"
 
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
 changelog:
   sort: asc
   filters:
-    include:
-      - "^feat"
-      - "^fix"
-      - "^refactor"
-      - "^perf"
     exclude:
-      - "^docs"
-      - "^test"
-      - "^ci"
-      - "^chore\\(deps\\)"
-
-brews:
-  - name: cortex-ia
-    repository:
-      owner: lleontor705
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
-    homepage: "https://github.com/lleontor705/cortex-ia"
-    description: "AI Agent Ecosystem Configurator — persistent memory, SDD workflow, inter-agent messaging, multi-CLI orchestration"
-    license: "MIT"
-    commit_msg_template: "chore: update cortex-ia formula to {{ .Tag }}"
-
-scoops:
-  - repository:
-      owner: lleontor705
-      name: scoop-bucket
-      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
-    name: cortex-ia
-    homepage: "https://github.com/lleontor705/cortex-ia"
-    description: "AI Agent Ecosystem Configurator — persistent memory, SDD workflow, inter-agent messaging, multi-CLI orchestration"
-    license: MIT
-    commit_msg_template: "chore: update cortex-ia to {{ .Tag }}"
+      - "^docs:"
+      - "^test:"

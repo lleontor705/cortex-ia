@@ -1,5 +1,5 @@
 // Package tui renders the minimal OpenCode-only installation interface: a
-// five-screen Bubble Tea program (Home, Review, Running, Result, MCP Manager)
+// five-screen Bubble Tea program (Home, Review, Running, Result, MCP Manager, Web)
 // over internal/install.Service.
 //
 // The TUI owns no installation logic of its own. Every operation — plan,
@@ -12,12 +12,18 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lleontor705/cortex-ia/internal/backup"
+	"github.com/lleontor705/cortex-ia/internal/cortexiaweb"
+	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 )
@@ -52,4 +58,33 @@ func Run(version string) error {
 	program := tea.NewProgram(newModel(service, homeDir, version), tea.WithAltScreen())
 	_, err = program.Run()
 	return err
+}
+
+var webServerOnce sync.Once
+
+func startWebBackground(homeDir string) {
+	webServerOnce.Do(func() {
+		dbPath := delegation.DefaultDBPath(homeDir)
+		store, err := delegation.OpenStore(dbPath)
+		if err != nil {
+			return
+		}
+		ready := make(chan string, 1)
+		go func() {
+			_ = cortexiaweb.Serve(context.Background(), store, "127.0.0.1:7331", ready)
+		}()
+	})
+}
+
+func openBrowser(targetURL string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", targetURL)
+	case "darwin":
+		cmd = exec.Command("open", targetURL)
+	default:
+		cmd = exec.Command("xdg-open", targetURL)
+	}
+	_ = cmd.Start()
 }
