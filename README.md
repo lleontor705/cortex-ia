@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="docs/assets/hero-banner.svg" alt="Cortex-IA Hero Banner" width="100%" />
 </p>
 
@@ -127,6 +127,9 @@ All commands output structured JSON, support both positional arguments and named
 | **Create** | `cortex-ia board create <id> "<title>" "[desc]"` | Initialize a durable task-board boundary |
 | **List** | `cortex-ia board list` | List all boards with completed/total counters |
 | **Status** | `cortex-ia board status <id>` *(or `show`, `get`)* | Query board metadata and full task DAG snapshot |
+| **Archive** | `cortex-ia board archive <id>` | Mark a completed board as archived |
+| **Unarchive** | `cortex-ia board unarchive <id>` | Restore an archived board to active |
+| **Delete** | `cortex-ia board delete <id>` | Permanently delete an archived board and its tasks |
 | **Serve** | `cortex-ia board serve [--addr 127.0.0.1:7331]` | Run the embedded loopback web dashboard |
 
 ### 2. Work Items & Leases (`cortex-ia work`)

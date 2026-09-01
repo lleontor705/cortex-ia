@@ -54,7 +54,38 @@ func TestCortexIAWebAPI(t *testing.T) {
 		t.Errorf("GET /api/config expected 200, got %d", wConfig.Code)
 	}
 
-	// 4. GET / (static index.html)
+	// 4. POST /api/boards/b-web/archive
+	reqArchive := httptest.NewRequest("POST", "/api/boards/b-web/archive", nil)
+	wArchive := httptest.NewRecorder()
+	handler.ServeHTTP(wArchive, reqArchive)
+	if wArchive.Code != http.StatusOK {
+		t.Errorf("POST /api/boards/b-web/archive expected 200, got %d: %s", wArchive.Code, wArchive.Body.String())
+	}
+
+	// 5. POST /api/boards/b-web/unarchive
+	reqUnarchive := httptest.NewRequest("POST", "/api/boards/b-web/unarchive", nil)
+	wUnarchive := httptest.NewRecorder()
+	handler.ServeHTTP(wUnarchive, reqUnarchive)
+	if wUnarchive.Code != http.StatusOK {
+		t.Errorf("POST /api/boards/b-web/unarchive expected 200, got %d: %s", wUnarchive.Code, wUnarchive.Body.String())
+	}
+
+	// 6. Archive again and DELETE /api/boards/b-web
+	reqArchive2 := httptest.NewRequest("POST", "/api/boards/b-web/archive", nil)
+	wArchive2 := httptest.NewRecorder()
+	handler.ServeHTTP(wArchive2, reqArchive2)
+	if wArchive2.Code != http.StatusOK {
+		t.Errorf("POST /api/boards/b-web/archive (2) expected 200, got %d", wArchive2.Code)
+	}
+
+	reqDelete := httptest.NewRequest("DELETE", "/api/boards/b-web", nil)
+	wDelete := httptest.NewRecorder()
+	handler.ServeHTTP(wDelete, reqDelete)
+	if wDelete.Code != http.StatusOK {
+		t.Errorf("DELETE /api/boards/b-web expected 200, got %d: %s", wDelete.Code, wDelete.Body.String())
+	}
+
+	// 7. GET / (static index.html)
 	reqStatic := httptest.NewRequest("GET", "/", nil)
 	wStatic := httptest.NewRecorder()
 	handler.ServeHTTP(wStatic, reqStatic)

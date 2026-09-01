@@ -287,6 +287,128 @@ main {
 }
 .button.primary:hover { background: #b8ff36; border-color: #b8ff36; }
 .button.secondary { background: var(--panel); }
+.button.danger {
+  background: var(--danger-dim);
+  color: var(--danger);
+  border-color: #5c1e24;
+}
+.button.danger:hover {
+  background: #4a151b;
+  border-color: var(--danger);
+}
+
+.board-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.segmented-control {
+  display: inline-flex;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px;
+  gap: 2px;
+}
+.segmented-control button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+.segmented-control button:hover { color: var(--text); }
+.segmented-control button.active {
+  background: var(--panel2);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.archived-section {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.archived-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  font-size: 11px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.archived-toggle:hover { color: var(--text); }
+.board-link.archived { opacity: 0.7; }
+.board-link.archived:hover { opacity: 1; }
+
+.session-card-container {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+.session-card-container:hover {
+  border-color: var(--line-focus);
+}
+.session-card-container.archived {
+  opacity: 0.8;
+  border-style: dashed;
+}
+.session-card-container .session-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  flex: 1;
+}
+.session-card-container .session-card:hover {
+  transform: none;
+  background: var(--panel2);
+}
+.session-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  background: #0b0f14;
+}
+.mini-action-btn {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.mini-action-btn:hover {
+  color: var(--text);
+  border-color: var(--line-focus);
+  background: var(--panel2);
+}
+.mini-action-btn.danger:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-dim);
+}
+.chip-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 
 .text-button {
   border: 0;
@@ -430,6 +552,11 @@ main {
   color: var(--blue);
   border-color: #1d3e66;
   background: var(--blue-dim);
+}
+.status-chip.archived {
+  color: #8b949e;
+  border-color: #30363d;
+  background: #161b22;
 }
 
 .transport-badge {

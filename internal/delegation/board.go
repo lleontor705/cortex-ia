@@ -16,6 +16,7 @@ type WorkBoard struct {
 	ID          string               `json:"board_id"`
 	Title       string               `json:"title"`
 	Description string               `json:"description,omitempty"`
+	Status      string               `json:"status"`
 	Revision    int64                `json:"revision"`
 	Counts      map[WorkStatus]int64 `json:"counts"`
 	CreatedAt   string               `json:"created_at"`
@@ -39,14 +40,14 @@ func (s *Store) CreateBoard(ctx context.Context, id, title, description string) 
 		return WorkBoard{}, errors.New("board id must not contain path separators or control whitespace")
 	}
 	now := s.timestamp()
-	if _, err := s.db.ExecContext(ctx, `INSERT INTO work_boards(id,title,description,created_at,updated_at) VALUES(?,?,?,?,?)`, id, title, description, now, now); err != nil {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO work_boards(id,title,description,status,created_at,updated_at) VALUES(?,?,?,'active',?,?)`, id, title, description, now, now); err != nil {
 		return WorkBoard{}, fmt.Errorf("create task board: %w", err)
 	}
 	return s.GetBoard(ctx, id)
 }
 
 func (s *Store) ListBoards(ctx context.Context) ([]WorkBoard, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM work_boards ORDER BY CASE id WHEN 'default' THEN 0 ELSE 1 END, updated_at DESC, id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM work_boards ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, CASE id WHEN 'default' THEN 0 ELSE 1 END, updated_at DESC, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +80,8 @@ func (s *Store) ListBoards(ctx context.Context) ([]WorkBoard, error) {
 
 func (s *Store) GetBoard(ctx context.Context, id string) (WorkBoard, error) {
 	var board WorkBoard
-	err := s.db.QueryRowContext(ctx, `SELECT id,title,description,revision,created_at,updated_at FROM work_boards WHERE id=?`, strings.TrimSpace(id)).Scan(
-		&board.ID, &board.Title, &board.Description, &board.Revision, &board.CreatedAt, &board.UpdatedAt,
+	err := s.db.QueryRowContext(ctx, `SELECT id,title,description,COALESCE(status, 'active'),revision,created_at,updated_at FROM work_boards WHERE id=?`, strings.TrimSpace(id)).Scan(
+		&board.ID, &board.Title, &board.Description, &board.Status, &board.Revision, &board.CreatedAt, &board.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WorkBoard{}, ErrBoardNotFound
@@ -106,6 +107,123 @@ func (s *Store) GetBoard(ctx context.Context, id string) (WorkBoard, error) {
 		board.Counts[status] = count
 	}
 	return board, rows.Err()
+}
+
+func (s *Store) ArchiveBoard(ctx context.Context, id string) (WorkBoard, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return WorkBoard{}, errors.New("board id is required")
+	}
+	if id == DefaultBoardID {
+		return WorkBoard{}, errors.New("cannot archive the default task board")
+	}
+	now := s.timestamp()
+	err := s.immediate(ctx, func(conn *sql.Conn) error {
+		var status string
+		var rev int64
+		err := conn.QueryRowContext(ctx, `SELECT COALESCE(status, 'active'), revision FROM work_boards WHERE id=?`, id).Scan(&status, &rev)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrBoardNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if status == "archived" {
+			return nil
+		}
+		res, err := conn.ExecContext(ctx, `UPDATE work_boards SET status='archived', revision=revision+1, updated_at=? WHERE id=?`, now, id)
+		if err != nil {
+			return fmt.Errorf("archive task board: %w", err)
+		}
+		affected, _ := res.RowsAffected()
+		if affected == 0 {
+			return ErrBoardNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return WorkBoard{}, err
+	}
+	return s.GetBoard(ctx, id)
+}
+
+func (s *Store) UnarchiveBoard(ctx context.Context, id string) (WorkBoard, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return WorkBoard{}, errors.New("board id is required")
+	}
+	now := s.timestamp()
+	err := s.immediate(ctx, func(conn *sql.Conn) error {
+		var status string
+		err := conn.QueryRowContext(ctx, `SELECT COALESCE(status, 'active') FROM work_boards WHERE id=?`, id).Scan(&status)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrBoardNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if status == "active" {
+			return nil
+		}
+		res, err := conn.ExecContext(ctx, `UPDATE work_boards SET status='active', revision=revision+1, updated_at=? WHERE id=?`, now, id)
+		if err != nil {
+			return fmt.Errorf("unarchive task board: %w", err)
+		}
+		affected, _ := res.RowsAffected()
+		if affected == 0 {
+			return ErrBoardNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return WorkBoard{}, err
+	}
+	return s.GetBoard(ctx, id)
+}
+
+func (s *Store) DeleteBoard(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("board id is required")
+	}
+	if id == DefaultBoardID {
+		return errors.New("cannot delete the default task board")
+	}
+	return s.immediate(ctx, func(conn *sql.Conn) error {
+		var status string
+		err := conn.QueryRowContext(ctx, `SELECT COALESCE(status, 'active') FROM work_boards WHERE id=?`, id).Scan(&status)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrBoardNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if status != "archived" {
+			return errors.New("only archived boards can be deleted; archive the board first")
+		}
+		// 1. Delete dependencies referencing items in this board
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_dependencies WHERE item_id IN (SELECT id FROM work_items WHERE board_id=?) OR depends_on IN (SELECT id FROM work_items WHERE board_id=?)`, id, id); err != nil {
+			return fmt.Errorf("delete board dependencies: %w", err)
+		}
+		// 2. Delete decomposition steps
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_decomposition_steps WHERE parent_id IN (SELECT id FROM work_items WHERE board_id=?) OR child_id IN (SELECT id FROM work_items WHERE board_id=?)`, id, id); err != nil {
+			return fmt.Errorf("delete board decomposition steps: %w", err)
+		}
+		// 3. Delete work items
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_items WHERE board_id=?`, id); err != nil {
+			return fmt.Errorf("delete board work items: %w", err)
+		}
+		// 4. Delete the board
+		res, err := conn.ExecContext(ctx, `DELETE FROM work_boards WHERE id=?`, id)
+		if err != nil {
+			return fmt.Errorf("delete board: %w", err)
+		}
+		affected, _ := res.RowsAffected()
+		if affected == 0 {
+			return ErrBoardNotFound
+		}
+		return nil
+	})
 }
 
 func (s *Store) BoardSnapshot(ctx context.Context, id string) (BoardSnapshot, error) {

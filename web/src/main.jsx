@@ -53,6 +53,7 @@ function PageHeader({ eyebrow, title, description, action }) {
 }
 
 function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNewBoard }) {
+  const [showArchived, setShowArchived] = useState(false);
   const nav = [
     ['overview', '⌂', 'Resumen'],
     ['sessions', '◎', 'Sesiones'],
@@ -60,6 +61,9 @@ function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNew
     ['activity', '↯', 'Actividad'],
     ['settings', '⚙', 'Ecosistema']
   ];
+  const activeBoards = boards.filter(b => b.status !== 'archived');
+  const archivedBoards = boards.filter(b => b.status === 'archived');
+
   return (
     <aside class="sidebar">
       <button class="brand" onClick={() => onView('overview')}>
@@ -85,7 +89,7 @@ function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNew
         <button onClick={onNewBoard} aria-label="Crear tablero" title="Nueva sesión / tablero">+</button>
       </div>
       <nav class="board-nav" aria-label="Tableros">
-        {boards.length ? boards.map(board => (
+        {activeBoards.length ? activeBoards.map(board => (
           <button
             key={board.board_id}
             class={`board-link ${view === 'board' && currentBoard === board.board_id ? 'active' : ''}`}
@@ -95,6 +99,25 @@ function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNew
             <b>{Object.values(board.counts || {}).reduce((a, b) => a + b, 0)}</b>
           </button>
         )) : <small class="empty-boards">Sin tableros activos</small>}
+
+        {archivedBoards.length > 0 && (
+          <div class="archived-section">
+            <button class="archived-toggle" onClick={() => setShowArchived(!showArchived)}>
+              <span>{showArchived ? '▾' : '▸'} Archivados ({archivedBoards.length})</span>
+            </button>
+            {showArchived && archivedBoards.map(board => (
+              <button
+                key={board.board_id}
+                class={`board-link archived ${view === 'board' && currentBoard === board.board_id ? 'active' : ''}`}
+                onClick={() => onBoard(board.board_id)}
+                title={`Tablero archivado: ${board.board_id}`}
+              >
+                <span>📦 {board.title}</span>
+                <b>{Object.values(board.counts || {}).reduce((a, b) => a + b, 0)}</b>
+              </button>
+            ))}
+          </div>
+        )}
       </nav>
       <footer>
         <div>
@@ -275,39 +298,100 @@ function Overview({ dashboard, onView, onTask, onNewTask, onJob }) {
   );
 }
 
-function Sessions({ sessions, onBoard, onNew }) {
+function Sessions({ sessions, boards = [], onBoard, onNew, onArchive, onUnarchive, onDelete }) {
+  const [filter, setFilter] = useState('all');
+  const boardStatusMap = useMemo(() => new Map(boards.map(b => [b.board_id, b.status || 'active'])), [boards]);
+
+  const filteredSessions = useMemo(() => {
+    return sessions.filter(session => {
+      const status = boardStatusMap.get(session.board_id) || 'active';
+      if (filter === 'active') return status !== 'archived';
+      if (filter === 'archived') return status === 'archived';
+      return true;
+    });
+  }, [sessions, boardStatusMap, filter]);
+
   return (
     <>
       <PageHeader
         eyebrow="WORK SESSIONS"
         title="Sesiones Coordinadas"
         description="Cada task board representa una sesión durable con su DAG de dependencias, progreso y leases."
-        action={<button class="button primary" onClick={onNew}>+ Nueva sesión</button>}
+        action={
+          <div class="header-actions">
+            <div class="segmented-control">
+              <button class={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>Todas</button>
+              <button class={filter === 'active' ? 'active' : ''} onClick={() => setFilter('active')}>Activas</button>
+              <button class={filter === 'archived' ? 'active' : ''} onClick={() => setFilter('archived')}>Archivadas</button>
+            </div>
+            <button class="button primary" onClick={onNew}>+ Nueva sesión</button>
+          </div>
+        }
       />
       <div class="session-grid">
-        {sessions.length ? (
-          sessions.map(session => (
-            <button class="session-card" key={session.board_id} onClick={() => onBoard(session.board_id)}>
-              <header>
-                <StatusChip status={session.status} label={session.status === 'complete' ? 'Completada' : session.status === 'active' ? 'Activa' : 'Vacía'} />
-                <small>{relativeTime(session.updated_at)}</small>
-              </header>
-              <h2>{session.title}</h2>
-              <p>{session.description || `Sesión ${session.board_id}`}</p>
-              <div class="session-stats">
-                <span><b>{session.task_count}</b> tareas</span>
-                <span><b>{session.owners?.length || 0}</b> agentes</span>
-                <span><b>{session.counts?.blocked || 0}</b> bloqueadas</span>
+        {filteredSessions.length ? (
+          filteredSessions.map(session => {
+            const isArchived = boardStatusMap.get(session.board_id) === 'archived';
+            return (
+              <div class={`session-card-container ${isArchived ? 'archived' : ''}`} key={session.board_id}>
+                <button class="session-card" onClick={() => onBoard(session.board_id)}>
+                  <header>
+                    <div class="chip-group">
+                      <StatusChip status={session.status} label={session.status === 'complete' ? 'Completada' : session.status === 'active' ? 'Activa' : 'Vacía'} />
+                      {isArchived && <span class="status-chip archived">Archivado</span>}
+                    </div>
+                    <small>{relativeTime(session.updated_at)}</small>
+                  </header>
+                  <h2>{session.title}</h2>
+                  <p>{session.description || `Sesión ${session.board_id}`}</p>
+                  <div class="session-stats">
+                    <span><b>{session.task_count}</b> tareas</span>
+                    <span><b>{session.owners?.length || 0}</b> agentes</span>
+                    <span><b>{session.counts?.blocked || 0}</b> bloqueadas</span>
+                  </div>
+                  <progress max="100" value={session.progress || 0} aria-label={`${session.progress || 0}% completado`}></progress>
+                  <footer>
+                    <span>{session.progress || 0}% completado</span>
+                    <span>rev. durable →</span>
+                  </footer>
+                </button>
+                <div class="session-card-actions">
+                  {!isArchived ? (
+                    session.board_id !== 'default' && (
+                      <button
+                        class="mini-action-btn"
+                        onClick={(e) => { e.stopPropagation(); onArchive?.(session.board_id); }}
+                        title="Archivar sesión terminada"
+                      >
+                        📦 Archivar
+                      </button>
+                    )
+                  ) : (
+                    <>
+                      <button
+                        class="mini-action-btn"
+                        onClick={(e) => { e.stopPropagation(); onUnarchive?.(session.board_id); }}
+                        title="Restaurar sesión a activa"
+                      >
+                        ↺ Restaurar
+                      </button>
+                      {session.board_id !== 'default' && (
+                        <button
+                          class="mini-action-btn danger"
+                          onClick={(e) => { e.stopPropagation(); onDelete?.(session.board_id); }}
+                          title="Eliminar sesión definitivamente"
+                        >
+                          ✕ Eliminar
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-              <progress max="100" value={session.progress || 0} aria-label={`${session.progress || 0}% completado`}></progress>
-              <footer>
-                <span>{session.progress || 0}% completado</span>
-                <span>rev. durable →</span>
-              </footer>
-            </button>
-          ))
+            );
+          })
         ) : (
-          <Empty title="No hay sesiones">Crea un task board para iniciar una sesión coordinada.</Empty>
+          <Empty title="No hay sesiones">No se encontraron sesiones con el filtro seleccionado.</Empty>
         )}
       </div>
     </>
@@ -545,7 +629,7 @@ function DependencyView({ items, itemsByID, onTask }) {
   );
 }
 
-function Board({ snapshot, activity, delegations, onNewTask, onTask }) {
+function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBoard, onUnarchiveBoard, onDeleteBoard }) {
   const board = snapshot?.board;
   const items = snapshot?.items || [];
   const counts = board?.counts || {};
@@ -580,12 +664,16 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask }) {
     <>
       <header class="board-hero">
         <div class="board-identity">
-          <p class="eyebrow">DURABLE TASK BOARD · <code>{board.board_id}</code></p>
+          <p class="eyebrow">
+            DURABLE TASK BOARD · <code>{board.board_id}</code>
+            {board.status === 'archived' && <span class="status-chip archived" style="margin-left: 8px;">Archivado</span>}
+          </p>
           <h1>{board.title}</h1>
           <p>{board.description || 'Sesión coordinada del plano de control local.'}</p>
           <div class="board-meta">
             <span>rev. {board.revision}</span>
             <span>{items.length} tareas</span>
+            <span>estado: <b>{board.status === 'archived' ? 'Archivado' : 'Activo'}</b></span>
             <span>actualizado {relativeTime(board.updated_at)}</span>
           </div>
         </div>
@@ -593,7 +681,29 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask }) {
           <span><b>{progress}%</b> completado</span>
           <div class="progress-track"><i style={{ width: `${progress}%` }}></i></div>
           <small>{completed} de {items.length} tareas aprobadas</small>
-          <button class="button primary" onClick={onNewTask}>+ Nueva tarea</button>
+          <div class="board-actions-row">
+            {board.status !== 'archived' ? (
+              <>
+                <button class="button primary" onClick={onNewTask}>+ Nueva tarea</button>
+                {board.board_id !== 'default' && (
+                  <button class="button secondary" onClick={() => onArchiveBoard?.(board.board_id)} title="Archivar este tablero finalizado">
+                    📦 Archivar
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <button class="button secondary" onClick={() => onUnarchiveBoard?.(board.board_id)} title="Restaurar a activo">
+                  ↺ Desarchivar
+                </button>
+                {board.board_id !== 'default' && (
+                  <button class="button danger" onClick={() => onDeleteBoard?.(board.board_id)} title="Eliminar definitivamente este tablero">
+                    ✕ Eliminar
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1035,6 +1145,46 @@ function App() {
     setView('board');
   };
 
+  const archiveBoard = async id => {
+    if (!id || id === 'default') return;
+    if (!confirm(`¿Deseas archivar el tablero "${id}"?`)) return;
+    try {
+      await request(`/api/boards/${encodeURIComponent(id)}/archive`, { method: 'POST' });
+      notify('Tablero archivado');
+      await loadAll();
+      if (currentBoard === id) await loadBoard(id);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  };
+
+  const unarchiveBoard = async id => {
+    if (!id) return;
+    try {
+      await request(`/api/boards/${encodeURIComponent(id)}/unarchive`, { method: 'POST' });
+      notify('Tablero restaurado a activo');
+      await loadAll();
+      if (currentBoard === id) await loadBoard(id);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  };
+
+  const deleteBoard = async id => {
+    if (!id || id === 'default') return;
+    if (!confirm(`¿Estás SEGURO de eliminar definitivamente el tablero "${id}" y todas sus tareas asociadas? Esta acción no se puede deshacer.`)) return;
+    try {
+      await request(`/api/boards/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      notify('Tablero eliminado');
+      setCurrentBoard('default');
+      localStorage.setItem('cortex-board', 'default');
+      await loadAll();
+      setView('sessions');
+    } catch (error) {
+      notify(error.message, true);
+    }
+  };
+
   const afterBoard = async board => {
     setBoardModal(false);
     await loadAll();
@@ -1098,7 +1248,15 @@ function App() {
 
         <section class={`view ${view === 'sessions' ? 'active' : ''}`}>
           {view === 'sessions' && (
-            <Sessions sessions={dashboard.sessions} onBoard={openBoard} onNew={() => setBoardModal(true)} />
+            <Sessions
+              sessions={dashboard.sessions}
+              boards={boards}
+              onBoard={openBoard}
+              onNew={() => setBoardModal(true)}
+              onArchive={archiveBoard}
+              onUnarchive={unarchiveBoard}
+              onDelete={deleteBoard}
+            />
           )}
         </section>
 
@@ -1137,6 +1295,9 @@ function App() {
               delegations={dashboard.delegations}
               onNewTask={() => setTaskModal(true)}
               onTask={setDetail}
+              onArchiveBoard={archiveBoard}
+              onUnarchiveBoard={unarchiveBoard}
+              onDeleteBoard={deleteBoard}
             />
           )}
         </section>

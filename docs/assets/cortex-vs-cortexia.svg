@@ -1,4 +1,4 @@
-﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" width="100%" height="100%">
   <defs>
     <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#080B11"/>
@@ -53,25 +53,25 @@
     <!-- Item 1 -->
     <g transform="translate(25, 80)">
       <circle cx="6" cy="6" r="4" fill="#38BDF8"/>
-      <text x="18" y="9" class="item-title">Knowledge Graph &amp; AST Analysis</text>
-      <text x="18" y="25" class="item-desc">Indexes symbol graphs, call hierarchies, and blast radius impact.</text>
-      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#0284C7">cortex_code_scan · cortex_get_blast_radius</text>
+      <text x="18" y="9" class="item-title">Zero-CGO Static AST Extractor &amp; Cycles</text>
+      <text x="18" y="25" class="item-desc">Indexes 1,200+ symbols, 4,000+ relationships &amp; detects cycles.</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#0284C7">cortex_ingest_code · cortex_detect_cycles · symbols</text>
     </g>
 
     <!-- Item 2 -->
     <g transform="translate(25, 140)">
       <circle cx="6" cy="6" r="4" fill="#38BDF8"/>
-      <text x="18" y="9" class="item-title">Cross-Session Durable Memory</text>
-      <text x="18" y="25" class="item-desc">Stores bug root causes, architecture ADRs, gotchas &amp; discoveries.</text>
-      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#0284C7">cortex_save · cortex_search · cortex_get_observation</text>
+      <text x="18" y="9" class="item-title">Multi-Hop HippoRAG &amp; Knowledge Graph</text>
+      <text x="18" y="25" class="item-desc">Associative cross-session memory for bug fixes, gotchas &amp; ADRs.</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#0284C7">cortex_save · cortex_relate · cortex_search · graph</text>
     </g>
 
     <!-- Item 3 -->
     <g transform="translate(25, 200)">
       <circle cx="6" cy="6" r="4" fill="#38BDF8"/>
-      <text x="18" y="9" class="item-title">Initiative Session Demarcation</text>
-      <text x="18" y="25" class="item-desc">Exclusively owned by the Orchestrator for full project context.</text>
-      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#0284C7">cortex_session_start · cortex_session_end</text>
+      <text x="18" y="9" class="item-title">Project Directives &amp; Active Governance</text>
+      <text x="18" y="25" class="item-desc">Injects permanent architecture constraints &amp; behavioral rules.</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#0284C7">cortex_get_rules · cortex_save_rule · context</text>
     </g>
 
     <!-- Invariant Warning Box -->
@@ -110,15 +110,15 @@
       <circle cx="6" cy="6" r="4" fill="#A855F7"/>
       <text x="18" y="9" class="item-title">Atomic File Leases &amp; Race Prevention</text>
       <text x="18" y="25" class="item-desc">Exclusive path locks per claim token with automatic TTL expiry.</text>
-      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#A855F7">cortex-ia work lease · lease-renew · release</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#A855F7">cortex-ia work reserve · lease · lease-renew · release</text>
     </g>
 
     <!-- Item 3 -->
     <g transform="translate(25, 200)">
       <circle cx="6" cy="6" r="4" fill="#A855F7"/>
-      <text x="18" y="9" class="item-title">Herdr Multiplexing &amp; Live Telemetry</text>
-      <text x="18" y="25" class="item-desc">Spawns external workers in dedicated panes with NDJSON streaming.</text>
-      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#A855F7">cortex-ia delegate create · worker · result · web</text>
+      <text x="18" y="9" class="item-title">Board Lifecycle &amp; Web Console</text>
+      <text x="18" y="25" class="item-desc">Single-board stability, archival, deletion &amp; live Kanban UI.</text>
+      <text x="18" y="39" font-family="'JetBrains Mono', monospace" font-size="10" fill="#A855F7">cortex-ia board create · status · archive · delete · web</text>
     </g>
 
     <!-- Invariant Box -->

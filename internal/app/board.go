@@ -27,6 +27,9 @@ func runBoard(args []string) error {
 		fmt.Println("  create <id> <title> [desc]   Create a new task board")
 		fmt.Println("  list                         List all task boards")
 		fmt.Println("  status <board-id>            Show board status and task snapshot")
+		fmt.Println("  archive <board-id>           Archive a completed task board")
+		fmt.Println("  unarchive <board-id>         Restore an archived task board to active")
+		fmt.Println("  delete <board-id>            Delete an archived task board and its tasks")
 		fmt.Println("  serve [--addr <host:port>]   Serve the local web operations dashboard")
 		return nil
 	}
@@ -91,6 +94,44 @@ func runBoard(args []string) error {
 			return err
 		}
 		return printJSON(snapshot)
+	case "archive":
+		if len(args) > 1 && isHelp(args[1]) {
+			return boardUsage("archive <board-id>", nil)
+		}
+		id, err := oneWorkID(args[1:])
+		if err != nil {
+			return boardUsage("archive <board-id>", err)
+		}
+		board, err := store.ArchiveBoard(ctx, id)
+		if err != nil {
+			return err
+		}
+		return printJSON(board)
+	case "unarchive":
+		if len(args) > 1 && isHelp(args[1]) {
+			return boardUsage("unarchive <board-id>", nil)
+		}
+		id, err := oneWorkID(args[1:])
+		if err != nil {
+			return boardUsage("unarchive <board-id>", err)
+		}
+		board, err := store.UnarchiveBoard(ctx, id)
+		if err != nil {
+			return err
+		}
+		return printJSON(board)
+	case "delete":
+		if len(args) > 1 && isHelp(args[1]) {
+			return boardUsage("delete <board-id>", nil)
+		}
+		id, err := oneWorkID(args[1:])
+		if err != nil {
+			return boardUsage("delete <board-id>", err)
+		}
+		if err := store.DeleteBoard(ctx, id); err != nil {
+			return err
+		}
+		return printJSON(map[string]any{"deleted": true, "board_id": id})
 	case "serve":
 		if len(args) > 1 && isHelp(args[1]) {
 			return boardUsage("serve [--addr <loopback-host:port>]", nil)

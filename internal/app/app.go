@@ -200,7 +200,8 @@ Usage:
   cortex-ia work transition|approve|retry|recover
                                       Advance, review, or reconcile task state
   cortex-ia worktree create|clean|drop Manage isolated ephemeral worktrees
-  cortex-ia board create|list|status  Group task DAGs into local task boards
+  cortex-ia board create|list|status|archive|unarchive|delete
+                                      Group task DAGs into local task boards
   cortex-ia board serve [--addr 127.0.0.1:7331]
                                       Serve the embedded Cortex-IA operations console
   cortex-ia ui snapshot              Print a bounded read-only TUI snapshot

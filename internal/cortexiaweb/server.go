@@ -38,6 +38,9 @@ func NewHandler(store *delegation.Store) (http.Handler, error) {
 	mux.HandleFunc("GET /api/boards", api.listBoards)
 	mux.HandleFunc("POST /api/boards", api.createBoard)
 	mux.HandleFunc("GET /api/boards/{id}", api.boardSnapshot)
+	mux.HandleFunc("POST /api/boards/{id}/archive", api.archiveBoard)
+	mux.HandleFunc("POST /api/boards/{id}/unarchive", api.unarchiveBoard)
+	mux.HandleFunc("DELETE /api/boards/{id}", api.deleteBoard)
 	mux.HandleFunc("POST /api/tasks", api.createTask)
 	mux.HandleFunc("GET /api/config", api.getConfig)
 	mux.HandleFunc("GET /api/delegations/{id}", api.getDelegation)
@@ -121,6 +124,40 @@ func (a *API) createBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	board, err := a.store.CreateBoard(r.Context(), input.ID, input.Title, input.Description)
 	writeCreated(w, board, err)
+}
+
+func (a *API) archiveBoard(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeError(w, http.StatusForbidden, errors.New("cross-origin writes are not allowed"))
+		return
+	}
+	id := r.PathValue("id")
+	board, err := a.store.ArchiveBoard(r.Context(), id)
+	writeResult(w, board, err)
+}
+
+func (a *API) unarchiveBoard(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeError(w, http.StatusForbidden, errors.New("cross-origin writes are not allowed"))
+		return
+	}
+	id := r.PathValue("id")
+	board, err := a.store.UnarchiveBoard(r.Context(), id)
+	writeResult(w, board, err)
+}
+
+func (a *API) deleteBoard(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeError(w, http.StatusForbidden, errors.New("cross-origin writes are not allowed"))
+		return
+	}
+	id := r.PathValue("id")
+	err := a.store.DeleteBoard(r.Context(), id)
+	if err != nil {
+		writeResult(w, nil, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "board_id": id})
 }
 
 func (a *API) createTask(w http.ResponseWriter, r *http.Request) {

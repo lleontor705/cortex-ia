@@ -160,7 +160,50 @@ func TestBoardsAndDashboard(t *testing.T) {
 		t.Errorf("expected at least 1 session in dashboard, got %d", len(dash.Sessions))
 	}
 
-	// 5. List Delegations & Activity
+	// 5. Board Archive, Unarchive, and Delete Lifecycle
+	// Cannot archive or delete default board
+	if _, err := store.ArchiveBoard(ctx, "default"); err == nil {
+		t.Errorf("expected error archiving default board, got nil")
+	}
+	if err := store.DeleteBoard(ctx, "default"); err == nil {
+		t.Errorf("expected error deleting default board, got nil")
+	}
+
+	// Cannot delete active board
+	if err := store.DeleteBoard(ctx, "b-test"); err == nil {
+		t.Errorf("expected error deleting active board, got nil")
+	}
+
+	// Archive custom board
+	archived, err := store.ArchiveBoard(ctx, "b-test")
+	if err != nil {
+		t.Fatalf("ArchiveBoard failed: %v", err)
+	}
+	if archived.Status != "archived" {
+		t.Errorf("expected archived status, got %s", archived.Status)
+	}
+
+	// Unarchive custom board
+	restored, err := store.UnarchiveBoard(ctx, "b-test")
+	if err != nil {
+		t.Fatalf("UnarchiveBoard failed: %v", err)
+	}
+	if restored.Status != "active" {
+		t.Errorf("expected active status, got %s", restored.Status)
+	}
+
+	// Re-archive and delete
+	if _, err := store.ArchiveBoard(ctx, "b-test"); err != nil {
+		t.Fatalf("re-archive failed: %v", err)
+	}
+	if err := store.DeleteBoard(ctx, "b-test"); err != nil {
+		t.Fatalf("DeleteBoard failed: %v", err)
+	}
+	if _, err := store.GetBoard(ctx, "b-test"); err == nil {
+		t.Errorf("expected GetBoard to fail for deleted board, got nil")
+	}
+
+	// 6. List Delegations & Activity
 	_, _ = store.ListDelegations(ctx, 10)
 	_, _ = store.ListActivity(ctx, 10)
 }

@@ -221,6 +221,7 @@ func (s *Store) initialize(ctx context.Context) error {
 				id TEXT PRIMARY KEY,
 				title TEXT NOT NULL,
 				description TEXT NOT NULL DEFAULT '',
+				status TEXT NOT NULL DEFAULT 'active',
 				revision INTEGER NOT NULL DEFAULT 1,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
@@ -326,6 +327,17 @@ func (s *Store) initialize(ctx context.Context) error {
 			}
 			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(7, ?)`, now); err != nil {
 				return fmt.Errorf("record delegation pane migration: %w", err)
+			}
+		}
+		if version < 8 {
+			now := s.timestamp()
+			// Try adding status column; ignore error if fresh DB table already has it
+			_, _ = conn.ExecContext(ctx, `ALTER TABLE work_boards ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`)
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS work_boards_status_idx ON work_boards(status, updated_at)`); err != nil {
+				return fmt.Errorf("index task board status: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(8, ?)`, now); err != nil {
+				return fmt.Errorf("record board status migration: %w", err)
 			}
 		}
 		if _, err := conn.ExecContext(ctx, `PRAGMA optimize`); err != nil {
