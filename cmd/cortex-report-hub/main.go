@@ -139,7 +139,7 @@ func (h *HubServer) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 		// Challenge with Basic Auth prompt
 		w.Header().Set("WWW-Authenticate", `Basic realm="Cortex-IA Protected Hub"`)
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error": "Acceso no autorizado: Se requiere usuario y contraseña para ver los reportes y el panel de control.",
@@ -148,7 +148,7 @@ func (h *HubServer) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (h *HubServer) handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":    "healthy",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
@@ -157,7 +157,7 @@ func (h *HubServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HubServer) handleCreateReport(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	var report telemetry.ErrorReport
 	if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
@@ -212,7 +212,7 @@ func (h *HubServer) handleCreateReport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HubServer) handleListReports(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	limitStr := r.URL.Query().Get("limit")
 	limit := 50
 	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 500 {
@@ -258,7 +258,7 @@ func (h *HubServer) handleListReports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HubServer) handleGetReport(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	id := r.PathValue("id")
 	if id == "" {
 		w.WriteHeader(http.StatusBadRequest)
