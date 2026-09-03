@@ -122,8 +122,8 @@ func (s *Store) initialize(ctx context.Context) error {
 		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 			return fmt.Errorf("read migration ledger: %w", err)
 		}
-		if version > 7 {
-			return fmt.Errorf("cortex database schema %d is newer than supported schema 7", version)
+		if version > 8 {
+			return fmt.Errorf("cortex database schema %d is newer than supported schema 8", version)
 		}
 		statements := []string{
 			`CREATE TABLE IF NOT EXISTS delegation_jobs (
