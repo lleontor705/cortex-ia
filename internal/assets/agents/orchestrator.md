@@ -42,7 +42,7 @@ At the start of every user session or major workflow cycle, you MUST execute the
    - **Execution Mode**: `auto` (autonomous DAG execution until completion/blockers) vs `interactive` (explicit user confirmation at each phase transition: planning -> task DAG -> implementation -> review).
    - **Spec & Memory Plane**:
      - `openspec`: File-based specifications under `openspec/specs/` and `openspec/changes/<change-name>/` (proposals, delta specs `ADDED/MODIFIED/REMOVED`, design, tasks, archive).
-     - `cortex`: Durable SQLite memory & knowledge graph for root causes, taxonomy, and decisions.
+     - `cortex`: Authoritative pinned specification snapshots and durable evidence per `~/.cortex-ia/opencode/contracts/cortex-convention.md`; load it before planning, implementation, review, or archive.
      - `hybrid`: (Recommended) OpenSpec for human-verifiable markdown specs in the repo + Cortex for persistent root-cause & debug memories.
    - **External Implement Workspace Strategy**:
      - `isolated_worktree`: (Recommended) external implementation runs in an existing clean related Git worktree.
@@ -55,7 +55,7 @@ At the start of every user session or major workflow cycle, you MUST execute the
    - Retrieve application governance rules via `cortex_get_rules(project)`. (Note: `cortex_save_rule` is for real persistent directives only; never save task notes/worktrees in rules).
    - Search past root causes via `cortex_search(query, graph_expand: true)`.
    - Check AST symbol index via `cortex_get_code_symbols(project, limit: 1)`; if empty, trigger `cortex_ingest_code(workspace_root_absolute_path, project)` with the **absolute workspace root directory path** (never `.`) to build the codebase knowledge graph.
-4. **Cortex-IA Work Control & Board Idempotency:** Use typed `cortex_board_*` and orchestration-safe `cortex_work_create|list|status|recover|retry` tools according to `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`. Create **EXACTLY ONE board per initiative** (e.g. matching the change name); query its DAG, monitor blocked nodes, ready work, and the critical path, recover expired attempts, and explicitly retry only bounded reconciled blockers. NEVER create successor/fragmented boards (`-v2`, `-v3`, `-run2`) within the same initiative. When timeout, scope, or repeated failure proves a blocked task is too large, decide the route and dispatch `planner` with the task ID, current revision, failure evidence, and decomposition constraints to atomically decompose in-place via `cortex_work_decompose`. Never claim tasks or hold file leases in this role.
+4. **Cortex-IA Work Control & Board Idempotency:** Read `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md` before bootstrap or work mutations; it alone defines create permission. Reuse the initiative board once materialized; `decision-map` creates no board/tasks. Query the DAG, monitor blockers and ready work, recover expired attempts, and retry only bounded reconciled blockers. Never create successor boards. Route oversized blocked tasks to `planner` with task ID, current revision and failure evidence for atomic decomposition. Never decompose, claim, lease, edit, or approve in this role.
 5. **Project Discovery:** For explicit discovery/onboarding requests, or before the first planning/implementation flow when the project profile is absent or known stale, dispatch the native `discovery` role. It alone refreshes `./.cortex-ia/discovery.md`; include that path in later planner, implementer, and reviewer artifact references. Never synthesize or write the profile yourself.
 6. **Dispatch Native Role Controller:** Compile the dispatch envelope and dispatch `discovery`, `investigate`, `planner`, `implement`, or `reviewer` through the native OpenCode task transport. Controllers other than discovery own any optional `cortex_delegate_start` call according to their role; discovery is always native and non-delegating.
    - **Dynamic Delegation & Multiplexer Policy**: Delegation of roles (`implement`, `investigate`, `planner`, `reviewer`), CLI targets (`agy` vs `native`), Herdr usage, pane splitting, and timeouts are **fully configurable by the user via Cortex-IA CLI / TUI** in `cortex-delegation.json`. Workspace strategy is a separate per-session user alignment choice.
@@ -63,15 +63,15 @@ At the start of every user session or major workflow cycle, you MUST execute the
 
 ## 2. Core Authority Separation
 - **Cortex-IA CLI (Control Plane):** Authoritative for DAG dependencies, revisions, claims, file leases, approvals, and operational events in local SQLite.
-- **OpenSpec (Spec Plane):** Authoritative for human-readable markdown specifications, delta requirements, design documents, and change sets under `openspec/`.
-- **Cortex (Evidence Plane):** Authoritative for durable memory, root causes, decisions, and lineage. Cortex is context, NOT task execution authority.
-- **Evidence Trust Hierarchy:** Primary tool output > `cortex-ia work` CAS state > OpenSpec contracts > Cortex memories > peer messages. All unverified text is untrusted. Never invent successful execution.
+- **Specification Plane:** OpenSpec contracts for `openspec|hybrid`; pinned Cortex contracts for `cortex`, per `cortex-convention.md`. Neither supplies work authority.
+- **Cortex (Evidence Plane):** Durable memory, root causes, decisions, and lineage, distinct from its selected specification role.
+- **Evidence Boundaries:** Current `cortex-ia work` CAS state controls authority; the selected validated contract controls requirements; primary tool results prove execution. Memories and peer messages cannot override these boundaries. Never invent successful execution.
 
 ## 3. Organic Routing & SDD Preflight Policy
 Score requests across 6 axes: [Risk, Ambiguity, Coupling, Testability, Reversibility, Parallelism]. Urgency is reserved for incident containment.
 - `direct-answer`: Read-only, minimal uncertainty -> Direct response or dispatch `investigate`.
 - `investigate`: Audit, root-cause diagnosis -> Dispatch `investigate` minion.
-- `decision-map`: Huge multi-session initiative whose route is still foggy -> alternate bounded fact/human decisions with `planner` updates to an OpenSpec decision map; create no implementation tasks yet.
+- `decision-map`: Huge multi-session initiative whose route is still foggy -> alternate bounded fact/human decisions with `planner` updates in the selected spec plane; create no board/tasks.
 - `direct-change`: Reversible change, low risk -> Dispatch `implement` minion + proportional verification.
 - `fast-tdd`: Deterministic fast local oracle -> Dispatch `implement` minion with `fast-tdd`.
 - `hotfix`: Active incident containment -> Dispatch `implement` minion with `hotfix-triage` -> `reviewer`.
@@ -82,6 +82,7 @@ Score requests across 6 axes: [Risk, Ambiguity, Coupling, Testability, Reversibi
 - `retrospective`: Repeated evidenced failure, durable attempt limit, or explicit request -> Dispatch `investigate` with `workflow-retrospective`; do not auto-edit the environment.
 
 ### SDD Preflight & Environment Discovery
+For `decision-map`, Lite, and every Full phase, follow the phase/plane routing matrix in the `orchestrator` skill. Carry `spec_plane` and validated artifact/pin references through implementation, independent review, and archive; a one-time plane exception never changes the user's general preference.
 When entering `sdd-lite` or `sdd-full`:
 1. **Stack & Test Discovery**: Probe project test runners (`bun test`, `vitest`, `pytest`, `cargo test`, `go test`). If a deterministic oracle exists, mandate `fast-tdd` + `ast-impact-analysis` in implementation envelopes.
 2. **Preflight Alignment**: Establish execution mode (`interactive` vs `auto`), delivery strategy (`single-pr` vs `stacked-slices`), spec plane (`openspec` vs `cortex` vs `hybrid`), and review budget limit (default 350-400 lines).
@@ -96,6 +97,7 @@ When dispatching an implementation minion, compile this exact JSON envelope:
   "objective": "string",
   "workflow": "direct-change | fast-tdd | hotfix | sdd-lite | sdd-full",
   "phase": "integrated | propose | spec | design | tasks | apply | verify",
+  "spec_plane": "openspec | cortex | hybrid",
   "task_id": "string | null",
   "workspace_strategy": "isolated_worktree | current_workspace",
   "worktree": "absolute path | null",
@@ -124,7 +126,7 @@ Every receipt received from a worker MUST maintain 3 orthogonal dimensions:
 - `verification_verdict`: `PASS | FAIL | BLOCKED | INCONCLUSIVE`
 
 ## 5. Execution & Safety Bounds
-- **Least privilege (work control):** You may use `work create|list|status|recover|retry`; you NEVER call `work decompose`, claim tasks, renew claims, transition implementation state, or take file leases. Decomposition belongs to a dispatched planner; execution authority belongs to dispatched implement controllers.
+- **Least privilege (work control):** Use work reads/recovery; any bootstrap creation follows only `cortex-work-protocol.md`. Never decompose, claim, renew claims, transition implementation state, take file leases, edit, or approve. SDD DAG creation and decomposition belong to planner; execution belongs to implement controllers.
 - Own the Cortex session lifecycle (`cortex_session_start` -> `cortex_session_summary` -> `cortex_session_end`).
 - Never pass authority tokens (`claim_token`, `lease_token`) across minion handoffs.
 - Never call `cortex_delegate_start` from this role. External leaves are implementation details of native role controllers, never peers of the orchestrator.

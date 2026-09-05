@@ -3,7 +3,7 @@
 - **Primary engine**: `orchestrator`
 - **Version**: `2.4.0`
 - **Active roles**: `orchestrator`, `discovery`, `investigate`, `planner`, `implement`, `reviewer`
-- **Specification plane**: OpenSpec (`openspec/specs/`, `openspec/changes/<change-name>/`)
+- **Specification plane**: Selected `spec_plane=openspec|cortex|hybrid`; read `~/.cortex-ia/opencode/contracts/cortex-convention.md` for contract representation and validation before planning, implementation, review, or archive.
 - **Control plane**: `cortex-ia work` CLI (SQLite DAG, CAS revisions, claims, leases, recovery, approvals)
 - **Task-board plane**: `cortex-ia board` (durable grouping + embedded loopback web view; never an authority substitute)
 - **Evidence & Graph plane**: Cortex (durable SQLite memory and AST knowledge graph; the active MCP schema is authoritative for tool count and arguments)
@@ -48,8 +48,8 @@ flowchart TD
         RouteDecision -->|sdd-lite / sdd-full| SubPlan[Subagent: planner]
     end
 
-    subgraph SDD_Flow ["SDD Task Execution (OpenSpec + cortex-ia work)"]
-        SubPlan -->|OpenSpec Delta Specs & Task DAG| Minions[Ephemeral Implement Minions]
+    subgraph SDD_Flow ["SDD Task Execution (selected spec plane + cortex-ia work)"]
+        SubPlan -->|Validated contracts & Task DAG| Minions[Ephemeral Implement Minions]
         Minions -->|Code Changes & Evidence| SubRev[Subagent: reviewer]
     end
 
@@ -72,8 +72,9 @@ flowchart TD
    - **`interactive`**: Explicit user review and sign-off required at each phase transition (plan approval -> task dispatch -> review verdict).
 2. **Spec & Memory Plane**:
    - **`openspec`**: Human-readable markdown files under `openspec/specs/` and `openspec/changes/<name>/` (`proposal.md`, `specs/`, `design.md`, `tasks.md`, `archive/`).
-   - **`cortex`**: Persistent SQLite knowledge graph (`cortex_save`/`cortex_search`/`cortex_graph`) for durable debugging memory, root causes, AST relationships, and blast radius analysis.
+   - **`cortex`**: Authoritative pinned specification snapshots plus durable evidence, following `cortex-convention.md`; no OpenSpec writes, validation, or archival in any phase.
    - **`hybrid`**: *(Recommended)* OpenSpec for shared markdown specifications in the repo + Cortex for debugging memory and root-cause lineage.
+   - Carry the selected `spec_plane` in every phase dispatch. A one-time exception is scoped to that change, never a replacement for the user's general preference.
 3. **External Implement Workspace Strategy**:
    - **`isolated_worktree`**: *(Recommended)* Run an external implement leaf in an existing clean related Git worktree.
    - **`current_workspace`**: Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_file_reserve` calls made before editing each file. An external AGY leaf remains exclusive during its execution window; its native controller must not edit concurrently, and Cortex-IA compares the final workspace against a pre-run baseline.
@@ -91,10 +92,10 @@ flowchart TD
 
 | Role | Mode | Primary Responsibility | Permitted Delegations | Tool Surface Highlights |
 |---|---|---|---|---|
-| **`orchestrator`** | `primary` | Request triage, routing, Cortex session lifecycle, DAG dispatch, final synthesis | Native `discovery`, `investigate`, `planner`, `implement`, `reviewer` controllers | `task`, `skill`, `cortex_*`, `cortex_board_*`, read-only/recovery `cortex_work_*`; no decomposition, discovery writes, shell, or edits |
+| **`orchestrator`** | `primary` | Request triage, routing, Cortex session lifecycle, DAG dispatch, final synthesis | Native `discovery`, `investigate`, `planner`, `implement`, `reviewer` controllers | Work reads/recovery and bootstrap only under `cortex-work-protocol.md`; no decomposition, claims, approval, discovery writes, shell, or edits |
 | **`discovery`** | `subagent/controller` | Project onboarding profile: skills, stack, engines, Cortex governance, architecture | None; always native | repository/machine reads, bounded version probes, Cortex queries, `cortex_discovery_write`; no builds, installs, ingestion, product edits, or nested `task` |
 | **`investigate`** | `subagent/controller` | Repository diagnostics, red-capable reproduction, root-cause analysis, read-only workflow retrospective | One optional read-only AGY leaf | `read`, `grep`, `glob`, `list`, read-only `bash`, `cortex_*`, delegation read/wait tools; no edits or nested `task` |
-| **`planner`** | `subagent/controller` | Decision maps, OpenSpec contracts, vertical-slice DAGs, and blocked-task replacement plans | One optional plan-only AGY leaf | repository reads, OpenSpec edits, `cortex_board_create`, `cortex_work_create`, `cortex_work_decompose`, `cortex_*`; no claims or nested `task` |
+| **`planner`** | `subagent/controller` | Decision maps, selected-plane contracts, vertical-slice DAGs, and blocked-task replacement plans | One optional plan-only AGY leaf | repository reads, selected-plane contract writes, `cortex_board_create`, `cortex_work_create`, `cortex_work_decompose`, `cortex_*`; no claims or nested `task` |
 | **`implement`** | `subagent/controller` | Claims one task, leases paths, executes, verifies, transitions to review | One AGY leaf after durable authority and explicit workspace-strategy validation | edits plus hidden-token `cortex_work_claim|lease|renew|release|transition`, `cortex_*`; no nested `task` |
 | **`reviewer`** | `subagent/controller` | Independent verification and approval | One optional read-only AGY audit leaf | repository reads, tests, `cortex_work_status`, `cortex_work_approve`, `cortex_*`; no edits, claims, leases, or nested `task` |
 
@@ -137,6 +138,8 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 
 ## 3. SDD Lifecycle & Preflight Gate
 
+Before any `decision-map`, Lite, or Full phase, load the phase/plane routing matrix in `orchestrator` skill. It routes artifacts and validation through `cortex-convention.md`; decision-map creates no board/tasks in any plane. The following DAG lifecycle starts only after validated Lite/integrated or Full/tasks planning.
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -165,7 +168,7 @@ sequenceDiagram
 
     Note over Orch,Work: Phase 2: Preflight & Planning (if SDD route)
     Orch->>Plan: Dispatch SDD Plan (intent, project_rules, blast_radius_baseline)
-    Plan->>Plan: Validate and write OpenSpec contracts
+    Plan->>Plan: Write and validate selected-plane contracts
     Plan->>Work: work create (dependency DAG nodes <= 350 LOC in stable initiative board)
     Plan-->>Orch: Planning Receipt (artifact refs, task refs, DAG readiness)
 
@@ -190,7 +193,7 @@ sequenceDiagram
         Rev->>Work: work approve PASS (gate approval with evidence)
         Rev->>Cortex: cortex_save(type: "decision", topic_key: "architecture/feature") + cortex_relate
         Rev-->>Orch: Review Receipt (Verdict: PASS)
-        Orch->>Plan: Archive OpenSpec change set
+        Orch->>Plan: Archive selected-plane contract after approval
     else Verdict is FAIL / BLOCKED
         Rev->>Cortex: cortex_save(type: "bugfix", topic_key: "gotchas/task_id", content: minimal_failure_locality) + cortex_relate
         Rev-->>Orch: Review Receipt (Verdict: FAIL, evidence_ref: "gotchas/task_id")
@@ -257,6 +260,7 @@ stateDiagram-v2
   "objective": "Implement user authentication middleware",
   "workflow": "fast-tdd",
   "phase": "integrated | propose | spec | design | tasks | apply | verify",
+  "spec_plane": "openspec | cortex | hybrid",
   "task_id": "task-auth-001",
   "artifact_refs": ["specs/auth/REQ-AUTH-001.md"],
   "evidence_refs": ["cortex/gotchas/jwt-expiry"],
