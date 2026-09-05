@@ -168,7 +168,7 @@ function firstExecutable(name: "cortex-ia" | "herdr"): string {
     if (candidate !== name && fs.existsSync(candidate)) return candidate;
     if (candidate === name) {
       try {
-        execFileSync(candidate, ["version"], { stdio: "ignore", windowsHide: true });
+        execFileSync(candidate, name === "herdr" ? ["--version"] : ["version"], { stdio: "ignore", windowsHide: true });
         return candidate;
       } catch {}
     }
