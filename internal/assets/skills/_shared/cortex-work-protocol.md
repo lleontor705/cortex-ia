@@ -8,8 +8,8 @@ This is the single normative runtime contract for OpenCode controllers, native s
 
 | Plane | Owns | Never owns |
 |---|---|---|
-| OpenSpec | Human-reviewable proposals, specifications, designs, and task descriptions | Runtime readiness or execution authority |
-| Cortex MCP | Durable evidence, memories, AST knowledge, provenance, and relationships | Claims, leases, task transitions, or approval |
+| OpenSpec | Human-reviewable contracts when `spec_plane=openspec|hybrid` | Runtime readiness or execution authority |
+| Cortex MCP | Pinned contracts when `spec_plane=cortex` per `cortex-convention.md`; durable evidence, memories, AST knowledge, provenance, and relationships | Claims, leases, task transitions, or approval |
 | Cortex-IA | Boards, DAG tasks, claims, leases, revisions, approvals, delegation jobs, and operational events in `~/.cortex-ia/delegation.db` | Product requirements or epistemic truth |
 
 The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observations are views or evidence. None can substitute for current `cortex_work_status` state.
@@ -18,7 +18,7 @@ The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observ
 
 | Role | Work-control authority | Delegation boundary |
 |---|---|---|
-| `orchestrator` | Create/query boards and tasks; recover expired attempts; retry bounded reconciled blockers; decide when failure requires decomposition and dispatch a planner. Never decompose, claim, lease, edit, or approve. | Dispatch native role controllers only. Never launch AGY directly. |
+| `orchestrator` | Query boards/tasks; create only under the bounded bootstrap below; recover expired attempts; retry bounded reconciled blockers; route decomposition to planner. Never decompose, claim, lease, edit, or approve. | Dispatch native role controllers only. Never launch AGY directly. |
 | `planner` | Create the initiative board and its same-board dependency DAG; design and atomically apply an orchestrator-routed decomposition of a blocked task. Never claim implementation work. | At most one optional plan-only external leaf through its native controller. |
 | `investigate` | Read-only board/task status and durable evidence. Never mutate work state. | At most one optional read-only external leaf. |
 | `implement` | Own exactly one live task claim, lease every writable path, renew authority, verify, and transition to `in_review`. | At most one external AGY leaf for the bounded objective. |
@@ -27,14 +27,19 @@ The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observ
 
 Only the orchestrator owns `cortex_session_start`, session summaries, and `cortex_session_end`. It MUST maintain exactly ONE stable session ID and ONE stable board ID throughout the entire initiative lifecycle (binding to existing active sessions from `cortex_context` upon startup). Dispatched controllers are ephemeral within that session and must never invoke session lifecycle tools.
 
+### Bounded authorized bootstrap
+
+Only with explicit user authorization may the orchestrator create one bounded `direct-change` task using `cortex_work_create`. First check existing work to avoid duplicates, record the authorization, objective, complete allowed files/effects, acceptance checks and independent review requirement, and reuse the initiative session/board (create its board only if absent). Without that authorization or a fully bounded definition, stop creation and route planning to `planner`. This exception does not authorize an SDD DAG, decomposition, claims, leases, edits, or approval by the orchestrator. The implementer still claims/reserves and the independent reviewer approves through the normal lifecycle. SDD DAG creation and every decomposition remain planner-only; `decision-map` creates no board/tasks in any spec plane.
+
 ## 3. Typed tools and token custody
 
 Native controllers use the typed `cortex_board_*`, `cortex_work_*`, `cortex_delegate_start`, and `cortex_delegation_*` tools exposed by the active OpenCode bridge. The current tool schema is authoritative: never invent a missing tool or argument.
 
 | Tool group | Permitted use |
 |---|---|
-| `cortex_board_create|list|status` | Orchestrator/planner according to role policy |
-| `cortex_work_create|decompose` | Planner DAG mutations; decomposition requires an orchestrator-routed blocked task and revision |
+| `cortex_board_create|list|status` | Planner DAG board; orchestrator creation only under bounded bootstrap; reads according to role policy |
+| `cortex_work_create` | Planner DAG mutation; orchestrator only under bounded authorized bootstrap |
+| `cortex_work_decompose` | Planner only; requires an orchestrator-routed blocked task and revision |
 | `cortex_work_list|status` | Token-free reads according to role policy |
 | `cortex_work_recover|retry` | Orchestrator reconciliation only |
 | `cortex_work_claim|renew|lease|lease_renew|release|release_all|transition` | Implementer only; single-file compatibility surface |
