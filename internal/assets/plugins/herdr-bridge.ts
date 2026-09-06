@@ -1,5 +1,5 @@
 import { type Plugin, tool } from "@opencode-ai/plugin";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, execSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -229,15 +229,114 @@ function bridgeConfig(): { useHerdr: boolean; direction: "right" | "down" } {
   }
 }
 
-function isHerdrAvailable(herdrPath: string): boolean {
-  if (!herdrPath) return false;
-  if (process.env.HERDR_ENV === "1" || process.env.HERDR_WORKSPACE_ID) return true;
+function isHerdrInUse(): boolean {
+  return Boolean(
+    process.env.HERDR_PANE_ID ||
+    process.env.HERDR_WORKSPACE_ID ||
+    process.env.HERDR_ENV === "1"
+  );
+}
+
+function hasExecutable(name: string): boolean {
   try {
-    const out = execFileSync(herdrPath, ["pane", "list"], { encoding: "utf-8", windowsHide: true, timeout: 2000 });
-    return out.includes("pane_list") || out.includes("panes");
+    const isWin = process.platform === "win32";
+    const cmd = isWin ? `where.exe ${name}` : `which ${name}`;
+    execSync(cmd, { stdio: "ignore" });
+    return true;
   } catch {
     return false;
   }
+}
+
+function launchNativeTerminal(
+  cortexBin: string,
+  workerArgs: string[],
+  cwd: string,
+  title: string
+): ChildProcess {
+  const isWin = process.platform === "win32";
+  const isMac = process.platform === "darwin";
+  const isLinux = process.platform === "linux";
+
+  if (isWin) {
+    // 1. Try Windows Terminal (wt.exe) if available
+    if (hasExecutable("wt.exe")) {
+      try {
+        return spawn("wt.exe", ["-d", cwd, "--title", title, cortexBin, ...workerArgs], {
+          detached: true,
+          stdio: "ignore",
+          windowsHide: false
+        });
+      } catch {}
+    }
+    // 2. Universal Windows fallback: cmd.exe /c start
+    const quotedArgs = workerArgs.map((arg) => (arg.includes(" ") ? `"${arg}"` : arg)).join(" ");
+    const fullCmd = `"${cortexBin}" ${quotedArgs}`;
+    return spawn("cmd.exe", ["/c", "start", title, "cmd.exe", "/c", `${fullCmd} & pause`], {
+      cwd,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false
+    });
+  }
+
+  if (isMac) {
+    const quotedArgs = workerArgs.map((arg) => (arg.includes(" ") ? `"${arg}"` : arg)).join(" ");
+    const cmdString = `cd "${cwd}" && "${cortexBin}" ${quotedArgs}`;
+
+    if (hasExecutable("ghostty")) {
+      return spawn("ghostty", ["-e", cortexBin, ...workerArgs], { cwd, detached: true, stdio: "ignore" });
+    }
+    if (hasExecutable("wezterm")) {
+      return spawn("wezterm", ["start", "--cwd", cwd, "--", cortexBin, ...workerArgs], { detached: true, stdio: "ignore" });
+    }
+    if (hasExecutable("kitty")) {
+      return spawn("kitty", ["--title", title, "--directory", cwd, cortexBin, ...workerArgs], { detached: true, stdio: "ignore" });
+    }
+    if (hasExecutable("alacritty")) {
+      return spawn("alacritty", ["--title", title, "--working-directory", cwd, "-e", cortexBin, ...workerArgs], { detached: true, stdio: "ignore" });
+    }
+    if (fs.existsSync("/Applications/iTerm.app")) {
+      const script = `tell application "iTerm" to create window with default profile command "${cmdString.replace(/"/g, '\\"')}"`;
+      return spawn("osascript", ["-e", script], { detached: true, stdio: "ignore" });
+    }
+    // Default macOS Terminal.app
+    const script = `tell application "Terminal" to do script "${cmdString.replace(/"/g, '\\"')}"`;
+    return spawn("osascript", ["-e", script], { detached: true, stdio: "ignore" });
+  }
+
+  if (isLinux) {
+    const hasDisplay = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+    if (!hasDisplay) {
+      // Headless / SSH fallback: spawn background process directly
+      return spawn(cortexBin, workerArgs, { cwd, detached: true, stdio: "ignore" });
+    }
+    // User preference via $TERMINAL
+    if (process.env.TERMINAL && hasExecutable(process.env.TERMINAL)) {
+      return spawn(process.env.TERMINAL, ["-e", cortexBin, ...workerArgs], { cwd, detached: true, stdio: "ignore" });
+    }
+    // Standard Linux terminal emulators in search priority
+    const linuxTerminals = [
+      { bin: "x-terminal-emulator", args: ["-e", cortexBin, ...workerArgs] },
+      { bin: "ghostty", args: ["-e", cortexBin, ...workerArgs] },
+      { bin: "wezterm", args: ["start", "--cwd", cwd, "--", cortexBin, ...workerArgs] },
+      { bin: "kitty", args: ["--title", title, "--directory", cwd, cortexBin, ...workerArgs] },
+      { bin: "alacritty", args: ["--title", title, "--working-directory", cwd, "-e", cortexBin, ...workerArgs] },
+      { bin: "gnome-terminal", args: ["--working-directory=" + cwd, "--title=" + title, "--", cortexBin, ...workerArgs] },
+      { bin: "konsole", args: ["--workdir", cwd, "-e", cortexBin, ...workerArgs] },
+      { bin: "xfce4-terminal", args: ["--default-working-directory=" + cwd, "-e", `${cortexBin} ${workerArgs.join(" ")}`] },
+      { bin: "foot", args: ["-D", cwd, cortexBin, ...workerArgs] },
+      { bin: "xterm", args: ["-title", title, "-e", cortexBin, ...workerArgs] }
+    ];
+    for (const term of linuxTerminals) {
+      if (hasExecutable(term.bin)) {
+        return spawn(term.bin, term.args, { cwd, detached: true, stdio: "ignore" });
+      }
+    }
+    return spawn(cortexBin, workerArgs, { cwd, detached: true, stdio: "ignore" });
+  }
+
+  return spawn(cortexBin, workerArgs, { cwd, detached: true, stdio: "ignore" });
 }
 
 function paneID(output: string): string {
@@ -814,7 +913,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
           let transport: "direct" | "herdr" = "direct";
           let herdr = "";
           try { herdr = firstExecutable("herdr"); } catch {}
-          if (config.useHerdr && herdr && isHerdrAvailable(herdr)) transport = "herdr";
+          if (config.useHerdr && herdr && isHerdrInUse()) transport = "herdr";
 
           let job = parseJSON(cortex(["delegate", "create", "--request-file", requestPath, "--transport", transport]));
           acceptedJob = job;
@@ -860,13 +959,8 @@ export const CortexDelegationBridge: Plugin = async () => ({
           }
 
           const worker = ["delegate", "worker", "--job", job.job_id, "--request-file", requestPath];
-          const child = spawn(firstExecutable("cortex-ia"), worker, {
-            cwd: context.directory,
-            detached: true,
-            shell: false,
-            stdio: "ignore",
-            windowsHide: true
-          });
+          const title = `Cortex-IA Delegated ${args.role.toUpperCase()} - Job ${job.job_id.slice(0, 8)}`;
+          const child = launchNativeTerminal(firstExecutable("cortex-ia"), worker, context.directory, title);
           try {
             await new Promise<void>((resolve, reject) => {
               child.once("spawn", resolve);
@@ -921,11 +1015,11 @@ export const CortexDelegationBridge: Plugin = async () => ({
       description: "Wait for one accepted delegation to reach a terminal durable status without model-side polling.",
       args: {
         job_id: tool.schema.string(),
-        timeout_seconds: tool.schema.number().optional().describe("Maximum wait, default 300 and capped at 600 seconds")
+        timeout_seconds: tool.schema.number().optional().describe("Maximum wait in seconds; 0 or omitted means wait until completion without hard timeout")
       },
       async execute(args) {
-        const timeoutSeconds = Math.max(1, Math.min(600, Math.floor(args.timeout_seconds || 300)));
-        const deadline = Date.now() + timeoutSeconds * 1000;
+        const timeoutSeconds = args.timeout_seconds !== undefined ? Math.max(0, Math.floor(args.timeout_seconds)) : 0;
+        const deadline = timeoutSeconds > 0 ? Date.now() + timeoutSeconds * 1000 : Infinity;
         const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "lost"]);
         let job: any;
         do {

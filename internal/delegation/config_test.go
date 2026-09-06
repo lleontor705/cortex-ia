@@ -87,3 +87,25 @@ func TestConfigValidationModelAndEffort(t *testing.T) {
 		t.Error("expected error for invalid effort, got nil")
 	}
 }
+
+func TestConfigValidationTimeoutUnboundedAndTerminal(t *testing.T) {
+	cfg := DefaultDelegationConfig(true)
+	cfg.HerdrSettings.TimeoutSeconds = 0
+	cfg.TerminalSettings = TerminalSettings{
+		Launcher:        "auto",
+		KeepOpenOnError: true,
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected timeout 0 to be valid, got: %v", err)
+	}
+
+	cfg.HerdrSettings.TimeoutSeconds = -1
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for negative timeout, got nil")
+	}
+
+	cfg.HerdrSettings.TimeoutSeconds = 86401
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for timeout > 86400, got nil")
+	}
+}

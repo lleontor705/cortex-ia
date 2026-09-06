@@ -216,24 +216,32 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 		return errors.New("external delegation is not enabled for this role")
 	}
 	timeout := time.Duration(cfg.HerdrSettings.TimeoutSeconds) * time.Second
+	claimTTL := timeout + 30*time.Second
+	if timeout == 0 {
+		claimTTL = 10 * time.Minute
+	}
 	owner, err := newID()
 	if err != nil {
 		return err
 	}
-	if err := store.Claim(ctx, id, owner, os.Getpid(), timeout+30*time.Second); err != nil {
+	if err := store.Claim(ctx, id, owner, os.Getpid(), claimTTL); err != nil {
 		return err
 	}
 	if err := store.MarkRunning(ctx, id); err != nil {
 		return err
 	}
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	var runCtx context.Context
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		runCtx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		runCtx, cancel = context.WithCancel(ctx)
+	}
 	defer cancel()
 	watchDone := make(chan struct{})
 	defer close(watchDone)
 	go watchCancellation(runCtx, store, id, cancel, watchDone)
-	if request.TaskID != "" {
-		go keepAliveAuthority(runCtx, store, request.TaskID, cancel, watchDone)
-	}
+	go keepAliveAuthorityAndJob(runCtx, store, id, owner, request.TaskID, cancel, watchDone)
 	output, exitCode, runErr := runAGY(runCtx, request, role, timeout)
 	if current, getErr := store.Get(context.Background(), id); getErr == nil && current.Status == StatusCancelled {
 		return nil
@@ -260,7 +268,7 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	return runErr
 }
 
-func keepAliveAuthority(ctx context.Context, store *Store, taskID string, cancel context.CancelFunc, done <-chan struct{}) {
+func keepAliveAuthorityAndJob(ctx context.Context, store *Store, jobID, owner, taskID string, cancel context.CancelFunc, done <-chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -270,9 +278,17 @@ func keepAliveAuthority(ctx context.Context, store *Store, taskID string, cancel
 		case <-done:
 			return
 		case <-ticker.C:
-			if err := store.ExtendTaskAuthority(context.Background(), taskID, 5*time.Minute); err != nil {
-				cancel()
-				return
+			if jobID != "" {
+				if err := store.ExtendJobLease(context.Background(), jobID, owner, 5*time.Minute); err != nil {
+					cancel()
+					return
+				}
+			}
+			if taskID != "" {
+				if err := store.ExtendTaskAuthority(context.Background(), taskID, 5*time.Minute); err != nil {
+					cancel()
+					return
+				}
 			}
 		}
 	}
@@ -302,15 +318,19 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	if err != nil {
 		return nil, -1, err
 	}
+	printTimeout := "24h"
+	if timeout > 0 {
+		printTimeout = timeout.String()
+	}
 	args := []string{
 		"--output-format", "stream-json",
-		"--print-timeout", timeout.String(),
+		"--print-timeout", printTimeout,
 		"--disable-slash-commands",
 	}
 	if role.SkipPermissions || os.Getenv("CORTEX_AGY_SKIP_PERMISSIONS") != "false" {
 		args = append(args, "--dangerously-skip-permissions")
 	}
-	if role.Mode != "" {
+	if role.Mode != "" && role.Mode != "plan" {
 		args = append(args, "--mode", role.Mode)
 	}
 	model := role.Model
@@ -417,6 +437,14 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 				activityMu.Lock()
 				idle := time.Since(lastActivity)
 				activityMu.Unlock()
+				if idle >= 15*time.Minute {
+					fmt.Printf("\n⚠️ [%s] Inactivity watchdog: no output for 15 minutes, terminating frozen process...\n", request.Role)
+					_ = os.Stdout.Sync()
+					if cmd.Process != nil {
+						_ = cmd.Process.Kill()
+					}
+					return
+				}
 				if idle >= 1200*time.Millisecond {
 					elapsed := time.Since(startTime).Round(time.Second)
 					fmt.Printf("\r%s [%s] Worker processing task via %s... (%s elapsed)   ", spinner[i%len(spinner)], request.Role, role.CLI, elapsed)

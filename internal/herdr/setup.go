@@ -136,10 +136,12 @@ func Status() error {
 		fmt.Printf("✅ Antigravity CLI: %s\n", agyPath)
 	}
 
-	if HerdrRunning(herdrPath) {
-		fmt.Println("🟢 Entorno Herdr: ACTIVO (Multiplexación y división de paneles en vivo habilitada)")
+	if HerdrActiveSession() {
+		fmt.Println("🟢 Entorno Herdr: SESIÓN ACTIVA (Proceso ejecutándose dentro de un panel de Herdr)")
+	} else if HerdrRunning(herdrPath) {
+		fmt.Println("🟡 Herdr Daemon: DISPONIBLE (Sesión actual en terminal estándar; delegación usará terminal nativo)")
 	} else {
-		fmt.Println("⚪ Sesión actual: Terminal Estándar (Modo nativo OpenCode)")
+		fmt.Println("⚪ Sesión actual: Terminal Estándar (Modo nativo / Delegación vía terminal nativo)")
 	}
 
 	return nil
@@ -190,6 +192,10 @@ func firstRegular(candidates []string, name string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%s executable not found", name)
+}
+
+func HerdrActiveSession() bool {
+	return os.Getenv("HERDR_ENV") == "1" || os.Getenv("HERDR_WORKSPACE_ID") != "" || os.Getenv("HERDR_PANE_ID") != ""
 }
 
 func HerdrRunning(herdrPath string) bool {

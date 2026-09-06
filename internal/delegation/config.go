@@ -34,11 +34,17 @@ type HerdrSettings struct {
 	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
+type TerminalSettings struct {
+	Launcher        string `json:"launcher,omitempty"` // "auto" | "window" | "hidden" | specific terminal
+	KeepOpenOnError bool   `json:"keep_open_on_error,omitempty"`
+}
+
 type DelegationConfig struct {
 	Version           string                `json:"version"`
 	DelegationEnabled bool                  `json:"delegation_enabled"`
 	UseHerdr          bool                  `json:"use_herdr"`
 	HerdrSettings     HerdrSettings         `json:"herdr_settings"`
+	TerminalSettings  TerminalSettings      `json:"terminal_settings,omitempty"`
 	Roles             map[string]RoleConfig `json:"roles"`
 }
 
@@ -72,8 +78,8 @@ func (c DelegationConfig) Validate() error {
 	if c.HerdrSettings.SplitDirection != "right" && c.HerdrSettings.SplitDirection != "down" {
 		return errors.New("herdr split_direction must be right or down")
 	}
-	if c.HerdrSettings.TimeoutSeconds < 1 || c.HerdrSettings.TimeoutSeconds > 3600 {
-		return errors.New("delegation timeout_seconds must be between 1 and 3600")
+	if c.HerdrSettings.TimeoutSeconds < 0 || c.HerdrSettings.TimeoutSeconds > 86400 {
+		return errors.New("delegation timeout_seconds must be between 0 (unbounded) and 86400")
 	}
 	for role, cfg := range c.Roles {
 		if !supportedRoles[role] {

@@ -495,6 +495,29 @@ func (s *Store) MarkResumed(ctx context.Context, id string) error {
 	return s.transition(ctx, id, []Status{StatusBlocked}, StatusRunning, "resumed", "")
 }
 
+func (s *Store) ExtendJobLease(ctx context.Context, id, owner string, ttl time.Duration) error {
+	if ttl <= 0 {
+		return errors.New("positive ttl is required")
+	}
+	now := s.timestamp()
+	expires := s.now().UTC().Add(ttl).Format(time.RFC3339Nano)
+	return s.immediate(ctx, func(conn *sql.Conn) error {
+		var status Status
+		var currentOwner string
+		if err := conn.QueryRowContext(ctx, `SELECT status, lease_owner FROM delegation_jobs WHERE id=?`, id).Scan(&status, &currentOwner); err != nil {
+			return err
+		}
+		if status != StatusRunning && status != StatusStarting && status != StatusBlocked {
+			return fmt.Errorf("%w: job %s is not active", ErrInvalidTransition, id)
+		}
+		if owner != "" && currentOwner != owner {
+			return fmt.Errorf("%w: lease owner mismatch", ErrInvalidTransition)
+		}
+		_, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET lease_expires_at=?, updated_at=? WHERE id=?`, expires, now, id)
+		return err
+	})
+}
+
 func (s *Store) Complete(ctx context.Context, id string, status Status, receipt Receipt, code, message string) error {
 	if status != StatusSucceeded && status != StatusFailed && status != StatusTimedOut && status != StatusCancelled {
 		return fmt.Errorf("%w: terminal status %q", ErrInvalidTransition, status)
