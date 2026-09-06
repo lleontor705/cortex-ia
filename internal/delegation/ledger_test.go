@@ -14,7 +14,7 @@ func TestStoreLedgerLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenStore failed: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 

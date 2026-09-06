@@ -269,7 +269,7 @@ func (m model) viewAgentStudio() string {
 			content = append(content, stylePass.Render("✅ "+m.studioResultMsg))
 			content = append(content, "")
 			content = append(content, styleSubtitle.Render("¿Cómo invocar este subagente?"))
-			content = append(content, fmt.Sprintf("  Desde el chat de OpenCode o desde un prompt orquestador, usa:"))
+			content = append(content, "  Desde el chat de OpenCode o desde un prompt orquestador, usa:")
 			content = append(content, styleSelected.Render(fmt.Sprintf("  task({ subagent: \"%s\", prompt: \"...\" })", arch.ID)))
 			content = append(content, "")
 			content = append(content, styleDim.Render("El subagente respetará automáticamente los leases de archivos y la autoridad SQLite."))
@@ -277,11 +277,12 @@ func (m model) viewAgentStudio() string {
 	}
 
 	var bottom []string
-	if m.studioStep == 0 {
+	switch m.studioStep {
+	case 0:
 		bottom = append(bottom, m.footer("enter continuar · ↑/↓ seleccionar · esc / b volver"))
-	} else if m.studioStep == 1 {
+	case 1:
 		bottom = append(bottom, m.footer("enter crear agente en disco · esc / b volver"))
-	} else {
+	default:
 		bottom = append(bottom, m.footer("enter / esc volver al menú inicio"))
 	}
 

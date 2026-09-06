@@ -95,7 +95,7 @@ func (s *Store) ListFacts(ctx context.Context, boardID string) ([]TaskFact, erro
 	if err != nil {
 		return nil, fmt.Errorf("query task facts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	facts := make([]TaskFact, 0)
 	for rows.Next() {
@@ -184,7 +184,7 @@ func (s *Store) ListProgress(ctx context.Context, boardID string) ([]ProgressEva
 	if err != nil {
 		return nil, fmt.Errorf("query progress evaluations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	evals := make([]ProgressEvaluation, 0)
 	for rows.Next() {
