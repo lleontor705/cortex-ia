@@ -12,7 +12,7 @@ This is the single normative runtime contract for OpenCode controllers, native s
 | Cortex MCP | Pinned contracts when `spec_plane=cortex` per `cortex-convention.md`; durable evidence, memories, AST knowledge, provenance, and relationships | Claims, leases, task transitions, or approval |
 | Cortex-IA | Boards, DAG tasks, claims, leases, revisions, approvals, delegation jobs, and operational events in `~/.cortex-ia/delegation.db` | Product requirements or epistemic truth |
 
-The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observations are views or evidence. None can substitute for current `cortex_ia_work_status` state.
+The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observations are views or evidence. None can substitute for current `cortex_ia_work_status` state. Controllers and minions adhere to `agent-writing-contract.md`: technical artifacts default strictly to English, while direct chat matches the user's language; saving evidence or mutating SQLite authority never substitutes for delivering a complete, transparent reply to the human operator.
 
 ## 2. Role boundaries
 
@@ -77,7 +77,7 @@ Before external implementation, the user must explicitly select `isolated_worktr
 
 ## 5. Delegation modes
 
-Every native role controller (`planner`, `investigate`, `implement`, and `reviewer`) MUST call `cortex_ia_delegate_start` once for its bounded objective before native execution. The bridge reads `cortex-delegation.json`; role prompts never infer or override that configuration. This is the delegation gate, not a second protocol: the returned mode selects exactly one execution path. The orchestrator dispatches the native controller and never calls the gate on its behalf.
+Native role controllers (`planner`, `investigate`, `implement`, and `reviewer`) invoke `cortex_ia_delegate_start` when external delegation is enabled for that role in `cortex-delegation.json` or explicitly requested in dispatch. For roles configured as native, controllers proceed directly to native execution. The bridge reads `cortex-delegation.json`; role prompts never infer or override that configuration. The returned mode selects the authoritative execution path. The orchestrator dispatches the native controller and never calls the gate on its behalf.
 
 The `execution_mode` returned by `cortex_ia_delegate_start` is authoritative:
 
@@ -87,7 +87,7 @@ The `execution_mode` returned by `cortex_ia_delegate_start` is authoritative:
 | `direct_cli` | Cortex-IA accepted and launched AGY directly. | Supervise the durable job and independently verify its receipt. |
 | `herdr_multiplexed` | Cortex-IA accepted and launched AGY through Herdr. | Behave exactly as in `direct_cli`; Herdr changes transport and presentation only. |
 
-`use_herdr` is a preference, not an execution fact. A safe pre-acceptance fallback may return `direct_cli`. After `delegated=true` plus `job_id`, never execute the same objective natively in parallel or silently fall back after failure, timeout, cancellation, pane loss, or `lost`. Reconcile the durable job first and retry only under fresh authority.
+`use_herdr` is a preference, not an execution fact. A safe pre-acceptance fallback may return `direct_cli`. After `delegated=true` plus `job_id`, never execute the same objective natively in parallel. If the delegated job reaches a terminal failure, timeout, cancellation, or `lost` state, the controller must reconcile the durable job in SQLite; upon reconciliation, the controller is authorized to either re-dispatch or complete the objective natively under fresh authority, recording the transition with clear failure evidence.
 
 ## 6. Native background dispatch & parallel waves
 
@@ -112,11 +112,11 @@ A controller reports `PASS` only with executable evidence: command, exit code, r
 
 ## 9. Incident & Error Reporting Protocol
 
-Controllers and orchestrators must record structured, cryptographically signed operational error reports when encountering unrecoverable blockers or failure states:
+Controllers and orchestrators record structured operational error reports when encountering unrecoverable blockers or failure states:
 - Command: `cortex-ia report error --code <code> --message <msg> [--details <details>] [--task <id>] [--job <id>] [--source <source>]`
 - Standard Taxonomy:
   - `ERR_TASK_BLOCKED`: Unmet dependencies, CAS revision mismatch, or maximum retry exhaustion.
   - `ERR_DELEGATION_FAILURE`: Delegated leaf process crash, non-zero exit code, or TTL expiration.
   - `ERR_VERIFICATION_FAIL`: Verification oracle or reviewer returned FAIL with reproducible failure details.
   - `ERR_INVARIANT_VIOLATION`: Dirty worktree, file lease collision, or expired claim authority token.
-All reports are signed with HMAC-SHA256 and sent to the centralized Railway telemetry hub for live tracking and retrospective auditing.
+All reports are recorded in the local SQLite operational events ledger (`~/.cortex-ia/delegation.db`) for local audit, retrospective review, and diagnostics.

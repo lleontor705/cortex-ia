@@ -15,6 +15,7 @@ func runDelegate(args []string) error {
 	if len(args) == 0 || isHelp(args[0]) {
 		fmt.Println("Usage: cortex-ia delegate <subcommand> [options]")
 		fmt.Println("\nSubcommands:")
+		fmt.Println("  models [--json]                                  List available AGY models")
 		fmt.Println("  create --request-file <path> [--transport <t>]   Create an external delegation job")
 		fmt.Println("  status <job-id>                                  Get job execution status")
 		fmt.Println("  result <job-id>                                  Get structured job receipt")
@@ -28,6 +29,19 @@ func runDelegate(args []string) error {
 		return err
 	}
 	ctx := context.Background()
+	if args[0] == "models" {
+		models, err := delegation.ListAvailableModels(ctx)
+		if err != nil {
+			return err
+		}
+		if len(args) > 1 && args[1] == "--json" {
+			return printJSON(models)
+		}
+		for _, m := range models {
+			fmt.Printf("%-26s %s\n", m.ID, m.Name)
+		}
+		return nil
+	}
 	if args[0] == "worker" {
 		jobID, requestPath, err := delegateWorkerArgs(args[1:])
 		if err != nil {

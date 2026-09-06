@@ -69,3 +69,21 @@ func TestLoadNonExistent(t *testing.T) {
 		t.Error("expected fallback NormalConfig to have delegation_enabled=false")
 	}
 }
+
+func TestConfigValidationModelAndEffort(t *testing.T) {
+	cfg := DefaultDelegationConfig(true)
+	role := cfg.Roles["implement"]
+	role.Model = "gemini-3.8-flash-high"
+	role.Effort = "high"
+	cfg.Roles["implement"] = role
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected valid config, got error: %v", err)
+	}
+
+	role.Effort = "invalid-effort"
+	cfg.Roles["implement"] = role
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for invalid effort, got nil")
+	}
+}

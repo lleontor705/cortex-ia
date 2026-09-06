@@ -729,7 +729,9 @@ export const CortexDelegationBridge: Plugin = async () => ({
         worktree: tool.schema.string().optional().describe("Absolute isolated worktree path; required only for isolated_worktree"),
         allowed_files: tool.schema.array(tool.schema.string()).optional(),
         acceptance_checks: tool.schema.array(tool.schema.string()).optional(),
-        context_data: tool.schema.string().optional()
+        context_data: tool.schema.string().optional(),
+        model: tool.schema.string().optional().describe("Dynamic model ID to use for delegation (query with cortex_ia_delegation_models)"),
+        effort: tool.schema.enum(["low", "medium", "high"]).optional().describe("Reasoning effort level")
       },
       async execute(args, context) {
         let requestPath = "";
@@ -769,7 +771,9 @@ export const CortexDelegationBridge: Plugin = async () => ({
             workspace_strategy: args.workspace_strategy || "",
             worktree: args.workspace_strategy === "isolated_worktree" && args.worktree ? path.resolve(args.worktree) : "",
             allowed_files: args.allowed_files || [],
-            output_schema: receiptSchema
+            output_schema: receiptSchema,
+            model: args.model || undefined,
+            effort: args.effort || undefined
           });
 
           const config = bridgeConfig();
@@ -950,6 +954,18 @@ export const CortexDelegationBridge: Plugin = async () => ({
       description: "Mark delegation workers with expired leases as lost.",
       args: {},
       async execute() { return cortex(["delegate", "recover"]); }
+    }),
+
+    cortex_ia_delegation_models: tool({
+      description: "Query available AGY models dynamically from the external CLI. The orchestrator and controllers use this to discover supported models and select the optimal model and effort level without hardcoding model names.",
+      args: {},
+      async execute() {
+        try {
+          return cortex(["delegate", "models", "--json"]);
+        } catch (error: any) {
+          return JSON.stringify({ error: error?.message || String(error) });
+        }
+      }
     })
   };
 
@@ -983,6 +999,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       cortex_delegation_result: bridgeTools.cortex_ia_delegation_result,
       cortex_delegation_cancel: bridgeTools.cortex_ia_delegation_cancel,
       cortex_delegation_recover: bridgeTools.cortex_ia_delegation_recover,
+      cortex_delegation_models: bridgeTools.cortex_ia_delegation_models,
   };
 })()
 });

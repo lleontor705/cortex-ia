@@ -92,7 +92,7 @@ Missing authoritative specification is `INCONCLUSIVE`, never PASS. Missing/trunc
 
 1. Align on operating conditions (Execution Mode, Spec/Memory Plane, and External Implement Workspace Strategy).
 2. If design uncertainty is high but bounded to one decision, dispatch `investigate` for repository facts and run `grill-me` rounds. For a remaining named architecture or public-interface decision, dispatch `planner` to apply Design It Twice. If the destination spans multiple sessions and the decision frontier cannot yet be specified completely, route `decision-map`; keep decision artifacts outside the implementation task board until the map is clear enough for SDD.
-3. Check `cortex_context(project)`: if an active session exists for this project/initiative, bind to and reuse its `session_id`; otherwise start session with `cortex_session_start(id, project, directory)`. Maintain **EXACTLY ONE session ID and ONE board ID** for the entire initiative. Query `cortex_get_status` and `cortex_get_rules(project)`. Check AST symbols with `cortex_get_code_symbols(project)`; if empty, trigger `cortex_ingest_code(workspace_root_absolute_path, project)` with the absolute project path (never `.`).
+3. For Tier 2 and Tier 3 initiatives: Check `cortex_context(project)`: if an active session exists for this project/initiative, bind to and reuse its `session_id`; otherwise start session with `cortex_session_start(id, project, directory)`. Maintain **EXACTLY ONE session ID and ONE board ID** for the initiative. Query `cortex_get_status` and `cortex_get_rules(project)`. Check AST symbols with `cortex_get_code_symbols(project)`; if empty, trigger `cortex_ingest_code(workspace_root_absolute_path, project)` with the absolute project path (never `.`). For Tier 1 (Fast Path) tasks, bypass session lifecycle and AST ingestion entirely to execute directly in-turn.
 4. For onboarding, explicit discovery, environment uncertainty, or a known stale profile, dispatch the native non-delegating `discovery` role. It alone writes `./.cortex-ia/discovery.md`; carry that artifact into subsequent planner, implementer, and reviewer envelopes.
 5. Capture objective, scope, non-goals, urgency, observable acceptance, project, and known constraints.
 6. Search Cortex or inspect OpenSpec specs for relevant durable context.
@@ -107,7 +107,25 @@ Missing authoritative specification is `INCONCLUSIVE`, never PASS. Missing/trunc
 11. Dispatch independent verification when risk, workflow, or acceptance gates require it.
 12. Reconcile receipts against `cortex-ia work`, the selected validated contract, and observed evidence. Never infer PASS from prose or from a minion's confidence. When the durable attempt limit is reached or the same evidenced failure cause repeats, stop retrying and dispatch `investigate` with `workflow-retrospective` after authority is reconciled.
 13. Carry context between phases through pointers to OpenSpec artifacts, work IDs, Cortex evidence, discovery profiles, and receipts. Do not copy transcripts or artifact bodies into dispatch envelopes. Compact or hand off only at a phase boundary, never mid-diagnosis or while a writer holds authority.
-14. Record final summary via `cortex_session_summary`.
+14. Record final summary via `cortex_session_summary` when session was started.
+
+## Typed receipts
+
+Keep these dimensions independent:
+- `phase_status`: `success | partial | failed | blocked`
+- `task_status`: `backlog | ready | in_progress | in_review | done | blocked` when applicable
+- `verification_verdict`: `PASS | FAIL | BLOCKED | INCONCLUSIVE`
+
+## Operational Error Reporting
+
+When a task enters `blocked`, a delegated worker fails/times out, or verification yields `FAIL`, record an operational error report:
+- Command: `cortex-ia report error --code <code> --message <msg> [--details <details>] [--task <id>] [--job <id>] [--source orchestrator]`
+- Standard Error Codes:
+  - `ERR_TASK_BLOCKED`: Unresolved blockers or repeated attempt exhaustion.
+  - `ERR_DELEGATION_FAILURE`: Worker crashed, timed out, or returned non-zero status.
+  - `ERR_VERIFICATION_FAIL`: Independent test oracle or reviewer returned FAIL with evidence.
+  - `ERR_INVARIANT_VIOLATION`: Dirty worktree, lease collision, or expired authority token.
+Reports are recorded in the local SQLite operational events ledger (`~/.cortex-ia/delegation.db`) for local audit, retrospective review, and diagnostics.
 
 ## Cortex-IA work protocol
 
@@ -143,24 +161,11 @@ Orchestrator-only surface (it never claims tasks or holds file leases itself):
   "acceptance_checks": [],
   "budget": {"max_turns": null, "max_retries": 1},
   "stop_conditions": [],
-  "escalate_when": []
+  "escalate_when": [],
+  "model": null,
+  "effort": null
 }
 ```
 
-## Typed receipts
+- **Dynamic External Model Discovery**: Never hardcode model IDs in prompts or configurations. When delegating to AGY or passing model guidance to controllers, discover supported models dynamically via `cortex_ia_delegation_models` (or CLI `cortex-ia delegate models [--json]` / `agy models`). The orchestrator decides which model ID and effort level (`low`, `medium`, `high`) to recommend based dynamically on task scope and complexity.
 
-Keep these dimensions independent:
-- `phase_status`: `success | partial | failed | blocked`
-- `task_status`: `backlog | ready | in_progress | in_review | done | blocked` when applicable
-- `verification_verdict`: `PASS | FAIL | BLOCKED | INCONCLUSIVE`
-
-## Signed Error & Telemetry Reporting
-
-When a task enters `blocked`, a delegated worker fails/times out, or verification yields `FAIL`, generate a cryptographically signed error report to the centralized Railway backend:
-- Command: `cortex-ia report error --code <code> --message <msg> [--details <details>] [--task <id>] [--job <id>] [--source orchestrator]`
-- Standard Error Codes:
-  - `ERR_TASK_BLOCKED`: Unresolved blockers or repeated attempt exhaustion.
-  - `ERR_DELEGATION_FAILURE`: Worker crashed, timed out, or returned non-zero status.
-  - `ERR_VERIFICATION_FAIL`: Independent test oracle or reviewer returned FAIL with evidence.
-  - `ERR_INVARIANT_VIOLATION`: Dirty worktree, lease collision, or expired authority token.
-Reports are automatically signed with HMAC-SHA256 and recorded in Railway for real-time audit.

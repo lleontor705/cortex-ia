@@ -41,6 +41,8 @@ type Request struct {
 	WorkspaceMode string          `json:"workspace_strategy,omitempty"`
 	AllowedFiles  []string        `json:"allowed_files,omitempty"`
 	OutputSchema  json.RawMessage `json:"output_schema,omitempty"`
+	Model         string          `json:"model,omitempty"`
+	Effort        string          `json:"effort,omitempty"`
 }
 
 func ReadRequest(path string) (Request, error) {
@@ -125,6 +127,13 @@ func (r Request) Validate() error {
 	}
 	if len(r.OutputSchema) > 64*1024 || (len(r.OutputSchema) > 0 && !json.Valid(r.OutputSchema)) {
 		return errors.New("output_schema must be valid JSON no larger than 64 KiB")
+	}
+	if r.Effort != "" {
+		switch r.Effort {
+		case "low", "medium", "high":
+		default:
+			return fmt.Errorf("invalid effort %q: must be low, medium, or high", r.Effort)
+		}
 	}
 	return nil
 }
@@ -298,11 +307,25 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 		"--print-timeout", timeout.String(),
 		"--disable-slash-commands",
 	}
-	if role.SkipPermissions || os.Getenv("CORTEX_AGY_SKIP_PERMISSIONS") == "true" {
+	if role.SkipPermissions || os.Getenv("CORTEX_AGY_SKIP_PERMISSIONS") != "false" {
 		args = append(args, "--dangerously-skip-permissions")
 	}
 	if role.Mode != "" {
 		args = append(args, "--mode", role.Mode)
+	}
+	model := role.Model
+	if strings.TrimSpace(request.Model) != "" {
+		model = strings.TrimSpace(request.Model)
+	}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	effort := role.Effort
+	if strings.TrimSpace(request.Effort) != "" {
+		effort = strings.TrimSpace(request.Effort)
+	}
+	if effort != "" {
+		args = append(args, "--effort", effort)
 	}
 	schemaPath := ""
 	if len(request.OutputSchema) > 0 {
@@ -944,9 +967,17 @@ func validateStructuredReceipt(output, schemaJSON json.RawMessage) error {
 	}
 	var envelope struct {
 		StructuredOutput json.RawMessage `json:"structured_output"`
+		DeniedActions    []struct {
+			Action      string `json:"action"`
+			DisplayName string `json:"display_name"`
+		} `json:"denied_actions"`
 	}
 	if err := json.Unmarshal(output, &envelope); err != nil {
 		return fmt.Errorf("%w: decode AGY result envelope: %v", errInvalidReceipt, err)
+	}
+	if len(envelope.DeniedActions) > 0 {
+		return fmt.Errorf("%w: tool permission denied by AGY for %q (%s)",
+			errInvalidReceipt, envelope.DeniedActions[0].DisplayName, envelope.DeniedActions[0].Action)
 	}
 	if len(envelope.StructuredOutput) == 0 || bytes.Equal(bytes.TrimSpace(envelope.StructuredOutput), []byte("null")) {
 		return fmt.Errorf("%w: structured_output is missing", errInvalidReceipt)
@@ -1102,4 +1133,70 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return original, nil
 }
 
+func (b *limitedBuffer) Len() int {
+	return b.Buffer.Len()
+}
+
+func (b *limitedBuffer) String() string {
+	return b.Buffer.String()
+}
+
 var _ io.Writer = (*limitedBuffer)(nil)
+
+// AGYModel represents an external model available via the AGY CLI.
+type AGYModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ParseModelsOutput parses output lines from `agy models`.
+func ParseModelsOutput(output []byte) []AGYModel {
+	var models []AGYModel
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "Fetching available models") {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		id := strings.TrimSpace(parts[0])
+		name := id
+		if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" {
+			name = strings.TrimSpace(parts[1])
+		} else {
+			fields := strings.Fields(line)
+			if len(fields) > 1 {
+				id = fields[0]
+				name = strings.TrimSpace(line[len(id):])
+			}
+		}
+		if id != "" {
+			models = append(models, AGYModel{
+				ID:   id,
+				Name: name,
+			})
+		}
+	}
+	return models
+}
+
+// ListAvailableModels queries `agy models` dynamically.
+func ListAvailableModels(ctx context.Context) ([]AGYModel, error) {
+	agy, err := resolveAGY()
+	if err != nil {
+		return nil, err
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(queryCtx, agy, "models")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = io.Discard
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("execute agy models: %w", err)
+	}
+
+	return ParseModelsOutput(stdout.Bytes()), nil
+}

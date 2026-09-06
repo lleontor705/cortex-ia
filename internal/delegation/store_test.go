@@ -420,3 +420,49 @@ func TestRunnerValidationAndPrompts(t *testing.T) {
 		t.Errorf("task ID mismatch: %s", parsed.TaskID)
 	}
 }
+
+func TestRequestModelAndEffortValidation(t *testing.T) {
+	tempDir := t.TempDir()
+	req := Request{
+		Role:      "investigate",
+		Objective: "Diagnose system issue",
+		Workspace: tempDir,
+		Model:     "custom-dynamic-model",
+		Effort:    "high",
+	}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("expected valid request with custom model and effort, got: %v", err)
+	}
+
+	req.Effort = "invalid-effort"
+	if err := req.Validate(); err == nil {
+		t.Error("expected error for invalid effort")
+	}
+
+	req.Effort = "low"
+	if err := req.Validate(); err != nil {
+		t.Errorf("expected valid low effort, got: %v", err)
+	}
+}
+
+func TestParseModelsOutput(t *testing.T) {
+	sampleOutput := []byte(`
+Fetching available models...
+gemini-3.8-flash-high	Gemini 3.8 Flash (High)
+gemini-3.7-flash-medium	Gemini 3.7 Flash (Medium)
+claude-sonnet-4-6       Claude Sonnet 4.6 (Thinking)
+`)
+	models := ParseModelsOutput(sampleOutput)
+	if len(models) != 3 {
+		t.Fatalf("expected 3 models, got %d", len(models))
+	}
+	if models[0].ID != "gemini-3.8-flash-high" || models[0].Name != "Gemini 3.8 Flash (High)" {
+		t.Errorf("unexpected model 0: %+v", models[0])
+	}
+	if models[1].ID != "gemini-3.7-flash-medium" || models[1].Name != "Gemini 3.7 Flash (Medium)" {
+		t.Errorf("unexpected model 1: %+v", models[1])
+	}
+	if models[2].ID != "claude-sonnet-4-6" || models[2].Name != "Claude Sonnet 4.6 (Thinking)" {
+		t.Errorf("unexpected model 2: %+v", models[2])
+	}
+}

@@ -24,6 +24,8 @@ type RoleConfig struct {
 	CLI             string `json:"cli"` // native | agy
 	Mode            string `json:"mode,omitempty"`
 	SkipPermissions bool   `json:"skip_permissions,omitempty"`
+	Model           string `json:"model,omitempty"`
+	Effort          string `json:"effort,omitempty"`
 }
 
 type HerdrSettings struct {
@@ -56,10 +58,10 @@ func DefaultDelegationConfig(useHerdr bool) DelegationConfig {
 	cfg.DelegationEnabled = true
 	cfg.UseHerdr = useHerdr
 	cfg.HerdrSettings.AutoSplit = useHerdr
-	cfg.Roles["implement"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "accept-edits"}
-	cfg.Roles["investigate"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
-	cfg.Roles["planner"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
-	cfg.Roles["reviewer"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
+	cfg.Roles["implement"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "accept-edits", SkipPermissions: true}
+	cfg.Roles["investigate"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true}
+	cfg.Roles["planner"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true}
+	cfg.Roles["reviewer"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true}
 	return cfg
 }
 
@@ -82,6 +84,9 @@ func (c DelegationConfig) Validate() error {
 		}
 		if cfg.CLI == "agy" && cfg.Mode != "plan" && cfg.Mode != "accept-edits" {
 			return fmt.Errorf("role %q: agy mode must be plan or accept-edits", role)
+		}
+		if cfg.Effort != "" && cfg.Effort != "low" && cfg.Effort != "medium" && cfg.Effort != "high" {
+			return fmt.Errorf("role %q: agy effort must be low, medium, or high", role)
 		}
 	}
 	return nil
