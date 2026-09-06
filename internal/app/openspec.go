@@ -454,7 +454,7 @@ func parseTasksProgress(tasksPath string) (total int, done int) {
 	if err != nil {
 		return 0, 0
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {

@@ -695,11 +695,12 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 				return fmt.Errorf("record work review: %w", err)
 			}
 		}
-		if to == WorkBlocked {
+		switch to {
+		case WorkBlocked:
 			_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
 			_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
 			_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
-		} else if to == WorkInProgress {
+		case WorkInProgress:
 			_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
 		}
 		if _, err := conn.ExecContext(ctx, `UPDATE work_items SET status=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, to, now, id, revision); err != nil {
