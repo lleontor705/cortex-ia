@@ -7,6 +7,8 @@
       "~/.agents/**": "allow",
       "**/.agents/**": "allow",
       "**/.agents/skills/**": "allow",
+      "**/.cortex-ia/skills/**": "allow",
+      "**/skills/**": "allow",
       "C:/**/.agents/**": "allow",
       "C:/**/.agents/skills/**": "allow",
       "**/.config/opencode/**": "allow"
@@ -40,6 +42,8 @@
       "~/.agents/**": "allow",
       "**/.agents/**": "allow",
       "**/.agents/skills/**": "allow",
+      "**/.cortex-ia/skills/**": "allow",
+      "**/skills/**": "allow",
       "C:/**/.agents/**": "allow",
       "C:/**/.agents/skills/**": "allow",
       "**/.config/opencode/**": "allow",

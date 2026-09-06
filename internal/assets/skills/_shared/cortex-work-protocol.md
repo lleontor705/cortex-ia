@@ -35,12 +35,33 @@ Direct user-requested file creations, single-file scripts, documentation, summar
 
 For localized code changes (`direct-change`, `fast-tdd`, `hotfix`), the orchestrator may directly create one bounded task using `cortex_ia_work_create` and dispatch `implement` -> `reviewer`. SDD DAG creation, multi-task decomposition, and full architectural specifications remain planner-only in Tier 3; `decision-map` creates no board/tasks in any spec plane.
 
+### Heuristic Delegation & Execution Boundaries (Context Inflation Prevention)
+
+Every delegation decision balances task isolation against context bloat. Follow these quantitative heuristics:
+
+1. **Bounded Read Rule**:
+   - **1–3 files**: Read directly inline within the active session for immediate decision-making or verification.
+   - **4+ files**: Mandatory delegation to an exploration/investigation subagent (`investigate`). The minion inspects code in its isolated context, stores durable findings in Cortex MCP (`cortex_save`), and returns only a compressed synthesis (<200 tokens). Never flood the parent orchestrator context with mass file contents.
+2. **High-Stdout Containment Boundary**:
+   - Commands producing massive stdout (full test suites, linters, builds, benchmarks) must NEVER be executed directly in the orchestrator's main conversation. Delegate them to `reviewer` or bounded execution minions to preserve orchestrator context for strategic routing.
+3. **Workspace Strategy Selection Heuristic (`isolated_worktree` vs `current_workspace`)**:
+   - When preparing external AGY execution:
+     - **Dirty Tree / Shared Manifests**: If `git status --porcelain` reveals uncommitted changes, or the task touches shared build manifests (`go.mod`, `package.json`, `.env`), `isolated_worktree` is MANDATORY to prevent corruption of user uncommitted work.
+     - **Clean Tree / Disjoint Scope**: If the working tree is clean and changes are confined strictly to files covered by active leases, `current_workspace` may be used with exclusive locking.
+4. **Bounded Agent Contracts & Step SLAs**:
+   - Every minion dispatch is governed by an explicit contract envelope specifying `max_steps` (default 30) and resource budget. If a subagent loops repetitively without delivering progress or completing, the OpenCode transport halts execution with `AGENT_CONTRACT_EXCEEDED` and latches the task in SQLite.
+5. **Dual Ledger Synchronization (Task & Progress Ledgers)**:
+   - Environmental truths, compiler versions, and verified dependencies are recorded in the Task Ledger via `cortex_ia_ledger_fact_add`.
+   - Cycle reflections and drift detections are recorded in the Progress Ledger via `cortex_ia_ledger_progress_record`.
+   - At startup or after context compaction, query `cortex_ia_ledger_status` to restore ground truth.
+
 ## 3. Typed tools and token custody
 
-Native controllers use the typed `cortex_ia_board_*`, `cortex_ia_work_*`, `cortex_ia_delegate_start`, and `cortex_ia_delegation_*` tools exposed by the active OpenCode bridge. The current tool schema is authoritative: never invent a missing tool or argument.
+Native controllers use the typed `cortex_ia_board_*`, `cortex_ia_work_*`, `cortex_ia_ledger_*`, `cortex_ia_delegate_start`, and `cortex_ia_delegation_*` tools exposed by the active OpenCode bridge. The current tool schema is authoritative: never invent a missing tool or argument.
 
 | Tool group | Permitted use |
 |---|---|
+| `cortex_ia_ledger_status|fact_add|progress_record` | Dual Ledger management; records environmental facts and orchestrator cycle evaluations |
 | `cortex_ia_board_create|list|status` | Planner DAG board (Tier 3); orchestrator creation only under bounded bootstrap; reads according to role policy |
 | `cortex_ia_work_create` | Planner DAG mutation; orchestrator only under bounded authorized bootstrap (Tier 2) |
 | `cortex_ia_work_decompose` | Planner only; requires an orchestrator-routed blocked task and revision |

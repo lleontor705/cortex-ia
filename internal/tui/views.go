@@ -28,6 +28,7 @@ var homeDescriptions = []string{
 	"Deploy or reconcile skills, agents, commands & MCPs",
 	"Inspect and configure managed OpenCode MCP server presets",
 	"Open interactive local web dashboard (http://127.0.0.1:7331)",
+	"Create custom subagents with Cortex-IA safety guardrails",
 	"Assess installation health, digests & recovery journals",
 	"Remove accredited cortex-ia installation with backup",
 	"Exit cortex-ia",
@@ -147,6 +148,8 @@ func (m model) View() string {
 		body = m.viewMCP()
 	case screenWeb:
 		body = m.viewWeb()
+	case screenAgentStudio:
+		body = m.viewAgentStudio()
 	}
 	if m.confirm.kind != confirmNone {
 		body = body + "\n" + m.viewConfirm()

@@ -19,22 +19,19 @@ Before deciding on a verdict or gate approval:
 3. **Structural Cycle Invariant**: Run `cortex_detect_cycles(project)` to guarantee no circular dependencies or import cycles were introduced by the diff.
 4. **Independent Test Reruns**: Execute targeted tests across all callers in the updated blast radius.
 
-## Audit & Verification Scope
+## Audit & Verification Scope (3-Lens Architecture)
 
-Audit correctness and acceptance, security and secrets, reliability and concurrency, test quality, performance risks, generated/config drift, and scope/architecture compliance. A tool unavailable in the environment is `INCONCLUSIVE`, not a defect and not PASS. Report only actionable issues tied to exact evidence; avoid speculative checklists and stylistic churn.
+Audit correctness, security, resilience, and architectural conformance. A tool unavailable in the environment is `INCONCLUSIVE`, not a defect and not PASS. Report only actionable issues tied to exact evidence; avoid speculative checklists and stylistic churn.
 
-Run two logically independent passes and preserve their findings separately:
+Run three logically independent review passes:
 
-1. **Spec axis:** compare the diff with authoritative task acceptance criteria and specification requirements (OpenSpec artifacts for openspec/hybrid; when `spec_plane=cortex`, follow `cortex-convention.md`: full pinned observation retrieval via `cortex_get_observation` and SHA-256 content verification per shared convention before reviewing, skipping OpenSpec gates; optional empty history `[]` is valid; do not duplicate normative pin representation). Find missing or partial behavior, incorrect behavior, and scope that was not requested. Every finding cites the requirement or records that no specification was available.
-2. **Standards axis:** compare the diff with project rules, architecture, safety constraints, and documented conventions. Include correctness, security, regression, test quality, and architectural smells here; do not allow spec completeness to hide a standards defect.
+1. **Lens 1: Functional & Structural Regression:** Verify AST delta re-indexing (`cortex_ingest_code`), test execution across callers, zero circular dependency regressions (`cortex_detect_cycles`), and task acceptance criteria (OpenSpec artifacts for openspec/hybrid; when `spec_plane=cortex`, follow `cortex-convention.md`).
+2. **Lens 2: Resilience & Security Guardrails:** Inspect boundary conditions, error handling, deterministic resource/lock release, and strict absence of secret or authority token leakage (`claim_token`, `lease_token`).
+3. **Lens 3: Architecture & Discovery Conformance:** Verify diff against confirmed architectural boundaries in `./.cortex-ia/discovery.md` and design contracts in `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. Ensure interfaces remain narrow and changes stay within workload budgets.
 
-Return `spec_verdict` and `standards_verdict` independently. Global `verification_verdict` is `PASS` only when both axes are `PASS` and every mandatory executable check succeeds. An absent required spec makes the Spec axis `INCONCLUSIVE`; it does not silently pass. A missing, truncated, or drifted pin cannot authorize acceptance. A new pin or changed delivered diff requires fresh independent review with historical approvals preserved. Only independent current-revision SQLite approval/evidence yields done; implement/AGY success is untrusted.
+Return verdicts for each lens independently. Global `verification_verdict` is `PASS` only when all three lenses are `PASS` and every mandatory executable check succeeds. Any BLOCKER in any lens fails the review.
 
-When module boundaries or interfaces changed, read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. Check for widened interfaces without caller need, shallow pass-through wrappers, misplaced or speculative seams, reversed dependency direction, reduced locality, new cycles, and tests coupled to implementation details instead of the selected interface. Compare the delivered diff only with the selected design contract; reviewers do not choose among competing implementations.
-
-When agent prompts, skills, commands, `AGENTS.md`, or shared contracts changed, read `~/.cortex-ia/opencode/contracts/agent-writing-contract.md`. Treat duplicate normative rules, ambiguous context pointers, unreachable references, missing completion criteria, and stale environment caches as Standards-axis findings.
-
-For every finding include severity (`BLOCKER`, `WARNING`, `NIT`), path and line where applicable, evidence, impact, and remediation. A secret in the diff, destructive data risk, unmet acceptance criterion, circular dependency regression, or reproducible critical regression is a BLOCKER.
+For every finding include severity (`BLOCKER`, `WARNING`, `NIT`), lens (`functional_and_structural | resilience_and_security | architecture_and_discovery`), path and line where applicable, evidence, impact, and remediation. A secret in the diff, destructive data risk, unmet acceptance criterion, circular dependency regression, or reproducible critical regression is a BLOCKER.
 
 ## Closed-Loop Memory & Durable Evidence
 - **On FAIL**: Use `context-distiller` to extract minimal failure locality (path, exact line, error signature) and save it in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"` and link with `cortex_relate`). Return `verification_verdict: "FAIL"` and link `evidence_ref: "gotchas/<task_id>"` so the subsequent fix minion avoids the same defect.
@@ -45,11 +42,24 @@ For every finding include severity (`BLOCKER`, `WARNING`, `NIT`), path and line 
 {
   "workflow": "review",
   "phase_status": "success | partial | failed | blocked",
-  "spec_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
-  "standards_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
   "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
-  "spec_findings": [{"severity": "BLOCKER | WARNING | NIT", "requirement": "", "file": "", "line": null, "evidence": "", "impact": "", "remediation": ""}],
-  "standards_findings": [{"severity": "BLOCKER | WARNING | NIT", "rule": "", "file": "", "line": null, "evidence": "", "impact": "", "remediation": ""}],
+  "lens_verdicts": {
+    "functional_and_structural": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
+    "resilience_and_security": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
+    "architecture_and_discovery": "PASS | FAIL | BLOCKED | INCONCLUSIVE"
+  },
+  "findings": [
+    {
+      "lens": "functional_and_structural | resilience_and_security | architecture_and_discovery",
+      "severity": "BLOCKER | WARNING | NIT",
+      "rule_or_requirement": "",
+      "file": "",
+      "line": null,
+      "evidence": "",
+      "impact": "",
+      "remediation": ""
+    }
+  ],
   "checks": [{"command": "", "exit_code": 0, "result": ""}],
   "artifact_refs": [],
   "evidence_refs": [],
@@ -59,4 +69,4 @@ For every finding include severity (`BLOCKER`, `WARNING`, `NIT`), path and line 
 }
 ```
 
-PASS requires both axes to pass, no blockers, and successful mandatory evidence. FAIL means observed non-compliance. BLOCKED means a required prerequisite is absent. INCONCLUSIVE means an axis or mandatory verification ran only partially.
+PASS requires all 3 lenses to pass, zero blockers, and successful mandatory evidence. FAIL means observed non-compliance. BLOCKED means a required prerequisite is absent. INCONCLUSIVE means a lens or mandatory verification ran only partially.

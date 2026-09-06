@@ -55,6 +55,9 @@ func runCLI(args []string) error {
 	case "board":
 		return runBoard(rest)
 
+	case "ledger":
+		return runLedger(rest)
+
 	case "ui":
 		return runUI(rest)
 
@@ -204,6 +207,8 @@ Usage:
                                       Group task DAGs into local task boards
   cortex-ia board serve [--addr 127.0.0.1:7331]
                                       Serve the embedded Cortex-IA operations console
+  cortex-ia ledger fact|progress|status
+                                      Inspect or update the Dual Ledger (facts + progress)
   cortex-ia ui snapshot              Print a bounded read-only TUI snapshot
   cortex-ia web [--addr 127.0.0.1:7331] [--open]
                                       Launch local Cortex-IA web dashboard in browser

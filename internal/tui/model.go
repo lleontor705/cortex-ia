@@ -26,6 +26,7 @@ const (
 	screenResult
 	screenMCP
 	screenWeb
+	screenAgentStudio
 )
 
 // confirmKind identifies which destructive intent a confirmation modal guards.
@@ -44,6 +45,7 @@ var homeEntries = []string{
 	"Install / Sync",
 	"Manage MCPs",
 	"CortexIA Web Console",
+	"Agent Studio (Create Sub-agent)",
 	"Doctor / Recovery",
 	"Uninstall",
 	"Quit",
@@ -120,6 +122,11 @@ type model struct {
 	reviewScroll int
 	resultScroll int
 	quitting     bool
+
+	// Agent Studio state
+	studioStep      int
+	studioArchIdx   int
+	studioResultMsg string
 }
 
 // newModel builds the model bound to a service implementation.
@@ -191,6 +198,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateMCP(msg)
 		case screenWeb:
 			return m.updateWeb(msg)
+		case screenAgentStudio:
+			return m.updateAgentStudio(msg)
 		}
 	}
 	return m, nil
@@ -215,6 +224,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.selectHomeEntry(4)
 	case "6":
 		return m.selectHomeEntry(5)
+	case "7":
+		return m.selectHomeEntry(6)
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
@@ -263,12 +274,18 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.screen = screenWeb
 		startWebBackground(m.homeDir)
 		return m, nil
-	case 3: // Doctor / Recovery
+	case 3: // Agent Studio (Create Sub-agent)
+		m.screen = screenAgentStudio
+		m.studioStep = 0
+		m.studioArchIdx = 0
+		m.studioResultMsg = ""
+		return m, nil
+	case 4: // Doctor / Recovery
 		return m.startRunning("Doctor", []string{"Inspect state", "Compare digests", "Assess MCPs", "Report"}, doctorCmd(m.svc))
-	case 4: // Uninstall (destructive: explicit confirmation first)
+	case 5: // Uninstall (destructive: explicit confirmation first)
 		m.confirm = confirmState{kind: confirmUninstall}
 		return m, nil
-	case 5: // Quit
+	case 6: // Quit
 		m.quitting = true
 		return m, tea.Quit
 	}

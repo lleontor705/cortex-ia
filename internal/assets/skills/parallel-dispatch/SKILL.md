@@ -31,7 +31,11 @@ Execute independent tasks concurrently instead of forcing sequential execution. 
    Files(T1) ∩ Files(T2) == ∅  -->  PARALLEL CANDIDATES
    Files(T1) ∩ Files(T2) != ∅  -->  MUST REMAIN SEQUENTIAL
    ```
-4. **Form the Execution Wave:**
+4. **Affinity & Locality Clustering (DynTaskMAS / DRAMA Pattern):**
+   Group candidate tasks by package/subsystem directory prefix (e.g. `internal/tui/`, `internal/pipeline/`, `web/`):
+   - Tasks within the same subsystem share semantic locality and AST symbols in Cortex MCP. Assign them sequentially to the same warm worker context to eliminate cold-start re-reading.
+   - Form parallel execution waves across distinct subsystem boundaries (e.g. Subsystem A concurrently with Subsystem B).
+5. **Form the Execution Wave:**
    Group candidate tasks into disjoint execution waves. Tasks sharing files are partitioned into successive waves.
 
 ---
@@ -56,10 +60,10 @@ Execute independent tasks concurrently instead of forcing sequential execution. 
 
 ## Step 3: Concurrent Dispatch
 
-For each task in the parallel wave, dispatch an `implement` controller in the same orchestrator turn using native background subagents:
+For each task in the parallel wave, dispatch an `implement` controller in the same orchestrator turn using native background subagents and formal `<minion-contract>`:
 
 ```json
-<minion-dispatch>
+<minion-contract>
 {
   "task_id": "task-auth-jwt",
   "objective": "Implement JWT validation middleware with claims checking",
@@ -67,9 +71,11 @@ For each task in the parallel wave, dispatch an `implement` controller in the sa
   "acceptance_checks": ["go test -v ./internal/auth/... -run TestJWT"],
   "workspace_strategy": "current_workspace",
   "worktree": null,
-  "artifact_refs": ["specs/auth/spec.md"]
+  "artifact_refs": ["specs/auth/spec.md"],
+  "max_steps": 30,
+  "budget_tier": "medium"
 }
-</minion-dispatch>
+</minion-contract>
 ```
 
 When using OpenCode's `task` tool:

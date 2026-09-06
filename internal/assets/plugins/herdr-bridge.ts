@@ -403,6 +403,40 @@ export const CortexDelegationBridge: Plugin = async () => ({
       async execute(args) { return cortex(["board", "status", args.board_id]); }
     }),
 
+    cortex_ia_ledger_status: tool({
+      description: "Read the dual ledger report (Task Ledger facts and Progress Ledger cycle evaluations) for an initiative board.",
+      args: { board_id: tool.schema.string().optional() },
+      async execute(args) {
+        const command = ["ledger", "status"];
+        if (args.board_id) command.push("--board", args.board_id);
+        return cortex(command);
+      }
+    }),
+
+    cortex_ia_ledger_fact_add: tool({
+      description: "Record an authoritative environmental or technical fact into the Task Ledger.",
+      args: { fact: tool.schema.string(), board_id: tool.schema.string().optional(), source: tool.schema.string().optional() },
+      async execute(args) {
+        const command = ["ledger", "fact", "add", args.fact];
+        if (args.board_id) command.push("--board", args.board_id);
+        if (args.source) command.push("--source", args.source);
+        return cortex(command);
+      }
+    }),
+
+    cortex_ia_ledger_progress_record: tool({
+      description: "Record an orchestrator progress evaluation, drift detection, and intended action into the Progress Ledger.",
+      args: { summary: tool.schema.string(), cycle: tool.schema.number().optional(), drift: tool.schema.boolean().optional(), action: tool.schema.string().optional(), board_id: tool.schema.string().optional() },
+      async execute(args) {
+        const command = ["ledger", "progress", "record", "--summary", args.summary];
+        if (args.board_id) command.push("--board", args.board_id);
+        if (args.action) command.push("--action", args.action);
+        if (args.cycle) command.push("--cycle", String(args.cycle));
+        if (args.drift) command.push("--drift");
+        return cortex(command);
+      }
+    }),
+
     cortex_ia_work_create: tool({
       description: "Create one work item in a durable same-board DAG.",
       args: {
@@ -977,6 +1011,9 @@ export const CortexDelegationBridge: Plugin = async () => ({
       cortex_board_create: bridgeTools.cortex_ia_board_create,
       cortex_board_list: bridgeTools.cortex_ia_board_list,
       cortex_board_status: bridgeTools.cortex_ia_board_status,
+      cortex_ledger_status: bridgeTools.cortex_ia_ledger_status,
+      cortex_ledger_fact_add: bridgeTools.cortex_ia_ledger_fact_add,
+      cortex_ledger_progress_record: bridgeTools.cortex_ia_ledger_progress_record,
       cortex_work_create: bridgeTools.cortex_ia_work_create,
       cortex_work_list: bridgeTools.cortex_ia_work_list,
       cortex_work_status: bridgeTools.cortex_ia_work_status,

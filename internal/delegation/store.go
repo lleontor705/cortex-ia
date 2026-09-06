@@ -122,8 +122,8 @@ func (s *Store) initialize(ctx context.Context) error {
 		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 			return fmt.Errorf("read migration ledger: %w", err)
 		}
-		if version > 9 {
-			return fmt.Errorf("cortex database schema %d is newer than supported schema 9", version)
+		if version > 10 {
+			return fmt.Errorf("cortex database schema %d is newer than supported schema 10", version)
 		}
 		statements := []string{
 			`CREATE TABLE IF NOT EXISTS delegation_jobs (
@@ -358,6 +358,38 @@ func (s *Store) initialize(ctx context.Context) error {
 			_, _ = conn.ExecContext(ctx, `ALTER TABLE work_approvals ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0`)
 			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(9, ?)`, now); err != nil {
 				return fmt.Errorf("record work review lineage migration: %w", err)
+			}
+		}
+		if version < 10 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS task_facts (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				board_id TEXT NOT NULL DEFAULT 'default',
+				fact TEXT NOT NULL,
+				source TEXT NOT NULL DEFAULT 'orchestrator',
+				created_at TEXT NOT NULL
+			) STRICT`); err != nil {
+				return fmt.Errorf("create task facts: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS task_facts_board_idx ON task_facts(board_id, created_at)`); err != nil {
+				return fmt.Errorf("index task facts: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS progress_evaluations (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				board_id TEXT NOT NULL DEFAULT 'default',
+				cycle INTEGER NOT NULL,
+				summary TEXT NOT NULL,
+				drift_detected INTEGER NOT NULL DEFAULT 0,
+				action TEXT NOT NULL DEFAULT 'continue',
+				created_at TEXT NOT NULL
+			) STRICT`); err != nil {
+				return fmt.Errorf("create progress evaluations: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS progress_evaluations_board_idx ON progress_evaluations(board_id, cycle)`); err != nil {
+				return fmt.Errorf("index progress evaluations: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(10, ?)`, now); err != nil {
+				return fmt.Errorf("record dual ledger migration: %w", err)
 			}
 		}
 		if _, err := conn.ExecContext(ctx, `PRAGMA optimize`); err != nil {

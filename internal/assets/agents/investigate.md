@@ -87,3 +87,13 @@ Ground findings with exact paths, commands, exit codes, and limitations. For arc
 
 ## 3. Grounding & Receipt
 For defects and regressions, read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md`; return the executed red-capable command, reproduction verdict, minimized case, and ranked falsifiable hypotheses. Without an oracle for the exact symptom, return `INCONCLUSIVE`, not a root-cause claim. For retrospectives, return distinct versus repeated causes and ranked process improvements without editing them. Otherwise return `phase_status` plus evidence references, root cause or ranked hypotheses, risks, and `next_route` (`stop`, `direct-change`, `fast-tdd`, `hotfix`, `sdd-lite`, or `sdd-full`). Never invent evidence.
+
+## 4. Exploration & Subsystem Mapping Boundary (4+ Files Heuristic)
+When dispatched by the orchestrator to map a subsystem or explore code spanning 4+ files:
+1. Conduct batched exploration using `glob`, `grep`, and targeted `read`.
+2. Extract AST relationships with `cortex_ingest_code` and record durable architectural facts into Cortex MCP using `cortex_save` (`type: "architecture"` or `"discovery"`).
+3. Return a dense, compressed synthesis (<200 tokens) to the orchestrator containing:
+   - Identified architectural entrypoints and component boundaries.
+   - Key dependencies, callers, and blast radius.
+   - Pointers to durable Cortex observations (`evidence_refs`).
+   NEVER dump raw file contents or multi-page code blocks back to the orchestrator.

@@ -7,11 +7,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// TestHomeMenuEntries proves Home offers exactly the five required actions.
+// TestHomeMenuEntries proves Home offers exactly the seven required actions.
 func TestHomeMenuEntries(t *testing.T) {
 	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
 	view := m.View()
-	for _, want := range []string{"Install / Sync", "Manage MCPs", "Doctor / Recovery", "Uninstall", "Quit"} {
+	for _, want := range []string{"Install / Sync", "Manage MCPs", "Agent Studio (Create Sub-agent)", "Doctor / Recovery", "Uninstall", "Quit"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("home view missing entry %q:\n%s", want, view)
 		}
@@ -24,14 +24,14 @@ func TestHomeMenuEntries(t *testing.T) {
 // TestScreenSet pins the conceptual screen set.
 func TestScreenSet(t *testing.T) {
 	got := map[screen]bool{}
-	for _, s := range []screen{screenHome, screenWizardHerdr, screenWizardDelegation, screenWizardRoles, screenReview, screenRunning, screenResult, screenMCP} {
+	for _, s := range []screen{screenHome, screenWizardHerdr, screenWizardDelegation, screenWizardRoles, screenReview, screenRunning, screenResult, screenMCP, screenWeb, screenAgentStudio} {
 		if got[s] {
 			t.Fatalf("duplicate screen constant %v", s)
 		}
 		got[s] = true
 	}
-	if len(got) != 8 {
-		t.Fatalf("expected exactly eight screens, got %d", len(got))
+	if len(got) != 10 {
+		t.Fatalf("expected exactly ten screens, got %d", len(got))
 	}
 }
 
@@ -129,8 +129,19 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 		t.Fatalf("expected b to return home from web, got %v", m.screen)
 	}
 
+	// Home → Agent Studio → Home.
+	m = press(m, "down") // cursor was 2; now cursor 3: Agent Studio
+	m = press(m, "enter")
+	if m.screen != screenAgentStudio {
+		t.Fatalf("expected screenAgentStudio, got %v", m.screen)
+	}
+	m = press(m, "esc")
+	if m.screen != screenHome {
+		t.Fatalf("expected esc to return home from agent studio, got %v", m.screen)
+	}
+
 	// Home → Doctor/Recovery (running) → Result → Home.
-	m = press(m, "down") // cursor was 2; now cursor 3: Doctor / Recovery
+	m = press(m, "down") // cursor was 3; now cursor 4: Doctor / Recovery
 	updated, cmd := m.Update(key("enter"))
 	m = updated.(model)
 	if m.screen != screenRunning || m.running.title != "Doctor" {
@@ -152,11 +163,12 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Uninstall opens a confirmation overlay, not the running screen.
-	// (Result returns Home with cursor 0; Uninstall is entry 4.)
+	// (Result returns Home with cursor 0; Uninstall is entry 5.)
 	m = press(m, "down")
 	m = press(m, "down")
 	m = press(m, "down")
-	m = press(m, "down") // cursor 4: Uninstall
+	m = press(m, "down")
+	m = press(m, "down") // cursor 5: Uninstall
 	m = press(m, "enter")
 	if m.confirm.kind != confirmUninstall || m.screen != screenHome {
 		t.Fatalf("expected uninstall confirmation on home, got screen=%v confirm=%v", m.screen, m.confirm.kind)
@@ -167,7 +179,7 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Quit entry quits.
-	m = press(m, "down") // cursor 5: Quit (cursor stayed on 4 after cancel)
+	m = press(m, "down") // cursor 6: Quit (cursor stayed on 5 after cancel)
 	updated, cmd = m.Update(key("enter"))
 	if cmd == nil || !updated.(model).quitting {
 		t.Fatal("expected Quit entry to quit")
@@ -220,22 +232,28 @@ func TestHomeNumericHotkeys(t *testing.T) {
 		t.Fatalf("key 3 should open Web Console, got %v", m3.screen)
 	}
 
-	// Key '4' starts Doctor (running).
-	updated, _ := m.Update(key("4"))
-	m4 := updated.(model)
-	if m4.screen != screenRunning || m4.running.title != "Doctor" {
-		t.Fatalf("key 4 should start Doctor, got %v %q", m4.screen, m4.running.title)
+	// Key '4' opens Agent Studio.
+	m4 := press(m, "4")
+	if m4.screen != screenAgentStudio {
+		t.Fatalf("key 4 should open Agent Studio, got %v", m4.screen)
 	}
 
-	// Key '5' opens Uninstall confirmation.
-	m5 := press(m, "5")
-	if m5.confirm.kind != confirmUninstall {
-		t.Fatalf("key 5 should trigger uninstall confirmation, got %v", m5.confirm.kind)
+	// Key '5' starts Doctor (running).
+	updated, _ := m.Update(key("5"))
+	m5 := updated.(model)
+	if m5.screen != screenRunning || m5.running.title != "Doctor" {
+		t.Fatalf("key 5 should start Doctor, got %v %q", m5.screen, m5.running.title)
 	}
 
-	// Key '6' quits.
-	updated6, cmd6 := m.Update(key("6"))
-	if cmd6 == nil || !updated6.(model).quitting {
-		t.Fatal("key 6 should quit")
+	// Key '6' opens Uninstall confirmation.
+	m6 := press(m, "6")
+	if m6.confirm.kind != confirmUninstall {
+		t.Fatalf("key 6 should trigger uninstall confirmation, got %v", m6.confirm.kind)
+	}
+
+	// Key '7' quits.
+	updated7, cmd7 := m.Update(key("7"))
+	if cmd7 == nil || !updated7.(model).quitting {
+		t.Fatal("key 7 should quit")
 	}
 }

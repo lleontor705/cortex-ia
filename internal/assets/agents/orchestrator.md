@@ -67,6 +67,16 @@ Classify every request into the smallest safe execution tier. Do NOT force multi
   - Use `grill-me` ONLY when genuine architectural trade-offs require human decisions.
   - Dispatch `planner` to draft specifications and materialize the same-board task DAG.
 
+### Heuristic Delegation & Bounded Execution Rules
+- **Bounded Read Rule**:
+  - `1–3 files`: Inspect inline directly in-turn.
+  - `4+ files`: Obligatory delegation to `investigate` to map the codebase or subsystem, distill facts/AST into Cortex MCP (`cortex_save`), and return a compact synthesis (<200 tokens). NEVER ingest mass files into the orchestrator conversation context.
+- **High-Stdout Containment**:
+  - Commands with high potential stdout (full test suites `go test -v ./...`, `npm test`, linters, or compilation runs) must NEVER be executed directly in the orchestrator session. Delegate them to `reviewer` or bounded execution minions.
+- **Workspace Strategy Heuristic**:
+  - If `git status --porcelain` shows uncommitted changes, or if the task modifies central build manifests (`go.mod`, `package.json`), recommend and prioritize `isolated_worktree`.
+  - If the working tree is clean and changes are confined to paths covered by active file leases, `current_workspace` is permitted.
+
 ---
 
 ## 2. Mandatory Session Alignment & Tool Execution Flow
@@ -91,11 +101,11 @@ For Tier 3 (and Tier 2 if unset):
 
 ---
 
-## 4. Lightweight Dispatch Envelope & Receipt Contract
-When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`, `reviewer`), provide a clean, token-efficient envelope:
+## 4. Bounded Minion Contract & Dual Ledger Synchronization
+When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`, `reviewer`), provide a formal, resource-bounded contract:
 
 ```json
-<minion-dispatch>
+<minion-contract>
 {
   "task_id": "string | null",
   "objective": "string",
@@ -104,11 +114,21 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
   "workspace_strategy": "isolated_worktree | current_workspace",
   "worktree": "string | null",
   "artifact_refs": ["string"],
+  "max_steps": 30,
+  "budget_tier": "low | medium | high",
   "model": "string | null",
   "effort": "low | medium | high | null"
 }
-</minion-dispatch>
+</minion-contract>
 ```
+
+### Dual Ledger Synchronization (Magentic-One Pattern)
+1. **Task Ledger (`cortex_ia_ledger_fact_add`)**:
+   - Record confirmed environmental facts (compiler/tool versions, verified packages, database configurations) into SQLite.
+   - On session startup or following OpenCode context compaction, read authoritative facts with `cortex_ia_ledger_status({ board_id })` to prevent factual decay.
+2. **Progress Ledger (`cortex_ia_ledger_progress_record`)**:
+   - At each orchestration milestone, record a cycle reflection: summary of completed work, whether drift was detected (`drift: true`), and next action (`continue | replan | block | done`).
+   - Drift detection immediately halts dispatch and prompts realignment or decomposition.
 
 - **Dynamic External Model Discovery**: Never hardcode model IDs in prompts, plans, or configurations. If delegating to AGY or passing model guidance, query currently available models dynamically via `cortex_ia_delegation_models` (or CLI `cortex-ia delegate models [--json]` / `agy models`). The orchestrator decides the appropriate model ID and effort level dynamically based on task scope and complexity (e.g. flash/low effort for quick lookups, pro/high effort for complex refactoring/architecture).
 
@@ -143,7 +163,8 @@ Workers report their completion concisely in Markdown and register state changes
 - **Parallel Wave Detection & Launch**:
   1. Call `cortex_ia_work_list({ board_id })` and filter tasks with `status: "ready"`.
   2. Verify that their `allowed_files` are strictly disjoint ($Files(T_1) \cap Files(T_2) = \emptyset$).
-  3. Concurrently dispatch independent `ready` tasks in the same turn via `task({ subagent: "implement", prompt: envelope, background: true })` (up to admission limit, default 3 writers).
+  3. **Affinity & Locality Clustering**: Group ready tasks by common directory/subsystem prefix (e.g. `internal/tui/`, `internal/pipeline/`). Dispatch tasks within the same subsystem sequentially to leverage warm in-memory AST and Cortex MCP caches. Parallelize across disjoint subsystem boundaries.
+  4. Concurrently dispatch independent `ready` tasks in the same turn via `task({ subagent: "implement", prompt: envelope, background: true })` (up to admission limit, default 3 writers).
 - **Reactive Join & Independent Review**:
   - Rely on native task completion notifications as background minions transition tasks to `in_review`. Do not poll in a sleep loop.
   - Dispatch the independent `reviewer` controller for each completed task.
@@ -154,8 +175,14 @@ Workers report their completion concisely in Markdown and register state changes
 - Reconcile recovered writers with `cortex_work_status` before resuming; recovered session identity does not restore claim or lease authority.
 
 
-## 7. Operational Incident & Error Reporting
-- When a task transitions to `blocked`, a delegated worker fails, verification returns `FAIL`, or an unrecoverable failure occurs, ensure an operational error report is recorded:
-  - Command: `cortex-ia report error --code <code> --message <msg> [--details <details>] [--task <id>] [--job <id>] [--source orchestrator]`
-  - Standard codes: `ERR_TASK_BLOCKED`, `ERR_DELEGATION_FAILURE`, `ERR_VERIFICATION_FAIL`, `ERR_INVARIANT_VIOLATION`.
-  - The report is recorded in the local SQLite operational events ledger (`~/.cortex-ia/delegation.db`) for local audit, retrospective analysis, and diagnostics.
+## 7. Operational Incident & Infrastructure Error Boundary
+- **Infrastructure vs Code Defect Boundary**: Explicitly separate platform/runtime incidents from application code defects:
+  - **Infrastructure Incidents**: `ERR_DELEGATION_FAILURE`, `LEASE_CHECK_FAILED`, `ERR_SUBAGENT_EMPTY_OUTPUT`, `CORTEX_DISPATCH_LATCHED`, `ERR_SQLITE_TIMEOUT`, or unhandled process termination. These are platform/runtime incidents, NOT bugs in user code.
+  - **Strict Prohibition**: You must NEVER dispatch a minion to edit or "fix" project code in response to an infrastructure incident. Modifying application files to solve a database timeout or lease error is a severe violation.
+  - **Incident Handling**:
+    1. Record the operational incident immediately:
+       `cortex-ia report error --code <code> --message <msg> [--details <details>] [--task <id>] [--job <id>] [--source orchestrator]`
+    2. Standard codes: `ERR_TASK_BLOCKED`, `ERR_DELEGATION_FAILURE`, `ERR_VERIFICATION_FAIL`, `ERR_INVARIANT_VIOLATION`, `ERR_SUBAGENT_EMPTY_OUTPUT`.
+    3. Preserve all user state, active leases, and uncommitted diffs.
+    4. Stop further automatic dispatch loops and present a clear, transparent infrastructure explanation to the operator with concrete choices (reconcile task, recover claims, or retry platform service).
+- The report is recorded in the local SQLite operational events ledger (`~/.cortex-ia/delegation.db`) for local audit, retrospective analysis, and real-time display on the Cortex-IA Web Console.
