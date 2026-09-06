@@ -76,8 +76,8 @@ flowchart TD
    - **`hybrid`**: *(Recommended)* OpenSpec for shared markdown specifications in the repo + Cortex for debugging memory and root-cause lineage.
    - Carry the selected `spec_plane` in every phase dispatch. A one-time exception is scoped to that change, never a replacement for the user's general preference.
 3. **External Implement Workspace Strategy**:
-   - **`isolated_worktree`**: *(Recommended)* Run an external implement leaf in an existing clean related Git worktree.
-   - **`current_workspace`**: Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_file_reserve` calls made before editing each file. An external AGY leaf remains exclusive during its execution window; its native controller must not edit concurrently, and Cortex-IA compares the final workspace against a pre-run baseline.
+   - **`isolated_worktree`**: *(Recommended)* Run an external implement leaf in an existing clean related Git worktree (managed via `using-git-worktrees` and `cortex-ia worktree create`).
+   - **`current_workspace`**: Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_ia_file_reserve` calls made before editing each file. An external AGY leaf remains exclusive during its execution window; its native controller must not edit concurrently, and Cortex-IA compares the final workspace against a pre-run baseline.
    - Ask when unset and carry the answer in every implement dispatch envelope. Never infer the strategy from an available worktree, Herdr, or delegation configuration.
 4. **Design Grilling (`grill-me`)**:
    - When encountering unstated architectural choices or trade-offs, execute structured interview rounds:
@@ -93,17 +93,17 @@ flowchart TD
 | Role | Mode | Primary Responsibility | Permitted Delegations | Tool Surface Highlights |
 |---|---|---|---|---|
 | **`orchestrator`** | `primary` | Request triage, routing, Cortex session lifecycle, DAG dispatch, final synthesis | Native `discovery`, `investigate`, `planner`, `implement`, `reviewer` controllers | Work reads/recovery and bootstrap only under `cortex-work-protocol.md`; no decomposition, claims, approval, discovery writes, shell, or edits |
-| **`discovery`** | `subagent/controller` | Project onboarding profile: skills, stack, engines, Cortex governance, architecture | None; always native | repository/machine reads, bounded version probes, Cortex queries, `cortex_discovery_write`; no builds, installs, ingestion, product edits, or nested `task` |
-| **`investigate`** | `subagent/controller` | Repository diagnostics, red-capable reproduction, root-cause analysis, read-only workflow retrospective | One optional read-only AGY leaf | `read`, `grep`, `glob`, `list`, read-only `bash`, `cortex_*`, delegation read/wait tools; no edits or nested `task` |
-| **`planner`** | `subagent/controller` | Decision maps, selected-plane contracts, vertical-slice DAGs, and blocked-task replacement plans | One optional plan-only AGY leaf | repository reads, selected-plane contract writes, `cortex_board_create`, `cortex_work_create`, `cortex_work_decompose`, `cortex_*`; no claims or nested `task` |
-| **`implement`** | `subagent/controller` | Claims one task, leases paths, executes, verifies, transitions to review | One AGY leaf after durable authority and explicit workspace-strategy validation | edits plus hidden-token `cortex_work_claim|lease|renew|release|transition`, `cortex_*`; no nested `task` |
-| **`reviewer`** | `subagent/controller` | Independent verification and approval | One optional read-only AGY audit leaf | repository reads, tests, `cortex_work_status`, `cortex_work_approve`, `cortex_*`; no edits, claims, leases, or nested `task` |
+| **`discovery`** | `subagent/controller` | Project onboarding profile: skills, stack, engines, Cortex governance, architecture | None; always native | repository/machine reads, bounded version probes, Cortex queries, `cortex_ia_discovery_write`; no builds, installs, ingestion, product edits, or nested `task` |
+| **`investigate`** | `subagent/controller` | Repository diagnostics, red-capable reproduction, root-cause analysis, read-only workflow retrospective | One optional read-only AGY leaf | `read`, `grep`, `glob`, `list`, read-only `bash`, `cortex_*`, `cortex_ia_*`, delegation read/wait tools; no edits or nested `task` |
+| **`planner`** | `subagent/controller` | Decision maps, selected-plane contracts, vertical-slice DAGs, and blocked-task replacement plans | One optional plan-only AGY leaf | repository reads, selected-plane contract writes, `cortex_ia_board_create`, `cortex_ia_work_create`, `cortex_ia_work_decompose`, `cortex_*`, `cortex_ia_*`; no claims or nested `task` |
+| **`implement`** | `subagent/controller` | Claims one task, leases paths, executes, verifies, transitions to review | One AGY leaf after durable authority and explicit workspace-strategy validation | edits plus hidden-token `cortex_ia_work_claim|lease|renew|release|transition`, `cortex_ia_file_reserve|file_release`, `cortex_*`, `cortex_ia_*`; no nested `task` |
+| **`reviewer`** | `subagent/controller` | Independent verification and approval | One optional read-only AGY audit leaf | repository reads, tests, `cortex_ia_work_status`, `cortex_ia_work_approve`, `cortex_*`, `cortex_ia_*`; no edits, claims, leases, or nested `task` |
 
 The orchestrator always routes through a native controller and never launches an external executor directly. Discovery is always native and cannot delegate. Cortex-IA is the only process bridge and local task authority. External leaves receive no work-control CLI, Cortex MCP, session lifecycle, authority tokens, or nested-delegation capability; their SQLite job state is operational evidence only.
 
 ### Effective Execution Mode Contract
 
-The value returned by `cortex_delegate_start` is authoritative. Agents MUST NOT derive the effective mode from installer selections, `use_herdr`, CLI availability, or pane visibility.
+The value returned by `cortex_ia_delegate_start` is authoritative. Agents MUST NOT derive the effective mode from installer selections, `use_herdr`, CLI availability, or pane visibility.
 
 | Mode | Agent behavior |
 |---|---|
@@ -129,8 +129,9 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 | `direct-change` | Clear, reversible, single-domain change with fast verification | `orchestrator -> implement -> (reviewer) -> orchestrator` | `implement` |
 | `fast-tdd` | Localized functional unit with deterministic oracle | `orchestrator -> implement -> reviewer -> orchestrator` | `fast-tdd`, `ast-impact-analysis` |
 | `hotfix` | Urgent production or service containment | `orchestrator -> implement -> reviewer -> orchestrator` | `hotfix-triage`, `implement` |
-| `sdd-lite` | Moderate risk, single domain, multi-file feature | `orchestrator -> planner -> implement minions -> reviewer -> orchestrator` | `planner`, `implement`, `reviewer` |
-| `sdd-full` | High risk, cross-domain, public API, security, migration | `orchestrator -> investigate -> planner -> implement minions -> dual reviewer -> orchestrator` | Full SDD skill suite |
+| `sdd-lite` | Moderate risk, single domain, multi-file feature | `orchestrator -> planner -> implement minions (parallel waves) -> reviewer -> orchestrator` | `planner`, `parallel-dispatch`, `implement`, `reviewer` |
+| `sdd-full` | High risk, cross-domain, public API, security, migration | `orchestrator -> investigate -> planner -> implement minions (parallel waves) -> dual reviewer -> orchestrator` | Full SDD skill suite, `parallel-dispatch` |
+
 | `review` | Dedicated independent audit of an existing diff or branch | `orchestrator -> reviewer -> orchestrator` | `code-review-adversary`, `mutation-testing` |
 | `retrospective` | Repeated evidenced failure, exhausted durable attempts, or explicit workflow analysis | `orchestrator -> investigate (retrospective) -> orchestrator` | `workflow-retrospective`, `investigate` |
 
@@ -223,7 +224,7 @@ An implementation minion is an ephemeral instance of `implement`. It owns strict
 stateDiagram-v2
     [*] --> PreClaim: Dispatch Envelope Received
     PreClaim --> Claimed: work status + work claim
-    Claimed --> Reserved: cortex_file_reserve (exclusive single file)
+    Claimed --> Reserved: cortex_ia_file_reserve (exclusive single file)
     
     state Execution_Loop {
         [*] --> Red_Green_Refactor
@@ -256,64 +257,37 @@ stateDiagram-v2
 
 ### Orchestrator -> Minion Dispatch Envelope
 ```json
+<minion-dispatch>
 {
-  "objective": "Implement user authentication middleware",
-  "workflow": "fast-tdd",
-  "phase": "integrated | propose | spec | design | tasks | apply | verify",
-  "spec_plane": "openspec | cortex | hybrid",
   "task_id": "task-auth-001",
-  "artifact_refs": ["specs/auth/REQ-AUTH-001.md"],
-  "evidence_refs": ["cortex/gotchas/jwt-expiry"],
-  "project_rules": [
-    "No CGO dependencies allowed",
-    "Preserve Zero-Bloat configuration"
-  ],
-  "blast_radius_baseline": {
-    "target_symbol": "AuthMiddleware",
-    "initial_downstream_callers": 3
-  },
-  "non_goals": ["OAuth2 multi-tenant providers"],
+  "objective": "Implement user authentication middleware",
   "allowed_files": [
     "internal/auth/middleware.go",
     "internal/auth/middleware_test.go"
   ],
-  "allowed_effects": ["create", "edit"],
-  "required_skill": "fast-tdd",
-  "skills_to_load": ["fast-tdd", "ast-impact-analysis"],
   "acceptance_checks": [
     "go test -run TestAuthMiddleware ./internal/auth/...",
     "golangci-lint run ./internal/auth/..."
   ],
-  "budget": { "max_turns": 30, "max_retries": 1, "max_lines": 350 },
-  "stop_conditions": ["Unresolvable dependency cycle", "Missing crypto library"],
-  "escalate_when": ["External auth provider unreachable"]
+  "workspace_strategy": "isolated_worktree",
+  "worktree": "/path/to/.worktrees/auth-feat",
+  "artifact_refs": ["specs/auth/REQ-AUTH-001.md"]
 }
+</minion-dispatch>
 ```
 
-### Minion -> Orchestrator Execution Receipt
-```json
-{
-  "receipt_version": "2.0",
-  "task_id": "task-auth-001",
-  "phase_status": "success",
-  "task_status": "done",
-  "verification_verdict": "PASS",
-  "changed_files": [
-    "internal/auth/middleware.go",
-    "internal/auth/middleware_test.go"
-  ],
-  "evidence_refs": ["auth/middleware-unit-pass"],
-  "verification_commands": [
-    {
-      "command": "go test -v ./internal/auth/...",
-      "exit_code": 0,
-      "oracle_type": "unit"
-    }
-  ],
-  "cleanup_completed": true,
-  "deviations": [],
-  "risks": []
-}
+### Minion Completion Summary & Transition
+Workers execute the transition tool (`cortex_ia_work_transition({ to: "in_review" })`) and return a concise summary:
+```markdown
+### Implementation Summary
+- **Task**: task-auth-001
+- **Status**: in_review
+- **Verification Verdict**: PASS
+- **Changed Files**:
+  - internal/auth/middleware.go
+  - internal/auth/middleware_test.go
+- **Checks**:
+  - `go test -v ./internal/auth/...` (exit 0)
 ```
 
 ---
@@ -417,7 +391,7 @@ Never save ephemeral SQLite claim tokens, file lease states, diff hashes, or rou
    - At startup, check if an active session already exists for the project via `cortex_context`. If active, bind to the existing `session_id`. DO NOT call `cortex_session_start` with new IDs mid-flow or across conversational turns in the same initiative.
    - **SUBAGENTS MUST NEVER CALL `cortex_session_start`, `cortex_session_summary`, OR `cortex_session_end`**.
 2. **One Authoritative Board per Initiative**:
-   - The board ID created by `planner`/`orchestrator` represents the initiative. Never spawn derivative successor boards (`-v2`, `-v3`, `-run2`). Blocked tasks must be decomposed in place with `cortex_work_decompose`.
+   - The board ID created by `planner`/`orchestrator` represents the initiative. Never spawn derivative successor boards (`-v2`, `-v3`, `-run2`). Blocked tasks must be decomposed in place with `cortex_ia_work_decompose`.
 3. **Close (Orchestrator Only, MANDATORY before final turn)**: Call `cortex_session_summary` with:
    - `## Goal`: Intent of the session
    - `## Discoveries`: Gotchas and technical findings

@@ -12,7 +12,7 @@ This is the single normative runtime contract for OpenCode controllers, native s
 | Cortex MCP | Pinned contracts when `spec_plane=cortex` per `cortex-convention.md`; durable evidence, memories, AST knowledge, provenance, and relationships | Claims, leases, task transitions, or approval |
 | Cortex-IA | Boards, DAG tasks, claims, leases, revisions, approvals, delegation jobs, and operational events in `~/.cortex-ia/delegation.db` | Product requirements or epistemic truth |
 
-The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observations are views or evidence. None can substitute for current `cortex_work_status` state.
+The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observations are views or evidence. None can substitute for current `cortex_ia_work_status` state.
 
 ## 2. Role boundaries
 
@@ -22,30 +22,34 @@ The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observ
 | `planner` | Create the initiative board and its same-board dependency DAG; design and atomically apply an orchestrator-routed decomposition of a blocked task. Never claim implementation work. | At most one optional plan-only external leaf through its native controller. |
 | `investigate` | Read-only board/task status and durable evidence. Never mutate work state. | At most one optional read-only external leaf. |
 | `implement` | Own exactly one live task claim, lease every writable path, renew authority, verify, and transition to `in_review`. | At most one external AGY leaf for the bounded objective. |
-| `reviewer` | Independently inspect and rerun checks; its only work mutation is `cortex_work_approve`. Never edit, claim, lease, or self-approve. | At most one optional review-only external leaf. |
+| `reviewer` | Independently inspect and rerun checks; its only work mutation is `cortex_ia_work_approve`. Never edit, claim, lease, or self-approve. | At most one optional review-only external leaf. |
 | external AGY leaf | Execute only the validated envelope in the explicitly selected isolated worktree or current workspace and return a bounded receipt. | No Cortex session, task-control, approval, MCP, or nested-delegation authority. |
 
 Only the orchestrator owns `cortex_session_start`, session summaries, and `cortex_session_end`. It MUST maintain exactly ONE stable session ID and ONE stable board ID throughout the entire initiative lifecycle (binding to existing active sessions from `cortex_context` upon startup). Dispatched controllers are ephemeral within that session and must never invoke session lifecycle tools.
 
-### Bounded authorized bootstrap
+### Tier 1: Fast Path (Zero-Ceremony Direct Execution)
 
-Only with explicit user authorization may the orchestrator create one bounded `direct-change` task using `cortex_work_create`. First check existing work to avoid duplicates, record the authorization, objective, complete allowed files/effects, acceptance checks and independent review requirement, and reuse the initiative session/board (create its board only if absent). Without that authorization or a fully bounded definition, stop creation and route planning to `planner`. This exception does not authorize an SDD DAG, decomposition, claims, leases, edits, or approval by the orchestrator. The implementer still claims/reserves and the independent reviewer approves through the normal lifecycle. SDD DAG creation and every decomposition remain planner-only; `decision-map` creates no board/tasks in any spec plane.
+Direct user-requested file creations, single-file scripts, documentation, summaries, handoffs, notes (`*.md`, `docs/*`), diagnostic lookups, or localized edits do not require SQLite board creation, task decomposition, claim tokens, or file leases. The orchestrator may resolve them directly in-turn or dispatch `implement` without spawning boards, DAGs, or multi-role ceremony.
+
+### Tier 2: Bounded Authorized Bootstrap (Single Bounded Code Tasks)
+
+For localized code changes (`direct-change`, `fast-tdd`, `hotfix`), the orchestrator may directly create one bounded task using `cortex_ia_work_create` and dispatch `implement` -> `reviewer`. SDD DAG creation, multi-task decomposition, and full architectural specifications remain planner-only in Tier 3; `decision-map` creates no board/tasks in any spec plane.
 
 ## 3. Typed tools and token custody
 
-Native controllers use the typed `cortex_board_*`, `cortex_work_*`, `cortex_delegate_start`, and `cortex_delegation_*` tools exposed by the active OpenCode bridge. The current tool schema is authoritative: never invent a missing tool or argument.
+Native controllers use the typed `cortex_ia_board_*`, `cortex_ia_work_*`, `cortex_ia_delegate_start`, and `cortex_ia_delegation_*` tools exposed by the active OpenCode bridge. The current tool schema is authoritative: never invent a missing tool or argument.
 
 | Tool group | Permitted use |
 |---|---|
-| `cortex_board_create|list|status` | Planner DAG board; orchestrator creation only under bounded bootstrap; reads according to role policy |
-| `cortex_work_create` | Planner DAG mutation; orchestrator only under bounded authorized bootstrap |
-| `cortex_work_decompose` | Planner only; requires an orchestrator-routed blocked task and revision |
-| `cortex_work_list|status` | Token-free reads according to role policy |
-| `cortex_work_recover|retry` | Orchestrator reconciliation only |
-| `cortex_work_claim|renew|lease|lease_renew|release|release_all|transition` | Implementer only; single-file compatibility surface |
-| `cortex_file_reserve|cortex_file_release` | Implementer only; preferred single-file reservation and release |
-| `cortex_work_approve` | Independent reviewer only |
-| `cortex_delegate_start` and `cortex_delegation_status|wait|result|cancel|recover` | The native controller supervising its one external leaf |
+| `cortex_ia_board_create|list|status` | Planner DAG board (Tier 3); orchestrator creation only under bounded bootstrap; reads according to role policy |
+| `cortex_ia_work_create` | Planner DAG mutation; orchestrator only under bounded authorized bootstrap (Tier 2) |
+| `cortex_ia_work_decompose` | Planner only; requires an orchestrator-routed blocked task and revision |
+| `cortex_ia_work_list|status` | Token-free reads according to role policy |
+| `cortex_ia_work_recover|retry` | Orchestrator reconciliation only |
+| `cortex_ia_work_claim|renew|lease|lease_renew|release|release_all|transition` | Implementer only; claims task, optionally reserves initial `paths: [...]`, and transitions state |
+| `cortex_ia_file_reserve|cortex_ia_file_release` | Implementer only; single-file or batch reservation (`path` or `paths: [...]`) |
+| `cortex_ia_work_approve` | Independent reviewer only |
+| `cortex_ia_delegate_start` and `cortex_ia_delegation_status|wait|result|cancel|recover` | The native controller supervising its one external leaf |
 
 The bridge retains claim and lease tokens in process memory and sends them to the CLI over stdin. Tokens must never appear in prompts, argv, receipts, logs, files, Cortex observations, or chat. Human operators may use the literal-token CLI form only in a protected terminal when explicitly necessary.
 
@@ -59,23 +63,23 @@ in_review --FAIL--> blocked --explicit retry--> ready
 in_progress --expired authority/recovery--> blocked
 ```
 
-1. Read readiness from `cortex_work_status`; dependency membership must remain inside one board.
+1. Read readiness from `cortex_ia_work_status`; dependency membership must remain inside one board.
 2. Claim exactly one `ready` task and retain its current revision.
-3. Reserve each workspace-relative writable file with its own `cortex_file_reserve` call before the first write to that file. When several files are known, process their canonical paths in sorted order. If any file conflicts, do not write it, release every reservation already acquired by that controller, transition the task to `blocked`, and reconcile. Parallel native writers in one workspace require distinct claims and disjoint live per-file reservations.
+3. Reserve each workspace-relative writable file with atomic `cortex_ia_work_claim({ task_id, paths })` or `cortex_ia_file_reserve({ task_id, paths })` before the first write to that file. If any file conflicts, do not write it, transition the task to `blocked`, and reconcile. Parallel native writers in one workspace require distinct claims and disjoint live per-file reservations.
 4. Renew the claim and every lease before TTL expiry. Stop writing immediately when authority is expired, stale, or uncertain; preserve the diff and return `BLOCKED` for reconciliation.
 5. Run focused checks, then proportional regression. Store bounded evidence, never full stdout.
-6. Transition to `in_review` using current authority and revision; call `cortex_file_release` once per retained file when writing is finished, or use `cortex_work_release_all` only as terminal cleanup. Keep the claim through review so independent-approval checks retain the implementation owner; approval releases it. On implementation failure, release files first and transition to `blocked`, which releases the claim.
+6. Transition to `in_review` using current authority and revision (`cortex_ia_work_transition({ to: "in_review" })`); the bridge automatically releases retained file leases upon transition. Keep the claim through review so independent-approval checks retain the implementation owner; approval releases it. On implementation failure, transition to `blocked` (which releases leases and claim).
 7. Only an independent reviewer PASS produces `done` and atomically unlocks eligible dependents. A receipt, test result, UI card, or chat assertion alone never completes a task.
 
-Recovery only reconciles expired authority. It does not recreate claims or leases. Retry is explicit and uses a fresh attempt; never reuse tokens from an expired or terminal attempt. A task has a hard limit of five durable claim attempts. When timeout, scope, or repeated failure shows that the unit is too large, the orchestrator decides the decomposition route and dispatches a planner with the current revision and failure evidence. The planner designs 2-8 fully specified tasks and invokes `cortex_work_decompose` once instead of creating children piecemeal or retrying the parent. Cortex applies that plan atomically: it preserves the board/project and upstream dependencies, chains the children, redirects downstream dependencies to the final child, and exposes the blocked parent as `superseded`. The orchestrator, implementers, and reviewers never invoke decomposition directly.
+Recovery only reconciles expired authority. It does not recreate claims or leases. Retry is explicit and uses a fresh attempt; never reuse tokens from an expired or terminal attempt. A task has a hard limit of five durable claim attempts. When timeout, scope, or repeated failure shows that the unit is too large, the orchestrator decides the decomposition route and dispatches a planner with the current revision and failure evidence. The planner designs 2-8 fully specified tasks and invokes `cortex_ia_work_decompose` once instead of creating children piecemeal or retrying the parent. Cortex applies that plan atomically: it preserves the board/project and upstream dependencies, chains the children, redirects downstream dependencies to the final child, and exposes the blocked parent as `superseded`. The orchestrator, implementers, and reviewers never invoke decomposition directly.
 
-Before external implementation, the user must explicitly select `isolated_worktree` (recommended) or `current_workspace`. A current-workspace external AGY leaf is exclusive for its execution window, never concurrent with native edits, and must preserve every pre-existing unleased change relative to the pre-run baseline. Native OpenCode implement controllers may otherwise share the current workspace in parallel under disjoint live per-file reservations. The choice is session alignment, not a property inferred from Herdr, Git, or installer configuration.
+Before external implementation, the user must explicitly select `isolated_worktree` (recommended) or `current_workspace`. When `isolated_worktree` is selected, controllers must follow the `using-git-worktrees` skill to detect isolation, initialize with `cortex-ia worktree create`, and verify the clean baseline. A current-workspace external AGY leaf is exclusive for its execution window, never concurrent with native edits, and must preserve every pre-existing unleased change relative to the pre-run baseline. Native OpenCode implement controllers may otherwise share the current workspace in parallel under disjoint live per-file reservations. The choice is session alignment, not a property inferred from Herdr, Git, or installer configuration.
 
 ## 5. Delegation modes
 
-Every native role controller (`planner`, `investigate`, `implement`, and `reviewer`) MUST call `cortex_delegate_start` once for its bounded objective before native execution. The bridge reads `cortex-delegation.json`; role prompts never infer or override that configuration. This is the delegation gate, not a second protocol: the returned mode selects exactly one execution path. The orchestrator dispatches the native controller and never calls the gate on its behalf.
+Every native role controller (`planner`, `investigate`, `implement`, and `reviewer`) MUST call `cortex_ia_delegate_start` once for its bounded objective before native execution. The bridge reads `cortex-delegation.json`; role prompts never infer or override that configuration. This is the delegation gate, not a second protocol: the returned mode selects exactly one execution path. The orchestrator dispatches the native controller and never calls the gate on its behalf.
 
-The `execution_mode` returned by `cortex_delegate_start` is authoritative:
+The `execution_mode` returned by `cortex_ia_delegate_start` is authoritative:
 
 | Mode | Meaning | Controller behavior |
 |---|---|---|
@@ -85,13 +89,16 @@ The `execution_mode` returned by `cortex_delegate_start` is authoritative:
 
 `use_herdr` is a preference, not an execution fact. A safe pre-acceptance fallback may return `direct_cli`. After `delegated=true` plus `job_id`, never execute the same objective natively in parallel or silently fall back after failure, timeout, cancellation, pane loss, or `lost`. Reconcile the durable job first and retry only under fresh authority.
 
-## 6. Native background dispatch
+## 6. Native background dispatch & parallel waves
 
 Native asynchronous delegation requires `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`. Only the orchestrator launches a native role controller through OpenCode's `task` tool. Completion notifications are the normal join signal; avoid sleep loops and aggressive polling.
 
 Every dispatch contains exactly one `<minion-dispatch>{...}</minion-dispatch>` JSON envelope with explicit `task_id` (`null` is valid), matching `role`, bounded objective, artifacts/evidence, non-goals, allowed files/effects, checks, budget, stop conditions, and escalation rules. An implement envelope requires non-empty `allowed_files`. Never include tokens or credentials.
 
-Reader and writer admission is advisory capacity control, not authority. Default limits are four readers and one writer; increase writers only when task claims, leases, effects, and isolation prove independence. Optional native background tools may be used only when present in the effective tool inventory.
+When multiple board tasks reach `ready` with mutually disjoint `allowed_files`, the orchestrator dispatches them concurrently via `task(..., background=true)` following the `parallel-dispatch` skill. Each implement controller claims its single task and acquires its disjoint per-file leases without collision.
+
+Reader and writer admission is advisory capacity control, not authority. Default limits are four readers and up to three concurrent writers when task claims, leases, effects, and isolation prove independence. Optional native background tools may be used only when present in the effective tool inventory.
+
 
 ## 7. Herdr and reconciliation
 

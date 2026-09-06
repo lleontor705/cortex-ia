@@ -38,7 +38,7 @@ OpenSpec evidence uses `sdd/{change}/{artifact}` for `explore`, `proposal`, `spe
 
 ## Spec-plane contracts and pinned Cortex references
 
-When `spec_plane=cortex`, Cortex observations serve as the authoritative specification plane; OpenSpec files (`openspec/`) and tools (`cortex_openspec_write`, `cortex_openspec_validate`) are neither written nor required in any phase (decision-map, Lite, or any Full phase).
+When `spec_plane=cortex`, Cortex observations serve as the authoritative specification plane; OpenSpec files (`openspec/`) and tools (`cortex_ia_openspec_write`, `cortex_ia_openspec_validate`) are neither written nor required in any phase (decision-map, Lite, or any Full phase).
 
 ### Contract structure & traceability
 A Cortex specification observation MUST carry identified requirements, three Given/When/Then cases each (Happy Path, Edge Case, Error/Fail-Closed State), design/interfaces, acceptance criteria and deterministic oracles (expected exit code 0), risks/non-goals, and task traceability in a full snapshot observation.
@@ -55,7 +55,7 @@ The real Cortex MCP API provides `cortex_save(title,content,project,session_id,t
 
 Only the orchestrator starts, summarizes, and ends Cortex sessions. Maintain **EXACTLY ONE stable session ID and ONE stable board ID** throughout the whole initiative. At startup, reuse the active session from `cortex_context` if one exists; do not create multiple session IDs (e.g. creating successor sessions mid-flow). Subagents are ephemeral and must never call session start or end.
 
-After restart or compaction, restore bounded context, reconcile current `cortex_work_status`, retrieve the complete referenced observations, and resume only incomplete work. Never replay terminal tasks or fabricate missing evidence.
+After restart or compaction, restore bounded context, reconcile current `cortex_ia_work_status`, retrieve the complete referenced observations, and resume only incomplete work. Never replay terminal tasks or fabricate missing evidence.
 
 Optional revision, graph, path, scoring, hybrid-search, consolidation, and project-DNA tools are accelerators, not mandatory surface. Call them only when exposed and relevant; edges, scores, and summaries remain evidence rather than authority.
 

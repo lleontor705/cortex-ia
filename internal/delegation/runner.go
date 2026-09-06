@@ -223,7 +223,7 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	defer close(watchDone)
 	go watchCancellation(runCtx, store, id, cancel, watchDone)
 	if request.TaskID != "" {
-		go keepAliveAuthority(runCtx, store, request.TaskID, watchDone)
+		go keepAliveAuthority(runCtx, store, request.TaskID, cancel, watchDone)
 	}
 	output, exitCode, runErr := runAGY(runCtx, request, role, timeout)
 	if current, getErr := store.Get(context.Background(), id); getErr == nil && current.Status == StatusCancelled {
@@ -251,7 +251,7 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	return runErr
 }
 
-func keepAliveAuthority(ctx context.Context, store *Store, taskID string, done <-chan struct{}) {
+func keepAliveAuthority(ctx context.Context, store *Store, taskID string, cancel context.CancelFunc, done <-chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -261,7 +261,10 @@ func keepAliveAuthority(ctx context.Context, store *Store, taskID string, done <
 		case <-done:
 			return
 		case <-ticker.C:
-			_ = store.ExtendTaskAuthority(context.Background(), taskID, 5*time.Minute)
+			if err := store.ExtendTaskAuthority(context.Background(), taskID, 5*time.Minute); err != nil {
+				cancel()
+				return
+			}
 		}
 	}
 }
@@ -293,8 +296,10 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	args := []string{
 		"--output-format", "stream-json",
 		"--print-timeout", timeout.String(),
-		"--dangerously-skip-permissions",
 		"--disable-slash-commands",
+	}
+	if role.SkipPermissions || os.Getenv("CORTEX_AGY_SKIP_PERMISSIONS") == "true" {
+		args = append(args, "--dangerously-skip-permissions")
 	}
 	if role.Mode != "" {
 		args = append(args, "--mode", role.Mode)
@@ -491,7 +496,9 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 				if msg.StepUpdate.Text != "" {
 					fmt.Printf("\r                                                                               \r")
 					fmt.Print(msg.StepUpdate.Text)
-					fullResponseText.WriteString(msg.StepUpdate.Text)
+					if fullResponseText.Len() < 2*1024*1024 {
+						fullResponseText.WriteString(msg.StepUpdate.Text)
+					}
 					_ = os.Stdout.Sync()
 				}
 			case "checkpoint":
@@ -504,11 +511,19 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 		}
 	}
 
+	scanErr := scanner.Err()
 	close(doneHeartbeat)
 	fmt.Printf("\r                                                                               \r")
 	_ = os.Stdout.Sync()
 
 	err = cmd.Wait()
+	if scanErr != nil {
+		if err == nil {
+			err = fmt.Errorf("read AGY stream: %w", scanErr)
+		} else {
+			err = errors.Join(err, fmt.Errorf("read AGY stream: %w", scanErr))
+		}
+	}
 	elapsed := time.Since(startTime).Round(time.Millisecond)
 	if request.Role == "implement" && (err == nil || request.WorkspaceMode == WorkspaceCurrent) {
 		var allowErr error

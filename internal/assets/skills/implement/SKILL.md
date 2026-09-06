@@ -24,9 +24,11 @@ TDD is not mandatory for documentation, declarative configuration, generated out
 
 Canonical protocol: `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md` — CAS revisions, claims, file leases, heartbeats, approvals, and cleanup are normative there; this file keeps only the operative summary.
 
-If a `task_id` is present, run the canonical implementer lifecycle end to end: claim the ready task, reserve each in-scope file individually with `cortex_file_reserve` before editing it, keep authority tokens only in live context, and stop writing immediately on conflict, expiry, or stale authority — release retained files, preserve the working diff, and return `BLOCKED` for orchestrator reconciliation; never reuse old attempt or lease authority.
+If a `task_id` is present, run the canonical implementer lifecycle: claim the ready task and reserve writable files atomically with `cortex_ia_work_claim({ task_id, paths: allowed_files })` (or `cortex_ia_file_reserve({ paths: [...] })`), keep authority tokens hidden in the bridge, and stop writing immediately on conflict or expiry. Transition to `in_review` via `cortex_ia_work_transition` (which auto-releases file leases).
 
 For an ephemeral direct change without a board task, do not invent claims. Still check file conflicts when coordination is active and keep modifications within `allowed_files`.
+
+When operating under `workspace_strategy=isolated_worktree` or preparing to delegate to an external AGY leaf, follow the `using-git-worktrees` skill to verify isolation, initialize the worktree via `cortex-ia worktree create`, and run baseline verification tests.
 
 ## Execution
 
@@ -46,28 +48,21 @@ For an ephemeral direct change without a board task, do not invent claims. Still
    - Review the diff for scope creep, secrets, unsafe paths, and accidental generated drift.
    - Persist any bug root cause, discovery, gotcha, or decision made in Cortex (`cortex_save` with standard taxonomies: `bugfix/*`, `gotchas/*`, `architecture/*`). Never dump full stdout.
 6. **Complete Lifecycle & Cleanup:**
-   - Complete the CLI lifecycle (`work transition ... in_review` -> independent `work approve`) and return a sanitized receipt. Only reviewer PASS produces `done`.
+   - Complete the CLI lifecycle: verify -> `cortex_ia_work_transition({ to: "in_review" })` (auto-releases leases) -> independent reviewer PASS. Only reviewer PASS produces `done`.
 
 ## Output
 
-Return a concise report and machine-readable JSON:
+Return a concise Markdown report and execute the transition tool:
 
-```json
-{
-  "workflow": "direct-change | sdd-apply | fast-tdd | hotfix",
-  "phase_status": "success | partial | failed | blocked",
-  "task_status": "done | in_progress | blocked | null",
-  "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
-  "task_id": null,
-  "files_changed": [{"path": "", "purpose": ""}],
-  "checks": [{"command": "", "exit_code": 0, "result": ""}],
-  "artifact_refs": [],
-  "evidence_refs": [],
-  "deviations": [],
-  "cleanup": {"leases_released": true, "notes": []},
-  "risks": [],
-  "next_route": "review | continue | stop"
-}
+```markdown
+### Implementation Summary
+- **Workflow**: `direct-change | sdd-apply | fast-tdd | hotfix`
+- **Task ID**: `<task_id>`
+- **Phase Status**: `success | partial | failed | blocked`
+- **Task Status**: `in_review | blocked`
+- **Verification Verdict**: `PASS | FAIL | BLOCKED | INCONCLUSIVE`
+- **Changed Files**: list of modified paths
+- **Verification Commands**: commands, exit codes, and brief results
 ```
 
 Omit all claim and lease tokens. A PASS requires executable evidence; an unavailable required check yields `INCONCLUSIVE` or `BLOCKED`, never PASS.

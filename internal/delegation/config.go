@@ -20,9 +20,10 @@ var supportedRoles = map[string]bool{
 // RoleConfig is deliberately declarative. Cortex owns the executable and
 // argument vector so configuration cannot become an arbitrary shell surface.
 type RoleConfig struct {
-	Delegate bool   `json:"delegate"`
-	CLI      string `json:"cli"` // native | agy
-	Mode     string `json:"mode,omitempty"`
+	Delegate        bool   `json:"delegate"`
+	CLI             string `json:"cli"` // native | agy
+	Mode            string `json:"mode,omitempty"`
+	SkipPermissions bool   `json:"skip_permissions,omitempty"`
 }
 
 type HerdrSettings struct {

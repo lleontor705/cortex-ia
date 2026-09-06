@@ -49,6 +49,7 @@ type WorkItem struct {
 	Revision     int64       `json:"revision"`
 	Dependencies []string    `json:"dependencies,omitempty"`
 	Claim        *WorkClaim  `json:"claim,omitempty"`
+	Review       *WorkReview `json:"review,omitempty"`
 	Leases       []WorkLease `json:"leases,omitempty"`
 	CreatedAt    string      `json:"created_at"`
 	UpdatedAt    string      `json:"updated_at"`
@@ -69,6 +70,15 @@ type WorkClaim struct {
 	Token     string `json:"claim_token,omitempty"`
 }
 
+type WorkReview struct {
+	ItemID              string `json:"task_id"`
+	ReviewID            string `json:"review_id"`
+	Attempt             int64  `json:"attempt"`
+	ImplementationOwner string `json:"implementation_owner"`
+	ReviewRevision      int64  `json:"review_revision"`
+	CreatedAt           string `json:"created_at"`
+}
+
 type WorkLease struct {
 	Path      string `json:"path"`
 	ItemID    string `json:"task_id"`
@@ -77,12 +87,15 @@ type WorkLease struct {
 }
 
 type WorkApproval struct {
-	ItemID    string `json:"task_id"`
-	Revision  int64  `json:"revision"`
-	Reviewer  string `json:"reviewer"`
-	Verdict   string `json:"verdict"`
-	Evidence  string `json:"evidence,omitempty"`
-	CreatedAt string `json:"created_at"`
+	ItemID         string `json:"task_id"`
+	Revision       int64  `json:"revision"`
+	Reviewer       string `json:"reviewer"`
+	Verdict        string `json:"verdict"`
+	Evidence       string `json:"evidence,omitempty"`
+	ReviewID       string `json:"review_id,omitempty"`
+	ReviewRevision int64  `json:"review_revision,omitempty"`
+	Attempt        int64  `json:"attempt,omitempty"`
+	CreatedAt      string `json:"created_at"`
 }
 
 func token() (string, error) {
@@ -336,6 +349,13 @@ func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 		return WorkItem{}, err
 	}
 	if err := leases.Close(); err != nil {
+		return WorkItem{}, err
+	}
+	var review WorkReview
+	err = s.db.QueryRowContext(ctx, `SELECT item_id,review_id,attempt,implementation_owner,review_revision,created_at FROM work_reviews WHERE item_id=?`, id).Scan(&review.ItemID, &review.ReviewID, &review.Attempt, &review.ImplementationOwner, &review.ReviewRevision, &review.CreatedAt)
+	if err == nil {
+		item.Review = &review
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return WorkItem{}, err
 	}
 	return item, nil
@@ -646,19 +666,41 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 		if !validWorkTransition(from, to) {
 			return fmt.Errorf("%w: invalid transition %s@%d -> %s", ErrWorkConflict, from, revision, to)
 		}
-		if expectedRevision > 0 && revision != expectedRevision && revision != expectedRevision+1 {
+		if expectedRevision > 0 && revision != expectedRevision {
 			return fmt.Errorf("%w: invalid or stale transition %s@%d -> %s (expected rev %d)", ErrWorkConflict, from, revision, to, expectedRevision)
 		}
-		var count int
-		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_claims WHERE item_id=? AND token_hash=? AND expires_at>?`, id, tokenHash(claimToken), now).Scan(&count); err != nil {
+		var claimOwner string
+		var claimAttempt int64
+		if err := conn.QueryRowContext(ctx, `SELECT owner,attempt FROM work_claims WHERE item_id=? AND token_hash=? AND expires_at>?`, id, tokenHash(claimToken), now).Scan(&claimOwner, &claimAttempt); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: stale or expired claim", ErrWorkConflict)
+			}
 			return err
 		}
-		if count != 1 {
-			return fmt.Errorf("%w: stale or expired claim", ErrWorkConflict)
+		if to == WorkInReview {
+			reviewID, err := newID()
+			if err != nil {
+				return err
+			}
+			nextRev := revision + 1
+			if _, err := conn.ExecContext(ctx, `INSERT INTO work_reviews(item_id,review_id,attempt,implementation_owner,review_revision,created_at)
+				VALUES(?,?,?,?,?,?)
+				ON CONFLICT(item_id) DO UPDATE SET
+					review_id=excluded.review_id,
+					attempt=excluded.attempt,
+					implementation_owner=excluded.implementation_owner,
+					review_revision=excluded.review_revision,
+					created_at=excluded.created_at`,
+				id, reviewID, claimAttempt, claimOwner, nextRev, now); err != nil {
+				return fmt.Errorf("record work review: %w", err)
+			}
 		}
 		if to == WorkBlocked {
 			_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
 			_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
+			_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
+		} else if to == WorkInProgress {
+			_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
 		}
 		if _, err := conn.ExecContext(ctx, `UPDATE work_items SET status=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, to, now, id, revision); err != nil {
 			return err
@@ -693,18 +735,36 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 			return fmt.Errorf("%w: task is in_review at revision %d, not %d", ErrWorkConflict, revision, expectedRevision)
 		}
 		approval.Revision = revision
-		var claimOwner string
-		claimErr := conn.QueryRowContext(ctx, `SELECT owner FROM work_claims WHERE item_id=?`, id).Scan(&claimOwner)
-		if claimErr != nil && !errors.Is(claimErr, sql.ErrNoRows) {
-			return claimErr
+
+		var reviewOwner string
+		var reviewID string
+		var reviewRevision int64
+		var reviewAttempt int64
+		reviewErr := conn.QueryRowContext(ctx, `SELECT review_id,attempt,implementation_owner,review_revision FROM work_reviews WHERE item_id=?`, id).Scan(&reviewID, &reviewAttempt, &reviewOwner, &reviewRevision)
+		if reviewErr == nil {
+			if reviewer == reviewOwner {
+				return fmt.Errorf("%w: implement owner %q cannot approve its own task", ErrWorkConflict, reviewer)
+			}
+			approval.ReviewID = reviewID
+			approval.ReviewRevision = reviewRevision
+			approval.Attempt = reviewAttempt
+		} else if errors.Is(reviewErr, sql.ErrNoRows) {
+			var claimOwner string
+			claimErr := conn.QueryRowContext(ctx, `SELECT owner FROM work_claims WHERE item_id=?`, id).Scan(&claimOwner)
+			if claimErr != nil && !errors.Is(claimErr, sql.ErrNoRows) {
+				return claimErr
+			}
+			if claimOwner != "" && claimOwner == reviewer {
+				return fmt.Errorf("%w: implement owner %q cannot approve its own task", ErrWorkConflict, reviewer)
+			}
+		} else {
+			return reviewErr
 		}
-		if claimOwner != "" && claimOwner == reviewer {
-			return fmt.Errorf("%w: implement owner cannot approve its own task", ErrWorkConflict)
-		}
+
 		if verdict == "PASS" && evidence == "" {
 			return errors.New("PASS approval requires evidence")
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO work_approvals(item_id,reviewer,verdict,evidence,created_at) VALUES(?,?,?,?,?)`, id, reviewer, verdict, bounded(evidence, 512), now); err != nil {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO work_approvals(item_id,reviewer,verdict,evidence,created_at,review_id,review_revision,attempt) VALUES(?,?,?,?,?,?,?,?)`, id, reviewer, verdict, bounded(evidence, 512), now, approval.ReviewID, approval.ReviewRevision, approval.Attempt); err != nil {
 			return err
 		}
 		to := WorkBlocked
@@ -721,6 +781,7 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 		}
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
+		_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
 		if err := s.addWorkEvent(ctx, conn, id, "approval", string(WorkInReview), string(to), verdict+":"+bounded(evidence, 128)); err != nil {
 			return err
 		}
@@ -812,6 +873,7 @@ func (s *Store) RetryWork(ctx context.Context, id string, expectedRevision int64
 		}
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
+		_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
 		result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='ready',revision=revision+1,updated_at=? WHERE id=? AND status='blocked' AND revision=?`, now, id, revision)
 		if err != nil {
 			return err

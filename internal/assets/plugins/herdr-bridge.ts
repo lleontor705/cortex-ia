@@ -306,8 +306,9 @@ export const CortexDelegationBridge: Plugin = async () => ({
     } catch {}
   },
 
-  tool: {
-    cortex_openspec_validate: tool({
+  tool: (() => {
+    const bridgeTools = {
+    cortex_ia_openspec_validate: tool({
       description: "Validate OpenSpec planning artifacts from the active workspace without exposing a shell.",
       args: { relative_directory: tool.schema.string().optional() },
       async execute(args, context) {
@@ -317,7 +318,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_openspec_write: tool({
+    cortex_ia_openspec_write: tool({
       description: "Write one Markdown planning artifact under openspec/changes. This tool cannot modify product code.",
       args: { relative_path: tool.schema.string(), content: tool.schema.string() },
       async execute(args, context) {
@@ -340,7 +341,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_discovery_write: tool({
+    cortex_ia_discovery_write: tool({
       description: "Write the complete project-local .cortex-ia/discovery.md report atomically. This tool is reserved for the discovery agent.",
       args: { content: tool.schema.string() },
       async execute(args, context) {
@@ -380,7 +381,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_board_create: tool({
+    cortex_ia_board_create: tool({
       description: "Create one durable Cortex-IA initiative board.",
       args: { board_id: tool.schema.string(), title: tool.schema.string(), description: tool.schema.string().optional() },
       async execute(args, context) {
@@ -390,19 +391,19 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_board_list: tool({
+    cortex_ia_board_list: tool({
       description: "List durable Cortex-IA initiative boards.",
       args: {},
       async execute() { return cortex(["board", "list"]); }
     }),
 
-    cortex_board_status: tool({
+    cortex_ia_board_status: tool({
       description: "Read one board and its authoritative task snapshot.",
       args: { board_id: tool.schema.string() },
       async execute(args) { return cortex(["board", "status", args.board_id]); }
     }),
 
-    cortex_work_create: tool({
+    cortex_ia_work_create: tool({
       description: "Create one work item in a durable same-board DAG.",
       args: {
         board_id: tool.schema.string(),
@@ -425,7 +426,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_work_list: tool({
+    cortex_ia_work_list: tool({
       description: "List durable work items, optionally restricted to one board.",
       args: { board_id: tool.schema.string().optional() },
       async execute(args) {
@@ -435,28 +436,43 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_work_status: tool({
-      description: "Read one durable Cortex-IA work item plus token-free bridge authority usability for the current session.",
+    cortex_ia_work_status: tool({
+      description: "Read one durable Cortex-IA work item plus token-free bridge authority usability for the current session. Returns not_found if the task does not exist in SQLite.",
       args: { task_id: tool.schema.string() },
       async execute(args, context) {
-        const durable = durableWorkStatus(args.task_id);
-        return JSON.stringify({ ...durable, bridge_authority: bridgeAuthorityView(args.task_id, durable, context.sessionID) });
+        try {
+          const durable = durableWorkStatus(args.task_id);
+          return JSON.stringify({ ...durable, found: true, bridge_authority: bridgeAuthorityView(args.task_id, durable, context.sessionID) });
+        } catch (error: any) {
+          const stderr = (error?.stderr?.toString?.() || error?.message || "");
+          if (stderr.includes("work item not found")) {
+            return JSON.stringify({
+              task_id: args.task_id,
+              found: false,
+              status: "not_found",
+              error: "work item not found",
+              message: `Work item "${args.task_id}" not found in Cortex-IA SQLite work database. Note: Cortex MCP observation IDs (e.g. #84) are evidence/memories, not SQLite work task items, and early SDD planning phases (propose, spec, design) have no work tasks created yet.`,
+              bridge_authority: bridgeAuthorityView(args.task_id, null, context.sessionID)
+            });
+          }
+          throw error;
+        }
       }
     }),
 
-    cortex_work_recover: tool({
+    cortex_ia_work_recover: tool({
       description: "Recover expired work claims and leases. This never restores old authority tokens.",
       args: {},
       async execute() { return cortex(["work", "recover"]); }
     }),
 
-    cortex_work_retry: tool({
+    cortex_ia_work_retry: tool({
       description: "Retry one reconciled blocked work item using revision CAS. Fails closed at the durable attempt limit.",
       args: { task_id: tool.schema.string(), revision: tool.schema.number() },
       async execute(args) { return cortex(["work", "retry", args.task_id, "--revision", String(args.revision)]); }
     }),
 
-    cortex_work_decompose: tool({
+    cortex_ia_work_decompose: tool({
       description: "Planner-only: atomically supersede one orchestrator-routed blocked task with a sequential chain of 2-8 smaller tasks, preserving its board, project, upstream dependencies, and downstream DAG.",
       args: {
         task_id: tool.schema.string(),
@@ -478,10 +494,11 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_work_claim: tool({
-      description: "Claim one ready work item. The bridge retains the claim token in memory and never returns it to the model.",
+    cortex_ia_work_claim: tool({
+      description: "Claim one ready work item. Optionally reserve initial files atomically. The bridge retains tokens in memory.",
       args: {
         task_id: tool.schema.string(),
+        paths: tool.schema.array(tool.schema.string()).optional().describe("Optional list of workspace-relative files to reserve immediately upon claiming"),
         ttl: tool.schema.string().optional().describe("Duration such as 15m; defaults to Cortex-IA policy")
       },
       async execute(args, context) {
@@ -493,13 +510,33 @@ export const CortexDelegationBridge: Plugin = async () => ({
         if (args.ttl) command.push("--ttl", args.ttl);
         const claim = parseJSON(cortex(command));
         if (!claim?.claim_token) throw new Error("cortex-ia returned no claim token");
-        workAuthority.set(args.task_id, { claimToken: claim.claim_token, leases: new Map(), sessionID: context.sessionID });
+        const leases = new Map<string, string>();
+        const authority = { claimToken: claim.claim_token, leases, sessionID: context.sessionID };
+        workAuthority.set(args.task_id, authority);
+        const reservedFiles: any[] = [];
+        if (Array.isArray(args.paths) && args.paths.length > 0) {
+          for (const rawPath of args.paths) {
+            if (!rawPath) continue;
+            const leasePath = workPath(rawPath);
+            const reserveCmd = ["work", "reserve", args.task_id, "--claim-token", "@stdin", "--path", leasePath];
+            if (args.ttl) reserveCmd.push("--ttl", args.ttl);
+            const lease = parseJSON(cortexAuthorized(reserveCmd, authority.claimToken));
+            if (lease?.lease_token && lease?.path) {
+              leases.set(lease.path, lease.lease_token);
+              reservedFiles.push(withoutToken(lease, "lease_token"));
+            }
+          }
+        }
         saveAuthorityState();
-        return JSON.stringify(withoutToken(claim, "claim_token"));
+        const res = withoutToken(claim, "claim_token");
+        if (reservedFiles.length > 0) {
+          res.reserved_files = reservedFiles;
+        }
+        return JSON.stringify(res);
       }
     }),
 
-    cortex_work_renew: tool({
+    cortex_ia_work_renew: tool({
       description: "Renew the live claim retained by this bridge.",
       args: { task_id: tool.schema.string(), ttl: tool.schema.string().optional() },
       async execute(args, context) {
@@ -510,7 +547,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_work_lease: tool({
+    cortex_ia_work_lease: tool({
       description: "Reserve one workspace-relative path using the claim token retained by this bridge.",
       args: { task_id: tool.schema.string(), path: tool.schema.string(), ttl: tool.schema.string().optional() },
       async execute(args, context) {
@@ -525,27 +562,45 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_file_reserve: tool({
-      description: "Reserve exactly one workspace-relative file for one claimed task. A live reservation by another task fails closed.",
+    cortex_ia_file_reserve: tool({
+      description: "Reserve one or more workspace-relative files for one claimed task. A live reservation by another task fails closed.",
       args: {
         task_id: tool.schema.string(),
-        path: tool.schema.string(),
+        path: tool.schema.string().optional(),
+        paths: tool.schema.array(tool.schema.string()).optional(),
         ttl: tool.schema.string().optional()
       },
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID, true);
-        const leasePath = workPath(args.path);
-        const command = ["work", "reserve", args.task_id, "--claim-token", "@stdin", "--path", leasePath];
-        if (args.ttl) command.push("--ttl", args.ttl);
-        const lease = parseJSON(cortexAuthorized(command, authority.claimToken));
-        if (!lease?.lease_token || !lease?.path) throw new Error("cortex-ia returned no lease authority");
-        authority.leases.set(lease.path, lease.lease_token);
+        const targetPaths: string[] = [];
+        if (args.path) targetPaths.push(args.path);
+        if (Array.isArray(args.paths)) {
+          for (const p of args.paths) {
+            if (p && !targetPaths.includes(p)) targetPaths.push(p);
+          }
+        }
+        if (targetPaths.length === 0) {
+          throw new Error("either 'path' or 'paths' must be provided to reserve files");
+        }
+        const results = [];
+        for (const rawPath of targetPaths) {
+          const leasePath = workPath(rawPath);
+          const command = ["work", "reserve", args.task_id, "--claim-token", "@stdin", "--path", leasePath];
+          if (args.ttl) command.push("--ttl", args.ttl);
+          const lease = parseJSON(cortexAuthorized(command, authority.claimToken));
+          if (!lease?.lease_token || !lease?.path) throw new Error("cortex-ia returned no lease authority for path: " + rawPath);
+          authority.leases.set(lease.path, lease.lease_token);
+          results.push(withoutToken(lease, "lease_token"));
+        }
         saveAuthorityState();
-        return JSON.stringify(withoutToken(lease, "lease_token"));
+        if (results.length === 1 && args.path) {
+          return JSON.stringify(results[0]);
+        }
+        return JSON.stringify({ reserved: results, count: results.length });
       }
     }),
 
-    cortex_work_lease_renew: tool({
+    cortex_ia_work_lease_renew: tool({
       description: "Renew one live file lease retained by this bridge.",
       args: { task_id: tool.schema.string(), path: tool.schema.string(), ttl: tool.schema.string().optional() },
       async execute(args, context) {
@@ -564,7 +619,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_work_release: tool({
+    cortex_ia_work_release: tool({
       description: "Release one file lease retained by this bridge.",
       args: { task_id: tool.schema.string(), path: tool.schema.string() },
       async execute(args, context) {
@@ -579,7 +634,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_work_release_all: tool({
+    cortex_ia_work_release_all: tool({
       description: "Release every file lease retained for one task. Returns partial failures for explicit reconciliation.",
       args: { task_id: tool.schema.string() },
       async execute(args, context) {
@@ -600,7 +655,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_file_release: tool({
+    cortex_ia_file_release: tool({
       description: "Release exactly one file reservation using the token retained by this bridge.",
       args: {
         task_id: tool.schema.string(),
@@ -618,7 +673,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_work_transition: tool({
+    cortex_ia_work_transition: tool({
       description: "Transition a claimed task using authority retained by the bridge. Only in_review, in_progress, and blocked are accepted.",
       args: {
         task_id: tool.schema.string(),
@@ -630,15 +685,21 @@ export const CortexDelegationBridge: Plugin = async () => ({
         const command = ["work", "transition", args.task_id, "--claim-token", "@stdin", "--to", args.to];
         if (args.revision) command.push("--revision", String(args.revision));
         const result = cortexAuthorized(command, authority.claimToken);
+        if (args.to === "in_review" || args.to === "blocked") {
+          try {
+            cortexAuthorized(["work", "release-all", args.task_id, "--claim-token", "@stdin"], authority.claimToken);
+            authority.leases.clear();
+          } catch {}
+        }
         if (args.to === "blocked") {
           workAuthority.delete(args.task_id);
-          saveAuthorityState();
         }
+        saveAuthorityState();
         return result;
       }
     }),
 
-    cortex_work_approve: tool({
+    cortex_ia_work_approve: tool({
       description: "Record an independent work verdict. PASS is the only verdict that can produce done.",
       args: {
         task_id: tool.schema.string(),
@@ -658,8 +719,8 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_delegate_start: tool({
-      description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires an explicit user-aligned workspace_strategy: isolated_worktree or current_workspace. The returned execution_mode is authoritative. Call cortex_delegation_wait once, then read the receipt; execute natively only when delegated is false and no external job was accepted.",
+    cortex_ia_delegate_start: tool({
+      description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires an explicit user-aligned workspace_strategy: isolated_worktree or current_workspace. The returned execution_mode is authoritative. Call cortex_ia_delegation_wait once, then read the receipt; execute natively only when delegated is false and no external job was accepted.",
       args: {
         role: tool.schema.enum(["implement", "investigate", "reviewer", "planner"]),
         task_id: tool.schema.string().optional(),
@@ -812,13 +873,13 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_delegation_status: tool({
+    cortex_ia_delegation_status: tool({
       description: "Read the durable status of a cortex-ia delegation job.",
       args: { job_id: tool.schema.string() },
       async execute(args) { return cortex(["delegate", "status", args.job_id]); }
     }),
 
-    cortex_delegation_wait: tool({
+    cortex_ia_delegation_wait: tool({
       description: "Wait for one accepted delegation to reach a terminal durable status without model-side polling.",
       args: {
         job_id: tool.schema.string(),
@@ -833,6 +894,12 @@ export const CortexDelegationBridge: Plugin = async () => ({
           job = parseJSON(cortex(["delegate", "status", args.job_id]));
           if (terminal.has(job?.status)) {
             emitDelegationEvent({ kind: "delegation", job_id: args.job_id, role: job.role, status: job.status, transport: job.transport });
+            if (job.status === "succeeded") {
+              try {
+                const res = parseJSON(cortex(["delegate", "result", args.job_id]));
+                return JSON.stringify({ ...job, result: res });
+              } catch {}
+            }
             return JSON.stringify(job);
           }
           await new Promise((resolve) => setTimeout(resolve, 750));
@@ -841,7 +908,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_delegation_result: tool({
+    cortex_ia_delegation_result: tool({
       description: "Read the durable structured receipt of a completed cortex-ia delegation job.",
       args: { job_id: tool.schema.string() },
       async execute(args) {
@@ -861,7 +928,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_delegation_cancel: tool({
+    cortex_ia_delegation_cancel: tool({
       description: "Request cancellation of a cortex-ia delegation job.",
       args: { job_id: tool.schema.string() },
       async execute(args) {
@@ -879,12 +946,45 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_delegation_recover: tool({
+    cortex_ia_delegation_recover: tool({
       description: "Mark delegation workers with expired leases as lost.",
       args: {},
       async execute() { return cortex(["delegate", "recover"]); }
     })
-  }
+  };
+
+  return {
+    ...bridgeTools,
+      cortex_openspec_validate: bridgeTools.cortex_ia_openspec_validate,
+      cortex_openspec_write: bridgeTools.cortex_ia_openspec_write,
+      cortex_discovery_write: bridgeTools.cortex_ia_discovery_write,
+      cortex_board_create: bridgeTools.cortex_ia_board_create,
+      cortex_board_list: bridgeTools.cortex_ia_board_list,
+      cortex_board_status: bridgeTools.cortex_ia_board_status,
+      cortex_work_create: bridgeTools.cortex_ia_work_create,
+      cortex_work_list: bridgeTools.cortex_ia_work_list,
+      cortex_work_status: bridgeTools.cortex_ia_work_status,
+      cortex_work_recover: bridgeTools.cortex_ia_work_recover,
+      cortex_work_retry: bridgeTools.cortex_ia_work_retry,
+      cortex_work_decompose: bridgeTools.cortex_ia_work_decompose,
+      cortex_work_claim: bridgeTools.cortex_ia_work_claim,
+      cortex_work_renew: bridgeTools.cortex_ia_work_renew,
+      cortex_work_lease: bridgeTools.cortex_ia_work_lease,
+      cortex_file_reserve: bridgeTools.cortex_ia_file_reserve,
+      cortex_work_lease_renew: bridgeTools.cortex_ia_work_lease_renew,
+      cortex_work_release: bridgeTools.cortex_ia_work_release,
+      cortex_work_release_all: bridgeTools.cortex_ia_work_release_all,
+      cortex_file_release: bridgeTools.cortex_ia_file_release,
+      cortex_work_transition: bridgeTools.cortex_ia_work_transition,
+      cortex_work_approve: bridgeTools.cortex_ia_work_approve,
+      cortex_delegate_start: bridgeTools.cortex_ia_delegate_start,
+      cortex_delegation_status: bridgeTools.cortex_ia_delegation_status,
+      cortex_delegation_wait: bridgeTools.cortex_ia_delegation_wait,
+      cortex_delegation_result: bridgeTools.cortex_ia_delegation_result,
+      cortex_delegation_cancel: bridgeTools.cortex_ia_delegation_cancel,
+      cortex_delegation_recover: bridgeTools.cortex_ia_delegation_recover,
+  };
+})()
 });
 
 export default CortexDelegationBridge;

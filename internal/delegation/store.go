@@ -122,8 +122,8 @@ func (s *Store) initialize(ctx context.Context) error {
 		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 			return fmt.Errorf("read migration ledger: %w", err)
 		}
-		if version > 8 {
-			return fmt.Errorf("cortex database schema %d is newer than supported schema 8", version)
+		if version > 9 {
+			return fmt.Errorf("cortex database schema %d is newer than supported schema 9", version)
 		}
 		statements := []string{
 			`CREATE TABLE IF NOT EXISTS delegation_jobs (
@@ -338,6 +338,26 @@ func (s *Store) initialize(ctx context.Context) error {
 			}
 			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(8, ?)`, now); err != nil {
 				return fmt.Errorf("record board status migration: %w", err)
+			}
+		}
+		if version < 9 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_reviews (
+				item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+				review_id TEXT NOT NULL UNIQUE,
+				attempt INTEGER NOT NULL,
+				implementation_owner TEXT NOT NULL,
+				review_revision INTEGER NOT NULL,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY(item_id)
+			) STRICT`); err != nil {
+				return fmt.Errorf("create work reviews: %w", err)
+			}
+			_, _ = conn.ExecContext(ctx, `ALTER TABLE work_approvals ADD COLUMN review_id TEXT NOT NULL DEFAULT ''`)
+			_, _ = conn.ExecContext(ctx, `ALTER TABLE work_approvals ADD COLUMN review_revision INTEGER NOT NULL DEFAULT 0`)
+			_, _ = conn.ExecContext(ctx, `ALTER TABLE work_approvals ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0`)
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(9, ?)`, now); err != nil {
+				return fmt.Errorf("record work review lineage migration: %w", err)
 			}
 		}
 		if _, err := conn.ExecContext(ctx, `PRAGMA optimize`); err != nil {

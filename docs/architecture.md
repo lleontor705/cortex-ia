@@ -1,4 +1,4 @@
-﻿# Architecture Deep-Dive
+# Architecture Deep-Dive
 
 **Cortex-IA** is the deterministic multi-agent control plane, transactional installer, and local process bridge for **OpenCode** and **Herdr**.
 
@@ -98,7 +98,7 @@ sequenceDiagram
     participant Engine as agy CLI
     participant Pane as Herdr Terminal Pane
 
-    OpenCode->>Bridge: cortex_delegate_start(role, task_id, allowed_files)
+    OpenCode->>Bridge: cortex_ia_delegate_start(role, task_id, allowed_files)
     Bridge->>CLI: Spawns in dedicated Herdr pane
     CLI->>Pane: Renders Header Banner (Role, Dir, Objective)
     CLI->>Engine: agy --output-format stream-json --print <prompt>
@@ -113,7 +113,7 @@ sequenceDiagram
     Engine->>CLI: {"event":"result","result":{...}}
     CLI->>CLI: Stores structured receipt in SQLite
     CLI->>Pane: ✅ Completed in Xs (exit code 0, Token summary)
-    OpenCode->>Bridge: Polls cortex_delegation_result()
+    OpenCode->>Bridge: Polls cortex_ia_delegation_result()
     Bridge->>OpenCode: Returns structured typed receipt
 ```
 

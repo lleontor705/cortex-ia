@@ -115,9 +115,12 @@ jobs:
 
       - name: Determine version tag
         id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "version=$INPUT_TAG" >> "$GITHUB_OUTPUT"
           else
             latest=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
             IFS='.' read -r major minor patch <<< "${latest#v}"
@@ -126,8 +129,9 @@ jobs:
           fi
 
       - name: Create and push tag
+        env:
+          TAG: ${{ steps.tag.outputs.version }}
         run: |
-          TAG="${{ steps.tag.outputs.version }}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists — skipping."
           else

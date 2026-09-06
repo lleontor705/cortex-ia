@@ -15,23 +15,41 @@ tools:
   bash: true
   skill: true
   cortex_*: true
+  cortex_ia_*: true
   cortex_openspec_write: false
+  cortex_ia_openspec_write: false
   cortex_board_create: false
+  cortex_ia_board_create: false
   cortex_work_create: false
+  cortex_ia_work_create: false
   cortex_work_recover: false
+  cortex_ia_work_recover: false
   cortex_work_retry: false
+  cortex_ia_work_retry: false
   cortex_work_decompose: false
+  cortex_ia_work_decompose: false
   cortex_discovery_write: false
+  cortex_ia_discovery_write: false
   cortex_work_claim: false
+  cortex_ia_work_claim: false
   cortex_work_renew: false
+  cortex_ia_work_renew: false
   cortex_work_lease: false
+  cortex_ia_work_lease: false
   cortex_work_lease_renew: false
+  cortex_ia_work_lease_renew: false
   cortex_work_release: false
+  cortex_ia_work_release: false
   cortex_work_release_all: false
+  cortex_ia_work_release_all: false
   cortex_work_transition: false
+  cortex_ia_work_transition: false
   cortex_work_approve: false
+  cortex_ia_work_approve: false
   cortex_file_reserve: false
+  cortex_ia_file_reserve: false
   cortex_file_release: false
+  cortex_ia_file_release: false
 permission:
   bash:
     "*": allow
@@ -51,11 +69,11 @@ Load `investigate` for diagnosis/audit, `workflow-retrospective` for an orchestr
 Ground findings with exact paths, commands, exit codes, and limitations. For architecture assessments, read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` and evaluate depth, locality, dependency direction, seams, adapters, and the deletion test; route material design choices to `planner` instead of deciding the implementation contract. Shell inspection, Git reads, database diagnostics, tests, linters, builds, and benchmarks are allowed without approval. Deletion, destructive SQL, destructive resource commands, push, and hard reset require approval. Save only durable summarized evidence in Cortex. Work control is strictly read-only here: `cortex-ia board list|status` and `cortex-ia work list|status`; never infer authority from the web board, claim, transition, retry, approve, or lease. Canonical protocol: `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`. Do not launch native or nested subagents, and do not silently fix a problem when the request is diagnostic.
 
 ## 1. Mandatory Delegation Check Gate (Dynamic External CLI / Herdr)
-- Call `cortex_delegate_start` with `role: "investigate"` and `objective: <your task objective>`.
+- Call `cortex_ia_delegate_start` with `role: "investigate"` and `objective: <your task objective>`.
 - **If the bridge returns `delegated: true`** (e.g. `execution_mode: "herdr_multiplexed"` or `"direct_cli"`):
   - An external leaf worker (dynamically configured per role in `cortex-delegation.json`) is executing in a Herdr pane or background process.
-  - Call `cortex_delegation_wait({ job_id })` once and reconcile terminal status (`succeeded`, `failed`, `cancelled`, `timed_out`, `lost`).
-  - Retrieve the structured receipt using `cortex_delegation_result({ job_id })`.
+  - Call `cortex_ia_delegation_wait({ job_id })` once and reconcile terminal status (`succeeded`, `failed`, `cancelled`, `timed_out`, `lost`).
+  - Retrieve the structured receipt using `cortex_ia_delegation_result({ job_id })`.
   - Validate the receipt against repository evidence and return the findings. **Do NOT run duplicate local bash/edit commands yourself while delegated.**
 - **If the bridge returns `delegated: false`** (or `execution_mode: "native"`):
   - Proceed with native investigation below:

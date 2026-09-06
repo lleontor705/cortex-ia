@@ -44,6 +44,7 @@ The delegation bridge returns the effective mode. That return value is authorita
 | Role | Allowed work-control behavior |
 |---|---|
 | `orchestrator` | Create/query boards and DAGs, recover expired attempts, retry reconciled blockers, dispatch native role controllers. Never claim tasks, lease files, edit product code, or launch AGY directly. |
+| `discovery` | Project onboarding: inspect skills, stack, engines, and architecture into `./.cortex-ia/discovery.md`. Never mutate work state. |
 | `investigate` | Read-only `board list|status` and `work list|status`; diagnose and save bounded evidence. Never mutate work state. |
 | `planner` | Write OpenSpec planning artifacts, create the initiative board, and materialize its same-board dependency DAG. Never claim implementation work. |
 | `implement` | Own exactly one ready task claim, lease every writable path, renew authority, supervise at most one optional AGY leaf, verify, then transition to `in_review`. Stop writing immediately if authority expires. |
@@ -52,7 +53,7 @@ The delegation bridge returns the effective mode. That return value is authorita
 
 - Only the orchestrator owns `cortex_session_start`, summaries, and session end. All dispatched roles are ephemeral subagents within that session.
 - A native controller may supervise no more than one external leaf for its bounded objective. The leaf cannot spawn another agent or CLI.
-- Parallel native writers may share one workspace without Git worktrees only when each controller owns a distinct live task claim and reserves each writable file individually with `cortex_file_reserve` before editing that file. Acquire multiple files in deterministic sorted order, release each with `cortex_file_release`, clean partial acquisition immediately on conflict, and stop writing on conflict or expiry. Mailbox/resource locks do not replace file reservations.
+- Parallel native writers may share one workspace without Git worktrees only when each controller owns a distinct live task claim and reserves each writable file individually with `cortex_ia_file_reserve` before editing that file. Acquire multiple files in deterministic sorted order, release each with `cortex_ia_file_release`, clean partial acquisition immediately on conflict, and stop writing on conflict or expiry. Mailbox/resource locks do not replace file reservations.
 - Before external implementation, ask the user to choose `isolated_worktree` (recommended) or `current_workspace`; never infer the choice. A current-workspace external AGY leaf remains exclusive for its execution window, forbids concurrent native edits, and must preserve pre-existing unleased changes against a pre-run baseline.
 
 ## Verification
@@ -111,3 +112,4 @@ Installed skill assets and their triggers:
 | `debate`, `code-review-adversary` | cross-phase | Multi-position and adversarial deliberation |
 | `fast-tdd`, `property-based-testing`, `mutation-testing`, `ast-impact-analysis` | utility | Verification acceleration |
 | `context-distiller`, `parallel-dispatch`, `spike-prototype`, `hotfix-triage` | utility | See each SKILL.md for the trigger |
+| `using-git-worktrees` | utility / cross-phase | Establishing isolated Git worktrees and baseline verification |

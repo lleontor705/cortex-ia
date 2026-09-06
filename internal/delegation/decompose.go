@@ -113,6 +113,7 @@ func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision i
 		}
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
+		_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
 		result, err := conn.ExecContext(ctx, `UPDATE work_items SET revision=revision+1,updated_at=? WHERE id=? AND status='blocked' AND revision=?`, now, id, revision)
 		if err != nil {
 			return err

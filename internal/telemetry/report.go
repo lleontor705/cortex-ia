@@ -97,13 +97,21 @@ func NewReportID() string {
 }
 
 func CanonicalSignaturePayload(r *ErrorReport) string {
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s|%s",
-		r.ID, r.Timestamp, r.Source, r.TaskID, r.JobID, r.ErrorCode, r.ErrorMessage, r.Details, r.Workspace)
+	fields := []string{r.ID, r.Timestamp, r.Source, r.TaskID, r.JobID, r.ErrorCode, r.ErrorMessage, r.Details, r.Workspace}
+	var b strings.Builder
+	for i, f := range fields {
+		if i > 0 {
+			b.WriteByte('|')
+		}
+		fmt.Fprintf(&b, "%d:%s", len(f), f)
+	}
+	return b.String()
 }
 
 func SignReport(report *ErrorReport, secret string) {
 	if secret == "" {
-		secret = "cortex-ia-default-unsigned-secret"
+		report.Signature = ""
+		return
 	}
 	payload := CanonicalSignaturePayload(report)
 	h := hmac.New(sha256.New, []byte(secret))
@@ -112,8 +120,8 @@ func SignReport(report *ErrorReport, secret string) {
 }
 
 func VerifyReport(report *ErrorReport, secret string) bool {
-	if secret == "" {
-		secret = "cortex-ia-default-unsigned-secret"
+	if secret == "" || report.Signature == "" {
+		return false
 	}
 	expectedHmac := hmac.New(sha256.New, []byte(secret))
 	expectedHmac.Write([]byte(CanonicalSignaturePayload(report)))

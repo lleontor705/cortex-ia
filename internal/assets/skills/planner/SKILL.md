@@ -87,13 +87,20 @@ Use `cortex_analyze_architecture(project)` and bounded code-graph evidence to re
 
 Use horizontal prerequisite tasks only for a genuine shared foundation that must exist before any slice can stay valid. For a wide mechanical or contract refactor that cannot land green as vertical slices, plan `expand -> parallel migrate batches -> contract`: introduce the compatible new form, migrate disjoint caller groups, then remove the old form only after every migration task completes. If individual migrations cannot stay green, add a final integration task and state where the temporary non-green state is isolated.
 
-### Task Definition Rules
+### Task Definition Rules & Strict Quality Standards
 - Use hierarchical numbering: `1.1`, `1.2`, `2.1`, `2.2`, etc.
 - Query prior design patterns via `cortex_search(query, graph_expand: true)` to maintain architectural consistency.
-- Explicitly name concrete file paths and test oracles in every task.
-- Persist each task's objective, requirements or interface contract, acceptance criteria, exact verification command, complete per-file writable scope, dependencies, and explicit out-of-scope work when materializing the Cortex-IA DAG so the taskboard explains what will be done before execution.
+- **Strict Quality Standards for Every Created Task (`cortex_ia_work_create`)**:
+  - `title`: Short, imperative summary naming the affected module (e.g. `[auth] Validate JWT bearer token format and expiration`).
+  - `objective`: Thorough technical explanation (minimum 2-3 substantive sentences) describing context, expected input/output contract, failure modes, and architectural rationale. Never use vague or one-line placeholders.
+  - `acceptance_criteria`: Observable, verifiable checklist or Given/When/Then scenarios specifying concrete behavior. Never leave empty or generic.
+  - `verification`: Exact reproducible command with flags (e.g. `go test -v ./internal/auth/... -run TestJWTBearer`).
+  - `allowed_files`: Complete, explicit array of workspace-relative paths to be created or modified. Never empty for implementation tasks.
+  - `dependencies`: Include ONLY genuine executable prerequisites. Do NOT artificially sequence independent tasks; if two tasks touch disjoint files and are functionally independent, keep their dependencies disjoint so they enter `ready` concurrently for parallel execution.
+- **Parallel Group Maximization**: Group tasks whose `allowed_files` are mutually disjoint into parallel execution waves so the orchestrator can dispatch them simultaneously via `parallel-dispatch`.
 - Ensure every task is independently verifiable with exit code `0`.
 - Build dependencies from executable prerequisites, not presentation order. Minimize unnecessary chain depth, identify the critical path, and emit parallel groups only for ready tasks with disjoint writable files.
+
 
 ---
 
@@ -115,7 +122,7 @@ To maintain clarity and protect context windows:
 1. **Control Health**: Run `cortex-ia work list` and fail closed if SQLite work control is unavailable.
 2. **Context & Evidence**: Read the request, `./.cortex-ia/discovery.md` when present, and cited Cortex evidence (`cortex_search`). Preserve confirmed architectural seams and dependency direction; verify stale or conflicting profile claims against primary repository evidence.
 3. **Draft Contracts**: Formulate the requested decision map, proposal, delta specifications, concise design, or task DAG. Reuse project glossary terms and existing ADRs when present; record a new durable decision only for a real, consequential trade-off.
-4. **Validation & Commit**: When `spec_plane=openspec|hybrid`, validate OpenSpec artifacts locally through `cortex_openspec_validate`. When `spec_plane=cortex`, write and validate pinned snapshot observations via `cortex_save` per `cortex-convention.md`, skipping OpenSpec gates across decision-map, Lite, and all Full phases. A `decision-map` writes only its contract and never creates a board. Materialize a new implementation DAG only for `sdd-lite/integrated` or `sdd-full/tasks`. For an orchestrator-routed blocked-task decomposition, require current `blocked` state and revision, derive 2-8 smaller fully specified tasks from the failure evidence, and call `cortex_work_decompose` exactly once; never create those children individually or retry the parent.
+4. **Validation & Commit**: When `spec_plane=openspec|hybrid`, validate OpenSpec artifacts locally through `cortex_ia_openspec_validate`. When `spec_plane=cortex`, write and validate pinned snapshot observations via `cortex_save` per `cortex-convention.md`, skipping OpenSpec gates across decision-map, Lite, and all Full phases. A `decision-map` writes only its contract and never creates a board. Materialize a new implementation DAG only for `sdd-lite/integrated` or `sdd-full/tasks`. For an orchestrator-routed blocked-task decomposition, require current `blocked` state and revision, derive 2-8 smaller fully specified tasks from the failure evidence, and call `cortex_ia_work_decompose` exactly once; never create those children individually or retry the parent.
 5. **Contract Source**: Contracts live directly in `openspec/changes/<change-name>/` for openspec/hybrid, or as pinned snapshot observations (`observation_id` + UTF-8 SHA-256) per `cortex-convention.md` when `spec_plane=cortex`; task IDs reference those contracts.
 6. **No Execution**: Planning never executes code or takes file leases.
 
