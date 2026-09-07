@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -355,14 +356,13 @@ func TestRunnerValidationAndPrompts(t *testing.T) {
 	_ = os.MkdirAll(wt, 0755)
 	_ = os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: test\n"), 0600)
 
-	// 1. Valid request
+	// 1. Valid request using current_workspace
 	validReq := Request{
 		Role:          "implement",
 		TaskID:        "t-valid",
 		Objective:     "Implement test feature",
 		Workspace:     tempDir,
-		Worktree:      wt,
-		WorkspaceMode: WorkspaceIsolated,
+		WorkspaceMode: WorkspaceCurrent,
 		AllowedFiles:  []string{"src/main.go"},
 	}
 	if err := validReq.Validate(); err != nil {
@@ -376,38 +376,36 @@ func TestRunnerValidationAndPrompts(t *testing.T) {
 		t.Error("expected error for invalid role")
 	}
 
-	// 3. Implement role requires an isolated worktree and writable paths.
-	noWorktree := validReq
-	noWorktree.Worktree = ""
-	if err := noWorktree.Validate(); err == nil {
-		t.Error("expected error for implement role without worktree")
+	// 3. Implement role rejects isolated_worktree with actionable retirement error
+	isolatedReq := validReq
+	isolatedReq.WorkspaceMode = WorkspaceIsolated
+	isolatedReq.Worktree = wt
+	if err := isolatedReq.Validate(); err == nil || !strings.Contains(err.Error(), "isolated_worktree strategy is retired; use current_workspace") {
+		t.Fatalf("expected isolated_worktree retirement error, got: %v", err)
 	}
 
+	// 4. Implement role requires allowed files
 	noAllowedFiles := validReq
 	noAllowedFiles.AllowedFiles = nil
 	if err := noAllowedFiles.Validate(); err == nil {
 		t.Error("expected error for implement role without allowed files")
 	}
 
-	// 4. Current workspace strategy validation
-	currentReq := Request{
-		Role:          "implement",
-		TaskID:        "t-valid",
-		Objective:     "Implement test feature",
-		Workspace:     tempDir,
-		WorkspaceMode: WorkspaceCurrent,
-		AllowedFiles:  []string{"src/main.go"},
-	}
-	if err := currentReq.Validate(); err != nil {
-		t.Fatalf("expected valid current_workspace request, got: %v", err)
-	}
-	currentReqWithWorktree := currentReq
+	// 5. Current workspace strategy with worktree specified must fail
+	currentReqWithWorktree := validReq
 	currentReqWithWorktree.Worktree = wt
-	if err := currentReqWithWorktree.Validate(); err == nil {
-		t.Error("expected error for current_workspace with worktree specified")
+	if err := currentReqWithWorktree.Validate(); err == nil || !strings.Contains(err.Error(), "current_workspace strategy must not include worktree") {
+		t.Fatalf("expected error for current_workspace with worktree specified, got: %v", err)
 	}
 
-	// 5. File reading & JSON validation
+	// 6. Implement role requires explicit workspace strategy
+	emptyStrategy := validReq
+	emptyStrategy.WorkspaceMode = ""
+	if err := emptyStrategy.Validate(); err == nil || !strings.Contains(err.Error(), "implement delegation requires explicit workspace_strategy") {
+		t.Fatalf("expected error for missing workspace strategy, got: %v", err)
+	}
+
+	// 7. File reading & JSON validation
 	reqFile := filepath.Join(tempDir, "request.json")
 	data, _ := json.Marshal(validReq)
 	_ = os.WriteFile(reqFile, data, 0600)

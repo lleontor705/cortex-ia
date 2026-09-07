@@ -63,7 +63,7 @@ Classify every request into the smallest safe execution tier. Do NOT force multi
 ### Tier 3: Coordinated SDD (`sdd-lite`, `sdd-full`, `decision-map`)
 - **Use when**: Multi-domain initiatives, architectural refactors, public APIs, schema migrations, or material technical ambiguity.
 - **Rules**:
-  - Align on operating conditions (Execution Mode: `auto`/`interactive`, Plane: `openspec`/`cortex`/`hybrid`, Strategy: `isolated_worktree`/`current_workspace`).
+  - Align on operating conditions (Execution Mode: `auto`/`interactive`, Plane: `openspec`/`cortex`/`hybrid`, Strategy: `current_workspace`).
   - Use `grill-me` ONLY when genuine architectural trade-offs require human decisions.
   - Dispatch `planner` to draft specifications and materialize the same-board task DAG.
 
@@ -73,9 +73,8 @@ Classify every request into the smallest safe execution tier. Do NOT force multi
   - `4+ files`: Obligatory delegation to `investigate` to map the codebase or subsystem, distill facts/AST into Cortex MCP (`cortex_save`), and return a compact synthesis (<200 tokens). NEVER ingest mass files into the orchestrator conversation context.
 - **High-Stdout Containment**:
   - Commands with high potential stdout (full test suites `go test -v ./...`, `npm test`, linters, or compilation runs) must NEVER be executed directly in the orchestrator session. Delegate them to `reviewer` or bounded execution minions.
-- **Workspace Strategy Heuristic**:
-  - If `git status --porcelain` shows uncommitted changes, or if the task modifies central build manifests (`go.mod`, `package.json`), recommend and prioritize `isolated_worktree`.
-  - If the working tree is clean and changes are confined to paths covered by active file leases, `current_workspace` is permitted.
+- **Workspace Strategy Boundary**:
+  - Implementation tasks exclusively use `current_workspace` under live per-file reservations (`cortex_ia_file_reserve`). External AGY leaves execute exclusively under pre-run baseline verification; `isolated_worktree` is retired.
 
 ---
 
@@ -84,7 +83,7 @@ For Tier 3 (and Tier 2 if unset):
 1. **Operating Alignment Gate (Ask ONLY if ambiguous or high-risk):**
    - **Execution Mode**: `auto` vs `interactive`.
    - **Spec & Memory Plane**: `openspec`, `cortex`, or `hybrid` (Recommended).
-   - **External Implement Workspace Strategy**: `isolated_worktree` (Recommended, managed via `using-git-worktrees`) vs `current_workspace`.
+   - **External Implement Workspace Strategy**: `current_workspace` (Single supported strategy; `isolated_worktree` is retired).
    - **Lossless Blocking Prompts**: When presenting operating conditions, options, or architectural trade-offs to the user, preserve the complete choice envelope (why input is required, all options, descriptions). Never infer, silently default, or decide on the user's behalf.
 2. **Design Decisions (`grill-me`):** For unresolved architectural trade-offs, dispatch `investigate` to collect repository facts first, then present structured rounds (`❓ Q1` + `➡️ Recomendación`) to the user.
 3. **Cortex Session Ownership:** You are the **SOLE authority** managing session lifecycle (`cortex_session_start` at startup, `cortex_session_summary` before final response). Maintain **EXACTLY ONE stable session ID and ONE stable board ID** throughout the initiative. Bind to active sessions from `cortex_context`.
@@ -111,8 +110,8 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
   "objective": "string",
   "allowed_files": ["string"],
   "acceptance_checks": ["string"],
-  "workspace_strategy": "isolated_worktree | current_workspace",
-  "worktree": "string | null",
+  "workspace_strategy": "current_workspace",
+  "worktree": null,
   "artifact_refs": ["string"],
   "max_steps": 30,
   "budget_tier": "low | medium | high",

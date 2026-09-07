@@ -93,23 +93,7 @@ func (r Request) Validate() error {
 		}
 		switch r.WorkspaceMode {
 		case WorkspaceIsolated:
-			if r.Worktree == "" {
-				return errors.New("isolated_worktree strategy requires worktree")
-			}
-			worktree, err := filepath.Abs(r.Worktree)
-			if err != nil || worktree != filepath.Clean(r.Worktree) {
-				return errors.New("worktree must be an absolute normalized path")
-			}
-			info, err := os.Stat(worktree)
-			if err != nil || !info.IsDir() {
-				return errors.New("worktree must be an existing directory")
-			}
-			if samePath(workspace, worktree) {
-				return errors.New("isolated_worktree must differ from the controller workspace")
-			}
-			if _, err := os.Lstat(filepath.Join(worktree, ".git")); err != nil {
-				return errors.New("isolated_worktree must be a git worktree")
-			}
+			return errors.New("isolated_worktree strategy is retired; use current_workspace")
 		case WorkspaceCurrent:
 			if r.Worktree != "" {
 				return errors.New("current_workspace strategy must not include worktree")
@@ -139,9 +123,6 @@ func (r Request) Validate() error {
 }
 
 func (r Request) executionDirectory() string {
-	if r.Role == "implement" && r.WorkspaceMode == WorkspaceIsolated {
-		return r.Worktree
-	}
 	return r.Workspace
 }
 
@@ -155,14 +136,6 @@ func CreateFromRequest(ctx context.Context, store *Store, request Request, trans
 		return Job{}, err
 	}
 	if request.Role == "implement" {
-		if request.WorkspaceMode == WorkspaceIsolated {
-			if err := validateRelatedWorktree(request.Workspace, request.Worktree); err != nil {
-				return Job{}, err
-			}
-			if err := ensureCleanWorktree(request.Worktree); err != nil {
-				return Job{}, err
-			}
-		}
 		if err := store.ValidateDelegationAuthority(ctx, request.TaskID, request.AllowedFiles); err != nil {
 			return Job{}, fmt.Errorf("validate implementation authority: %w", err)
 		}
@@ -195,14 +168,6 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 		return errors.New("delegation request does not match accepted job")
 	}
 	if request.Role == "implement" {
-		if request.WorkspaceMode == WorkspaceIsolated {
-			if err := validateRelatedWorktree(request.Workspace, request.Worktree); err != nil {
-				return err
-			}
-			if err := ensureCleanWorktree(request.Worktree); err != nil {
-				return err
-			}
-		}
 		if err := store.ValidateDelegationAuthority(ctx, request.TaskID, request.AllowedFiles); err != nil {
 			return fmt.Errorf("revalidate implementation authority: %w", err)
 		}
@@ -378,15 +343,9 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	var workspaceBaseline map[string]string
 	if request.Role == "implement" {
 		cmd.Dir = request.executionDirectory()
-		if request.WorkspaceMode == WorkspaceIsolated {
-			if err := ensureCleanWorktree(cmd.Dir); err != nil {
-				return nil, -1, err
-			}
-		} else {
-			workspaceBaseline, err = captureWorkspaceBaseline(cmd.Dir)
-			if err != nil {
-				return nil, -1, err
-			}
+		workspaceBaseline, err = captureWorkspaceBaseline(cmd.Dir)
+		if err != nil {
+			return nil, -1, err
 		}
 	}
 	sandboxHome, err := os.MkdirTemp("", "cortex-ia-agy-home-*")
@@ -576,13 +535,8 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 		}
 	}
 	elapsed := time.Since(startTime).Round(time.Millisecond)
-	if request.Role == "implement" && (err == nil || request.WorkspaceMode == WorkspaceCurrent) {
-		var allowErr error
-		if request.WorkspaceMode == WorkspaceIsolated {
-			allowErr = validateWorktreeChanges(request.executionDirectory(), request.AllowedFiles)
-		} else {
-			allowErr = validateWorkspaceChanges(request.executionDirectory(), request.AllowedFiles, workspaceBaseline)
-		}
+	if request.Role == "implement" {
+		allowErr := validateWorkspaceChanges(request.executionDirectory(), request.AllowedFiles, workspaceBaseline)
 		if allowErr != nil {
 			if err != nil {
 				err = errors.Join(err, allowErr)
@@ -681,14 +635,6 @@ func isolatedAGYEnvironment(home string) []string {
 	return environment
 }
 
-func samePath(left, right string) bool {
-	left, right = filepath.Clean(left), filepath.Clean(right)
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		return strings.EqualFold(left, right)
-	}
-	return left == right
-}
-
 func gitOutput(directory string, args ...string) ([]byte, error) {
 	git, err := exec.LookPath("git")
 	if err != nil {
@@ -706,93 +652,6 @@ func gitOutput(directory string, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, bounded(stderr, 512))
 	}
 	return output, nil
-}
-
-func ensureCleanWorktree(directory string) error {
-	paths, err := changedWorktreePaths(directory)
-	if err != nil {
-		return fmt.Errorf("validate isolated worktree %q: %w", directory, err)
-	}
-	if len(paths) != 0 {
-		sample := paths
-		if len(sample) > 5 {
-			sample = sample[:5]
-		}
-		more := ""
-		if len(paths) > 5 {
-			more = fmt.Sprintf(" (+%d more)", len(paths)-5)
-		}
-		return fmt.Errorf("implement worktree %q must be clean before delegation; found %d uncommitted/untracked file(s): %s%s (clean worktree via git clean/reset/stash or use 'current_workspace' strategy if working directly in the workspace)",
-			directory, len(paths), strings.Join(sample, ", "), more)
-	}
-	return nil
-}
-
-func validateRelatedWorktree(workspace, worktree string) error {
-	record, err := ResolveWorktree(workspace, worktree)
-	if err != nil {
-		return fmt.Errorf("isolated worktree validation failed: %w", err)
-	}
-	if record.Prunable {
-		return fmt.Errorf("isolated worktree %q is marked prunable by git; sync or re-create worktree before delegation", worktree)
-	}
-
-	workspaceHead, err := gitOutput(workspace, "rev-parse", "HEAD")
-	if err != nil {
-		return fmt.Errorf("failed to determine controller HEAD in %q: %w", workspace, err)
-	}
-
-	wsHeadStr := strings.TrimSpace(string(workspaceHead))
-	wtHeadStr := strings.TrimSpace(record.HEAD)
-	if wsHeadStr != wtHeadStr {
-		// Check if worktree HEAD shares a valid common ancestor with controller HEAD
-		cmdMB := exec.Command("git", "-C", worktree, "merge-base", wsHeadStr, wtHeadStr)
-		cmdMB.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
-		mbOut, mbErr := cmdMB.Output()
-		if mbErr != nil || strings.TrimSpace(string(mbOut)) == "" {
-			return fmt.Errorf("isolated worktree %q HEAD (%s) shares no common git history with controller HEAD (%s); verify worktree base before delegation",
-				worktree, wtHeadStr, wsHeadStr)
-		}
-	}
-	return nil
-}
-
-func validateWorktreeChanges(directory string, allowedFiles []string) error {
-	changed, err := changedWorktreePaths(directory)
-	if err != nil {
-		return fmt.Errorf("validate delegated changes in %q: %w", directory, err)
-	}
-	allowed := make(map[string]struct{}, len(allowedFiles))
-	for _, value := range allowedFiles {
-		clean, pathErr := canonicalLeasePath(value)
-		if pathErr != nil {
-			return pathErr
-		}
-		allowed[clean] = struct{}{}
-	}
-	var unleased []string
-	for _, pathValue := range changed {
-		clean, pathErr := canonicalLeasePath(pathValue)
-		if pathErr != nil {
-			return fmt.Errorf("delegated change has unsafe path %q: %w", pathValue, pathErr)
-		}
-		if _, ok := allowed[clean]; !ok {
-			unleased = append(unleased, clean)
-		}
-	}
-	if len(unleased) > 0 {
-		sample := unleased
-		if len(sample) > 5 {
-			sample = sample[:5]
-		}
-		more := ""
-		if len(unleased) > 5 {
-			more = fmt.Sprintf(" (+%d more)", len(unleased)-5)
-		}
-		return fmt.Errorf("delegated worker modified %d unleased path(s): %s%s (allowed files: %s)",
-			len(unleased), strings.Join(sample, ", "), more, strings.Join(allowedFiles, ", "))
-	}
-	return nil
 }
 
 func captureWorkspaceBaseline(directory string) (map[string]string, error) {

@@ -67,9 +67,9 @@ Before modifying code or executing mutating shell commands, execute these steps 
 - **Conflict handling**: If any file conflicts, do not write it; transition the claimed task to `blocked` to release authority and return `BLOCKED` for reconciliation. Tokens remain hidden in the bridge.
 
 ### Step 2: Delegation Gate (Dynamic External CLI / Herdr)
-- Require an explicit `dispatch_envelope.workspace_strategy`; never choose it yourself.
-- `isolated_worktree` requires an existing clean related Git worktree. `current_workspace` uses the controller workspace sequentially under live leases; do not edit natively while the external leaf is active.
-- Call `cortex_ia_delegate_start` with `role: "implement"`, `task_id`, `objective`, `workspace_strategy`, `worktree`, `allowed_files`, and `acceptance_checks`.
+- Require an explicit `dispatch_envelope.workspace_strategy`: `current_workspace` is the sole supported strategy; `isolated_worktree` is retired.
+- `current_workspace` uses the controller workspace sequentially under live per-file reservations (`cortex_ia_file_reserve`); an external AGY leaf remains exclusive during its execution window, and native controllers must not edit concurrently.
+- Call `cortex_ia_delegate_start` with `role: "implement"`, `task_id`, `objective`, `workspace_strategy: "current_workspace"`, `allowed_files`, and `acceptance_checks`.
 - **If the bridge returns `delegated: true`** (e.g. `execution_mode: "herdr_multiplexed"` or `"direct_cli"`):
   - An external leaf worker is executing in a Herdr pane or background process.
   - Call `cortex_ia_delegation_wait({ job_id })` once (terminal success automatically attaches `result`).

@@ -27,7 +27,7 @@ func runWorktree(args []string) error {
 		fmt.Println("\nSubcommands:")
 		fmt.Println("  list [--repo <repo-path>]                                    List authoritative git worktrees")
 		fmt.Println("  validate <worktree-path> [--repo <repo>] [--head <commit>]   Validate worktree contract against git porcelain")
-		fmt.Println("  create [path] [--branch <name>] [--base <ref>] [--task <id>] Create a clean isolated worktree")
+		fmt.Println("  create (retired)                                             isolated_worktree strategy is retired; use current_workspace")
 		fmt.Println("  clean <worktree-path>                                       Reset and clean a worktree")
 		fmt.Println("  drop <worktree-path> [--repo <repo-path>]                   Remove an ephemeral worktree")
 		fmt.Println("  prune [--repo <repo-path>]                                  Clean unreferenced or stale worktrees")
@@ -79,60 +79,7 @@ func runWorktree(args []string) error {
 		})
 
 	case "create":
-		opts := delegation.WorktreeOptions{RepoPath: "."}
-		for i := 1; i < len(args); i++ {
-			switch args[i] {
-			case "--repo":
-				if i+1 < len(args) {
-					opts.RepoPath = args[i+1]
-					i++
-				}
-			case "--branch":
-				if i+1 < len(args) {
-					opts.Branch = args[i+1]
-					i++
-				}
-			case "--base":
-				if i+1 < len(args) {
-					opts.BaseRef = args[i+1]
-					i++
-				}
-			case "--task":
-				if i+1 < len(args) {
-					opts.TaskID = args[i+1]
-					i++
-				}
-			case "--detach":
-				opts.Detach = true
-			default:
-				if !strings.HasPrefix(args[i], "--") && opts.WorktreePath == "" {
-					opts.WorktreePath = args[i]
-				}
-			}
-		}
-		record, err := delegation.CreateManagedWorktree(opts)
-		if err != nil {
-			return err
-		}
-		store, cleanup := getOptionalStore()
-		defer cleanup()
-		if store != nil {
-			_ = store.RegisterManagedWorktree(context.Background(), delegation.ManagedWorktree{
-				RepoPath:     opts.RepoPath,
-				WorktreePath: record.Path,
-				Branch:       record.Branch,
-				BaseRef:      opts.BaseRef,
-				TaskID:       opts.TaskID,
-				Status:       "active",
-			})
-		}
-		return printJSON(map[string]any{
-			"worktree": record.Path,
-			"branch":   record.Branch,
-			"head":     record.HEAD,
-			"detached": record.Detached,
-			"status":   "ready",
-		})
+		return errors.New("isolated_worktree strategy is retired; use current_workspace")
 
 	case "clean":
 		if len(args) < 2 {

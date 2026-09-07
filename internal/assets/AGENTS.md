@@ -26,7 +26,7 @@ flowchart TD
     subgraph Alignment ["Operating Conditions Alignment"]
         StartGate -->|Ask if unset| ModeChoice[Execution Mode:\nAuto vs Interactive]
         StartGate -->|Ask if unset| PlaneChoice[Spec & Memory Plane:\nOpenSpec vs Cortex vs Hybrid]
-        StartGate -->|Ask if unset| WorkspaceChoice[External Implement Workspace:\nIsolated Worktree vs Current Workspace]
+        StartGate -->|Fixed policy| WorkspaceChoice[External Implement Workspace:\nCurrent Workspace]
         
         ModeChoice --> AmbiguityCheck{High Design\nUncertainty?}
         PlaneChoice --> AmbiguityCheck
@@ -76,9 +76,7 @@ flowchart TD
    - **`hybrid`**: *(Recommended)* OpenSpec for shared markdown specifications in the repo + Cortex for debugging memory and root-cause lineage.
    - Carry the selected `spec_plane` in every phase dispatch. A one-time exception is scoped to that change, never a replacement for the user's general preference.
 3. **External Implement Workspace Strategy**:
-   - **`isolated_worktree`**: *(Recommended)* Run an external implement leaf in an existing clean related Git worktree (managed via `using-git-worktrees` and `cortex-ia worktree create`).
-   - **`current_workspace`**: Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_ia_file_reserve` calls made before editing each file. An external AGY leaf remains exclusive during its execution window; its native controller must not edit concurrently, and Cortex-IA compares the final workspace against a pre-run baseline.
-   - Ask when unset and carry the answer in every implement dispatch envelope. Never infer the strategy from an available worktree, Herdr, or delegation configuration.
+   - **`current_workspace`**: Single supported implementation workspace strategy; `isolated_worktree` is retired. Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_ia_file_reserve` calls made before editing each file. An external AGY leaf remains exclusive during its execution window; its native controller must not edit concurrently, and Cortex-IA compares the final workspace against a pre-run baseline.
 4. **Design Grilling (`grill-me`)**:
    - When encountering unstated architectural choices or trade-offs, execute structured interview rounds:
      `❓ Q1 - <Title>: <Options>` + `➡️ Recomendación: <Answer>`.
@@ -269,8 +267,8 @@ stateDiagram-v2
     "go test -run TestAuthMiddleware ./internal/auth/...",
     "golangci-lint run ./internal/auth/..."
   ],
-  "workspace_strategy": "isolated_worktree",
-  "worktree": "/path/to/.worktrees/auth-feat",
+  "workspace_strategy": "current_workspace",
+  "worktree": null,
   "artifact_refs": ["specs/auth/REQ-AUTH-001.md"]
 }
 </minion-dispatch>

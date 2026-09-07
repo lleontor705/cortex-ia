@@ -1,6 +1,6 @@
 ---
 name: parallel-dispatch
-description: Detect and execute independent task groups concurrently in OpenCode background subagents or isolated worktrees when dependencies are satisfied and allowed_files are disjoint.
+description: Detect and execute independent task groups concurrently in OpenCode background subagents when dependencies are satisfied and allowed_files are disjoint.
 license: MIT
 metadata:
   author: lleontor705
@@ -19,42 +19,24 @@ Execute independent tasks concurrently instead of forcing sequential execution. 
 
 ---
 
-## Step 1: Detect Parallel Candidates in the Board
+## Step 1: Detect Independent Ready Tasks
 
-1. **Query Board Tasks:**
-   Call `cortex_ia_work_list({ board_id })`.
-2. **Filter by Readiness:**
-   Identify all tasks currently with `status: "ready"` (meaning all upstream dependencies have reached `done`).
-3. **Analyze File Disjointness:**
-   For all candidate tasks `[T1, T2, ...]`, compare their `allowed_files`:
-   ```text
-   Files(T1) ∩ Files(T2) == ∅  -->  PARALLEL CANDIDATES
-   Files(T1) ∩ Files(T2) != ∅  -->  MUST REMAIN SEQUENTIAL
-   ```
-4. **Affinity & Locality Clustering (DynTaskMAS / DRAMA Pattern):**
-   Group candidate tasks by package/subsystem directory prefix (e.g. `internal/tui/`, `internal/pipeline/`, `web/`):
-   - Tasks within the same subsystem share semantic locality and AST symbols in Cortex MCP. Assign them sequentially to the same warm worker context to eliminate cold-start re-reading.
-   - Form parallel execution waves across distinct subsystem boundaries (e.g. Subsystem A concurrently with Subsystem B).
-5. **Form the Execution Wave:**
-   Group candidate tasks into disjoint execution waves. Tasks sharing files are partitioned into successive waves.
+1. Run `cortex_ia_work_list` with `--status ready`.
+2. Inspect the `allowed_files` array for each candidate task.
+3. Compute the intersection of `allowed_files` across all candidates:
+   - If sets are **disjoint**: The tasks can be executed in parallel.
+   - If sets **overlap**: The tasks MUST be executed sequentially (enforce dependency order).
 
 ---
 
-## Step 2: Select Workspace Isolation Strategy
+## Step 2: Workspace Strategy
 
-### Option A: `current_workspace` (Native Subagents)
-- Suitable for 2–4 parallel native OpenCode `implement` controllers.
+### `current_workspace` (Sole Supported Strategy)
+- Suitable for parallel native OpenCode `implement` controllers with disjoint file scopes.
 - Each controller claims a distinct `task_id`.
-- Controllers reserve their disjoint paths atomically via `cortex_ia_work_claim({ task_id, paths: allowed_files })`.
+- Controllers reserve their disjoint paths atomically via `cortex_ia_work_claim({ task_id, paths: allowed_files })` or `cortex_ia_file_reserve`.
 - Because file sets are disjoint, per-file reservations succeed without collision.
-
-### Option B: `isolated_worktree` (External AGY Leaves or High-Risk Work)
-- Mandatory when delegating to external AGY leaves (`cortex_ia_delegate_start`).
-- Each task runs in its own dedicated, clean worktree:
-  ```bash
-  cortex-ia worktree create .worktrees/<task-id>
-  ```
-- Eliminates git index and file locking contention completely.
+- If delegating an external AGY leaf, execution remains exclusive during its execution window under pre-run baseline verification; `isolated_worktree` is retired.
 
 ---
 
@@ -115,6 +97,6 @@ task({ subagent: "implement", prompt: envelopeTask2, background: true });
 |---|---|
 | Multiple tasks `ready` with disjoint `allowed_files` | Launch parallel background subagents (`parallel-dispatch`) |
 | Tasks share any file in `allowed_files` | Execute sequentially in dependency/sorted order |
-| Task uses external AGY leaf | Use dedicated `isolated_worktree` per task |
+| Task uses external AGY leaf | Use exclusive `current_workspace` window with baseline checks; `isolated_worktree` is retired |
 | Worker fails or hits collision | Worker transitions to `blocked`; other parallel tasks continue unaffected |
 | Reviewer returns `FAIL` | Task transitions to `blocked` for targeted retry; healthy tasks proceed |

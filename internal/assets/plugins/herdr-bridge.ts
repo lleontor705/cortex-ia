@@ -852,88 +852,14 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
-    cortex_ia_worktree_create: tool({
-      description: "Create a clean, isolated Git worktree managed by Cortex-IA outside of repository checkout. Supports branch binding and base reference.",
-      args: {
-        branch: tool.schema.string().optional().describe("Optional branch name to create and bind (e.g. feat/my-task)"),
-        base: tool.schema.string().optional().describe("Optional base ref or commit (defaults to HEAD)"),
-        task_id: tool.schema.string().optional().describe("Optional task ID to associate with this worktree"),
-        path: tool.schema.string().optional().describe("Optional custom worktree directory path; defaults to managed ~/.cortex-ia/worktrees/ path"),
-        repo: tool.schema.string().optional().describe("Optional base repository path; defaults to current directory"),
-        detach: tool.schema.boolean().optional().describe("Force detached HEAD mode")
-      },
-      async execute(args) {
-        const command = ["worktree", "create"];
-        if (args.path) command.push(args.path);
-        if (args.branch) command.push("--branch", args.branch);
-        if (args.base) command.push("--base", args.base);
-        if (args.task_id) command.push("--task", args.task_id);
-        if (args.repo) command.push("--repo", args.repo);
-        if (args.detach) command.push("--detach");
-        return cortex(command);
-      }
-    }),
-
-    cortex_ia_worktree_drop: tool({
-      description: "Safely drop an isolated ephemeral worktree and prune Git references.",
-      args: {
-        worktree: tool.schema.string().describe("Absolute or relative path to the worktree to drop"),
-        repo: tool.schema.string().optional().describe("Optional base repository path")
-      },
-      async execute(args) {
-        const command = ["worktree", "drop", args.worktree];
-        if (args.repo) command.push("--repo", args.repo);
-        return cortex(command);
-      }
-    }),
-
-    cortex_ia_worktree_list: tool({
-      description: "List authoritative Git worktrees with porcelain tracking records.",
-      args: {
-        repo: tool.schema.string().optional().describe("Optional base repository path")
-      },
-      async execute(args) {
-        const command = ["worktree", "list"];
-        if (args.repo) command.push("--repo", args.repo);
-        return cortex(command);
-      }
-    }),
-
-    cortex_ia_worktree_validate: tool({
-      description: "Validate that a worktree exists on disk, belongs to the repository, and satisfies HEAD contracts.",
-      args: {
-        worktree: tool.schema.string().describe("Worktree path to validate"),
-        repo: tool.schema.string().optional().describe("Optional base repository path"),
-        expected_head: tool.schema.string().optional().describe("Optional expected HEAD commit hash")
-      },
-      async execute(args) {
-        const command = ["worktree", "validate", args.worktree];
-        if (args.repo) command.push("--repo", args.repo);
-        if (args.expected_head) command.push("--head", args.expected_head);
-        return cortex(command);
-      }
-    }),
-
-    cortex_ia_worktree_prune: tool({
-      description: "Prune unreferenced or orphaned worktree directories.",
-      args: {
-        repo: tool.schema.string().optional().describe("Optional base repository path")
-      },
-      async execute(args) {
-        const command = ["worktree", "prune"];
-        if (args.repo) command.push("--repo", args.repo);
-        return cortex(command);
-      }
-    }),
-
     cortex_ia_delegate_start: tool({
-      description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires an explicit user-aligned workspace_strategy: isolated_worktree or current_workspace. The returned execution_mode is authoritative. Call cortex_ia_delegation_wait once, then read the receipt; execute natively only when delegated is false and no external job was accepted.",
+      description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires an explicit user-aligned workspace_strategy: current_workspace. The returned execution_mode is authoritative. Call cortex_ia_delegation_wait once, then read the receipt; execute natively only when delegated is false and no external job was accepted.",
       args: {
         role: tool.schema.enum(["implement", "investigate", "reviewer", "planner"]),
         task_id: tool.schema.string().optional(),
         objective: tool.schema.string(),
-        workspace_strategy: tool.schema.enum(["isolated_worktree", "current_workspace"]).optional(),
-        worktree: tool.schema.string().optional().describe("Absolute isolated worktree path; required only for isolated_worktree"),
+        workspace_strategy: tool.schema.enum(["current_workspace", "isolated_worktree"]).optional(),
+        worktree: tool.schema.string().optional().describe("Legacy parameter; rejected for new work"),
         allowed_files: tool.schema.array(tool.schema.string()).optional(),
         acceptance_checks: tool.schema.array(tool.schema.string()).optional(),
         context_data: tool.schema.string().optional(),
@@ -956,12 +882,20 @@ export const CortexDelegationBridge: Plugin = async () => ({
                 action: "ASK_USER_FOR_WORKSPACE_STRATEGY"
               });
             }
-            if (args.workspace_strategy === "isolated_worktree" && !args.worktree) {
+            if (args.workspace_strategy === "isolated_worktree") {
               return JSON.stringify({
                 delegated: false,
                 execution_mode: "native",
-                reason: "isolated_worktree strategy requires an existing worktree path",
-                action: "REQUEST_OR_CREATE_APPROVED_WORKTREE"
+                reason: "isolated_worktree strategy is retired; use current_workspace",
+                action: "USE_CURRENT_WORKSPACE"
+              });
+            }
+            if (args.workspace_strategy !== "current_workspace") {
+              return JSON.stringify({
+                delegated: false,
+                execution_mode: "native",
+                reason: `unsupported workspace_strategy "${args.workspace_strategy}"`,
+                action: "USE_CURRENT_WORKSPACE"
               });
             }
           }
@@ -976,7 +910,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
             objective,
             workspace: path.resolve(context.directory),
             workspace_strategy: args.workspace_strategy || "",
-            worktree: args.workspace_strategy === "isolated_worktree" && args.worktree ? path.resolve(args.worktree) : "",
+            worktree: "",
             allowed_files: args.allowed_files || [],
             output_schema: receiptSchema,
             model: args.model || undefined,
@@ -996,9 +930,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
           if (transport === "herdr") {
             let openedPane = "";
             try {
-              const executionDirectory = args.role === "implement" && args.workspace_strategy === "isolated_worktree" && args.worktree
-                ? path.resolve(args.worktree)
-                : context.directory;
+              const executionDirectory = context.directory;
               const split = execFileSync(herdr, ["pane", "split", "--direction", config.direction, "--cwd", executionDirectory, "--no-focus"], { encoding: "utf-8", windowsHide: true });
               const pane = paneID(split);
               if (!pane) throw new Error("Herdr did not return a pane ID");

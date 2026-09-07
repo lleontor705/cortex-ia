@@ -202,8 +202,8 @@ Usage:
                                       Reserve workspace-relative file scopes
   cortex-ia work transition|approve|retry|recover
                                       Advance, review, or reconcile task state
-  cortex-ia worktree list|validate|create|clean|drop|prune
-                                      Manage isolated Git worktrees
+  cortex-ia worktree list|validate|clean|drop|prune
+                                      Inspect and clean auxiliary Git worktrees
   cortex-ia board create|list|status|archive|unarchive|delete
                                       Group task DAGs into local task boards
   cortex-ia board serve [--addr 127.0.0.1:7331]

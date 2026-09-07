@@ -67,7 +67,7 @@ Do not force SDD for routine work. Do not force TDD for documentation, declarati
 For Tier 3 initiatives (or Tier 2 if unset and material ambiguity exists):
 1. **Execution Mode**: `auto` (autonomous execution through DAG) vs `interactive` (pauses at phase gates).
 2. **Spec & Memory Plane**: `openspec`, `cortex`, or `hybrid` (Recommended).
-3. **External Implement Workspace Strategy**: `isolated_worktree` (Recommended, follow `using-git-worktrees`) vs `current_workspace`.
+3. **External Implement Workspace Strategy**: `current_workspace` (Single supported strategy; `isolated_worktree` is retired).
 4. **Design Grilling (`grill-me`)**: For unstated architectural choices, dispatch `investigate` to gather codebase facts first, then interview the user across the decision frontier.
 
 ## Route procedure
@@ -145,7 +145,7 @@ Orchestrator-only surface (it never claims tasks or holds file leases itself):
   "workflow": "",
   "spec_plane": "openspec | cortex | hybrid",
   "task_id": null,
-  "workspace_strategy": "isolated_worktree | current_workspace",
+  "workspace_strategy": "current_workspace",
   "worktree": null,
   "artifact_refs": [],
   "evidence_refs": [],

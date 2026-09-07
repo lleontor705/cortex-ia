@@ -23,7 +23,7 @@ The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observ
 | `investigate` | Read-only board/task status and durable evidence. Never mutate work state. | At most one optional read-only external leaf. |
 | `implement` | Own exactly one live task claim, lease every writable path, renew authority, verify, and transition to `in_review`. | At most one external AGY leaf for the bounded objective. |
 | `reviewer` | Independently inspect and rerun checks; its only work mutation is `cortex_ia_work_approve`. Never edit, claim, lease, or self-approve. | At most one optional review-only external leaf. |
-| external AGY leaf | Execute only the validated envelope in the explicitly selected isolated worktree or current workspace and return a bounded receipt. | No Cortex session, task-control, approval, MCP, or nested-delegation authority. |
+| external AGY leaf | Execute only the validated envelope in the current workspace under exclusive lease and baseline validation, and return a bounded receipt. | No Cortex session, task-control, approval, MCP, or nested-delegation authority. |
 
 Only the orchestrator owns `cortex_session_start`, session summaries, and `cortex_session_end`. It MUST maintain exactly ONE stable session ID and ONE stable board ID throughout the entire initiative lifecycle (binding to existing active sessions from `cortex_context` upon startup). Dispatched controllers are ephemeral within that session and must never invoke session lifecycle tools.
 
@@ -44,10 +44,9 @@ Every delegation decision balances task isolation against context bloat. Follow 
    - **4+ files**: Mandatory delegation to an exploration/investigation subagent (`investigate`). The minion inspects code in its isolated context, stores durable findings in Cortex MCP (`cortex_save`), and returns only a compressed synthesis (<200 tokens). Never flood the parent orchestrator context with mass file contents.
 2. **High-Stdout Containment Boundary**:
    - Commands producing massive stdout (full test suites, linters, builds, benchmarks) must NEVER be executed directly in the orchestrator's main conversation. Delegate them to `reviewer` or bounded execution minions to preserve orchestrator context for strategic routing.
-3. **Workspace Strategy Selection Heuristic (`isolated_worktree` vs `current_workspace`)**:
-   - When preparing external AGY execution:
-     - **Dirty Tree / Shared Manifests**: If `git status --porcelain` reveals uncommitted changes, or the task touches shared build manifests (`go.mod`, `package.json`, `.env`), `isolated_worktree` is MANDATORY to prevent corruption of user uncommitted work.
-     - **Clean Tree / Disjoint Scope**: If the working tree is clean and changes are confined strictly to files covered by active leases, `current_workspace` may be used with exclusive locking.
+3. **Workspace Strategy (`current_workspace` as Single Supported Strategy)**:
+   - When preparing external AGY execution, `current_workspace` is the sole supported implementation workspace strategy; `isolated_worktree` is retired.
+   - An external leaf remains strictly exclusive during its execution window: native controllers must not edit concurrently, and Cortex-IA verifies changes against a pre-run baseline before accepting the result.
 4. **Bounded Agent Contracts & Step SLAs**:
    - Every minion dispatch is governed by an explicit contract envelope specifying `max_steps` (default 30) and resource budget. If a subagent loops repetitively without delivering progress or completing, the OpenCode transport halts execution with `AGENT_CONTRACT_EXCEEDED` and latches the task in SQLite.
 5. **Dual Ledger Synchronization (Task & Progress Ledgers)**:
@@ -94,7 +93,7 @@ in_progress --expired authority/recovery--> blocked
 
 Recovery only reconciles expired authority. It does not recreate claims or leases. Retry is explicit and uses a fresh attempt; never reuse tokens from an expired or terminal attempt. A task has a hard limit of five durable claim attempts. When timeout, scope, or repeated failure shows that the unit is too large, the orchestrator decides the decomposition route and dispatches a planner with the current revision and failure evidence. The planner designs 2-8 fully specified tasks and invokes `cortex_ia_work_decompose` once instead of creating children piecemeal or retrying the parent. Cortex applies that plan atomically: it preserves the board/project and upstream dependencies, chains the children, redirects downstream dependencies to the final child, and exposes the blocked parent as `superseded`. The orchestrator, implementers, and reviewers never invoke decomposition directly.
 
-Before external implementation, the user must explicitly select `isolated_worktree` (recommended) or `current_workspace`. When `isolated_worktree` is selected, controllers must follow the `using-git-worktrees` skill to detect isolation, initialize with `cortex-ia worktree create`, and verify the clean baseline. A current-workspace external AGY leaf is exclusive for its execution window, never concurrent with native edits, and must preserve every pre-existing unleased change relative to the pre-run baseline. Native OpenCode implement controllers may otherwise share the current workspace in parallel under disjoint live per-file reservations. The choice is session alignment, not a property inferred from Herdr, Git, or installer configuration.
+External AGY implementation requires `current_workspace` as the single supported workspace strategy; requests specifying `isolated_worktree` fail closed with an actionable retirement error. An external AGY leaf is exclusive for its execution window, never concurrent with native edits, and must preserve every pre-existing unleased change relative to the pre-run baseline. Native OpenCode implement controllers may share the current workspace in parallel under disjoint live per-file reservations (`cortex_ia_file_reserve`).
 
 ## 5. Delegation modes
 

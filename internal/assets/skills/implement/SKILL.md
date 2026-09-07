@@ -28,7 +28,7 @@ If a `task_id` is present, run the canonical implementer lifecycle: claim the re
 
 For an ephemeral direct change without a board task, do not invent claims. Still check file conflicts when coordination is active and keep modifications within `allowed_files`.
 
-When operating under `workspace_strategy=isolated_worktree` or preparing to delegate to an external AGY leaf, follow the `using-git-worktrees` skill to verify isolation, initialize the worktree via `cortex-ia worktree create`, and run baseline verification tests.
+When delegating to an external AGY leaf, require `workspace_strategy=current_workspace` with exclusive locking and pre-run baseline verification; `isolated_worktree` is retired.
 
 ## Execution
 
