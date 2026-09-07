@@ -52,24 +52,38 @@ Honor any existing declared preference without asking. If the user chooses `curr
 
 **You have two mechanisms. Try them in this order.**
 
-### 1a. Native Cortex-IA Worktree Command (preferred)
+### 1a. Native Cortex-IA Worktree Tools (preferred)
 
-Cortex-IA includes native worktree management commands via the CLI dispatcher:
+Cortex-IA manages isolated Git worktrees centrally under `~/.cortex-ia/worktrees/` (outside the repo checkout). This completely prevents recursive file watchers (Vite, TypeScript, Go gopls, IDEs) from monitoring duplicate trees and prevents accidental `git add .` pollution.
 
+#### Via OpenCode Bridge Tool (Recommended for subagents):
+```json
+cortex_ia_worktree_create({
+  "branch": "feat/my-feature",
+  "task_id": "task-123",
+  "base": "HEAD"
+})
+```
+
+#### Via CLI:
 ```bash
-# Create or reuse a clean isolated worktree
-cortex-ia worktree create .worktrees/<feature-name>
+# Centrally managed worktree bound to a branch:
+cortex-ia worktree create --branch feat/my-feature --task task-123
+
+# Or with custom destination path if required:
+cortex-ia worktree create /path/to/custom/worktree --branch feat/my-feature
 ```
 
 The native command:
-1. Automatically creates parent directories (`os.MkdirAll`).
+1. Provisions directories centrally in `~/.cortex-ia/worktrees/<repo-slug>/<branch>`.
 2. Checks if the destination exists and cleans it (`CleanWorktree`: `git reset --hard HEAD` and `git clean -fd`).
-3. Creates a detached worktree at current HEAD (`git worktree add --detach <path> HEAD`).
-4. Returns JSON: `{"worktree": "/path/to/.worktrees/<feature-name>", "status": "ready"}`.
+3. Automatically binds to the named branch (`-b <branch>` or checks out existing branch), or detaches if `--detach` is specified.
+4. Registers the worktree in Cortex-IA SQLite database (`managed_worktrees`).
+5. Returns JSON: `{"worktree": "/path/to/worktree", "branch": "...", "head": "...", "status": "ready"}`.
 
 If the command succeeds, switch to that directory or use its absolute path for AGY delegation, and skip to Step 2.
 
-Only proceed to Step 1b if `cortex-ia` binary is not available or fails unexpectedly.
+Only proceed to Step 1b if `cortex-ia` tools are not available or fail unexpectedly.
 
 ### 1b. Git Worktree Fallback
 
@@ -80,17 +94,17 @@ Only proceed to Step 1b if `cortex-ia` binary is not available or fails unexpect
 Follow this priority order. Explicit user preference always beats observed filesystem state.
 
 1. **Check instructions for a declared worktree directory preference.** If specified, use it.
-2. **Check for an existing project-local worktree directory:**
+2. **Prefer an out-of-tree isolated path** (e.g. `$HOME/.cortex-ia/worktrees/` or `$TEMP/worktrees/`) to prevent file watcher spikes.
+3. **If project-local directories must be used**, check:
    ```bash
    ls -d .worktrees 2>/dev/null     # Preferred (hidden)
    ls -d worktrees 2>/dev/null      # Alternative
    ```
    If found, use it. If both exist, `.worktrees` wins.
-3. **If no guidance is available**, default to `.worktrees/` at the project root.
 
 #### Safety Verification (project-local directories only)
 
-**MUST verify directory is ignored before creating worktree:**
+**MUST verify directory is ignored before creating project-local worktree:**
 
 ```bash
 git check-ignore -q .worktrees 2>/dev/null || git check-ignore -q worktrees 2>/dev/null
@@ -169,19 +183,28 @@ When calling `cortex_ia_delegate_start`, supply the absolute path of the verifie
 
 Cortex-IA strictly validates that:
 1. The worktree contains a `.git` pointer linked to the same repository (`--git-common-dir`).
-2. The worktree HEAD matches the parent repository HEAD.
+2. The worktree HEAD shares verified repository ancestry with the controller HEAD (`git merge-base`).
 3. The worktree has no uncommitted changes or untracked files before execution.
 
 ### Teardown & Cleanup
 
 Once changes are committed or merged into the target branch, clean up the ephemeral worktree:
 
+#### Via OpenCode Bridge Tool:
+```json
+cortex_ia_worktree_drop({ "worktree": "<path-to-worktree>" })
+```
+
+#### Via CLI:
 ```bash
-# Using native command:
-cortex-ia worktree drop .worktrees/<feature-name>
+# Drop specific worktree:
+cortex-ia worktree drop <path-to-worktree>
+
+# Prune unreferenced/stale worktrees:
+cortex-ia worktree prune
 
 # Fallback git cleanup:
-git worktree remove --force .worktrees/<feature-name>
+git worktree remove --force <path-to-worktree>
 git worktree prune
 ```
 
@@ -191,16 +214,13 @@ git worktree prune
 |---|---|
 | Already in linked worktree | Skip creation (Step 0) |
 | In a submodule | Treat as normal repo (Step 0 guard) |
-| Native `cortex-ia` tool available | Use `cortex-ia worktree create` (Step 1a) |
+| Native `cortex-ia` tool available | Use `cortex_ia_worktree_create` / `cortex-ia worktree create` (Step 1a) |
 | No native tool | Git worktree fallback (Step 1b) |
-| `.worktrees/` exists | Use it (verify ignored) |
-| `worktrees/` exists | Use it (verify ignored) |
-| Both exist | Use `.worktrees/` |
-| Neither exists | Default to `.worktrees/` |
-| Directory not ignored | Add to `.gitignore` + commit |
-| Permission error on create | Sandbox fallback, work in current workspace |
+| Out-of-tree isolated path | Preferred (`~/.cortex-ia/worktrees/`) |
+| In-repo `.worktrees/` | Ensure verified ignored via `git check-ignore` |
 | Tests fail during baseline | Report failures + ask user before proceeding |
-| Work completed and merged | Run `cortex-ia worktree drop <path>` |
+| Work completed and merged | Run `cortex_ia_worktree_drop` or `cortex-ia worktree drop <path>` |
+
 
 ## Common Rationalizations
 

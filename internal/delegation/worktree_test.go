@@ -52,7 +52,7 @@ func TestWorktreeLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateEphemeralWorktree failed: %v", err)
 	}
-	if wt != wtDir {
+	if !SameWorkspace(wt, wtDir) {
 		t.Errorf("expected wt path %s, got %s", wtDir, wt)
 	}
 
@@ -66,11 +66,36 @@ func TestWorktreeLifecycle(t *testing.T) {
 		t.Errorf("expected untracked file to be cleaned")
 	}
 
-	// 4. Drop Worktree
+	// 4. Validate contract
+	rec, err := ValidateWorktreeContract(repoDir, wtDir, "")
+	if err != nil {
+		t.Fatalf("ValidateWorktreeContract failed: %v", err)
+	}
+	if rec == nil || !SameWorkspace(rec.Path, wtDir) {
+		t.Fatalf("expected valid record for %s", wtDir)
+	}
+
+	// 5. Drop Worktree
 	if err := DropEphemeralWorktree(repoDir, wtDir); err != nil {
 		t.Fatalf("DropEphemeralWorktree failed: %v", err)
 	}
 	if _, err := os.Stat(wtDir); !os.IsNotExist(err) {
 		t.Errorf("expected worktree to be dropped")
+	}
+
+	// 6. Test Managed Worktree with Branch
+	t.Setenv("CORTEX_IA_HOME", tempDir)
+	recBranch, err := CreateManagedWorktree(WorktreeOptions{
+		RepoPath: repoDir,
+		Branch:   "feature/test-branch",
+	})
+	if err != nil {
+		t.Fatalf("CreateManagedWorktree with branch failed: %v", err)
+	}
+	if recBranch.Branch != "refs/heads/feature/test-branch" && recBranch.Branch != "feature/test-branch" {
+		t.Errorf("expected branch feature/test-branch, got %s", recBranch.Branch)
+	}
+	if err := DropEphemeralWorktree(repoDir, recBranch.Path); err != nil {
+		t.Fatalf("Drop ephemeral branch worktree failed: %v", err)
 	}
 }

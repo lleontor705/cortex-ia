@@ -60,8 +60,13 @@ func CanonicalWorkspace(value string) (string, error) {
 	return filepath.ToSlash(absolute), nil
 }
 
-func sameWorkspace(left, right string) bool {
+// SameWorkspace reports whether two workspace paths resolve to the same canonical path.
+func SameWorkspace(left, right string) bool {
 	leftKey, leftErr := CanonicalWorkspace(left)
 	rightKey, rightErr := CanonicalWorkspace(right)
 	return leftErr == nil && rightErr == nil && leftKey != "" && leftKey == rightKey
+}
+
+func sameWorkspace(left, right string) bool {
+	return SameWorkspace(left, right)
 }

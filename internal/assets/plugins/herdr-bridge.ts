@@ -852,6 +852,80 @@ export const CortexDelegationBridge: Plugin = async () => ({
       }
     }),
 
+    cortex_ia_worktree_create: tool({
+      description: "Create a clean, isolated Git worktree managed by Cortex-IA outside of repository checkout. Supports branch binding and base reference.",
+      args: {
+        branch: tool.schema.string().optional().describe("Optional branch name to create and bind (e.g. feat/my-task)"),
+        base: tool.schema.string().optional().describe("Optional base ref or commit (defaults to HEAD)"),
+        task_id: tool.schema.string().optional().describe("Optional task ID to associate with this worktree"),
+        path: tool.schema.string().optional().describe("Optional custom worktree directory path; defaults to managed ~/.cortex-ia/worktrees/ path"),
+        repo: tool.schema.string().optional().describe("Optional base repository path; defaults to current directory"),
+        detach: tool.schema.boolean().optional().describe("Force detached HEAD mode")
+      },
+      async execute(args) {
+        const command = ["worktree", "create"];
+        if (args.path) command.push(args.path);
+        if (args.branch) command.push("--branch", args.branch);
+        if (args.base) command.push("--base", args.base);
+        if (args.task_id) command.push("--task", args.task_id);
+        if (args.repo) command.push("--repo", args.repo);
+        if (args.detach) command.push("--detach");
+        return cortex(command);
+      }
+    }),
+
+    cortex_ia_worktree_drop: tool({
+      description: "Safely drop an isolated ephemeral worktree and prune Git references.",
+      args: {
+        worktree: tool.schema.string().describe("Absolute or relative path to the worktree to drop"),
+        repo: tool.schema.string().optional().describe("Optional base repository path")
+      },
+      async execute(args) {
+        const command = ["worktree", "drop", args.worktree];
+        if (args.repo) command.push("--repo", args.repo);
+        return cortex(command);
+      }
+    }),
+
+    cortex_ia_worktree_list: tool({
+      description: "List authoritative Git worktrees with porcelain tracking records.",
+      args: {
+        repo: tool.schema.string().optional().describe("Optional base repository path")
+      },
+      async execute(args) {
+        const command = ["worktree", "list"];
+        if (args.repo) command.push("--repo", args.repo);
+        return cortex(command);
+      }
+    }),
+
+    cortex_ia_worktree_validate: tool({
+      description: "Validate that a worktree exists on disk, belongs to the repository, and satisfies HEAD contracts.",
+      args: {
+        worktree: tool.schema.string().describe("Worktree path to validate"),
+        repo: tool.schema.string().optional().describe("Optional base repository path"),
+        expected_head: tool.schema.string().optional().describe("Optional expected HEAD commit hash")
+      },
+      async execute(args) {
+        const command = ["worktree", "validate", args.worktree];
+        if (args.repo) command.push("--repo", args.repo);
+        if (args.expected_head) command.push("--head", args.expected_head);
+        return cortex(command);
+      }
+    }),
+
+    cortex_ia_worktree_prune: tool({
+      description: "Prune unreferenced or orphaned worktree directories.",
+      args: {
+        repo: tool.schema.string().optional().describe("Optional base repository path")
+      },
+      async execute(args) {
+        const command = ["worktree", "prune"];
+        if (args.repo) command.push("--repo", args.repo);
+        return cortex(command);
+      }
+    }),
+
     cortex_ia_delegate_start: tool({
       description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires an explicit user-aligned workspace_strategy: isolated_worktree or current_workspace. The returned execution_mode is authoritative. Call cortex_ia_delegation_wait once, then read the receipt; execute natively only when delegated is false and no external job was accepted.",
       args: {
@@ -1131,8 +1205,14 @@ export const CortexDelegationBridge: Plugin = async () => ({
       cortex_delegation_cancel: bridgeTools.cortex_ia_delegation_cancel,
       cortex_delegation_recover: bridgeTools.cortex_ia_delegation_recover,
       cortex_delegation_models: bridgeTools.cortex_ia_delegation_models,
+      cortex_worktree_create: bridgeTools.cortex_ia_worktree_create,
+      cortex_worktree_drop: bridgeTools.cortex_ia_worktree_drop,
+      cortex_worktree_list: bridgeTools.cortex_ia_worktree_list,
+      cortex_worktree_validate: bridgeTools.cortex_ia_worktree_validate,
+      cortex_worktree_prune: bridgeTools.cortex_ia_worktree_prune,
   };
 })()
+
 });
 
 export default CortexDelegationBridge;

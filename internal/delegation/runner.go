@@ -729,28 +729,30 @@ func ensureCleanWorktree(directory string) error {
 }
 
 func validateRelatedWorktree(workspace, worktree string) error {
-	workspaceCommon, err := gitOutput(workspace, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	record, err := ResolveWorktree(workspace, worktree)
 	if err != nil {
-		return fmt.Errorf("controller workspace %q is not a git repository: %w", workspace, err)
+		return fmt.Errorf("isolated worktree validation failed: %w", err)
 	}
-	worktreeCommon, err := gitOutput(worktree, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	if err != nil {
-		return fmt.Errorf("isolated worktree %q is not a git repository: %w", worktree, err)
+	if record.Prunable {
+		return fmt.Errorf("isolated worktree %q is marked prunable by git; sync or re-create worktree before delegation", worktree)
 	}
-	if !samePath(strings.TrimSpace(string(workspaceCommon)), strings.TrimSpace(string(worktreeCommon))) {
-		return fmt.Errorf("isolated worktree %q does not belong to controller repository %q", worktree, workspace)
-	}
+
 	workspaceHead, err := gitOutput(workspace, "rev-parse", "HEAD")
 	if err != nil {
 		return fmt.Errorf("failed to determine controller HEAD in %q: %w", workspace, err)
 	}
-	worktreeHead, err := gitOutput(worktree, "rev-parse", "HEAD")
-	if err != nil {
-		return fmt.Errorf("failed to determine isolated worktree HEAD in %q: %w", worktree, err)
-	}
-	if strings.TrimSpace(string(workspaceHead)) != strings.TrimSpace(string(worktreeHead)) {
-		return fmt.Errorf("isolated worktree %q HEAD (%s) must start at controller HEAD (%s); sync worktree before delegation",
-			worktree, strings.TrimSpace(string(worktreeHead)), strings.TrimSpace(string(workspaceHead)))
+
+	wsHeadStr := strings.TrimSpace(string(workspaceHead))
+	wtHeadStr := strings.TrimSpace(record.HEAD)
+	if wsHeadStr != wtHeadStr {
+		// Check if worktree HEAD shares a valid common ancestor with controller HEAD
+		cmdMB := exec.Command("git", "-C", worktree, "merge-base", wsHeadStr, wtHeadStr)
+		cmdMB.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+		mbOut, mbErr := cmdMB.Output()
+		if mbErr != nil || strings.TrimSpace(string(mbOut)) == "" {
+			return fmt.Errorf("isolated worktree %q HEAD (%s) shares no common git history with controller HEAD (%s); verify worktree base before delegation",
+				worktree, wtHeadStr, wsHeadStr)
+		}
 	}
 	return nil
 }
