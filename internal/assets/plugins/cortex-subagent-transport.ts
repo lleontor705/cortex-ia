@@ -13,6 +13,17 @@ const TRANSPORT_ISOLATION_SYSTEM = [
   "- Context Hygiene: Focus exclusively on your immediate objective; do not assume orchestrator routing duties."
 ].join("\n");
 
+const ROLE_DEFAULT_STEPS: Record<string, number> = {
+  implement: 70,
+  discovery: 60,
+  planner: 60,
+  orchestrator: 60,
+  reviewer: 50,
+  investigate: 50,
+};
+
+const DEFAULT_MAX_STEPS = 60;
+
 /**
  * CortexSubagentTransportPlugin provides runtime transport isolation and contract SLA bounding
  * for OpenCode subagents. It ensures child sessions spawned via the task tool receive a sanitized
@@ -23,13 +34,14 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
   const childSessions = new Set<string>();
   const sessionStepCounts = new Map<string, number>();
   const sessionStepLimits = new Map<string, number>();
-  const DEFAULT_MAX_STEPS = 35;
+  const pendingStepLimitsByParent = new Map<string, number>();
 
   return {
     dispose: async () => {
       childSessions.clear();
       sessionStepCounts.clear();
       sessionStepLimits.clear();
+      pendingStepLimitsByParent.clear();
     },
 
     event: async ({ event }) => {
@@ -41,7 +53,23 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
       if (type === "session.created" && info?.parentID && info?.id) {
         childSessions.add(info.id);
         sessionStepCounts.set(info.id, 0);
-        sessionStepLimits.set(info.id, DEFAULT_MAX_STEPS);
+
+        let limit = pendingStepLimitsByParent.get(info.parentID);
+        pendingStepLimitsByParent.delete(info.parentID);
+
+        if (!limit) {
+          if (typeof info?.steps === "number" && info.steps > 0) {
+            limit = info.steps;
+          } else if (typeof info?.max_steps === "number" && info.max_steps > 0) {
+            limit = info.max_steps;
+          } else if (info?.agent && ROLE_DEFAULT_STEPS[info.agent]) {
+            limit = ROLE_DEFAULT_STEPS[info.agent];
+          } else {
+            limit = DEFAULT_MAX_STEPS;
+          }
+        }
+
+        sessionStepLimits.set(info.id, limit);
       } else if (type === "session.deleted") {
         const id = info?.id;
         if (id) {
@@ -73,6 +101,21 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
         if (typeof prompt === "string" && prompt.trim().length === 0) {
           throw new Error("SUBAGENT_TRANSPORT_ERROR: task dispatch requires a non-empty prompt or envelope");
         }
+
+        let stepBudget = typeof args?.steps === "number" ? args.steps : (typeof args?.max_steps === "number" ? args.max_steps : 0);
+        if (!stepBudget && typeof prompt === "string") {
+          const match = prompt.match(/["']?max_steps["']?\s*[:=]\s*(\d+)/i) || prompt.match(/<max_steps>(\d+)<\/max_steps>/i);
+          if (match) {
+            stepBudget = parseInt(match[1], 10);
+          }
+        }
+        if (!stepBudget && args?.agent && ROLE_DEFAULT_STEPS[args.agent]) {
+          stepBudget = ROLE_DEFAULT_STEPS[args.agent];
+        }
+
+        if (sessionID && stepBudget > 0) {
+          pendingStepLimitsByParent.set(sessionID, stepBudget);
+        }
         return;
       }
 
@@ -91,3 +134,4 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
 };
 
 export default CortexSubagentTransportPlugin;
+
