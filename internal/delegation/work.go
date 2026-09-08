@@ -35,6 +35,7 @@ var ErrWorkConflict = errors.New("work control conflict")
 var ErrWorkAttemptLimit = errors.New("work attempt limit reached")
 
 type WorkItem struct {
+	ConversationOwnership
 	ID           string      `json:"task_id"`
 	BoardID      string      `json:"board_id"`
 	Workspace    string      `json:"workspace,omitempty"`
@@ -56,6 +57,8 @@ type WorkItem struct {
 }
 
 type WorkDefinition struct {
+	ConversationOwnership
+	Project      string
 	Objective    string
 	Acceptance   string
 	Verification string
@@ -122,7 +125,10 @@ func (s *Store) CreateWorkInBoard(ctx context.Context, boardID, id, title string
 }
 
 func (s *Store) CreateWorkInBoardWithDefinition(ctx context.Context, boardID, id, title string, dependencies []string, definition WorkDefinition) (WorkItem, error) {
-	workspace, err := ResolveProjectRoot("")
+	if definition.OpenCodeSessionID != "" && strings.TrimSpace(definition.Project) == "" {
+		return WorkItem{}, errors.New("owned task requires an explicit project")
+	}
+	workspace, err := ResolveProjectRoot(definition.Project)
 	if err != nil {
 		return WorkItem{}, fmt.Errorf("resolve task project: %w", err)
 	}
@@ -130,6 +136,9 @@ func (s *Store) CreateWorkInBoardWithDefinition(ctx context.Context, boardID, id
 }
 
 func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, boardID, id, title string, dependencies []string, definition WorkDefinition) (WorkItem, error) {
+	if err := definition.Validate(); err != nil {
+		return WorkItem{}, err
+	}
 	boardID = strings.TrimSpace(boardID)
 	if boardID == "" {
 		boardID = DefaultBoardID
@@ -184,7 +193,7 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 		if boardExists != 1 {
 			return ErrBoardNotFound
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id,workspace) VALUES(?,?,?,?,?,?,?)`, id, title, status, now, now, boardID, workspace); err != nil {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id,workspace,opencode_session_id,opencode_root_session_id,opencode_parent_session_id) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, title, status, now, now, boardID, workspace, definition.OpenCodeSessionID, definition.OpenCodeRootSessionID, definition.OpenCodeParentSessionID); err != nil {
 			return fmt.Errorf("create work item: %w", err)
 		}
 		if _, err := conn.ExecContext(ctx, `INSERT INTO work_definitions(item_id,objective,acceptance_criteria,verification,allowed_files_json) VALUES(?,?,?,?,?)`, id, definition.Objective, definition.Acceptance, definition.Verification, string(allowedFilesJSON)); err != nil {
@@ -271,7 +280,7 @@ func (s *Store) listWork(ctx context.Context, boardID string, filtered bool) ([]
 
 func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 	var item WorkItem
-	err := s.db.QueryRowContext(ctx, `SELECT id,board_id,workspace,title,status,revision,created_at,updated_at FROM work_items WHERE id=?`, id).Scan(&item.ID, &item.BoardID, &item.Workspace, &item.Title, &item.Status, &item.Revision, &item.CreatedAt, &item.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, `SELECT id,board_id,workspace,title,status,revision,created_at,updated_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id FROM work_items WHERE id=?`, id).Scan(&item.ID, &item.BoardID, &item.Workspace, &item.Title, &item.Status, &item.Revision, &item.CreatedAt, &item.UpdatedAt, &item.OpenCodeSessionID, &item.OpenCodeRootSessionID, &item.OpenCodeParentSessionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WorkItem{}, ErrWorkNotFound
 	}

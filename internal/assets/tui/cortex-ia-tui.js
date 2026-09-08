@@ -8,54 +8,36 @@ import { insert as _$insert } from "@opentui/solid";
 import { setProp as _$setProp } from "@opentui/solid";
 import { createElement as _$createElement } from "@opentui/solid";
 import { execFile } from "child_process";
-import fs from "fs";
 import path from "path";
 import { For, Show, createEffect, createMemo, createRoot, createSignal } from "solid-js";
-var EVENT_POLL_INTERVAL_MS = 500;
 var SNAPSHOT_POLL_INTERVAL_MS = 2500;
 var SNAPSHOT_STALE_MS = 1e4;
-var MAX_INITIAL_BYTES = 256 * 1024;
-var MAX_RETAINED_JOBS = 100;
 var MAX_VISIBLE_ROWS = 4;
 var TASKS_EXPANDED_KEY = "cortex.sidebar.tasks.expanded";
 var DELEGATIONS_EXPANDED_KEY = "cortex.sidebar.delegations.expanded";
 var ATTENTION_EXPANDED_KEY = "cortex.sidebar.attention.expanded";
 var EMPTY_SNAPSHOT = {
-  schema_version: 1,
+  schema_version: 2,
   generated_at: "",
   project_root: "",
+  requested_session_id: "",
+  root_session_id: "",
   summary: {
-    sessions: 0,
     active_tasks: 0,
-    active_agents: 0,
-    active_delegations: 0,
-    blocked: 0
+    total_delegations: 0,
+    total_attention: 0
   },
+  counts: {
+    active: 0,
+    review: 0,
+    attention: 0
+  },
+  attention: [],
   tasks: [],
   delegations: []
 };
-function eventsPath() {
-  const home = process.env.USERPROFILE || process.env.HOME || "";
-  return path.resolve(home, ".config", "opencode", "cortex-delegation-events.jsonl");
-}
 function cortexExecutable() {
   return process.env.CORTEX_IA_BIN || "cortex-ia";
-}
-function projectKey(value) {
-  const resolved = path.resolve(value || ".").replaceAll("\\", "/");
-  return process.platform === "win32" || process.platform === "darwin" ? resolved.toLowerCase() : resolved;
-}
-function isRunning(status) {
-  return ["accepted", "starting", "running", "queued"].includes(status);
-}
-function isDone(status) {
-  return ["succeeded", "done", "superseded"].includes(status);
-}
-function isError(status) {
-  return ["failed", "timed_out", "lost", "cancelled"].includes(status);
-}
-function needsAttention(status) {
-  return ["failed", "timed_out", "lost"].includes(status);
 }
 function shortID(id) {
   return id.length > 13 ? `${id.slice(0, 8)}\u2026${id.slice(-4)}` : id;
@@ -65,118 +47,56 @@ function clipped(value, limit = 29) {
   return text.length > limit ? `${text.slice(0, limit - 1)}\u2026` : text;
 }
 function statusColor(status, theme) {
-  if (isDone(status)) return theme.success;
-  if (isError(status) || status === "blocked") return theme.error;
-  if (isRunning(status) || status === "in_progress") return theme.warning;
+  if (["succeeded", "done", "superseded"].includes(status)) return theme.success;
+  if (["failed", "timed_out", "lost", "cancelled", "blocked"].includes(status)) return theme.error;
+  if (["accepted", "starting", "running", "queued", "in_progress"].includes(status)) return theme.warning;
   if (status === "in_review") return theme.accent;
   return theme.textMuted;
 }
 function statusIcon(status) {
-  if (isDone(status)) return "\u2713";
-  if (isError(status) || status === "blocked") return "\u2715";
+  if (["succeeded", "done", "superseded"].includes(status)) return "\u2713";
+  if (["failed", "timed_out", "lost", "cancelled", "blocked"].includes(status)) return "\u2715";
   if (status === "in_review") return "\u25C6";
-  if (isRunning(status) || status === "in_progress") return "\u25CF";
+  if (["accepted", "starting", "running", "queued", "in_progress"].includes(status)) return "\u25CF";
   return "\u25CB";
 }
-function showToast(api, payload) {
-  const toast = api.ui.toast;
-  if (typeof toast === "function") {
-    toast(payload);
-    return;
-  }
-  toast?.show?.(payload);
-}
-function toastFor(event) {
-  const status = event.status || "unknown";
-  const role = event.role ? `${event.role} \xB7 ` : "";
-  const job = event.job_id ? ` \xB7 ${shortID(event.job_id)}` : "";
-  if (isDone(status)) {
-    return {
-      variant: "success",
-      title: "Cortex-IA",
-      message: `${role}delegaci\xF3n completada${job}`,
-      duration: 5e3
-    };
-  }
-  if (isError(status)) {
-    return {
-      variant: status === "cancelled" ? "warning" : "error",
-      title: "Cortex-IA",
-      message: `${role}delegaci\xF3n ${status}${job}`,
-      duration: 7e3
-    };
-  }
-  return {
-    variant: "info",
-    title: "Cortex-IA",
-    message: `${role}delegaci\xF3n ${status}${job}`,
-    duration: 4e3
-  };
-}
-function mergedDelegations(snapshot, eventJobs) {
-  const durable = snapshot.delegations.map((job, index) => ({
-    ...job,
-    sequence: eventJobs.length + snapshot.delegations.length - index
+function attentionItems(snapshot, snapshotError) {
+  const items = snapshot.attention.map((item) => ({
+    id: item.id,
+    title: item.title,
+    detail: `${item.kind} \xB7 ${shortID(item.entity_id)}`
   }));
-  const durableIDs = new Set(durable.map((job) => job.job_id));
-  const projectEvents = eventJobs.filter((job) => {
-    if (durableIDs.has(job.job_id)) return false;
-    return Boolean(job.workspace && snapshot.project_root && projectKey(job.workspace) === projectKey(snapshot.project_root));
+  if (snapshotError) items.push({
+    id: "snapshot-error",
+    title: "Snapshot no disponible",
+    detail: clipped(snapshotError, 35)
   });
-  return [...projectEvents, ...durable].slice(0, MAX_RETAINED_JOBS);
-}
-function attentionItems(snapshot, jobs, snapshotError) {
-  const items = [];
-  let visibleBlocked = 0;
-  for (const task of snapshot.tasks) {
-    if (task.status === "blocked") {
-      visibleBlocked += 1;
-      items.push({
-        id: `task-${task.task_id}`,
-        title: `Tarea bloqueada \xB7 ${task.task_id}`,
-        detail: clipped(task.title)
-      });
-    }
-    const claimExpiry = Date.parse(task.claim_expires_at || "");
-    if (task.owner && Number.isFinite(claimExpiry) && claimExpiry < Date.now()) {
-      items.push({
-        id: `claim-${task.task_id}`,
-        title: `Claim vencido \xB7 ${task.task_id}`,
-        detail: clipped(task.owner)
-      });
-    }
-  }
-  if (snapshot.summary.blocked > visibleBlocked) {
-    items.push({
-      id: "blocked-summary",
-      title: `${snapshot.summary.blocked - visibleBlocked} tareas bloqueadas adicionales`,
-      detail: "revisar task boards"
-    });
-  }
-  for (const job of jobs.slice(0, MAX_VISIBLE_ROWS)) {
-    if (needsAttention(job.status) || job.error_code) {
-      items.push({
-        id: `job-${job.job_id}`,
-        title: `${job.error_code || job.status} \xB7 ${job.role || "delegate"}`,
-        detail: `${shortID(job.job_id)} \xB7 ${job.transport || "unknown"}`
-      });
-    }
-  }
-  if (snapshotError) {
-    items.push({
-      id: "snapshot-error",
-      title: "Snapshot no disponible",
-      detail: clipped(snapshotError, 35)
-    });
-  }
   return items;
 }
-function operationalCounts(snapshot, jobs, attention) {
+function operationalCounts(snapshot, snapshotError) {
   return {
-    active: snapshot.tasks.filter((task) => task.status === "in_progress").length + jobs.filter((job) => isRunning(job.status)).length,
-    review: snapshot.tasks.filter((task) => task.status === "in_review").length,
-    attention: attention.length
+    ...snapshot.counts,
+    attention: snapshot.counts.attention + (snapshotError ? 1 : 0)
   };
+}
+function conversationScope(api) {
+  const route = api.route.current;
+  const sessionID = route.name === "session" ? route.params?.sessionID : void 0;
+  if (typeof sessionID !== "string") return void 0;
+  let current = sessionID;
+  const seen = /* @__PURE__ */ new Set();
+  while (seen.size < 64 && /^[A-Za-z0-9_-]{1,256}$/.test(current) && !seen.has(current)) {
+    seen.add(current);
+    const session = api.state.session.get(current);
+    if (!session || session.id !== current) return void 0;
+    if (!session.parentID) return {
+      sessionID,
+      rootSessionID: current,
+      project: api.state.path.directory
+    };
+    current = session.parentID;
+  }
+  return void 0;
 }
 function Section(props) {
   return (() => {
@@ -342,8 +262,8 @@ function AttentionRows(props) {
   });
 }
 function SidebarStatus(props) {
-  const attention = createMemo(() => attentionItems(props.snapshot(), props.jobs(), props.snapshotError()));
-  const counts = createMemo(() => operationalCounts(props.snapshot(), props.jobs(), attention()));
+  const attention = createMemo(() => attentionItems(props.snapshot(), props.snapshotError()));
+  const counts = createMemo(() => operationalCounts(props.snapshot(), props.snapshotError()));
   const stale = createMemo(() => {
     const generated = Date.parse(props.snapshot().generated_at);
     return Boolean(props.snapshotError()) || !Number.isFinite(generated) || props.now() - generated > SNAPSHOT_STALE_MS;
@@ -405,7 +325,7 @@ function SidebarStatus(props) {
     _$insert(_el$21, _$createComponent(Section, {
       title: "Delegaciones",
       get count() {
-        return props.jobs().length;
+        return props.snapshot().summary.total_delegations;
       },
       get expanded() {
         return props.delegationsExpanded;
@@ -430,7 +350,7 @@ function SidebarStatus(props) {
     _$insert(_el$21, _$createComponent(Section, {
       title: "Atenci\xF3n",
       get count() {
-        return attention().length;
+        return counts().attention;
       },
       get expanded() {
         return props.attentionExpanded;
@@ -476,8 +396,8 @@ function SidebarStatus(props) {
   })();
 }
 function HomeBottomStatus(props) {
-  const attention = createMemo(() => attentionItems(props.snapshot(), props.jobs(), props.snapshotError()));
-  const counts = createMemo(() => operationalCounts(props.snapshot(), props.jobs(), attention()));
+  const attention = createMemo(() => attentionItems(props.snapshot(), props.snapshotError()));
+  const counts = createMemo(() => operationalCounts(props.snapshot(), props.snapshotError()));
   const visible = createMemo(() => counts().active > 0 || counts().review > 0 || counts().attention > 0);
   return _$createComponent(Show, {
     get when() {
@@ -522,120 +442,54 @@ function HomeBottomStatus(props) {
   });
 }
 function initialize(api, disposeRoot) {
-  const source = eventsPath();
-  const projectDirectory = api.state.path.directory || process.cwd();
-  const [eventJobs, setEventJobs] = createSignal([]);
   const [snapshot, setSnapshot] = createSignal(EMPTY_SNAPSHOT);
   const [snapshotError, setSnapshotError] = createSignal("");
   const [now, setNow] = createSignal(Date.now());
   const [tasksExpanded, setTasksExpanded] = createSignal(api.kv.get(TASKS_EXPANDED_KEY, true) !== false);
   const [delegationsExpanded, setDelegationsExpanded] = createSignal(api.kv.get(DELEGATIONS_EXPANDED_KEY, true) !== false);
   const [attentionExpanded, setAttentionExpanded] = createSignal(api.kv.get(ATTENTION_EXPANDED_KEY, true) !== false);
-  const jobs = createMemo(() => mergedDelegations(snapshot(), eventJobs()));
+  const jobs = createMemo(() => snapshot().delegations.map((job, sequence) => ({
+    ...job,
+    sequence
+  })));
   let disposed = false;
-  let snapshotInFlight = false;
-  let sequence = 0;
-  let offset = 0;
-  let remainder = "";
+  let generation = 0;
+  let activeKey = "";
+  let pendingGeneration;
   let previousAttentionCount = 0;
   const togglePreference = (key, value, setter) => {
     const next = !value();
     setter(next);
     api.kv.set(key, next);
   };
-  const applyEvent = (event, notify) => {
-    if (event.kind !== "delegation" || typeof event.job_id !== "string" || !event.job_id || typeof event.status !== "string" || !event.status) return;
-    if (event.workspace && snapshot().project_root && projectKey(event.workspace) !== projectKey(snapshot().project_root)) return;
-    sequence += 1;
-    setEventJobs((current) => {
-      const next = current.filter((job) => job.job_id !== event.job_id);
-      next.unshift({
-        ...event,
-        job_id: event.job_id,
-        status: event.status,
-        sequence
-      });
-      return next.slice(0, MAX_RETAINED_JOBS);
-    });
-    if (notify && event.workspace && projectKey(event.workspace) === projectKey(snapshot().project_root)) showToast(api, toastFor(event));
-  };
-  const applyLines = (content, notify, dropFirst) => {
-    const lines = content.split("\n");
-    if (dropFirst) lines.shift();
-    remainder = lines.pop() || "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        applyEvent(JSON.parse(line), notify);
-      } catch {
-      }
-    }
-  };
-  const hydrateEvents = () => {
-    let size;
-    try {
-      size = fs.statSync(source).size;
-    } catch {
-      offset = 0;
-      return;
-    }
-    const start = Math.max(0, size - MAX_INITIAL_BYTES);
-    const descriptor = fs.openSync(source, "r");
-    try {
-      const buffer = Buffer.alloc(size - start);
-      fs.readSync(descriptor, buffer, 0, buffer.length, start);
-      offset = size;
-      applyLines(buffer.toString("utf-8"), false, start > 0);
-    } finally {
-      fs.closeSync(descriptor);
-    }
-  };
-  const readEvents = () => {
-    let size;
-    try {
-      size = fs.statSync(source).size;
-    } catch {
-      return;
-    }
-    if (size < offset) {
-      setEventJobs([]);
-      remainder = "";
-      hydrateEvents();
-      return;
-    }
-    if (size === offset) return;
-    const descriptor = fs.openSync(source, "r");
-    try {
-      const buffer = Buffer.alloc(size - offset);
-      fs.readSync(descriptor, buffer, 0, buffer.length, offset);
-      offset = size;
-      const prefix = remainder;
-      remainder = "";
-      applyLines(`${prefix}${buffer.toString("utf-8")}`, true, false);
-    } finally {
-      fs.closeSync(descriptor);
-    }
-  };
   const readSnapshot = () => {
-    if (snapshotInFlight || disposed) return;
-    snapshotInFlight = true;
-    execFile(cortexExecutable(), ["ui", "snapshot", "--project", projectDirectory], {
+    if (disposed) return;
+    const scope = conversationScope(api);
+    const key = JSON.stringify(scope) || "";
+    if (key !== activeKey) {
+      activeKey = key;
+      generation += 1;
+      setSnapshot(EMPTY_SNAPSHOT);
+      setSnapshotError("");
+    }
+    if (!scope || !scope.project || pendingGeneration === generation) return;
+    const requestGeneration = generation;
+    pendingGeneration = requestGeneration;
+    execFile(cortexExecutable(), ["ui", "snapshot", "--project", scope.project, "--session-id", scope.sessionID, "--root-session-id", scope.rootSessionID], {
       encoding: "utf8",
       maxBuffer: 512 * 1024,
       timeout: 7500,
       windowsHide: true
     }, (error, stdout) => {
-      snapshotInFlight = false;
-      if (disposed) return;
+      if (pendingGeneration === requestGeneration) pendingGeneration = void 0;
+      if (disposed || requestGeneration !== generation || JSON.stringify(conversationScope(api)) !== key) return;
       if (error) {
-        setSnapshotError(error.message || "cortex-ia ui snapshot failed");
+        setSnapshotError(error.message);
         return;
       }
       try {
         const next = JSON.parse(stdout);
-        if (next.schema_version !== 1 || !Array.isArray(next.tasks) || !Array.isArray(next.delegations)) {
-          throw new Error("snapshot schema is incompatible");
-        }
+        if (next.schema_version !== 2 || next.requested_session_id !== scope.sessionID || next.root_session_id !== scope.rootSessionID || !Array.isArray(next.tasks) || !Array.isArray(next.delegations) || !Array.isArray(next.attention) || !next.counts || !next.summary) throw new Error("snapshot schema or conversation is incompatible");
         setSnapshot(next);
         setSnapshotError("");
       } catch (parseError) {
@@ -644,16 +498,14 @@ function initialize(api, disposeRoot) {
     });
   };
   createEffect(() => {
-    const count = attentionItems(snapshot(), jobs(), snapshotError()).length;
+    const count = operationalCounts(snapshot(), snapshotError()).attention;
     if (count > previousAttentionCount) {
       setAttentionExpanded(true);
       api.kv.set(ATTENTION_EXPANDED_KEY, true);
     }
     previousAttentionCount = count;
   });
-  hydrateEvents();
-  readSnapshot();
-  const eventPoll = setInterval(readEvents, EVENT_POLL_INTERVAL_MS);
+  createEffect(readSnapshot);
   const snapshotPoll = setInterval(readSnapshot, SNAPSHOT_POLL_INTERVAL_MS);
   const clock = setInterval(() => setNow(Date.now()), 1e3);
   api.slots.register({
@@ -690,7 +542,6 @@ function initialize(api, disposeRoot) {
   });
   api.lifecycle.onDispose(() => {
     disposed = true;
-    clearInterval(eventPoll);
     clearInterval(snapshotPoll);
     clearInterval(clock);
     disposeRoot();

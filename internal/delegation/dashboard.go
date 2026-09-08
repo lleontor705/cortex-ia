@@ -2,9 +2,12 @@ package delegation
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 type DashboardSummary struct {
@@ -60,6 +63,164 @@ type Dashboard struct {
 	ActiveWork  []WorkItem       `json:"active_work"`
 	Delegations []DelegationView `json:"delegations"`
 	Activity    []ActivityEvent  `json:"activity"`
+}
+
+type ConversationTask struct {
+	ConversationOwnership
+	ID         string     `json:"task_id"`
+	BoardID    string     `json:"board_id"`
+	Title      string     `json:"title"`
+	Status     WorkStatus `json:"status"`
+	Revision   int64      `json:"revision"`
+	Owner      string     `json:"owner,omitempty"`
+	ClaimUntil string     `json:"claim_expires_at,omitempty"`
+	LeaseCount int        `json:"lease_count"`
+	UpdatedAt  string     `json:"updated_at"`
+}
+
+type ConversationAttention struct {
+	ID        string `json:"id"`
+	EntityID  string `json:"entity_id"`
+	Kind      string `json:"kind"`
+	Title     string `json:"title"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type ConversationDashboard struct {
+	SchemaVersion      int                     `json:"schema_version"`
+	ProjectRoot        string                  `json:"project_root"`
+	RequestedSessionID string                  `json:"requested_session_id"`
+	RootSessionID      string                  `json:"root_session_id"`
+	GeneratedAt        string                  `json:"generated_at"`
+	Tasks              []ConversationTask      `json:"tasks"`
+	Delegations        []Job                   `json:"delegations"`
+	Attention          []ConversationAttention `json:"attention"`
+	Summary            map[string]int          `json:"summary"`
+	Counts             map[string]int          `json:"counts"`
+}
+
+// conversationPredicate applies durable ownership before any ordering or limit.
+// Stored workspace keys are canonicalized at creation; jobs never confer task ownership.
+const conversationPredicate = `workspace = ? AND opencode_root_session_id = ?
+	AND length(opencode_session_id) BETWEEN 1 AND 256
+	AND length(opencode_root_session_id) BETWEEN 1 AND 256
+	AND length(opencode_parent_session_id) <= 256
+	AND opencode_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
+	AND opencode_root_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
+	AND opencode_parent_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
+	AND instr(opencode_session_id,char(0))=0 AND instr(opencode_root_session_id,char(0))=0
+	AND instr(opencode_parent_session_id,char(0))=0
+	AND ((opencode_session_id=opencode_root_session_id AND opencode_parent_session_id='')
+	OR (opencode_session_id<>opencode_root_session_id AND opencode_parent_session_id<>'' AND opencode_parent_session_id<>opencode_session_id))`
+
+// DashboardForConversation reads every population in one SQLite snapshot and at
+// one instant. Empty identities are an empty view, never an administrative fallback.
+func (s *Store) DashboardForConversation(ctx context.Context, workspace, requestedSessionID, rootSessionID string) (ConversationDashboard, error) {
+	workspace, err := CanonicalWorkspace(workspace)
+	if err != nil || workspace == "" {
+		return ConversationDashboard{}, fmt.Errorf("valid dashboard project root is required")
+	}
+	for _, id := range []string{requestedSessionID, rootSessionID} {
+		if err := (ConversationOwnership{OpenCodeSessionID: id, OpenCodeRootSessionID: id}).Validate(); err != nil {
+			return ConversationDashboard{}, err
+		}
+	}
+	d := ConversationDashboard{SchemaVersion: 2, ProjectRoot: workspace, RequestedSessionID: requestedSessionID, RootSessionID: rootSessionID,
+		GeneratedAt: s.now().UTC().Format(time.RFC3339Nano), Tasks: []ConversationTask{}, Delegations: []Job{}, Attention: []ConversationAttention{},
+		Summary: map[string]int{"backlog": 0, "ready": 0, "in_progress": 0, "in_review": 0, "blocked": 0, "done": 0, "superseded": 0, "active_tasks": 0, "total_tasks": 0, "total_delegations": 0, "total_attention": 0}, Counts: map[string]int{"active": 0, "review": 0, "attention": 0}}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return ConversationDashboard{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Even empty scope must surface database read failures.
+	var schema int
+	if err = tx.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&schema); err != nil {
+		return ConversationDashboard{}, err
+	}
+	if requestedSessionID == "" || rootSessionID == "" {
+		return d, tx.Commit()
+	}
+	// Older jobs stored the supplied path verbatim. Match their canonical keys
+	// before pagination without mutating rows or assigning missing ownership.
+	workspaceKeys := []string{workspace}
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT workspace FROM delegation_jobs WHERE opencode_root_session_id=?`, rootSessionID)
+	if err != nil {
+		return ConversationDashboard{}, err
+	}
+	for rows.Next() {
+		var key string
+		if err = rows.Scan(&key); err != nil {
+			_ = rows.Close()
+			return ConversationDashboard{}, err
+		}
+		if key != workspace && SameWorkspace(key, workspace) {
+			workspaceKeys = append(workspaceKeys, key)
+		}
+	}
+	if err = rows.Err(); err != nil {
+		_ = rows.Close()
+		return ConversationDashboard{}, err
+	}
+	if err = rows.Close(); err != nil {
+		return ConversationDashboard{}, err
+	}
+	encodedKeys, err := json.Marshal(workspaceKeys)
+	if err != nil {
+		return ConversationDashboard{}, err
+	}
+	jobPredicate := strings.Replace(conversationPredicate, "workspace = ?", "workspace IN (SELECT value FROM json_each(?))", 1)
+	cte := `WITH tasks AS (SELECT * FROM work_items WHERE ` + conversationPredicate + `
+		AND NOT EXISTS (SELECT 1 FROM work_decomposition_steps d WHERE d.parent_id=work_items.id)), jobs AS (SELECT * FROM delegation_jobs WHERE ` + jobPredicate + `) `
+	read := func(query string, dest any, extra ...any) error {
+		args := append([]any{workspace, rootSessionID, string(encodedKeys), rootSessionID}, extra...)
+		var raw string
+		if err := tx.QueryRowContext(ctx, cte+query, args...).Scan(&raw); err != nil {
+			return err
+		}
+		return json.Unmarshal([]byte(raw), dest)
+	}
+	if err = read(`SELECT json_group_object(status,n) FROM (SELECT status,count(*) n FROM tasks GROUP BY status)`, &d.Summary); err != nil {
+		return ConversationDashboard{}, err
+	}
+	d.Summary["total_tasks"] = d.Summary["backlog"] + d.Summary["ready"] + d.Summary["in_progress"] + d.Summary["in_review"] + d.Summary["blocked"] + d.Summary["done"]
+	d.Summary["active_tasks"] = d.Summary["total_tasks"] - d.Summary["done"]
+	jobCounts := map[string]int{}
+	if err = read(`SELECT json_object('total',count(*),'active',COALESCE(sum(status IN ('accepted','starting','running')),0)) FROM jobs`, &jobCounts); err != nil {
+		return ConversationDashboard{}, err
+	}
+	d.Summary["total_delegations"] = jobCounts["total"]
+	d.Counts["active"], d.Counts["review"] = d.Summary["in_progress"]+jobCounts["active"], d.Summary["in_review"]
+	if err = read(`SELECT json_group_array(json_object('task_id',id,'board_id',board_id,'title',title,'status',status,'revision',revision,
+		'owner',COALESCE((SELECT owner FROM work_claims WHERE item_id=t.id),''),'claim_expires_at',COALESCE((SELECT expires_at FROM work_claims WHERE item_id=t.id),''),
+		'lease_count',(SELECT count(*) FROM work_leases WHERE item_id=t.id),'updated_at',updated_at,
+		'opencode_session_id',opencode_session_id,'opencode_root_session_id',opencode_root_session_id,'opencode_parent_session_id',opencode_parent_session_id))
+		FROM (SELECT * FROM tasks WHERE status NOT IN ('done','superseded') ORDER BY updated_at DESC,id ASC LIMIT 20) t`, &d.Tasks); err != nil {
+		return ConversationDashboard{}, err
+	}
+	if err = read(`SELECT json_group_array(json_object('job_id',id,'role',role,'task_id',task_id,'workspace',workspace,'status',status,'transport',transport,'attempt',attempt,
+		'error_code',error_code,'error_message',substr(error_message,1,160),'created_at',created_at,'updated_at',updated_at,
+		'opencode_session_id',opencode_session_id,'opencode_root_session_id',opencode_root_session_id,'opencode_parent_session_id',opencode_parent_session_id))
+		FROM (SELECT * FROM jobs ORDER BY updated_at DESC,id ASC LIMIT 20)`, &d.Delegations); err != nil {
+		return ConversationDashboard{}, err
+	}
+	// UTC RFC3339Nano storage: removing Z preserves strict fractional ordering,
+	// unlike SQLite julianday, which rounds sub-millisecond expiry boundaries.
+	cte += `, attention AS (
+		SELECT 'task:blocked:'||id id,id entity_id,'blocked_task' kind,title,updated_at FROM tasks WHERE status='blocked'
+		UNION ALL SELECT 'task:expired:'||t.id,t.id,'expired_claim',t.title,t.updated_at FROM tasks t JOIN work_claims c ON c.item_id=t.id
+		WHERE t.status<>'superseded' AND c.owner<>'' AND rtrim(c.expires_at,'Z')<rtrim(?,'Z')
+		UNION ALL SELECT 'job:'||id,id,'delegation',role,updated_at FROM jobs WHERE status IN ('blocked','failed','timed_out','lost') OR error_code<>'') `
+	attentionCounts := map[string]int{}
+	if err = read(`SELECT json_object('total',count(*)) FROM attention`, &attentionCounts, d.GeneratedAt); err != nil {
+		return ConversationDashboard{}, err
+	}
+	d.Summary["total_attention"], d.Counts["attention"] = attentionCounts["total"], attentionCounts["total"]
+	if err = read(`SELECT json_group_array(json_object('id',id,'entity_id',entity_id,'kind',kind,'title',title,'updated_at',updated_at))
+		FROM (SELECT * FROM attention ORDER BY updated_at DESC,id ASC LIMIT 20)`, &d.Attention, d.GeneratedAt); err != nil {
+		return ConversationDashboard{}, err
+	}
+	return d, tx.Commit()
 }
 
 func (s *Store) Dashboard(ctx context.Context) (Dashboard, error) {

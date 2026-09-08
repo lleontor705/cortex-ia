@@ -34,6 +34,7 @@ var ErrJobNotFound = errors.New("delegation job not found")
 var ErrInvalidTransition = errors.New("invalid delegation state transition")
 
 type Job struct {
+	ConversationOwnership
 	ID              string  `json:"job_id"`
 	Role            string  `json:"role"`
 	TaskID          string  `json:"task_id,omitempty"`
@@ -56,6 +57,7 @@ type Job struct {
 }
 
 type NewJob struct {
+	ConversationOwnership
 	Role            string
 	TaskID          string
 	ObjectiveDigest string
@@ -71,6 +73,32 @@ type Receipt struct {
 	OutputHash string          `json:"output_hash,omitempty"`
 	ExitCode   int             `json:"exit_code"`
 	CreatedAt  string          `json:"created_at"`
+}
+
+// ConversationOwnership is host-proven provenance, never claim or board identity.
+type ConversationOwnership struct {
+	OpenCodeSessionID       string `json:"opencode_session_id,omitempty"`
+	OpenCodeRootSessionID   string `json:"opencode_root_session_id,omitempty"`
+	OpenCodeParentSessionID string `json:"opencode_parent_session_id,omitempty"`
+}
+
+func (o ConversationOwnership) Validate() error {
+	s, r, p := o.OpenCodeSessionID, o.OpenCodeRootSessionID, o.OpenCodeParentSessionID
+	for _, id := range []string{s, r, p} {
+		if len(id) > 256 || strings.ContainsAny(id, "\x00") {
+			return errors.New("invalid OpenCode session ID")
+		}
+		for _, c := range id {
+			if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-' {
+				continue
+			}
+			return errors.New("invalid OpenCode session ID")
+		}
+	}
+	if s == "" && r == "" && p == "" || s != "" && r != "" && (s == r && p == "" || s != r && p != "" && p != s) {
+		return nil
+	}
+	return errors.New("invalid OpenCode ownership tuple")
 }
 
 type Store struct {
@@ -122,8 +150,8 @@ func (s *Store) initialize(ctx context.Context) error {
 		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 			return fmt.Errorf("read migration ledger: %w", err)
 		}
-		if version > 10 {
-			return fmt.Errorf("cortex database schema %d is newer than supported schema 10", version)
+		if version > 11 {
+			return fmt.Errorf("cortex database schema %d is newer than supported schema 11", version)
 		}
 		statements := []string{
 			`CREATE TABLE IF NOT EXISTS delegation_jobs (
@@ -406,6 +434,35 @@ func (s *Store) initialize(ctx context.Context) error {
 				return fmt.Errorf("record dual ledger migration: %w", err)
 			}
 		}
+		if version < 11 {
+			for _, table := range []string{"work_items", "delegation_jobs"} {
+				for _, column := range []string{"opencode_session_id", "opencode_root_session_id", "opencode_parent_session_id"} {
+					statement := fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s TEXT NOT NULL DEFAULT '' CHECK(length(CAST(%s AS BLOB)) <= 256 AND instr(%s,char(0))=0 AND %s NOT GLOB '*[^A-Za-z0-9_-]*')`, table, column, column, column, column)
+					if _, err := conn.ExecContext(ctx, statement); err != nil {
+						return fmt.Errorf("add conversation ownership: %w", err)
+					}
+				}
+				for _, statement := range []string{
+					fmt.Sprintf(`CREATE INDEX %s_conversation_idx ON %s(workspace,opencode_root_session_id,status,updated_at DESC)`, table, table),
+					fmt.Sprintf(`CREATE TRIGGER %s_ownership_insert BEFORE INSERT ON %s WHEN NOT (
+						(NEW.opencode_session_id='' AND NEW.opencode_root_session_id='' AND NEW.opencode_parent_session_id='') OR
+						(NEW.opencode_session_id<>'' AND NEW.opencode_root_session_id<>'' AND (
+						(NEW.opencode_session_id=NEW.opencode_root_session_id AND NEW.opencode_parent_session_id='') OR
+						(NEW.opencode_session_id<>NEW.opencode_root_session_id AND NEW.opencode_parent_session_id<>'' AND NEW.opencode_parent_session_id<>NEW.opencode_session_id))))
+						BEGIN SELECT RAISE(ABORT,'invalid OpenCode ownership tuple'); END`, table, table),
+					fmt.Sprintf(`CREATE TRIGGER %s_ownership_immutable BEFORE UPDATE OF opencode_session_id,opencode_root_session_id,opencode_parent_session_id ON %s
+						WHEN NEW.opencode_session_id IS NOT OLD.opencode_session_id OR NEW.opencode_root_session_id IS NOT OLD.opencode_root_session_id OR NEW.opencode_parent_session_id IS NOT OLD.opencode_parent_session_id
+						BEGIN SELECT RAISE(ABORT,'immutable OpenCode ownership'); END`, table, table),
+				} {
+					if _, err := conn.ExecContext(ctx, statement); err != nil {
+						return fmt.Errorf("guard conversation ownership: %w", err)
+					}
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(11,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record conversation ownership migration: %w", err)
+			}
+		}
 		if _, err := conn.ExecContext(ctx, `PRAGMA optimize`); err != nil {
 			return fmt.Errorf("optimize cortex database: %w", err)
 		}
@@ -457,6 +514,9 @@ func (s *Store) SetPaneID(ctx context.Context, jobID, paneID string) error {
 }
 
 func (s *Store) Create(ctx context.Context, input NewJob) (Job, error) {
+	if err := input.Validate(); err != nil {
+		return Job{}, err
+	}
 	if !supportedRoles[input.Role] {
 		return Job{}, fmt.Errorf("unsupported role %q", input.Role)
 	}
@@ -466,14 +526,35 @@ func (s *Store) Create(ctx context.Context, input NewJob) (Job, error) {
 	if strings.TrimSpace(input.Workspace) == "" || strings.TrimSpace(input.ObjectiveDigest) == "" {
 		return Job{}, errors.New("workspace and objective digest are required")
 	}
+	workspace, err := CanonicalWorkspace(input.Workspace)
+	if err != nil {
+		return Job{}, fmt.Errorf("normalize job workspace: %w", err)
+	}
+	input.Workspace = workspace
 	id, err := newID()
 	if err != nil {
 		return Job{}, err
 	}
 	now := s.timestamp()
 	job := Job{ID: id, Role: input.Role, TaskID: input.TaskID, ObjectiveDigest: input.ObjectiveDigest, Status: StatusAccepted, Transport: input.Transport, Workspace: input.Workspace, Worktree: input.Worktree, CreatedAt: now, UpdatedAt: now}
+	job.ConversationOwnership = input.ConversationOwnership
 	err = s.immediate(ctx, func(conn *sql.Conn) error {
-		_, err := conn.ExecContext(ctx, `INSERT INTO delegation_jobs(id, role, task_id, objective_digest, status, transport, workspace, worktree, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, job.ID, job.Role, job.TaskID, job.ObjectiveDigest, job.Status, job.Transport, job.Workspace, job.Worktree, now, now)
+		if job.TaskID != "" {
+			var taskRoot, taskWorkspace string
+			err := conn.QueryRowContext(ctx, `SELECT opencode_root_session_id,workspace FROM work_items WHERE id=?`, job.TaskID).Scan(&taskRoot, &taskWorkspace)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if err == nil {
+				if taskRoot != "" && job.OpenCodeRootSessionID != "" && taskRoot != job.OpenCodeRootSessionID {
+					return fmt.Errorf("%w: task/job conversation root mismatch", ErrWorkConflict)
+				}
+				if strings.TrimSpace(taskWorkspace) != "" && !SameWorkspace(taskWorkspace, job.Workspace) {
+					return fmt.Errorf("%w: task/job workspace mismatch", ErrWorkConflict)
+				}
+			}
+		}
+		_, err := conn.ExecContext(ctx, `INSERT INTO delegation_jobs(id, role, task_id, objective_digest, status, transport, workspace, worktree, created_at, updated_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, job.ID, job.Role, job.TaskID, job.ObjectiveDigest, job.Status, job.Transport, job.Workspace, job.Worktree, now, now, job.OpenCodeSessionID, job.OpenCodeRootSessionID, job.OpenCodeParentSessionID)
 		if err != nil {
 			return err
 		}
@@ -590,10 +671,10 @@ func (s *Store) Cancel(ctx context.Context, id string) error {
 }
 
 func (s *Store) Get(ctx context.Context, id string) (Job, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id,role,task_id,objective_digest,status,transport,workspace,worktree,pid,pane_id,lease_owner,lease_expires_at,attempt,error_code,error_message,created_at,updated_at,started_at,finished_at FROM delegation_jobs WHERE id=?`, id)
+	row := s.db.QueryRowContext(ctx, `SELECT id,role,task_id,objective_digest,status,transport,workspace,worktree,pid,pane_id,lease_owner,lease_expires_at,attempt,error_code,error_message,created_at,updated_at,started_at,finished_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id FROM delegation_jobs WHERE id=?`, id)
 	var job Job
 	var lease sql.NullString
-	if err := row.Scan(&job.ID, &job.Role, &job.TaskID, &job.ObjectiveDigest, &job.Status, &job.Transport, &job.Workspace, &job.Worktree, &job.PID, &job.PaneID, &job.LeaseOwner, &lease, &job.Attempt, &job.ErrorCode, &job.ErrorMessage, &job.CreatedAt, &job.UpdatedAt, &job.StartedAt, &job.FinishedAt); err != nil {
+	if err := row.Scan(&job.ID, &job.Role, &job.TaskID, &job.ObjectiveDigest, &job.Status, &job.Transport, &job.Workspace, &job.Worktree, &job.PID, &job.PaneID, &job.LeaseOwner, &lease, &job.Attempt, &job.ErrorCode, &job.ErrorMessage, &job.CreatedAt, &job.UpdatedAt, &job.StartedAt, &job.FinishedAt, &job.OpenCodeSessionID, &job.OpenCodeRootSessionID, &job.OpenCodeParentSessionID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Job{}, ErrJobNotFound
 		}

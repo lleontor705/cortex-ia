@@ -350,7 +350,27 @@ function executionMode(transport: "direct" | "herdr"): ExecutionMode {
   return transport === "herdr" ? "herdr_multiplexed" : "direct_cli";
 }
 
-export const CortexDelegationBridge: Plugin = async () => ({
+export const CortexDelegationBridge: Plugin = async ({ client }) => {
+  // Only host session metadata proves ancestry; tool arguments and transcripts
+  // must never supply conversation ownership.
+  const conversationOwnership = async (sessionID: string, directory: string) => {
+    const seen = new Set<string>();
+    let current = sessionID;
+    let parent = "";
+    while (seen.size < 64 && /^[A-Za-z0-9_-]{1,256}$/.test(current) && !seen.has(current)) {
+      seen.add(current);
+      const result = await client.session.get({ path: { id: current }, query: { directory } });
+      const session = result.data;
+      if (!session || session.id !== current) break;
+      if (current === sessionID) parent = session.parentID || "";
+      if (!session.parentID) {
+        return { opencode_session_id: sessionID, opencode_root_session_id: current, opencode_parent_session_id: parent };
+      }
+      current = session.parentID;
+    }
+    throw new Error("OpenCode conversation ancestry is unavailable");
+  };
+  return ({
   dispose: async () => {
     workAuthority.clear();
     saveAuthorityState();
@@ -548,8 +568,12 @@ export const CortexDelegationBridge: Plugin = async () => ({
         allowed_files: tool.schema.array(tool.schema.string()).optional(),
         dependencies: tool.schema.array(tool.schema.string()).optional()
       },
-      async execute(args) {
-        const command = ["work", "create", "--board", args.board_id, "--id", args.task_id, "--title", args.title];
+      async execute(args, context) {
+        const ownership = await conversationOwnership(context.sessionID, context.directory);
+        const command = ["work", "create", "--board", args.board_id, "--id", args.task_id, "--title", args.title,
+          "--project", path.resolve(context.directory), "--opencode-session-id", ownership.opencode_session_id,
+          "--opencode-root-session-id", ownership.opencode_root_session_id];
+        if (ownership.opencode_parent_session_id) command.push("--opencode-parent-session-id", ownership.opencode_parent_session_id);
         if (args.objective) command.push("--objective", args.objective);
         if (args.acceptance_criteria) command.push("--acceptance", args.acceptance_criteria);
         if (args.verification) command.push("--verify", args.verification);
@@ -871,6 +895,14 @@ export const CortexDelegationBridge: Plugin = async () => ({
         let acceptedJob: any = null;
         let acceptedTransport: "direct" | "herdr" = "direct";
         try {
+          if (args.worktree || args.workspace_strategy === "isolated_worktree") {
+            return JSON.stringify({
+              delegated: false,
+              execution_mode: "native",
+              reason: "worktree paths and isolated_worktree strategy are retired; use current_workspace without worktree",
+              action: "USE_CURRENT_WORKSPACE"
+            });
+          }
           if (args.role === "implement") {
             if (!args.task_id) throw new Error("implement delegation requires task_id");
             if (!args.allowed_files?.length) throw new Error("implement delegation requires leased allowed_files");
@@ -880,14 +912,6 @@ export const CortexDelegationBridge: Plugin = async () => ({
                 execution_mode: "native",
                 reason: "workspace strategy is not aligned with the user",
                 action: "ASK_USER_FOR_WORKSPACE_STRATEGY"
-              });
-            }
-            if (args.workspace_strategy === "isolated_worktree") {
-              return JSON.stringify({
-                delegated: false,
-                execution_mode: "native",
-                reason: "isolated_worktree strategy is retired; use current_workspace",
-                action: "USE_CURRENT_WORKSPACE"
               });
             }
             if (args.workspace_strategy !== "current_workspace") {
@@ -905,6 +929,7 @@ export const CortexDelegationBridge: Plugin = async () => ({
             args.context_data ? `Context:\n${args.context_data}` : ""
           ].filter(Boolean).join("\n\n");
           requestPath = transientRequest({
+            ...await conversationOwnership(context.sessionID, context.directory),
             role: args.role,
             task_id: args.task_id || "",
             objective,
@@ -1137,14 +1162,11 @@ export const CortexDelegationBridge: Plugin = async () => ({
       cortex_delegation_cancel: bridgeTools.cortex_ia_delegation_cancel,
       cortex_delegation_recover: bridgeTools.cortex_ia_delegation_recover,
       cortex_delegation_models: bridgeTools.cortex_ia_delegation_models,
-      cortex_worktree_create: bridgeTools.cortex_ia_worktree_create,
-      cortex_worktree_drop: bridgeTools.cortex_ia_worktree_drop,
-      cortex_worktree_list: bridgeTools.cortex_ia_worktree_list,
-      cortex_worktree_validate: bridgeTools.cortex_ia_worktree_validate,
-      cortex_worktree_prune: bridgeTools.cortex_ia_worktree_prune,
   };
 })()
 
 });
+
+};
 
 export default CortexDelegationBridge;

@@ -53,7 +53,7 @@ func runWork(args []string) error {
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]...", nil)
 		}
-		opts, positionals, err := workOptions(args[1:], map[string]bool{"--id": false, "--title": false, "--depends": true, "--board": false, "--objective": false, "--acceptance": false, "--verify": false, "--file": true})
+		opts, positionals, err := workOptions(args[1:], map[string]bool{"--id": false, "--title": false, "--depends": true, "--board": false, "--objective": false, "--acceptance": false, "--verify": false, "--file": true, "--project": false, "--opencode-session-id": false, "--opencode-root-session-id": false, "--opencode-parent-session-id": false})
 		if err != nil {
 			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]...", err)
 		}
@@ -61,6 +61,17 @@ func runWork(args []string) error {
 		title := oneOption(opts, "--title")
 		boardID := oneOption(opts, "--board")
 		depends := opts["--depends"]
+		for _, value := range positionals {
+			if strings.HasPrefix(value, "--") {
+				return fmt.Errorf("unknown work create option %q", value)
+			}
+		}
+		if len(positionals) > 2 || (id != "" && len(positionals) != 0) {
+			return errors.New("work create requires exactly an id and title")
+		}
+		if _, explicit := opts["--project"]; explicit && strings.TrimSpace(oneOption(opts, "--project")) == "" {
+			return errors.New("--project must not be empty")
+		}
 		if id == "" && len(positionals) > 0 {
 			id = positionals[0]
 			if len(positionals) > 1 {
@@ -71,6 +82,12 @@ func runWork(args []string) error {
 			return errors.New("work create requires an id and title; see cortex-ia work create --help")
 		}
 		item, err := store.CreateWorkInBoardWithDefinition(ctx, boardID, id, title, depends, delegation.WorkDefinition{
+			Project: oneOption(opts, "--project"),
+			ConversationOwnership: delegation.ConversationOwnership{
+				OpenCodeSessionID:       oneOption(opts, "--opencode-session-id"),
+				OpenCodeRootSessionID:   oneOption(opts, "--opencode-root-session-id"),
+				OpenCodeParentSessionID: oneOption(opts, "--opencode-parent-session-id"),
+			},
 			Objective: oneOption(opts, "--objective"), Acceptance: oneOption(opts, "--acceptance"), Verification: oneOption(opts, "--verify"), AllowedFiles: opts["--file"],
 		})
 		if err != nil {

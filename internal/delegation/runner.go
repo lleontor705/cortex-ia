@@ -33,6 +33,8 @@ var errInvalidReceipt = errors.New("invalid delegation receipt")
 // Request is a transient handoff document. The bridge deletes it before AGY
 // starts; only its objective digest and operational metadata enter SQLite.
 type Request struct {
+	ConversationOwnership
+	Project       string          `json:"project,omitempty"`
 	Role          string          `json:"role"`
 	TaskID        string          `json:"task_id,omitempty"`
 	Objective     string          `json:"objective"`
@@ -63,6 +65,9 @@ func ReadRequest(path string) (Request, error) {
 	if err := decoder.Decode(&request); err != nil {
 		return Request{}, fmt.Errorf("decode delegation request: %w", err)
 	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return Request{}, errors.New("delegation request must contain exactly one JSON object")
+	}
 	if err := request.Validate(); err != nil {
 		return Request{}, err
 	}
@@ -70,6 +75,12 @@ func ReadRequest(path string) (Request, error) {
 }
 
 func (r Request) Validate() error {
+	if err := r.ConversationOwnership.Validate(); err != nil {
+		return err
+	}
+	if r.OpenCodeSessionID != "" && strings.TrimSpace(r.Project) == "" {
+		return errors.New("owned delegation requires an explicit project")
+	}
 	if !supportedRoles[r.Role] {
 		return fmt.Errorf("unsupported role %q", r.Role)
 	}
@@ -83,6 +94,12 @@ func (r Request) Validate() error {
 	info, err := os.Stat(workspace)
 	if err != nil || !info.IsDir() {
 		return errors.New("workspace must be an existing directory")
+	}
+	if r.Project != "" {
+		project, err := ResolveProjectRoot(r.Project)
+		if strings.TrimSpace(r.Project) == "" || err != nil || !SameWorkspace(project, workspace) {
+			return errors.New("project must resolve to the delegation workspace")
+		}
 	}
 	if r.Role == "implement" {
 		if strings.TrimSpace(r.TaskID) == "" {
@@ -141,7 +158,8 @@ func CreateFromRequest(ctx context.Context, store *Store, request Request, trans
 		}
 	}
 	return store.Create(ctx, NewJob{
-		Role: request.Role, TaskID: request.TaskID, ObjectiveDigest: ObjectiveDigest(request.Objective),
+		ConversationOwnership: request.ConversationOwnership,
+		Role:                  request.Role, TaskID: request.TaskID, ObjectiveDigest: ObjectiveDigest(request.Objective),
 		Transport: transport, Workspace: request.Workspace, Worktree: request.executionDirectory(),
 	})
 }
