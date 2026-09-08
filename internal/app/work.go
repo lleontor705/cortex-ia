@@ -53,7 +53,7 @@ func runWork(args []string) error {
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]...", nil)
 		}
-		opts, positionals, err := workOptions(args[1:], map[string]bool{"--id": false, "--title": false, "--depends": true, "--board": false, "--objective": false, "--acceptance": false, "--verify": false, "--file": true, "--project": false, "--opencode-session-id": false, "--opencode-root-session-id": false, "--opencode-parent-session-id": false})
+		opts, positionals, err := workOptions(args[1:], map[string]bool{"--id": false, "--title": false, "--depends": true, "--board": false, "--objective": false, "--acceptance": false, "--verify": false, "--file": true, "--project": false, "--opencode-session-id": false, "--opencode-root-session-id": false, "--opencode-parent-session-id": false, "--contract-file": false, "--workflow": false})
 		if err != nil {
 			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]...", err)
 		}
@@ -81,8 +81,32 @@ func runWork(args []string) error {
 		if id == "" || title == "" {
 			return errors.New("work create requires an id and title; see cortex-ia work create --help")
 		}
+		var contract *delegation.SDDContract
+		if file := oneOption(opts, "--contract-file"); file != "" {
+			contract, err = delegation.ReadSDDContract(file)
+			if err != nil {
+				return err
+			}
+		}
+		if workflow, explicit := opts["--workflow"]; explicit {
+			if len(workflow) != 1 {
+				return errors.New("work create requires one workflow")
+			}
+			switch workflow[0] {
+			case "sdd-lite", "sdd-full":
+				if contract == nil || contract.Workflow != workflow[0] {
+					return errors.New("SDD workflow requires a matching --contract-file")
+				}
+			case "direct-change", "fast-tdd", "hotfix":
+				if contract != nil {
+					return errors.New("direct workflow cannot carry an SDD contract")
+				}
+			default:
+				return errors.New("unsupported work create workflow")
+			}
+		}
 		item, err := store.CreateWorkInBoardWithDefinition(ctx, boardID, id, title, depends, delegation.WorkDefinition{
-			Project: oneOption(opts, "--project"),
+			Project: oneOption(opts, "--project"), Contract: contract,
 			ConversationOwnership: delegation.ConversationOwnership{
 				OpenCodeSessionID:       oneOption(opts, "--opencode-session-id"),
 				OpenCodeRootSessionID:   oneOption(opts, "--opencode-root-session-id"),
@@ -94,6 +118,42 @@ func runWork(args []string) error {
 			return err
 		}
 		return printJSON(item)
+	case "review-refresh":
+		opts, positionals, err := workOptions(args[1:], map[string]bool{"--revision": false})
+		if err != nil || len(positionals) != 1 {
+			return workUsage("review-refresh <task-id> --revision <observed>", err)
+		}
+		revision, err := strconv.ParseInt(oneOption(opts, "--revision"), 10, 64)
+		if err != nil || revision <= 0 {
+			return errors.New("review-refresh requires a positive --revision")
+		}
+		item, err := store.RefreshWorkReview(ctx, positionals[0], revision)
+		if err != nil {
+			return err
+		}
+		return printJSON(item)
+	case "archive":
+		opts, positionals, err := workOptions(args[1:], map[string]bool{"--board": false, "--project": false, "--change": false, "--workflow": false, "--spec-plane": false})
+		if err != nil || len(positionals) != 0 {
+			return workUsage("archive --board <id> --project <workspace> --change <id> --workflow <sdd-lite|sdd-full> --spec-plane <openspec|cortex|hybrid>", err)
+		}
+		for _, key := range []string{"--board", "--change", "--workflow", "--spec-plane"} {
+			if oneOption(opts, key) == "" {
+				return fmt.Errorf("work archive requires %s", key)
+			}
+		}
+		project := oneOption(opts, "--project")
+		if project == "" {
+			project, err = os.Getwd()
+			if err != nil {
+				return err
+			}
+		}
+		receipt, err := store.ArchiveChange(ctx, delegation.ArchiveOptions{BoardID: oneOption(opts, "--board"), Workspace: project, ChangeID: oneOption(opts, "--change"), Workflow: oneOption(opts, "--workflow"), SpecPlane: oneOption(opts, "--spec-plane")})
+		if err != nil {
+			return err
+		}
+		return printJSON(receipt)
 	case "list":
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("list [--board <board-id>]", nil)
@@ -343,7 +403,7 @@ func runWork(args []string) error {
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("verify-lease --path <file> [--task <task-id>] [--owner <owner>]", nil)
 		}
-		opts, _, err := workOptions(args[1:], map[string]bool{"--path": false, "--task": false, "--owner": false})
+		opts, _, err := workOptions(args[1:], map[string]bool{"--path": false, "--task": false, "--owner": false, "--session-id": false, "--project": false})
 		if err != nil {
 			return workUsage("verify-lease --path <file> [--task <task-id>] [--owner <owner>]", err)
 		}
@@ -351,7 +411,15 @@ func runWork(args []string) error {
 		if pathVal == "" {
 			return errors.New("work verify-lease requires --path <file>")
 		}
-		res, err := store.VerifyWorkLease(ctx, pathVal, oneOption(opts, "--task"), oneOption(opts, "--owner"))
+		var res delegation.LeaseVerification
+		if session, explicit := opts["--session-id"]; explicit {
+			if len(session) != 1 || session[0] == "" || oneOption(opts, "--project") == "" || oneOption(opts, "--owner") != "" || oneOption(opts, "--task") != "" {
+				return errors.New("session lease verification requires --project and --session-id without --owner or --task")
+			}
+			res, err = store.VerifySessionWorkLease(ctx, pathVal, oneOption(opts, "--project"), session[0])
+		} else {
+			res, err = store.VerifyWorkLease(ctx, pathVal, oneOption(opts, "--task"), oneOption(opts, "--owner"))
+		}
 		if err != nil {
 			return err
 		}

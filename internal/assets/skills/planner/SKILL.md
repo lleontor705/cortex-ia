@@ -13,6 +13,8 @@ You convert evidence and user intent into durable specification contracts (OpenS
 
 ## 1. SDD Depth Selection
 
+Load `~/.cortex-ia/opencode/contracts/workflow-map.md` for the canonical routes, artifact names, phase checks and typed SDD binding/closure contracts. Lite OpenSpec uses `plan.md`; phase validation must not require future artifacts. SDD task creation includes `sdd_contract`; archive uses the planner-only `cortex_ia_change_archive` after durable approval. Structural PASS never substitutes for semantic contract review.
+
 - `decision-map`: The destination is known but the route contains decisions that cannot yet be specified in one planning session. Write or update `openspec/changes/<change-name>/decision-map.md` (for openspec/hybrid) or produce a pinned snapshot observation (when `spec_plane=cortex` per `cortex-convention.md`, omitting OpenSpec gates); create no implementation board or work tasks. The artifact contains `Destination`, linked `Decisions so far`, `Decision frontier`, `Not yet specified`, and `Out of scope`. Chart the map or resolve exactly one named decision per planner invocation. The orchestrator supplies investigation, prototype, or human-decision evidence and decides when the map is clear enough for SDD.
 - `sdd-lite`: Single domain and moderate risk. Produce one integrated plan containing intent, requirements, concise design, tasks, acceptance checks, verification strategy, rollback, and non-goals (written to OpenSpec when openspec/hybrid, or saved as a pinned snapshot observation when `spec_plane=cortex` per `cortex-convention.md`, omitting OpenSpec gates).
 - `sdd-full`: Cross-domain, public API, security, persistent data, migration, difficult rollback, or strong audit needs. Produce proposal, spec, design, planning join, task DAG, verification strategy, and archive criteria (written to OpenSpec when openspec/hybrid, or saved as pinned snapshot observations across all Full phases when `spec_plane=cortex` per `cortex-convention.md`, omitting OpenSpec gates).
@@ -77,7 +79,7 @@ The system MUST {behavior description using RFC 2119 keywords}.
 
 ## 3. Canonical Task DAG Decomposition
 
-Decompose planned work into modular, dependency-ordered phases. Every task must be specific, actionable, verifiable, and bounded to **<= 350 changed lines**.
+Decompose planned work into modular, dependency-ordered phases. Every task must be specific, actionable and independently verifiable. Use the language-specific size forecast below to identify work needing decomposition.
 
 Read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. When the orchestrator routes a named architecture decision with material ambiguity, apply its Design It Twice protocol: produce two or three contract-level alternatives, compare interface depth, locality, dependency direction, seam placement, blast radius, and reversibility, then recommend or select one. Never create competing implementation tasks as architecture exploration.
 
@@ -108,7 +110,7 @@ Use horizontal prerequisite tasks only for a genuine shared foundation that must
 
 To maintain clarity and protect context windows:
 - **Spec Artifact**: Maximum **650 words**. Prefer structured tables and Given/When/Then lists over verbose narrative. Auto-generates Mermaid visual sequence flows.
-- **Tasks Artifact**: Maximum **500 words**. Use concise checklists and clear file references.
+- **Tasks Artifact**: Use concise checklists and clear file references without dropping requirement traceability or acceptance evidence to meet a word count.
 - **Language-Aware Review Workload Guard**:
   - Scripting / Concise (TS, JS, Python, Ruby): forecast limit **<= 350 lines** per task.
   - Strongly Typed / Verbose (Go, Rust, Java, C#, C++): forecast limit **<= 500 lines** per task.
@@ -119,7 +121,7 @@ To maintain clarity and protect context windows:
 
 ## 5. Execution Procedure with Cortex-IA CLI & Cortex MCP
 
-1. **Control Health**: Run `cortex-ia work list` and fail closed if SQLite work control is unavailable.
+1. **Control Health**: Call `cortex_ia_board_list({})` and fail closed only if work control is unavailable. A proposed board ID returning not-found is expected before creation and does not prove a permission failure.
 2. **Context & Evidence**: Read the request, `./.cortex-ia/discovery.md` when present, and cited Cortex evidence (`cortex_search`). Preserve confirmed architectural seams and dependency direction; verify stale or conflicting profile claims against primary repository evidence.
 3. **Draft Contracts**: Formulate the requested decision map, proposal, delta specifications, concise design, or task DAG. Reuse project glossary terms and existing ADRs when present; record a new durable decision only for a real, consequential trade-off.
 4. **Validation & Commit**: When `spec_plane=openspec|hybrid`, validate OpenSpec artifacts locally through `cortex_ia_openspec_validate`. When `spec_plane=cortex`, write and validate pinned snapshot observations via `cortex_save` per `cortex-convention.md`, skipping OpenSpec gates across decision-map, Lite, and all Full phases. A `decision-map` writes only its contract and never creates a board. Materialize a new implementation DAG only for `sdd-lite/integrated` or `sdd-full/tasks`. For an orchestrator-routed blocked-task decomposition, require current `blocked` state and revision, derive 2-8 smaller fully specified tasks from the failure evidence, and call `cortex_ia_work_decompose` exactly once; never create those children individually or retry the parent.
@@ -134,8 +136,12 @@ To maintain clarity and protect context windows:
 {
   "receipt_version": "2.0",
   "workflow": "decision-map | sdd-lite | sdd-full",
-  "phase": "chart | resolve | integrated | propose | spec | design | tasks",
+  "phase": "chart | resolve | integrated | propose | spec | design | tasks | archive",
   "phase_status": "success | partial | failed | blocked",
+  "spec_plane": "openspec | cortex | hybrid",
+  "task_id": null,
+  "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
+  "summary": "",
   "artifact_refs": [],
   "artifact_revisions": [],
   "task_ids": [],

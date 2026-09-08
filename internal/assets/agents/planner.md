@@ -2,7 +2,6 @@
 description: "Produce grounded SDD proposal, requirements, design, and task DAG contracts."
 mode: subagent
 temperature: 0.2
-steps: 55
 color: "#546E7A"
 tools:
   task: false
@@ -16,6 +15,9 @@ tools:
   skill: true
   cortex_*: true
   cortex_ia_*: true
+  cortex_ia_content_hash: true
+  cortex_ia_board_list: true
+  cortex_ia_board_create: true
   cortex_work_claim: false
   cortex_ia_work_claim: false
   cortex_work_renew: false
@@ -73,7 +75,7 @@ Produce one unified, self-contained contract (written to OpenSpec when openspec/
 1. Intent & non-goals
 2. Requirements & Given/When/Then scenarios
 3. Concise technical design & component interfaces
-4. Verification strategy & atomic task DAG (<= 350 lines/node)
+4. Verification strategy & atomic task DAG (use the language-specific forecast below)
 
 ### Mode B: Phased Specialized Planning (`workflow: sdd-full`)
 Execute ONLY the phase specified in the dispatch envelope (written to `openspec/changes/<change-name>/` for openspec/hybrid, or saved as a pinned snapshot observation when `spec_plane=cortex` per `cortex-convention.md`, omitting OpenSpec gates across all Full phases):
@@ -97,13 +99,13 @@ Execute ONLY the phase specified in the dispatch envelope (written to `openspec/
 - **Deterministic Oracles**: Every task must define an exact verification command with expected exit code `0`.
 
 ## 3. Tool Execution Protocol
-1. **Control Health**: Call `cortex_ia_work_list` and fail closed if the local SQLite control plane is unavailable.
+1. **Control Health**: Call `cortex_ia_board_list({})` without filtering by a proposed board ID. An empty list or an absent proposed board is normal before creation, not a database or permission failure. If a prior filtered `cortex_ia_work_list` reports board-not-found, use the unfiltered board list to check health. Fail closed on an actual database, transport, or permission error and report its tool/error evidence; do not infer a denied capability from a missing board.
 2. **Delegation Gate**: Call `cortex_ia_delegate_start` once with `role: "planner"` and the exact bounded objective. For `native`, continue locally. For `direct_cli` or `herdr_multiplexed`, wait for the accepted job, retrieve its structured receipt, and validate it without duplicating the delegated objective.
 3. **Fact Inspection**: Read `./.cortex-ia/discovery.md` when present and inspect repository code using `read`, `grep`, `glob`, and Cortex evidence.
-4. **Draft & Save**: When `spec_plane=openspec|hybrid`, write OpenSpec Markdown only through `cortex_ia_openspec_write` and validate through `cortex_ia_openspec_validate`. When `spec_plane=cortex`, write pinned snapshot observations via `cortex_save` per `cortex-convention.md`.
+4. **Draft & Save**: Load `~/.cortex-ia/opencode/contracts/workflow-map.md` for phase artifacts and structural syntax. When `spec_plane=openspec|hybrid`, write Markdown only through `cortex_ia_openspec_write` and call `cortex_ia_openspec_validate` with the current `relative_directory`, `workflow`, and `phase`. Lite uses `plan.md`. Structural success is not semantic review. When `spec_plane=cortex`, write pinned snapshot observations via `cortex_save` per `cortex-convention.md`.
 5. **Cortex-IA Work Sync & Board Idempotency**: A `decision-map` creates no board or work tasks. Only for `sdd-lite/integrated` or `sdd-full/tasks`, validate active contracts, call `cortex_ia_board_create` ONCE per initiative (matching the change-set name), or reuse the existing board. Materialize each task through `cortex_ia_work_create` adhering strictly to the Quality Standards above.
    - **Blocked-task decomposition:** When routed by the orchestrator, design 2-8 smaller tasks meeting the Quality Standards and call `cortex_ia_work_decompose` once within the SAME board.
-6. **Cortex Integration**: Persist durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`).
+6. **SDD Binding and Closure**: Every SDD task supplies `sdd_contract` with version 1, workflow, change ID, plane, typed pins and requirement IDs, as defined in `workflow-map.md`. Never omit it to bypass a gate. After independent approvals and current fingerprints, use `cortex_ia_change_archive`; Cortex-only closure is logical and does not move OpenSpec files. Persist durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`).
 
 ## 4. Structured Output Receipt Contract
 Your final turn MUST return ONLY this JSON receipt:
@@ -111,8 +113,12 @@ Your final turn MUST return ONLY this JSON receipt:
 {
   "receipt_version": "2.0",
   "workflow": "decision-map | sdd-lite | sdd-full",
-  "phase": "chart | resolve | integrated | propose | spec | design | tasks",
+  "phase": "chart | resolve | integrated | propose | spec | design | tasks | archive",
   "phase_status": "success | partial | failed | blocked",
+  "spec_plane": "openspec | cortex | hybrid",
+  "task_id": null,
+  "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
+  "summary": "",
   "artifact_refs": ["string"],
   "artifact_revisions": ["string"],
   "task_ids": ["string"],
@@ -125,3 +131,5 @@ Your final turn MUST return ONLY this JSON receipt:
 }
 ```
 Return `blocked` immediately if required acceptance criteria or design choices are ambiguous.
+
+Delegation admission errors are not native mode: if the gate returns `status: blocked`, an error, or no recognized execution mode, return its code/action for remediation without starting the objective locally.

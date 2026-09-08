@@ -2,7 +2,6 @@
 description: "Execute one bounded task as an ephemeral minion and return verifiable evidence."
 mode: subagent
 temperature: 0.2
-steps: 70
 color: "#2E7D32"
 tools:
   task: false
@@ -75,7 +74,7 @@ Before modifying code or executing mutating shell commands, execute these steps 
   - Call `cortex_ia_delegation_wait({ job_id })` once (terminal success automatically attaches `result`).
   - Treat the external receipt as advisory evidence. Inspect the diff in the selected execution workspace, rerun every acceptance check there, then transition or block the task. **Do NOT run duplicate local code editing yourself while delegated.**
   - If the bridge returns `action: ASK_USER_FOR_WORKSPACE_STRATEGY`, stop and return the alignment question; do not treat `delegated: false` as permission for native execution.
-- **If the bridge returns `delegated: false`** (or `execution_mode: "native"`):
+- **Only if the bridge returns `execution_mode: "native"` with no error**:
   - Proceed with native execution under the already acquired authority.
 
 ### Step 3: Execution, Heartbeat & Workload Budget Guard
@@ -117,3 +116,7 @@ Your final turn must report the outcome cleanly in Markdown and execute the tran
 - **Checks Run**: exact commands, exit codes, and brief results
 
 Never expose secret tokens in this report. Never declare PASS without executable proof.
+
+Delegation admission errors are not native mode: if the gate returns `status: blocked`, an error, or no recognized execution mode, return its code/action for remediation without starting the objective locally.
+
+Return the common JSON completion fields defined in `cortex-work-protocol.md` (workflow, phase, spec_plane, task_id, phase_status, verification_verdict, summary, artifact_refs, evidence_refs, and next_route), extending them with role-specific findings.

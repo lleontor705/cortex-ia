@@ -4,7 +4,7 @@
 
 - `cortex-ia` is the local bridge and control plane for the OpenCode ecosystem. It installs the native OpenCode asset set, manages MCP configuration, owns durable task authority in SQLite, and may supervise one external AGY execution leaf directly or through Herdr.
 - OpenCode native agents remain the controllers. External CLIs are bounded executors, never coordinators: they receive no Cortex session lifecycle, `cortex-ia work` claim/lease tokens, approval authority, or nested-delegation capability.
-- OpenSpec owns human-reviewable SDD contracts. Cortex MCP owns durable evidence, memories, AST knowledge, and relationships. Neither replaces SQLite task authority.
+- The selected specification plane owns SDD contracts: OpenSpec for `openspec|hybrid`, pinned Cortex observations for `cortex`. Cortex MCP also owns durable evidence, memories, AST knowledge, and relationships. Neither replaces SQLite task authority. The canonical phase matrix is `internal/assets/skills/_shared/workflow-map.md`.
 - ForgeSpec and the external task-board MCP are retired. Do not restore their plugin, protocol, tools, or runtime dependency. Task boards are built into this binary through `cortex-ia board`.
 - The product targets OpenCode only. Do not reintroduce platform adapters, personas, profiles, model routing, or SDD compiler/registry surfaces; retired commands and flags fail closed in `internal/app/app.go`.
 
@@ -95,20 +95,4 @@ The delegation bridge returns the effective mode. That return value is authorita
 - PR CI requires a branch matching `<type>/<lowercase-name>`, a body containing `Closes #N`, `Fixes #N`, or `Resolves #N`, every linked issue labeled `status:approved`, and exactly one `type:*` PR label.
 - Commit first lines are enforced only to 10-72 characters by Husky, but repository convention is Conventional Commits; release changelog inclusion depends on `feat`, `fix`, `refactor`, and `perf` prefixes.
 
-Installed skill assets and their triggers:
-
-| Skill | Phase | When to load |
-|-------|-------|--------------|
-| `bootstrap` | SDD-0 | Starting a new SDD session |
-| `investigate` | SDD-1 | Mapping unknown areas of the codebase |
-| `draft-proposal` | SDD-2 | Drafting a change proposal |
-| `write-specs` | SDD-3 | Producing Given/When/Then scenarios |
-| `architect` | SDD-4 | Designing the implementation approach |
-| `decompose` | SDD-5 | Breaking the design into tasks |
-| `implement` | SDD-6 | Applying spec → code |
-| `validate` | SDD-7 | Verifying scenarios pass |
-| `finalize` | SDD-8 | Archiving the change set |
-| `orchestrator`, `planner`, `reviewer` | cross-phase | Routing, planning, and review roles |
-| `debate`, `code-review-adversary` | cross-phase | Multi-position and adversarial deliberation |
-| `fast-tdd`, `property-based-testing`, `mutation-testing`, `ast-impact-analysis` | utility | Verification acceleration |
-| `context-distiller`, `parallel-dispatch`, `spike-prototype`, `hotfix-triage` | utility | See each SKILL.md for the trigger |
+The canonical workflow/phase matrix is `internal/assets/skills/_shared/workflow-map.md` (installed as `~/.cortex-ia/opencode/contracts/workflow-map.md`). Use it before routing SDD; do not assume one agent or skill per phase. `orchestrator` routes, `discovery` profiles the project, `investigate` diagnoses, `planner` owns proposal/spec/design/tasks/archive, `implement` executes, and `reviewer` independently verifies using `code-review-adversary`. Other installed utility skills are discovered from `internal/assets/skills/*/SKILL.md` and loaded only for their actual task trigger.

@@ -297,6 +297,10 @@ func watchCancellation(ctx context.Context, store *Store, id string, cancel cont
 }
 
 func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.Duration) ([]byte, int, error) {
+	skip, err := skipPermissions(role)
+	if err != nil {
+		return nil, -1, err
+	}
 	agy, err := resolveAGY()
 	if err != nil {
 		return nil, -1, err
@@ -310,7 +314,7 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 		"--print-timeout", printTimeout,
 		"--disable-slash-commands",
 	}
-	if role.SkipPermissions || os.Getenv("CORTEX_AGY_SKIP_PERMISSIONS") != "false" {
+	if skip {
 		args = append(args, "--dangerously-skip-permissions")
 	}
 	if role.Mode != "" && role.Mode != "plan" {

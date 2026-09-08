@@ -64,11 +64,28 @@ func DefaultDelegationConfig(useHerdr bool) DelegationConfig {
 	cfg.DelegationEnabled = true
 	cfg.UseHerdr = useHerdr
 	cfg.HerdrSettings.AutoSplit = useHerdr
-	cfg.Roles["implement"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "accept-edits", SkipPermissions: true}
-	cfg.Roles["investigate"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true}
-	cfg.Roles["planner"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true}
-	cfg.Roles["reviewer"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true}
+	cfg.Roles["implement"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "accept-edits"}
+	cfg.Roles["investigate"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
+	cfg.Roles["planner"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
+	cfg.Roles["reviewer"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan"}
 	return cfg
+}
+
+// Explicit environment policy overrides persisted configuration. Absence keeps
+// the configured opt-in; malformed values never silently enable a bypass.
+func skipPermissions(role RoleConfig) (bool, error) {
+	value, present := os.LookupEnv("CORTEX_AGY_SKIP_PERMISSIONS")
+	if !present {
+		return role.SkipPermissions, nil
+	}
+	switch value {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, errors.New("CORTEX_AGY_SKIP_PERMISSIONS must be true or false")
+	}
 }
 
 func (c DelegationConfig) Validate() error {

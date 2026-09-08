@@ -1,58 +1,29 @@
-﻿# Specification-Driven Development (SDD) Workflow
+# Specification-driven development in Cortex-IA
 
-**Cortex-IA** integrates **OpenSpec** contracts with a transactional **SQLite Task DAG** to provide deterministic, verifiable software evolution.
+The [canonical workflow map](../internal/assets/skills/_shared/workflow-map.md) defines every route, role, phase artifact, validation gate and completion condition. It is installed as `~/.cortex-ia/opencode/contracts/workflow-map.md`; agents and `/sdd` use that same source.
 
-<p align="center">
-  <img src="assets/sdd-pipeline.svg" alt="SDD Pipeline" width="100%" />
-</p>
+Cortex-IA separates the specification plane (OpenSpec, Cortex, or hybrid), durable work authority in SQLite, and evidence. SDD means contracts precede implementation and the accepted change is traceable to those contracts. A board, a successful build or a completed subagent alone does not establish SDD compliance.
 
----
-
-## 1. The 5-Phase SDD Loop
-
-```text
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│  1. PROPOSE  │ ──▶ │   2. SPEC    │ ──▶ │  3. DECOMPOSE│ ──▶ │   4. APPLY   │ ──▶ │  5. VERIFY   │
-│ (proposal.md)│     │ (RFC Delta)  │     │  (Tasks DAG) │     │ (Claim/Lease)│     │ (Review/PASS)│
-└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+```mermaid
+flowchart LR
+  A[User intent] --> B[Orchestrator routes]
+  B --> C[Investigate]
+  C --> D[Planner: phased or integrated contract]
+  D --> E[Structural validation and semantic contract review]
+  E --> F[Typed SDD task DAG]
+  F --> G[Implement: claim, leases, change and checks]
+  G --> H[Independent reviewer]
+  H -->|PASS with current fingerprints| I[Done]
+  H -->|FAIL| J[Reconcile or replan]
+  I --> K[Planner: durable closure]
 ```
 
-### Phase 1: Propose & Align
-- The `orchestrator` coordinates the initiative.
-- If architectural ambiguity exists, the `orchestrator` runs structured interview rounds using `grill-me`.
-- The `planner` initializes the change proposal in `openspec/changes/<change-id>/proposal.md`.
+## Verification is layered
 
-### Phase 2: Delta Specifications
-- The `planner` writes formal RFC 2119 delta requirements under `openspec/changes/<change-id>/specs/<domain>/spec.md`.
-- Scenarios use deterministic `Given / When / Then` acceptance criteria.
-- Validated via `openspec validate`.
+- Structural validation checks phase-specific files, unique requirement IDs, complete scenario fields and task references. It does not assess whether scenarios are meaningful or code is correct.
+- Native mutation tools require session-owned live task authority. This admission check is not an operating-system sandbox for shell commands.
+- SDD work stores typed contract pins and requirement IDs. Review records runtime-computed definition and writable-file fingerprints. Historical approvals retain their original evidence.
+- The reviewer retrieves the selected specification, evaluates the change and reruns appropriate checks. Remote Cortex content freshness is verified through its selected transport, not inferred from a stored hash.
+- Planner closes the change using `cortex_ia_change_archive` after durable approval and current fingerprint checks. Cortex-only closure is logical; OpenSpec/hybrid also archive the source change directory.
 
-### Phase 3: Task DAG Decomposition
-- The `planner` breaks down the implementation into discrete, bounded slices (≤350 LOC per task) in `tasks.md`.
-- Materializes the tasks in SQLite using `cortex-ia work create`:
-  ```bash
-  cortex-ia board create <board-id> "<Title>"
-  cortex-ia work create task-1.1 "Scaffolding" --board <board-id>
-  cortex-ia work create task-1.2 "Domain Logic" --board <board-id> --depends task-1.1
-  ```
-
-### Phase 4: Atomic Implementation
-- The `implement` minion reads `cortex-ia work status task-1.1`.
-- Claims the task and reserves exclusive file locks:
-  ```bash
-  cortex-ia work claim task-1.1 --owner implement-minion-1
-  cortex-ia work lease task-1.1 --claim-token <tok> --path internal/core/handler.go
-  ```
-- Executes the code changes (natively or delegated via Herdr with live telemetry).
-- Runs unit tests and transitions the task to `in_review`:
-  ```bash
-  cortex-ia work transition task-1.1 --claim-token <tok> --to in_review
-  ```
-
-### Phase 5: Adversarial Review & Unlocking
-- The `reviewer` independently verifies git diffs, executes test suites, and checks invariants.
-- If verification passes, the reviewer approves the task:
-  ```bash
-  cortex-ia work approve task-1.1 --reviewer reviewer-agent --verdict PASS --evidence "All unit tests green"
-  ```
-- **Automatic Unlocking**: `task-1.1` becomes `done`, its file leases are purged, and `task-1.2` automatically transitions from `backlog` to `ready`.
+Direct changes use proportional verification without invented SDD pins. An initiative should only be described as completed SDD when its contract, work, review and closure evidence exist.

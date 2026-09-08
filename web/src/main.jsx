@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import './styles.css';
 
 const states = [
@@ -13,6 +13,16 @@ const states = [
 ];
 const stateLabels = Object.fromEntries(states);
 const emptyDashboard = { summary: {}, sessions: [], active_work: [], delegations: [], activity: [] };
+const emptyFeed = { delegations: [], activity: [], page: 0, page_size: 20, total_delegations: 0, total_activity: 0 };
+
+function Pagination({ page, total, size = 20, onPage }) {
+  const pages = Math.max(1, Math.ceil(total / size));
+  return <nav class="header-actions" aria-label="Paginación">
+    <button disabled={page === 0} onClick={() => onPage(page - 1)}>Anterior</button>
+    <span>Página {page + 1} de {pages} · {total} registros</span>
+    <button disabled={page + 1 >= pages} onClick={() => onPage(page + 1)}>Siguiente</button>
+  </nav>;
+}
 const safeStatus = value => /^[a-z_]+$/.test(value || '') ? value : 'unknown';
 const shortID = value => value?.length > 16 ? `${value.slice(0, 8)}…${value.slice(-5)}` : value || '—';
 const formatTime = value => value ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
@@ -25,10 +35,14 @@ const relativeTime = value => {
 };
 
 async function request(path, options = {}) {
-  const response = await fetch(path, options);
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `Error HTTP ${response.status}`);
-  return body;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(path, { ...options, signal: controller.signal });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || `Error HTTP ${response.status}`);
+    return body;
+  } finally { clearTimeout(timeout); }
 }
 
 function StatusChip({ status, label }) {
@@ -56,7 +70,7 @@ function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNew
   const [showArchived, setShowArchived] = useState(false);
   const nav = [
     ['overview', '⌂', 'Resumen'],
-    ['sessions', '◎', 'Sesiones'],
+    ['sessions', '◎', 'Boards'],
     ['delegations', '⇄', 'Delegación'],
     ['activity', '↯', 'Actividad'],
     ['settings', '⚙', 'Ecosistema']
@@ -86,7 +100,7 @@ function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNew
       </nav>
       <div class="board-heading">
         <p class="side-label">TASK BOARDS</p>
-        <button onClick={onNewBoard} aria-label="Crear tablero" title="Nueva sesión / tablero">+</button>
+        <button onClick={onNewBoard} aria-label="Crear tablero" title="Nuevo board / tablero">+</button>
       </div>
       <nav class="board-nav" aria-label="Tableros">
         {activeBoards.length ? activeBoards.map(board => (
@@ -135,7 +149,7 @@ function Metrics({ dashboard }) {
   return (
     <div class="metrics five">
       <article>
-        <span>Sesiones</span>
+        <span>Boards</span>
         <strong>{s.sessions || 0}</strong>
         <small>boards durables</small>
       </article>
@@ -252,7 +266,7 @@ function Overview({ dashboard, onView, onTask, onNewTask, onJob }) {
       <PageHeader
         eyebrow="SYSTEM OVERVIEW"
         title="Operaciones en Tiempo Real"
-        description="Sesiones de trabajo, agentes, tareas y ejecuciones delegadas desde el plano de control local."
+        description="Boards de trabajo, agentes, tareas y ejecuciones delegadas desde el plano de control local."
         action={<button class="button primary" onClick={onNewTask}>+ Nueva tarea</button>}
       />
       <Metrics dashboard={dashboard} />
@@ -269,7 +283,7 @@ function Overview({ dashboard, onView, onTask, onNewTask, onJob }) {
             {dashboard.active_work.length ? (
               dashboard.active_work.slice(0, 8).map(item => <WorkRow key={item.task_id} item={item} onOpen={onTask} />)
             ) : (
-              <Empty title="No hay tareas activas">Crea una sesión o tarea para comenzar.</Empty>
+              <Empty title="No hay tareas activas">Crea un board o tarea para comenzar.</Empty>
             )}
           </div>
         </section>
@@ -315,8 +329,8 @@ function Sessions({ sessions, boards = [], onBoard, onNew, onArchive, onUnarchiv
     <>
       <PageHeader
         eyebrow="WORK SESSIONS"
-        title="Sesiones Coordinadas"
-        description="Cada task board representa una sesión durable con su DAG de dependencias, progreso y leases."
+        title="Boards e iniciativas"
+        description="Cada board agrupa una iniciativa durable con su DAG, progreso y reservas. No representa una conversación de OpenCode."
         action={
           <div class="header-actions">
             <div class="segmented-control">
@@ -324,7 +338,7 @@ function Sessions({ sessions, boards = [], onBoard, onNew, onArchive, onUnarchiv
               <button class={filter === 'active' ? 'active' : ''} onClick={() => setFilter('active')}>Activas</button>
               <button class={filter === 'archived' ? 'active' : ''} onClick={() => setFilter('archived')}>Archivadas</button>
             </div>
-            <button class="button primary" onClick={onNew}>+ Nueva sesión</button>
+            <button class="button primary" onClick={onNew}>+ Nuevo board</button>
           </div>
         }
       />
@@ -343,7 +357,7 @@ function Sessions({ sessions, boards = [], onBoard, onNew, onArchive, onUnarchiv
                     <small>{relativeTime(session.updated_at)}</small>
                   </header>
                   <h2>{session.title}</h2>
-                  <p>{session.description || `Sesión ${session.board_id}`}</p>
+                  <p>{session.description || `Board ${session.board_id}`}</p>
                   <div class="session-stats">
                     <span><b>{session.task_count}</b> tareas</span>
                     <span><b>{session.owners?.length || 0}</b> agentes</span>
@@ -361,7 +375,7 @@ function Sessions({ sessions, boards = [], onBoard, onNew, onArchive, onUnarchiv
                       <button
                         class="mini-action-btn"
                         onClick={(e) => { e.stopPropagation(); onArchive?.(session.board_id); }}
-                        title="Archivar sesión terminada"
+                        title="Archivar board terminado"
                       >
                         📦 Archivar
                       </button>
@@ -371,7 +385,7 @@ function Sessions({ sessions, boards = [], onBoard, onNew, onArchive, onUnarchiv
                       <button
                         class="mini-action-btn"
                         onClick={(e) => { e.stopPropagation(); onUnarchive?.(session.board_id); }}
-                        title="Restaurar sesión a activa"
+                        title="Restaurar board a activo"
                       >
                         ↺ Restaurar
                       </button>
@@ -379,7 +393,7 @@ function Sessions({ sessions, boards = [], onBoard, onNew, onArchive, onUnarchiv
                         <button
                           class="mini-action-btn danger"
                           onClick={(e) => { e.stopPropagation(); onDelete?.(session.board_id); }}
-                          title="Eliminar sesión definitivamente"
+                          title="Eliminar board definitivamente"
                         >
                           ✕ Eliminar
                         </button>
@@ -416,7 +430,7 @@ function Delegations({ jobs, onOpenJob }) {
           <div class="search-box">
             <input
               type="text"
-              placeholder="Filtrar por rol, task o estado..."
+              placeholder="Buscar en esta página: rol, task o estado…"
               value={filter}
               onInput={e => setFilter(e.currentTarget.value)}
             />
@@ -637,7 +651,6 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
   const [statusFilter, setStatusFilter] = useState('all');
   const [mode, setMode] = useState('flow');
   const itemsByID = useMemo(() => new Map(items.map(item => [item.task_id, item])), [items]);
-  const taskIDs = useMemo(() => new Set(items.map(item => item.task_id)), [items]);
   const filteredItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter(item => {
@@ -652,14 +665,14 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
   const leasedFiles = items.reduce((total, item) => total + (item.leases?.filter(lease => isLive(lease.expires_at)).length || 0), 0);
   const completed = (counts.done || 0) + (counts.superseded || 0);
   const progress = items.length ? Math.round((completed / items.length) * 100) : 0;
-  const boardActivity = (activity || []).filter(event => taskIDs.has(event.entity_id)).slice(0, 7);
-  const boardDelegations = (delegations || []).filter(job => taskIDs.has(job.task_id)).slice(0, 5);
+  const boardActivity = activity || [];
+  const boardDelegations = delegations || [];
   const attention = items.filter(item => item.status === 'blocked' || (item.status === 'in_progress' && !isLive(item.claim?.expires_at)));
   const upcoming = items
     .filter(item => ['in_progress', 'ready', 'backlog'].includes(item.status))
     .sort((a, b) => ['in_progress', 'ready', 'backlog'].indexOf(a.status) - ['in_progress', 'ready', 'backlog'].indexOf(b.status))
     .slice(0, 4);
-  if (!board) return <Empty title="Cargando sesión">Consultando el task board local.</Empty>;
+  if (!board) return <Empty title="Cargando board">Consultando el task board local.</Empty>;
   return (
     <>
       <header class="board-hero">
@@ -669,7 +682,7 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
             {board.status === 'archived' && <span class="status-chip archived" style="margin-left: 8px;">Archivado</span>}
           </p>
           <h1>{board.title}</h1>
-          <p>{board.description || 'Sesión coordinada del plano de control local.'}</p>
+          <p>{board.description || 'Iniciativa del plano de control local.'}</p>
           <div class="board-meta">
             <span>rev. {board.revision}</span>
             <span>{items.length} tareas</span>
@@ -814,7 +827,7 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
         </aside>
       </div> : (
         <div class="empty">
-          <strong>Esta sesión está lista.</strong>
+          <strong>Este board está listo.</strong>
           <span>Crea la primera tarea para materializar su DAG.</span>
         </div>
       )}
@@ -874,11 +887,11 @@ function BoardForm({ open, onClose, onCreated, onError }) {
         </label>
         <label>
           Descripción
-          <textarea name="description" maxlength="2048" placeholder="Objetivo y alcance de la sesión"></textarea>
+          <textarea name="description" maxlength="2048" placeholder="Objetivo y alcance del board"></textarea>
         </label>
         <div class="dialog-actions">
           <button type="button" class="button secondary" onClick={onClose}>Cancelar</button>
-          <button class="button primary">Crear sesión</button>
+          <button class="button primary">Crear board</button>
         </div>
       </form>
     </Modal>
@@ -1012,7 +1025,7 @@ function TaskDetail({ item, onClose }) {
   );
 }
 
-function JobDetail({ job, onClose }) {
+function JobDetail({ job, error, loading, onClose }) {
   if (!job) return null;
   const receipt = job.receipt;
   let formattedOutput = null;
@@ -1027,6 +1040,8 @@ function JobDetail({ job, onClose }) {
   return (
     <Modal open={!!job} onClose={onClose} className="wide-modal">
       <div class="detail-content">
+        {loading && <p role="status">Consultando detalle…</p>}
+        {error && <p class="error-copy" role="alert">Detalle desactualizado: {error}</p>}
         <header>
           <div>
             <p class="eyebrow">DELEGATED JOB / {job.transport?.toUpperCase()}</p>
@@ -1083,6 +1098,26 @@ function App() {
   const [jobDetail, setJobDetail] = useState(null);
   const [notice, setNotice] = useState(null);
   const [syncedAt, setSyncedAt] = useState(null);
+  const [syncError, setSyncError] = useState('');
+  const [boardError, setBoardError] = useState('');
+  const [boardSyncedAt, setBoardSyncedAt] = useState(null);
+  const [feed, setFeed] = useState(emptyFeed);
+  const [boardFeed, setBoardFeed] = useState(emptyFeed);
+  const [page, setPage] = useState(0);
+  const [boardPage, setBoardPage] = useState(0);
+  const [jobID, setJobID] = useState('');
+  const [jobError, setJobError] = useState('');
+  const [jobLoading, setJobLoading] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const allGeneration = useRef(0);
+  const boardGeneration = useRef(0);
+  const jobGeneration = useRef(0);
+  const allPending = useRef(null);
+  const boardPending = useRef(null);
+  const selection = useRef({ board: currentBoard, page: boardPage, view });
+  selection.current = { board: currentBoard, page: boardPage, view };
+  const globalPage = useRef(page);
+  globalPage.current = page;
 
   const notify = (message, error = false) => {
     setNotice({ message, error });
@@ -1090,35 +1125,66 @@ function App() {
   };
 
   const loadAll = useCallback(async (silent = true) => {
+    if (allPending.current?.page === page && allPending.current.generation === allGeneration.current) return;
+    const generation = ++allGeneration.current;
+    const pending = { page, generation };
+    allPending.current = pending;
     try {
-      const [nextDashboard, nextBoards, nextConfig] = await Promise.all([
+      const [nextDashboard, nextBoards, nextConfig, nextFeed] = await Promise.all([
         request('/api/overview'),
         request('/api/boards'),
-        request('/api/config').catch(() => null)
+        request('/api/config'),
+        request(`/api/feed?page=${page}`)
       ]);
+      if (generation !== allGeneration.current || globalPage.current !== page) return;
       setDashboard(nextDashboard);
       setBoards(nextBoards);
       if (nextConfig) setConfigData(nextConfig);
+      setFeed(nextFeed);
+      setSyncError('');
       setSyncedAt(new Date());
       if (!silent) notify('Datos sincronizados');
     } catch (error) {
+      if (generation !== allGeneration.current || globalPage.current !== page) return;
+      setSyncError(error.message);
       notify(error.message, true);
+    } finally {
+      if (allPending.current === pending) allPending.current = null;
     }
-  }, []);
+  }, [page]);
 
-  const loadBoard = useCallback(async id => {
+  const loadBoard = useCallback(async (id, requestedPage = selection.current.page) => {
     if (!id) return;
+    const key = `${id}:${requestedPage}`;
+    if (boardPending.current?.key === key && boardPending.current.generation === boardGeneration.current) return;
+    const generation = ++boardGeneration.current;
+    const pending = { key, generation };
+    boardPending.current = pending;
+    const current = () => generation === boardGeneration.current && selection.current.board === id && selection.current.page === requestedPage && selection.current.view === 'board';
     try {
-      setSnapshot(await request(`/api/boards/${encodeURIComponent(id)}`));
+      const [next, nextFeed] = await Promise.all([
+        request(`/api/boards/${encodeURIComponent(id)}`),
+        request(`/api/feed?board=${encodeURIComponent(id)}&page=${requestedPage}`)
+      ]);
+      if (!current()) return;
+      if (next.board?.board_id !== id) throw new Error('Respuesta de tablero incompatible');
+      setSnapshot(next);
+      setBoardFeed(nextFeed);
+      setBoardError('');
+      setBoardSyncedAt(new Date());
     } catch (error) {
+      if (!current()) return;
+      setBoardError(error.message);
       notify(error.message, true);
+    } finally {
+      if (boardPending.current === pending) boardPending.current = null;
     }
   }, []);
 
   useEffect(() => {
     loadAll();
     const timer = setInterval(() => !document.hidden && loadAll(), 8000);
-    return () => clearInterval(timer);
+    return () => { clearInterval(timer); allGeneration.current++; };
   }, [loadAll]);
 
   useEffect(() => {
@@ -1134,12 +1200,67 @@ function App() {
 
   useEffect(() => {
     if (view !== 'board' || !currentBoard) return;
-    loadBoard(currentBoard);
-    const timer = setInterval(() => !document.hidden && loadBoard(currentBoard), 5000);
+    setSnapshot(null);
+    setBoardFeed(emptyFeed);
+    setBoardError('');
+    setBoardSyncedAt(null);
+    loadBoard(currentBoard, boardPage);
+    const timer = setInterval(() => !document.hidden && loadBoard(currentBoard, boardPage), 5000);
+    return () => { clearInterval(timer); boardGeneration.current++; };
+  }, [view, currentBoard, boardPage, loadBoard]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [view, currentBoard, loadBoard]);
+  }, []);
+
+  useEffect(() => {
+    if (!jobID) return;
+    let closed = false;
+    let pending = false;
+    const read = async () => {
+      if (pending) return;
+      pending = true;
+      const generation = ++jobGeneration.current;
+      setJobLoading(true);
+      try {
+        const next = await request(`/api/delegations/${encodeURIComponent(jobID)}`);
+        if (closed || generation !== jobGeneration.current) return;
+        if (next.job_id !== jobID) throw new Error('Respuesta de delegación incompatible');
+        setJobDetail(next);
+        setJobError('');
+      } catch (error) {
+        if (!closed && generation === jobGeneration.current) setJobError(error.message);
+      } finally {
+        pending = false;
+        if (!closed && generation === jobGeneration.current) setJobLoading(false);
+      }
+    };
+    read();
+    const timer = setInterval(() => !document.hidden && read(), 5000);
+    return () => { closed = true; jobGeneration.current++; clearInterval(timer); };
+  }, [jobID]);
+
+  const openJob = job => {
+    jobGeneration.current++;
+    setJobDetail(job);
+    setJobError('');
+    setJobLoading(true);
+    setJobID(job.job_id);
+  };
+
+  const refresh = () => {
+    loadAll(false);
+    if (view === 'board') loadBoard(currentBoard, boardPage);
+  };
 
   const openBoard = id => {
+    boardGeneration.current++;
+    selection.current = { board: id, page: 0, view: 'board' };
+    setSnapshot(null);
+    setBoardFeed(emptyFeed);
+    setBoardSyncedAt(null);
+    setBoardPage(0);
     setCurrentBoard(id);
     localStorage.setItem('cortex-board', id);
     setView('board');
@@ -1189,7 +1310,7 @@ function App() {
     setBoardModal(false);
     await loadAll();
     openBoard(board.board_id);
-    notify('Sesión creada');
+    notify('Board creado');
   };
 
   const afterTask = async task => {
@@ -1211,6 +1332,11 @@ function App() {
     return view.toUpperCase();
   }, [view, boards, currentBoard]);
 
+  const lastSync = view === 'board' ? boardSyncedAt : syncedAt;
+  const currentError = syncError || (view === 'board' ? boardError : '');
+  const stale = !lastSync || now - lastSync.getTime() > 20000;
+  const visibleSnapshot = snapshot?.board?.board_id === currentBoard && boardFeed.page === boardPage ? snapshot : null;
+
   return (
     <div class="shell">
       <Sidebar
@@ -1218,7 +1344,7 @@ function App() {
         dashboard={dashboard}
         currentBoard={currentBoard}
         view={view}
-        onView={setView}
+        onView={next => { setPage(0); setView(next); }}
         onBoard={openBoard}
         onNewBoard={() => setBoardModal(true)}
       />
@@ -1226,22 +1352,24 @@ function App() {
         <header class="global-header">
           <div>
             <span class="breadcrumb">CORTEX / <b>{sectionTitle}</b></span>
-            <span class="live"><i></i>LIVE</span>
+            <span class="live"><i></i>{currentError ? 'SIN CONEXIÓN' : stale ? 'DESACTUALIZADO' : 'ACTUALIZADO'}</span>
           </div>
           <div class="header-actions">
-            <span>{syncedAt ? `Actualizado ${new Intl.DateTimeFormat('es-CO', { timeStyle: 'short' }).format(syncedAt)}` : 'Sincronizando…'}</span>
-            <button class="icon-button" onClick={() => loadAll(false)} aria-label="Actualizar datos" title="Refrescar datos">↻</button>
+            <span>{lastSync ? `Actualizado ${new Intl.DateTimeFormat('es-CO', { timeStyle: 'short' }).format(lastSync)}` : 'Sincronizando…'}</span>
+            <button class="icon-button" onClick={refresh} aria-label="Actualizar datos" title="Refrescar datos">↻</button>
           </div>
         </header>
+
+        {currentError && <p class="error-copy" role="alert">Datos desactualizados: {currentError}. Reintentando automáticamente.</p>}
 
         <section class={`view ${view === 'overview' ? 'active' : ''}`}>
           {view === 'overview' && (
             <Overview
               dashboard={dashboard}
-              onView={setView}
+              onView={next => { setPage(0); setView(next); }}
               onTask={setDetail}
               onNewTask={() => setTaskModal(true)}
-              onJob={setJobDetail}
+              onJob={openJob}
             />
           )}
         </section>
@@ -1262,7 +1390,10 @@ function App() {
 
         <section class={`view ${view === 'delegations' ? 'active' : ''}`}>
           {view === 'delegations' && (
-            <Delegations jobs={dashboard.delegations} onOpenJob={setJobDetail} />
+            <>
+              <Delegations jobs={feed.page === page ? feed.delegations : []} onOpenJob={openJob} />
+              <Pagination page={page} total={feed.total_delegations} onPage={setPage} />
+            </>
           )}
         </section>
 
@@ -1275,7 +1406,8 @@ function App() {
                 description="Registro append-only de transiciones de tareas, claims, leases y delegaciones en SQLite."
               />
               <section class="panel">
-                <EventList events={dashboard.activity} />
+                <EventList events={feed.page === page ? feed.activity : []} />
+                <Pagination page={page} total={feed.total_activity} onPage={setPage} />
               </section>
             </>
           )}
@@ -1289,16 +1421,20 @@ function App() {
 
         <section class={`view ${view === 'board' ? 'active' : ''}`}>
           {view === 'board' && (
+            <>
             <Board
-              snapshot={snapshot}
-              activity={dashboard.activity}
-              delegations={dashboard.delegations}
+              key={currentBoard}
+              snapshot={visibleSnapshot}
+              activity={visibleSnapshot ? boardFeed.activity : []}
+              delegations={visibleSnapshot ? boardFeed.delegations : []}
               onNewTask={() => setTaskModal(true)}
               onTask={setDetail}
               onArchiveBoard={archiveBoard}
               onUnarchiveBoard={unarchiveBoard}
               onDeleteBoard={deleteBoard}
             />
+            <Pagination page={boardPage} total={Math.max(boardFeed.total_activity, boardFeed.total_delegations)} onPage={setBoardPage} />
+            </>
           )}
         </section>
 
@@ -1320,7 +1456,7 @@ function App() {
         currentBoard={currentBoard}
       />
       <TaskDetail item={detail} onClose={() => setDetail(null)} />
-      <JobDetail job={jobDetail} onClose={() => setJobDetail(null)} />
+      <JobDetail job={jobDetail} error={jobError} loading={jobLoading} onClose={() => { jobGeneration.current++; setJobID(''); setJobDetail(null); }} />
     </div>
   );
 }

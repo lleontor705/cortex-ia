@@ -81,6 +81,7 @@ type UISnapshot = {
 
 type AttentionItem = { id: string; title: string; detail: string };
 type OperationalCounts = { active: number; review: number; attention: number };
+type NativeActivity = "busy" | "idle" | "retry" | "unknown";
 
 const EMPTY_SNAPSHOT: UISnapshot = {
   schema_version: 2,
@@ -133,10 +134,23 @@ function operationalCounts(snapshot: UISnapshot, snapshotError: string): Operati
 
 // Route and session metadata are reactive host state. Missing/cyclic ancestry
 // deliberately produces no scope, including the home route.
-function conversationScope(api: TuiPluginApi) {
+function currentSessionID(api: TuiPluginApi): string | undefined {
   const route = api.route.current;
-  const sessionID = route.name === "session" ? route.params?.sessionID : undefined;
-  if (typeof sessionID !== "string") return undefined;
+  const id = route.name === "session" ? route.params?.sessionID : undefined;
+  return typeof id === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(id) ? id : undefined;
+}
+
+function nativeSessionActivity(api: TuiPluginApi): NativeActivity | undefined {
+  const id = currentSessionID(api);
+  if (!id) return undefined;
+  if (api.state.session.get(id)?.id !== id) return "unknown";
+  const status = api.state.session.status(id)?.type;
+  return status === "busy" || status === "idle" || status === "retry" ? status : "unknown";
+}
+
+function conversationScope(api: TuiPluginApi) {
+  const sessionID = currentSessionID(api);
+  if (!sessionID) return undefined;
   let current = sessionID;
   const seen = new Set<string>();
   while (seen.size < 64 && /^[A-Za-z0-9_-]{1,256}$/.test(current) && !seen.has(current)) {
@@ -224,6 +238,8 @@ function AttentionRows(props: { items: AttentionItem[]; theme: TuiThemeCurrent }
 }
 
 function SidebarStatus(props: {
+  nativeActivity: () => NativeActivity | undefined;
+  scopeReady: () => boolean;
   snapshot: () => UISnapshot;
   jobs: () => DelegationJob[];
   snapshotError: () => string;
@@ -245,9 +261,24 @@ function SidebarStatus(props: {
   return (
     <box flexDirection="column">
       <text fg={props.theme.text}>Cortex-IA</text>
+      <Show when={props.nativeActivity()}>
+        <text fg={props.nativeActivity() === "busy" || props.nativeActivity() === "retry" ? props.theme.warning : props.theme.textMuted}>
+          {`Sesión actual · ${{ busy: "trabajando", idle: "en espera", retry: "reintentando", unknown: "estado no disponible" }[props.nativeActivity() ?? "unknown"]}`}
+        </text>
+      </Show>
       <Show when={props.snapshot().project_root}>
         <text fg={props.theme.textMuted}>{`Proyecto · ${path.basename(props.snapshot().project_root)}`}</text>
       </Show>
+      <Show when={!props.scopeReady()}>
+        <text fg={props.theme.warning}>Conversación no disponible · esperando metadatos</text>
+      </Show>
+      <Show when={props.scopeReady() && !props.snapshot().generated_at && !props.snapshotError()}>
+        <text fg={props.theme.textMuted}>Cargando estado de la conversación…</text>
+      </Show>
+      <Show when={props.snapshotError()}>
+        <text fg={props.theme.error}>No se pudo actualizar · datos no confirmados</text>
+      </Show>
+      <Show when={props.scopeReady() && Boolean(props.snapshot().generated_at)}>
       <box flexDirection="row">
         <text fg={props.theme.warning}>{`● ${counts().active}`}</text>
         <text fg={props.theme.textMuted}> · </text>
@@ -267,6 +298,7 @@ function SidebarStatus(props: {
       <text fg={stale() ? props.theme.warning : props.theme.textMuted}>
         {stale() ? "snapshot obsoleto" : "snapshot actualizado"}
       </text>
+      </Show>
     </box>
   );
 }
@@ -295,6 +327,8 @@ function HomeBottomStatus(props: {
 }
 
 function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
+  const nativeActivity = createMemo(() => nativeSessionActivity(api));
+  const scopeReady = createMemo(() => Boolean(conversationScope(api)?.project));
   const [snapshot, setSnapshot] = createSignal<UISnapshot>(EMPTY_SNAPSHOT);
   const [snapshotError, setSnapshotError] = createSignal("");
   const [now, setNow] = createSignal(Date.now());
@@ -365,6 +399,8 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
       sidebar_content(ctx) {
         return (
           <SidebarStatus
+            nativeActivity={nativeActivity}
+            scopeReady={scopeReady}
             snapshot={snapshot}
             jobs={jobs}
             snapshotError={snapshotError}

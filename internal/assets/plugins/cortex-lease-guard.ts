@@ -27,51 +27,79 @@ function firstCortexIA(): string {
 }
 
 function targetFiles(toolName: string, args: Record<string, any>): string[] {
-  const direct = args?.TargetFile || args?.targetFile || args?.filePath || args?.file_path || args?.path || args?.file;
-  if (typeof direct === "string" && direct) return [direct];
-  if (toolName === "apply_patch" && typeof args?.patch === "string") {
-    return [...args.patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((match) => match[1].trim());
+  if (toolName === "apply_patch") {
+    if (typeof args?.patchText !== "string" || args.patchText.length > 1024 * 1024) throw new Error("LEASE_CHECK_FAILED: bounded patchText is required");
+    const lines = args.patchText.replace(/\r\n/g, "\n").trim().split("\n");
+    if (lines.shift() !== "*** Begin Patch" || lines.pop() !== "*** End Patch") throw new Error("LEASE_CHECK_FAILED: unrecognized patch framing");
+    const targets: string[] = [];
+    let kind = "";
+    for (const line of lines) {
+      const header = /^\*\*\* (Add|Update|Delete) File: (.+)$/.exec(line);
+      if (header) { kind = header[1]; targets.push(header[2]); continue; }
+      const move = /^\*\*\* Move to: (.+)$/.exec(line);
+      if (move && kind === "Update") { targets.push(move[1]); continue; }
+      if (line.startsWith("*** ") && line !== "*** End of File") throw new Error("LEASE_CHECK_FAILED: unrecognized patch operation");
+    }
+    if (!targets.length || targets.length > 128) throw new Error("LEASE_CHECK_FAILED: patch must expose 1-128 target paths");
+    return targets;
   }
-  return [];
+  const direct = [args?.TargetFile, args?.targetFile, args?.filePath, args?.file_path, args?.path, args?.file].filter(value => value !== undefined);
+  if (!direct.length || direct.some(value => typeof value !== "string" || !value || value !== direct[0])) throw new Error("LEASE_CHECK_FAILED: a single verifiable target path is required");
+  return [direct[0]];
+}
+
+function relativeTarget(directory: string, target: string): string {
+  if (target.includes("\0")) throw new Error("LEASE_CHECK_FAILED: invalid target path");
+  const root = path.resolve(directory);
+  const relative = path.relative(root, path.resolve(root, target));
+  if (!relative || path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`) || relative.includes(":")) throw new Error("LEASE_CHECK_FAILED: target is outside the workspace");
+  // Do not authorize a logical lease path that writes through a link to another
+  // physical target. Missing components are allowed for newly created files.
+  let current = fs.realpathSync(root);
+  for (const component of relative.split(path.sep)) {
+    current = path.join(current, component);
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) throw new Error("LEASE_CHECK_FAILED: symlink targets are not verifiable");
+    } catch (error: any) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
+  return relative.replaceAll(path.sep, "/");
 }
 
 /**
- * Enforces session-owned Cortex-IA leases for file mutation tools when strict
- * lease mode is enabled. Directly queries SQLite authority via cortex-ia work verify-lease.
+ * Fail-closed admission for native file tools. Typed planning/discovery tools
+ * have separate policy. This hook does not sandbox shell writes or make the
+ * lease check and subsequent filesystem mutation atomic.
  */
 export const CortexLeaseGuardPlugin: Plugin = async (ctx) => ({
   "tool.execute.before": async (input, output) => {
     const toolName = input?.tool?.toLowerCase() || "";
     if (!["edit", "write_to_file", "write", "apply_patch"].includes(toolName)) return;
 
-    const strict = process.env.CORTEX_ENFORCE_LEASES === "true" || process.env.CORTEX_LEASES_STRICT === "1";
-    const targets = targetFiles(toolName, (output?.args || {}) as Record<string, any>);
-    if (targets.length === 0) {
-      if (!strict) return;
-      throw new Error(`LEASE_CHECK_FAILED: ${toolName} did not expose a verifiable target path`);
-    }
-
-    let cortex: string;
-    try {
-      cortex = firstCortexIA();
-    } catch (error: any) {
-      if (!strict) return;
-      throw new Error(`LEASE_CHECK_FAILED: ${error?.message || "cortex-ia CLI not found"}`);
-    }
+    if (typeof input.sessionID !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(input.sessionID)) throw new Error("LEASE_CHECK_FAILED: host session identity is required");
+    const targets = [...new Set(targetFiles(toolName, (output?.args || {}) as Record<string, any>).map(target => relativeTarget(ctx.directory, target)))].sort();
+    const cortex = firstCortexIA();
+    let taskID: string | undefined;
 
     for (const target of targets) {
-      const relPath = path.isAbsolute(target) ? path.relative(ctx.directory, target) : target;
       try {
-        execFileSync(cortex, ["work", "verify-lease", "--path", relPath], {
+        const raw = execFileSync(cortex, ["work", "verify-lease", "--project", path.resolve(ctx.directory), "--session-id", input.sessionID, "--path", target], {
           cwd: ctx.directory,
+          encoding: "utf8",
+          maxBuffer: 16 * 1024,
           stdio: ["ignore", "pipe", "pipe"],
           timeout: 3000,
           windowsHide: true,
         });
-      } catch (error: any) {
-        if (!strict) return;
-        const msg = error?.stderr?.toString()?.trim() || error?.stdout?.toString()?.trim() || error?.message || "unleased file mutation";
-        throw new Error(`LEASE_REQUIRED: '${target}' has no active lease in Cortex-IA database (${msg})`);
+        const result = JSON.parse(raw);
+        const expectedPath = process.platform === "win32" || process.platform === "darwin" ? target.toLowerCase() : target;
+        if (result.valid !== true || result.path !== expectedPath || result.owner !== `opencode-session:${input.sessionID}` ||
+            typeof result.task_id !== "string" || !result.task_id || !Number.isFinite(Date.parse(result.expires_at)) || Date.parse(result.expires_at) <= Date.now()) throw new Error("unverified lease response");
+        if (taskID && taskID !== result.task_id) throw new Error("mutation spans multiple task claims");
+        taskID = result.task_id;
+      } catch {
+        throw new Error("LEASE_REQUIRED: all native mutation targets require a live session-owned claim and lease in this workspace");
       }
     }
   },

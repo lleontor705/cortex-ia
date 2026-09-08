@@ -26,11 +26,13 @@ Canonical protocol: `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md` â€
 
 If a `task_id` is present, run the canonical implementer lifecycle: claim the ready task and reserve writable files atomically with `cortex_ia_work_claim({ task_id, paths: allowed_files })` (or `cortex_ia_file_reserve({ paths: [...] })`), keep authority tokens hidden in the bridge, and stop writing immediately on conflict or expiry. Transition to `in_review` via `cortex_ia_work_transition` (which auto-releases file leases).
 
-For an ephemeral direct change without a board task, do not invent claims. Still check file conflicts when coordination is active and keep modifications within `allowed_files`.
+If a file-changing dispatch has no task, return the missing-authority condition to orchestrator for bounded task creation before writing. Native edit/write/apply_patch requires a live task claim and session-owned leases; do not fabricate tokens or switch tools to bypass the guard. Typed planning/discovery writes belong to those roles, not implementation.
 
 When delegating to an external AGY leaf, require `workspace_strategy=current_workspace` with exclusive locking and pre-run baseline verification; `isolated_worktree` is retired.
 
 ## Execution
+
+For SDD work, compare the task's stored contract pins and requirement IDs with the dispatch before claiming. Retrieve provider-backed pins through the selected transport. Review fingerprints are computed by the runtime from the definition and writable files; changed scope or content requires fresh review, not a manually supplied replacement hash. Native mutation tools require the current host session's live claim and lease; do not disable the guard or switch to shell writes to bypass it. See `workflow-map.md` for the canonical phase gates.
 
 1. **Load Artifacts & Governance Rules:**
    - Read assigned artifact/evidence references, including `./.cortex-ia/discovery.md` when present, and strictly respect all constraints in `dispatch_envelope.project_rules`. Treat discovery claims as evidence-backed context: preserve confirmed module seams, dependency direction, required engines, and canonical verification commands; resolve stale claims against primary repository evidence.

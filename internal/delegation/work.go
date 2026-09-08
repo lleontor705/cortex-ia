@@ -35,6 +35,7 @@ var ErrWorkConflict = errors.New("work control conflict")
 var ErrWorkAttemptLimit = errors.New("work attempt limit reached")
 
 type WorkItem struct {
+	Contract *SDDContract `json:"contract,omitempty"`
 	ConversationOwnership
 	ID           string      `json:"task_id"`
 	BoardID      string      `json:"board_id"`
@@ -57,6 +58,7 @@ type WorkItem struct {
 }
 
 type WorkDefinition struct {
+	Contract *SDDContract
 	ConversationOwnership
 	Project      string
 	Objective    string
@@ -74,12 +76,13 @@ type WorkClaim struct {
 }
 
 type WorkReview struct {
-	ItemID              string `json:"task_id"`
-	ReviewID            string `json:"review_id"`
-	Attempt             int64  `json:"attempt"`
-	ImplementationOwner string `json:"implementation_owner"`
-	ReviewRevision      int64  `json:"review_revision"`
-	CreatedAt           string `json:"created_at"`
+	Binding             *ReviewBinding `json:"binding,omitempty"`
+	ItemID              string         `json:"task_id"`
+	ReviewID            string         `json:"review_id"`
+	Attempt             int64          `json:"attempt"`
+	ImplementationOwner string         `json:"implementation_owner"`
+	ReviewRevision      int64          `json:"review_revision"`
+	CreatedAt           string         `json:"created_at"`
 }
 
 type WorkLease struct {
@@ -90,15 +93,16 @@ type WorkLease struct {
 }
 
 type WorkApproval struct {
-	ItemID         string `json:"task_id"`
-	Revision       int64  `json:"revision"`
-	Reviewer       string `json:"reviewer"`
-	Verdict        string `json:"verdict"`
-	Evidence       string `json:"evidence,omitempty"`
-	ReviewID       string `json:"review_id,omitempty"`
-	ReviewRevision int64  `json:"review_revision,omitempty"`
-	Attempt        int64  `json:"attempt,omitempty"`
-	CreatedAt      string `json:"created_at"`
+	Binding        *ReviewBinding `json:"binding,omitempty"`
+	ItemID         string         `json:"task_id"`
+	Revision       int64          `json:"revision"`
+	Reviewer       string         `json:"reviewer"`
+	Verdict        string         `json:"verdict"`
+	Evidence       string         `json:"evidence,omitempty"`
+	ReviewID       string         `json:"review_id,omitempty"`
+	ReviewRevision int64          `json:"review_revision,omitempty"`
+	Attempt        int64          `json:"attempt,omitempty"`
+	CreatedAt      string         `json:"created_at"`
 }
 
 func token() (string, error) {
@@ -176,6 +180,21 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 	if err != nil || workspace == "" {
 		return WorkItem{}, errors.New("task project root is required")
 	}
+	contractJSON, err := encodeContract(definition.Contract)
+	if err != nil {
+		return WorkItem{}, err
+	}
+	if definition.Contract != nil {
+		if len(allowedFiles) == 0 || definition.Objective == "" || definition.Acceptance == "" || definition.Verification == "" {
+			return WorkItem{}, errors.New("SDD task requires scope, objective, acceptance and verification")
+		}
+		if err := verifyWorkspacePins(workspace, definition.Contract, "", ""); err != nil {
+			return WorkItem{}, err
+		}
+		if err := verifyLocalCortexPins(ctx, definition.Contract); err != nil {
+			return WorkItem{}, err
+		}
+	}
 	allowedFilesJSON, err := json.Marshal(allowedFiles)
 	if err != nil {
 		return WorkItem{}, fmt.Errorf("encode allowed files: %w", err)
@@ -186,6 +205,9 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 		status = WorkBacklog
 	}
 	err = s.immediate(ctx, func(conn *sql.Conn) error {
+		if err := requireOpenSDDChange(ctx, conn, boardID, definition.Contract); err != nil {
+			return err
+		}
 		var boardExists int
 		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_boards WHERE id=?`, boardID).Scan(&boardExists); err != nil {
 			return err
@@ -196,7 +218,7 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 		if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id,workspace,opencode_session_id,opencode_root_session_id,opencode_parent_session_id) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, title, status, now, now, boardID, workspace, definition.OpenCodeSessionID, definition.OpenCodeRootSessionID, definition.OpenCodeParentSessionID); err != nil {
 			return fmt.Errorf("create work item: %w", err)
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO work_definitions(item_id,objective,acceptance_criteria,verification,allowed_files_json) VALUES(?,?,?,?,?)`, id, definition.Objective, definition.Acceptance, definition.Verification, string(allowedFilesJSON)); err != nil {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO work_definitions(item_id,objective,acceptance_criteria,verification,allowed_files_json,contract_json) VALUES(?,?,?,?,?,?)`, id, definition.Objective, definition.Acceptance, definition.Verification, string(allowedFilesJSON), contractJSON); err != nil {
 			return fmt.Errorf("create work definition: %w", err)
 		}
 		seen := map[string]bool{}
@@ -290,9 +312,13 @@ func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 	if canonical, canonicalErr := CanonicalWorkspace(item.Workspace); canonicalErr == nil {
 		item.Workspace = canonical
 	}
-	var allowedFilesJSON string
-	err = s.db.QueryRowContext(ctx, `SELECT objective,acceptance_criteria,verification,allowed_files_json FROM work_definitions WHERE item_id=?`, id).Scan(&item.Objective, &item.Acceptance, &item.Verification, &allowedFilesJSON)
+	var allowedFilesJSON, contractJSON string
+	err = s.db.QueryRowContext(ctx, `SELECT objective,acceptance_criteria,verification,allowed_files_json,contract_json FROM work_definitions WHERE item_id=?`, id).Scan(&item.Objective, &item.Acceptance, &item.Verification, &allowedFilesJSON, &contractJSON)
 	if err == nil {
+		item.Contract, err = decodeContract(contractJSON)
+		if err != nil {
+			return WorkItem{}, err
+		}
 		if err := json.Unmarshal([]byte(allowedFilesJSON), &item.AllowedFiles); err != nil {
 			return WorkItem{}, fmt.Errorf("decode task allowed files: %w", err)
 		}
@@ -361,8 +387,14 @@ func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 		return WorkItem{}, err
 	}
 	var review WorkReview
-	err = s.db.QueryRowContext(ctx, `SELECT item_id,review_id,attempt,implementation_owner,review_revision,created_at FROM work_reviews WHERE item_id=?`, id).Scan(&review.ItemID, &review.ReviewID, &review.Attempt, &review.ImplementationOwner, &review.ReviewRevision, &review.CreatedAt)
+	var reviewBinding string
+	err = s.db.QueryRowContext(ctx, `SELECT item_id,review_id,attempt,implementation_owner,review_revision,created_at,binding_json FROM work_reviews WHERE item_id=?`, id).Scan(&review.ItemID, &review.ReviewID, &review.Attempt, &review.ImplementationOwner, &review.ReviewRevision, &review.CreatedAt, &reviewBinding)
 	if err == nil {
+		if reviewBinding != "" {
+			if err := json.Unmarshal([]byte(reviewBinding), &review.Binding); err != nil {
+				return WorkItem{}, err
+			}
+		}
 		item.Review = &review
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return WorkItem{}, err
@@ -687,20 +719,24 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 			return err
 		}
 		if to == WorkInReview {
+			binding, err := currentReviewBinding(ctx, conn, id)
+			if err != nil {
+				return err
+			}
 			reviewID, err := newID()
 			if err != nil {
 				return err
 			}
 			nextRev := revision + 1
-			if _, err := conn.ExecContext(ctx, `INSERT INTO work_reviews(item_id,review_id,attempt,implementation_owner,review_revision,created_at)
-				VALUES(?,?,?,?,?,?)
+			if _, err := conn.ExecContext(ctx, `INSERT INTO work_reviews(item_id,review_id,attempt,implementation_owner,review_revision,created_at,binding_json)
+				VALUES(?,?,?,?,?,?,?)
 				ON CONFLICT(item_id) DO UPDATE SET
 					review_id=excluded.review_id,
 					attempt=excluded.attempt,
 					implementation_owner=excluded.implementation_owner,
 					review_revision=excluded.review_revision,
-					created_at=excluded.created_at`,
-				id, reviewID, claimAttempt, claimOwner, nextRev, now); err != nil {
+					created_at=excluded.created_at,binding_json=excluded.binding_json`,
+				id, reviewID, claimAttempt, claimOwner, nextRev, now, binding); err != nil {
 				return fmt.Errorf("record work review: %w", err)
 			}
 		}
@@ -771,10 +807,32 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 			return reviewErr
 		}
 
+		var binding string
+		if err := conn.QueryRowContext(ctx, `SELECT binding_json FROM work_reviews WHERE item_id=?`, id).Scan(&binding); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if verdict == "PASS" {
+			if binding != "" && expectedRevision <= 0 {
+				return errors.New("SDD approval requires an explicit positive revision")
+			}
+			current, err := currentReviewBinding(ctx, conn, id)
+			if err != nil {
+				return err
+			}
+			if binding != current {
+				return errors.New("SDD review binding changed; fresh review required")
+			}
+		}
+		if binding != "" {
+			if err := json.Unmarshal([]byte(binding), &approval.Binding); err != nil {
+				return err
+			}
+		}
+
 		if verdict == "PASS" && evidence == "" {
 			return errors.New("PASS approval requires evidence")
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO work_approvals(item_id,reviewer,verdict,evidence,created_at,review_id,review_revision,attempt) VALUES(?,?,?,?,?,?,?,?)`, id, reviewer, verdict, bounded(evidence, 512), now, approval.ReviewID, approval.ReviewRevision, approval.Attempt); err != nil {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO work_approvals(item_id,reviewer,verdict,evidence,created_at,review_id,review_revision,attempt,binding_json,implementation_owner) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, reviewer, verdict, bounded(evidence, 512), now, approval.ReviewID, approval.ReviewRevision, approval.Attempt, binding, reviewOwner); err != nil {
 			return err
 		}
 		to := WorkBlocked

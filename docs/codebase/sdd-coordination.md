@@ -1,77 +1,24 @@
-﻿# SDD Task Coordination with Cortex-IA Work
+# SDD coordination and authority
 
-This document specifies the technical runtime coordination between **OpenCode Agents**, **OpenSpec Specifications**, and the **Cortex-IA Work Engine**.
+Use the [canonical workflow map](../../internal/assets/skills/_shared/workflow-map.md) for routing and phase ownership, the [runtime protocol](../../internal/assets/skills/_shared/cortex-work-protocol.md) for claims/leases/review, and the [Cortex convention](../../internal/assets/skills/_shared/cortex-convention.md) for selected-plane evidence.
 
----
+## Work lifecycle
 
-## 1. Work Item Lifecycle State Machine
+`backlog -> ready -> in_progress -> in_review -> done`
 
-```text
-       ┌──────────────┐
-       │   backlog    │ (dependencies unresolved)
-       └──────┬───────┘
-              │ (all dependencies done)
-              ▼
-       ┌──────────────┐
-       │    ready     │ ◄──────────────────────────────┐
-       └──────┬───────┘                                │
-              │ (cortex-ia work claim ...)             │
-              ▼                                        │ (cortex-ia work retry <id>)
-       ┌──────────────┐                                │
-       │ in_progress  │                                │
-       └──────┬───────┘                                │
-              │ (cortex-ia work transition --to in_review)
-              ▼                                        │
-       ┌──────────────┐                                │
-       │  in_review   │                                │
-       └──────┬───────┘                                │
-              │                                        │
-      ┌───────┴────────┐                               │
-      ▼                ▼                               │
-┌───────────┐    ┌───────────┐                         │
-│   done    │    │  blocked  │ ────────────────────────┘
-└───────────┘    └───────────┘
-(PASS approval)  (FAIL / timeout / recover)
-```
+Only independent approval PASS produces `done`. Failure enters `blocked`; recovery reconciles expired authority, and retry requires fresh authority. Decomposition preserves contract bindings and replaces an oversized task with approved-scope dependencies. UI placement never authorizes work.
 
----
+## SDD definitions
 
-## 2. Command Execution Patterns
+Use `cortex_ia_work_create` with `sdd_contract` containing version 1, workflow, change_id, spec_plane, pins and requirement_ids. Each pin identifies transport, project, locator and exact SHA-256. CLI automation can pass the same bounded JSON with `work create --contract-file <file>`. Direct/legacy definitions may omit this field; SDD controllers must not omit it to bypass verification.
 
-### A. Planner Decomposition
-When breaking down an OpenSpec proposal into executable tasks:
-```bash
-# 1. Initialize Board
-cortex-ia board create bootstrap-control-plane "Bootstrap Control Plane"
+Review fingerprints are computed from the current definition and sorted allowed paths, including deletion markers and file bytes. Approval compares them with current state and retains them in historical approval metadata. A changed file or definition requires a fresh review. Provider-side changes require explicit retrieval of Cortex pins through the selected transport.
 
-# 2. Add Task Nodes
-cortex-ia work create task-1.1 "Scaffold monorepo" --board bootstrap-control-plane
-cortex-ia work create task-1.2 "Domain logic" --board bootstrap-control-plane --depends task-1.1
-```
+## Typed controller operations
 
-### B. Implementer Lifecycle
-```bash
-# 1. Check readiness
-cortex-ia work status task-1.1
+- Planner: `cortex_ia_openspec_validate({relative_directory,workflow,phase})` for OpenSpec/hybrid structural checks, `cortex_ia_work_create` for bound tasks, and `cortex_ia_change_archive` for closure.
+- Implement: claim one ready task, reserve every writable path, renew authority, verify and transition to review. Use typed tools so tokens remain in controller memory and stdin rather than prompts or command arguments.
+- Reviewer: inspect the exact contracts and diff, run relevant checks, and approve using current revision and bounded evidence. The implementation owner's identity cannot serve as reviewer.
+- Orchestrator: select routes, dispatch controllers, reconcile failures and deliver the result. It does not claim, implement or approve.
 
-# 2. Claim task (returns claim_token and revision)
-cortex-ia work claim task-1.1 --owner implement-agent-1 --ttl 15m
-
-# 3. Reserve exclusive file leases
-cortex-ia work lease task-1.1 --claim-token <tok> --path "cmd/server/main.go" --ttl 15m
-
-# 4. Extend lease while editing (heartbeat)
-cortex-ia work lease-renew --path "cmd/server/main.go" --lease-token <lease-tok> --ttl 15m
-
-# 5. Transition to review upon test passing
-cortex-ia work transition task-1.1 --claim-token <tok> --to in_review
-```
-
-### C. Reviewer Verification
-```bash
-# 1. Run independent test suite
-go test ./...
-
-# 2. Record PASS approval (atomically marks done and unlocks task-1.2)
-cortex-ia work approve task-1.1 --reviewer reviewer-agent --verdict PASS --evidence "Unit test suite green"
-```
+The bridge verifies host roles; the store verifies transactional authority. Neither can infer semantic correctness from an exit code or the presence of an evidence string.

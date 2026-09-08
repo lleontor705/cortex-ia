@@ -35,7 +35,7 @@ interface WorkAuthority {
 }
 
 const workAuthority = new Map<string, WorkAuthority>();
-const workOwner = `opencode-${process.pid}-${randomUUID()}`;
+const controllerIdentity = (sessionID: string) => `opencode-session:${sessionID}`;
 const logDelegation = logLifecycle;
 
 function configRoot(): string {
@@ -89,7 +89,7 @@ function bridgeAuthorityView(taskID: string, durable: any, sessionID: string) {
   const durableOwner = typeof durable?.claim?.owner === "string" ? durable.claim.owner : "";
   const handlePresent = Boolean(authority);
   const ownedByCurrentSession = authority?.sessionID === sessionID;
-  const durableOwnerMatchesBridge = durableOwner !== "" && durableOwner === workOwner;
+  const durableOwnerMatchesBridge = durableOwner !== "" && durableOwner === controllerIdentity(sessionID);
   const usable = Boolean(
     handlePresent
     && ownedByCurrentSession
@@ -351,6 +351,8 @@ function executionMode(transport: "direct" | "herdr"): ExecutionMode {
 }
 
 export const CortexDelegationBridge: Plugin = async ({ client }) => {
+  const aliases = process.env.CORTEX_IA_LEGACY_TOOL_ALIASES;
+  if (aliases !== undefined && aliases !== "true" && aliases !== "false") throw new Error("BRIDGE_CONFIG_INVALID: CORTEX_IA_LEGACY_TOOL_ALIASES must be true or false");
   // Only host session metadata proves ancestry; tool arguments and transcripts
   // must never supply conversation ownership.
   const conversationOwnership = async (sessionID: string, directory: string) => {
@@ -427,13 +429,41 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
 
   tool: (() => {
     const bridgeTools = {
+    cortex_ia_content_hash: tool({
+      description: "Compute lowercase SHA-256 of exact UTF-8 content (at most 1 MiB). No newline/Unicode normalization, persistence, or network access. Returns only sha256 and byte_length.",
+      args: { content: tool.schema.string() },
+      async execute(args) {
+        const byteLength = Buffer.byteLength(args.content, "utf-8");
+        if (byteLength > 1048576) throw new Error("content hash input exceeds 1 MiB (1048576 UTF-8 bytes)");
+        const bytes = Buffer.from(args.content, "utf-8");
+        if (bytes.toString("utf-8") !== args.content) throw new Error("content hash requires well-formed Unicode for exact UTF-8 encoding");
+        return JSON.stringify({ sha256: createHash("sha256").update(bytes).digest("hex"), byte_length: byteLength });
+      }
+    }),
+
     cortex_ia_openspec_validate: tool({
       description: "Validate OpenSpec planning artifacts from the active workspace without exposing a shell.",
-      args: { relative_directory: tool.schema.string().optional() },
+      args: {
+        relative_directory: tool.schema.string(),
+        workflow: tool.schema.enum(["sdd-lite", "sdd-full", "decision-map"]),
+        phase: tool.schema.enum(["integrated", "propose", "spec", "design", "tasks", "chart", "resolve"])
+      },
       async execute(args, context) {
-        const command = ["openspec", "validate"];
-        if (args.relative_directory) command.push(args.relative_directory);
+        const command = ["openspec", "validate", args.relative_directory, "--workflow", args.workflow, "--phase", args.phase, "--json"];
         return cortex(command, context.directory);
+      }
+    }),
+
+    cortex_ia_change_archive: tool({
+      description: "Close one SDD change after durable task approval and current contract/file fingerprint checks. Cortex-only closure writes a logical receipt; OpenSpec/hybrid also archive the change directory. Planner only.",
+      args: {
+        board_id: tool.schema.string(), change_id: tool.schema.string(),
+        workflow: tool.schema.enum(["sdd-lite", "sdd-full"]),
+        spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid"])
+      },
+      async execute(args, context) {
+        return cortex(["work", "archive", "--board", args.board_id, "--project", path.resolve(context.directory),
+          "--change", args.change_id, "--workflow", args.workflow, "--spec-plane", args.spec_plane], context.directory);
       }
     }),
 
@@ -559,6 +589,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     cortex_ia_work_create: tool({
       description: "Create one work item in a durable same-board DAG.",
       args: {
+        workflow: tool.schema.enum(["direct-change", "fast-tdd", "hotfix", "sdd-lite", "sdd-full"]),
         board_id: tool.schema.string(),
         task_id: tool.schema.string(),
         title: tool.schema.string(),
@@ -566,11 +597,20 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         acceptance_criteria: tool.schema.string().optional(),
         verification: tool.schema.string().optional(),
         allowed_files: tool.schema.array(tool.schema.string()).optional(),
-        dependencies: tool.schema.array(tool.schema.string()).optional()
+        dependencies: tool.schema.array(tool.schema.string()).optional(),
+        sdd_contract: tool.schema.object({
+          version: tool.schema.number(), workflow: tool.schema.enum(["sdd-lite", "sdd-full"]),
+          change_id: tool.schema.string(), spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid"]),
+          pins: tool.schema.array(tool.schema.object({ transport: tool.schema.string(), project: tool.schema.string(), locator: tool.schema.string(), sha256: tool.schema.string() })),
+          requirement_ids: tool.schema.array(tool.schema.string())
+        }).optional().describe("Required for SDD tasks: exact contract pins and requirement IDs; omitted only for direct/legacy work")
       },
       async execute(args, context) {
+        const sdd = args.workflow === "sdd-lite" || args.workflow === "sdd-full";
+        if (sdd ? args.sdd_contract?.workflow !== args.workflow : args.sdd_contract !== undefined) throw new Error("SDD_CONTRACT_REQUIRED: workflow and typed contract must agree; direct workflows cannot carry SDD bindings");
         const ownership = await conversationOwnership(context.sessionID, context.directory);
         const command = ["work", "create", "--board", args.board_id, "--id", args.task_id, "--title", args.title,
+          "--workflow", args.workflow,
           "--project", path.resolve(context.directory), "--opencode-session-id", ownership.opencode_session_id,
           "--opencode-root-session-id", ownership.opencode_root_session_id];
         if (ownership.opencode_parent_session_id) command.push("--opencode-parent-session-id", ownership.opencode_parent_session_id);
@@ -579,7 +619,22 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         if (args.verification) command.push("--verify", args.verification);
         for (const file of args.allowed_files || []) command.push("--file", file);
         for (const dependency of args.dependencies || []) command.push("--depends", dependency);
-        return cortex(command);
+        let contractPath = "";
+        try {
+          if (args.sdd_contract) {
+            contractPath = transientRequest(args.sdd_contract);
+            command.push("--contract-file", contractPath);
+          }
+          return cortex(command);
+        } finally { if (contractPath) cleanupRequest(contractPath); }
+      }
+    }),
+
+    cortex_ia_work_review_refresh: tool({
+      description: "Reopen a done SDD task for fresh independent review after approved files change. Requires current revision; does not authorize writes or approve anything. Orchestrator only.",
+      args: { task_id: tool.schema.string(), revision: tool.schema.number() },
+      async execute(args) {
+        return cortex(["work", "review-refresh", args.task_id, "--revision", String(args.revision)]);
       }
     }),
 
@@ -663,7 +718,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         if ([...workAuthority.values()].some((authority) => authority.sessionID === context.sessionID)) {
           throw new Error("this implement session already owns one work task; dispatch a separate controller for additional work");
         }
-        const command = ["work", "claim", args.task_id, "--owner", workOwner];
+        const command = ["work", "claim", args.task_id, "--owner", controllerIdentity(context.sessionID)];
         if (args.ttl) command.push("--ttl", args.ttl);
         const claim = parseJSON(cortex(command));
         if (!claim?.claim_token) throw new Error("cortex-ia returned no claim token");
@@ -860,13 +915,14 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       description: "Record an independent work verdict. PASS is the only verdict that can produce done.",
       args: {
         task_id: tool.schema.string(),
-        reviewer: tool.schema.string(),
+        reviewer: tool.schema.string().optional().describe("Legacy display hint; reviewer identity always comes from the host session"),
         verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"]),
         evidence: tool.schema.string().optional(),
         revision: tool.schema.number().optional()
       },
-      async execute(args) {
-        const command = ["work", "approve", args.task_id, "--reviewer", args.reviewer, "--verdict", args.verdict];
+      async execute(args, context) {
+        if (workAuthority.get(args.task_id)?.sessionID === context.sessionID) throw new Error("implementation session cannot approve its own task");
+        const command = ["work", "approve", args.task_id, "--reviewer", controllerIdentity(context.sessionID), "--verdict", args.verdict];
         if (args.evidence) command.push("--evidence", args.evidence);
         if (args.revision) command.push("--revision", String(args.revision));
         const result = cortex(command);
@@ -894,12 +950,21 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         let requestPath = "";
         let acceptedJob: any = null;
         let acceptedTransport: "direct" | "herdr" = "direct";
+        let stage: "policy" | "request" | "create" = "policy";
         try {
+          const policy = parseJSON(cortex(["delegate", "policy", "--role", args.role]));
+          if (policy?.schema_version !== 1 || policy.role !== args.role || typeof policy.external_enabled !== "boolean" ||
+              !["external_enabled", "delegation_disabled", "role_native"].includes(policy.reason) ||
+              policy.external_enabled !== (policy.reason === "external_enabled")) throw new Error("invalid delegation policy receipt");
+          if (!policy.external_enabled) {
+            return JSON.stringify({ delegated: false, execution_mode: "native", reason: policy.reason, action: "USE_NATIVE_SUBAGENT" });
+          }
+          stage = "request";
           if (args.worktree || args.workspace_strategy === "isolated_worktree") {
             return JSON.stringify({
               delegated: false,
-              execution_mode: "native",
-              reason: "worktree paths and isolated_worktree strategy are retired; use current_workspace without worktree",
+              status: "blocked",
+              error: { code: "DELEGATION_REQUEST_INVALID", message: "worktree paths and isolated_worktree strategy are retired; use current_workspace without worktree" },
               action: "USE_CURRENT_WORKSPACE"
             });
           }
@@ -909,16 +974,16 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
             if (!args.workspace_strategy) {
               return JSON.stringify({
                 delegated: false,
-                execution_mode: "native",
-                reason: "workspace strategy is not aligned with the user",
+                status: "blocked",
+                error: { code: "DELEGATION_WORKSPACE_REQUIRED", message: "workspace strategy is not aligned with the user" },
                 action: "ASK_USER_FOR_WORKSPACE_STRATEGY"
               });
             }
             if (args.workspace_strategy !== "current_workspace") {
               return JSON.stringify({
                 delegated: false,
-                execution_mode: "native",
-                reason: `unsupported workspace_strategy "${args.workspace_strategy}"`,
+                status: "blocked",
+                error: { code: "DELEGATION_REQUEST_INVALID", message: "unsupported workspace strategy" },
                 action: "USE_CURRENT_WORKSPACE"
               });
             }
@@ -930,6 +995,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           ].filter(Boolean).join("\n\n");
           requestPath = transientRequest({
             ...await conversationOwnership(context.sessionID, context.directory),
+            project: path.resolve(context.directory),
             role: args.role,
             task_id: args.task_id || "",
             objective,
@@ -948,6 +1014,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           try { herdr = firstExecutable("herdr"); } catch {}
           if (config.useHerdr && herdr && isHerdrInUse()) transport = "herdr";
 
+          stage = "create";
           let job = parseJSON(cortex(["delegate", "create", "--request-file", requestPath, "--transport", transport]));
           acceptedJob = job;
           acceptedTransport = transport;
@@ -1031,7 +1098,15 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
             });
           }
           if (requestPath) cleanupRequest(requestPath);
-          return JSON.stringify({ delegated: false, execution_mode: "native", reason: error?.message || "delegation failed", action: "USE_NATIVE_SUBAGENT" });
+          const diagnostic = typeof error?.stderr === "string" ? error.stderr.slice(0, 4096) : String(error?.message ?? "").slice(0, 4096);
+          const reason = error?.code === "ENOENT" || /executable not found/i.test(diagnostic) ? "BINARY_UNAVAILABLE" :
+            /database|sqlite|busy|locked|permission denied|access is denied|acceso denegado/i.test(diagnostic) ? "STATE_UNAVAILABLE" :
+            stage === "policy" ? "POLICY_INVALID_OR_UNAVAILABLE" : stage === "request" ? "REQUEST_INVALID_OR_IDENTITY_UNAVAILABLE" : "JOB_CREATION_REJECTED";
+          return JSON.stringify({ delegated: false, status: "blocked", error: {
+            code: "DELEGATION_PRE_ACCEPTANCE_ERROR", stage, reason_code: reason,
+            ...(Number.isSafeInteger(error?.status) ? { exit_code: error.status } : {}),
+            message: "Delegation was not accepted; resolve the reported stage and reason before retrying"
+          }, action: "DIAGNOSE_DELEGATION_ERROR" });
         }
       }
     }),
@@ -1128,6 +1203,37 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     })
   };
 
+  // Gate canonical definitions before exposing aliases, so both names share the
+  // same trusted host-role boundary. New tools must be classified explicitly.
+  const roles = ["orchestrator", "discovery", "planner", "investigate", "implement", "reviewer"];
+  const controllers = ["planner", "investigate", "implement", "reviewer"];
+  const readers = new Set(["content_hash", "openspec_validate", "board_list", "board_status", "ledger_status", "work_list", "work_status", "delegation_status", "delegation_wait", "delegation_result", "delegation_models"]);
+  const mutations: Record<string, string[]> = {
+    openspec_write: ["planner"], change_archive: ["planner"], discovery_write: ["discovery"],
+    board_create: ["planner", "orchestrator"], work_create: ["planner", "orchestrator"],
+    ledger_fact_add: roles, ledger_progress_record: ["orchestrator"],
+    work_recover: ["orchestrator"], work_retry: ["orchestrator"], work_review_refresh: ["orchestrator"], work_decompose: ["planner"],
+    work_claim: ["implement"], work_renew: ["implement"], work_lease: ["implement"],
+    file_reserve: ["implement"], work_lease_renew: ["implement"], work_release: ["implement"],
+    work_release_all: ["implement"], file_release: ["implement"], work_transition: ["implement"],
+    work_approve: ["reviewer"], delegate_start: controllers,
+    delegation_cancel: [...controllers, "orchestrator"], delegation_recover: ["orchestrator"]
+  };
+  for (const [name, definition] of Object.entries(bridgeTools) as [string, any][]) {
+    const capability = name.slice("cortex_ia_".length);
+    if (readers.has(capability)) continue;
+    const allowed = mutations[capability];
+    if (!allowed) throw new Error(`BRIDGE_POLICY_UNCLASSIFIED: ${name}`);
+    const execute = definition.execute;
+    definition.execute = async (args: any, context: any) => {
+      if (!allowed.includes(context?.agent) || typeof context?.sessionID !== "string" ||
+          !/^[A-Za-z0-9_-]{1,256}$/.test(context.sessionID)) throw new Error(`BRIDGE_ROLE_DENIED: ${name} requires an authorized host role and session`);
+      if (capability === "delegate_start" && args.role !== context.agent) throw new Error("BRIDGE_ROLE_DENIED: delegation role must match the host controller");
+      return execute(args, context);
+    };
+  }
+
+  if (aliases !== "true") return bridgeTools;
   return {
     ...bridgeTools,
       cortex_openspec_validate: bridgeTools.cortex_ia_openspec_validate,

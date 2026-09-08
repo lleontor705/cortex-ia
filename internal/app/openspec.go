@@ -2,31 +2,30 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
+
+	"github.com/lleontor705/cortex-ia/internal/delegation"
+	"github.com/lleontor705/cortex-ia/internal/openspec"
 )
 
 func runOpenSpec(args []string) error {
 	if len(args) == 0 || isHelp(args[0]) {
 		fmt.Println("Usage: cortex-ia openspec <subcommand> [options]")
 		fmt.Println("\nOpenSpec SDD (Spec-Driven Development) workflow manager:")
-		fmt.Println("  validate [change-dir]       Validate proposal, specs, design and tasks")
+		fmt.Println("  validate <change> --workflow <workflow> --phase <phase> [--json]  Validate planning structure")
 		fmt.Println("  list                        List active changes in openspec/changes/")
 		fmt.Println("  status [change-name]        Show task progress and status of changes")
-		fmt.Println("  archive <change-name>       Archive a completed change to openspec/changes/archive/")
+		fmt.Println("  archive <change-name> --board <id> --workflow <workflow> --spec-plane <plane>  Close independently approved SDD work")
 		fmt.Println("  new <change-name> [domain]  Scaffold a new OpenSpec change directory")
 		return nil
 	}
 	switch strings.ToLower(args[0]) {
 	case "validate":
-		target := ""
-		if len(args) > 1 {
-			target = args[1]
-		}
-		return validateOpenSpec(target)
+		return runOpenSpecValidation(args[1:])
 	case "list":
 		return listOpenSpec()
 	case "status":
@@ -36,10 +35,7 @@ func runOpenSpec(args []string) error {
 		}
 		return statusOpenSpec(target)
 	case "archive":
-		if len(args) < 2 {
-			return fmt.Errorf("usage: cortex-ia openspec archive <change-name>")
-		}
-		return archiveOpenSpec(args[1])
+		return runOpenSpecArchive(args[1:])
 	case "new":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: cortex-ia openspec new <change-name> [domain]")
@@ -52,6 +48,84 @@ func runOpenSpec(args []string) error {
 	default:
 		return fmt.Errorf("unknown openspec subcommand %q (see 'cortex-ia openspec --help')", args[0])
 	}
+}
+
+func runOpenSpecValidation(args []string) error {
+	jsonOutput := false
+	filtered := []string{}
+	for _, arg := range args {
+		if arg == "--json" {
+			if jsonOutput {
+				return fmt.Errorf("duplicate --json")
+			}
+			jsonOutput = true
+		} else {
+			filtered = append(filtered, arg)
+		}
+	}
+	opts, positionals, err := workOptions(filtered, map[string]bool{"--workflow": false, "--phase": false, "--project": false})
+	if err != nil {
+		return err
+	}
+	if len(positionals) != 1 || strings.HasPrefix(positionals[0], "--") {
+		return fmt.Errorf("validate requires one explicit change and --workflow/--phase")
+	}
+	workspace := oneOption(opts, "--project")
+	if workspace == "" {
+		workspace, err = os.Getwd()
+		if err != nil {
+			return err
+		}
+	}
+	result, err := openspec.Validate(workspace, positionals[0], openspec.Options{Workflow: oneOption(opts, "--workflow"), Phase: oneOption(opts, "--phase")})
+	if err != nil {
+		return err
+	}
+	if jsonOutput {
+		if err := printJSON(result); err != nil {
+			return err
+		}
+	} else {
+		fmt.Printf("OpenSpec %s (%s/%s): structural valid=%v; semantic review required\n", result.ChangeID, result.Workflow, result.Phase, result.Valid)
+		for _, diagnostic := range result.Errors {
+			fmt.Printf("%s:%d %s: %s\n", diagnostic.Path, diagnostic.Line, diagnostic.Code, diagnostic.Message)
+		}
+	}
+	if !result.Valid {
+		return fmt.Errorf("OpenSpec structural validation failed")
+	}
+	return nil
+}
+
+func runOpenSpecArchive(args []string) error {
+	opts, positionals, err := workOptions(args, map[string]bool{"--board": false, "--workflow": false, "--spec-plane": false, "--project": false})
+	if err != nil {
+		return err
+	}
+	if len(positionals) != 1 || strings.HasPrefix(positionals[0], "--") {
+		return fmt.Errorf("archive requires one change and --board/--workflow/--spec-plane")
+	}
+	workspace := oneOption(opts, "--project")
+	if workspace == "" {
+		workspace, err = os.Getwd()
+		if err != nil {
+			return err
+		}
+	}
+	home, err := cortexStateHome()
+	if err != nil {
+		return err
+	}
+	store, err := delegation.OpenStore(delegation.DefaultDBPath(home))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+	receipt, err := store.ArchiveChange(context.Background(), delegation.ArchiveOptions{BoardID: oneOption(opts, "--board"), Workspace: workspace, ChangeID: positionals[0], Workflow: oneOption(opts, "--workflow"), SpecPlane: oneOption(opts, "--spec-plane")})
+	if err != nil {
+		return err
+	}
+	return printJSON(receipt)
 }
 
 // resolveChangeDir determines if target refers to a specific change directory.
@@ -170,83 +244,6 @@ func validateSingleChange(changeDir string) changeValidationResult {
 	return res
 }
 
-func printValidationResult(res changeValidationResult) {
-	fmt.Printf("🔍 Checking OpenSpec change: %s\n", res.Name)
-	if res.HasProposal {
-		fmt.Printf("  ✓ proposal.md found\n")
-	}
-	if res.HasDesign {
-		fmt.Printf("  ✓ design.md found\n")
-	}
-	if res.HasTasks {
-		fmt.Printf("  ✓ tasks.md found (%d/%d tasks completed)\n", res.DoneTasks, res.TotalTasks)
-	}
-	if res.SpecsCount > 0 {
-		fmt.Printf("  ✓ %d delta specification file(s) found in specs/\n", res.SpecsCount)
-	} else {
-		fmt.Printf("  ⚠️ no delta specifications found under specs/\n")
-	}
-
-	for _, warn := range res.Warnings {
-		fmt.Printf("  ⚠️ %s\n", warn)
-	}
-	for _, errStr := range res.Errors {
-		fmt.Printf("  ❌ %s\n", errStr)
-	}
-}
-
-func validateOpenSpec(target string) error {
-	// Case 1: Specific change targeted
-	if changeDir, isSingle := resolveChangeDir(target); isSingle {
-		res := validateSingleChange(changeDir)
-		printValidationResult(res)
-		if len(res.Errors) > 0 {
-			return fmt.Errorf("OpenSpec validation failed for %s: %s", res.Name, strings.Join(res.Errors, ", "))
-		}
-		fmt.Printf("\n✅ OpenSpec validation passed for %s\n", res.Name)
-		return nil
-	}
-
-	// Case 2: Validate all active changes under openspec/changes
-	baseDir := "openspec/changes"
-	entries, err := os.ReadDir(baseDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Printf("✓ OpenSpec workspace valid (no changes in %s yet)\n", baseDir)
-			return nil
-		}
-		return err
-	}
-
-	totalChanges := 0
-	failedChanges := 0
-
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == "archive" || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		changeDir := filepath.Join(baseDir, entry.Name())
-		res := validateSingleChange(changeDir)
-		printValidationResult(res)
-		totalChanges++
-		if len(res.Errors) > 0 {
-			failedChanges++
-		}
-	}
-
-	if totalChanges == 0 {
-		fmt.Printf("✓ OpenSpec workspace valid (no active changes in %s)\n", baseDir)
-		return nil
-	}
-
-	if failedChanges > 0 {
-		return fmt.Errorf("OpenSpec validation failed (%d of %d change sets have errors)", failedChanges, totalChanges)
-	}
-
-	fmt.Printf("\n✅ OpenSpec validation complete (%d active change sets inspected, all valid)\n", totalChanges)
-	return nil
-}
-
 func listOpenSpec() error {
 	baseDir := "openspec/changes"
 	entries, err := os.ReadDir(baseDir)
@@ -322,38 +319,6 @@ func statusOpenSpec(target string) error {
 		}
 		fmt.Println()
 	}
-	return nil
-}
-
-func archiveOpenSpec(changeName string) error {
-	changeDir, isSingle := resolveChangeDir(changeName)
-	if !isSingle {
-		return fmt.Errorf("OpenSpec change %q not found under openspec/changes/", changeName)
-	}
-
-	res := validateSingleChange(changeDir)
-	if res.TotalTasks > 0 && res.DoneTasks < res.TotalTasks {
-		fmt.Printf("⚠️ Warning: change %q has %d pending task(s) (%d/%d done)\n",
-			res.Name, res.TotalTasks-res.DoneTasks, res.DoneTasks, res.TotalTasks)
-	}
-
-	archiveBase := filepath.Join("openspec", "changes", "archive")
-	if err := os.MkdirAll(archiveBase, 0755); err != nil {
-		return fmt.Errorf("create archive directory: %w", err)
-	}
-
-	timestamp := time.Now().Format("2006-01-02")
-	destDir := filepath.Join(archiveBase, fmt.Sprintf("%s-%s", timestamp, res.Name))
-
-	if _, err := os.Stat(destDir); err == nil {
-		destDir = filepath.Join(archiveBase, fmt.Sprintf("%s-%s-%d", timestamp, res.Name, time.Now().Unix()))
-	}
-
-	if err := os.Rename(changeDir, destDir); err != nil {
-		return fmt.Errorf("move change to archive: %w", err)
-	}
-
-	fmt.Printf("✓ Successfully archived change %q to %s\n", res.Name, destDir)
 	return nil
 }
 

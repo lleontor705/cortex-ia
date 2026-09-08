@@ -16,6 +16,7 @@ func runDelegate(args []string) error {
 		fmt.Println("Usage: cortex-ia delegate <subcommand> [options]")
 		fmt.Println("\nSubcommands:")
 		fmt.Println("  models [--json]                                  List available AGY models")
+		fmt.Println("  policy --role <role>                             Read validated delegation policy")
 		fmt.Println("  create --request-file <path> [--transport <t>]   Create an external delegation job")
 		fmt.Println("  status <job-id>                                  Get job execution status")
 		fmt.Println("  result <job-id>                                  Get structured job receipt")
@@ -29,6 +30,29 @@ func runDelegate(args []string) error {
 		return err
 	}
 	ctx := context.Background()
+	if args[0] == "policy" {
+		if len(args) != 3 || args[1] != "--role" {
+			return errors.New("usage: cortex-ia delegate policy --role <implement|investigate|planner|reviewer>")
+		}
+		switch args[2] {
+		case "implement", "investigate", "planner", "reviewer":
+		default:
+			return errors.New("unsupported delegation policy role")
+		}
+		cfg, err := delegation.Load(filepath.Join(home, ".config", "opencode"))
+		if err != nil {
+			return err
+		}
+		role := cfg.Roles[args[2]]
+		enabled := cfg.DelegationEnabled && role.Delegate && role.CLI == "agy"
+		reason := "external_enabled"
+		if !cfg.DelegationEnabled {
+			reason = "delegation_disabled"
+		} else if !role.Delegate || role.CLI != "agy" {
+			reason = "role_native"
+		}
+		return printJSON(map[string]any{"schema_version": 1, "role": args[2], "external_enabled": enabled, "reason": reason})
+	}
 	if args[0] == "models" {
 		models, err := delegation.ListAvailableModels(ctx)
 		if err != nil {

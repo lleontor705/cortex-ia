@@ -4,6 +4,8 @@
 
 This is the single normative runtime contract for OpenCode controllers, native subagents, and Cortex-IA-supervised external leaves. Role prompts and skills define task-specific behavior; when they disagree with this file, this file wins for authority, delegation, and completion.
 
+The canonical routing/phase/artifact matrix is `workflow-map.md` in this contract directory. Use it before each phase; a skill is not a separate agent for every SDD stage.
+
 ## 1. One system, three planes
 
 | Plane | Owns | Never owns |
@@ -29,7 +31,7 @@ Only the orchestrator owns `cortex_session_start`, session summaries, and `corte
 
 ### Tier 1: Fast Path (Zero-Ceremony Direct Execution)
 
-Direct user-requested file creations, single-file scripts, documentation, summaries, handoffs, notes (`*.md`, `docs/*`), diagnostic lookups, or localized edits do not require SQLite board creation, task decomposition, claim tokens, or file leases. The orchestrator may resolve them directly in-turn or dispatch `implement` without spawning boards, DAGs, or multi-role ceremony.
+Answers, summaries, handoffs, documentation composed in chat, and read-only diagnostic lookups do not require SQLite boards or implementation claims. The orchestrator answers from supplied evidence and dispatches `investigate` for filesystem reads. File mutations route to Tier 2 with one bounded task and explicit writable scope; no planner is required. This prepares the claim and file authority before an external-enabled implement controller calls its gate, avoiding an invalid taskless AGY request. Native edit/write/apply_patch tools require a live task claim and session-owned file leases, including direct changes. Taskless writes are confined to separately authorized typed planning/discovery tools; shell is not an alternate route around admission checks.
 
 ### Tier 2: Bounded Authorized Bootstrap (Single Bounded Code Tasks)
 
@@ -37,18 +39,19 @@ For localized code changes (`direct-change`, `fast-tdd`, `hotfix`), the orchestr
 
 ### Heuristic Delegation & Execution Boundaries (Context Inflation Prevention)
 
-Every delegation decision balances task isolation against context bloat. Follow these quantitative heuristics:
+Every delegation decision balances role permissions, uncertainty, output volume, and independently verifiable work:
 
 1. **Bounded Read Rule**:
-   - **1–3 files**: Read directly inline within the active session for immediate decision-making or verification.
-   - **4+ files**: Mandatory delegation to an exploration/investigation subagent (`investigate`). The minion inspects code in its isolated context, stores durable findings in Cortex MCP (`cortex_save`), and returns only a compressed synthesis (<200 tokens). Never flood the parent orchestrator context with mass file contents.
+   - The orchestrator routes filesystem reads to `investigate` and uses supplied facts in-turn. File count alone never determines depth or forces another dispatch. Bound each investigation by a question and required evidence; batch related reads and return findings with material limitations and pointers.
 2. **High-Stdout Containment Boundary**:
    - Commands producing massive stdout (full test suites, linters, builds, benchmarks) must NEVER be executed directly in the orchestrator's main conversation. Delegate them to `reviewer` or bounded execution minions to preserve orchestrator context for strategic routing.
 3. **Workspace Strategy (`current_workspace` as Single Supported Strategy)**:
    - When preparing external AGY execution, `current_workspace` is the sole supported implementation workspace strategy; `isolated_worktree` is retired.
    - An external leaf remains strictly exclusive during its execution window: native controllers must not edit concurrently, and Cortex-IA verifies changes against a pre-run baseline before accepting the result.
 4. **Bounded Agent Contracts & Step SLAs**:
-   - Every minion dispatch is governed by an explicit contract envelope specifying `max_steps` (default 30) and resource budget. If a subagent loops repetitively without delivering progress or completing, the OpenCode transport halts execution with `AGENT_CONTRACT_EXCEEDED` and latches the task in SQLite.
+   - Native subagent controller step budgets are advisory: reaching a dispatch's `max_steps` produces a model-visible warning, not a stop or work-state transition. Use the canonical `<minion-dispatch>` envelope; the transport also accepts one legacy `<minion-contract>` envelope with identical validation, never mixed or multiple envelopes. Without an explicit budget, defaults are implement 70, discovery/orchestrator 60, and investigate/reviewer 50. Planner has no step-count threshold or ceiling, including resumed sessions. The transport policy applies to verified child sessions, not the root orchestrator. Scope, permissions, resource budgets, and progress requirements still apply.
+   - The transport reads `CORTEX_IA_EMERGENCY_STEPS` once at startup (default 500, integer 1-100000) as the non-planner emergency ceiling; it is independent of dispatch budgets. At that ceiling ordinary tools stop, up to five cleanup calls remain, and the controller reports partial progress for explicit reconciliation. No SQLite task status changes automatically. Invalid configured values reject plugin initialization; restart OpenCode after changing these environment variables.
+   - `CORTEX_IA_REPETITION_LIMIT` (default 5, integer 2-100) controls an advisory warning for consecutive terminal calls with identical tool, arguments, status, and result. Errors count; changed outcomes reset the streak. This measures observable repetition, not semantic lack of progress: polling and rechecks may be legitimate. It never blocks tools, including planner tools. The system prompt carries one current notice per condition. Only bounded fingerprints and recent call identities are retained in memory; oversized outcomes are not classified as repetition. Complete bounded history restores counters and repetition evidence without refilling allowances.
 5. **Dual Ledger Synchronization (Task & Progress Ledgers)**:
    - Environmental truths, compiler versions, and verified dependencies are recorded in the Task Ledger via `cortex_ia_ledger_fact_add`.
    - Cycle reflections and drift detections are recorded in the Progress Ledger via `cortex_ia_ledger_progress_record`.
@@ -66,6 +69,8 @@ Native controllers use the typed `cortex_ia_board_*`, `cortex_ia_work_*`, `corte
 | `cortex_ia_work_decompose` | Planner only; requires an orchestrator-routed blocked task and revision |
 | `cortex_ia_work_list|status` | Token-free reads according to role policy |
 | `cortex_ia_work_recover|retry` | Orchestrator reconciliation only |
+| `cortex_ia_work_review_refresh` | Orchestrator only; reopen done SDD review under current revision after active work reconciliation, without write authority or automatic approval |
+| `cortex_ia_change_archive` | Planner only; durable closure after current contract/file checks and approvals, logical for Cortex-only |
 | `cortex_ia_work_claim|renew|lease|lease_renew|release|release_all|transition` | Implementer only; claims task, optionally reserves initial `paths: [...]`, and transitions state |
 | `cortex_ia_file_reserve|cortex_ia_file_release` | Implementer only; single-file or batch reservation (`path` or `paths: [...]`) |
 | `cortex_ia_work_approve` | Independent reviewer only |
@@ -74,6 +79,8 @@ Native controllers use the typed `cortex_ia_board_*`, `cortex_ia_work_*`, `corte
 The bridge retains claim and lease tokens in process memory and sends them to the CLI over stdin. Tokens must never appear in prompts, argv, receipts, logs, files, Cortex observations, or chat. Human operators may use the literal-token CLI form only in a protected terminal when explicitly necessary.
 
 ## 4. Authoritative task lifecycle
+
+SDD task definitions include a versioned `sdd_contract` with selected plane, change identity, typed contract pins and requirement IDs. Review and historical approval retain runtime-computed definition and writable-file fingerprints; drift requires a fresh review. Direct and historical tasks remain compatible without invented pins. Provider-backed contract freshness is checked by controllers through the selected transport; stored hashes do not certify semantic truth. Planner closes approved initiatives through `cortex_ia_change_archive`, which performs durable gating and idempotent closure; Cortex-only closure does not invoke OpenSpec file archival. See `workflow-map.md` for binding shape and structural validation phases.
 
 ```text
 backlog --dependencies done--> ready --claim--> in_progress
@@ -97,7 +104,7 @@ External AGY implementation requires `current_workspace` as the single supported
 
 ## 5. Delegation modes
 
-Native role controllers (`planner`, `investigate`, `implement`, and `reviewer`) invoke `cortex_ia_delegate_start` when external delegation is enabled for that role in `cortex-delegation.json` or explicitly requested in dispatch. For roles configured as native, controllers proceed directly to native execution. The bridge reads `cortex-delegation.json`; role prompts never infer or override that configuration. The returned mode selects the authoritative execution path. The orchestrator dispatches the native controller and never calls the gate on its behalf.
+Native role controllers (`planner`, `investigate`, `implement`, and `reviewer`) invoke `cortex_ia_delegate_start` once before their execution objective so the bridge resolves the current role configuration. Continue locally only when `execution_mode=native` and no error is present. A blocked/error result or `delegated=false` alone never authorizes local fallback; report its code and recovery action. The bridge reads `cortex-delegation.json`; role prompts never infer or override that configuration. The returned mode selects the authoritative execution path. The orchestrator dispatches the native controller and never calls the gate on its behalf.
 
 The `execution_mode` returned by `cortex_ia_delegate_start` is authoritative:
 
@@ -107,13 +114,19 @@ The `execution_mode` returned by `cortex_ia_delegate_start` is authoritative:
 | `direct_cli` | Cortex-IA accepted and launched AGY directly. | Supervise the durable job and independently verify its receipt. |
 | `herdr_multiplexed` | Cortex-IA accepted and launched AGY through Herdr. | Behave exactly as in `direct_cli`; Herdr changes transport and presentation only. |
 
-`use_herdr` is a preference, not an execution fact. A safe pre-acceptance fallback may return `direct_cli`. After `delegated=true` plus `job_id`, never execute the same objective natively in parallel. If the delegated job reaches a terminal failure, timeout, cancellation, or `lost` state, the controller must reconcile the durable job in SQLite; upon reconciliation, the controller is authorized to either re-dispatch or complete the objective natively under fresh authority, recording the transition with clear failure evidence.
+`use_herdr` is a preference, not an execution fact. A safe pre-acceptance fallback may return `direct_cli`. After `delegated=true` plus `job_id`, never execute the same objective natively in parallel. If the delegated job reaches a terminal failure, timeout, cancellation, or `lost` state, the controller must reconcile the durable job in SQLite; then return the failure evidence for an explicit retry or revised dispatch under fresh authority. Reconciliation alone does not authorize automatic native fallback.
 
 ## 6. Native background dispatch & parallel waves
+
+New callers use canonical `cortex_ia_*` bridge tool names. Legacy `cortex_*` bridge aliases are exposed only when `CORTEX_IA_LEGACY_TOOL_ALIASES=true` is explicitly configured at plugin startup. Aliases have the same runtime capability checks as canonical operations; enabling compatibility never grants another role's authority. Cortex MCP's independent `cortex_*` memory tools are unaffected.
 
 Native asynchronous delegation requires `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`. Only the orchestrator launches a native role controller through OpenCode's `task` tool. Completion notifications are the normal join signal; avoid sleep loops and aggressive polling.
 
 Every dispatch contains exactly one `<minion-dispatch>{...}</minion-dispatch>` JSON envelope with explicit `task_id` (`null` is valid), matching `role`, bounded objective, artifacts/evidence, non-goals, allowed files/effects, checks, budget, stop conditions, and escalation rules. An implement envelope requires non-empty `allowed_files`. Never include tokens or credentials.
+
+New dispatches use `contract_version: "1.0"`. The common required fields are `role`, `workflow`, `phase`, `spec_plane`, `task_id`, `objective`, `allowed_files`, `acceptance_checks`, and `artifact_refs`. Workflow, phase, and objective are non-empty strings; the last three fields are string arrays. `role` matches the host `subagent_type`; `task_id` is a non-empty ID or `null`. `spec_plane` is `openspec`, `cortex`, or `hybrid` for planning and contracted work, and may be `null` for work without specification artifacts. Add evidence pointers and conditional scope/budget fields when applicable. This contract describes routing, never grants permissions or task authority.
+
+Planner workflow/phase pairs are `decision-map` with `chart|resolve`, `sdd-lite` with `integrated|archive`, or `sdd-full` with `propose|spec|design|tasks|archive`. Other roles use the assigned operational phase (for example investigate/diagnose, direct-change/apply, or review/verify). The transport validates the versioned common fields and planning pairs before dispatch. Unversioned historical envelopes and one legacy `<minion-contract>` remain accepted for resume compatibility, with the existing identity and budget checks; supplied roles must match the host target. New prompts use the canonical tag.
 
 When multiple board tasks reach `ready` with mutually disjoint `allowed_files`, the orchestrator dispatches them concurrently via `task(..., background=true)` following the `parallel-dispatch` skill. Each implement controller claims its single task and acquires its disjoint per-file leases without collision.
 
@@ -127,6 +140,10 @@ Official Herdr integrations report OpenCode lifecycle/session identity and AGY s
 A closed or missing pane is evidence of transport loss, not a task verdict. Query the durable delegation job; use cancellation/recovery when applicable; then reconcile the owning work task. Delegation recovery changes only expired active jobs to `lost` and never recreates work authority.
 
 ## 8. Completion receipt
+
+Every role returns the same common JSON fields: `receipt_version: "2.0"`, `workflow`, `phase`, `spec_plane`, `task_id` (or `null`), `phase_status`, `verification_verdict`, `summary`, `artifact_refs`, `evidence_refs`, and `next_route`. Echo routing values from the dispatch; `summary` is a non-empty bounded account of the result and limitations. Role-specific fields extend this receipt, rather than replacing it. Keep `phase_status` (`success|partial|failed|blocked`) separate from `verification_verdict` (`PASS|FAIL|BLOCKED|INCONCLUSIVE`) and optional durable `task_status`. A completed diagnostic phase may legitimately have an `INCONCLUSIVE` verification verdict.
+
+The receiving controller checks required fields, routing identity, evidence, and the current task state before accepting a receipt. For legacy Markdown or JSON responses, normalize only explicit fields; request missing evidence or return `INCONCLUSIVE`, never invent a PASS. Transport completion is not receipt validation. Verification is proportional to the objective: document/contract checks for planning, cited observations and discriminating probes for diagnosis, and executable acceptance checks for implementation/review. Planning PASS attests only to the planning artifact checks, never to product behavior or task approval.
 
 A controller reports `PASS` only with executable evidence: command, exit code, relevant revision/hash, timestamp, and bounded result. Missing evidence, task mismatch, stale revision, or incomplete receipt is `INCONCLUSIVE` or `BLOCKED`, never PASS. Final receipts omit secrets and authority tokens and identify the next route: review, retry, continue, or stop.
 

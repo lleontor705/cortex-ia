@@ -150,8 +150,8 @@ func (s *Store) initialize(ctx context.Context) error {
 		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 			return fmt.Errorf("read migration ledger: %w", err)
 		}
-		if version > 11 {
-			return fmt.Errorf("cortex database schema %d is newer than supported schema 11", version)
+		if version > 12 {
+			return fmt.Errorf("cortex database schema %d is newer than supported schema 12", version)
 		}
 		statements := []string{
 			`CREATE TABLE IF NOT EXISTS delegation_jobs (
@@ -465,6 +465,22 @@ func (s *Store) initialize(ctx context.Context) error {
 		}
 		if _, err := conn.ExecContext(ctx, `PRAGMA optimize`); err != nil {
 			return fmt.Errorf("optimize cortex database: %w", err)
+		}
+		if version < 12 {
+			for _, statement := range []string{
+				`ALTER TABLE work_definitions ADD COLUMN contract_json TEXT NOT NULL DEFAULT '' CHECK(length(CAST(contract_json AS BLOB))<=32768)`,
+				`ALTER TABLE work_reviews ADD COLUMN binding_json TEXT NOT NULL DEFAULT '' CHECK(length(CAST(binding_json AS BLOB))<=65536)`,
+				`ALTER TABLE work_approvals ADD COLUMN binding_json TEXT NOT NULL DEFAULT '' CHECK(length(CAST(binding_json AS BLOB))<=65536)`,
+				`ALTER TABLE work_approvals ADD COLUMN implementation_owner TEXT NOT NULL DEFAULT ''`,
+				`CREATE TABLE change_archives (archive_key TEXT PRIMARY KEY, board_id TEXT NOT NULL, workspace TEXT NOT NULL, change_id TEXT NOT NULL, workflow TEXT NOT NULL, spec_plane TEXT NOT NULL, binding_sha256 TEXT NOT NULL, manifest_sha256 TEXT NOT NULL DEFAULT '', source_path TEXT NOT NULL DEFAULT '', destination_path TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK(status IN('prepared','complete')), receipt_json TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT`,
+			} {
+				if _, err := conn.ExecContext(ctx, statement); err != nil {
+					return fmt.Errorf("SDD contract migration: %w", err)
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(12,?)`, s.timestamp()); err != nil {
+				return err
+			}
 		}
 		return nil
 	})

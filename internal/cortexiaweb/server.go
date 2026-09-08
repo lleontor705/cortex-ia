@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,7 @@ func NewHandler(store *delegation.Store) (http.Handler, error) {
 	api := &API{store: store}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/overview", api.overview)
+	mux.HandleFunc("GET /api/feed", api.feed)
 	mux.HandleFunc("GET /api/boards", api.listBoards)
 	mux.HandleFunc("POST /api/boards", api.createBoard)
 	mux.HandleFunc("GET /api/boards/{id}", api.boardSnapshot)
@@ -96,6 +98,25 @@ func Serve(ctx context.Context, store *delegation.Store, address string, ready c
 func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 	dashboard, err := a.store.Dashboard(r.Context())
 	writeResult(w, dashboard, err)
+}
+
+func (a *API) feed(w http.ResponseWriter, r *http.Request) {
+	page := 0
+	if raw := r.URL.Query().Get("page"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 || parsed > 1000000 {
+			writeError(w, http.StatusBadRequest, errors.New("invalid feed page"))
+			return
+		}
+		page = parsed
+	}
+	board := r.URL.Query().Get("board")
+	if len(board) > 256 {
+		writeError(w, http.StatusBadRequest, errors.New("invalid board ID"))
+		return
+	}
+	feed, err := a.store.DashboardFeed(r.Context(), board, page)
+	writeResult(w, feed, err)
 }
 
 func (a *API) listBoards(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +237,19 @@ func (a *API) getDelegation(w http.ResponseWriter, r *http.Request) {
 		writeResult(w, nil, err)
 		return
 	}
-	writeResult(w, job, nil)
+	receipt, err := a.store.Result(r.Context(), id)
+	if err != nil && !errors.Is(err, delegation.ErrJobNotFound) {
+		writeResult(w, nil, err)
+		return
+	}
+	var available *delegation.Receipt
+	if err == nil {
+		available = &receipt
+	}
+	writeResult(w, struct {
+		delegation.Job
+		Receipt *delegation.Receipt `json:"receipt,omitempty"`
+	}{Job: job, Receipt: available}, nil)
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
@@ -255,7 +288,7 @@ func writeResult(w http.ResponseWriter, value any, err error) {
 		return
 	}
 	status := http.StatusBadRequest
-	if errors.Is(err, delegation.ErrBoardNotFound) || errors.Is(err, delegation.ErrWorkNotFound) {
+	if errors.Is(err, delegation.ErrBoardNotFound) || errors.Is(err, delegation.ErrWorkNotFound) || errors.Is(err, delegation.ErrJobNotFound) {
 		status = http.StatusNotFound
 	}
 	writeError(w, status, err)

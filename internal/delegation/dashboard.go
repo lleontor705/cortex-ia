@@ -65,6 +65,72 @@ type Dashboard struct {
 	Activity    []ActivityEvent  `json:"activity"`
 }
 
+// DashboardFeed is a bounded page of operational history. Counts cover the
+// entire selected board (or all boards), not only the returned page.
+type DashboardFeed struct {
+	Delegations      []DelegationView `json:"delegations"`
+	Activity         []ActivityEvent  `json:"activity"`
+	Page             int              `json:"page"`
+	PageSize         int              `json:"page_size"`
+	TotalDelegations int              `json:"total_delegations"`
+	TotalActivity    int              `json:"total_activity"`
+}
+
+func (s *Store) DashboardFeed(ctx context.Context, board string, page int) (DashboardFeed, error) {
+	const pageSize = 20
+	result := DashboardFeed{Delegations: []DelegationView{}, Activity: []ActivityEvent{}, Page: page, PageSize: pageSize}
+	if page < 0 || page > 1000000 {
+		return result, fmt.Errorf("invalid feed page")
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return result, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if board != "" {
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM work_boards WHERE id=?`, board).Scan(&exists); err != nil {
+			return result, err
+		}
+		if exists == 0 {
+			return result, ErrBoardNotFound
+		}
+	}
+	// The board restriction is applied before ordering and pagination for both
+	// task events and delegation events, whose entity IDs identify jobs.
+	const populations = `WITH jobs AS (
+		SELECT j.* FROM delegation_jobs j WHERE ?='' OR EXISTS (SELECT 1 FROM work_items w WHERE w.id=j.task_id AND w.board_id=?)
+	), events AS (
+		SELECT 'work' AS source,e.id AS event_id,e.item_id AS entity_id,w.title,e.kind,e.from_status,e.to_status,e.detail,e.created_at
+		FROM work_events e JOIN work_items w ON w.id=e.item_id WHERE ?='' OR w.board_id=?
+		UNION ALL
+		SELECT 'delegation',e.id,e.job_id,j.role,e.kind,e.from_status,e.to_status,e.detail,e.created_at
+		FROM delegation_events e JOIN jobs j ON j.id=e.job_id
+	) `
+	args := []any{board, board, board, board}
+	if err := tx.QueryRowContext(ctx, populations+`SELECT (SELECT count(*) FROM jobs),(SELECT count(*) FROM events)`, args...).Scan(&result.TotalDelegations, &result.TotalActivity); err != nil {
+		return result, err
+	}
+	read := func(query string, target any) error {
+		var raw string
+		queryArgs := append(append([]any{}, args...), pageSize, page*pageSize)
+		if err := tx.QueryRowContext(ctx, populations+query, queryArgs...).Scan(&raw); err != nil {
+			return err
+		}
+		return json.Unmarshal([]byte(raw), target)
+	}
+	if err := read(`SELECT json_group_array(json_object('job_id',id,'role',role,'task_id',task_id,'status',status,'transport',transport,'attempt',attempt,
+		'lease_owner',lease_owner,'lease_expires_at',coalesce(lease_expires_at,''),'error_code',error_code,'error_message',substr(error_message,1,160),'created_at',created_at,'updated_at',updated_at))
+		FROM (SELECT * FROM jobs ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?)`, &result.Delegations); err != nil {
+		return result, err
+	}
+	if err := read(`SELECT json_group_array(json_object('source',source,'entity_id',entity_id,'title',title,'kind',kind,'from',from_status,'to',to_status,'detail',detail,'created_at',created_at))
+		FROM (SELECT * FROM events ORDER BY created_at DESC,source,event_id DESC LIMIT ? OFFSET ?)`, &result.Activity); err != nil {
+		return result, err
+	}
+	return result, tx.Commit()
+}
+
 type ConversationTask struct {
 	ConversationOwnership
 	ID         string     `json:"task_id"`
@@ -363,10 +429,23 @@ func (s *Store) dashboard(ctx context.Context, workspace string) (Dashboard, err
 	}
 
 	activeDelegations := 0
-	for _, job := range delegations {
-		if job.Status == StatusAccepted || job.Status == StatusStarting || job.Status == StatusRunning || job.Status == StatusBlocked {
-			activeDelegations++
+	rows, err := s.db.QueryContext(ctx, `SELECT workspace,count(*) FROM delegation_jobs WHERE status IN ('accepted','starting','running','blocked') GROUP BY workspace`)
+	if err != nil {
+		return Dashboard{}, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var jobWorkspace string
+		var count int
+		if err := rows.Scan(&jobWorkspace, &count); err != nil {
+			return Dashboard{}, err
 		}
+		if workspace == "" || sameWorkspace(jobWorkspace, workspace) {
+			activeDelegations += count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return Dashboard{}, err
 	}
 	return Dashboard{
 		Summary: DashboardSummary{

@@ -79,10 +79,21 @@ function operationalCounts(snapshot, snapshotError) {
     attention: snapshot.counts.attention + (snapshotError ? 1 : 0)
   };
 }
-function conversationScope(api) {
+function currentSessionID(api) {
   const route = api.route.current;
-  const sessionID = route.name === "session" ? route.params?.sessionID : void 0;
-  if (typeof sessionID !== "string") return void 0;
+  const id = route.name === "session" ? route.params?.sessionID : void 0;
+  return typeof id === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(id) ? id : void 0;
+}
+function nativeSessionActivity(api) {
+  const id = currentSessionID(api);
+  if (!id) return void 0;
+  if (api.state.session.get(id)?.id !== id) return "unknown";
+  const status = api.state.session.status(id)?.type;
+  return status === "busy" || status === "idle" || status === "retry" ? status : "unknown";
+}
+function conversationScope(api) {
+  const sessionID = currentSessionID(api);
+  if (!sessionID) return void 0;
   let current = sessionID;
   const seen = /* @__PURE__ */ new Set();
   while (seen.size < 64 && /^[A-Za-z0-9_-]{1,256}$/.test(current) && !seen.has(current)) {
@@ -269,129 +280,185 @@ function SidebarStatus(props) {
     return Boolean(props.snapshotError()) || !Number.isFinite(generated) || props.now() - generated > SNAPSHOT_STALE_MS;
   });
   return (() => {
-    var _el$21 = _$createElement("box"), _el$22 = _$createElement("text"), _el$25 = _$createElement("box"), _el$26 = _$createElement("text"), _el$27 = _$createElement("text"), _el$29 = _$createElement("text"), _el$30 = _$createElement("text"), _el$32 = _$createElement("text"), _el$33 = _$createElement("text");
+    var _el$21 = _$createElement("box"), _el$22 = _$createElement("text");
     _$insertNode(_el$21, _el$22);
-    _$insertNode(_el$21, _el$25);
-    _$insertNode(_el$21, _el$33);
     _$setProp(_el$21, "flexDirection", "column");
     _$insertNode(_el$22, _$createTextNode(`Cortex-IA`));
+    _$insert(_el$21, _$createComponent(Show, {
+      get when() {
+        return props.nativeActivity();
+      },
+      get children() {
+        var _el$24 = _$createElement("text");
+        _$insert(_el$24, () => `Sesi\xF3n actual \xB7 ${{
+          busy: "trabajando",
+          idle: "en espera",
+          retry: "reintentando",
+          unknown: "estado no disponible"
+        }[props.nativeActivity() ?? "unknown"]}`);
+        _$effect((_$p) => _$setProp(_el$24, "fg", props.nativeActivity() === "busy" || props.nativeActivity() === "retry" ? props.theme.warning : props.theme.textMuted, _$p));
+        return _el$24;
+      }
+    }), null);
     _$insert(_el$21, _$createComponent(Show, {
       get when() {
         return props.snapshot().project_root;
       },
       get children() {
-        var _el$24 = _$createElement("text");
-        _$insert(_el$24, () => `Proyecto \xB7 ${path.basename(props.snapshot().project_root)}`);
-        _$effect((_$p) => _$setProp(_el$24, "fg", props.theme.textMuted, _$p));
-        return _el$24;
+        var _el$25 = _$createElement("text");
+        _$insert(_el$25, () => `Proyecto \xB7 ${path.basename(props.snapshot().project_root)}`);
+        _$effect((_$p) => _$setProp(_el$25, "fg", props.theme.textMuted, _$p));
+        return _el$25;
       }
-    }), _el$25);
-    _$insertNode(_el$25, _el$26);
-    _$insertNode(_el$25, _el$27);
-    _$insertNode(_el$25, _el$29);
-    _$insertNode(_el$25, _el$30);
-    _$insertNode(_el$25, _el$32);
-    _$setProp(_el$25, "flexDirection", "row");
-    _$insert(_el$26, () => `\u25CF ${counts().active}`);
-    _$insertNode(_el$27, _$createTextNode(` \xB7 `));
-    _$insert(_el$29, () => `\u25C6 ${counts().review}`);
-    _$insertNode(_el$30, _$createTextNode(` \xB7 `));
-    _$insert(_el$32, () => `\u2715 ${counts().attention}`);
-    _$insert(_el$21, _$createComponent(Section, {
-      title: "Task board",
-      get count() {
-        return props.snapshot().summary.active_tasks;
-      },
-      get expanded() {
-        return props.tasksExpanded;
-      },
-      get onToggle() {
-        return props.toggleTasks;
-      },
-      get theme() {
-        return props.theme;
+    }), null);
+    _$insert(_el$21, _$createComponent(Show, {
+      get when() {
+        return !props.scopeReady();
       },
       get children() {
-        return _$createComponent(TaskRows, {
-          get tasks() {
-            return props.snapshot().tasks;
+        var _el$26 = _$createElement("text");
+        _$insertNode(_el$26, _$createTextNode(`Conversaci\xF3n no disponible \xB7 esperando metadatos`));
+        _$effect((_$p) => _$setProp(_el$26, "fg", props.theme.warning, _$p));
+        return _el$26;
+      }
+    }), null);
+    _$insert(_el$21, _$createComponent(Show, {
+      get when() {
+        return _$memo(() => !!(props.scopeReady() && !props.snapshot().generated_at))() && !props.snapshotError();
+      },
+      get children() {
+        var _el$28 = _$createElement("text");
+        _$insertNode(_el$28, _$createTextNode(`Cargando estado de la conversaci\xF3n\u2026`));
+        _$effect((_$p) => _$setProp(_el$28, "fg", props.theme.textMuted, _$p));
+        return _el$28;
+      }
+    }), null);
+    _$insert(_el$21, _$createComponent(Show, {
+      get when() {
+        return props.snapshotError();
+      },
+      get children() {
+        var _el$30 = _$createElement("text");
+        _$insertNode(_el$30, _$createTextNode(`No se pudo actualizar \xB7 datos no confirmados`));
+        _$effect((_$p) => _$setProp(_el$30, "fg", props.theme.error, _$p));
+        return _el$30;
+      }
+    }), null);
+    _$insert(_el$21, _$createComponent(Show, {
+      get when() {
+        return _$memo(() => !!props.scopeReady())() && Boolean(props.snapshot().generated_at);
+      },
+      get children() {
+        return [(() => {
+          var _el$32 = _$createElement("box"), _el$33 = _$createElement("text"), _el$34 = _$createElement("text"), _el$36 = _$createElement("text"), _el$37 = _$createElement("text"), _el$39 = _$createElement("text");
+          _$insertNode(_el$32, _el$33);
+          _$insertNode(_el$32, _el$34);
+          _$insertNode(_el$32, _el$36);
+          _$insertNode(_el$32, _el$37);
+          _$insertNode(_el$32, _el$39);
+          _$setProp(_el$32, "flexDirection", "row");
+          _$insert(_el$33, () => `\u25CF ${counts().active}`);
+          _$insertNode(_el$34, _$createTextNode(` \xB7 `));
+          _$insert(_el$36, () => `\u25C6 ${counts().review}`);
+          _$insertNode(_el$37, _$createTextNode(` \xB7 `));
+          _$insert(_el$39, () => `\u2715 ${counts().attention}`);
+          _$effect((_p$) => {
+            var _v$10 = props.theme.warning, _v$11 = props.theme.textMuted, _v$12 = props.theme.accent, _v$13 = props.theme.textMuted, _v$14 = props.theme.error;
+            _v$10 !== _p$.e && (_p$.e = _$setProp(_el$33, "fg", _v$10, _p$.e));
+            _v$11 !== _p$.t && (_p$.t = _$setProp(_el$34, "fg", _v$11, _p$.t));
+            _v$12 !== _p$.a && (_p$.a = _$setProp(_el$36, "fg", _v$12, _p$.a));
+            _v$13 !== _p$.o && (_p$.o = _$setProp(_el$37, "fg", _v$13, _p$.o));
+            _v$14 !== _p$.i && (_p$.i = _$setProp(_el$39, "fg", _v$14, _p$.i));
+            return _p$;
+          }, {
+            e: void 0,
+            t: void 0,
+            a: void 0,
+            o: void 0,
+            i: void 0
+          });
+          return _el$32;
+        })(), _$createComponent(Section, {
+          title: "Task board",
+          get count() {
+            return props.snapshot().summary.active_tasks;
+          },
+          get expanded() {
+            return props.tasksExpanded;
+          },
+          get onToggle() {
+            return props.toggleTasks;
           },
           get theme() {
             return props.theme;
+          },
+          get children() {
+            return _$createComponent(TaskRows, {
+              get tasks() {
+                return props.snapshot().tasks;
+              },
+              get theme() {
+                return props.theme;
+              }
+            });
           }
-        });
-      }
-    }), _el$33);
-    _$insert(_el$21, _$createComponent(Section, {
-      title: "Delegaciones",
-      get count() {
-        return props.snapshot().summary.total_delegations;
-      },
-      get expanded() {
-        return props.delegationsExpanded;
-      },
-      get onToggle() {
-        return props.toggleDelegations;
-      },
-      get theme() {
-        return props.theme;
-      },
-      get children() {
-        return _$createComponent(DelegationRows, {
-          get jobs() {
-            return props.jobs();
+        }), _$createComponent(Section, {
+          title: "Delegaciones",
+          get count() {
+            return props.snapshot().summary.total_delegations;
+          },
+          get expanded() {
+            return props.delegationsExpanded;
+          },
+          get onToggle() {
+            return props.toggleDelegations;
           },
           get theme() {
             return props.theme;
+          },
+          get children() {
+            return _$createComponent(DelegationRows, {
+              get jobs() {
+                return props.jobs();
+              },
+              get theme() {
+                return props.theme;
+              }
+            });
           }
-        });
-      }
-    }), _el$33);
-    _$insert(_el$21, _$createComponent(Section, {
-      title: "Atenci\xF3n",
-      get count() {
-        return counts().attention;
-      },
-      get expanded() {
-        return props.attentionExpanded;
-      },
-      get onToggle() {
-        return props.toggleAttention;
-      },
-      get theme() {
-        return props.theme;
-      },
-      get children() {
-        return _$createComponent(AttentionRows, {
-          get items() {
-            return attention();
+        }), _$createComponent(Section, {
+          title: "Atenci\xF3n",
+          get count() {
+            return counts().attention;
+          },
+          get expanded() {
+            return props.attentionExpanded;
+          },
+          get onToggle() {
+            return props.toggleAttention;
           },
           get theme() {
             return props.theme;
+          },
+          get children() {
+            return _$createComponent(AttentionRows, {
+              get items() {
+                return attention();
+              },
+              get theme() {
+                return props.theme;
+              }
+            });
           }
-        });
+        }), (() => {
+          var _el$40 = _$createElement("text");
+          _$insert(_el$40, () => stale() ? "snapshot obsoleto" : "snapshot actualizado");
+          _$effect((_$p) => _$setProp(_el$40, "fg", stale() ? props.theme.warning : props.theme.textMuted, _$p));
+          return _el$40;
+        })()];
       }
-    }), _el$33);
-    _$insert(_el$33, () => stale() ? "snapshot obsoleto" : "snapshot actualizado");
-    _$effect((_p$) => {
-      var _v$10 = props.theme.text, _v$11 = props.theme.warning, _v$12 = props.theme.textMuted, _v$13 = props.theme.accent, _v$14 = props.theme.textMuted, _v$15 = props.theme.error, _v$16 = stale() ? props.theme.warning : props.theme.textMuted;
-      _v$10 !== _p$.e && (_p$.e = _$setProp(_el$22, "fg", _v$10, _p$.e));
-      _v$11 !== _p$.t && (_p$.t = _$setProp(_el$26, "fg", _v$11, _p$.t));
-      _v$12 !== _p$.a && (_p$.a = _$setProp(_el$27, "fg", _v$12, _p$.a));
-      _v$13 !== _p$.o && (_p$.o = _$setProp(_el$29, "fg", _v$13, _p$.o));
-      _v$14 !== _p$.i && (_p$.i = _$setProp(_el$30, "fg", _v$14, _p$.i));
-      _v$15 !== _p$.n && (_p$.n = _$setProp(_el$32, "fg", _v$15, _p$.n));
-      _v$16 !== _p$.s && (_p$.s = _$setProp(_el$33, "fg", _v$16, _p$.s));
-      return _p$;
-    }, {
-      e: void 0,
-      t: void 0,
-      a: void 0,
-      o: void 0,
-      i: void 0,
-      n: void 0,
-      s: void 0
-    });
+    }), null);
+    _$effect((_$p) => _$setProp(_el$22, "fg", props.theme.text, _$p));
     return _el$21;
   })();
 }
@@ -404,30 +471,30 @@ function HomeBottomStatus(props) {
       return visible();
     },
     get children() {
-      var _el$34 = _$createElement("box"), _el$35 = _$createElement("text"), _el$37 = _$createElement("text"), _el$38 = _$createElement("text"), _el$40 = _$createElement("text"), _el$41 = _$createElement("text"), _el$43 = _$createElement("text");
-      _$insertNode(_el$34, _el$35);
-      _$insertNode(_el$34, _el$37);
-      _$insertNode(_el$34, _el$38);
-      _$insertNode(_el$34, _el$40);
-      _$insertNode(_el$34, _el$41);
-      _$insertNode(_el$34, _el$43);
-      _$setProp(_el$34, "paddingLeft", 1);
-      _$setProp(_el$34, "paddingRight", 1);
-      _$setProp(_el$34, "flexDirection", "row");
-      _$insertNode(_el$35, _$createTextNode(`Cortex `));
-      _$insert(_el$37, () => `\u25CF ${counts().active}`);
-      _$insertNode(_el$38, _$createTextNode(` \xB7 `));
-      _$insert(_el$40, () => `\u25C6 ${counts().review}`);
-      _$insertNode(_el$41, _$createTextNode(` \xB7 `));
-      _$insert(_el$43, () => `\u2715 ${counts().attention}`);
+      var _el$41 = _$createElement("box"), _el$42 = _$createElement("text"), _el$44 = _$createElement("text"), _el$45 = _$createElement("text"), _el$47 = _$createElement("text"), _el$48 = _$createElement("text"), _el$50 = _$createElement("text");
+      _$insertNode(_el$41, _el$42);
+      _$insertNode(_el$41, _el$44);
+      _$insertNode(_el$41, _el$45);
+      _$insertNode(_el$41, _el$47);
+      _$insertNode(_el$41, _el$48);
+      _$insertNode(_el$41, _el$50);
+      _$setProp(_el$41, "paddingLeft", 1);
+      _$setProp(_el$41, "paddingRight", 1);
+      _$setProp(_el$41, "flexDirection", "row");
+      _$insertNode(_el$42, _$createTextNode(`Cortex `));
+      _$insert(_el$44, () => `\u25CF ${counts().active}`);
+      _$insertNode(_el$45, _$createTextNode(` \xB7 `));
+      _$insert(_el$47, () => `\u25C6 ${counts().review}`);
+      _$insertNode(_el$48, _$createTextNode(` \xB7 `));
+      _$insert(_el$50, () => `\u2715 ${counts().attention}`);
       _$effect((_p$) => {
-        var _v$17 = props.theme.text, _v$18 = props.theme.warning, _v$19 = props.theme.textMuted, _v$20 = props.theme.accent, _v$21 = props.theme.textMuted, _v$22 = props.theme.error;
-        _v$17 !== _p$.e && (_p$.e = _$setProp(_el$35, "fg", _v$17, _p$.e));
-        _v$18 !== _p$.t && (_p$.t = _$setProp(_el$37, "fg", _v$18, _p$.t));
-        _v$19 !== _p$.a && (_p$.a = _$setProp(_el$38, "fg", _v$19, _p$.a));
-        _v$20 !== _p$.o && (_p$.o = _$setProp(_el$40, "fg", _v$20, _p$.o));
-        _v$21 !== _p$.i && (_p$.i = _$setProp(_el$41, "fg", _v$21, _p$.i));
-        _v$22 !== _p$.n && (_p$.n = _$setProp(_el$43, "fg", _v$22, _p$.n));
+        var _v$15 = props.theme.text, _v$16 = props.theme.warning, _v$17 = props.theme.textMuted, _v$18 = props.theme.accent, _v$19 = props.theme.textMuted, _v$20 = props.theme.error;
+        _v$15 !== _p$.e && (_p$.e = _$setProp(_el$42, "fg", _v$15, _p$.e));
+        _v$16 !== _p$.t && (_p$.t = _$setProp(_el$44, "fg", _v$16, _p$.t));
+        _v$17 !== _p$.a && (_p$.a = _$setProp(_el$45, "fg", _v$17, _p$.a));
+        _v$18 !== _p$.o && (_p$.o = _$setProp(_el$47, "fg", _v$18, _p$.o));
+        _v$19 !== _p$.i && (_p$.i = _$setProp(_el$48, "fg", _v$19, _p$.i));
+        _v$20 !== _p$.n && (_p$.n = _$setProp(_el$50, "fg", _v$20, _p$.n));
         return _p$;
       }, {
         e: void 0,
@@ -437,11 +504,13 @@ function HomeBottomStatus(props) {
         i: void 0,
         n: void 0
       });
-      return _el$34;
+      return _el$41;
     }
   });
 }
 function initialize(api, disposeRoot) {
+  const nativeActivity = createMemo(() => nativeSessionActivity(api));
+  const scopeReady = createMemo(() => Boolean(conversationScope(api)?.project));
   const [snapshot, setSnapshot] = createSignal(EMPTY_SNAPSHOT);
   const [snapshotError, setSnapshotError] = createSignal("");
   const [now, setNow] = createSignal(Date.now());
@@ -513,6 +582,8 @@ function initialize(api, disposeRoot) {
     slots: {
       sidebar_content(ctx) {
         return _$createComponent(SidebarStatus, {
+          nativeActivity,
+          scopeReady,
           snapshot,
           jobs,
           snapshotError,
