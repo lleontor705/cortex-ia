@@ -185,6 +185,9 @@ func drive(t *testing.T, m model, cmd tea.Cmd) model {
 		if _, isTick := msg.(tickMsg); isTick {
 			continue
 		}
+		if _, isHomeTick := msg.(homeTickMsg); isHomeTick {
+			continue
+		}
 		updated, _ := m.Update(msg)
 		m = updated.(model)
 	}

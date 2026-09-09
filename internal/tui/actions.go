@@ -24,7 +24,14 @@ var (
 type tickMsg time.Time
 
 func spinTick() tea.Cmd {
-	return tea.Tick(120*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
+	return tea.Tick(80*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
+}
+
+// homeTickMsg advances the Home screen shimmer logo.
+type homeTickMsg time.Time
+
+func homeTick() tea.Cmd {
+	return tea.Tick(70*time.Millisecond, func(t time.Time) tea.Msg { return homeTickMsg(t) })
 }
 
 // Operation messages carry the typed service receipts back to Update.

@@ -26,6 +26,17 @@ func TestLogo_NonEmpty(t *testing.T) {
 	}
 }
 
+func TestShimmerLogo(t *testing.T) {
+	rendered0 := ShimmerLogo(0)
+	if rendered0 == "" {
+		t.Error("ShimmerLogo(0) returned empty string")
+	}
+	rendered5 := ShimmerLogo(5)
+	if rendered5 == "" {
+		t.Error("ShimmerLogo(5) returned empty string")
+	}
+}
+
 func TestCursorPrefix_NonEmpty(t *testing.T) {
 	if CursorPrefix != "> " {
 		t.Errorf("CursorPrefix = %q, want %q", CursorPrefix, "> ")

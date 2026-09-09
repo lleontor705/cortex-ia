@@ -153,8 +153,8 @@ func (m model) updateAgentStudio(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc", "b", "B":
 		if m.studioStep == 0 || m.studioStep == 2 {
 			m.screen = screenHome
-			m.cursor = 3
-			return m, nil
+			m.cursor = 4
+			return m, homeTick()
 		}
 		m.studioStep--
 		return m, nil
@@ -189,8 +189,8 @@ func (m model) updateAgentStudio(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.studioStep = 2 // Advance to Result
 		case 2:
 			m.screen = screenHome
-			m.cursor = 3
-			return m, nil
+			m.cursor = 4
+			return m, homeTick()
 		}
 	}
 	return m, nil

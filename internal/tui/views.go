@@ -3,7 +3,9 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
@@ -26,6 +28,7 @@ var (
 
 var homeDescriptions = []string{
 	"Deploy or reconcile skills, agents, commands & MCPs",
+	"Configure external CLI leaves (AGY) and Herdr multiplexing",
 	"Inspect and configure managed OpenCode MCP server presets",
 	"Open interactive local web dashboard (http://127.0.0.1:7331)",
 	"Create custom subagents with Cortex-IA safety guardrails",
@@ -150,6 +153,8 @@ func (m model) View() string {
 		body = m.viewWeb()
 	case screenAgentStudio:
 		body = m.viewAgentStudio()
+	case screenDelegation:
+		body = m.viewDelegation()
 	}
 	if m.confirm.kind != confirmNone {
 		body = body + "\n" + m.viewConfirm()
@@ -170,8 +175,7 @@ func (m model) viewHome() string {
 	var lines []string
 
 	if m.height <= 0 || m.height >= 16 {
-		logoStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
-		lines = append(lines, logoStyle.Render(styles.Logo))
+		lines = append(lines, styles.ShimmerLogo(m.logoFrame))
 		lines = append(lines, styleDim.Render("  OpenCode Edition · "+m.version+" · "+m.homeDir), "")
 	} else {
 		lines = append(lines, truncate(m.header("Home"), width), "")
@@ -182,12 +186,12 @@ func (m model) viewHome() string {
 		text := entry
 		desc := " · " + styleDim.Render(homeDescriptions[i])
 		if i == m.cursor {
-			prefix = fmt.Sprintf("> [%d] ", i+1)
+			prefix = fmt.Sprintf("▸ [%d] ", i+1)
 			text = styleSelected.Render(entry)
 		}
 		lines = append(lines, truncate(prefix+text+desc, width))
 	}
-	lines = append(lines, "", m.footer("↑/↓ move · 1-5/enter select · q quit"))
+	lines = append(lines, "", m.footer("↑/↓ move · 1-8/enter select · q quit"))
 	return strings.Join(lines, "\n")
 }
 
@@ -304,7 +308,44 @@ func (m model) viewRunning() string {
 			lines = append(lines, styleDim.Render(fmt.Sprintf("  · %s", phase)))
 		}
 	}
-	lines = append(lines, "", m.footer("running… ctrl+c aborts"))
+
+	// Dynamic Animated Progress Bar
+	numPhases := len(m.running.phases)
+	var percent float64
+	if numPhases > 0 {
+		percent = float64(m.running.current) / float64(numPhases)
+	}
+	if m.running.finished {
+		percent = 1.0
+	}
+
+	barWidth := width - 6
+	if barWidth > 44 {
+		barWidth = 44
+	}
+	if barWidth < 20 {
+		barWidth = 20
+	}
+
+	prog := m.running.progressModel
+	if prog.Width == 0 {
+		prog = progress.New(
+			progress.WithScaledGradient(string(styles.Primary), string(styles.Secondary)),
+			progress.WithWidth(barWidth),
+		)
+	} else {
+		prog.Width = barWidth
+	}
+
+	lines = append(lines, "", "  "+prog.ViewAs(percent))
+
+	// Live elapsed time counter
+	elapsedStr := "00:00.0"
+	if !m.running.startedAt.IsZero() {
+		dur := time.Since(m.running.startedAt)
+		elapsedStr = fmt.Sprintf("%02d:%04.1fs", int(dur.Minutes()), dur.Seconds()-float64(int(dur.Minutes())*60))
+	}
+	lines = append(lines, "", m.footer(fmt.Sprintf("running… elapsed %s · ctrl+c aborts", elapsedStr)))
 	return strings.Join(lines, "\n")
 }
 

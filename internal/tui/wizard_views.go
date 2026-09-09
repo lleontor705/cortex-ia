@@ -20,7 +20,7 @@ func (m model) updateWizardHerdr(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.screen = screenHome
 		m.cursor = 0
-		return m, nil
+		return m, homeTick()
 	case "up", "k", "1":
 		m.wizardCursor = 0
 	case "down", "j", "2":
@@ -124,6 +124,7 @@ func (m model) updateWizardDelegation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			r.Delegate = false
 			r.CLI = "native"
 			r.Mode = ""
+			r.SkipPermissions = false
 			m.delegationCfg.Roles[role] = r
 		}
 		m.screen = screenReview
@@ -212,6 +213,7 @@ func (m model) updateWizardRoles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if !r.Delegate {
 				r.Delegate = true
 				r.CLI = "agy"
+				r.SkipPermissions = true
 				if role == "implement" {
 					r.Mode = "accept-edits"
 				} else {
@@ -221,6 +223,7 @@ func (m model) updateWizardRoles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				r.Delegate = false
 				r.CLI = "native"
 				r.Mode = ""
+				r.SkipPermissions = false
 			}
 			m.delegationCfg.Roles[role] = r
 			m.opts.DelegationConfig = &m.delegationCfg

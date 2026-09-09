@@ -2,14 +2,19 @@ package tui
 
 import (
 	"path/filepath"
+	"time"
 
+	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
 
 // screen enumerates the conceptual screens of the TUI. Confirmation is
@@ -27,6 +32,7 @@ const (
 	screenMCP
 	screenWeb
 	screenAgentStudio
+	screenDelegation
 )
 
 // confirmKind identifies which destructive intent a confirmation modal guards.
@@ -43,6 +49,7 @@ const (
 // homeEntries are the fixed Home menu actions, in display order.
 var homeEntries = []string{
 	"Install / Sync",
+	"Configure Delegation",
 	"Manage MCPs",
 	"CortexIA Web Console",
 	"Agent Studio (Create Sub-agent)",
@@ -63,11 +70,14 @@ type confirmState struct {
 
 // runningState drives the phase display while one operation executes.
 type runningState struct {
-	title    string
-	phases   []string
-	current  int
-	spinner  int
-	finished bool
+	title         string
+	phases        []string
+	current       int
+	spinner       int
+	finished      bool
+	startedAt     time.Time
+	progressModel progress.Model
+	spinnerModel  spinner.Model
 }
 
 // opResult is the typed projection of one completed operation. The Result
@@ -127,6 +137,13 @@ type model struct {
 	studioStep      int
 	studioArchIdx   int
 	studioResultMsg string
+
+	// Standalone Delegation screen state
+	delegationCursor   int
+	delegationSavedMsg string
+
+	// Animation state
+	logoFrame int
 }
 
 // newModel builds the model bound to a service implementation.
@@ -145,7 +162,7 @@ func newModel(svc ServiceAPI, homeDir, version string) model {
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return homeTick()
 }
 
 // Update routes one message by screen, with the confirmation overlay taking
@@ -154,6 +171,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		return m, nil
+	case homeTickMsg:
+		if m.screen == screenHome {
+			m.logoFrame = (m.logoFrame + 1) % 120
+			return m, homeTick()
+		}
 		return m, nil
 	case tickMsg:
 		if m.screen == screenRunning && !m.running.finished {
@@ -200,6 +223,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateWeb(msg)
 		case screenAgentStudio:
 			return m.updateAgentStudio(msg)
+		case screenDelegation:
+			return m.updateDelegation(msg)
 		}
 	}
 	return m, nil
@@ -226,6 +251,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.selectHomeEntry(5)
 	case "7":
 		return m.selectHomeEntry(6)
+	case "8":
+		return m.selectHomeEntry(7)
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
@@ -265,27 +292,36 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.replanning = false
 		m.mcpCursor = 0
 		return m, nil
-	case 1: // Manage MCPs
+	case 1: // Configure Delegation
+		m.screen = screenDelegation
+		m.delegationCursor = 0
+		m.delegationSavedMsg = ""
+		if loaded, err := delegation.Load(filepath.Join(m.homeDir, ".config", "opencode")); err == nil {
+			m.delegationCfg = loaded
+		}
+		m.opts.DelegationConfig = &m.delegationCfg
+		return m, nil
+	case 2: // Manage MCPs
 		m.screen = screenMCP
 		m.mcpReport = nil
 		m.mcpErr = nil
 		return m, mcpListCmd(m.svc)
-	case 2: // CortexIA Web Console
+	case 3: // CortexIA Web Console
 		m.screen = screenWeb
 		startWebBackground(m.homeDir)
 		return m, nil
-	case 3: // Agent Studio (Create Sub-agent)
+	case 4: // Agent Studio (Create Sub-agent)
 		m.screen = screenAgentStudio
 		m.studioStep = 0
 		m.studioArchIdx = 0
 		m.studioResultMsg = ""
 		return m, nil
-	case 4: // Doctor / Recovery
+	case 5: // Doctor / Recovery
 		return m.startRunning("Doctor", []string{"Inspect state", "Compare digests", "Assess MCPs", "Report"}, doctorCmd(m.svc))
-	case 5: // Uninstall (destructive: explicit confirmation first)
+	case 6: // Uninstall (destructive: explicit confirmation first)
 		m.confirm = confirmState{kind: confirmUninstall}
 		return m, nil
-	case 6: // Quit
+	case 7: // Quit
 		m.quitting = true
 		return m, tea.Quit
 	}
@@ -299,8 +335,8 @@ func (m model) updateWeb(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "esc", "b", "B":
 		m.screen = screenHome
-		m.cursor = 2
-		return m, nil
+		m.cursor = 3
+		return m, homeTick()
 	case "o", "O", "enter", " ":
 		openBrowser("http://127.0.0.1:7331")
 		return m, nil
@@ -321,6 +357,7 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.screen = screenHome
 		m.cursor = 0
+		return m, homeTick()
 	case "up", "k":
 		if m.mcpCursor > 0 {
 			m.mcpCursor--
@@ -421,7 +458,20 @@ func (m model) updateRunning(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // startRunning switches to the Running screen and dispatches the operation.
 func (m model) startRunning(title string, phases []string, cmd tea.Cmd) (tea.Model, tea.Cmd) {
 	m.screen = screenRunning
-	m.running = runningState{title: title, phases: phases, current: 0}
+	sp := spinner.New(spinner.WithSpinner(spinner.Dot))
+	sp.Style = lipgloss.NewStyle().Foreground(styles.Secondary)
+	p := progress.New(
+		progress.WithScaledGradient(string(styles.Primary), string(styles.Secondary)),
+		progress.WithWidth(44),
+	)
+	m.running = runningState{
+		title:         title,
+		phases:        phases,
+		current:       0,
+		startedAt:     time.Now(),
+		progressModel: p,
+		spinnerModel:  sp,
+	}
 	return m, tea.Batch(spinTick(), cmd)
 }
 
@@ -445,6 +495,7 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "esc", "m":
 		m.screen = screenHome
 		m.cursor = 0
+		return m, homeTick()
 	case "r":
 		if m.result.canRollback {
 			m.confirm = confirmState{kind: confirmRollback}
@@ -469,7 +520,8 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "esc", "m":
 		m.screen = screenHome
-		m.cursor = 1 // back on the Manage MCPs entry that opened this screen
+		m.cursor = 2 // back on the Manage MCPs entry that opened this screen
+		return m, homeTick()
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--

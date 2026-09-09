@@ -85,6 +85,9 @@ func runCLI(args []string) error {
 	case "uninstall":
 		return runUninstall(rest)
 
+	case "update", "upgrade":
+		return runUpdate(rest)
+
 	case "version", "--version", "-v":
 		fmt.Printf("cortex-ia %s\n", Version)
 		return nil
@@ -107,8 +110,6 @@ var retiredCommands = map[string]bool{
 	"detect":         true,
 	"verify":         true,
 	"repair":         true,
-	"update":         true,
-	"upgrade":        true,
 	"config":         true,
 	"list":           true,
 	"init":           true,
@@ -221,6 +222,7 @@ Usage:
   cortex-ia recover <journal-id>     Restore one pending journal; typing its
                                       exact ID confirms the recovery
   cortex-ia uninstall [--dry-run]    Remove the accredited installation
+  cortex-ia update [--check]         Check for and install latest release
   cortex-ia version                  Show version
   cortex-ia help                     Show this help
 

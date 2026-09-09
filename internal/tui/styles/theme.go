@@ -1,6 +1,12 @@
 package styles
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"fmt"
+	"math"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // ThemeID identifies a theme.
 type ThemeID string
@@ -136,6 +142,48 @@ const (
 / /__/ /_/ / /  / /_/  __/>  </_____/ / /_/ /
 \___/\____/_/   \__/\___/_/|_|    /_/\__,_/  `
 )
+
+// hexToRGB parses a hex string "#RRGGBB" into RGB integers.
+func hexToRGB(hexStr string) (r, g, b int) {
+	if strings.HasPrefix(hexStr, "#") && len(hexStr) == 7 {
+		_, _ = fmt.Sscanf(hexStr[1:], "%02x%02x%02x", &r, &g, &b)
+		return
+	}
+	return 124, 58, 237 // fallback to default primary
+}
+
+// ShimmerLogo renders the ASCII Logo with a dynamic, wave-interpolated color gradient
+// smoothly moving between Primary and Secondary across columns based on frame index.
+func ShimmerLogo(frame int) string {
+	r1, g1, b1 := hexToRGB(string(Primary))
+	r2, g2, b2 := hexToRGB(string(Secondary))
+
+	lines := strings.Split(Logo, "\n")
+	renderedLines := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		var sb strings.Builder
+		for col, ch := range []rune(line) {
+			if ch == ' ' {
+				sb.WriteRune(' ')
+				continue
+			}
+			// Compute wave phase based on column position and animation frame
+			wave := float64(col)*0.16 - float64(frame)*0.22
+			t := 0.5 + 0.5*math.Sin(wave)
+
+			r := int(float64(r1)*(1.0-t) + float64(r2)*t)
+			g := int(float64(g1)*(1.0-t) + float64(g2)*t)
+			b := int(float64(b1)*(1.0-t) + float64(b2)*t)
+
+			hex := fmt.Sprintf("#%02x%02x%02x", r, g, b)
+			styled := lipgloss.NewStyle().Foreground(lipgloss.Color(hex)).Bold(true).Render(string(ch))
+			sb.WriteString(styled)
+		}
+		renderedLines = append(renderedLines, sb.String())
+	}
+	return strings.Join(renderedLines, "\n")
+}
 
 // ToggleTheme switches between dark and light themes.
 func ToggleTheme() {

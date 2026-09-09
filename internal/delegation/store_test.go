@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -416,6 +417,43 @@ func TestRunnerValidationAndPrompts(t *testing.T) {
 	}
 	if parsed.TaskID != "t-valid" {
 		t.Errorf("task ID mismatch: %s", parsed.TaskID)
+	}
+
+	// 8. Investigate role allows absolute paths and outside workspace paths in allowed files
+	investigateReq := Request{
+		Role:         "investigate",
+		Objective:    "Inspect contract",
+		Workspace:    tempDir,
+		AllowedFiles: []string{"C:/contracts/workflow-map.md", filepath.Join(tempDir, "relative.md")},
+	}
+	if err := investigateReq.Validate(); err != nil {
+		t.Fatalf("expected investigate role to allow paths in allowed files, got: %v", err)
+	}
+	if len(investigateReq.AllowedFiles) != 2 || investigateReq.AllowedFiles[1] != "relative.md" {
+		t.Errorf("expected relative.md to be normalized, got: %v", investigateReq.AllowedFiles)
+	}
+
+	// 9. Implement role normalizes absolute paths inside workspace
+	implementAbsReq := validReq
+	implementAbsReq.AllowedFiles = []string{filepath.Join(tempDir, "src", "main.go")}
+	if err := implementAbsReq.Validate(); err != nil {
+		t.Fatalf("expected implement role to accept and normalize absolute path inside workspace, got: %v", err)
+	}
+	if implementAbsReq.AllowedFiles[0] != "src/main.go" {
+		t.Errorf("expected normalized src/main.go, got %s", implementAbsReq.AllowedFiles[0])
+	}
+
+	// 10. Implement role rejects paths outside workspace
+	implementOutsideReq := validReq
+	implementOutsideReq.AllowedFiles = []string{"/outside/file.go"}
+	if runtime.GOOS == "windows" {
+		implementOutsideReq.AllowedFiles = []string{"C:\\outside\\file.go"}
+		if strings.HasPrefix(strings.ToLower(tempDir), "c:") {
+			implementOutsideReq.AllowedFiles = []string{"Z:\\outside\\file.go"}
+		}
+	}
+	if err := implementOutsideReq.Validate(); err == nil {
+		t.Error("expected error for implement role with path outside workspace")
 	}
 }
 

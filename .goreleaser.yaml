@@ -19,6 +19,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
+      - -X main.version={{.Version}}
       - -X github.com/lleontor705/cortex-ia/internal/app.Version={{.Version}}
       - -X github.com/lleontor705/cortex-ia/internal/app.Commit={{.Commit}}
       - -X github.com/lleontor705/cortex-ia/internal/app.Date={{.Date}}

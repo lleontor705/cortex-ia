@@ -74,7 +74,7 @@ func ReadRequest(path string) (Request, error) {
 	return request, nil
 }
 
-func (r Request) Validate() error {
+func (r *Request) Validate() error {
 	if err := r.ConversationOwnership.Validate(); err != nil {
 		return err
 	}
@@ -120,10 +120,24 @@ func (r Request) Validate() error {
 		default:
 			return fmt.Errorf("unsupported workspace_strategy %q", r.WorkspaceMode)
 		}
-	}
-	for _, allowed := range r.AllowedFiles {
-		if filepath.IsAbs(allowed) || allowed == "." || strings.HasPrefix(filepath.Clean(allowed), ".."+string(filepath.Separator)) {
-			return fmt.Errorf("unsafe allowed file %q", allowed)
+		for i, allowed := range r.AllowedFiles {
+			if filepath.IsAbs(allowed) {
+				if rel, err := filepath.Rel(r.Workspace, allowed); err == nil && !strings.HasPrefix(rel, "..") && rel != "." {
+					allowed = filepath.ToSlash(rel)
+					r.AllowedFiles[i] = allowed
+				}
+			}
+			if filepath.IsAbs(allowed) || allowed == "." || strings.HasPrefix(filepath.Clean(allowed), ".."+string(filepath.Separator)) {
+				return fmt.Errorf("unsafe allowed file %q", allowed)
+			}
+		}
+	} else {
+		for i, allowed := range r.AllowedFiles {
+			if filepath.IsAbs(allowed) {
+				if rel, err := filepath.Rel(r.Workspace, allowed); err == nil && !strings.HasPrefix(rel, "..") && rel != "." {
+					r.AllowedFiles[i] = filepath.ToSlash(rel)
+				}
+			}
 		}
 	}
 	if len(r.OutputSchema) > 64*1024 || (len(r.OutputSchema) > 0 && !json.Valid(r.OutputSchema)) {
@@ -841,7 +855,11 @@ func externalPrompt(request Request) string {
 	if len(request.AllowedFiles) > 0 {
 		b.WriteString("\nAllowed files: ")
 		b.WriteString(strings.Join(request.AllowedFiles, ", "))
-		b.WriteString("\nDo not modify files outside this list.")
+		if request.Role == "implement" {
+			b.WriteString("\nDo not modify files outside this list.")
+		} else {
+			b.WriteString("\nFocus inspection on these files.")
+		}
 	}
 	b.WriteString("\n\nObjective:\n")
 	b.WriteString(request.Objective)
