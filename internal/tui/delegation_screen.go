@@ -40,7 +40,8 @@ func (m model) updateDelegation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ", "tab", "right", "left":
 		m = m.toggleDelegationItem(m.delegationCursor)
 	case "enter":
-		if m.delegationCursor == 6 {
+		switch m.delegationCursor {
+		case 6:
 			// Save
 			configDir := filepath.Join(m.homeDir, ".config", "opencode")
 			if err := delegation.Save(configDir, m.delegationCfg); err != nil {
@@ -48,11 +49,11 @@ func (m model) updateDelegation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			} else {
 				m.delegationSavedMsg = stylePass.Render("✔ Configuración guardada en ~/.config/opencode/cortex-delegation.json")
 			}
-		} else if m.delegationCursor == 7 {
+		case 7:
 			m.screen = screenHome
 			m.cursor = 1
 			return m, homeTick()
-		} else {
+		default:
 			m = m.toggleDelegationItem(m.delegationCursor)
 		}
 	}

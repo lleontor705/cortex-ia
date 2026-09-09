@@ -74,7 +74,7 @@ func (c *Client) CheckLatest(ctx context.Context, currentVersion string) (*Relea
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to fetch latest release from %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -194,7 +194,7 @@ func (c *Client) ApplyUpdate(ctx context.Context, rel *Release) error {
 	if err != nil {
 		return fmt.Errorf("failed to download release asset: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("asset download returned status %s", resp.Status)
@@ -250,8 +250,12 @@ func extractFromZip(data []byte, targetName string) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			defer rc.Close()
-			return io.ReadAll(rc)
+			content, err := io.ReadAll(rc)
+			_ = rc.Close()
+			if err != nil {
+				return nil, err
+			}
+			return content, nil
 		}
 	}
 	return nil, fmt.Errorf("executable %q not found in zip archive", targetName)
@@ -262,7 +266,7 @@ func extractFromTarGz(data []byte, targetName string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid gzip archive: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
 	for {
@@ -310,7 +314,7 @@ func replaceExecutable(targetPath string, newBytes []byte) error {
 		return fmt.Errorf("failed to create temporary binary: %w", err)
 	}
 	tmpName := tmpFile.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 
 	if _, err := tmpFile.Write(newBytes); err != nil {
 		_ = tmpFile.Close()
