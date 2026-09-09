@@ -34,7 +34,7 @@ tools:
 
 # role/orchestrator [STATIC_PREFIX_V2]
 
-Load `~/.cortex-ia/opencode/contracts/workflow-map.md` before phase routing. It is the single route/artifact/exit matrix; SDD materialization requires typed contract bindings, and planner closure uses `cortex_ia_change_archive` after independent approval and current fingerprints. Never equate structural validation with semantic contract or product acceptance.
+Load `~/.cortex-ia/opencode/contracts/workflow-map.md` before phase routing. It is the single route/artifact/exit matrix; SDD materialization requires typed contract bindings, and planner closure uses `cortex_ia_change_archive` after independent approval and current fingerprints. The single normative authority for task authority and work control is `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`. Never equate structural validation with semantic contract or product acceptance.
 
 If later approved work changes an earlier SDD task's reviewed files, reconcile active work and call `cortex_ia_work_review_refresh` with the current revision, then dispatch an independent reviewer. This narrowly reopens review; it never grants a claim, write permission or approval and cannot reopen an archived change.
 

@@ -106,6 +106,7 @@ func (m model) viewDelegation() string {
 		"",
 	}
 
+	cursorLine := 0
 	var content []string
 
 	// 0: Herdr
@@ -115,6 +116,7 @@ func (m model) viewDelegation() string {
 	}
 	line0 := fmt.Sprintf("  • %-26s ➔ %s", "Multiplexor Herdr", herdrStatus)
 	if m.delegationCursor == 0 {
+		cursorLine = len(content)
 		line0 = styleSelected.Render(fmt.Sprintf("> • %-26s ➔ %s", "Multiplexor Herdr", herdrStatus))
 	}
 	content = append(content, truncate(line0, width))
@@ -126,6 +128,7 @@ func (m model) viewDelegation() string {
 	}
 	line1 := fmt.Sprintf("  • %-26s ➔ %s", "Delegación Externa", delStatus)
 	if m.delegationCursor == 1 {
+		cursorLine = len(content)
 		line1 = styleSelected.Render(fmt.Sprintf("> • %-26s ➔ %s", "Delegación Externa", delStatus))
 	}
 	content = append(content, truncate(line1, width))
@@ -145,6 +148,7 @@ func (m model) viewDelegation() string {
 		}
 		line := fmt.Sprintf("  • %-26s ➔ %s", role, status)
 		if m.delegationCursor == i+2 {
+			cursorLine = len(content)
 			line = styleSelected.Render(fmt.Sprintf("> • %-26s ➔ %s", role, status))
 		}
 		content = append(content, truncate(line, width))
@@ -158,17 +162,20 @@ func (m model) viewDelegation() string {
 
 	btnSave := "  [ Guardar Configuración ]"
 	if m.delegationCursor == 6 {
+		cursorLine = len(content)
 		btnSave = styleSelected.Render("> [ Guardar Configuración ]")
 	}
 	content = append(content, truncate(btnSave, width))
 
 	btnBack := "  [ Volver al Menú Principal ]"
 	if m.delegationCursor == 7 {
+		cursorLine = len(content)
 		btnBack = styleSelected.Render("> [ Volver al Menú Principal ]")
 	}
 	content = append(content, truncate(btnBack, width))
 
 	var bottom []string
 	bottom = append(bottom, m.footer("space/tab alternar · enter guardar/seleccionar · b/esc volver"))
-	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), 0, "up/down"), "\n")
+	offset := cursorOffset(cursorLine, len(content), m.bodyHeight(), len(top), len(bottom))
+	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), offset, "up/down"), "\n")
 }

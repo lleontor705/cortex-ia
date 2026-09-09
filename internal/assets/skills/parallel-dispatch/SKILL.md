@@ -63,10 +63,10 @@ For each task in the parallel wave, dispatch an `implement` controller in the sa
 When using OpenCode's `task` tool:
 ```javascript
 // Launch Task 1 concurrently
-task({ subagent: "implement", prompt: envelopeTask1, background: true });
+task({ subagent_type: "implement", prompt: envelopeTask1, background: true });
 
 // Launch Task 2 concurrently
-task({ subagent: "implement", prompt: envelopeTask2, background: true });
+task({ subagent_type: "implement", prompt: envelopeTask2, background: true });
 ```
 
 **Capacity Rule:** Default maximum of 3 concurrent background writers to prevent CPU/memory exhaustion.

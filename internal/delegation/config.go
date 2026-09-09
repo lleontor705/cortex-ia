@@ -51,7 +51,7 @@ type DelegationConfig struct {
 func NormalConfig() DelegationConfig {
 	return DelegationConfig{
 		Version:       "2.0.0",
-		HerdrSettings: HerdrSettings{SplitDirection: "right", TimeoutSeconds: 300},
+		HerdrSettings: HerdrSettings{SplitDirection: "right", TimeoutSeconds: 900},
 		Roles: map[string]RoleConfig{
 			"implement": {CLI: "native"}, "investigate": {CLI: "native"},
 			"reviewer": {CLI: "native"}, "planner": {CLI: "native"},

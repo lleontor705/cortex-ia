@@ -556,15 +556,12 @@ func (s *Store) Create(ctx context.Context, input NewJob) (Job, error) {
 	job.ConversationOwnership = input.ConversationOwnership
 	err = s.immediate(ctx, func(conn *sql.Conn) error {
 		if job.TaskID != "" {
-			var taskRoot, taskWorkspace string
-			err := conn.QueryRowContext(ctx, `SELECT opencode_root_session_id,workspace FROM work_items WHERE id=?`, job.TaskID).Scan(&taskRoot, &taskWorkspace)
+			var taskWorkspace string
+			err := conn.QueryRowContext(ctx, `SELECT workspace FROM work_items WHERE id=?`, job.TaskID).Scan(&taskWorkspace)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
 			if err == nil {
-				if taskRoot != "" && job.OpenCodeRootSessionID != "" && taskRoot != job.OpenCodeRootSessionID {
-					return fmt.Errorf("%w: task/job conversation root mismatch", ErrWorkConflict)
-				}
 				if strings.TrimSpace(taskWorkspace) != "" && !SameWorkspace(taskWorkspace, job.Workspace) {
 					return fmt.Errorf("%w: task/job workspace mismatch", ErrWorkConflict)
 				}

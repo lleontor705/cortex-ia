@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -273,5 +274,121 @@ func TestHomeNumericHotkeys(t *testing.T) {
 	updated8, cmd8 := m.Update(key("8"))
 	if cmd8 == nil || !updated8.(model).quitting {
 		t.Fatal("key 8 should quit")
+	}
+}
+
+// TestWebReadinessEnablesBrowser proves that ready server state enables browser opening and reflects active state.
+func TestWebReadinessEnablesBrowser(t *testing.T) {
+	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m.screen = screenWeb
+
+	// Simulate readiness message
+	updated, _ := m.Update(webReadyMsg{url: "http://127.0.0.1:7331"})
+	m = updated.(model)
+
+	if !m.webReady || m.webURL != "http://127.0.0.1:7331" {
+		t.Fatalf("expected webReady=true and valid URL, got ready=%v url=%q", m.webReady, m.webURL)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "Servidor Activo") {
+		t.Fatalf("expected view to reflect active server status, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Presiona 'o' o 'Enter' para abrir") {
+		t.Fatalf("expected action prompt to be available when ready, got:\n%s", view)
+	}
+
+	opened := ""
+	oldOpener := browserOpener
+	defer func() { browserOpener = oldOpener }()
+	browserOpener = func(target string) {
+		opened = target
+	}
+
+	m = press(m, "o")
+	if opened != "http://127.0.0.1:7331" {
+		t.Fatalf("expected browser to open http://127.0.0.1:7331, got %q", opened)
+	}
+}
+
+// TestWebStartupFailureDisablesBrowser proves that store/listen/serve startup failure disables browser opening.
+func TestWebStartupFailureDisablesBrowser(t *testing.T) {
+	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m.screen = screenWeb
+
+	// Simulate startup failure
+	errFake := errors.New("listen tcp 127.0.0.1:7331: bind: address already in use")
+	updated, _ := m.Update(webErrMsg{err: errFake})
+	m = updated.(model)
+
+	if m.webReady || m.webErr == nil {
+		t.Fatalf("expected webReady=false and webErr set, got ready=%v err=%v", m.webReady, m.webErr)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "Error de Inicio") {
+		t.Fatalf("expected view to expose startup error, got:\n%s", view)
+	}
+	if !strings.Contains(view, "apertura de navegador deshabilitada") {
+		t.Fatalf("expected view to indicate browser opening is disabled, got:\n%s", view)
+	}
+
+	opened := ""
+	oldOpener := browserOpener
+	defer func() { browserOpener = oldOpener }()
+	browserOpener = func(target string) {
+		opened = target
+	}
+
+	m = press(m, "enter")
+	if opened != "" {
+		t.Fatalf("expected browser opening to remain disabled on startup failure, opened: %q", opened)
+	}
+}
+
+// TestWebBrowserGatingBeforeReadiness proves that browser opening is gated before readiness reports.
+func TestWebBrowserGatingBeforeReadiness(t *testing.T) {
+	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m.screen = screenWeb
+	m.webStarting = true
+	m.webReady = false
+
+	view := m.View()
+	if !strings.Contains(view, "Iniciando Servidor") {
+		t.Fatalf("expected view to show starting state, got:\n%s", view)
+	}
+	if !strings.Contains(view, "apertura de navegador en espera") {
+		t.Fatalf("expected view to show browser action on hold, got:\n%s", view)
+	}
+
+	opened := ""
+	oldOpener := browserOpener
+	defer func() { browserOpener = oldOpener }()
+	browserOpener = func(target string) {
+		opened = target
+	}
+
+	m = press(m, "enter")
+	if opened != "" {
+		t.Fatalf("expected browser opening to remain disabled before readiness, opened: %q", opened)
+	}
+}
+
+// TestIndeterminateProgressNoFabricatedPhases proves that long operations render an indeterminate running indicator without fabricated completion percentages.
+func TestIndeterminateProgressNoFabricatedPhases(t *testing.T) {
+	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	updated, _ := m.startRunning("Long Operation", []string{"Step One", "Step Two", "Step Three"}, nil)
+	m = updated.(model)
+
+	view := m.View()
+	if !strings.Contains(view, "Operation in progress…") {
+		t.Fatalf("expected indeterminate progress indicator in view, got:\n%s", view)
+	}
+	// Verify that synthetic percentage checkmarks and fake progress percentages do not appear
+	if strings.Contains(view, "✓ Step One") {
+		t.Fatalf("found fabricated phase completion checkmark in running view:\n%s", view)
+	}
+	if strings.Contains(view, "%") {
+		t.Fatalf("found fabricated percentage completion in running view:\n%s", view)
 	}
 }

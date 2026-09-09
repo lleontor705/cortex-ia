@@ -66,6 +66,7 @@ func (m model) viewWizardHerdr() string {
 		},
 	}
 
+	cursorLine := 0
 	var content []string
 	for i, opt := range options {
 		cursorMark := "  "
@@ -74,6 +75,7 @@ func (m model) viewWizardHerdr() string {
 			text = fmt.Sprintf("[%s] %s", "x", opt.title)
 		}
 		if m.wizardCursor == i {
+			cursorLine = len(content)
 			cursorMark = "> "
 			text = styleSelected.Render(text)
 		}
@@ -84,7 +86,44 @@ func (m model) viewWizardHerdr() string {
 
 	var bottom []string
 	bottom = append(bottom, m.footer("enter continuar · ↑/↓ seleccionar · esc cancelar / inicio"))
-	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), 0, "up/down"), "\n")
+	offset := cursorOffset(cursorLine, len(content), m.bodyHeight(), len(top), len(bottom))
+	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), offset, "up/down"), "\n")
+}
+
+// cursorOffset computes a content offset so that cursorLine is within the visible viewport budget.
+func cursorOffset(cursorLine, totalLines, budget, topLen, bottomLen int) int {
+	if budget <= 0 || totalLines <= 0 {
+		return 0
+	}
+	for topLen+bottomLen >= budget && topLen > 1 {
+		topLen--
+	}
+	contentBudget := budget - topLen - bottomLen
+	if contentBudget <= 0 {
+		return 0
+	}
+	if totalLines <= contentBudget {
+		return 0
+	}
+	keep := contentBudget - 1
+	if keep < 1 {
+		keep = 1
+	}
+	offset := 0
+	if cursorLine >= keep {
+		offset = cursorLine - keep + 1
+	}
+	maxOffset := totalLines - keep
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return offset
 }
 
 // --- Paso 2: Delegación a CLIs Externas ---
@@ -162,6 +201,7 @@ func (m model) viewWizardDelegation() string {
 		},
 	}
 
+	cursorLine := 0
 	var content []string
 	for i, opt := range options {
 		cursorMark := "  "
@@ -170,6 +210,7 @@ func (m model) viewWizardDelegation() string {
 			text = fmt.Sprintf("[%s] %s", "x", opt.title)
 		}
 		if m.wizardCursor == i {
+			cursorLine = len(content)
 			cursorMark = "> "
 			text = styleSelected.Render(text)
 		}
@@ -180,7 +221,8 @@ func (m model) viewWizardDelegation() string {
 
 	var bottom []string
 	bottom = append(bottom, m.footer("enter continuar · ↑/↓ seleccionar · b / esc volver"))
-	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), 0, "up/down"), "\n")
+	offset := cursorOffset(cursorLine, len(content), m.bodyHeight(), len(top), len(bottom))
+	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), offset, "up/down"), "\n")
 }
 
 // --- Paso 3: Matriz de Fases y Motores ---
@@ -250,6 +292,7 @@ func (m model) viewWizardRoles() string {
 		"",
 	}
 
+	cursorLine := 0
 	var content []string
 	for i, role := range delegationRoles {
 		r := m.delegationCfg.Roles[role]
@@ -261,6 +304,7 @@ func (m model) viewWizardRoles() string {
 		}
 		line := fmt.Sprintf("  • %-12s ➔ %s", role, status)
 		if m.wizardCursor == i {
+			cursorLine = len(content)
 			line = styleSelected.Render(fmt.Sprintf("> • %-12s ➔ %s", role, status))
 		}
 		content = append(content, truncate(line, width))
@@ -269,11 +313,13 @@ func (m model) viewWizardRoles() string {
 	content = append(content, "")
 	btnText := "  [ Continuar a la Revisión del Plan ➔ ]"
 	if m.wizardCursor == len(delegationRoles) {
+		cursorLine = len(content)
 		btnText = styleSelected.Render("> [ Continuar a la Revisión del Plan ➔ ]")
 	}
 	content = append(content, truncate(btnText, width))
 
 	var bottom []string
 	bottom = append(bottom, m.footer("space/tab cambiar motor · enter continuar a review · b volver"))
-	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), 0, "up/down"), "\n")
+	offset := cursorOffset(cursorLine, len(content), m.bodyHeight(), len(top), len(bottom))
+	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), offset, "up/down"), "\n")
 }

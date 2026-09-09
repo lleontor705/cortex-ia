@@ -142,8 +142,22 @@ type model struct {
 	delegationCursor   int
 	delegationSavedMsg string
 
+	// Web Console state
+	webReady    bool
+	webURL      string
+	webErr      error
+	webStarting bool
+
 	// Animation state
 	logoFrame int
+}
+
+type webReadyMsg struct {
+	url string
+}
+
+type webErrMsg struct {
+	err error
 }
 
 // newModel builds the model bound to a service implementation.
@@ -198,6 +212,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onMCPList(msg)
 	case mcpMutateMsg:
 		return m.onMCPMutateDone(msg)
+	case webReadyMsg:
+		m.webReady = true
+		m.webURL = msg.url
+		m.webErr = nil
+		m.webStarting = false
+		return m, nil
+	case webErrMsg:
+		m.webReady = false
+		m.webErr = msg.err
+		m.webStarting = false
+		return m, nil
 	case tea.KeyMsg:
 		if m.confirm.kind != confirmNone {
 			return m.updateConfirm(msg)
@@ -308,8 +333,12 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		return m, mcpListCmd(m.svc)
 	case 3: // CortexIA Web Console
 		m.screen = screenWeb
-		startWebBackground(m.homeDir)
-		return m, nil
+		if m.webReady {
+			return m, nil
+		}
+		m.webStarting = true
+		m.webErr = nil
+		return m, startWebCmd(m.homeDir)
 	case 4: // Agent Studio (Create Sub-agent)
 		m.screen = screenAgentStudio
 		m.studioStep = 0
@@ -338,7 +367,9 @@ func (m model) updateWeb(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 3
 		return m, homeTick()
 	case "o", "O", "enter", " ":
-		openBrowser("http://127.0.0.1:7331")
+		if m.webReady && m.webURL != "" {
+			openBrowser(m.webURL)
+		}
 		return m, nil
 	}
 	return m, nil

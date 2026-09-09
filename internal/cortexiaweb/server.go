@@ -290,12 +290,36 @@ func writeResult(w http.ResponseWriter, value any, err error) {
 	status := http.StatusBadRequest
 	if errors.Is(err, delegation.ErrBoardNotFound) || errors.Is(err, delegation.ErrWorkNotFound) || errors.Is(err, delegation.ErrJobNotFound) {
 		status = http.StatusNotFound
+	} else if errors.Is(err, delegation.ErrWorkConflict) {
+		status = http.StatusConflict
+	} else if strings.Contains(err.Error(), "sqlite") || strings.Contains(err.Error(), "database") {
+		status = http.StatusInternalServerError
 	}
 	writeError(w, status, err)
 }
 
 func writeError(w http.ResponseWriter, status int, err error) {
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	code := "BAD_REQUEST"
+	msg := err.Error()
+	switch status {
+	case http.StatusNotFound:
+		code = "NOT_FOUND"
+	case http.StatusForbidden:
+		code = "FORBIDDEN"
+	case http.StatusConflict:
+		code = "CONFLICT"
+	default:
+		if status >= 500 {
+			code = "INTERNAL_ERROR"
+			msg = "internal server error"
+		}
+	}
+	writeJSON(w, status, map[string]any{
+		"error": map[string]string{
+			"code":    code,
+			"message": msg,
+		},
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

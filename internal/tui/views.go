@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
@@ -297,47 +296,13 @@ func (m model) viewRunning() string {
 		truncate(m.header("Running — "+m.running.title), width),
 		"",
 	}
-	for i, phase := range m.running.phases {
-		switch {
-		case i < m.running.current:
-			lines = append(lines, stylePass.Render(fmt.Sprintf("  ✓ %s", phase)))
-		case i == m.running.current:
-			spinner := styles.SpinnerChar(m.running.spinner)
-			lines = append(lines, fmt.Sprintf("  %s %s", styleSubtitle.Render(spinner), styleSelected.Render(phase)))
-		default:
-			lines = append(lines, styleDim.Render(fmt.Sprintf("  · %s", phase)))
-		}
+	spinner := styles.SpinnerChar(m.running.spinner)
+	for _, phase := range m.running.phases {
+		lines = append(lines, styleDim.Render(fmt.Sprintf("  · %s", phase)))
 	}
 
-	// Dynamic Animated Progress Bar
-	numPhases := len(m.running.phases)
-	var percent float64
-	if numPhases > 0 {
-		percent = float64(m.running.current) / float64(numPhases)
-	}
-	if m.running.finished {
-		percent = 1.0
-	}
-
-	barWidth := width - 6
-	if barWidth > 44 {
-		barWidth = 44
-	}
-	if barWidth < 20 {
-		barWidth = 20
-	}
-
-	prog := m.running.progressModel
-	if prog.Width == 0 {
-		prog = progress.New(
-			progress.WithScaledGradient(string(styles.Primary), string(styles.Secondary)),
-			progress.WithWidth(barWidth),
-		)
-	} else {
-		prog.Width = barWidth
-	}
-
-	lines = append(lines, "", "  "+prog.ViewAs(percent))
+	// Indeterminate operation indicator (no fabricated phase completion)
+	lines = append(lines, "", fmt.Sprintf("  %s %s", styleSubtitle.Render(spinner), styleSelected.Render("Operation in progress…")))
 
 	// Live elapsed time counter
 	elapsedStr := "00:00.0"
@@ -467,8 +432,28 @@ func (m model) viewWeb() string {
 	lines = append(lines, truncate(m.header("CortexIA Web Console"), width), "")
 	lines = append(lines, styleSubtitle.Render("🌐 Tablero Kanban y Supervisión en Tiempo Real"))
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("  • Estado:  %s", stylePass.Render("🟢 Servidor Activo")))
-	lines = append(lines, fmt.Sprintf("  • URL:     %s", styleSelected.Render("http://127.0.0.1:7331")))
+	var statusText string
+	var actionText string
+	if m.webStarting {
+		statusText = styleSubtitle.Render("🟡 Iniciando Servidor...")
+		actionText = styleDim.Render("  [ Iniciando servidor web... apertura de navegador en espera ]")
+	} else if m.webErr != nil {
+		statusText = styleFail.Render(fmt.Sprintf("🔴 Error de Inicio: %s", m.webErr.Error()))
+		actionText = styleFail.Render("  [ Error en servidor web — apertura de navegador deshabilitada ]")
+	} else if m.webReady {
+		statusText = stylePass.Render("🟢 Servidor Activo")
+		actionText = styleSelected.Render("  [ Presiona 'o' o 'Enter' para abrir en tu navegador predeterminado ]")
+	} else {
+		statusText = styleDim.Render("⚪ Servidor Inactivo")
+		actionText = styleDim.Render("  [ Servidor no disponible — apertura de navegador deshabilitada ]")
+	}
+
+	lines = append(lines, fmt.Sprintf("  • Estado:  %s", statusText))
+	urlStr := "http://127.0.0.1:7331"
+	if m.webURL != "" {
+		urlStr = m.webURL
+	}
+	lines = append(lines, fmt.Sprintf("  • URL:     %s", styleSelected.Render(urlStr)))
 	lines = append(lines, fmt.Sprintf("  • Storage: %s", styleDim.Render(delegation.DefaultDBPath(m.homeDir))))
 	lines = append(lines, "")
 	lines = append(lines, styleDim.Render("Funcionalidades disponibles en el navegador:"))
@@ -477,7 +462,7 @@ func (m model) viewWeb() string {
 	lines = append(lines, "  🛡️ Control de Concurrencia (Active File Leases y Claims)")
 	lines = append(lines, "  🧠 Grafo de Conocimiento Cortex (AST, símbolos y memoria episódica)")
 	lines = append(lines, "")
-	lines = append(lines, styleSelected.Render("  [ Presiona 'o' o 'Enter' para abrir en tu navegador predeterminado ]"))
+	lines = append(lines, actionText)
 	lines = append(lines, "", m.footer("enter / o abrir navegador · b / esc volver al menú inicio · q salir"))
 	return strings.Join(lines, "\n")
 }

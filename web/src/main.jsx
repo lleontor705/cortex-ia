@@ -40,7 +40,11 @@ async function request(path, options = {}) {
   try {
     const response = await fetch(path, { ...options, signal: controller.signal });
     const body = await response.json();
-    if (!response.ok) throw new Error(body.error || `Error HTTP ${response.status}`);
+    if (!response.ok) {
+      const err = body?.error;
+      const msg = typeof err === 'object' && err !== null ? (err.message || err.code) : err;
+      throw new Error(msg || `Error HTTP ${response.status}`);
+    }
     return body;
   } finally { clearTimeout(timeout); }
 }
@@ -90,7 +94,12 @@ function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNew
       <p class="side-label">CONTROL</p>
       <nav class="primary-nav" aria-label="Navegación principal">
         {nav.map(([id, icon, label]) => (
-          <button key={id} class={`nav-link ${view === id ? 'active' : ''}`} onClick={() => onView(id)}>
+          <button
+            key={id}
+            class={`nav-link ${view === id ? 'active' : ''}`}
+            aria-current={view === id ? 'page' : undefined}
+            onClick={() => onView(id)}
+          >
             <span class="nav-icon">{icon}</span>
             <span class="nav-text">{label}</span>
             {id === 'sessions' && <b>{dashboard.summary.sessions || 0}</b>}
@@ -107,6 +116,7 @@ function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNew
           <button
             key={board.board_id}
             class={`board-link ${view === 'board' && currentBoard === board.board_id ? 'active' : ''}`}
+            aria-current={view === 'board' && currentBoard === board.board_id ? 'page' : undefined}
             onClick={() => onBoard(board.board_id)}
           >
             <span>{board.title}</span>
@@ -123,6 +133,7 @@ function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNew
               <button
                 key={board.board_id}
                 class={`board-link archived ${view === 'board' && currentBoard === board.board_id ? 'active' : ''}`}
+                aria-current={view === 'board' && currentBoard === board.board_id ? 'page' : undefined}
                 onClick={() => onBoard(board.board_id)}
                 title={`Tablero archivado: ${board.board_id}`}
               >
@@ -511,7 +522,7 @@ function SettingsView({ configData, onRefresh }) {
             </div>
             <div class="setting-row">
               <span>Timeout por Tarea</span>
-              <b>{herdr.timeout_seconds || 300} segundos</b>
+              <b>{herdr.timeout_seconds || 900} segundos</b>
             </div>
           </div>
         </section>
@@ -755,8 +766,8 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
         <section class="board-workspace">
           <header class="board-toolbar">
             <div class="view-switch" aria-label="Vista del tablero">
-              <button class={mode === 'flow' ? 'active' : ''} onClick={() => setMode('flow')}>Flujo</button>
-              <button class={mode === 'dependencies' ? 'active' : ''} onClick={() => setMode('dependencies')}>Dependencias</button>
+              <button class={mode === 'flow' ? 'active' : ''} aria-pressed={mode === 'flow'} onClick={() => setMode('flow')}>Flujo</button>
+              <button class={mode === 'dependencies' ? 'active' : ''} aria-pressed={mode === 'dependencies'} onClick={() => setMode('dependencies')}>Dependencias</button>
             </div>
             <div class="board-filters">
               <select value={statusFilter} onChange={event => setStatusFilter(event.currentTarget.value)} aria-label="Filtrar por estado">
@@ -835,17 +846,50 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
   );
 }
 
-function Modal({ open, onClose, children, className = '' }) {
+function Modal({ open, onClose, title = 'Diálogo', children, className = '' }) {
+  const modalRef = useRef(null);
+  const previousFocus = useRef(null);
+
   useEffect(() => {
     if (!open) return;
-    const close = event => event.key === 'Escape' && onClose();
-    document.addEventListener('keydown', close);
-    return () => document.removeEventListener('keydown', close);
+    previousFocus.current = document.activeElement;
+    const handleKey = event => {
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (event.key === 'Tab' && modalRef.current) {
+        const focusables = modalRef.current.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    setTimeout(() => {
+      const firstInput = modalRef.current?.querySelector('input, select, textarea, button');
+      firstInput?.focus();
+    }, 50);
+
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      if (previousFocus.current && typeof previousFocus.current.focus === 'function') {
+        previousFocus.current.focus();
+      }
+    };
   }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div class="modal-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && onClose()}>
-      <section class={`modal ${className}`} role="dialog" aria-modal="true">
+      <section ref={modalRef} class={`modal ${className}`} role="dialog" aria-modal="true" aria-label={title}>
         {children}
       </section>
     </div>
@@ -853,45 +897,83 @@ function Modal({ open, onClose, children, className = '' }) {
 }
 
 function BoardForm({ open, onClose, onCreated, onError }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [values, setValues] = useState({ board_id: '', title: '', description: '' });
+
+  const updateField = (field, value) => {
+    setValues(prev => ({ ...prev, [field]: value }));
+  };
+
   const submit = async event => {
     event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setFormError('');
     try {
-      const data = Object.fromEntries(new FormData(event.currentTarget));
       const board = await request('/api/boards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify(values)
       });
+      setValues({ board_id: '', title: '', description: '' });
       onCreated(board);
     } catch (error) {
+      setFormError(error.message);
       onError(error);
+    } finally {
+      setSubmitting(false);
     }
   };
+
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal open={open} onClose={onClose} title="Crear task board">
       <form onSubmit={submit}>
         <header>
           <div>
             <p class="eyebrow">NEW SESSION</p>
             <h2>Crear task board</h2>
           </div>
-          <button type="button" class="close" onClick={onClose}>×</button>
+          <button type="button" class="close" onClick={onClose} aria-label="Cerrar modal">×</button>
         </header>
+        {formError && <p class="form-error" role="alert">{formError}</p>}
         <label>
           ID estable
-          <input name="board_id" required maxlength="128" placeholder="release-1" />
+          <input
+            name="board_id"
+            required
+            maxlength="128"
+            placeholder="release-1"
+            value={values.board_id}
+            onInput={e => updateField('board_id', e.target.value)}
+          />
         </label>
         <label>
           Nombre
-          <input name="title" required maxlength="256" placeholder="Release 1" />
+          <input
+            name="title"
+            required
+            maxlength="256"
+            placeholder="Release 1"
+            value={values.title}
+            onInput={e => updateField('title', e.target.value)}
+          />
         </label>
         <label>
           Descripción
-          <textarea name="description" maxlength="2048" placeholder="Objetivo y alcance del board"></textarea>
+          <textarea
+            name="description"
+            maxlength="2048"
+            placeholder="Objetivo y alcance del board"
+            value={values.description}
+            onInput={e => updateField('description', e.target.value)}
+          ></textarea>
         </label>
         <div class="dialog-actions">
-          <button type="button" class="button secondary" onClick={onClose}>Cancelar</button>
-          <button class="button primary">Crear board</button>
+          <button type="button" class="button secondary" onClick={onClose} disabled={submitting}>Cancelar</button>
+          <button class="button primary" disabled={submitting}>
+            {submitting ? 'Creando…' : 'Crear board'}
+          </button>
         </div>
       </form>
     </Modal>
@@ -899,35 +981,83 @@ function BoardForm({ open, onClose, onCreated, onError }) {
 }
 
 function TaskForm({ open, onClose, onCreated, onError, boards, currentBoard }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [values, setValues] = useState({
+    board_id: currentBoard || (boards[0]?.board_id || ''),
+    task_id: '',
+    title: '',
+    objective: '',
+    acceptance_criteria: '',
+    verification: '',
+    allowed_files: '',
+    dependencies: ''
+  });
+
+  useEffect(() => {
+    if (currentBoard) {
+      setValues(prev => ({ ...prev, board_id: currentBoard }));
+    }
+  }, [currentBoard]);
+
+  const updateField = (field, value) => {
+    setValues(prev => ({ ...prev, [field]: value }));
+  };
+
   const submit = async event => {
     event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setFormError('');
     try {
-      const data = Object.fromEntries(new FormData(event.currentTarget));
-      data.dependencies = data.dependencies.split(',').map(value => value.trim()).filter(Boolean);
-      data.allowed_files = data.allowed_files.split(/[\r\n,]+/).map(value => value.trim()).filter(Boolean);
+      const payload = {
+        ...values,
+        dependencies: values.dependencies.split(',').map(v => v.trim()).filter(Boolean),
+        allowed_files: values.allowed_files.split(/[\r\n,]+/).map(v => v.trim()).filter(Boolean)
+      };
       const task = await request('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify(payload)
+      });
+      setValues({
+        board_id: currentBoard || '',
+        task_id: '',
+        title: '',
+        objective: '',
+        acceptance_criteria: '',
+        verification: '',
+        allowed_files: '',
+        dependencies: ''
       });
       onCreated(task);
     } catch (error) {
+      setFormError(error.message);
       onError(error);
+    } finally {
+      setSubmitting(false);
     }
   };
+
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal open={open} onClose={onClose} title="Nueva tarea">
       <form onSubmit={submit}>
         <header>
           <div>
             <p class="eyebrow">NEW WORK ITEM</p>
             <h2>Nueva tarea</h2>
           </div>
-          <button type="button" class="close" onClick={onClose}>×</button>
+          <button type="button" class="close" onClick={onClose} aria-label="Cerrar modal">×</button>
         </header>
+        {formError && <p class="form-error" role="alert">{formError}</p>}
         <label>
           Tablero
-          <select name="board_id" defaultValue={currentBoard} required>
+          <select
+            name="board_id"
+            value={values.board_id}
+            onChange={e => updateField('board_id', e.target.value)}
+            required
+          >
             {boards.map(board => (
               <option value={board.board_id} key={board.board_id}>{board.title}</option>
             ))}
@@ -935,35 +1065,80 @@ function TaskForm({ open, onClose, onCreated, onError, boards, currentBoard }) {
         </label>
         <label>
           ID de tarea
-          <input name="task_id" required maxlength="128" placeholder="TASK-101" />
+          <input
+            name="task_id"
+            required
+            maxlength="128"
+            placeholder="TASK-101"
+            value={values.task_id}
+            onInput={e => updateField('task_id', e.target.value)}
+          />
         </label>
         <label>
           Título
-          <input name="title" required maxlength="512" placeholder="Implementar el adaptador" />
+          <input
+            name="title"
+            required
+            maxlength="512"
+            placeholder="Implementar el adaptador"
+            value={values.title}
+            onInput={e => updateField('title', e.target.value)}
+          />
         </label>
         <label>
           Qué se va a hacer
-          <textarea name="objective" required maxlength="4096" placeholder="Objetivo operativo, límites y resultado esperado"></textarea>
+          <textarea
+            name="objective"
+            required
+            maxlength="4096"
+            placeholder="Objetivo operativo, límites y resultado esperado"
+            value={values.objective}
+            onInput={e => updateField('objective', e.target.value)}
+          ></textarea>
         </label>
         <label>
           Criterios de aceptación
-          <textarea name="acceptance_criteria" maxlength="4096" placeholder="Condiciones observables que deben cumplirse"></textarea>
+          <textarea
+            name="acceptance_criteria"
+            maxlength="4096"
+            placeholder="Condiciones observables que deben cumplirse"
+            value={values.acceptance_criteria}
+            onInput={e => updateField('acceptance_criteria', e.target.value)}
+          ></textarea>
         </label>
         <label>
           Verificación prevista
-          <input name="verification" maxlength="2048" placeholder="go test ./internal/tui/..." />
+          <input
+            name="verification"
+            maxlength="2048"
+            placeholder="go test ./internal/tui/..."
+            value={values.verification}
+            onInput={e => updateField('verification', e.target.value)}
+          />
         </label>
         <label>
           Archivos previstos <small>(uno por línea; rutas relativas exactas)</small>
-          <textarea name="allowed_files" placeholder={'internal/example/service.go\ninternal/example/service_test.go'}></textarea>
+          <textarea
+            name="allowed_files"
+            placeholder={'internal/example/service.go\ninternal/example/service_test.go'}
+            value={values.allowed_files}
+            onInput={e => updateField('allowed_files', e.target.value)}
+          ></textarea>
         </label>
         <label>
           Dependencias <small>(IDs separados por coma)</small>
-          <input name="dependencies" placeholder="TASK-099, TASK-100" />
+          <input
+            name="dependencies"
+            placeholder="TASK-099, TASK-100"
+            value={values.dependencies}
+            onInput={e => updateField('dependencies', e.target.value)}
+          />
         </label>
         <div class="dialog-actions">
-          <button type="button" class="button secondary" onClick={onClose}>Cancelar</button>
-          <button class="button primary">Crear tarea</button>
+          <button type="button" class="button secondary" onClick={onClose} disabled={submitting}>Cancelar</button>
+          <button class="button primary" disabled={submitting}>
+            {submitting ? 'Creando…' : 'Crear tarea'}
+          </button>
         </div>
       </form>
     </Modal>
@@ -972,7 +1147,7 @@ function TaskForm({ open, onClose, onCreated, onError, boards, currentBoard }) {
 
 function TaskDetail({ item, onClose }) {
   return (
-    <Modal open={!!item} onClose={onClose}>
+    <Modal open={!!item} onClose={onClose} title={item ? `Detalle de tarea: ${item.task_id}` : 'Detalle de tarea'}>
       {item && (
         <div class="detail-content">
           <header>
@@ -980,7 +1155,7 @@ function TaskDetail({ item, onClose }) {
               <p class="eyebrow">{item.board_id} / {item.task_id}</p>
               <h2>{item.title}</h2>
             </div>
-            <button class="close" onClick={onClose}>×</button>
+            <button class="close" onClick={onClose} aria-label="Cerrar detalle">×</button>
           </header>
           <div class="detail-grid">
             <span>Estado<b><StatusChip status={item.status} /></b></span>
@@ -1038,7 +1213,7 @@ function JobDetail({ job, error, loading, onClose }) {
   }
 
   return (
-    <Modal open={!!job} onClose={onClose} className="wide-modal">
+    <Modal open={!!job} onClose={onClose} title={job ? `Detalle de job: ${job.job_id}` : 'Detalle de job'} className="wide-modal">
       <div class="detail-content">
         {loading && <p role="status">Consultando detalle…</p>}
         {error && <p class="error-copy" role="alert">Detalle desactualizado: {error}</p>}
@@ -1047,7 +1222,7 @@ function JobDetail({ job, error, loading, onClose }) {
             <p class="eyebrow">DELEGATED JOB / {job.transport?.toUpperCase()}</p>
             <h2>Job <code>{job.job_id}</code></h2>
           </div>
-          <button class="close" onClick={onClose}>×</button>
+          <button class="close" onClick={onClose} aria-label="Cerrar detalle">×</button>
         </header>
 
         <div class="detail-grid">
@@ -1101,6 +1276,9 @@ function App() {
   const [syncError, setSyncError] = useState('');
   const [boardError, setBoardError] = useState('');
   const [boardSyncedAt, setBoardSyncedAt] = useState(null);
+  const [overviewHealth, setOverviewHealth] = useState({ state: 'loading', lastSuccess: null, error: '' });
+  const [boardHealth, setBoardHealth] = useState({ state: 'loading', lastSuccess: null, error: '' });
+  const lastGoodSnapshots = useRef(new Map());
   const [feed, setFeed] = useState(emptyFeed);
   const [boardFeed, setBoardFeed] = useState(emptyFeed);
   const [page, setPage] = useState(0);
@@ -1129,6 +1307,7 @@ function App() {
     const generation = ++allGeneration.current;
     const pending = { page, generation };
     allPending.current = pending;
+    setOverviewHealth(prev => ({ ...prev, state: prev.state === 'healthy' ? 'healthy' : 'loading' }));
     try {
       const [nextDashboard, nextBoards, nextConfig, nextFeed] = await Promise.all([
         request('/api/overview'),
@@ -1142,11 +1321,14 @@ function App() {
       if (nextConfig) setConfigData(nextConfig);
       setFeed(nextFeed);
       setSyncError('');
-      setSyncedAt(new Date());
+      const syncTime = new Date();
+      setSyncedAt(syncTime);
+      setOverviewHealth({ state: 'healthy', lastSuccess: syncTime, error: '' });
       if (!silent) notify('Datos sincronizados');
     } catch (error) {
       if (generation !== allGeneration.current || globalPage.current !== page) return;
       setSyncError(error.message);
+      setOverviewHealth(prev => ({ state: 'degraded', lastSuccess: prev.lastSuccess, error: error.message }));
       notify(error.message, true);
     } finally {
       if (allPending.current === pending) allPending.current = null;
@@ -1161,6 +1343,7 @@ function App() {
     const pending = { key, generation };
     boardPending.current = pending;
     const current = () => generation === boardGeneration.current && selection.current.board === id && selection.current.page === requestedPage && selection.current.view === 'board';
+    setBoardHealth(prev => ({ ...prev, state: prev.state === 'healthy' ? 'healthy' : 'loading' }));
     try {
       const [next, nextFeed] = await Promise.all([
         request(`/api/boards/${encodeURIComponent(id)}`),
@@ -1168,13 +1351,17 @@ function App() {
       ]);
       if (!current()) return;
       if (next.board?.board_id !== id) throw new Error('Respuesta de tablero incompatible');
+      lastGoodSnapshots.current.set(id, next);
       setSnapshot(next);
       setBoardFeed(nextFeed);
       setBoardError('');
-      setBoardSyncedAt(new Date());
+      const syncTime = new Date();
+      setBoardSyncedAt(syncTime);
+      setBoardHealth({ state: 'healthy', lastSuccess: syncTime, error: '' });
     } catch (error) {
       if (!current()) return;
       setBoardError(error.message);
+      setBoardHealth(prev => ({ state: 'degraded', lastSuccess: prev.lastSuccess, error: error.message }));
       notify(error.message, true);
     } finally {
       if (boardPending.current === pending) boardPending.current = null;
@@ -1200,10 +1387,11 @@ function App() {
 
   useEffect(() => {
     if (view !== 'board' || !currentBoard) return;
-    setSnapshot(null);
+    const cached = lastGoodSnapshots.current.get(currentBoard);
+    setSnapshot(cached || null);
     setBoardFeed(emptyFeed);
     setBoardError('');
-    setBoardSyncedAt(null);
+    setBoardHealth({ state: 'loading', lastSuccess: cached?.board?.updated_at ? new Date(cached.board.updated_at) : null, error: '' });
     loadBoard(currentBoard, boardPage);
     const timer = setInterval(() => !document.hidden && loadBoard(currentBoard, boardPage), 5000);
     return () => { clearInterval(timer); boardGeneration.current++; };
@@ -1332,10 +1520,18 @@ function App() {
     return view.toUpperCase();
   }, [view, boards, currentBoard]);
 
-  const lastSync = view === 'board' ? boardSyncedAt : syncedAt;
-  const currentError = syncError || (view === 'board' ? boardError : '');
+  const currentHealth = view === 'board' ? boardHealth : overviewHealth;
+  const lastSync = currentHealth.lastSuccess || (view === 'board' ? boardSyncedAt : syncedAt);
+  const currentError = currentHealth.error || (view === 'board' ? boardError : syncError);
   const stale = !lastSync || now - lastSync.getTime() > 20000;
-  const visibleSnapshot = snapshot?.board?.board_id === currentBoard && boardFeed.page === boardPage ? snapshot : null;
+  const visibleSnapshot = (snapshot?.board?.board_id === currentBoard && boardFeed.page === boardPage ? snapshot : null) || lastGoodSnapshots.current.get(currentBoard) || null;
+  const retryCurrent = () => {
+    if (view === 'board') {
+      loadBoard(currentBoard, boardPage);
+    } else {
+      loadAll(false);
+    }
+  };
 
   return (
     <div class="shell">
@@ -1352,15 +1548,25 @@ function App() {
         <header class="global-header">
           <div>
             <span class="breadcrumb">CORTEX / <b>{sectionTitle}</b></span>
-            <span class="live"><i></i>{currentError ? 'SIN CONEXIÓN' : stale ? 'DESACTUALIZADO' : 'ACTUALIZADO'}</span>
+            <span class={`live ${currentHealth.state}`}>
+              <i></i>{currentHealth.state === 'degraded' ? 'DEGRADADO' : currentHealth.state === 'loading' ? 'CARGANDO' : stale ? 'DESACTUALIZADO' : 'SALUDABLE'}
+            </span>
           </div>
           <div class="header-actions">
-            <span>{lastSync ? `Actualizado ${new Intl.DateTimeFormat('es-CO', { timeStyle: 'short' }).format(lastSync)}` : 'Sincronizando…'}</span>
+            <span>{lastSync ? `Último éxito ${new Intl.DateTimeFormat('es-CO', { timeStyle: 'short' }).format(lastSync)}` : 'Sincronizando…'}</span>
+            {currentHealth.state === 'degraded' && (
+              <button class="button small retry-btn" onClick={retryCurrent}>Reintentar</button>
+            )}
             <button class="icon-button" onClick={refresh} aria-label="Actualizar datos" title="Refrescar datos">↻</button>
           </div>
         </header>
 
-        {currentError && <p class="error-copy" role="alert">Datos desactualizados: {currentError}. Reintentando automáticamente.</p>}
+        {currentHealth.state === 'degraded' && currentError && (
+          <div class="endpoint-alert degraded" role="alert">
+            <span>Endpoint {view === 'board' ? `del tablero (${currentBoard})` : 'resumen'} degradado: {currentError}. {lastSync ? `Reteniendo últimos datos válidos (${new Intl.DateTimeFormat('es-CO', { timeStyle: 'short' }).format(lastSync)}).` : ''}</span>
+            <button class="button small retry-btn" onClick={retryCurrent}>Reintentar ahora</button>
+          </div>
+        )}
 
         <section class={`view ${view === 'overview' ? 'active' : ''}`}>
           {view === 'overview' && (

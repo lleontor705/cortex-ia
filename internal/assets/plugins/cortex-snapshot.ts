@@ -16,13 +16,24 @@ export const CortexSnapshotPlugin: Plugin = async () => ({
         if (!Number.isSafeInteger(args.observation_id) || args.observation_id < 1) throw new Error("observation_id must be a positive safe integer");
         if (!args.project.trim() || args.project.length > 512) throw new Error("project must contain 1-512 characters");
         if (args.expected_sha256 !== undefined && !/^[a-f0-9]{64}$/.test(args.expected_sha256)) throw new Error("expected_sha256 must be a lowercase SHA-256 digest");
-        let raw: string;
-        try {
-          raw = execFileSync("cortex", ["export", "--project", args.project], {
-            encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 30000, windowsHide: true
-          });
-        } catch {
-          throw new Error("Local Cortex export failed, timed out, or exceeded 8 MiB; snapshot remains unverified");
+        let raw: string | undefined;
+        let lastErr: unknown;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            raw = execFileSync("cortex", ["export", "--project", args.project], {
+              encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 30000, windowsHide: true
+            });
+            break;
+          } catch (err) {
+            lastErr = err;
+            if (attempt < 3) {
+              await new Promise((resolve) => setTimeout(resolve, attempt * 200));
+            }
+          }
+        }
+        if (raw === undefined) {
+          const detail = (lastErr as any)?.message ? `: ${(lastErr as any).message}` : "";
+          throw new Error(`Local Cortex export failed${detail}, timed out, or exceeded 8 MiB; snapshot remains unverified`);
         }
         let rows: unknown;
         try { rows = JSON.parse(raw); } catch { throw new Error("Local Cortex export is not valid structured JSON"); }

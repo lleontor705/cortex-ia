@@ -98,11 +98,12 @@ function dispatchBudget(args: Record<string, any>, prompt: string): number {
     if (envelope.role === "planner") {
       const phases: Record<string, string[]> = {
         "decision-map": ["chart", "resolve"],
-        "sdd-lite": ["integrated", "archive"],
-        "sdd-full": ["propose", "spec", "design", "tasks", "archive"],
+        "sdd-lite": ["integrated", "archive", "decompose"],
+        "sdd-full": ["propose", "spec", "design", "tasks", "archive", "decompose"],
       };
       if (!phases[envelope.workflow]?.includes(envelope.phase) || envelope.spec_plane === null) {
-        throw new Error("SUBAGENT_TRANSPORT_ERROR: invalid planning workflow, phase, or specification plane");
+        const allowed = phases[envelope.workflow]?.join(", ") ?? "known: decision-map, sdd-lite, sdd-full";
+        throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning workflow (${envelope.workflow}), phase (${envelope.phase}; allowed: [${allowed}]), or specification plane (${envelope.spec_plane}; cannot be null)`);
       }
     }
   }

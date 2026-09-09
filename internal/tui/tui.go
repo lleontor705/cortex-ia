@@ -13,11 +13,13 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
 	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -60,23 +62,49 @@ func Run(version string) error {
 	return err
 }
 
-var webServerOnce sync.Once
+var (
+	webServerOnce      sync.Once
+	webServerReadyAddr string
+	webServerErr       error
+	browserOpener      = defaultOpenBrowser
+)
 
-func startWebBackground(homeDir string) {
-	webServerOnce.Do(func() {
-		dbPath := delegation.DefaultDBPath(homeDir)
-		store, err := delegation.OpenStore(dbPath)
-		if err != nil {
-			return
+func startWebCmd(homeDir string) tea.Cmd {
+	return func() tea.Msg {
+		webServerOnce.Do(func() {
+			dbPath := delegation.DefaultDBPath(homeDir)
+			store, err := delegation.OpenStore(dbPath)
+			if err != nil {
+				webServerErr = fmt.Errorf("open store: %w", err)
+				return
+			}
+			ready := make(chan string, 1)
+			errCh := make(chan error, 1)
+			go func() {
+				if err := cortexiaweb.Serve(context.Background(), store, "127.0.0.1:7331", ready); err != nil {
+					errCh <- err
+				}
+			}()
+			select {
+			case addr := <-ready:
+				webServerReadyAddr = "http://" + addr
+			case err := <-errCh:
+				webServerErr = fmt.Errorf("serve: %w", err)
+			case <-time.After(5 * time.Second):
+				webServerErr = errors.New("web server startup timed out")
+			}
+		})
+		if webServerErr != nil {
+			return webErrMsg{err: webServerErr}
 		}
-		ready := make(chan string, 1)
-		go func() {
-			_ = cortexiaweb.Serve(context.Background(), store, "127.0.0.1:7331", ready)
-		}()
-	})
+		if webServerReadyAddr != "" {
+			return webReadyMsg{url: webServerReadyAddr}
+		}
+		return webErrMsg{err: errors.New("web server not ready")}
+	}
 }
 
-func openBrowser(targetURL string) {
+func defaultOpenBrowser(targetURL string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
@@ -87,4 +115,10 @@ func openBrowser(targetURL string) {
 		cmd = exec.Command("xdg-open", targetURL)
 	}
 	_ = cmd.Start()
+}
+
+func openBrowser(targetURL string) {
+	if browserOpener != nil {
+		browserOpener(targetURL)
+	}
 }

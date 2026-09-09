@@ -67,7 +67,7 @@ Load `investigate` for diagnosis/audit, `workflow-retrospective` for an orchestr
 
 Ground findings with exact paths, commands, exit codes, and limitations. For architecture assessments, read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` and evaluate depth, locality, dependency direction, seams, adapters, and the deletion test; route material design choices to `planner` instead of deciding the implementation contract. Shell inspection, Git reads, database diagnostics, tests, linters, builds, and benchmarks are allowed without approval. Deletion, destructive SQL, destructive resource commands, push, and hard reset require approval. Save only durable summarized evidence in Cortex. Work control is strictly read-only here: `cortex-ia board list|status` and `cortex-ia work list|status`; never infer authority from the web board, claim, transition, retry, approve, or lease. Canonical protocol: `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`. Do not launch native or nested subagents, and do not silently fix a problem when the request is diagnostic.
 
-## 1. Mandatory Delegation Check Gate (Dynamic External CLI / Herdr)
+## 1. Delegation Check Gate (Dynamic External CLI / Herdr)
 - Call `cortex_ia_delegate_start` with `role: "investigate"` and `objective: <your task objective>`.
 - **If the bridge returns `delegated: true`** (e.g. `execution_mode: "herdr_multiplexed"` or `"direct_cli"`):
   - An external leaf worker (dynamically configured per role in `cortex-delegation.json`) is executing in a Herdr pane or background process.
