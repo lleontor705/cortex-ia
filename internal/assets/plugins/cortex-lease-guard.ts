@@ -79,7 +79,6 @@ export const CortexLeaseGuardPlugin: Plugin = async (ctx) => ({
 
     if (typeof input.sessionID !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(input.sessionID)) throw new Error("LEASE_CHECK_FAILED: host session identity is required");
     const targets = [...new Set(targetFiles(toolName, (output?.args || {}) as Record<string, any>).map(target => relativeTarget(ctx.directory, target)))].sort();
-    const cortex = firstCortexIA();
     if (!targets.length) return;
     const cortex = firstCortexIA();
 

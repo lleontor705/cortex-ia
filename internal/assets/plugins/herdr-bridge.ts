@@ -908,6 +908,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       description: "Claim one ready work item. Optionally reserve initial files atomically. The bridge retains tokens in memory.",
       args: {
         task_id: tool.schema.string(),
+        path: tool.schema.string().optional().describe("Optional single workspace-relative file to reserve immediately upon claiming"),
         paths: tool.schema.array(tool.schema.string()).optional().describe("Optional list of workspace-relative files to reserve immediately upon claiming"),
         ttl: tool.schema.string().optional().describe("Duration such as 15m; defaults to Cortex-IA policy")
       },
@@ -923,18 +924,22 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         const leases = new Map<string, string>();
         const authority = { claimToken: claim.claim_token, leases, sessionID: context.sessionID };
         workAuthority.set(args.task_id, authority);
+        const targetPaths: string[] = [];
+        if (args.path) targetPaths.push(args.path);
+        if (Array.isArray(args.paths)) {
+          for (const p of args.paths) {
+            if (p && !targetPaths.includes(p)) targetPaths.push(p);
+          }
+        }
         const reservedFiles: any[] = [];
-        if (Array.isArray(args.paths) && args.paths.length > 0) {
-          for (const rawPath of args.paths) {
-            if (!rawPath) continue;
-            const leasePath = workPath(rawPath);
-            const reserveCmd = ["work", "reserve", args.task_id, "--claim-token", "@stdin", "--path", leasePath];
-            if (args.ttl) reserveCmd.push("--ttl", args.ttl);
-            const lease = parseJSON(cortexAuthorized(reserveCmd, authority.claimToken));
-            if (lease?.lease_token && lease?.path) {
-              leases.set(lease.path, lease.lease_token);
-              reservedFiles.push(withoutToken(lease, "lease_token"));
-            }
+        for (const rawPath of targetPaths) {
+          const leasePath = workPath(rawPath);
+          const reserveCmd = ["work", "reserve", args.task_id, "--claim-token", "@stdin", "--path", leasePath];
+          if (args.ttl) reserveCmd.push("--ttl", args.ttl);
+          const lease = parseJSON(cortexAuthorized(reserveCmd, authority.claimToken));
+          if (lease?.lease_token && lease?.path) {
+            leases.set(lease.path, lease.lease_token);
+            reservedFiles.push(withoutToken(lease, "lease_token"));
           }
         }
         saveAuthorityState();
@@ -954,21 +959,6 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         const command = ["work", "renew", args.task_id, "--claim-token", "@stdin"];
         if (args.ttl) command.push("--ttl", args.ttl);
         return JSON.stringify(withoutToken(parseJSON(cortexAuthorized(command, authority.claimToken)), "claim_token"));
-      }
-    }),
-
-    cortex_ia_work_lease: tool({
-      description: "Reserve one workspace-relative path using the claim token retained by this bridge.",
-      args: { task_id: tool.schema.string(), path: tool.schema.string(), ttl: tool.schema.string().optional() },
-      async execute(args, context) {
-        const authority = authorityForSession(args.task_id, context.sessionID, true);
-        const command = ["work", "lease", args.task_id, "--claim-token", "@stdin", "--path", args.path];
-        if (args.ttl) command.push("--ttl", args.ttl);
-        const lease = parseJSON(cortexAuthorized(command, authority.claimToken));
-        if (!lease?.lease_token || !lease?.path) throw new Error("cortex-ia returned no lease authority");
-        authority.leases.set(lease.path, lease.lease_token);
-        saveAuthorityState();
-        return JSON.stringify(withoutToken(lease, "lease_token"));
       }
     }),
 
@@ -1029,21 +1019,6 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       }
     }),
 
-    cortex_ia_work_release: tool({
-      description: "Release one file lease retained by this bridge.",
-      args: { task_id: tool.schema.string(), path: tool.schema.string() },
-      async execute(args, context) {
-        const authority = authorityForSession(args.task_id, context.sessionID);
-        const normalizedPath = workPath(args.path);
-        const leaseToken = authority.leases.get(normalizedPath);
-        if (!leaseToken) throw authorityFailure("BRIDGE_LEASE_MISSING", args.task_id, context.sessionID, normalizedPath);
-        const result = cortexAuthorized(["work", "release", "--path", normalizedPath, "--lease-token", "@stdin"], leaseToken);
-        authority!.leases.delete(normalizedPath);
-        saveAuthorityState();
-        return result;
-      }
-    }),
-
     cortex_ia_work_release_all: tool({
       description: "Release every file lease retained for one task. Returns partial failures for explicit reconciliation.",
       args: { task_id: tool.schema.string() },
@@ -1066,20 +1041,46 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }),
 
     cortex_ia_file_release: tool({
-      description: "Release exactly one file reservation using the token retained by this bridge.",
+      description: "Release one or more file reservations using the token(s) retained by this bridge.",
       args: {
         task_id: tool.schema.string(),
-        path: tool.schema.string()
+        path: tool.schema.string().optional().describe("Single workspace-relative file path to release"),
+        paths: tool.schema.array(tool.schema.string()).optional().describe("List of workspace-relative file paths to release")
       },
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID);
-        const leasePath = workPath(args.path);
-        const leaseToken = authority.leases.get(leasePath);
-        if (!leaseToken) throw authorityFailure("BRIDGE_LEASE_MISSING", args.task_id, context.sessionID, leasePath);
-        const result = cortexAuthorized(["work", "release", "--path", leasePath, "--lease-token", "@stdin"], leaseToken);
-        authority.leases.delete(leasePath);
+        const targetPaths: string[] = [];
+        if (args.path) targetPaths.push(args.path);
+        if (Array.isArray(args.paths)) {
+          for (const p of args.paths) {
+            if (p && !targetPaths.includes(p)) targetPaths.push(p);
+          }
+        }
+        if (targetPaths.length === 0) {
+          throw new Error("either 'path' or 'paths' must be provided to release files");
+        }
+        const released: string[] = [];
+        const failures: Array<{ path: string; error: string }> = [];
+        for (const rawPath of targetPaths) {
+          const leasePath = workPath(rawPath);
+          const leaseToken = authority.leases.get(leasePath);
+          if (!leaseToken) {
+            failures.push({ path: leasePath, error: "BRIDGE_LEASE_MISSING" });
+            continue;
+          }
+          try {
+            cortexAuthorized(["work", "release", "--path", leasePath, "--lease-token", "@stdin"], leaseToken);
+            authority.leases.delete(leasePath);
+            released.push(leasePath);
+          } catch (error: any) {
+            failures.push({ path: leasePath, error: error?.message || "release failed" });
+          }
+        }
         saveAuthorityState();
-        return result;
+        if (targetPaths.length === 1 && args.path && failures.length === 0) {
+          return JSON.stringify({ released: released[0], status: "released" });
+        }
+        return JSON.stringify({ released, failures });
       }
     }),
 
@@ -1087,21 +1088,24 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       description: "Transition a claimed task using authority retained by the bridge. Only in_review, in_progress, and blocked are accepted.",
       args: {
         task_id: tool.schema.string(),
-        to: tool.schema.enum(["in_review", "in_progress", "blocked"]),
+        to: tool.schema.enum(["in_review", "in_progress", "blocked"]).optional(),
+        status: tool.schema.enum(["in_review", "in_progress", "blocked"]).optional().describe("Alias for 'to'"),
         revision: tool.schema.number().optional()
       },
       async execute(args, context) {
+        const targetState = args.to || args.status;
+        if (!targetState) throw new Error("'to' or 'status' is required for work transition");
         const authority = authorityForSession(args.task_id, context.sessionID);
-        const command = ["work", "transition", args.task_id, "--claim-token", "@stdin", "--to", args.to];
+        const command = ["work", "transition", args.task_id, "--claim-token", "@stdin", "--to", targetState];
         if (args.revision) command.push("--revision", String(args.revision));
         const result = cortexAuthorized(command, authority.claimToken);
-        if (args.to === "in_review" || args.to === "blocked") {
+        if (targetState === "in_review" || targetState === "blocked") {
           try {
             cortexAuthorized(["work", "release-all", args.task_id, "--claim-token", "@stdin"], authority.claimToken);
             authority.leases.clear();
           } catch {}
         }
-        if (args.to === "blocked") {
+        if (targetState === "blocked") {
           workAuthority.delete(args.task_id);
         }
         saveAuthorityState();
@@ -1114,13 +1118,15 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       args: {
         task_id: tool.schema.string(),
         reviewer: tool.schema.string().optional().describe("Legacy display hint; reviewer identity always comes from the host session"),
-        verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"]),
+        verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"]),
         evidence: tool.schema.string().optional(),
         revision: tool.schema.number().optional()
       },
       async execute(args, context) {
         if (workAuthority.get(args.task_id)?.sessionID === context.sessionID) throw new Error("implementation session cannot approve its own task");
-        const command = ["work", "approve", args.task_id, "--reviewer", controllerIdentity(context.sessionID), "--verdict", args.verdict];
+        const rawVerdict = String(args.verdict || "").toUpperCase();
+        const verdict = ["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"].includes(rawVerdict) ? rawVerdict : args.verdict;
+        const command = ["work", "approve", args.task_id, "--reviewer", controllerIdentity(context.sessionID), "--verdict", verdict];
         if (args.evidence) command.push("--evidence", args.evidence);
         if (args.revision) command.push("--revision", String(args.revision));
         const result = cortex(command);
@@ -1498,8 +1504,8 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     board_create: ["planner", "orchestrator"], work_create: ["planner", "orchestrator"],
     ledger_fact_add: roles, ledger_progress_record: ["orchestrator"],
     work_recover: ["orchestrator"], work_retry: ["orchestrator"], work_review_refresh: ["orchestrator"], work_decompose: ["planner"],
-    work_claim: ["implement"], work_renew: ["implement"], work_lease: ["implement"],
-    file_reserve: ["implement"], work_lease_renew: ["implement"], work_release: ["implement"],
+    work_claim: ["implement"], work_renew: ["implement"],
+    file_reserve: ["implement"], work_lease_renew: ["implement"],
     work_release_all: ["implement"], file_release: ["implement"], work_transition: ["implement"],
     work_approve: ["reviewer"], delegate_start: controllers,
     delegation_cancel: [...controllers, "orchestrator"], delegation_recover: ["orchestrator"],
@@ -1539,10 +1545,10 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       cortex_work_decompose: bridgeTools.cortex_ia_work_decompose,
       cortex_work_claim: bridgeTools.cortex_ia_work_claim,
       cortex_work_renew: bridgeTools.cortex_ia_work_renew,
-      cortex_work_lease: bridgeTools.cortex_ia_work_lease,
+      cortex_work_lease: bridgeTools.cortex_ia_file_reserve,
       cortex_file_reserve: bridgeTools.cortex_ia_file_reserve,
       cortex_work_lease_renew: bridgeTools.cortex_ia_work_lease_renew,
-      cortex_work_release: bridgeTools.cortex_ia_work_release,
+      cortex_work_release: bridgeTools.cortex_ia_file_release,
       cortex_work_release_all: bridgeTools.cortex_ia_work_release_all,
       cortex_file_release: bridgeTools.cortex_ia_file_release,
       cortex_work_transition: bridgeTools.cortex_ia_work_transition,

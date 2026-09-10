@@ -12,7 +12,8 @@
  *   even if the plugin was loaded after the session started.
  *
  * Delivery contract (REM-PLUGIN-001):
- *   - Credentials come only from CORTEX_HTTP_TOKEN; without it nothing is sent.
+ *   - Credentials come only from CORTEX_HTTP_TOKEN; a tokenless exception is
+ *     limited to local mode with a parsed loopback destination.
  *   - Success is only a 2xx response with the exact persisted body expected
  *     for the endpoint; every other outcome is classified (unauthorized,
  *     forbidden, conflict, validation, unavailable, timeout,
@@ -148,6 +149,13 @@ export async function detectCortexMode(): Promise<CortexMode> {
     return "hybrid"
   }
 
+  // A tokenless destination is eligible only after local loopback URL
+  // classification. Never probe a protected remote endpoint to infer its mode.
+  if (!CORTEX_HTTP_TOKEN) {
+    cachedMode = "local"
+    return "local"
+  }
+
   // 2. Server Mode: Direct remote URL probe
   if (CORTEX_URL.startsWith("https://") || (CORTEX_HTTP_TOKEN && !CORTEX_URL.includes("127.0.0.1") && !CORTEX_URL.includes("localhost"))) {
     try {
@@ -163,6 +171,34 @@ export async function detectCortexMode(): Promise<CortexMode> {
 
   cachedMode = "local"
   return "local"
+}
+
+export function isTokenlessEligible(mode: CortexMode, rawUrl: string = CORTEX_URL): boolean {
+  if (mode !== "local") return false
+  try {
+    const parsed = new URL(rawUrl)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false
+    }
+    const host = parsed.hostname.toLowerCase()
+    if (host === "localhost" || host === "[::1]" || host === "::1") {
+      return true
+    }
+    const parts = host.split(".")
+    if (parts.length === 4) {
+      const octets = parts.map((p) => {
+        if (!/^\d+$/.test(p)) return -1
+        const n = Number(p)
+        return n >= 0 && n <= 255 ? n : -1
+      })
+      if (octets.every((o) => o >= 0)) {
+        return octets[0] === 127
+      }
+    }
+    return false
+  } catch {
+    return false
+  }
 }
 
 // Cortex's own MCP tools — don't count these as "tool calls" for session stats.
@@ -203,6 +239,13 @@ const CORTEX_TOOLS = new Set([
   "cortex_code_symbols",
   "cortex_get_code_graph",
   "cortex_code_graph",
+  "cortex_code_map",
+  "cortex_get_code_map",
+  "cortex_code_tests",
+  "cortex_get_impacted_tests",
+  "cortex_code_find",
+  "cortex_find_symbols",
+  "cortex_get_agent_context",
   // Governance, Skills, Directives & Rules
   "cortex_get_rules",
   "cortex_save_rule",
@@ -299,7 +342,11 @@ TRANSPORT IDENTIFIERS:
 
 ### 2. CODEBASE AST & INTELLIGENCE
 - Call \`cortex_ingest_code(path, project)\` with the **absolute workspace root path** (e.g. \`d:/cortex-ia\`, never \`.\`) to scan local files with the Zero-CGO Static AST Extractor and index symbols into the knowledge graph.
-- \`cortex_get_blast_radius(observation_id, depth)\` traverses related observations only. For code refactors, use filtered symbols, source callers, and cycle detection until Cortex exposes a symbol-aware impact contract.
+- Call \`cortex_code_map(path, budget)\` or \`cortex_get_code_map\` to retrieve a token-budgeted PageRank repository map.
+- Call \`cortex_code_tests(target, project, hops)\` or \`cortex_get_impacted_tests\` to pinpoint precisely which test suites are impacted by modified symbols or files.
+- Call \`cortex_code_find(query, project)\` or \`cortex_find_symbols\` to search AST symbols across the repository.
+- Call \`cortex_get_agent_context(project, format)\` to export structured architecture & memory context for agent prompts.
+- Call \`cortex_get_blast_radius(observation_id, depth)\` to traverse related cognitive observations.
 - Call \`cortex_detect_cycles(project)\` to find circular dependencies across modules.
 - Call \`cortex_analyze_architecture(project)\` to inspect code communities and god nodes.
 
@@ -421,6 +468,10 @@ async function request(path: string, body?: unknown): Promise<HttpResult> {
     // Every request carries the credential when one is configured, including
     // protected GETs. /health is the only unauthenticated route and is probed
     // through boundedFetch directly, never here.
+    const tokenless = !CORTEX_HTTP_TOKEN && isTokenlessEligible(await detectCortexMode())
+    if (!CORTEX_HTTP_TOKEN && !tokenless) {
+      return { ok: false, classification: "config" }
+    }
     const headers: Record<string, string> = {}
     if (CORTEX_HTTP_TOKEN) headers.Authorization = `Bearer ${CORTEX_HTTP_TOKEN}`
     const init: RequestInit =
@@ -434,7 +485,7 @@ async function request(path: string, body?: unknown): Promise<HttpResult> {
             },
             body: JSON.stringify(body),
           }
-    const res = await boundedFetch(path, init)
+    const res = await boundedFetch(path, tokenless ? { ...init, redirect: "manual" } : init)
     if (res.status < 200 || res.status >= 300) {
       return { ok: false, classification: classifyStatus(res.status) }
     }
@@ -456,7 +507,7 @@ async function deliver(
   payload: unknown,
   expected: (body: unknown) => boolean
 ): Promise<void> {
-  if (!CORTEX_HTTP_TOKEN) {
+  if (!CORTEX_HTTP_TOKEN && !isTokenlessEligible(await detectCortexMode())) {
     report(kind, "config", "missing CORTEX_HTTP_TOKEN")
     return
   }
@@ -674,7 +725,7 @@ export const Cortex: Plugin = async (ctx) => {
     if (knownSessions.has(sessionId)) {
       return { confirmed: true, classification: "success" }
     }
-    if (!CORTEX_HTTP_TOKEN) {
+    if (!CORTEX_HTTP_TOKEN && !isTokenlessEligible(await detectCortexMode())) {
       report("session", "config", "missing CORTEX_HTTP_TOKEN")
       return { confirmed: false, classification: "config" }
     }
@@ -907,4 +958,3 @@ export const Cortex: Plugin = async (ctx) => {
 }
 
 export default Cortex;
-

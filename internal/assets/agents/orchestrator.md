@@ -7,8 +7,6 @@ tools:
   task: true
   question: true
   skill: true
-  cortex_*: true
-  cortex_ia_*: true
   read: false
   grep: false
   glob: false
@@ -16,20 +14,35 @@ tools:
   edit: false
   write: false
   bash: false
-  cortex_ia_delegate_start: false
-  cortex_ia_openspec_write: false
-  cortex_ia_work_claim: false
-  cortex_ia_work_renew: false
-  cortex_ia_work_lease: false
-  cortex_ia_work_lease_renew: false
-  cortex_ia_work_release: false
-  cortex_ia_work_release_all: false
-  cortex_ia_work_transition: false
-  cortex_ia_work_approve: false
-  cortex_ia_work_decompose: false
-  cortex_ia_discovery_write: false
-  cortex_ia_file_reserve: false
-  cortex_ia_file_release: false
+  cortex_*: false
+  cortex_ia_*: false
+  cortex_session_start: true
+  cortex_session_end: true
+  cortex_session_summary: true
+  cortex_handoff: true
+  cortex_context: true
+  cortex_search: true
+  cortex_get_status: true
+  cortex_get_rules: true
+  cortex_ia_board_create: true
+  cortex_ia_board_list: true
+  cortex_ia_board_status: true
+  cortex_ia_work_create: true
+  cortex_ia_work_list: true
+  cortex_ia_work_status: true
+  cortex_ia_work_recover: true
+  cortex_ia_work_retry: true
+  cortex_ia_work_review_refresh: true
+  cortex_ia_ledger_status: true
+  cortex_ia_ledger_fact_add: true
+  cortex_ia_ledger_progress_record: true
+  cortex_ia_content_hash: true
+  cortex_ia_openspec_validate: true
+  cortex_ia_change_archive: true
+  cortex_ia_delegation_models: true
+  cortex_ia_delegation_cancel: true
+  cortex_ia_delegation_recover: true
+  cortex_ia_report_error: true
 ---
 
 # role/orchestrator [STATIC_PREFIX_V2]

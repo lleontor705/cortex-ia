@@ -71,8 +71,8 @@ Native controllers use the typed `cortex_ia_board_*`, `cortex_ia_work_*`, `corte
 | `cortex_ia_work_recover|retry` | Orchestrator reconciliation only |
 | `cortex_ia_work_review_refresh` | Orchestrator only; reopen done SDD review under current revision after active work reconciliation, without write authority or automatic approval |
 | `cortex_ia_change_archive` | Planner only; durable closure after current contract/file checks and approvals, logical for Cortex-only |
-| `cortex_ia_work_claim|renew|lease|lease_renew|release|release_all|transition` | Implementer only; claims task, optionally reserves initial `paths: [...]`, and transitions state |
-| `cortex_ia_file_reserve|cortex_ia_file_release` | Implementer only; single-file or batch reservation (`path` or `paths: [...]`) |
+| `cortex_ia_work_claim|renew|lease_renew|release_all|transition` | Implementer only; claims task, optionally reserves initial `paths: [...]`, renews leases, and transitions state |
+| `cortex_ia_file_reserve|cortex_ia_file_release` | Implementer only; single-file or batch reservation (`path` or `paths: [...]`) and single-file release |
 | `cortex_ia_work_approve` | Independent reviewer only |
 | `cortex_ia_delegate_start` and `cortex_ia_delegation_status|wait|result|cancel|recover` | The native controller supervising its one external leaf |
 

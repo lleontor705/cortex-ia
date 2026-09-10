@@ -13,42 +13,40 @@ tools:
   list: true
   bash: true
   skill: true
-  cortex_*: true
-  cortex_ia_*: true
-  cortex_openspec_write: false
-  cortex_ia_openspec_write: false
-  cortex_board_create: false
-  cortex_ia_board_create: false
-  cortex_work_create: false
-  cortex_ia_work_create: false
-  cortex_work_recover: false
-  cortex_ia_work_recover: false
-  cortex_work_retry: false
-  cortex_ia_work_retry: false
-  cortex_work_decompose: false
-  cortex_ia_work_decompose: false
-  cortex_discovery_write: false
-  cortex_ia_discovery_write: false
-  cortex_work_claim: false
-  cortex_ia_work_claim: false
-  cortex_work_renew: false
-  cortex_ia_work_renew: false
-  cortex_work_lease: false
-  cortex_ia_work_lease: false
-  cortex_work_lease_renew: false
-  cortex_ia_work_lease_renew: false
-  cortex_work_release: false
-  cortex_ia_work_release: false
-  cortex_work_release_all: false
-  cortex_ia_work_release_all: false
-  cortex_work_transition: false
-  cortex_ia_work_transition: false
-  cortex_work_approve: false
-  cortex_ia_work_approve: false
-  cortex_file_reserve: false
-  cortex_ia_file_reserve: false
-  cortex_file_release: false
-  cortex_ia_file_release: false
+  cortex_*: false
+  cortex_ia_*: false
+  cortex_search: true
+  cortex_search_hybrid: true
+  cortex_graph: true
+  cortex_score: true
+  cortex_timeline: true
+  cortex_revision_history: true
+  cortex_get_observation: true
+  cortex_get_rules: true
+  cortex_get_status: true
+  cortex_context: true
+  cortex_save: true
+  cortex_relate: true
+  cortex_ingest_code: true
+  cortex_get_code_symbols: true
+  cortex_get_code_graph: true
+  cortex_get_blast_radius: true
+  cortex_detect_cycles: true
+  cortex_analyze_architecture: true
+  cortex_code_map: true
+  cortex_code_tests: true
+  cortex_code_find: true
+  cortex_ia_board_list: true
+  cortex_ia_board_status: true
+  cortex_ia_work_list: true
+  cortex_ia_work_status: true
+  cortex_ia_ledger_status: true
+  cortex_ia_delegate_start: true
+  cortex_ia_delegation_status: true
+  cortex_ia_delegation_wait: true
+  cortex_ia_delegation_result: true
+  cortex_ia_delegation_cancel: true
+  cortex_ia_report_error: true
 permission:
   bash:
     "*": allow

@@ -13,39 +13,36 @@ tools:
   write: false
   bash: false
   skill: true
-  cortex_*: true
-  cortex_ia_*: true
+  cortex_*: false
+  cortex_ia_*: false
+  cortex_search: true
+  cortex_code_map: true
+  cortex_get_code_symbols: true
+  cortex_get_code_graph: true
+  cortex_get_blast_radius: true
+  cortex_analyze_architecture: true
+  cortex_get_rules: true
+  cortex_resolve_query: true
+  cortex_context: true
+  cortex_save: true
+  cortex_relate: true
   cortex_ia_content_hash: true
-  cortex_ia_board_list: true
+  cortex_ia_openspec_validate: true
+  cortex_ia_openspec_write: true
+  cortex_ia_change_archive: true
   cortex_ia_board_create: true
-  cortex_work_claim: false
-  cortex_ia_work_claim: false
-  cortex_work_renew: false
-  cortex_ia_work_renew: false
-  cortex_work_lease: false
-  cortex_ia_work_lease: false
-  cortex_work_lease_renew: false
-  cortex_ia_work_lease_renew: false
-  cortex_work_release: false
-  cortex_ia_work_release: false
-  cortex_work_release_all: false
-  cortex_ia_work_release_all: false
-  cortex_work_transition: false
-  cortex_ia_work_transition: false
-  cortex_work_recover: false
-  cortex_ia_work_recover: false
-  cortex_work_retry: false
-  cortex_ia_work_retry: false
-  cortex_work_decompose: true
+  cortex_ia_board_list: true
+  cortex_ia_board_status: true
+  cortex_ia_work_create: true
   cortex_ia_work_decompose: true
-  cortex_discovery_write: false
-  cortex_ia_discovery_write: false
-  cortex_work_approve: false
-  cortex_ia_work_approve: false
-  cortex_file_reserve: false
-  cortex_ia_file_reserve: false
-  cortex_file_release: false
-  cortex_ia_file_release: false
+  cortex_ia_work_list: true
+  cortex_ia_work_status: true
+  cortex_ia_delegate_start: true
+  cortex_ia_delegation_status: true
+  cortex_ia_delegation_wait: true
+  cortex_ia_delegation_result: true
+  cortex_ia_delegation_cancel: true
+  cortex_ia_report_error: true
 ---
 
 # role/planner [STATIC_PREFIX_V2]

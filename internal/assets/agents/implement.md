@@ -13,24 +13,29 @@ tools:
   edit: true
   bash: true
   skill: true
-  cortex_*: true
-  cortex_ia_*: true
-  cortex_openspec_write: false
-  cortex_ia_openspec_write: false
-  cortex_board_create: false
-  cortex_ia_board_create: false
-  cortex_work_create: false
-  cortex_ia_work_create: false
-  cortex_work_recover: false
-  cortex_ia_work_recover: false
-  cortex_work_retry: false
-  cortex_ia_work_retry: false
-  cortex_work_decompose: false
-  cortex_ia_work_decompose: false
-  cortex_discovery_write: false
-  cortex_ia_discovery_write: false
-  cortex_work_approve: false
-  cortex_ia_work_approve: false
+  cortex_*: false
+  cortex_ia_*: false
+  cortex_get_rules: true
+  cortex_get_observation: true
+  cortex_get_code_symbols: true
+  cortex_context: true
+  cortex_save: true
+  cortex_code_tests: true
+  cortex_code_find: true
+  cortex_ia_work_status: true
+  cortex_ia_work_claim: true
+  cortex_ia_work_renew: true
+  cortex_ia_file_reserve: true
+  cortex_ia_file_release: true
+  cortex_ia_work_lease_renew: true
+  cortex_ia_work_release_all: true
+  cortex_ia_work_transition: true
+  cortex_ia_delegate_start: true
+  cortex_ia_delegation_status: true
+  cortex_ia_delegation_wait: true
+  cortex_ia_delegation_result: true
+  cortex_ia_delegation_cancel: true
+  cortex_ia_report_error: true
 permission:
   bash:
     "*": allow
