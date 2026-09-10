@@ -5,6 +5,7 @@ import type {
   TuiThemeCurrent,
 } from "@opencode-ai/plugin/tui";
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import {
   For,
@@ -153,7 +154,25 @@ const EMPTY_SNAPSHOT: UISnapshot = {
 };
 
 function cortexExecutable(): string {
-  return process.env.CORTEX_IA_BIN || "cortex-ia";
+  if (process.env.CORTEX_IA_BIN) return process.env.CORTEX_IA_BIN;
+  const home = process.env.USERPROFILE || process.env.HOME || "";
+  const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+  const candidates = [
+    path.join(home, "go", "bin", process.platform === "win32" ? "cortex-ia.exe" : "cortex-ia"),
+    process.platform === "win32" ? "cortex-ia.exe" : "cortex-ia",
+    path.join(local, "Programs", "cortex-ia", "bin", process.platform === "win32" ? "cortex-ia.exe" : "cortex-ia"),
+    path.join(home, ".local", "bin", "cortex-ia"),
+    "/usr/local/bin/cortex-ia",
+    "/usr/bin/cortex-ia",
+  ];
+  for (const candidate of candidates) {
+    if (candidate !== "cortex-ia" && candidate !== "cortex-ia.exe") {
+      try {
+        if (fs.existsSync(candidate)) return candidate;
+      } catch {}
+    }
+  }
+  return process.platform === "win32" ? "cortex-ia.exe" : "cortex-ia";
 }
 
 function shortID(id: string): string {

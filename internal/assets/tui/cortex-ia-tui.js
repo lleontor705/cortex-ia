@@ -8,6 +8,7 @@ import { insertNode as _$insertNode } from "@opentui/solid";
 import { setProp as _$setProp } from "@opentui/solid";
 import { createElement as _$createElement } from "@opentui/solid";
 import { execFile } from "child_process";
+import fs from "fs";
 import path from "path";
 import { For, Show, createEffect, createMemo, createRoot, createSignal } from "solid-js";
 var SNAPSHOT_POLL_INTERVAL_MS = 2500;
@@ -67,7 +68,19 @@ var EMPTY_SNAPSHOT = {
   delegations: []
 };
 function cortexExecutable() {
-  return process.env.CORTEX_IA_BIN || "cortex-ia";
+  if (process.env.CORTEX_IA_BIN) return process.env.CORTEX_IA_BIN;
+  const home = process.env.USERPROFILE || process.env.HOME || "";
+  const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+  const candidates = [path.join(home, "go", "bin", process.platform === "win32" ? "cortex-ia.exe" : "cortex-ia"), process.platform === "win32" ? "cortex-ia.exe" : "cortex-ia", path.join(local, "Programs", "cortex-ia", "bin", process.platform === "win32" ? "cortex-ia.exe" : "cortex-ia"), path.join(home, ".local", "bin", "cortex-ia"), "/usr/local/bin/cortex-ia", "/usr/bin/cortex-ia"];
+  for (const candidate of candidates) {
+    if (candidate !== "cortex-ia" && candidate !== "cortex-ia.exe") {
+      try {
+        if (fs.existsSync(candidate)) return candidate;
+      } catch {
+      }
+    }
+  }
+  return process.platform === "win32" ? "cortex-ia.exe" : "cortex-ia";
 }
 function shortID(id) {
   return id.length > 13 ? `${id.slice(0, 8)}\u2026${id.slice(-4)}` : id;

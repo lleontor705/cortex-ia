@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os/exec"
 	"os/signal"
 	"runtime"
@@ -166,6 +167,16 @@ func runWeb(args []string) error {
 		}
 	}
 	address := cortexiaweb.NormalizeAddress(oneOption(opts, "--addr"))
+	if isServerHealthy(address) {
+		fmt.Printf("Cortex-IA web is already running at http://%s\n", address)
+		if shouldOpen {
+			openBrowserURL("http://" + address)
+		} else {
+			fmt.Println("Use --open to view in browser or specify a different address with --addr.")
+		}
+		return nil
+	}
+
 	home, err := cortexStateHome()
 	if err != nil {
 		return err
@@ -183,6 +194,16 @@ func runWeb(args []string) error {
 		}()
 	}
 	return serveCortexIAWeb(store, address)
+}
+
+func isServerHealthy(address string) bool {
+	client := http.Client{Timeout: 600 * time.Millisecond}
+	resp, err := client.Get("http://" + address + "/api/overview")
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 func serveCortexIAWeb(store *delegation.Store, address string) error {
