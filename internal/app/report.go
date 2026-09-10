@@ -183,10 +183,10 @@ func enrichReportMetadata(home, jobID, taskID, boardID, details string) (string,
 			if taskID == "" && job.TaskID != "" {
 				taskID = job.TaskID
 			}
-			diag.WriteString(fmt.Sprintf("• Job: %s | Role: %s | Status: %s | Transport: %s | Pane: %s | PID: %d | Attempt: #%d\n",
-				job.ID, job.Role, job.Status, job.Transport, job.PaneID, job.PID, job.Attempt))
+			fmt.Fprintf(&diag, "• Job: %s | Role: %s | Status: %s | Transport: %s | Pane: %s | PID: %d | Attempt: #%d\n",
+				job.ID, job.Role, job.Status, job.Transport, job.PaneID, job.PID, job.Attempt)
 			if job.StartedAt != "" {
-				diag.WriteString(fmt.Sprintf("  Timing: Started=%s, Updated=%s\n", job.StartedAt, job.UpdatedAt))
+				fmt.Fprintf(&diag, "  Timing: Started=%s, Updated=%s\n", job.StartedAt, job.UpdatedAt)
 			}
 		}
 	}
@@ -196,8 +196,8 @@ func enrichReportMetadata(home, jobID, taskID, boardID, details string) (string,
 			if boardID == "" && work.BoardID != "" {
 				boardID = work.BoardID
 			}
-			diag.WriteString(fmt.Sprintf("• Task: %s | Board: %s | Status: %s | Title: %q\n",
-				work.ID, work.BoardID, work.Status, work.Title))
+			fmt.Fprintf(&diag, "• Task: %s | Board: %s | Status: %s | Title: %q\n",
+				work.ID, work.BoardID, work.Status, work.Title)
 		}
 	}
 
