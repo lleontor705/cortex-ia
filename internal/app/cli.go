@@ -9,9 +9,11 @@ import (
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/backup"
+	"github.com/lleontor705/cortex-ia/internal/clidetect"
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/internal/targets"
 )
 
 // newService builds the install.Service for the current user's home. The
@@ -33,25 +35,35 @@ func newService() (*install.Service, error) {
 type runFlags struct {
 	DryRun    bool
 	Overwrite bool
+	Target    string
 }
 
-// parseRunFlags accepts exactly the flags allowed on install, sync, and
-// uninstall. Any other argument — including retired flags that slipped past
-// preflight — is rejected with the valid surface named.
+// parseRunFlags accepts the flags allowed on install, sync, and
+// uninstall (--dry-run, --overwrite, and --target).
 func parseRunFlags(args []string, command string, allowOverwrite bool) (runFlags, error) {
 	var flags runFlags
-	for _, arg := range args {
-		switch strings.ToLower(arg) {
-		case "--dry-run":
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case strings.EqualFold(arg, "--dry-run"):
 			flags.DryRun = true
-		case "--overwrite":
+		case strings.EqualFold(arg, "--overwrite"):
 			if !allowOverwrite {
-				return flags, fmt.Errorf("unknown flag: %s (cortex-ia %s supports only --dry-run)", arg, command)
+				return flags, fmt.Errorf("unknown flag: %s (cortex-ia %s supports only --dry-run and --target)", arg, command)
 			}
 			flags.Overwrite = true
+		case strings.HasPrefix(strings.ToLower(arg), "--target="):
+			flags.Target = arg[len("--target="):]
+		case strings.EqualFold(arg, "--target"):
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+				flags.Target = args[i]
+			} else {
+				return flags, fmt.Errorf("flag --target requires an argument (e.g. --target opencode,agy)")
+			}
 		default:
 			if strings.HasPrefix(arg, "-") {
-				return flags, fmt.Errorf("unknown flag: %s (cortex-ia %s supports only --dry-run and --overwrite)", arg, command)
+				return flags, fmt.Errorf("unknown flag: %s (cortex-ia %s supports only --dry-run, --overwrite, and --target)", arg, command)
 			}
 			return flags, fmt.Errorf("unexpected argument: %s (cortex-ia %s takes no positional arguments)", arg, command)
 		}
@@ -91,13 +103,8 @@ func confirmDestructive(action string) error {
 	return nil
 }
 
-// runInstall installs the embedded OpenCode asset set and the default
-// managed MCP selection. The real run applies exactly the previewed plan:
-// the preview's plan digest travels as ExpectedPlanDigest, the service
-// re-plans with identical options, and any drift aborts with a typed
-// stale-plan error before a single write. Conflicting unmanaged files fail
-// closed unless --overwrite is given and confirmed on an interactive
-// terminal.
+// runInstall installs the embedded assets and plugins for the specified targets
+// (or OpenCode by default).
 func runInstall(args []string) error {
 	flags, err := parseRunFlags(args, "install", true)
 	if err != nil {
@@ -108,15 +115,48 @@ func runInstall(args []string) error {
 		return err
 	}
 
+	targetList, err := targets.ParseTargets(flags.Target)
+	if err != nil {
+		return err
+	}
+	if flags.Target == "" {
+		targetList = []targets.TargetID{targets.TargetOpenCode}
+	}
+
 	opts := install.DefaultOptions()
 	opts.Version = Version
-	return previewAndApply("install", flags, opts, service.Install)
+
+	for _, target := range targetList {
+		switch target {
+		case targets.TargetOpenCode:
+			if err := previewAndApply("install", flags, opts, service.Install); err != nil {
+				return err
+			}
+		case targets.TargetAGY:
+			res, err := targets.InstallAGY(service.HomeDir(), flags.DryRun)
+			if err != nil {
+				return fmt.Errorf("install AGY target: %w", err)
+			}
+			fmt.Printf("Antigravity target: %s\n", res.Message)
+			for _, ch := range res.Changes {
+				fmt.Printf("  %s\n", ch)
+			}
+		case targets.TargetClaude:
+			res, err := targets.InstallClaude(service.HomeDir(), flags.DryRun)
+			if err != nil {
+				return fmt.Errorf("install Claude target: %w", err)
+			}
+			fmt.Printf("Claude target: %s\n", res.Message)
+			for _, ch := range res.Changes {
+				fmt.Printf("  %s\n", ch)
+			}
+		}
+	}
+	return nil
 }
 
 // runSync reconciles an installed home with the current embedded asset set,
-// removing stale owned artifacts. Conflicts fail closed exactly like
-// install, and the real run is bound to the previewed plan digest exactly
-// like install.
+// removing stale owned artifacts.
 func runSync(args []string) error {
 	flags, err := parseRunFlags(args, "sync", true)
 	if err != nil {
@@ -127,9 +167,44 @@ func runSync(args []string) error {
 		return err
 	}
 
+	targetList, err := targets.ParseTargets(flags.Target)
+	if err != nil {
+		return err
+	}
+	if flags.Target == "" {
+		targetList = []targets.TargetID{targets.TargetOpenCode}
+	}
+
 	opts := install.DefaultOptions()
 	opts.Version = Version
-	return previewAndApply("sync", flags, opts, service.Sync)
+
+	for _, target := range targetList {
+		switch target {
+		case targets.TargetOpenCode:
+			if err := previewAndApply("sync", flags, opts, service.Sync); err != nil {
+				return err
+			}
+		case targets.TargetAGY:
+			res, err := targets.InstallAGY(service.HomeDir(), flags.DryRun)
+			if err != nil {
+				return fmt.Errorf("sync AGY target: %w", err)
+			}
+			fmt.Printf("Antigravity target: %s\n", res.Message)
+			for _, ch := range res.Changes {
+				fmt.Printf("  %s\n", ch)
+			}
+		case targets.TargetClaude:
+			res, err := targets.InstallClaude(service.HomeDir(), flags.DryRun)
+			if err != nil {
+				return fmt.Errorf("sync Claude target: %w", err)
+			}
+			fmt.Printf("Claude target: %s\n", res.Message)
+			for _, ch := range res.Changes {
+				fmt.Printf("  %s\n", ch)
+			}
+		}
+	}
+	return nil
 }
 
 // previewAndApply runs the shared install/sync flow. The preview uses the
@@ -582,6 +657,19 @@ func runDoctor() error {
 
 	fmt.Printf("cortex-ia doctor — home %s\n", report.HomeDir)
 	fmt.Printf("  Verdict: %s\n", report.Verdict)
+
+	fmt.Println("  Detected Coding CLIs:")
+	for _, cli := range clidetect.DetectAll(report.HomeDir) {
+		status := "not found"
+		if cli.Found {
+			status = fmt.Sprintf("found (%s) at %s", cli.Version, cli.BinaryPath)
+		}
+		configStatus := "absent"
+		if cli.ConfigFound {
+			configStatus = fmt.Sprintf("config present at %s", cli.ConfigDir)
+		}
+		fmt.Printf("    %-24s %s [%s]\n", cli.DisplayName, status, configStatus)
+	}
 	if report.OpencodeRoot != "" {
 		fmt.Printf("  OpenCode root: %s\n", report.OpencodeRoot)
 		fmt.Printf("  Selection: cortex=%v context7=%v; work-control=builtin\n",
@@ -851,40 +939,66 @@ func runUninstall(args []string) error {
 	if err != nil {
 		return err
 	}
-	if !flags.DryRun {
-		if err := confirmDestructive("uninstall (remove the accredited cortex-ia installation)"); err != nil {
-			return fmt.Errorf("uninstall: %w", err)
-		}
-	}
 
-	receipt, err := service.Uninstall(install.UninstallOptions{DryRun: flags.DryRun})
+	targetList, err := targets.ParseTargets(flags.Target)
 	if err != nil {
 		return err
 	}
+	if flags.Target == "" {
+		targetList = []targets.TargetID{targets.TargetOpenCode}
+	}
 
-	title := "uninstall"
-	if receipt.DryRun {
-		title += " (dry-run)"
+	for _, target := range targetList {
+		switch target {
+		case targets.TargetOpenCode:
+			if !flags.DryRun {
+				if err := confirmDestructive("uninstall (remove the accredited cortex-ia installation for OpenCode)"); err != nil {
+					return fmt.Errorf("uninstall: %w", err)
+				}
+			}
+
+			receipt, err := service.Uninstall(install.UninstallOptions{DryRun: flags.DryRun})
+			if err != nil {
+				return err
+			}
+
+			title := "uninstall OpenCode target"
+			if receipt.DryRun {
+				title += " (dry-run)"
+			}
+			fmt.Printf("cortex-ia %s\n", title)
+			if receipt.NotInstalled {
+				fmt.Println("  No cortex-ia installation metadata found; nothing to remove.")
+				continue
+			}
+			fmt.Printf("  Removed: %d\n", len(receipt.Removed))
+			fmt.Printf("  MCP entries removed: %s\n", strings.Join(defaultStringSlice(receipt.MCPRemoved), ", "))
+			fmt.Printf("  Already absent: %d\n", len(receipt.AlreadyAbsent))
+			fmt.Printf("  Directories pruned: %d\n", len(receipt.RemovedDirs))
+			for _, preserved := range receipt.Preserved {
+				fmt.Printf("  Preserved (co-owned): %s\n", preserved)
+			}
+			for _, retained := range receipt.Retained {
+				fmt.Printf("  Retained: %s — %s\n", retained.Target, retained.Reason)
+			}
+			if receipt.BackupID != "" {
+				fmt.Printf("  Backup: %s\n", receipt.BackupID)
+			}
+			fmt.Printf("  State removed: %v  Complete: %v\n", receipt.StateRemoved, receipt.Complete)
+		case targets.TargetAGY:
+			res, err := targets.UninstallAGY(service.HomeDir(), flags.DryRun)
+			if err != nil {
+				return fmt.Errorf("uninstall AGY target: %w", err)
+			}
+			fmt.Printf("Antigravity target: %s\n", res.Message)
+		case targets.TargetClaude:
+			res, err := targets.UninstallClaude(service.HomeDir(), flags.DryRun)
+			if err != nil {
+				return fmt.Errorf("uninstall Claude target: %w", err)
+			}
+			fmt.Printf("Claude target: %s\n", res.Message)
+		}
 	}
-	fmt.Printf("cortex-ia %s\n", title)
-	if receipt.NotInstalled {
-		fmt.Println("  No cortex-ia installation metadata found; nothing to remove.")
-		return nil
-	}
-	fmt.Printf("  Removed: %d\n", len(receipt.Removed))
-	fmt.Printf("  MCP entries removed: %s\n", strings.Join(defaultStringSlice(receipt.MCPRemoved), ", "))
-	fmt.Printf("  Already absent: %d\n", len(receipt.AlreadyAbsent))
-	fmt.Printf("  Directories pruned: %d\n", len(receipt.RemovedDirs))
-	for _, preserved := range receipt.Preserved {
-		fmt.Printf("  Preserved (co-owned): %s\n", preserved)
-	}
-	for _, retained := range receipt.Retained {
-		fmt.Printf("  Retained: %s — %s\n", retained.Target, retained.Reason)
-	}
-	if receipt.BackupID != "" {
-		fmt.Printf("  Backup: %s\n", receipt.BackupID)
-	}
-	fmt.Printf("  State removed: %v  Complete: %v\n", receipt.StateRemoved, receipt.Complete)
 	return nil
 }
 

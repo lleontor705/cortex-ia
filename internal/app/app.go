@@ -73,6 +73,9 @@ func runCLI(args []string) error {
 	case "report":
 		return runReport(rest)
 
+	case "hook":
+		return runHook(rest)
+
 	case "doctor":
 		return runDoctor()
 
@@ -172,12 +175,13 @@ func printHelp() {
 
 Usage:
   cortex-ia                          Launch the interactive TUI
-  cortex-ia install [--dry-run] [--overwrite]
-                                      Install the embedded OpenCode asset set
-                                      and the default managed MCP selection
-  cortex-ia sync [--dry-run] [--overwrite]
+  cortex-ia install [--target <list>] [--dry-run] [--overwrite]
+                                      Install the assets and plugins for
+                                      the specified targets (opencode, agy, claude, all)
+  cortex-ia sync [--target <list>] [--dry-run] [--overwrite]
                                       Reconcile an installed home with the
-                                      current embedded asset set
+                                      current asset set for targets
+  cortex-ia hook [pre-tool|stop]     Execute Antigravity lifecycle hook
   cortex-ia mcp add <name> --preset [--dry-run]
                                       Register a managed catalog MCP preset
   cortex-ia mcp add <name> --local [--env KEY=VALUE]... -- <command> [args...]
