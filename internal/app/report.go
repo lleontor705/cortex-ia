@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/telemetry"
 )
 
@@ -131,6 +133,8 @@ func runReportError(home string, args []string) error {
 		ws, _ = os.Getwd()
 	}
 
+	taskID, boardID, details = enrichReportMetadata(home, jobID, taskID, boardID, details)
+
 	cfg, _ := telemetry.LoadConfig(home)
 	report := telemetry.CreateReport(source, code, msg, details, taskID, jobID, boardID, ws, Version, cfg.Secret)
 
@@ -152,4 +156,80 @@ func runReportError(home string, args []string) error {
 		}
 	}
 	return nil
+}
+
+func enrichReportMetadata(home, jobID, taskID, boardID, details string) (string, string, string) {
+	if jobID == "" && taskID == "" {
+		return taskID, boardID, details
+	}
+	dbPath := delegation.DefaultDBPath(home)
+	if _, err := os.Stat(dbPath); err != nil {
+		return taskID, boardID, details
+	}
+	store, err := delegation.OpenStore(dbPath)
+	if err != nil {
+		return taskID, boardID, details
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var diag strings.Builder
+	diag.WriteString("=== OPERATIONAL TRACE & DIAGNOSTICS ===\n")
+
+	if jobID != "" {
+		if job, err := store.Get(ctx, jobID); err == nil {
+			if taskID == "" && job.TaskID != "" {
+				taskID = job.TaskID
+			}
+			diag.WriteString(fmt.Sprintf("• Job: %s | Role: %s | Status: %s | Transport: %s | Pane: %s | PID: %d | Attempt: #%d\n",
+				job.ID, job.Role, job.Status, job.Transport, job.PaneID, job.PID, job.Attempt))
+			if job.StartedAt != "" {
+				diag.WriteString(fmt.Sprintf("  Timing: Started=%s, Updated=%s\n", job.StartedAt, job.UpdatedAt))
+			}
+		}
+	}
+
+	if taskID != "" {
+		if work, err := store.GetWork(ctx, taskID); err == nil {
+			if boardID == "" && work.BoardID != "" {
+				boardID = work.BoardID
+			}
+			diag.WriteString(fmt.Sprintf("• Task: %s | Board: %s | Status: %s | Title: %q\n",
+				work.ID, work.BoardID, work.Status, work.Title))
+		}
+	}
+
+	// Fetch recent events for this job or task
+	if events, err := store.ListActivity(ctx, 40); err == nil {
+		var matched []string
+		for _, e := range events {
+			if (jobID != "" && e.EntityID == jobID) || (taskID != "" && e.EntityID == taskID) {
+				tStr := e.CreatedAt
+				if t, parseErr := time.Parse(time.RFC3339Nano, e.CreatedAt); parseErr == nil {
+					tStr = t.Format("15:04:05")
+				}
+				matched = append(matched, fmt.Sprintf("  • %s [%s] %s -> %s %s", tStr, e.Kind, e.From, e.To, e.Detail))
+				if len(matched) >= 8 {
+					break
+				}
+			}
+		}
+		if len(matched) > 0 {
+			diag.WriteString("• Lifecycle Breadcrumbs:\n")
+			for i := len(matched) - 1; i >= 0; i-- {
+				diag.WriteString(matched[i] + "\n")
+			}
+		}
+	}
+
+	diag.WriteString("=======================================\n\n")
+	if strings.TrimSpace(details) != "" {
+		diag.WriteString(details)
+	} else {
+		diag.WriteString("No additional details provided.")
+	}
+
+	return taskID, boardID, diag.String()
 }

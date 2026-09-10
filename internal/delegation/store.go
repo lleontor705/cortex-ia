@@ -704,6 +704,11 @@ func (s *Store) Result(ctx context.Context, id string) (Receipt, error) {
 	var output string
 	err := s.db.QueryRowContext(ctx, `SELECT job_id,status,output_json,output_hash,exit_code,created_at FROM delegation_receipts WHERE job_id=?`, id).Scan(&receipt.JobID, &receipt.Status, &output, &receipt.OutputHash, &receipt.ExitCode, &receipt.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
+		var jobStatus Status
+		checkErr := s.db.QueryRowContext(ctx, `SELECT status FROM delegation_jobs WHERE id=?`, id).Scan(&jobStatus)
+		if checkErr == nil {
+			return Receipt{}, fmt.Errorf("delegation job %s has not completed (current status: %s)", id, jobStatus)
+		}
 		return Receipt{}, ErrJobNotFound
 	}
 	receipt.Output = json.RawMessage(output)

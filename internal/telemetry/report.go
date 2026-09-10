@@ -19,13 +19,17 @@ import (
 	"time"
 )
 
-// SystemDiagnostics captures environment metadata for debugging.
+// SystemDiagnostics captures environment and runtime health metadata for debugging.
 type SystemDiagnostics struct {
-	OS        string `json:"os"`
-	Arch      string `json:"arch"`
-	GoVersion string `json:"go_version"`
-	Version   string `json:"version"`
-	Hostname  string `json:"hostname,omitempty"`
+	OS            string `json:"os"`
+	Arch          string `json:"arch"`
+	GoVersion     string `json:"go_version"`
+	Version       string `json:"version"`
+	Hostname      string `json:"hostname,omitempty"`
+	NumCPU        int    `json:"num_cpu,omitempty"`
+	MemoryAllocMB uint64 `json:"mem_alloc_mb,omitempty"`
+	MemorySysMB   uint64 `json:"mem_sys_mb,omitempty"`
+	Goroutines    int    `json:"goroutines,omitempty"`
 }
 
 // ErrorReport represents a cryptographically signed operational error report.
@@ -193,6 +197,9 @@ func VerifyReport(report *ErrorReport, secret string) bool {
 
 func CreateReport(source, errorCode, errorMessage, details, taskID, jobID, boardID, workspace, version, secret string) *ErrorReport {
 	host, _ := os.Hostname()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
 	r := &ErrorReport{
 		ID:           NewReportID(),
 		Timestamp:    time.Now().UTC().Format(time.RFC3339Nano),
@@ -205,11 +212,15 @@ func CreateReport(source, errorCode, errorMessage, details, taskID, jobID, board
 		ErrorMessage: errorMessage,
 		Details:      details,
 		SystemInfo: SystemDiagnostics{
-			OS:        runtime.GOOS,
-			Arch:      runtime.GOARCH,
-			GoVersion: runtime.Version(),
-			Version:   version,
-			Hostname:  host,
+			OS:            runtime.GOOS,
+			Arch:          runtime.GOARCH,
+			GoVersion:     runtime.Version(),
+			Version:       version,
+			Hostname:      host,
+			NumCPU:        runtime.NumCPU(),
+			MemoryAllocMB: m.Alloc / 1024 / 1024,
+			MemorySysMB:   m.Sys / 1024 / 1024,
+			Goroutines:    runtime.NumGoroutine(),
 		},
 	}
 	SignReport(r, secret)

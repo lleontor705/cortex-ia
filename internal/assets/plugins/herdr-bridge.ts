@@ -65,6 +65,33 @@ function forgetJobTab(jobID: string) {
   activeJobTabs.delete(jobID);
 }
 
+function closeHerdrJobResources(jobID: string) {
+  let herdr = "";
+  try { herdr = firstExecutable("herdr"); } catch {}
+
+  const tabID = activeJobTabs.get(jobID);
+  if (tabID) {
+    if (herdr) {
+      try {
+        execFileSync(herdr, ["tab", "close", tabID], { stdio: "ignore", windowsHide: true });
+      } catch {}
+    }
+    forgetJobTab(jobID);
+    forgetJobPane(jobID);
+    return;
+  }
+
+  const paneID = activeJobPanes.get(jobID);
+  if (paneID) {
+    if (herdr) {
+      try {
+        execFileSync(herdr, ["pane", "close", paneID], { stdio: "ignore", windowsHide: true });
+      } catch {}
+    }
+    forgetJobPane(jobID);
+  }
+}
+
 function saveAuthorityState() {
   // Pure in-memory authority tracking; SQLite delegation.db is authoritative
 }
@@ -186,12 +213,28 @@ function firstExecutable(name: "cortex-ia" | "herdr"): string {
 }
 
 function cortex(args: string[], cwd?: string): string {
-  return execFileSync(firstExecutable("cortex-ia"), args, {
-    encoding: "utf-8",
-    cwd,
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"]
-  });
+  try {
+    return execFileSync(firstExecutable("cortex-ia"), args, {
+      encoding: "utf-8",
+      cwd,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    if (msg.includes("uv_spawn") || msg.includes("EUNKNOWN")) {
+      try {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+        return execFileSync(firstExecutable("cortex-ia"), args, {
+          encoding: "utf-8",
+          cwd,
+          windowsHide: true,
+          stdio: ["ignore", "pipe", "pipe"]
+        });
+      } catch {}
+    }
+    throw err;
+  }
 }
 
 function cortexAuthorized(args: string[], token: string): string {
@@ -973,9 +1016,18 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         acceptance_checks: tool.schema.array(tool.schema.string()).optional(),
         context_data: tool.schema.string().optional(),
         model: tool.schema.string().optional().describe("Dynamic model ID to use for delegation (query with cortex_ia_delegation_models)"),
-        effort: tool.schema.enum(["low", "medium", "high"]).optional().describe("Reasoning effort level")
+        effort: tool.schema.enum(["low", "medium", "high"]).optional().describe("Reasoning effort level"),
+        prefer_native: tool.schema.boolean().optional().describe("If true, explicitly bypass external AGY delegation and execute natively in OpenCode")
       },
       async execute(args, context) {
+        if (args.prefer_native) {
+          return JSON.stringify({
+            delegated: false,
+            execution_mode: "native",
+            reason: "requested_native",
+            action: "USE_NATIVE_SUBAGENT"
+          });
+        }
         let requestPath = "";
         let acceptedJob: any = null;
         let acceptedTransport: "direct" | "herdr" = "direct";
@@ -1081,13 +1133,8 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
                 const cancelled = parseJSON(cortex(["delegate", "cancel", job.job_id]));
                 cancellationStatus = cancelled?.status || "cancelled";
               } catch {}
-              if (openedTab) {
-                try { execFileSync(herdr, ["tab", "close", openedTab], { encoding: "utf-8", windowsHide: true }); } catch {}
-                forgetJobTab(job.job_id);
-                forgetJobPane(job.job_id);
-              } else if (openedPane) {
-                try { execFileSync(herdr, ["pane", "close", openedPane], { encoding: "utf-8", windowsHide: true }); } catch {}
-                forgetJobPane(job.job_id);
+              if (openedTab || openedPane) {
+                closeHerdrJobResources(job.job_id);
               } else {
                 cleanupRequest(requestPath);
               }
@@ -1175,23 +1222,25 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         const deadline = timeoutSeconds > 0 ? Date.now() + timeoutSeconds * 1000 : Infinity;
         const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "lost"]);
         let job: any;
+        let consecutiveErrors = 0;
         do {
-          job = parseJSON(cortex(["delegate", "status", args.job_id]));
+          try {
+            job = parseJSON(cortex(["delegate", "status", args.job_id]));
+            consecutiveErrors = 0;
+          } catch (err: any) {
+            consecutiveErrors++;
+            if (consecutiveErrors >= 5) {
+              throw err;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            continue;
+          }
+
           if (terminal.has(job?.status)) {
             emitDelegationEvent({ kind: "delegation", job_id: args.job_id, role: job.role, status: job.status, transport: job.transport });
             const config = bridgeConfig();
-            if (config.autoClose && activeJobTabs.has(args.job_id)) {
-              const tabID = activeJobTabs.get(args.job_id);
-              if (tabID) {
-                try {
-                  let herdr = "";
-                  try { herdr = firstExecutable("herdr"); } catch {}
-                  if (herdr) {
-                    execFileSync(herdr, ["tab", "close", tabID], { encoding: "utf-8", windowsHide: true });
-                  }
-                } catch {}
-                forgetJobTab(args.job_id);
-              }
+            if (config.autoClose) {
+              closeHerdrJobResources(args.job_id);
             }
             if (job.status === "succeeded") {
               try {
@@ -1201,9 +1250,9 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
             }
             return JSON.stringify(job);
           }
-          await new Promise((resolve) => setTimeout(resolve, 750));
+          await new Promise((resolve) => setTimeout(resolve, 1500));
         } while (Date.now() < deadline);
-        return JSON.stringify({ ...job, wait_timed_out: true });
+        return JSON.stringify({ ...(job || { job_id: args.job_id, status: "unknown" }), wait_timed_out: true });
       }
     }),
 
@@ -1211,18 +1260,28 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       description: "Read the durable structured receipt of a completed cortex-ia delegation job.",
       args: { job_id: tool.schema.string() },
       async execute(args) {
-        const result = cortex(["delegate", "result", args.job_id]);
         let job: any = {};
         try { job = parseJSON(cortex(["delegate", "status", args.job_id])); } catch {}
-        emitDelegationEvent({ kind: "delegation", job_id: args.job_id, role: job.role, status: job.status || "result_read", transport: job.transport });
-        const pane = activeJobPanes.get(args.job_id);
-        if (pane) {
-          try {
-            const herdr = firstExecutable("herdr");
-            execFileSync(herdr, ["pane", "close", pane], { encoding: "utf-8", windowsHide: true });
-            forgetJobPane(args.job_id);
-          } catch {}
+        if (job?.status && !["succeeded", "failed", "cancelled", "timed_out", "lost"].includes(job.status)) {
+          return JSON.stringify({
+            job_id: args.job_id,
+            status: job.status,
+            completed: false,
+            message: `Delegation job is still in progress (status: ${job.status}). Use cortex_ia_delegation_wait to await completion.`
+          });
         }
+        let result = "";
+        try {
+          result = cortex(["delegate", "result", args.job_id]);
+        } catch (err: any) {
+          result = JSON.stringify({
+            job_id: args.job_id,
+            status: job?.status || "unknown",
+            error: err?.message || String(err)
+          });
+        }
+        emitDelegationEvent({ kind: "delegation", job_id: args.job_id, role: job.role, status: job.status || "result_read", transport: job.transport });
+        closeHerdrJobResources(args.job_id);
         return result;
       }
     }),
@@ -1233,14 +1292,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       async execute(args) {
         const result = cortex(["delegate", "cancel", args.job_id]);
         emitDelegationEvent({ kind: "delegation", job_id: args.job_id, status: "cancelled" });
-        const pane = activeJobPanes.get(args.job_id);
-        if (pane) {
-          try {
-            const herdr = firstExecutable("herdr");
-            execFileSync(herdr, ["pane", "close", pane], { encoding: "utf-8", windowsHide: true });
-            forgetJobPane(args.job_id);
-          } catch {}
-        }
+        closeHerdrJobResources(args.job_id);
         return result;
       }
     }),
