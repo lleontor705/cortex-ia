@@ -422,6 +422,132 @@ function executionMode(transport: "direct" | "herdr"): ExecutionMode {
   return transport === "herdr" ? "herdr_multiplexed" : "direct_cli";
 }
 
+export function sanitizeUnicode(str: string): string {
+  if (typeof str !== "string") return "";
+  if (typeof (str as any).toWellFormed === "function") {
+    return (str as any).toWellFormed();
+  }
+  return str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD");
+}
+
+export function truncateUTF8Bytes(str: string, maxBytes: number): { text: string; truncated: boolean } {
+  if (!str) return { text: "", truncated: false };
+  const clean = sanitizeUnicode(str);
+  if (Buffer.byteLength(clean, "utf-8") <= maxBytes) {
+    return { text: clean, truncated: false };
+  }
+  let currentBytes = 0;
+  let result = "";
+  for (const char of clean) {
+    const charBytes = Buffer.byteLength(char, "utf-8");
+    if (currentBytes + charBytes > maxBytes) {
+      return { text: result, truncated: true };
+    }
+    result += char;
+    currentBytes += charBytes;
+  }
+  return { text: result, truncated: false };
+}
+
+export function safeUnicodeSlice(str: string, maxChars: number): string {
+  if (!str) return "";
+  const clean = sanitizeUnicode(str);
+  const chars = Array.from(clean);
+  if (chars.length <= maxChars) return clean;
+  return chars.slice(0, maxChars).join("") + "...";
+}
+
+export function extractCompactReceipt(job: any, res: any, jobID: string): any {
+  const authoritativeStatus = job?.status || res?.status || "unknown";
+  const isSuccess = authoritativeStatus === "succeeded";
+  const exitCode = typeof job?.exit_code === "number" ? job.exit_code
+    : typeof res?.exit_code === "number" ? res.exit_code
+    : (isSuccess ? 0 : 1);
+
+  let rawOutput = res?.output;
+  if (typeof rawOutput === "string") {
+    try {
+      const parsed = JSON.parse(rawOutput);
+      if (parsed && typeof parsed === "object") rawOutput = parsed;
+    } catch {}
+  }
+
+  const candidate = (rawOutput?.structured_output && typeof rawOutput.structured_output === "object") ? rawOutput.structured_output
+    : (res?.structured_output && typeof res.structured_output === "object") ? res.structured_output
+    : (rawOutput && typeof rawOutput === "object" && (rawOutput.phase_status !== undefined || rawOutput.summary !== undefined || rawOutput.execution_status !== undefined || rawOutput.verification_verdict !== undefined || rawOutput.verdict !== undefined || rawOutput.checks !== undefined || rawOutput.changed_files !== undefined)) ? rawOutput
+    : (res && typeof res === "object" && (res.phase_status !== undefined || res.summary !== undefined || res.execution_status !== undefined || res.verification_verdict !== undefined || res.verdict !== undefined || res.checks !== undefined || res.changed_files !== undefined)) ? res
+    : null;
+
+  const validExecutionStatuses = new Set(["completed", "partial", "failed", "blocked", "unverified"]);
+  const rawExecutionStatus = typeof candidate?.execution_status === "string" ? candidate.execution_status.trim() : "";
+  const execution_status = validExecutionStatuses.has(rawExecutionStatus) ? rawExecutionStatus : undefined;
+
+  const rawPhaseStatus = typeof candidate?.phase_status === "string" ? candidate.phase_status.trim() : "";
+  const phase_status = rawPhaseStatus.length > 0 ? rawPhaseStatus : undefined;
+
+  const rawVerdict = candidate?.verification_verdict !== undefined ? candidate.verification_verdict : candidate?.verdict;
+  const verification_verdict = typeof rawVerdict === "string" && rawVerdict.trim().length > 0 ? rawVerdict.trim() : undefined;
+
+  let rawSummary = "";
+  if (typeof candidate?.summary === "string" && candidate.summary.trim().length > 0) {
+    rawSummary = candidate.summary.trim();
+  } else {
+    const rawFallback = rawOutput?.response
+      || rawOutput?.text
+      || res?.response
+      || res?.text
+      || res?.error
+      || (typeof rawOutput === "string" ? rawOutput : "")
+      || job?.error_message
+      || "";
+    rawSummary = typeof rawFallback === "string" ? rawFallback.trim() : (rawFallback ? String(rawFallback).trim() : "");
+  }
+
+  const { text: summary, truncated: summaryTruncated } = truncateUTF8Bytes(rawSummary, 2048);
+
+  const changed_files = Array.isArray(candidate?.changed_files) ? candidate.changed_files.map(String) : undefined;
+  const checks = Array.isArray(candidate?.checks) ? candidate.checks.map(String) : undefined;
+
+  const output: any = {
+    summary,
+    details_omitted: true
+  };
+  if (phase_status !== undefined) output.phase_status = phase_status;
+  if (execution_status !== undefined) output.execution_status = execution_status;
+  if (verification_verdict !== undefined) output.verification_verdict = verification_verdict;
+  if (changed_files !== undefined) output.changed_files = changed_files;
+  if (checks !== undefined) output.checks = checks;
+  if (summaryTruncated) output.truncated = true;
+
+  const id = job?.job_id || res?.job_id || jobID;
+  const compactResult: any = {
+    job_id: id,
+    full_result_job_id: id,
+    status: authoritativeStatus,
+    exit_code: exitCode,
+    compact: true,
+    details_omitted: true,
+    summary,
+    output,
+    structured_output: output
+  };
+
+  if (phase_status !== undefined) compactResult.phase_status = phase_status;
+  if (execution_status !== undefined) compactResult.execution_status = execution_status;
+  if (verification_verdict !== undefined) compactResult.verification_verdict = verification_verdict;
+  if (changed_files !== undefined) compactResult.changed_files = changed_files;
+  if (checks !== undefined) compactResult.checks = checks;
+  if (summaryTruncated) compactResult.truncated = true;
+
+  if (res?.output_hash) compactResult.output_hash = res.output_hash;
+  if (res?.created_at || job?.created_at) compactResult.created_at = res?.created_at || job?.created_at;
+  if (job?.error_code) compactResult.error_code = job.error_code;
+  if (job?.error_message) compactResult.error_message = job.error_message;
+  if (!res && isSuccess) compactResult.receipt_missing = true;
+
+  return compactResult;
+}
+
 export const CortexDelegationBridge: Plugin = async ({ client }) => {
   const aliases = process.env.CORTEX_IA_LEGACY_TOOL_ALIASES;
   if (aliases !== undefined && aliases !== "true" && aliases !== "false") throw new Error("BRIDGE_CONFIG_INVALID: CORTEX_IA_LEGACY_TOOL_ALIASES must be true or false");
@@ -1215,11 +1341,13 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       description: "Wait for one accepted delegation to reach a terminal durable status without model-side polling.",
       args: {
         job_id: tool.schema.string(),
-        timeout_seconds: tool.schema.number().optional().describe("Maximum wait in seconds; 0 or omitted means wait until completion without hard timeout")
+        timeout_seconds: tool.schema.number().optional().describe("Maximum wait in seconds; 0 or omitted means wait until completion without hard timeout"),
+        compact: tool.schema.boolean().optional().describe("If true, return a compact summary receipt preserving full durable storage")
       },
       async execute(args) {
         const timeoutSeconds = args.timeout_seconds !== undefined ? Math.max(0, Math.floor(args.timeout_seconds)) : 0;
         const deadline = timeoutSeconds > 0 ? Date.now() + timeoutSeconds * 1000 : Infinity;
+        const isCompact = args.compact === true || args.compact === "true";
         const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "lost"]);
         let job: any;
         let consecutiveErrors = 0;
@@ -1242,6 +1370,18 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
             if (config.autoClose) {
               closeHerdrJobResources(args.job_id);
             }
+            if (isCompact) {
+              let res: any = null;
+              try {
+                res = parseJSON(cortex(["delegate", "result", args.job_id]));
+              } catch {}
+              const compactResult = extractCompactReceipt(job, res, args.job_id);
+              return JSON.stringify({
+                ...job,
+                compact: true,
+                result: compactResult
+              });
+            }
             if (job.status === "succeeded") {
               try {
                 const res = parseJSON(cortex(["delegate", "result", args.job_id]));
@@ -1252,7 +1392,17 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           }
           await new Promise((resolve) => setTimeout(resolve, 1500));
         } while (Date.now() < deadline);
-        return JSON.stringify({ ...(job || { job_id: args.job_id, status: "unknown" }), wait_timed_out: true });
+        const timedOutJob = job || { job_id: args.job_id, status: "unknown" };
+        if (isCompact) {
+          const compactResult = extractCompactReceipt(timedOutJob, null, args.job_id);
+          return JSON.stringify({
+            ...timedOutJob,
+            wait_timed_out: true,
+            compact: true,
+            result: compactResult
+          });
+        }
+        return JSON.stringify({ ...timedOutJob, wait_timed_out: true });
       }
     }),
 

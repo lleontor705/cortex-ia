@@ -84,15 +84,29 @@ export const CortexLeaseGuardPlugin: Plugin = async (ctx) => ({
 
     for (const target of targets) {
       try {
-        const raw = execFileSync(cortex, ["work", "verify-lease", "--project", path.resolve(ctx.directory), "--session-id", input.sessionID, "--path", target], {
-          cwd: ctx.directory,
-          encoding: "utf8",
-          maxBuffer: 16 * 1024,
-          stdio: ["ignore", "pipe", "pipe"],
-          timeout: 3000,
-          windowsHide: true,
-        });
-        const result = JSON.parse(raw);
+        let raw: string | undefined;
+        let lastExecErr: any;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            raw = execFileSync(cortex, ["work", "verify-lease", "--project", path.resolve(ctx.directory), "--session-id", input.sessionID, "--path", target], {
+              cwd: ctx.directory,
+              encoding: "utf8",
+              maxBuffer: 16 * 1024,
+              stdio: ["ignore", "pipe", "pipe"],
+              timeout: 10000,
+              windowsHide: true,
+            });
+            break;
+          } catch (execErr: any) {
+            lastExecErr = execErr;
+            if (execErr?.code === "ETIMEDOUT" && attempt === 1) {
+              continue;
+            }
+            throw execErr;
+          }
+        }
+        if (!raw && lastExecErr) throw lastExecErr;
+        const result = JSON.parse(raw!);
         const expectedPath = process.platform === "win32" || process.platform === "darwin" ? target.toLowerCase() : target;
         if (result.valid !== true) {
           throw new Error(result.reason || "lease verification rejected by cortex-ia");

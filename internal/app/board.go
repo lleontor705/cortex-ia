@@ -140,10 +140,7 @@ func runBoard(args []string) error {
 		if err != nil || len(positionals) != 0 {
 			return boardUsage("serve [--addr <loopback-host:port>]", err)
 		}
-		address := oneOption(opts, "--addr")
-		if address == "" {
-			address = "127.0.0.1:7331"
-		}
+		address := cortexiaweb.NormalizeAddress(oneOption(opts, "--addr"))
 		return serveCortexIAWeb(store, address)
 	default:
 		return fmt.Errorf("unknown board subcommand %q (see 'cortex-ia board --help')", args[0])
@@ -168,10 +165,7 @@ func runWeb(args []string) error {
 			shouldOpen = true
 		}
 	}
-	address := oneOption(opts, "--addr")
-	if address == "" {
-		address = "127.0.0.1:7331"
-	}
+	address := cortexiaweb.NormalizeAddress(oneOption(opts, "--addr"))
 	home, err := cortexStateHome()
 	if err != nil {
 		return err

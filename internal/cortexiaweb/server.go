@@ -25,6 +25,23 @@ var staticFiles embed.FS
 
 type API struct{ store *delegation.Store }
 
+// NormalizeAddress ensures port-only or empty addresses default to a loopback address.
+func NormalizeAddress(address string) string {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return "127.0.0.1:7331"
+	}
+	if strings.HasPrefix(address, ":") {
+		return "127.0.0.1" + address
+	}
+	if !strings.Contains(address, ":") {
+		if _, err := strconv.Atoi(address); err == nil {
+			return "127.0.0.1:" + address
+		}
+	}
+	return address
+}
+
 func NewHandler(store *delegation.Store) (http.Handler, error) {
 	if store == nil {
 		return nil, errors.New("cortex-ia web store is required")
@@ -46,11 +63,23 @@ func NewHandler(store *delegation.Store) (http.Handler, error) {
 	mux.HandleFunc("POST /api/tasks", api.createTask)
 	mux.HandleFunc("GET /api/config", api.getConfig)
 	mux.HandleFunc("GET /api/delegations/{id}", api.getDelegation)
-	mux.Handle("GET /", http.FileServer(http.FS(assets)))
+
+	fileServer := http.FileServer(http.FS(assets))
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		clean := strings.TrimPrefix(r.URL.Path, "/")
+		if clean != "" && !strings.HasPrefix(clean, "api/") {
+			if _, err := fs.Stat(assets, clean); err != nil {
+				// Fallback to index.html for SPA client-side routes (e.g. /sessions, /board, /overview)
+				r.URL.Path = "/"
+			}
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 	return securityHeaders(mux), nil
 }
 
 func Serve(ctx context.Context, store *delegation.Store, address string, ready chan<- string) error {
+	address = NormalizeAddress(address)
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return fmt.Errorf("invalid cortex-ia web address: %w", err)
@@ -67,6 +96,9 @@ func Serve(ctx context.Context, store *delegation.Store, address string, ready c
 	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
+		if strings.Contains(err.Error(), "bind") || strings.Contains(err.Error(), "already in use") || strings.Contains(err.Error(), "Only one usage") {
+			return fmt.Errorf("cortex-ia web cannot bind to %s: address is already in use (another instance may be running)", address)
+		}
 		return fmt.Errorf("listen for cortex-ia web: %w", err)
 	}
 	defer func() { _ = listener.Close() }()

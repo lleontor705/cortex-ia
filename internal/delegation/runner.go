@@ -435,8 +435,8 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 				activityMu.Lock()
 				idle := time.Since(lastActivity)
 				activityMu.Unlock()
-				if idle >= 15*time.Minute {
-					fmt.Printf("\n⚠️ [%s] Inactivity watchdog: no output for 15 minutes, terminating frozen process...\n", request.Role)
+				if idle >= 30*time.Minute {
+					fmt.Printf("\n⚠️ [%s] Inactivity watchdog: no output for 30 minutes, terminating frozen process...\n", request.Role)
 					_ = os.Stdout.Sync()
 					if cmd.Process != nil {
 						_ = cmd.Process.Kill()
