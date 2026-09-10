@@ -295,6 +295,7 @@ function CortexCockpitHeader(props: {
   isExecuting: () => boolean;
   nativeActivity: () => NativeActivity | undefined;
   projectRoot?: string;
+  textLimit: number;
   spinner: () => string;
   pulse: () => string;
   theme: TuiThemeCurrent;
@@ -310,10 +311,7 @@ function CortexCockpitHeader(props: {
       {/* Brand Title + Pulse Badge */}
       <box flexDirection="row">
         <text fg={CORTEX_THEME.brandViolet}>🧠 </text>
-        <text fg={CORTEX_THEME.pureWhite}>CORTEX</text>
-        <text fg={CORTEX_THEME.neonCyan}>·</text>
-        <text fg={CORTEX_THEME.skyBlue}>IA </text>
-        <text fg={CORTEX_THEME.brandPurple}>v2.0 </text>
+        <text fg={CORTEX_THEME.pureWhite}>{clipped("CORTEX·IA v2.0", props.textLimit)}</text>
         <Show
           when={props.isExecuting()}
           fallback={<text fg={CORTEX_THEME.emeraldGreen}>[● STANDBY]</text>}
@@ -324,10 +322,10 @@ function CortexCockpitHeader(props: {
 
       {/* Subtitle & Project Root */}
       <box flexDirection="row">
-        <text fg={CORTEX_THEME.slateMuted}>Neural Control Bridge </text>
+        <text fg={CORTEX_THEME.slateMuted}>{clipped("Neural Control Bridge", props.textLimit)}</text>
         <Show when={props.projectRoot}>
           <text fg={CORTEX_THEME.slateBorder}>│ </text>
-          <text fg={CORTEX_THEME.skyBlue}>{clipped(path.basename(props.projectRoot!), 13)}</text>
+          <text fg={CORTEX_THEME.skyBlue}>{clipped(path.basename(props.projectRoot!), Math.max(4, props.textLimit - 8))}</text>
         </Show>
       </box>
     </box>
@@ -408,9 +406,11 @@ function MultiColorProgressBar(props: {
   inProgress: number;
   total: number;
   width?: number;
+  compact: boolean;
+  textLimit: number;
   theme: TuiThemeCurrent;
 }) {
-  const w = props.width || 14;
+  const w = Math.max(3, Math.min(props.width || 14, props.textLimit - (props.compact ? 8 : 14)));
   const total = Math.max(props.total, 1);
   const doneW = Math.round((props.done / total) * w);
   const revW = Math.round((props.inReview / total) * w);
@@ -421,13 +421,13 @@ function MultiColorProgressBar(props: {
   return (
     <box flexDirection="column" marginTop={1}>
       <box flexDirection="row">
-        <text fg={CORTEX_THEME.neonCyan}>DAG: </text>
+        <text fg={CORTEX_THEME.neonCyan}>{props.compact ? "D:" : "DAG: "}</text>
         <text fg={CORTEX_THEME.emeraldGreen}>{"█".repeat(doneW)}</text>
         <text fg={CORTEX_THEME.brandPurple}>{"▓".repeat(revW)}</text>
         <text fg={CORTEX_THEME.amberGold}>{"▒".repeat(progW)}</text>
         <text fg={CORTEX_THEME.slateBorder}>{"░".repeat(emptyW)}</text>
         <text fg={CORTEX_THEME.pureWhite}>{` ${pct}%`}</text>
-        <text fg={CORTEX_THEME.slateMuted}>{` (${props.done}/${props.total})`}</text>
+        <text fg={CORTEX_THEME.slateMuted}>{props.compact ? "" : ` (${props.done}/${props.total})`}</text>
       </box>
       <box flexDirection="row">
         <text fg={CORTEX_THEME.emeraldGreen}>{`✓${props.done} `}</text>
@@ -446,6 +446,7 @@ function ActiveTaskHero(props: {
   activeDelegation?: DelegationJob;
   now: () => number;
   spinner: () => string;
+  textLimit: number;
   theme: TuiThemeCurrent;
 }) {
   const elapsed = createMemo(() => {
@@ -473,13 +474,13 @@ function ActiveTaskHero(props: {
     >
       {/* Header Tag */}
       <box flexDirection="row">
-        <text fg={CORTEX_THEME.amberGold}>{`${props.spinner()} ⚡ TAREA EN EJECUCIÓN`}</text>
+        <text fg={CORTEX_THEME.amberGold}>{clipped(`${props.spinner()} ⚡ TAREA EN EJECUCIÓN`, props.textLimit)}</text>
       </box>
 
       {/* Task ID & Title */}
       <box flexDirection="row">
         <text fg={CORTEX_THEME.skyBlue}>🎯 </text>
-        <text fg={CORTEX_THEME.pureWhite}>{clipped(`${props.task.task_id} · ${props.task.title}`, 26)}</text>
+        <text fg={CORTEX_THEME.pureWhite}>{clipped(`${props.task.task_id} · ${props.task.title}`, props.textLimit - 3)}</text>
       </box>
 
       {/* Metrics Row: Elapsed + Lease */}
@@ -487,7 +488,7 @@ function ActiveTaskHero(props: {
         <text fg={CORTEX_THEME.slateMuted}>  ⏱ </text>
         <text fg={CORTEX_THEME.amberGold}>{`+${elapsed()} `}</text>
         <Show when={ttlRemaining()}>
-          {(ttl) => (
+          {(ttl: () => string) => (
             <text fg={ttl() === "expirado" ? CORTEX_THEME.roseRed : CORTEX_THEME.skyBlue}>
               {`│ 🛡 TTL: ${ttl()}${props.task.lease_count ? ` (${props.task.lease_count} lk)` : ""}`}
             </text>
@@ -501,11 +502,11 @@ function ActiveTaskHero(props: {
           when={props.activeDelegation}
           fallback={
             <text fg={CORTEX_THEME.brandPurple}>
-              {`  🧑‍💻 OpenCode Nativo${props.task.owner ? ` (${clipped(props.task.owner, 10)})` : ""}`}
+              {clipped(`  📋 Tarea durable${props.task.owner ? ` (${props.task.owner})` : ""}`, props.textLimit)}
             </text>
           }
         >
-          {(del) => (
+          {(del: () => DelegationJob) => (
             <text fg={CORTEX_THEME.neonCyan}>
               {`  🤖 AGY ${del().transport || "direct"}${del().pane_id ? ` · ${del().pane_id}` : ""}${del().attempt ? ` · int #${del().attempt}` : ""}`}
             </text>
@@ -521,6 +522,7 @@ function TaskRows(props: {
   spinner: () => string;
   theme: TuiThemeCurrent;
   compact?: boolean;
+  textLimit: number;
 }) {
   return (
     <Show when={props.tasks.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  Sin tareas durables activas</text>}>
@@ -536,7 +538,7 @@ function TaskRows(props: {
                 </text>
                 <text fg={chip.color}>{`[${chip.tag}] `}</text>
                 <text fg={isProg ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight}>
-                  {clipped(`${task.task_id} · ${task.title}`, props.compact ? 18 : 24)}
+                  {clipped(`${task.task_id} · ${task.title}`, Math.max(8, props.textLimit - 9))}
                 </text>
               </box>
               <box flexDirection="row">
@@ -558,13 +560,14 @@ function DelegationRows(props: {
   now: () => number;
   theme: TuiThemeCurrent;
   compact?: boolean;
+  textLimit: number;
 }) {
   return (
     <Show when={props.jobs.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  Sin ejecuciones delegadas</text>}>
       <For each={props.jobs.slice(0, MAX_VISIBLE_ROWS)}>
         {(job) => {
           const isRunning = ["running", "starting", "accepted"].includes(job.status);
-          const chip = roleChip(job.role);
+          const chip = roleChip(job.role || "");
           const elapsed = createMemo(() => {
             if (!isRunning || !job.updated_at) return "";
             const t = Date.parse(job.updated_at);
@@ -584,13 +587,13 @@ function DelegationRows(props: {
                 </text>
                 <text fg={chip.color}>{`${chip.icon} [${chip.tag}] `}</text>
                 <text fg={isRunning ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight}>
-                  {job.role || "worker"}
+                  {clipped(job.role || "worker", Math.max(6, props.textLimit - 12))}
                 </text>
                 <text fg={statusCol}>{elapsed()}</text>
               </box>
               <box flexDirection="row">
                 <text fg={CORTEX_THEME.slateMuted}>
-                  {`     ${shortID(job.job_id)} · ${job.transport || "direct"}${job.pane_id ? ` · ${job.pane_id}` : ""}${job.attempt ? ` · int #${job.attempt}` : ""}`}
+                  {clipped(`     ${shortID(job.job_id)} · ${job.transport || "direct"}${job.pane_id ? ` · ${job.pane_id}` : ""}${job.attempt ? ` · int #${job.attempt}` : ""}`, props.textLimit)}
                 </text>
               </box>
             </box>
@@ -601,7 +604,7 @@ function DelegationRows(props: {
   );
 }
 
-function AttentionRows(props: { items: AttentionItem[]; theme: TuiThemeCurrent; compact?: boolean }) {
+function AttentionRows(props: { items: AttentionItem[]; theme: TuiThemeCurrent; compact?: boolean; textLimit: number }) {
   return (
     <Show when={props.items.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  Sin alertas</text>}>
       <For each={props.items.slice(0, MAX_VISIBLE_ROWS)}>
@@ -609,9 +612,9 @@ function AttentionRows(props: { items: AttentionItem[]; theme: TuiThemeCurrent; 
           <box flexDirection="column">
             <box flexDirection="row">
               <text fg={CORTEX_THEME.roseRed}>{`  ✕ `}</text>
-              <text fg={CORTEX_THEME.pureWhite}>{clipped(item.title, props.compact ? 20 : 26)}</text>
+              <text fg={CORTEX_THEME.pureWhite}>{clipped(item.title, Math.max(8, props.textLimit - 4))}</text>
             </box>
-            <text fg={CORTEX_THEME.slateMuted}>{`     ${clipped(item.detail, props.compact ? 20 : 28)}`}</text>
+              <text fg={CORTEX_THEME.slateMuted}>{`     ${clipped(item.detail, Math.max(8, props.textLimit - 5))}`}</text>
           </box>
         )}
       </For>
@@ -717,7 +720,7 @@ function OperationalBottomDashboard(props: {
       </box></Show>
 
       {/* Grid Fila 2: Píldoras de En Curso y Locks */}
-      <box flexDirection="row" marginTop={0}>
+      <box flexDirection={props.layout.compact ? "column" : "row"} marginTop={0}>
         <Show
           when={props.layout.compact}
           fallback={
@@ -759,7 +762,7 @@ function OperationalBottomDashboard(props: {
       {/* Autoridad SQLite y DAG */}
       <box flexDirection="row" marginTop={0}>
         <text fg={CORTEX_THEME.slateMuted}>
-          {props.layout.compact ? `DAG ${doneTasks()}/${totalTasks()}` : `📋 DAG: ${doneTasks()}/${totalTasks()} · Autoridad: SQLite`}
+          {props.layout.compact ? `SQLite · DAG ${doneTasks()}/${totalTasks()}` : `📋 DAG: ${doneTasks()}/${totalTasks()} · Autoridad: SQLite`}
         </text>
       </box>
 
@@ -821,9 +824,7 @@ export function SidebarStatus(props: {
     return Math.max(inProg, actDel);
   });
 
-  const isExecuting = createMemo(
-    () => props.nativeActivity() === "busy" || activeExecutionsCount() > 0 || Boolean(activeDelegation())
-  );
+  const isExecuting = createMemo(() => props.nativeActivity() === "busy" || Boolean(activeDelegation()));
 
   const activeDelegationsCount = createMemo(() => {
     if (typeof props.snapshot().summary.active_delegations === "number") {
@@ -843,13 +844,16 @@ export function SidebarStatus(props: {
     <box
       flexDirection="column"
       ref={(node: BoxRenderable) => setRootWidth(Math.max(0, node.width || 0))}
-      onSizeChange={(width: number) => setRootWidth(Math.max(0, width || 0))}
+      onSizeChange={function (this: BoxRenderable) {
+        setRootWidth(Math.max(0, this.width || 0));
+      }}
     >
       {/* 1. Header Cockpit con Brand Logo & Estilo Cortex */}
       <CortexCockpitHeader
         isExecuting={isExecuting}
         nativeActivity={props.nativeActivity}
         projectRoot={props.snapshot().project_root}
+        textLimit={layout().textLimit}
         spinner={props.spinner}
         pulse={props.pulse}
         theme={props.theme}
@@ -866,6 +870,7 @@ export function SidebarStatus(props: {
       <Show when={props.snapshotError()}>
         <text fg={CORTEX_THEME.roseRed} marginTop={1}>No se pudo actualizar · datos no confirmados</text>
       </Show>
+      <text fg={CORTEX_THEME.slateMuted}>{clipped(`OpenCode nativo: ${props.nativeActivity() || "sin estado"}`, layout().textLimit)}</text>
 
       <Show when={props.scopeReady() && Boolean(props.snapshot().generated_at)}>
         {/* 2. Micro-HUD de Métricas Operacionales */}
@@ -887,18 +892,20 @@ export function SidebarStatus(props: {
               total={totalTasks()}
               width={layout().gaugeWidth}
               compact={layout().compact}
+              textLimit={layout().textLimit}
             theme={props.theme}
           />
         </Show>
 
         {/* 4. Tarjeta Hero de Tarea Activa (si hay tarea en curso) */}
         <Show when={activeTask()}>
-          {(task) => (
+          {(task: () => DashboardTask) => (
             <ActiveTaskHero
               task={task()}
               activeDelegation={activeDelegation()}
               now={props.now}
               spinner={props.spinner}
+              textLimit={layout().textLimit}
               theme={props.theme}
             />
           )}
@@ -916,7 +923,7 @@ export function SidebarStatus(props: {
           onToggle={props.toggleTasks}
           theme={props.theme}
         >
-          <TaskRows tasks={props.snapshot().tasks} spinner={props.spinner} theme={props.theme} compact={layout().compact} />
+          <TaskRows tasks={props.snapshot().tasks} spinner={props.spinner} theme={props.theme} compact={layout().compact} textLimit={layout().textLimit} />
         </Section>
 
         {/* 6. Sección: Ejecuciones & Workers */}
@@ -931,7 +938,7 @@ export function SidebarStatus(props: {
           onToggle={props.toggleDelegations}
           theme={props.theme}
         >
-          <DelegationRows jobs={props.jobs()} spinner={props.spinner} now={props.now} theme={props.theme} compact={layout().compact} />
+          <DelegationRows jobs={props.jobs()} spinner={props.spinner} now={props.now} theme={props.theme} compact={layout().compact} textLimit={layout().textLimit} />
         </Section>
 
         {/* 7. Sección: Centro de Atención & Alertas */}
@@ -946,7 +953,7 @@ export function SidebarStatus(props: {
           onToggle={props.toggleAttention}
           theme={props.theme}
         >
-          <AttentionRows items={attention()} theme={props.theme} compact={layout().compact} />
+          <AttentionRows items={attention()} theme={props.theme} compact={layout().compact} textLimit={layout().textLimit} />
         </Section>
 
         {/* 8. Panel de Control Matrix y Contadores Inferiores */}
@@ -998,7 +1005,7 @@ function HomeBottomStatus(props: {
             </box>
           }
         >
-          {(task) => (
+          {(task: () => DashboardTask) => (
             <box flexDirection="row">
               <text fg={CORTEX_THEME.amberGold}>{`[${props.spinner()} ${task().task_id}] `}</text>
               <text fg={CORTEX_THEME.pureWhite}>{clipped(task().title, 20)}</text>
