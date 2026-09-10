@@ -32,6 +32,8 @@ type HerdrSettings struct {
 	AutoSplit      bool   `json:"auto_split"`
 	SplitDirection string `json:"split_direction"`
 	TimeoutSeconds int    `json:"timeout_seconds"`
+	Presentation   string `json:"presentation,omitempty"` // "tab" | "split"
+	AutoClose      bool   `json:"auto_close,omitempty"`
 }
 
 type TerminalSettings struct {
@@ -51,7 +53,7 @@ type DelegationConfig struct {
 func NormalConfig() DelegationConfig {
 	return DelegationConfig{
 		Version:       "2.0.0",
-		HerdrSettings: HerdrSettings{SplitDirection: "right", TimeoutSeconds: 900},
+		HerdrSettings: HerdrSettings{SplitDirection: "right", TimeoutSeconds: 900, Presentation: "tab", AutoClose: true},
 		Roles: map[string]RoleConfig{
 			"implement": {CLI: "native"}, "investigate": {CLI: "native"},
 			"reviewer": {CLI: "native"}, "planner": {CLI: "native"},
@@ -94,6 +96,9 @@ func (c DelegationConfig) Validate() error {
 	}
 	if c.HerdrSettings.SplitDirection != "right" && c.HerdrSettings.SplitDirection != "down" {
 		return errors.New("herdr split_direction must be right or down")
+	}
+	if c.HerdrSettings.Presentation != "" && c.HerdrSettings.Presentation != "tab" && c.HerdrSettings.Presentation != "split" {
+		return errors.New("herdr presentation must be tab or split")
 	}
 	if c.HerdrSettings.TimeoutSeconds < 0 || c.HerdrSettings.TimeoutSeconds > 86400 {
 		return errors.New("delegation timeout_seconds must be between 0 (unbounded) and 86400")

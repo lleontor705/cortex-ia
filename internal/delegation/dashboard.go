@@ -193,7 +193,12 @@ func (s *Store) DashboardForConversation(ctx context.Context, workspace, request
 	}
 	d := ConversationDashboard{SchemaVersion: 2, ProjectRoot: workspace, RequestedSessionID: requestedSessionID, RootSessionID: rootSessionID,
 		GeneratedAt: s.now().UTC().Format(time.RFC3339Nano), Tasks: []ConversationTask{}, Delegations: []Job{}, Attention: []ConversationAttention{},
-		Summary: map[string]int{"backlog": 0, "ready": 0, "in_progress": 0, "in_review": 0, "blocked": 0, "done": 0, "superseded": 0, "active_tasks": 0, "total_tasks": 0, "total_delegations": 0, "total_attention": 0}, Counts: map[string]int{"active": 0, "review": 0, "attention": 0}}
+		Summary: map[string]int{
+			"backlog": 0, "ready": 0, "in_progress": 0, "in_review": 0, "blocked": 0, "done": 0, "superseded": 0,
+			"active_tasks": 0, "total_tasks": 0, "total_delegations": 0, "active_delegations": 0,
+			"completed_delegations": 0, "failed_delegations": 0, "active_executions": 0, "total_attention": 0,
+		},
+		Counts: map[string]int{"active": 0, "review": 0, "attention": 0}}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return ConversationDashboard{}, err
@@ -236,10 +241,26 @@ func (s *Store) DashboardForConversation(ctx context.Context, workspace, request
 		return ConversationDashboard{}, err
 	}
 	jobPredicate := strings.Replace(conversationPredicate, "workspace = ?", "workspace IN (SELECT value FROM json_each(?))", 1)
-	cte := `WITH tasks AS (SELECT * FROM work_items WHERE ` + conversationPredicate + `
+	taskPredicate := `workspace IN (SELECT value FROM json_each(?))
+		AND (
+			(opencode_root_session_id = ? AND length(opencode_session_id) BETWEEN 1 AND 256
+				AND length(opencode_root_session_id) BETWEEN 1 AND 256
+				AND length(opencode_parent_session_id) <= 256
+				AND opencode_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
+				AND opencode_root_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
+				AND opencode_parent_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
+				AND instr(opencode_session_id,char(0))=0 AND instr(opencode_root_session_id,char(0))=0
+				AND instr(opencode_parent_session_id,char(0))=0
+				AND ((opencode_session_id=opencode_root_session_id AND opencode_parent_session_id='')
+				OR (opencode_session_id<>opencode_root_session_id AND opencode_parent_session_id<>'' AND opencode_parent_session_id<>opencode_session_id)))
+			OR (opencode_root_session_id = '')
+			OR id IN (SELECT item_id FROM work_claims WHERE owner = 'opencode-session:' || ? OR owner = 'opencode-session:' || ?)
+			OR id IN (SELECT task_id FROM delegation_jobs WHERE opencode_root_session_id = ? AND task_id <> '')
+		)`
+	cte := `WITH tasks AS (SELECT * FROM work_items WHERE ` + taskPredicate + `
 		AND NOT EXISTS (SELECT 1 FROM work_decomposition_steps d WHERE d.parent_id=work_items.id)), jobs AS (SELECT * FROM delegation_jobs WHERE ` + jobPredicate + `) `
 	read := func(query string, dest any, extra ...any) error {
-		args := append([]any{workspace, rootSessionID, string(encodedKeys), rootSessionID}, extra...)
+		args := append([]any{string(encodedKeys), rootSessionID, requestedSessionID, rootSessionID, rootSessionID, string(encodedKeys), rootSessionID}, extra...)
 		var raw string
 		if err := tx.QueryRowContext(ctx, cte+query, args...).Scan(&raw); err != nil {
 			return err
@@ -252,11 +273,26 @@ func (s *Store) DashboardForConversation(ctx context.Context, workspace, request
 	d.Summary["total_tasks"] = d.Summary["backlog"] + d.Summary["ready"] + d.Summary["in_progress"] + d.Summary["in_review"] + d.Summary["blocked"] + d.Summary["done"]
 	d.Summary["active_tasks"] = d.Summary["total_tasks"] - d.Summary["done"]
 	jobCounts := map[string]int{}
-	if err = read(`SELECT json_object('total',count(*),'active',COALESCE(sum(status IN ('accepted','starting','running')),0)) FROM jobs`, &jobCounts); err != nil {
+	if err = read(`SELECT json_object(
+		'total',count(*),
+		'active',COALESCE(sum(status IN ('accepted','starting','running')),0),
+		'completed',COALESCE(sum(status='succeeded'),0),
+		'failed',COALESCE(sum(status IN ('failed','timed_out','cancelled','lost','blocked')),0)
+	) FROM jobs`, &jobCounts); err != nil {
 		return ConversationDashboard{}, err
 	}
 	d.Summary["total_delegations"] = jobCounts["total"]
-	d.Counts["active"], d.Counts["review"] = d.Summary["in_progress"]+jobCounts["active"], d.Summary["in_review"]
+	d.Summary["active_delegations"] = jobCounts["active"]
+	d.Summary["completed_delegations"] = jobCounts["completed"]
+	d.Summary["failed_delegations"] = jobCounts["failed"]
+
+	activeExec := d.Summary["in_progress"]
+	if jobCounts["active"] > activeExec {
+		activeExec = jobCounts["active"]
+	}
+	d.Summary["active_executions"] = activeExec
+	d.Counts["active"] = activeExec
+	d.Counts["review"] = d.Summary["in_review"]
 	if err = read(`SELECT json_group_array(json_object('task_id',id,'board_id',board_id,'title',title,'status',status,'revision',revision,
 		'owner',COALESCE((SELECT owner FROM work_claims WHERE item_id=t.id),''),'claim_expires_at',COALESCE((SELECT expires_at FROM work_claims WHERE item_id=t.id),''),
 		'lease_count',(SELECT count(*) FROM work_leases WHERE item_id=t.id),'updated_at',updated_at,

@@ -23,6 +23,8 @@ builds:
       - -X github.com/lleontor705/cortex-ia/internal/app.Version={{.Version}}
       - -X github.com/lleontor705/cortex-ia/internal/app.Commit={{.Commit}}
       - -X github.com/lleontor705/cortex-ia/internal/app.Date={{.Date}}
+      - '-X github.com/lleontor705/cortex-ia/internal/telemetry.CanonicalDefaultEndpoint={{ if index .Env "CORTEX_REPORT_ENDPOINT" }}{{ .Env.CORTEX_REPORT_ENDPOINT }}{{ else }}https://cortex-report-hub-production.up.railway.app/api/v1/reports{{ end }}'
+      - '-X github.com/lleontor705/cortex-ia/internal/telemetry.CanonicalDefaultSecret={{ if index .Env "CORTEX_REPORT_SECRET" }}{{ .Env.CORTEX_REPORT_SECRET }}{{ else }}{{ end }}'
 
 archives:
   - id: default

@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lleontor705/cortex-ia/internal/telemetry"
 )
 
 const maxRequestBytes = 256 * 1024
@@ -97,7 +99,7 @@ func (r *Request) Validate() error {
 	}
 	if r.Project != "" {
 		project, err := ResolveProjectRoot(r.Project)
-		if strings.TrimSpace(r.Project) == "" || err != nil || !SameWorkspace(project, workspace) {
+		if strings.TrimSpace(r.Project) == "" || err != nil || !WorkspacesCompatible(project, workspace) {
 			return errors.New("project must resolve to the delegation workspace")
 		}
 	}
@@ -259,6 +261,7 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 		code = "INVALID_RECEIPT"
 	}
 	message := runErr.Error()
+	telemetry.AutoReport(home, "delegation", "ERR_DELEGATION_FAILURE", fmt.Sprintf("Delegated job %s (%s) failed: %s (%s)", id, role.CLI, code, message), string(output), request.TaskID, id, "", request.Workspace, "")
 	if completeErr := store.Complete(context.Background(), id, status, receipt, code, message); completeErr != nil {
 		return errors.Join(runErr, completeErr)
 	}

@@ -44,6 +44,33 @@ type ErrorReport struct {
 	Signature    string            `json:"signature"`
 }
 
+var (
+	// CanonicalDefaultEndpoint is the default production error telemetry ingestion endpoint.
+	// This can be overridden at compile time via Go linker flags (-ldflags -X).
+	CanonicalDefaultEndpoint = "https://cortex-report-hub-production.up.railway.app/api/v1/reports"
+
+	// CanonicalDefaultSecret is the HMAC signing secret injected into release binaries
+	// at compile time via Go linker flags (-ldflags -X). It is intentionally not hardcoded
+	// in the public source repository for maximum security.
+	CanonicalDefaultSecret = ""
+)
+
+// NormalizeEndpoint ensures the endpoint has a scheme and points to the reports ingestion path.
+func NormalizeEndpoint(raw string) string {
+	ep := strings.TrimSpace(raw)
+	if ep == "" {
+		return CanonicalDefaultEndpoint
+	}
+	if !strings.HasPrefix(ep, "http://") && !strings.HasPrefix(ep, "https://") {
+		ep = "https://" + ep
+	}
+	ep = strings.TrimRight(ep, "/")
+	if !strings.Contains(ep, "/api/") {
+		ep = ep + "/api/v1/reports"
+	}
+	return ep
+}
+
 // Config stores client telemetry settings.
 type Config struct {
 	Endpoint string `json:"endpoint"`
@@ -56,10 +83,14 @@ func ConfigPath(homeDir string) string {
 }
 
 func LoadConfig(homeDir string) (Config, error) {
+	secret := strings.TrimSpace(os.Getenv("CORTEX_REPORT_SECRET"))
+	if secret == "" {
+		secret = CanonicalDefaultSecret
+	}
 	if endpoint := strings.TrimSpace(os.Getenv("CORTEX_REPORT_ENDPOINT")); endpoint != "" {
 		return Config{
-			Endpoint: endpoint,
-			Secret:   strings.TrimSpace(os.Getenv("CORTEX_REPORT_SECRET")),
+			Endpoint: NormalizeEndpoint(endpoint),
+			Secret:   secret,
 			Enabled:  true,
 		}, nil
 	}
@@ -67,7 +98,11 @@ func LoadConfig(homeDir string) (Config, error) {
 	raw, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return Config{Enabled: false}, nil
+			return Config{
+				Endpoint: CanonicalDefaultEndpoint,
+				Secret:   secret,
+				Enabled:  true,
+			}, nil
 		}
 		return Config{}, err
 	}
@@ -75,10 +110,24 @@ func LoadConfig(homeDir string) (Config, error) {
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return Config{}, err
 	}
+	if cfg.Endpoint == "" {
+		cfg.Endpoint = CanonicalDefaultEndpoint
+	} else {
+		cfg.Endpoint = NormalizeEndpoint(cfg.Endpoint)
+	}
+	if cfg.Secret == "" {
+		cfg.Secret = secret
+	}
 	return cfg, nil
 }
 
 func SaveConfig(homeDir string, cfg Config) error {
+	cfg.Endpoint = NormalizeEndpoint(cfg.Endpoint)
+	// For security, if the configured secret matches the built-in binary secret,
+	// do not persist it to disk in plaintext.
+	if cfg.Secret != "" && cfg.Secret == CanonicalDefaultSecret {
+		cfg.Secret = ""
+	}
 	p := ConfigPath(homeDir)
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
@@ -90,6 +139,20 @@ func SaveConfig(homeDir string, cfg Config) error {
 	return os.WriteFile(p, data, 0o600)
 }
 
+// AutoReport dispatches an error report in a non-blocking goroutine if telemetry is enabled.
+func AutoReport(homeDir, source, code, message, details, taskID, jobID, boardID, workspace, version string) {
+	cfg, err := LoadConfig(homeDir)
+	if err != nil || !cfg.Enabled || cfg.Endpoint == "" || cfg.Secret == "" {
+		return
+	}
+	report := CreateReport(source, code, message, details, taskID, jobID, boardID, workspace, version, cfg.Secret)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		_, _ = SendReport(ctx, cfg.Endpoint, report)
+	}()
+}
+
 func NewReportID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
@@ -97,18 +160,14 @@ func NewReportID() string {
 }
 
 func CanonicalSignaturePayload(r *ErrorReport) string {
-	fields := []string{r.ID, r.Timestamp, r.Source, r.TaskID, r.JobID, r.ErrorCode, r.ErrorMessage, r.Details, r.Workspace}
-	var b strings.Builder
-	for i, f := range fields {
-		if i > 0 {
-			b.WriteByte('|')
-		}
-		fmt.Fprintf(&b, "%d:%s", len(f), f)
-	}
-	return b.String()
+	return fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s|%s",
+		r.ID, r.Timestamp, r.Source, r.TaskID, r.JobID, r.ErrorCode, r.ErrorMessage, r.Details, r.Workspace)
 }
 
 func SignReport(report *ErrorReport, secret string) {
+	if secret == "" {
+		secret = CanonicalDefaultSecret
+	}
 	if secret == "" {
 		report.Signature = ""
 		return
@@ -120,6 +179,9 @@ func SignReport(report *ErrorReport, secret string) {
 }
 
 func VerifyReport(report *ErrorReport, secret string) bool {
+	if secret == "" {
+		secret = CanonicalDefaultSecret
+	}
 	if secret == "" || report.Signature == "" {
 		return false
 	}

@@ -40,23 +40,41 @@ func runReport(args []string) error {
 }
 
 func runReportConfig(home string, args []string) error {
-	opts, _, err := workOptions(args, map[string]bool{"--endpoint": false, "--secret": false, "--enable": false, "--disable": false})
-	if err != nil {
-		return fmt.Errorf("usage: cortex-ia report config --endpoint <url> [--secret <key>] [--enable|--disable]")
+	enableFlag := false
+	disableFlag := false
+	filteredArgs := make([]string, 0, len(args))
+	for _, arg := range args {
+		switch arg {
+		case "--enable":
+			enableFlag = true
+		case "--disable":
+			disableFlag = true
+		default:
+			filteredArgs = append(filteredArgs, arg)
+		}
 	}
+
+	opts, _, err := workOptions(filteredArgs, map[string]bool{"--endpoint": false, "--secret": false})
+	if err != nil {
+		return fmt.Errorf("usage: cortex-ia report config [--endpoint <url>] [--secret <key>] [--enable|--disable]")
+	}
+
 	cfg, _ := telemetry.LoadConfig(home)
 	if ep := oneOption(opts, "--endpoint"); ep != "" {
-		cfg.Endpoint = ep
+		cfg.Endpoint = telemetry.NormalizeEndpoint(ep)
 		cfg.Enabled = true
 	}
 	if sec := oneOption(opts, "--secret"); sec != "" {
 		cfg.Secret = sec
 	}
-	if _, ok := opts["--enable"]; ok {
+	if enableFlag {
 		cfg.Enabled = true
 	}
-	if _, ok := opts["--disable"]; ok {
+	if disableFlag {
 		cfg.Enabled = false
+	}
+	if cfg.Endpoint == "" {
+		cfg.Endpoint = telemetry.CanonicalDefaultEndpoint
 	}
 	if err := telemetry.SaveConfig(home, cfg); err != nil {
 		return fmt.Errorf("save telemetry config: %w", err)
@@ -119,6 +137,9 @@ func runReportError(home string, args []string) error {
 	// Print JSON report locally
 	if err := printJSON(report); err != nil {
 		return err
+	}
+	if cfg.Secret == "" {
+		fmt.Fprintf(os.Stderr, "⚠️ Nota: Sin secreto de autenticación configurado (el reporte se envió sin firma HMAC oficial).\n")
 	}
 
 	// If endpoint is configured, dispatch HTTP

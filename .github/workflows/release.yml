@@ -158,3 +158,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          CORTEX_REPORT_ENDPOINT: ${{ vars.CORTEX_REPORT_ENDPOINT || 'https://cortex-report-hub-production.up.railway.app/api/v1/reports' }}
+          CORTEX_REPORT_SECRET: ${{ secrets.CORTEX_REPORT_SECRET }}

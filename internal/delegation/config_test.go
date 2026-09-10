@@ -108,4 +108,20 @@ func TestConfigValidationTimeoutUnboundedAndTerminal(t *testing.T) {
 	if err := cfg.Validate(); err == nil {
 		t.Error("expected error for timeout > 86400, got nil")
 	}
+
+	cfg.HerdrSettings.TimeoutSeconds = 900
+	cfg.HerdrSettings.Presentation = "tab"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected presentation 'tab' to be valid, got: %v", err)
+	}
+
+	cfg.HerdrSettings.Presentation = "split"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected presentation 'split' to be valid, got: %v", err)
+	}
+
+	cfg.HerdrSettings.Presentation = "invalid"
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for presentation 'invalid', got nil")
+	}
 }

@@ -94,12 +94,47 @@ export const CortexLeaseGuardPlugin: Plugin = async (ctx) => ({
         });
         const result = JSON.parse(raw);
         const expectedPath = process.platform === "win32" || process.platform === "darwin" ? target.toLowerCase() : target;
-        if (result.valid !== true || result.path !== expectedPath || result.owner !== `opencode-session:${input.sessionID}` ||
-            typeof result.task_id !== "string" || !result.task_id || !Number.isFinite(Date.parse(result.expires_at)) || Date.parse(result.expires_at) <= Date.now()) throw new Error("unverified lease response");
-        if (taskID && taskID !== result.task_id) throw new Error("mutation spans multiple task claims");
+        if (result.valid !== true) {
+          throw new Error(result.reason || "lease verification rejected by cortex-ia");
+        }
+        if (result.path !== expectedPath) {
+          throw new Error(`path mismatch: expected '${expectedPath}', got '${result.path}'`);
+        }
+        if (result.owner !== `opencode-session:${input.sessionID}`) {
+          throw new Error(`claim owner mismatch for target '${target}'`);
+        }
+        if (typeof result.task_id !== "string" || !result.task_id) {
+          throw new Error("missing task identity in lease verification response");
+        }
+        const expiresAt = Date.parse(result.expires_at);
+        if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+          throw new Error(`lease for '${target}' has expired`);
+        }
+        if (taskID && taskID !== result.task_id) {
+          throw new Error(`mutation spans multiple task claims ('${taskID}' vs '${result.task_id}')`);
+        }
         taskID = result.task_id;
-      } catch {
-        throw new Error("LEASE_REQUIRED: all native mutation targets require a live session-owned claim and lease in this workspace");
+      } catch (err: any) {
+        let reason = "";
+        if (err?.stdout) {
+          try {
+            const parsed = JSON.parse(typeof err.stdout === "string" ? err.stdout : err.stdout.toString("utf8"));
+            if (typeof parsed?.reason === "string" && parsed.reason) {
+              reason = parsed.reason;
+            }
+          } catch {}
+        }
+        if (!reason && err?.stderr) {
+          const stderrStr = (typeof err.stderr === "string" ? err.stderr : err.stderr.toString("utf8")).trim();
+          if (stderrStr) {
+            reason = stderrStr.replace(/^lease verification failed:\s*/i, "");
+          }
+        }
+        if (!reason && typeof err?.message === "string" && err.message && !err.message.includes("Command failed")) {
+          reason = err.message;
+        }
+        const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";
+        throw new Error(`LEASE_REQUIRED${suffix} (target: '${target}')`);
       }
     }
   },

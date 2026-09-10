@@ -67,6 +67,44 @@ func SameWorkspace(left, right string) bool {
 	return leftErr == nil && rightErr == nil && leftKey != "" && leftKey == rightKey
 }
 
+// WorkspacesCompatible reports whether two workspace paths are identical or have
+// an enclosing parent/child relationship (e.g. an umbrella project directory containing nested Git repositories).
+func WorkspacesCompatible(left, right string) bool {
+	leftKey, leftErr := CanonicalWorkspace(left)
+	rightKey, rightErr := CanonicalWorkspace(right)
+	if leftErr != nil || rightErr != nil || leftKey == "" || rightKey == "" {
+		return false
+	}
+	if leftKey == rightKey {
+		return true
+	}
+	if strings.HasPrefix(rightKey, leftKey+"/") {
+		return true
+	}
+	if strings.HasPrefix(leftKey, rightKey+"/") {
+		return true
+	}
+	return false
+}
+
+// WorkspaceRelativePrefix returns the relative slash-separated path from parent to child
+// if child is identical to or strictly inside parent.
+func WorkspaceRelativePrefix(parent, child string) (string, bool) {
+	pKey, pErr := CanonicalWorkspace(parent)
+	cKey, cErr := CanonicalWorkspace(child)
+	if pErr != nil || cErr != nil || pKey == "" || cKey == "" {
+		return "", false
+	}
+	if pKey == cKey {
+		return "", true
+	}
+	prefix := pKey + "/"
+	if strings.HasPrefix(cKey, prefix) {
+		return strings.TrimPrefix(cKey, prefix), true
+	}
+	return "", false
+}
+
 func sameWorkspace(left, right string) bool {
 	return SameWorkspace(left, right)
 }

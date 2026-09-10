@@ -562,7 +562,7 @@ func (s *Store) Create(ctx context.Context, input NewJob) (Job, error) {
 				return err
 			}
 			if err == nil {
-				if strings.TrimSpace(taskWorkspace) != "" && !SameWorkspace(taskWorkspace, job.Workspace) {
+				if strings.TrimSpace(taskWorkspace) != "" && !WorkspacesCompatible(taskWorkspace, job.Workspace) {
 					return fmt.Errorf("%w: task/job workspace mismatch", ErrWorkConflict)
 				}
 			}

@@ -44,6 +44,7 @@ function configRoot(): string {
 }
 
 const activeJobPanes = new Map<string, string>();
+const activeJobTabs = new Map<string, string>();
 
 function rememberJobPane(jobID: string, paneID: string) {
   activeJobPanes.set(jobID, paneID);
@@ -54,6 +55,14 @@ function rememberJobPane(jobID: string, paneID: string) {
 
 function forgetJobPane(jobID: string) {
   activeJobPanes.delete(jobID);
+}
+
+function rememberJobTab(jobID: string, tabID: string) {
+  activeJobTabs.set(jobID, tabID);
+}
+
+function forgetJobTab(jobID: string) {
+  activeJobTabs.delete(jobID);
 }
 
 function saveAuthorityState() {
@@ -218,14 +227,34 @@ function cleanupRequest(requestPath: string) {
   try { fs.rmSync(path.dirname(requestPath), { recursive: true, force: true }); } catch {}
 }
 
-function bridgeConfig(): { useHerdr: boolean; direction: "right" | "down" } {
+function parseTabCreateResult(output: string): { paneID: string; tabID: string } {
+  const parsed = parseJSON(output);
+  const paneID = parsed?.result?.root_pane?.pane_id || parsed?.result?.pane?.pane_id || parsed?.result?.pane_id || "";
+  const tabID = parsed?.result?.tab?.tab_id || parsed?.result?.root_pane?.tab_id || parsed?.tab_id || "";
+  return { paneID, tabID };
+}
+
+function bridgeConfig(): {
+  useHerdr: boolean;
+  direction: "right" | "down";
+  presentation: "tab" | "split";
+  autoClose: boolean;
+} {
   const home = process.env.USERPROFILE || process.env.HOME || "";
   try {
     const value = JSON.parse(fs.readFileSync(path.join(home, ".config", "opencode", "cortex-delegation.json"), "utf-8"));
     const direction = value?.herdr_settings?.split_direction === "down" ? "down" : "right";
-    return { useHerdr: value?.use_herdr === true && value?.herdr_settings?.auto_split === true, direction };
+    const rawPresentation = value?.herdr_settings?.presentation;
+    const presentation = rawPresentation === "split" ? "split" : "tab";
+    const autoClose = value?.herdr_settings?.auto_close !== false;
+    return {
+      useHerdr: value?.use_herdr === true,
+      direction,
+      presentation,
+      autoClose
+    };
   } catch {
-    return { useHerdr: false, direction: "right" };
+    return { useHerdr: false, direction: "right", presentation: "tab", autoClose: true };
   }
 }
 
@@ -1021,24 +1050,42 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
 
           if (transport === "herdr") {
             let openedPane = "";
+            let openedTab = "";
             try {
               const executionDirectory = context.directory;
-              const split = execFileSync(herdr, ["pane", "split", "--direction", config.direction, "--cwd", executionDirectory, "--no-focus"], { encoding: "utf-8", windowsHide: true });
-              const pane = paneID(split);
-              if (!pane) throw new Error("Herdr did not return a pane ID");
-              openedPane = pane;
-              rememberJobPane(job.job_id, pane);
+              if (config.presentation === "split") {
+                const split = execFileSync(herdr, ["pane", "split", "--direction", config.direction, "--cwd", executionDirectory, "--no-focus"], { encoding: "utf-8", windowsHide: true });
+                const pane = paneID(split);
+                if (!pane) throw new Error("Herdr did not return a pane ID");
+                openedPane = pane;
+              } else {
+                // Background tab: executes agent without splitting the active terminal screen
+                const tabLabel = `cortex-${args.role}-${job.job_id.slice(0, 8)}`;
+                const tabArgs = ["tab", "create", "--no-focus", "--label", tabLabel];
+                if (executionDirectory) tabArgs.push("--cwd", executionDirectory);
+                const tabOutput = execFileSync(herdr, tabArgs, { encoding: "utf-8", windowsHide: true });
+                const { paneID: pane, tabID: tab } = parseTabCreateResult(tabOutput);
+                if (!pane) throw new Error("Herdr did not return a pane ID for background tab");
+                openedPane = pane;
+                openedTab = tab;
+                if (tab) rememberJobTab(job.job_id, tab);
+              }
+              rememberJobPane(job.job_id, openedPane);
               const worker = ["delegate", "worker", "--job", job.job_id, "--request-file", requestPath];
-              execFileSync(herdr, ["pane", "run", pane, firstExecutable("cortex-ia"), ...worker], { encoding: "utf-8", windowsHide: true });
-              emitDelegationEvent({ kind: "delegation", job_id: job.job_id, role: args.role, status: job.status, transport, pane_id: pane, workspace: path.resolve(context.directory) });
-              return JSON.stringify({ delegated: true, execution_mode: executionMode(transport), job_id: job.job_id, status: job.status, transport, pane_id: pane });
+              execFileSync(herdr, ["pane", "run", openedPane, firstExecutable("cortex-ia"), ...worker], { encoding: "utf-8", windowsHide: true });
+              emitDelegationEvent({ kind: "delegation", job_id: job.job_id, role: args.role, status: job.status, transport, pane_id: openedPane, tab_id: openedTab || undefined, workspace: path.resolve(context.directory) });
+              return JSON.stringify({ delegated: true, execution_mode: executionMode(transport), job_id: job.job_id, status: job.status, transport, pane_id: openedPane, tab_id: openedTab || undefined });
             } catch {
               let cancellationStatus = "cancellation_unknown";
               try {
                 const cancelled = parseJSON(cortex(["delegate", "cancel", job.job_id]));
                 cancellationStatus = cancelled?.status || "cancelled";
               } catch {}
-              if (openedPane) {
+              if (openedTab) {
+                try { execFileSync(herdr, ["tab", "close", openedTab], { encoding: "utf-8", windowsHide: true }); } catch {}
+                forgetJobTab(job.job_id);
+                forgetJobPane(job.job_id);
+              } else if (openedPane) {
                 try { execFileSync(herdr, ["pane", "close", openedPane], { encoding: "utf-8", windowsHide: true }); } catch {}
                 forgetJobPane(job.job_id);
               } else {
@@ -1132,6 +1179,20 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           job = parseJSON(cortex(["delegate", "status", args.job_id]));
           if (terminal.has(job?.status)) {
             emitDelegationEvent({ kind: "delegation", job_id: args.job_id, role: job.role, status: job.status, transport: job.transport });
+            const config = bridgeConfig();
+            if (config.autoClose && activeJobTabs.has(args.job_id)) {
+              const tabID = activeJobTabs.get(args.job_id);
+              if (tabID) {
+                try {
+                  let herdr = "";
+                  try { herdr = firstExecutable("herdr"); } catch {}
+                  if (herdr) {
+                    execFileSync(herdr, ["tab", "close", tabID], { encoding: "utf-8", windowsHide: true });
+                  }
+                } catch {}
+                forgetJobTab(args.job_id);
+              }
+            }
             if (job.status === "succeeded") {
               try {
                 const res = parseJSON(cortex(["delegate", "result", args.job_id]));
@@ -1200,6 +1261,28 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           return JSON.stringify({ error: error?.message || String(error) });
         }
       }
+    }),
+
+    cortex_ia_report_error: tool({
+      description: "Emit an operational error and incident report to the central telemetry hub and local audit ledger.",
+      args: {
+        code: tool.schema.string().describe("Standard error code (ERR_TASK_BLOCKED, ERR_DELEGATION_FAILURE, ERR_VERIFICATION_FAIL, ERR_INVARIANT_VIOLATION)"),
+        message: tool.schema.string().describe("Descriptive error message explaining the failure condition"),
+        details: tool.schema.string().optional().describe("Extended stack trace, error logs, or failure details"),
+        task_id: tool.schema.string().optional().describe("Associated work task ID"),
+        job_id: tool.schema.string().optional().describe("Associated delegation job ID")
+      },
+      async execute(args) {
+        const cmd = ["report", "error", "--code", args.code, "--message", args.message];
+        if (args.details) cmd.push("--details", args.details);
+        if (args.task_id) cmd.push("--task", args.task_id);
+        if (args.job_id) cmd.push("--job", args.job_id);
+        try {
+          return cortex(cmd);
+        } catch (error: any) {
+          return JSON.stringify({ error: error?.message || String(error) });
+        }
+      }
     })
   };
 
@@ -1217,7 +1300,8 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     file_reserve: ["implement"], work_lease_renew: ["implement"], work_release: ["implement"],
     work_release_all: ["implement"], file_release: ["implement"], work_transition: ["implement"],
     work_approve: ["reviewer"], delegate_start: controllers,
-    delegation_cancel: [...controllers, "orchestrator"], delegation_recover: ["orchestrator"]
+    delegation_cancel: [...controllers, "orchestrator"], delegation_recover: ["orchestrator"],
+    report_error: roles
   };
   for (const [name, definition] of Object.entries(bridgeTools) as [string, any][]) {
     const capability = name.slice("cortex_ia_".length);
@@ -1268,6 +1352,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       cortex_delegation_cancel: bridgeTools.cortex_ia_delegation_cancel,
       cortex_delegation_recover: bridgeTools.cortex_ia_delegation_recover,
       cortex_delegation_models: bridgeTools.cortex_ia_delegation_models,
+      cortex_report_error: bridgeTools.cortex_ia_report_error,
   };
 })()
 

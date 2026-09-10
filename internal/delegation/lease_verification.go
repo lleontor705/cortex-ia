@@ -2,8 +2,7 @@ package delegation
 
 import (
 	"context"
-	"database/sql"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -34,22 +33,99 @@ func (s *Store) VerifySessionWorkLease(ctx context.Context, filePath, workspace,
 		return result, err
 	}
 	now := s.timestamp()
-	err = s.db.QueryRowContext(ctx, `
-		SELECT l.item_id, l.expires_at, c.owner
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT l.item_id, l.expires_at, c.owner, w.workspace, l.path
 		FROM work_leases l
 		JOIN work_claims c ON c.item_id = l.item_id
 		JOIN work_items w ON w.id = l.item_id
-		WHERE l.path = ? AND l.expires_at > ? AND c.expires_at > ?
-		  AND w.status = 'in_progress' AND w.workspace = ? AND c.owner = ?
-	`, clean, now, now, workspaceKey, "opencode-session:"+sessionID).Scan(&result.TaskID, &result.ExpiresAt, &result.Owner)
-	if errors.Is(err, sql.ErrNoRows) {
-		result.Reason = "no current task with a live claim and lease owned by this session in this workspace"
-		return result, nil
-	}
+		WHERE l.expires_at > ? AND c.expires_at > ?
+		  AND w.status = 'in_progress' AND c.owner = ?
+	`, now, now, "opencode-session:"+sessionID)
 	if err != nil {
 		result.Reason = "lease authority lookup failed"
 		return result, err
 	}
-	result.Valid = true
+	defer func() { _ = rows.Close() }()
+
+	foundAnyForSession := false
+	foundCompatibleWorkspace := false
+
+	for rows.Next() {
+		var itemID, expiresAt, owner, taskWorkspace, leasePath string
+		if scanErr := rows.Scan(&itemID, &expiresAt, &owner, &taskWorkspace, &leasePath); scanErr != nil {
+			result.Reason = "lease authority scan failed"
+			return result, scanErr
+		}
+		foundAnyForSession = true
+
+		if !WorkspacesCompatible(taskWorkspace, workspaceKey) {
+			continue
+		}
+		foundCompatibleWorkspace = true
+
+		// 1. Direct path match
+		if leasePath == clean {
+			result.TaskID = itemID
+			result.ExpiresAt = expiresAt
+			result.Owner = owner
+			result.Valid = true
+			return result, nil
+		}
+
+		// 2. taskWorkspace is a child/sub-repo of workspaceKey
+		// e.g. workspaceKey = "d:/fuentes/provi", taskWorkspace = "d:/fuentes/provi/paasproviperu-backend"
+		// If lease was registered relative to sub-repo (e.g. "src/test.cs")
+		// and clean is relative to umbrella workspace ("paasproviperu-backend/src/test.cs")
+		if subRel, ok := WorkspaceRelativePrefix(workspaceKey, taskWorkspace); ok && subRel != "" {
+			if clean == subRel+"/"+leasePath {
+				result.TaskID = itemID
+				result.ExpiresAt = expiresAt
+				result.Owner = owner
+				result.Valid = true
+				return result, nil
+			}
+		}
+
+		// 3. workspaceKey is a child/sub-repo of taskWorkspace
+		// e.g. taskWorkspace = "d:/fuentes/provi", workspaceKey = "d:/fuentes/provi/paasproviperu-backend"
+		// If lease was registered relative to umbrella workspace ("paasproviperu-backend/src/test.cs")
+		// and clean is relative to sub-repo ("src/test.cs")
+		if subRel, ok := WorkspaceRelativePrefix(taskWorkspace, workspaceKey); ok && subRel != "" {
+			if leasePath == subRel+"/"+clean {
+				result.TaskID = itemID
+				result.ExpiresAt = expiresAt
+				result.Owner = owner
+				result.Valid = true
+				return result, nil
+			}
+		}
+
+		// 4. Either leasePath or clean includes the sub-repository directory name
+		// e.g. taskWorkspace is ".../backend", leasePath is "backend/src/handler.cs" and clean is "src/handler.cs" (or vice versa)
+		baseName := filepath.Base(taskWorkspace)
+		if baseName != "" && baseName != "." && baseName != "/" {
+			if leasePath == baseName+"/"+clean || clean == baseName+"/"+leasePath {
+				result.TaskID = itemID
+				result.ExpiresAt = expiresAt
+				result.Owner = owner
+				result.Valid = true
+				return result, nil
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		result.Reason = "lease iteration failed"
+		return result, err
+	}
+
+	if !foundAnyForSession {
+		result.Reason = "no current task with a live claim and lease owned by this session"
+		return result, nil
+	}
+	if !foundCompatibleWorkspace {
+		result.Reason = "active claim belongs to an incompatible workspace"
+		return result, nil
+	}
+	result.Reason = fmt.Sprintf("target %q is not leased under active task in this workspace", clean)
 	return result, nil
 }

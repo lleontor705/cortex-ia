@@ -235,7 +235,7 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 			if dependencyBoard != boardID {
 				return fmt.Errorf("dependency %q belongs to board %q, not %q", dependency, dependencyBoard, boardID)
 			}
-			if dependencyWorkspace != "" && !sameWorkspace(dependencyWorkspace, workspace) {
+			if dependencyWorkspace != "" && !WorkspacesCompatible(dependencyWorkspace, workspace) {
 				return fmt.Errorf("dependency %q belongs to another project", dependency)
 			}
 			if _, err := conn.ExecContext(ctx, `INSERT INTO work_dependencies(item_id,depends_on) VALUES(?,?)`, id, dependency); err != nil {
