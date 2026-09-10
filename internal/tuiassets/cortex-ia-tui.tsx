@@ -15,6 +15,7 @@ import {
   createRoot,
   createSignal,
 } from "solid-js";
+import type { BoxRenderable } from "@opentui/core";
 
 const SNAPSHOT_POLL_INTERVAL_MS = 2500;
 const SNAPSHOT_STALE_MS = 10_000;
@@ -107,7 +108,7 @@ type UISnapshotSummary = {
   total_attention: number;
 };
 
-type UISnapshot = {
+export type UISnapshot = {
   schema_version: number;
   generated_at: string;
   project_root: string;
@@ -123,6 +124,16 @@ type UISnapshot = {
 type AttentionItem = { id: string; title: string; detail: string };
 type OperationalCounts = { active: number; review: number; attention: number };
 type NativeActivity = "busy" | "idle" | "retry" | "unknown";
+type SidebarLayout = { compact: boolean; textLimit: number; gaugeWidth: number };
+
+function sidebarLayout(width: number): SidebarLayout {
+  const measured = Number.isFinite(width) && width > 0 ? Math.floor(width) : 0;
+  return {
+    compact: measured === 0 || measured < 32,
+    textLimit: Math.max(8, measured ? measured - 6 : 18),
+    gaugeWidth: Math.max(3, Math.min(14, measured ? measured - 14 : 6)),
+  };
+}
 
 const EMPTY_SNAPSHOT: UISnapshot = {
   schema_version: 2,
@@ -608,6 +619,7 @@ function OperationalBottomDashboard(props: {
   spinner: () => string;
   pulse: () => string;
   theme: TuiThemeCurrent;
+  layout: SidebarLayout;
 }) {
   const succeededJobs = createMemo(
     () => props.jobs.filter((j) => j.status === "succeeded").length
@@ -627,7 +639,7 @@ function OperationalBottomDashboard(props: {
 
   const successRate = createMemo(() => {
     const closed = succeededJobs() + failedJobs();
-    if (closed === 0) return 100;
+    if (closed === 0) return undefined;
     return Math.round((succeededJobs() / closed) * 100);
   });
 
@@ -637,11 +649,10 @@ function OperationalBottomDashboard(props: {
     return Math.max(0, Math.floor((props.now() - t) / 1000));
   });
 
-  const gaugeWidth = 14;
   const healthBars = createMemo(() => {
-    const rate = successRate() / 100;
-    const filled = Math.round(rate * gaugeWidth);
-    const empty = Math.max(0, gaugeWidth - filled);
+    const rate = successRate();
+    const filled = rate === undefined ? 0 : Math.round((rate / 100) * props.layout.gaugeWidth);
+    const empty = rate === undefined ? 0 : Math.max(0, props.layout.gaugeWidth - filled);
     return {
       filled: "■".repeat(filled),
       empty: "□".repeat(empty),
@@ -649,7 +660,7 @@ function OperationalBottomDashboard(props: {
   });
 
   const healthColor = createMemo(() => {
-    const rate = successRate();
+    const rate = successRate() ?? 0;
     if (rate >= 90) return CORTEX_THEME.emeraldGreen;
     if (rate >= 70) return CORTEX_THEME.neonCyan;
     if (rate >= 50) return CORTEX_THEME.amberGold;
@@ -668,12 +679,12 @@ function OperationalBottomDashboard(props: {
       {/* Panel Header */}
       <box flexDirection="row">
         <text fg={CORTEX_THEME.brandViolet}>🧠 </text>
-        <text fg={CORTEX_THEME.pureWhite}>CONTROL MATRIX </text>
+        <text fg={CORTEX_THEME.pureWhite}>{props.layout.compact ? "CONTROL" : "CONTROL MATRIX "}</text>
         <text fg={CORTEX_THEME.neonCyan}>◈</text>
       </box>
 
       {/* Synapse Pulse / Status Line */}
-      <box flexDirection="row">
+      <Show when={!props.layout.compact}><box flexDirection="row">
         <Show
           when={activeJobs() > 0}
           fallback={
@@ -686,24 +697,24 @@ function OperationalBottomDashboard(props: {
             {`  ${props.spinner()} SYNAPSE: MOTOR ACTIVO`}
           </text>
         </Show>
-      </box>
+      </box></Show>
 
       {/* Grid Fila 1: Píldoras de Éxito y Fallos */}
-      <box flexDirection="row" marginTop={0}>
+      <Show when={!props.layout.compact}><box flexDirection="row" marginTop={0}>
         <text fg={CORTEX_THEME.emeraldGreen}>{`[ ✓ ${succeededJobs()} ÉXITO ] `}</text>
         <text fg={failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted}>
           {`[ ✕ ${failedJobs()} FALLO ]`}
         </text>
-      </box>
+      </box></Show>
 
       {/* Grid Fila 2: Píldoras de En Curso y Locks */}
       <box flexDirection="row" marginTop={0}>
         <text fg={activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
-          {`[ ${activeJobs() > 0 ? props.spinner() : "●"} ${activeJobs()} CURSO ] `}
+          {props.layout.compact ? `${activeJobs()} externos · ${totalLeases()} bloqueos` : `[ ${activeJobs() > 0 ? props.spinner() : "●"} ${activeJobs()} CURSO ] `}
         </text>
-        <text fg={totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted}>
-          {`[ 🛡 ${totalLeases()} LOCKS ]`}
-        </text>
+        <Show when={!props.layout.compact}>
+          <text fg={totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted}>{`[ 🛡 ${totalLeases()} LOCKS ]`}</text>
+        </Show>
       </box>
 
       {/* Micro Medidor de Salud Operativa */}
@@ -711,13 +722,13 @@ function OperationalBottomDashboard(props: {
         <text fg={CORTEX_THEME.slateMuted}>Salud: </text>
         <text fg={healthColor()}>{healthBars().filled}</text>
         <text fg={CORTEX_THEME.slateBorder}>{healthBars().empty}</text>
-        <text fg={healthColor()}>{` ${successRate()}%`}</text>
+        <text fg={healthColor()}>{successRate() === undefined ? "N/A · sin historial" : ` ${successRate()}%`}</text>
       </box>
 
       {/* Autoridad SQLite y DAG */}
       <box flexDirection="row" marginTop={0}>
         <text fg={CORTEX_THEME.slateMuted}>
-          {`📋 DAG: ${doneTasks()}/${totalTasks()} · 📁 SQLite WAL`}
+          {props.layout.compact ? `DAG ${doneTasks()}/${totalTasks()}` : `📋 DAG: ${doneTasks()}/${totalTasks()} · Autoridad: SQLite`}
         </text>
       </box>
 
@@ -727,12 +738,12 @@ function OperationalBottomDashboard(props: {
           when={props.stale}
           fallback={
             <text fg={CORTEX_THEME.emeraldGreen}>
-              {`🟢 En vivo · Sync hace ${syncAgeSec()}s`}
+              {props.layout.compact ? "En vivo" : `🟢 En vivo · Sync hace ${syncAgeSec()}s`}
             </text>
           }
         >
           <text fg={CORTEX_THEME.amberGold}>
-            {`🟡 Snapshot desfasado (+${syncAgeSec()}s)`}
+              {props.layout.compact ? "Datos no confirmados" : `🟡 Snapshot desfasado (+${syncAgeSec()}s)`}
           </text>
         </Show>
       </box>
@@ -740,7 +751,7 @@ function OperationalBottomDashboard(props: {
   );
 }
 
-function SidebarStatus(props: {
+export function SidebarStatus(props: {
   nativeActivity: () => NativeActivity | undefined;
   scopeReady: () => boolean;
   snapshot: () => UISnapshot;
@@ -757,6 +768,8 @@ function SidebarStatus(props: {
   toggleAttention: () => void;
   theme: TuiThemeCurrent;
 }) {
+  const [rootWidth, setRootWidth] = createSignal(0);
+  const layout = createMemo(() => sidebarLayout(rootWidth()));
   const attention = createMemo(() => attentionItems(props.snapshot(), props.snapshotError()));
   const counts = createMemo(() => operationalCounts(props.snapshot(), props.snapshotError()));
   const stale = createMemo(() => {
@@ -796,7 +809,11 @@ function SidebarStatus(props: {
   const totalTasks = createMemo(() => props.snapshot().summary.total_tasks || props.snapshot().tasks.length);
 
   return (
-    <box flexDirection="column">
+    <box
+      flexDirection="column"
+      ref={(node: BoxRenderable) => setRootWidth(Math.max(0, node.width || 0))}
+      onSizeChange={(width: number) => setRootWidth(Math.max(0, width || 0))}
+    >
       {/* 1. Header Cockpit con Brand Logo & Estilo Cortex */}
       <CortexCockpitHeader
         isExecuting={isExecuting}
@@ -836,7 +853,9 @@ function SidebarStatus(props: {
             done={doneTasks()}
             inReview={inReviewTasks()}
             inProgress={inProgressTasks()}
-            total={totalTasks()}
+              total={totalTasks()}
+              width={layout().gaugeWidth}
+              compact={layout().compact}
             theme={props.theme}
           />
         </Show>
@@ -899,6 +918,7 @@ function SidebarStatus(props: {
           spinner={props.spinner}
           pulse={props.pulse}
           theme={props.theme}
+          layout={layout()}
         />
       </Show>
     </box>
@@ -1014,6 +1034,7 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
         if (pendingGeneration === requestGeneration) pendingGeneration = undefined;
         if (disposed || requestGeneration !== generation || JSON.stringify(conversationScope(api)) !== key) return;
         if (error) {
+          setSnapshot(EMPTY_SNAPSHOT);
           setSnapshotError(error.message);
           return;
         }
@@ -1034,6 +1055,7 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
           setSnapshot(next);
           setSnapshotError("");
         } catch (parseError) {
+          setSnapshot(EMPTY_SNAPSHOT);
           setSnapshotError(parseError instanceof Error ? parseError.message : "invalid snapshot JSON");
         }
       }

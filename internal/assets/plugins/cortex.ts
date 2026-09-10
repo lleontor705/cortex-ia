@@ -858,12 +858,14 @@ export const Cortex: Plugin = async (ctx) => {
       try {
         const tool = input.tool.toLowerCase()
 
+        const normalizedTool = tool.startsWith("cortex_") ? tool.slice(7) : tool
+
         // Durable handoffs were already delivered through the MCP channel;
         // their result is not input to this plugin. Stay neutral: no
         // interpretation, no redelivery, no fabricated signal.
-        if (tool === "cortex_handoff") return
+        if (tool === "cortex_handoff" || normalizedTool === "cortex_handoff") return
 
-        if (CORTEX_TOOLS.has(tool)) return
+        if (CORTEX_TOOLS.has(tool) || CORTEX_TOOLS.has(normalizedTool)) return
 
         const sessionId = input.sessionID
         let sessionConfirmed = false

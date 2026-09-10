@@ -14,14 +14,22 @@ tools:
   bash: true
   skill: true
   cortex_*: false
+  cortex_cortex_*: false
   cortex_ia_*: false
   cortex_get_rules: true
+  cortex_cortex_get_rules: true
   cortex_get_observation: true
+  cortex_cortex_get_observation: true
   cortex_get_code_symbols: true
+  cortex_cortex_get_code_symbols: true
   cortex_context: true
+  cortex_cortex_context: true
   cortex_save: true
+  cortex_cortex_save: true
   cortex_code_tests: true
+  cortex_cortex_code_tests: true
   cortex_code_find: true
+  cortex_cortex_code_find: true
   cortex_ia_work_status: true
   cortex_ia_work_claim: true
   cortex_ia_work_renew: true

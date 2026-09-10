@@ -14,18 +14,32 @@ tools:
   bash: false
   skill: true
   cortex_*: false
+  cortex_cortex_*: false
   cortex_ia_*: false
   cortex_search: true
+  cortex_cortex_search: true
   cortex_code_map: true
+  cortex_cortex_code_map: true
   cortex_get_code_symbols: true
+  cortex_cortex_get_code_symbols: true
   cortex_get_code_graph: true
+  cortex_cortex_get_code_graph: true
   cortex_get_blast_radius: true
+  cortex_cortex_get_blast_radius: true
   cortex_analyze_architecture: true
+  cortex_cortex_analyze_architecture: true
   cortex_get_rules: true
+  cortex_cortex_get_rules: true
+  cortex_get_observation: true
+  cortex_cortex_get_observation: true
   cortex_resolve_query: true
+  cortex_cortex_resolve_query: true
   cortex_context: true
+  cortex_cortex_context: true
   cortex_save: true
+  cortex_cortex_save: true
   cortex_relate: true
+  cortex_cortex_relate: true
   cortex_ia_content_hash: true
   cortex_ia_openspec_validate: true
   cortex_ia_openspec_write: true

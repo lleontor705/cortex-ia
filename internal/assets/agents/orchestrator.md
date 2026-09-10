@@ -15,15 +15,24 @@ tools:
   write: false
   bash: false
   cortex_*: false
+  cortex_cortex_*: false
   cortex_ia_*: false
   cortex_session_start: true
+  cortex_cortex_session_start: true
   cortex_session_end: true
+  cortex_cortex_session_end: true
   cortex_session_summary: true
+  cortex_cortex_session_summary: true
   cortex_handoff: true
+  cortex_cortex_handoff: true
   cortex_context: true
+  cortex_cortex_context: true
   cortex_search: true
+  cortex_cortex_search: true
   cortex_get_status: true
+  cortex_cortex_get_status: true
   cortex_get_rules: true
+  cortex_cortex_get_rules: true
   cortex_ia_board_create: true
   cortex_ia_board_list: true
   cortex_ia_board_status: true

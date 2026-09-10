@@ -261,11 +261,65 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 		code = "INVALID_RECEIPT"
 	}
 	message := runErr.Error()
-	telemetry.AutoReport(home, "delegation", "ERR_DELEGATION_FAILURE", fmt.Sprintf("Delegated job %s (%s) failed: %s (%s)", id, role.CLI, code, message), string(output), request.TaskID, id, "", request.Workspace, "")
+	telemetry.AutoReport(home, "delegation", "ERR_DELEGATION_FAILURE", "Delegated job failed", remoteFailureDiagnostics(request, job, code, exitCode, output), request.TaskID, id, "", "", "")
 	if completeErr := store.Complete(context.Background(), id, status, receipt, code, message); completeErr != nil {
 		return errors.Join(runErr, completeErr)
 	}
 	return runErr
+}
+
+type remoteFailureDiagnostic struct {
+	Role            string `json:"role"`
+	Transport       string `json:"transport"`
+	Code            string `json:"code"`
+	Class           string `json:"class"`
+	ExitCode        int    `json:"exit_code"`
+	OutputBytes     int    `json:"output_bytes"`
+	OutputTruncated bool   `json:"output_truncated"`
+	OutputSHA256    string `json:"output_sha256"`
+}
+
+// remoteFailureDiagnostics returns only operational metadata suitable for remote telemetry.
+// Local receipts and completion errors retain the original worker output and error message.
+func remoteFailureDiagnostics(request Request, job Job, code string, exitCode int, output []byte) string {
+	if !supportedRoles[request.Role] || (job.Transport != "direct" && job.Transport != "herdr") {
+		return ""
+	}
+	class, ok := remoteFailureClass(code, len(output))
+	if !ok {
+		return ""
+	}
+	hash := sha256.Sum256(output)
+	details, err := json.Marshal(remoteFailureDiagnostic{
+		Role:            request.Role,
+		Transport:       job.Transport,
+		Code:            code,
+		Class:           class,
+		ExitCode:        exitCode,
+		OutputBytes:     len(output),
+		OutputTruncated: len(output) >= maxOutputBytes,
+		OutputSHA256:    "sha256:" + hex.EncodeToString(hash[:]),
+	})
+	if err != nil {
+		return ""
+	}
+	return string(details)
+}
+
+func remoteFailureClass(code string, outputBytes int) (string, bool) {
+	switch code {
+	case "TIMEOUT":
+		return "timeout", true
+	case "INVALID_RECEIPT":
+		return "invalid_receipt", true
+	case "AGY_FAILED":
+		if outputBytes >= maxOutputBytes {
+			return "maximum_output", true
+		}
+		return "process_exit", true
+	default:
+		return "", false
+	}
 }
 
 func keepAliveAuthorityAndJob(ctx context.Context, store *Store, jobID, owner, taskID string, cancel context.CancelFunc, done <-chan struct{}) {
