@@ -129,6 +129,35 @@ func OpenStore(path string) (*Store, error) {
 	return store, nil
 }
 
+// OpenStoreReadOnly opens the delegation database in read-only mode for fast diagnostic
+// queries and lease checks without attempting schema migrations or acquiring exclusive locks.
+func OpenStoreReadOnly(path string) (*Store, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("delegation database path is required")
+	}
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("delegation database not found: %w", err)
+		}
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open read-only delegation database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	for _, pragma := range []string{
+		"PRAGMA journal_mode=WAL", "PRAGMA query_only=ON", "PRAGMA busy_timeout=5000",
+	} {
+		if _, err := db.Exec(pragma); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("configure read-only delegation database: %w", err)
+		}
+	}
+	return &Store{db: db, now: time.Now}, nil
+}
+
 func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) initialize(ctx context.Context) error {

@@ -68,13 +68,14 @@ Load `investigate` for diagnosis/audit, `workflow-retrospective` for an orchestr
 Ground findings with exact paths, commands, exit codes, and limitations. For architecture assessments, read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` and evaluate depth, locality, dependency direction, seams, adapters, and the deletion test; route material design choices to `planner` instead of deciding the implementation contract. Shell inspection, Git reads, database diagnostics, tests, linters, builds, and benchmarks are allowed without approval. Deletion, destructive SQL, destructive resource commands, push, and hard reset require approval. Save only durable summarized evidence in Cortex. Work control is strictly read-only here: `cortex-ia board list|status` and `cortex-ia work list|status`; never infer authority from the web board, claim, transition, retry, approve, or lease. Canonical protocol: `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`. Do not launch native or nested subagents, and do not silently fix a problem when the request is diagnostic.
 
 ## 1. Delegation Check Gate (Dynamic External CLI / Herdr)
-- Call `cortex_ia_delegate_start` with `role: "investigate"` and `objective: <your task objective>`.
+- **Native Constraint Check**: If dispatched with native constraints (`prefer_native: true`, `execution_mode: "native"`, or diagnostic investigation without external leaves), pass `prefer_native: true` to `cortex_ia_delegate_start` to bypass external leaf spawning and proceed natively immediately.
+- Otherwise, call `cortex_ia_delegate_start` with `role: "investigate"` and `objective: <your task objective>`.
 - **If the bridge returns `delegated: true`** (e.g. `execution_mode: "herdr_multiplexed"` or `"direct_cli"`):
   - An external leaf worker (dynamically configured per role in `cortex-delegation.json`) is executing in a Herdr pane or background process.
   - Call `cortex_ia_delegation_wait({ job_id })` once and reconcile terminal status (`succeeded`, `failed`, `cancelled`, `timed_out`, `lost`).
   - Retrieve the structured receipt using `cortex_ia_delegation_result({ job_id })`.
   - Validate the receipt against repository evidence and return the findings. **Do NOT run duplicate local bash/edit commands yourself while delegated.**
-- **Only if the bridge returns `execution_mode: "native"` with no error**:
+- **Only if the bridge returns `execution_mode: "native"` with no error** (or `prefer_native: true` was passed):
   - Proceed with native investigation below:
 
 ## 2. Mandatory AST Ingestion Check & Navigation Policy

@@ -502,3 +502,132 @@ claude-sonnet-4-6       Claude Sonnet 4.6 (Thinking)
 		t.Errorf("unexpected model 2: %+v", models[2])
 	}
 }
+
+func TestOpenStoreReadOnly_ConcurrentWithImmediateTransaction(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "delegation.db")
+
+	// Initialize writer store
+	writer, err := OpenStore(dbPath)
+	if err != nil {
+		t.Fatalf("OpenStore failed: %v", err)
+	}
+	defer writer.Close()
+
+	ctx := context.Background()
+	_, err = writer.CreateBoard(ctx, "b-test", "Test Board", "")
+	if err != nil {
+		t.Fatalf("CreateBoard failed: %v", err)
+	}
+
+	// Open a second store in ReadOnly mode
+	reader, err := OpenStoreReadOnly(dbPath)
+	if err != nil {
+		t.Fatalf("OpenStoreReadOnly failed: %v", err)
+	}
+	defer reader.Close()
+
+	// Verify reader can query boards
+	boards, err := reader.ListBoards(ctx)
+	if err != nil || len(boards) == 0 {
+		t.Fatalf("reader ListBoards failed: %v", err)
+	}
+
+	// Start an immediate transaction on writer
+	conn, err := writer.db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("writer db.Conn failed: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		t.Fatalf("BEGIN IMMEDIATE failed: %v", err)
+	}
+
+	// ReadOnly store should be able to read during WAL mode without hanging
+	readDone := make(chan bool)
+	go func() {
+		b, err := reader.ListBoards(ctx)
+		if err == nil && len(b) > 0 {
+			readDone <- true
+		} else {
+			readDone <- false
+		}
+	}()
+
+	select {
+	case ok := <-readDone:
+		if !ok {
+			t.Errorf("reader failed to read during active transaction")
+		}
+	case <-time.After(2 * time.Second):
+		t.Errorf("OpenStoreReadOnly was blocked by active immediate transaction (WAL query_only failed)")
+	}
+
+	_, _ = conn.ExecContext(ctx, "ROLLBACK")
+}
+
+func TestVerifySessionWorkLeases_Batch(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "delegation.db")
+
+	store, err := OpenStore(dbPath)
+	if err != nil {
+		t.Fatalf("OpenStore failed: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	sessionID := "ses_batchtest123"
+	workspace := tempDir
+
+	_, _ = store.CreateBoard(ctx, "default", "Default", "")
+	item, err := store.CreateWorkInBoardWithDefinition(ctx, "default", "task-batch", "Batch Task", nil, WorkDefinition{
+		ConversationOwnership: ConversationOwnership{
+			OpenCodeSessionID:     sessionID,
+			OpenCodeRootSessionID: sessionID,
+		},
+		Project: workspace,
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkInBoardWithDefinition failed: %v", err)
+	}
+
+	claim, err := store.ClaimWork(ctx, item.ID, "opencode-session:"+sessionID, 10*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimWork failed: %v", err)
+	}
+
+	_, err = store.ReserveWorkLease(ctx, item.ID, claim.Token, "src/file1.go", 10*time.Minute)
+	if err != nil {
+		t.Fatalf("ReserveWorkLease file1 failed: %v", err)
+	}
+	_, err = store.ReserveWorkLease(ctx, item.ID, claim.Token, "src/file2.go", 10*time.Minute)
+	if err != nil {
+		t.Fatalf("ReserveWorkLease file2 failed: %v", err)
+	}
+
+	reader, err := OpenStoreReadOnly(dbPath)
+	if err != nil {
+		t.Fatalf("OpenStoreReadOnly failed: %v", err)
+	}
+	defer reader.Close()
+
+	// Batch verify: file1 and file2 are valid, file3 is not leased
+	results, err := reader.VerifySessionWorkLeases(ctx, []string{"src/file1.go", "src/file2.go", "src/unleased.go"}, workspace, sessionID)
+	if err != nil {
+		t.Fatalf("VerifySessionWorkLeases failed: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+	if !results[0].Valid || results[0].Path != "src/file1.go" {
+		t.Errorf("expected file1 valid, got: %+v", results[0])
+	}
+	if !results[1].Valid || results[1].Path != "src/file2.go" {
+		t.Errorf("expected file2 valid, got: %+v", results[1])
+	}
+	if results[2].Valid || results[2].Path != "src/unleased.go" {
+		t.Errorf("expected unleased invalid, got: %+v", results[2])
+	}
+}

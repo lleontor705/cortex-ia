@@ -41,6 +41,10 @@ type ErrorReport struct {
 	JobID        string            `json:"job_id,omitempty"`
 	BoardID      string            `json:"board_id,omitempty"`
 	Workspace    string            `json:"workspace,omitempty"`
+	SessionID    string            `json:"session_id,omitempty"`
+	SubagentRole string            `json:"subagent_role,omitempty"`
+	TargetPath   string            `json:"target_path,omitempty"`
+	ModelID      string            `json:"model_id,omitempty"`
 	ErrorCode    string            `json:"error_code"`
 	ErrorMessage string            `json:"error_message"`
 	Details      string            `json:"details,omitempty"`

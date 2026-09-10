@@ -41,13 +41,21 @@ func runWork(args []string) error {
 	if err != nil {
 		return err
 	}
-	store, err := delegation.OpenStore(delegation.DefaultDBPath(home))
+	dbPath := delegation.DefaultDBPath(home)
+	sub := strings.ToLower(args[0])
+	var store *delegation.Store
+	if sub == "verify-lease" || sub == "check-lease" || sub == "status" || sub == "list" {
+		store, err = delegation.OpenStoreReadOnly(dbPath)
+		if err != nil {
+			store, err = delegation.OpenStore(dbPath)
+		}
+	} else {
+		store, err = delegation.OpenStore(dbPath)
+	}
 	if err != nil {
 		return err
 	}
-	defer func() { _ = store.Close() }()
 	ctx := context.Background()
-	sub := strings.ToLower(args[0])
 	switch sub {
 	case "create":
 		if len(args) > 1 && isHelp(args[1]) {
@@ -401,35 +409,118 @@ func runWork(args []string) error {
 		return printJSON(map[string]int64{"recovered": count})
 	case "verify-lease", "check-lease":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("verify-lease --path <file> [--task <task-id>] [--owner <owner>]", nil)
+			return workUsage("verify-lease --path <file> [--path <file2>] [--task <task-id>] [--owner <owner>]", nil)
 		}
-		opts, _, err := workOptions(args[1:], map[string]bool{"--path": false, "--task": false, "--owner": false, "--session-id": false, "--project": false})
+		opts, _, err := workOptions(args[1:], map[string]bool{"--path": true, "--task": false, "--owner": false, "--session-id": false, "--project": false})
 		if err != nil {
 			return workUsage("verify-lease --path <file> [--task <task-id>] [--owner <owner>]", err)
 		}
-		pathVal := oneOption(opts, "--path")
-		if pathVal == "" {
+		rawPaths := opts["--path"]
+		if len(rawPaths) == 0 {
 			return errors.New("work verify-lease requires --path <file>")
 		}
-		var res delegation.LeaseVerification
+		var paths []string
+		for _, p := range rawPaths {
+			for _, part := range strings.Split(p, ",") {
+				if clean := strings.TrimSpace(part); clean != "" {
+					paths = append(paths, clean)
+				}
+			}
+		}
+		if len(paths) == 0 {
+			return errors.New("work verify-lease requires --path <file>")
+		}
+
+		if len(paths) == 1 {
+			pathVal := paths[0]
+			var res delegation.LeaseVerification
+			if session, explicit := opts["--session-id"]; explicit {
+				if len(session) != 1 || session[0] == "" || oneOption(opts, "--project") == "" || oneOption(opts, "--owner") != "" || oneOption(opts, "--task") != "" {
+					return errors.New("session lease verification requires --project and --session-id without --owner or --task")
+				}
+				res, err = store.VerifySessionWorkLease(ctx, pathVal, oneOption(opts, "--project"), session[0])
+			} else {
+				res, err = store.VerifyWorkLease(ctx, pathVal, oneOption(opts, "--task"), oneOption(opts, "--owner"))
+			}
+			if err != nil {
+				return err
+			}
+			if err := printJSON(res); err != nil {
+				return err
+			}
+			if !res.Valid {
+				return fmt.Errorf("lease verification failed: %s", res.Reason)
+			}
+			return nil
+		}
+
+		// Multiple paths batch verification
 		if session, explicit := opts["--session-id"]; explicit {
 			if len(session) != 1 || session[0] == "" || oneOption(opts, "--project") == "" || oneOption(opts, "--owner") != "" || oneOption(opts, "--task") != "" {
 				return errors.New("session lease verification requires --project and --session-id without --owner or --task")
 			}
-			res, err = store.VerifySessionWorkLease(ctx, pathVal, oneOption(opts, "--project"), session[0])
-		} else {
-			res, err = store.VerifyWorkLease(ctx, pathVal, oneOption(opts, "--task"), oneOption(opts, "--owner"))
+			results, err := store.VerifySessionWorkLeases(ctx, paths, oneOption(opts, "--project"), session[0])
+			if err != nil {
+				return err
+			}
+			allValid := true
+			var firstFailure delegation.LeaseVerification
+			for _, r := range results {
+				if !r.Valid {
+					allValid = false
+					firstFailure = r
+					break
+				}
+			}
+			if allValid {
+				taskID := ""
+				owner := ""
+				expiresAt := ""
+				if len(results) > 0 {
+					taskID = results[0].TaskID
+					owner = results[0].Owner
+					expiresAt = results[0].ExpiresAt
+				}
+				if err := printJSON(map[string]any{
+					"valid":      true,
+					"paths":      paths,
+					"task_id":    taskID,
+					"owner":      owner,
+					"expires_at": expiresAt,
+					"results":    results,
+				}); err != nil {
+					return err
+				}
+				return nil
+			}
+			_ = printJSON(firstFailure)
+			return fmt.Errorf("lease verification failed: %s", firstFailure.Reason)
 		}
-		if err != nil {
-			return err
+
+		// General multiple-path check
+		allValid := true
+		var firstFailure delegation.LeaseVerification
+		var results []delegation.LeaseVerification
+		for _, p := range paths {
+			r, err := store.VerifyWorkLease(ctx, p, oneOption(opts, "--task"), oneOption(opts, "--owner"))
+			if err != nil {
+				return err
+			}
+			results = append(results, r)
+			if !r.Valid && allValid {
+				allValid = false
+				firstFailure = r
+			}
 		}
-		if err := printJSON(res); err != nil {
-			return err
+		if allValid {
+			return printJSON(map[string]any{
+				"valid":   true,
+				"paths":   paths,
+				"results": results,
+			})
 		}
-		if !res.Valid {
-			return fmt.Errorf("lease verification failed: %s", res.Reason)
-		}
-		return nil
+		_ = printJSON(firstFailure)
+		return fmt.Errorf("lease verification failed: %s", firstFailure.Reason)
 	default:
 		return fmt.Errorf("unknown work subcommand %q (see 'cortex-ia work --help')", args[0])
 	}

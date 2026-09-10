@@ -103,7 +103,7 @@ func handlePreToolHook() error {
 		return outputDecision("allow", "")
 	}
 
-	store, err := delegation.OpenStore(dbPath)
+	store, err := delegation.OpenStoreReadOnly(dbPath)
 	if err != nil {
 		return outputDecision("allow", "")
 	}

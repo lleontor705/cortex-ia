@@ -80,76 +80,73 @@ export const CortexLeaseGuardPlugin: Plugin = async (ctx) => ({
     if (typeof input.sessionID !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(input.sessionID)) throw new Error("LEASE_CHECK_FAILED: host session identity is required");
     const targets = [...new Set(targetFiles(toolName, (output?.args || {}) as Record<string, any>).map(target => relativeTarget(ctx.directory, target)))].sort();
     const cortex = firstCortexIA();
-    let taskID: string | undefined;
+    if (!targets.length) return;
+    const cortex = firstCortexIA();
 
-    for (const target of targets) {
-      try {
-        let raw: string | undefined;
-        let lastExecErr: any;
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          try {
-            raw = execFileSync(cortex, ["work", "verify-lease", "--project", path.resolve(ctx.directory), "--session-id", input.sessionID, "--path", target], {
-              cwd: ctx.directory,
-              encoding: "utf8",
-              maxBuffer: 16 * 1024,
-              stdio: ["ignore", "pipe", "pipe"],
-              timeout: 10000,
-              windowsHide: true,
-            });
-            break;
-          } catch (execErr: any) {
-            lastExecErr = execErr;
-            if (execErr?.code === "ETIMEDOUT" && attempt === 1) {
-              continue;
-            }
-            throw execErr;
+    try {
+      let raw: string | undefined;
+      let lastExecErr: any;
+      const pathArgs = targets.length === 1
+        ? ["--path", targets[0]]
+        : targets.flatMap(t => ["--path", t]);
+      const cliArgs = ["work", "verify-lease", "--project", path.resolve(ctx.directory), "--session-id", input.sessionID, ...pathArgs];
+
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          raw = execFileSync(cortex, cliArgs, {
+            cwd: ctx.directory,
+            encoding: "utf8",
+            maxBuffer: 64 * 1024,
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 15000,
+            windowsHide: true,
+          });
+          break;
+        } catch (execErr: any) {
+          lastExecErr = execErr;
+          if (execErr?.code === "ETIMEDOUT" && attempt === 1) {
+            continue;
           }
+          throw execErr;
         }
-        if (!raw && lastExecErr) throw lastExecErr;
-        const result = JSON.parse(raw!);
-        const expectedPath = process.platform === "win32" || process.platform === "darwin" ? target.toLowerCase() : target;
-        if (result.valid !== true) {
-          throw new Error(result.reason || "lease verification rejected by cortex-ia");
-        }
-        if (result.path !== expectedPath) {
-          throw new Error(`path mismatch: expected '${expectedPath}', got '${result.path}'`);
-        }
-        if (result.owner !== `opencode-session:${input.sessionID}`) {
-          throw new Error(`claim owner mismatch for target '${target}'`);
-        }
-        if (typeof result.task_id !== "string" || !result.task_id) {
-          throw new Error("missing task identity in lease verification response");
-        }
-        const expiresAt = Date.parse(result.expires_at);
-        if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-          throw new Error(`lease for '${target}' has expired`);
-        }
-        if (taskID && taskID !== result.task_id) {
-          throw new Error(`mutation spans multiple task claims ('${taskID}' vs '${result.task_id}')`);
-        }
-        taskID = result.task_id;
-      } catch (err: any) {
-        let reason = "";
-        if (err?.stdout) {
-          try {
-            const parsed = JSON.parse(typeof err.stdout === "string" ? err.stdout : err.stdout.toString("utf8"));
-            if (typeof parsed?.reason === "string" && parsed.reason) {
-              reason = parsed.reason;
-            }
-          } catch {}
-        }
-        if (!reason && err?.stderr) {
-          const stderrStr = (typeof err.stderr === "string" ? err.stderr : err.stderr.toString("utf8")).trim();
-          if (stderrStr) {
-            reason = stderrStr.replace(/^lease verification failed:\s*/i, "");
-          }
-        }
-        if (!reason && typeof err?.message === "string" && err.message && !err.message.includes("Command failed")) {
-          reason = err.message;
-        }
-        const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";
-        throw new Error(`LEASE_REQUIRED${suffix} (target: '${target}')`);
       }
+      if (!raw && lastExecErr) throw lastExecErr;
+      const result = JSON.parse(raw!);
+      if (result.valid !== true) {
+        throw new Error(result.reason || "lease verification rejected by cortex-ia");
+      }
+      if (result.owner !== `opencode-session:${input.sessionID}`) {
+        throw new Error(`claim owner mismatch for targets: expected 'opencode-session:${input.sessionID}', got '${result.owner}'`);
+      }
+      if (typeof result.task_id !== "string" || !result.task_id) {
+        throw new Error("missing task identity in lease verification response");
+      }
+      const expiresAt = Date.parse(result.expires_at);
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        throw new Error("lease for targets has expired");
+      }
+    } catch (err: any) {
+      let reason = "";
+      if (err?.stdout) {
+        try {
+          const parsed = JSON.parse(typeof err.stdout === "string" ? err.stdout : err.stdout.toString("utf8"));
+          if (typeof parsed?.reason === "string" && parsed.reason) {
+            reason = parsed.reason;
+          }
+        } catch {}
+      }
+      if (!reason && err?.stderr) {
+        const stderrStr = (typeof err.stderr === "string" ? err.stderr : err.stderr.toString("utf8")).trim();
+        if (stderrStr) {
+          reason = stderrStr.replace(/^lease verification failed:\s*/i, "");
+        }
+      }
+      if (!reason && typeof err?.message === "string" && err.message && !err.message.includes("Command failed")) {
+        reason = err.message;
+      }
+      const targetsStr = targets.join(", ");
+      const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";
+      throw new Error(`LEASE_REQUIRED${suffix} (target: '${targetsStr}')`);
     }
   },
 });

@@ -61,6 +61,10 @@ func main() {
 		job_id TEXT NOT NULL DEFAULT '',
 		board_id TEXT NOT NULL DEFAULT '',
 		workspace TEXT NOT NULL DEFAULT '',
+		session_id TEXT NOT NULL DEFAULT '',
+		subagent_role TEXT NOT NULL DEFAULT '',
+		target_path TEXT NOT NULL DEFAULT '',
+		model_id TEXT NOT NULL DEFAULT '',
 		error_code TEXT NOT NULL,
 		error_message TEXT NOT NULL,
 		details TEXT NOT NULL DEFAULT '',
@@ -79,6 +83,10 @@ func main() {
 	CREATE INDEX IF NOT EXISTS reports_created_idx ON reports(created_at DESC);
 	CREATE INDEX IF NOT EXISTS reports_code_idx ON reports(error_code);
 	CREATE INDEX IF NOT EXISTS reports_task_idx ON reports(task_id);
+	CREATE INDEX IF NOT EXISTS reports_board_idx ON reports(board_id);
+	CREATE INDEX IF NOT EXISTS reports_job_idx ON reports(job_id);
+	CREATE INDEX IF NOT EXISTS reports_workspace_idx ON reports(workspace);
+	CREATE INDEX IF NOT EXISTS reports_session_idx ON reports(session_id);
 	`
 	if _, err := db.Exec(initSQL); err != nil {
 		log.Fatalf("Failed to initialize reports schema: %v", err)
@@ -90,8 +98,20 @@ func main() {
 		"ALTER TABLE reports ADD COLUMN mem_alloc_mb INTEGER DEFAULT 0",
 		"ALTER TABLE reports ADD COLUMN mem_sys_mb INTEGER DEFAULT 0",
 		"ALTER TABLE reports ADD COLUMN goroutines INTEGER DEFAULT 0",
+		"ALTER TABLE reports ADD COLUMN session_id TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE reports ADD COLUMN subagent_role TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE reports ADD COLUMN target_path TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE reports ADD COLUMN model_id TEXT NOT NULL DEFAULT ''",
 	} {
 		_, _ = db.Exec(migration)
+	}
+	for _, idx := range []string{
+		"CREATE INDEX IF NOT EXISTS reports_board_idx ON reports(board_id)",
+		"CREATE INDEX IF NOT EXISTS reports_job_idx ON reports(job_id)",
+		"CREATE INDEX IF NOT EXISTS reports_workspace_idx ON reports(workspace)",
+		"CREATE INDEX IF NOT EXISTS reports_session_idx ON reports(session_id)",
+	} {
+		_, _ = db.Exec(idx)
 	}
 
 	hub := &HubServer{
@@ -200,13 +220,15 @@ func (h *HubServer) handleCreateReport(w http.ResponseWriter, r *http.Request) {
 	insertSQL := `
 	INSERT INTO reports (
 		id, timestamp, source, task_id, job_id, board_id, workspace,
+		session_id, subagent_role, target_path, model_id,
 		error_code, error_message, details, os, arch, go_version, version, hostname,
 		num_cpu, mem_alloc_mb, mem_sys_mb, goroutines,
 		signature, created_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := h.db.ExecContext(r.Context(), insertSQL,
 		report.ID, report.Timestamp, report.Source, report.TaskID, report.JobID, report.BoardID, report.Workspace,
+		report.SessionID, report.SubagentRole, report.TargetPath, report.ModelID,
 		report.ErrorCode, report.ErrorMessage, report.Details,
 		report.SystemInfo.OS, report.SystemInfo.Arch, report.SystemInfo.GoVersion, report.SystemInfo.Version, report.SystemInfo.Hostname,
 		report.SystemInfo.NumCPU, report.SystemInfo.MemoryAllocMB, report.SystemInfo.MemorySysMB, report.SystemInfo.Goroutines,
@@ -239,6 +261,7 @@ func (h *HubServer) handleListReports(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, timestamp, source, task_id, job_id, board_id, workspace,
+		       COALESCE(session_id, ''), COALESCE(subagent_role, ''), COALESCE(target_path, ''), COALESCE(model_id, ''),
 		       error_code, error_message, details, os, arch, go_version, version, hostname,
 		       COALESCE(num_cpu, 0), COALESCE(mem_alloc_mb, 0), COALESCE(mem_sys_mb, 0), COALESCE(goroutines, 0),
 		       signature, created_at
@@ -259,6 +282,7 @@ func (h *HubServer) handleListReports(w http.ResponseWriter, r *http.Request) {
 		var host, createdAt string
 		err := rows.Scan(
 			&rep.ID, &rep.Timestamp, &rep.Source, &rep.TaskID, &rep.JobID, &rep.BoardID, &rep.Workspace,
+			&rep.SessionID, &rep.SubagentRole, &rep.TargetPath, &rep.ModelID,
 			&rep.ErrorCode, &rep.ErrorMessage, &rep.Details,
 			&rep.SystemInfo.OS, &rep.SystemInfo.Arch, &rep.SystemInfo.GoVersion, &rep.SystemInfo.Version, &host,
 			&rep.SystemInfo.NumCPU, &rep.SystemInfo.MemoryAllocMB, &rep.SystemInfo.MemorySysMB, &rep.SystemInfo.Goroutines,
@@ -288,6 +312,7 @@ func (h *HubServer) handleGetReport(w http.ResponseWriter, r *http.Request) {
 
 	row := h.db.QueryRowContext(r.Context(), `
 		SELECT id, timestamp, source, task_id, job_id, board_id, workspace,
+		       COALESCE(session_id, ''), COALESCE(subagent_role, ''), COALESCE(target_path, ''), COALESCE(model_id, ''),
 		       error_code, error_message, details, os, arch, go_version, version, hostname,
 		       COALESCE(num_cpu, 0), COALESCE(mem_alloc_mb, 0), COALESCE(mem_sys_mb, 0), COALESCE(goroutines, 0),
 		       signature, created_at
@@ -298,6 +323,7 @@ func (h *HubServer) handleGetReport(w http.ResponseWriter, r *http.Request) {
 	var host, createdAt string
 	err := row.Scan(
 		&rep.ID, &rep.Timestamp, &rep.Source, &rep.TaskID, &rep.JobID, &rep.BoardID, &rep.Workspace,
+		&rep.SessionID, &rep.SubagentRole, &rep.TargetPath, &rep.ModelID,
 		&rep.ErrorCode, &rep.ErrorMessage, &rep.Details,
 		&rep.SystemInfo.OS, &rep.SystemInfo.Arch, &rep.SystemInfo.GoVersion, &rep.SystemInfo.Version, &host,
 		&rep.SystemInfo.NumCPU, &rep.SystemInfo.MemoryAllocMB, &rep.SystemInfo.MemorySysMB, &rep.SystemInfo.Goroutines,
@@ -325,6 +351,10 @@ type DashboardItem struct {
 	JobID         string `json:"job_id"`
 	BoardID       string `json:"board_id"`
 	Workspace     string `json:"workspace"`
+	SessionID     string `json:"session_id"`
+	SubagentRole  string `json:"subagent_role"`
+	TargetPath    string `json:"target_path"`
+	ModelID       string `json:"model_id"`
 	Code          string `json:"code"`
 	Message       string `json:"message"`
 	Details       string `json:"details"`
@@ -348,6 +378,7 @@ func (h *HubServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, timestamp, source, task_id, job_id, board_id, workspace,
+		       COALESCE(session_id, ''), COALESCE(subagent_role, ''), COALESCE(target_path, ''), COALESCE(model_id, ''),
 		       error_code, error_message, details,
 		       os, arch, go_version, version, hostname,
 		       COALESCE(num_cpu, 0), COALESCE(mem_alloc_mb, 0), COALESCE(mem_sys_mb, 0), COALESCE(goroutines, 0),
@@ -368,6 +399,7 @@ func (h *HubServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		var it DashboardItem
 		if err := rows.Scan(
 			&it.ID, &it.Timestamp, &it.Source, &it.TaskID, &it.JobID, &it.BoardID, &it.Workspace,
+			&it.SessionID, &it.SubagentRole, &it.TargetPath, &it.ModelID,
 			&it.Code, &it.Message, &it.Details,
 			&it.OS, &it.Arch, &it.GoVersion, &it.Version, &it.Hostname,
 			&it.NumCPU, &it.MemoryAllocMB, &it.MemorySysMB, &it.Goroutines,
@@ -507,7 +539,7 @@ func (h *HubServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
             {{ range .Items }}
             <tr class="report-row hover:bg-slate-800/50 transition cursor-pointer"
                 data-id="{{ .ID }}"
-                data-search="{{ .Code }} {{ .Source }} {{ .TaskID }} {{ .JobID }} {{ .BoardID }} {{ .Workspace }} {{ .Message }} {{ .Details }} {{ .Hostname }}"
+                data-search="{{ .Code }} {{ .Source }} {{ .TaskID }} {{ .JobID }} {{ .BoardID }} {{ .Workspace }} {{ .SessionID }} {{ .SubagentRole }} {{ .TargetPath }} {{ .ModelID }} {{ .Message }} {{ .Details }} {{ .Hostname }}"
                 onclick="openModal('{{ .ID }}')">
               <td class="px-5 py-3 text-slate-400 whitespace-nowrap text-[11px]">{{ .CreatedAt }}</td>
               <td class="px-5 py-3 whitespace-nowrap">
@@ -630,6 +662,22 @@ func (h *HubServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
           <div>
             <div class="text-[10px] text-slate-400 uppercase">Origen</div>
             <div id="modalSource" class="font-medium text-indigo-300 truncate mt-0.5">-</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400 uppercase">Sesión OpenCode</div>
+            <div id="modalSessionID" class="font-mono text-slate-200 font-medium truncate mt-0.5" title="">-</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400 uppercase">Rol Minion</div>
+            <div id="modalRole" class="font-mono text-emerald-300 font-medium truncate mt-0.5">-</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400 uppercase">Archivo Objetivo</div>
+            <div id="modalTargetPath" class="font-mono text-amber-300 font-medium truncate mt-0.5" title="">-</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400 uppercase">Modelo LLM</div>
+            <div id="modalModelID" class="font-mono text-indigo-300 font-medium truncate mt-0.5">-</div>
           </div>
         </div>
 
@@ -754,6 +802,18 @@ func (h *HubServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
       document.getElementById('modalJobID').textContent = report.job_id || 'No vinculado';
       document.getElementById('modalBoardID').textContent = report.board_id || 'default';
       document.getElementById('modalSource').textContent = report.source || 'orchestrator';
+
+      const sesEl = document.getElementById('modalSessionID');
+      sesEl.textContent = report.session_id || '-';
+      sesEl.title = report.session_id || '';
+
+      document.getElementById('modalRole').textContent = report.subagent_role || '-';
+
+      const tpEl = document.getElementById('modalTargetPath');
+      tpEl.textContent = report.target_path || '-';
+      tpEl.title = report.target_path || '';
+
+      document.getElementById('modalModelID').textContent = report.model_id || '-';
 
       document.getElementById('modalHostBadge').textContent = report.hostname ? 'Host: ' + report.hostname : '';
       document.getElementById('modalOSArch').textContent = (report.os || 'unknown') + ' / ' + (report.arch || 'unknown');

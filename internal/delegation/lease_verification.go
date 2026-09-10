@@ -7,30 +7,114 @@ import (
 	"path/filepath"
 )
 
-// VerifySessionWorkLease is the native mutation admission check. Diagnostic
-// lease lookup without session ownership is not sufficient authority to write.
-func (s *Store) VerifySessionWorkLease(ctx context.Context, filePath, workspace, sessionID string) (LeaseVerification, error) {
+type activeSessionLease struct {
+	itemID        string
+	expiresAt     string
+	owner         string
+	taskWorkspace string
+	leasePath     string
+}
+
+func matchLease(filePath, workspaceKey string, leases []activeSessionLease, foundAnyForSession, foundCompatibleWorkspace bool) LeaseVerification {
 	clean, err := canonicalLeasePath(filePath)
 	if err != nil {
-		return LeaseVerification{Valid: false, Path: filePath, Reason: "invalid workspace-relative target"}, nil
+		return LeaseVerification{Valid: false, Path: filePath, Reason: "invalid workspace-relative target"}
 	}
 	result := LeaseVerification{Path: clean}
+	for _, l := range leases {
+		if !WorkspacesCompatible(l.taskWorkspace, workspaceKey) {
+			continue
+		}
+
+		// 1. Direct path match
+		if l.leasePath == clean {
+			result.TaskID = l.itemID
+			result.ExpiresAt = l.expiresAt
+			result.Owner = l.owner
+			result.Valid = true
+			return result
+		}
+
+		// 2. taskWorkspace is a child/sub-repo of workspaceKey
+		if subRel, ok := WorkspaceRelativePrefix(workspaceKey, l.taskWorkspace); ok && subRel != "" {
+			if clean == subRel+"/"+l.leasePath {
+				result.TaskID = l.itemID
+				result.ExpiresAt = l.expiresAt
+				result.Owner = l.owner
+				result.Valid = true
+				return result
+			}
+		}
+
+		// 3. workspaceKey is a child/sub-repo of taskWorkspace
+		if subRel, ok := WorkspaceRelativePrefix(l.taskWorkspace, workspaceKey); ok && subRel != "" {
+			if l.leasePath == subRel+"/"+clean {
+				result.TaskID = l.itemID
+				result.ExpiresAt = l.expiresAt
+				result.Owner = l.owner
+				result.Valid = true
+				return result
+			}
+		}
+
+		// 4. Either leasePath or clean includes the sub-repository directory name
+		baseName := filepath.Base(l.taskWorkspace)
+		if baseName != "" && baseName != "." && baseName != "/" {
+			if l.leasePath == baseName+"/"+clean || clean == baseName+"/"+l.leasePath {
+				result.TaskID = l.itemID
+				result.ExpiresAt = l.expiresAt
+				result.Owner = l.owner
+				result.Valid = true
+				return result
+			}
+		}
+	}
+
+	if !foundAnyForSession {
+		result.Reason = "no current task with a live claim and lease owned by this session"
+		return result
+	}
+	if !foundCompatibleWorkspace {
+		result.Reason = "active claim belongs to an incompatible workspace"
+		return result
+	}
+	result.Reason = fmt.Sprintf("target %q is not leased under active task in this workspace", clean)
+	return result
+}
+
+// VerifySessionWorkLeases validates multiple paths atomically against active session leases.
+func (s *Store) VerifySessionWorkLeases(ctx context.Context, filePaths []string, workspace, sessionID string) ([]LeaseVerification, error) {
+	if len(filePaths) == 0 {
+		return nil, nil
+	}
 	if sessionID == "" || (ConversationOwnership{OpenCodeSessionID: sessionID, OpenCodeRootSessionID: sessionID}).Validate() != nil {
-		result.Reason = "valid host session is required"
-		return result, nil
+		results := make([]LeaseVerification, len(filePaths))
+		for i, fp := range filePaths {
+			results[i] = LeaseVerification{Path: fp, Reason: "valid host session is required"}
+		}
+		return results, nil
 	}
 	if !filepath.IsAbs(workspace) {
-		result.Reason = "absolute workspace is required"
-		return result, nil
+		results := make([]LeaseVerification, len(filePaths))
+		for i, fp := range filePaths {
+			results[i] = LeaseVerification{Path: fp, Reason: "absolute workspace is required"}
+		}
+		return results, nil
 	}
 	if info, statErr := os.Stat(workspace); statErr != nil || !info.IsDir() {
-		result.Reason = "workspace must be an accessible directory"
-		return result, nil
+		results := make([]LeaseVerification, len(filePaths))
+		for i, fp := range filePaths {
+			results[i] = LeaseVerification{Path: fp, Reason: "workspace must be an accessible directory"}
+		}
+		return results, nil
 	}
 	workspaceKey, err := CanonicalWorkspace(workspace)
 	if err != nil || workspaceKey == "" {
-		result.Reason = "workspace cannot be resolved"
-		return result, err
+		results := make([]LeaseVerification, len(filePaths))
+		for i, fp := range filePaths {
+			results[i] = LeaseVerification{Path: fp, Reason: "workspace cannot be resolved"}
+		}
+		return results, err
 	}
 	now := s.timestamp()
 	rows, err := s.db.QueryContext(ctx, `
@@ -42,90 +126,49 @@ func (s *Store) VerifySessionWorkLease(ctx context.Context, filePath, workspace,
 		  AND w.status = 'in_progress' AND c.owner = ?
 	`, now, now, "opencode-session:"+sessionID)
 	if err != nil {
-		result.Reason = "lease authority lookup failed"
-		return result, err
+		results := make([]LeaseVerification, len(filePaths))
+		for i, fp := range filePaths {
+			results[i] = LeaseVerification{Path: fp, Reason: "lease authority lookup failed"}
+		}
+		return results, err
 	}
 	defer func() { _ = rows.Close() }()
 
+	var leases []activeSessionLease
 	foundAnyForSession := false
 	foundCompatibleWorkspace := false
 
 	for rows.Next() {
-		var itemID, expiresAt, owner, taskWorkspace, leasePath string
-		if scanErr := rows.Scan(&itemID, &expiresAt, &owner, &taskWorkspace, &leasePath); scanErr != nil {
-			result.Reason = "lease authority scan failed"
-			return result, scanErr
+		var l activeSessionLease
+		if scanErr := rows.Scan(&l.itemID, &l.expiresAt, &l.owner, &l.taskWorkspace, &l.leasePath); scanErr != nil {
+			return nil, scanErr
 		}
 		foundAnyForSession = true
-
-		if !WorkspacesCompatible(taskWorkspace, workspaceKey) {
-			continue
+		if WorkspacesCompatible(l.taskWorkspace, workspaceKey) {
+			foundCompatibleWorkspace = true
 		}
-		foundCompatibleWorkspace = true
-
-		// 1. Direct path match
-		if leasePath == clean {
-			result.TaskID = itemID
-			result.ExpiresAt = expiresAt
-			result.Owner = owner
-			result.Valid = true
-			return result, nil
-		}
-
-		// 2. taskWorkspace is a child/sub-repo of workspaceKey
-		// e.g. workspaceKey = "d:/fuentes/provi", taskWorkspace = "d:/fuentes/provi/paasproviperu-backend"
-		// If lease was registered relative to sub-repo (e.g. "src/test.cs")
-		// and clean is relative to umbrella workspace ("paasproviperu-backend/src/test.cs")
-		if subRel, ok := WorkspaceRelativePrefix(workspaceKey, taskWorkspace); ok && subRel != "" {
-			if clean == subRel+"/"+leasePath {
-				result.TaskID = itemID
-				result.ExpiresAt = expiresAt
-				result.Owner = owner
-				result.Valid = true
-				return result, nil
-			}
-		}
-
-		// 3. workspaceKey is a child/sub-repo of taskWorkspace
-		// e.g. taskWorkspace = "d:/fuentes/provi", workspaceKey = "d:/fuentes/provi/paasproviperu-backend"
-		// If lease was registered relative to umbrella workspace ("paasproviperu-backend/src/test.cs")
-		// and clean is relative to sub-repo ("src/test.cs")
-		if subRel, ok := WorkspaceRelativePrefix(taskWorkspace, workspaceKey); ok && subRel != "" {
-			if leasePath == subRel+"/"+clean {
-				result.TaskID = itemID
-				result.ExpiresAt = expiresAt
-				result.Owner = owner
-				result.Valid = true
-				return result, nil
-			}
-		}
-
-		// 4. Either leasePath or clean includes the sub-repository directory name
-		// e.g. taskWorkspace is ".../backend", leasePath is "backend/src/handler.cs" and clean is "src/handler.cs" (or vice versa)
-		baseName := filepath.Base(taskWorkspace)
-		if baseName != "" && baseName != "." && baseName != "/" {
-			if leasePath == baseName+"/"+clean || clean == baseName+"/"+leasePath {
-				result.TaskID = itemID
-				result.ExpiresAt = expiresAt
-				result.Owner = owner
-				result.Valid = true
-				return result, nil
-			}
-		}
+		leases = append(leases, l)
 	}
 	if err := rows.Err(); err != nil {
-		result.Reason = "lease iteration failed"
-		return result, err
+		return nil, err
 	}
 
-	if !foundAnyForSession {
-		result.Reason = "no current task with a live claim and lease owned by this session"
-		return result, nil
+	results := make([]LeaseVerification, len(filePaths))
+	for i, fp := range filePaths {
+		results[i] = matchLease(fp, workspaceKey, leases, foundAnyForSession, foundCompatibleWorkspace)
 	}
-	if !foundCompatibleWorkspace {
-		result.Reason = "active claim belongs to an incompatible workspace"
-		return result, nil
+	return results, nil
+}
+
+// VerifySessionWorkLease is the native mutation admission check. Diagnostic
+// lease lookup without session ownership is not sufficient authority to write.
+func (s *Store) VerifySessionWorkLease(ctx context.Context, filePath, workspace, sessionID string) (LeaseVerification, error) {
+	res, err := s.VerifySessionWorkLeases(ctx, []string{filePath}, workspace, sessionID)
+	if err != nil {
+		return LeaseVerification{Path: filePath, Reason: "lease authority lookup failed"}, err
 	}
-	result.Reason = fmt.Sprintf("target %q is not leased under active task in this workspace", clean)
-	return result, nil
+	if len(res) == 0 {
+		return LeaseVerification{Path: filePath, Reason: "no verification returned"}, nil
+	}
+	return res[0], nil
 }
