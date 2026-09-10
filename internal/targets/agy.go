@@ -196,12 +196,12 @@ func adaptAgentForAGY(agentPath string, data []byte) []byte {
 
 	var sb strings.Builder
 	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("name: %s\n", role))
-	sb.WriteString(fmt.Sprintf("description: %q\n", description))
+	fmt.Fprintf(&sb, "name: %s\n", role)
+	fmt.Fprintf(&sb, "description: %q\n", description)
 	sb.WriteString("mode: subagent\n")
 	sb.WriteString("tools:\n")
 	for _, tool := range agyTools {
-		sb.WriteString(fmt.Sprintf("  - %s\n", tool))
+		fmt.Fprintf(&sb, "  - %s\n", tool)
 	}
 	sb.WriteString("permission:\n  bash:\n    \"*\": allow\n")
 	sb.WriteString("---\n")

@@ -107,7 +107,7 @@ func handlePreToolHook() error {
 	if err != nil {
 		return outputDecision("allow", "")
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

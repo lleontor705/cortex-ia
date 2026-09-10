@@ -57,6 +57,9 @@ func TestInstallAndUninstallAGY(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallAGY real install failed: %v", err)
 	}
+	if len(res.Changes) == 0 {
+		t.Errorf("expected changes in real install, got none")
+	}
 
 	pluginJSON := filepath.Join(pluginDir, "plugin.json")
 	if _, err := os.Stat(pluginJSON); err != nil {
