@@ -297,7 +297,15 @@ func (s *Store) DashboardForConversation(ctx context.Context, workspace, request
 		'owner',COALESCE((SELECT owner FROM work_claims WHERE item_id=t.id),''),'claim_expires_at',COALESCE((SELECT expires_at FROM work_claims WHERE item_id=t.id),''),
 		'lease_count',(SELECT count(*) FROM work_leases WHERE item_id=t.id),'updated_at',updated_at,
 		'opencode_session_id',opencode_session_id,'opencode_root_session_id',opencode_root_session_id,'opencode_parent_session_id',opencode_parent_session_id))
-		FROM (SELECT * FROM tasks WHERE status NOT IN ('done','superseded') ORDER BY updated_at DESC,id ASC LIMIT 20) t`, &d.Tasks); err != nil {
+		FROM (SELECT * FROM tasks WHERE status NOT IN ('superseded')
+			ORDER BY CASE status
+				WHEN 'in_progress' THEN 1
+				WHEN 'in_review' THEN 2
+				WHEN 'blocked' THEN 3
+				WHEN 'ready' THEN 4
+				WHEN 'backlog' THEN 5
+				WHEN 'done' THEN 6
+				ELSE 7 END, updated_at DESC, id ASC LIMIT 20) t`, &d.Tasks); err != nil {
 		return ConversationDashboard{}, err
 	}
 	if err = read(`SELECT json_group_array(json_object('job_id',id,'role',role,'task_id',task_id,'workspace',workspace,'status',status,'transport',transport,'attempt',attempt,

@@ -368,13 +368,19 @@ function OperationalKPIHud(props: {
 
 function Section(props: {
   title: string;
+  shortTitle?: string;
   icon?: string;
   badge?: string;
+  shortBadge?: string;
+  compact?: boolean;
   expanded: () => boolean;
   onToggle: () => void;
   theme: TuiThemeCurrent;
   children: unknown;
 }) {
+  const displayTitle = createMemo(() => (props.compact && props.shortTitle ? props.shortTitle : props.title));
+  const displayBadge = createMemo(() => (props.compact && props.shortBadge ? props.shortBadge : props.badge));
+
   return (
     <box flexDirection="column" marginTop={1}>
       <box flexDirection="row" onMouseDown={props.onToggle}>
@@ -385,10 +391,10 @@ function Section(props: {
           <text fg={CORTEX_THEME.brandViolet}>{`${props.icon} `}</text>
         </Show>
         <text fg={CORTEX_THEME.pureWhite} selectable={false}>
-          {props.title}
+          {displayTitle()}
         </text>
-        <Show when={props.badge}>
-          <text fg={CORTEX_THEME.skyBlue}>{` [ ${props.badge} ]`}</text>
+        <Show when={displayBadge()}>
+          <text fg={CORTEX_THEME.skyBlue}>{props.compact ? ` [${displayBadge()}]` : ` [ ${displayBadge()} ]`}</text>
         </Show>
       </box>
       <Show when={props.expanded()}>{props.children}</Show>
@@ -514,6 +520,7 @@ function TaskRows(props: {
   tasks: DashboardTask[];
   spinner: () => string;
   theme: TuiThemeCurrent;
+  compact?: boolean;
 }) {
   return (
     <Show when={props.tasks.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  Sin tareas durables activas</text>}>
@@ -529,12 +536,12 @@ function TaskRows(props: {
                 </text>
                 <text fg={chip.color}>{`[${chip.tag}] `}</text>
                 <text fg={isProg ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight}>
-                  {clipped(`${task.task_id} · ${task.title}`, 24)}
+                  {clipped(`${task.task_id} · ${task.title}`, props.compact ? 18 : 24)}
                 </text>
               </box>
               <box flexDirection="row">
                 <text fg={CORTEX_THEME.slateMuted}>
-                  {`     ${clipped(task.board_id, 10)}${task.owner ? ` · ${clipped(task.owner, 8)}` : ""}${task.lease_count ? ` · 🛡 ${task.lease_count}lk` : ""}`}
+                  {`     ${clipped(task.board_id, props.compact ? 8 : 10)}${task.owner ? ` · ${clipped(task.owner, props.compact ? 6 : 8)}` : ""}${task.lease_count ? ` · 🛡 ${task.lease_count}lk` : ""}`}
                 </text>
               </box>
             </box>
@@ -550,6 +557,7 @@ function DelegationRows(props: {
   spinner: () => string;
   now: () => number;
   theme: TuiThemeCurrent;
+  compact?: boolean;
 }) {
   return (
     <Show when={props.jobs.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  Sin ejecuciones delegadas</text>}>
@@ -593,7 +601,7 @@ function DelegationRows(props: {
   );
 }
 
-function AttentionRows(props: { items: AttentionItem[]; theme: TuiThemeCurrent }) {
+function AttentionRows(props: { items: AttentionItem[]; theme: TuiThemeCurrent; compact?: boolean }) {
   return (
     <Show when={props.items.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  Sin alertas</text>}>
       <For each={props.items.slice(0, MAX_VISIBLE_ROWS)}>
@@ -601,9 +609,9 @@ function AttentionRows(props: { items: AttentionItem[]; theme: TuiThemeCurrent }
           <box flexDirection="column">
             <box flexDirection="row">
               <text fg={CORTEX_THEME.roseRed}>{`  ✕ `}</text>
-              <text fg={CORTEX_THEME.pureWhite}>{clipped(item.title, 26)}</text>
+              <text fg={CORTEX_THEME.pureWhite}>{clipped(item.title, props.compact ? 20 : 26)}</text>
             </box>
-            <text fg={CORTEX_THEME.slateMuted}>{`     ${item.detail}`}</text>
+            <text fg={CORTEX_THEME.slateMuted}>{`     ${clipped(item.detail, props.compact ? 20 : 28)}`}</text>
           </box>
         )}
       </For>
@@ -636,6 +644,7 @@ function OperationalBottomDashboard(props: {
   const totalLeases = createMemo(() =>
     props.snapshot.tasks.reduce((sum, t) => sum + (t.lease_count || 0), 0)
   );
+  const blockedTasks = createMemo(() => props.snapshot.summary.blocked || 0);
 
   const successRate = createMemo(() => {
     const closed = succeededJobs() + failedJobs();
@@ -709,11 +718,33 @@ function OperationalBottomDashboard(props: {
 
       {/* Grid Fila 2: Píldoras de En Curso y Locks */}
       <box flexDirection="row" marginTop={0}>
-        <text fg={activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
-          {props.layout.compact ? `${activeJobs()} externos · ${totalLeases()} bloqueos` : `[ ${activeJobs() > 0 ? props.spinner() : "●"} ${activeJobs()} CURSO ] `}
-        </text>
-        <Show when={!props.layout.compact}>
-          <text fg={totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted}>{`[ 🛡 ${totalLeases()} LOCKS ]`}</text>
+        <Show
+          when={props.layout.compact}
+          fallback={
+            <box flexDirection="row">
+              <text fg={activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
+                {`[ ${activeJobs() > 0 ? props.spinner() : "●"} ${activeJobs()} CURSO ] `}
+              </text>
+              <text fg={totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted}>
+                {`[ 🛡 ${totalLeases()} LOCKS ] `}
+              </text>
+              <Show when={blockedTasks() > 0}>
+                <text fg={CORTEX_THEME.roseRed}>{`[ ✕ ${blockedTasks()} BLCK ]`}</text>
+              </Show>
+            </box>
+          }
+        >
+          <box flexDirection="row">
+            <text fg={activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
+              {`${activeJobs()} ext · `}
+            </text>
+            <text fg={totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted}>
+              {`${totalLeases()} locks`}
+            </text>
+            <Show when={blockedTasks() > 0}>
+              <text fg={CORTEX_THEME.roseRed}>{` · ${blockedTasks()} blck`}</text>
+            </Show>
+          </box>
         </Show>
       </box>
 
@@ -876,37 +907,46 @@ export function SidebarStatus(props: {
         {/* 5. Sección: Tablero de Tareas */}
         <Section
           title="Tablero de Tareas"
+          shortTitle="Tareas"
           icon="📋"
           badge={`${props.snapshot().summary.active_tasks || 0} act / ${totalTasks()} tot`}
+          shortBadge={`${props.snapshot().summary.active_tasks || 0}/${totalTasks()}`}
+          compact={layout().compact}
           expanded={props.tasksExpanded}
           onToggle={props.toggleTasks}
           theme={props.theme}
         >
-          <TaskRows tasks={props.snapshot().tasks} spinner={props.spinner} theme={props.theme} />
+          <TaskRows tasks={props.snapshot().tasks} spinner={props.spinner} theme={props.theme} compact={layout().compact} />
         </Section>
 
         {/* 6. Sección: Ejecuciones & Workers */}
         <Section
           title="Workers & Delegación"
+          shortTitle="Workers"
           icon="🤖"
           badge={`${activeDelegationsCount()} act / ${totalDelegationsCount()} tot`}
+          shortBadge={`${activeDelegationsCount()}/${totalDelegationsCount()}`}
+          compact={layout().compact}
           expanded={props.delegationsExpanded}
           onToggle={props.toggleDelegations}
           theme={props.theme}
         >
-          <DelegationRows jobs={props.jobs()} spinner={props.spinner} now={props.now} theme={props.theme} />
+          <DelegationRows jobs={props.jobs()} spinner={props.spinner} now={props.now} theme={props.theme} compact={layout().compact} />
         </Section>
 
         {/* 7. Sección: Centro de Atención & Alertas */}
         <Section
           title="Centro de Atención"
+          shortTitle="Alertas"
           icon="⚠️"
           badge={`${counts().attention} alertas`}
+          shortBadge={`${counts().attention}`}
+          compact={layout().compact}
           expanded={props.attentionExpanded}
           onToggle={props.toggleAttention}
           theme={props.theme}
         >
-          <AttentionRows items={attention()} theme={props.theme} />
+          <AttentionRows items={attention()} theme={props.theme} compact={layout().compact} />
         </Section>
 
         {/* 8. Panel de Control Matrix y Contadores Inferiores */}
