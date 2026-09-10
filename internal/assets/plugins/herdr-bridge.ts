@@ -761,12 +761,18 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }),
 
     cortex_ia_ledger_fact_add: tool({
-      description: "Record an authoritative environmental or technical fact into the Task Ledger.",
-      args: { fact: tool.schema.string(), board_id: tool.schema.string().optional(), source: tool.schema.string().optional() },
+      description: "Record an authoritative environmental or technical fact into the Task Ledger. Optionally syncs as a durable observation in Cortex Memory.",
+      args: {
+        fact: tool.schema.string(),
+        board_id: tool.schema.string().optional(),
+        source: tool.schema.string().optional(),
+        sync_cortex: tool.schema.boolean().optional().describe("If true, also syncs this fact as a persistent discovery observation in Cortex memory")
+      },
       async execute(args) {
         const command = ["ledger", "fact", "add", args.fact];
         if (args.board_id) command.push("--board", args.board_id);
         if (args.source) command.push("--source", args.source);
+        if (args.sync_cortex) command.push("--sync-cortex");
         return cortex(command);
       }
     }),

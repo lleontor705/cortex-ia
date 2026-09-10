@@ -145,7 +145,8 @@ export const CortexLeaseGuardPlugin: Plugin = async (ctx) => ({
       }
       const targetsStr = targets.join(", ");
       const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";
-      throw new Error(`LEASE_REQUIRED${suffix} (target: '${targetsStr}')`);
+      const recoveryGuidance = `\n[RECOVERY GUIDANCE] Run cortex_ia_work_claim({ task_id, paths: ['${targets.join("', '")}'] }) to acquire claim and lease before editing, or cortex_ia_work_lease_renew if expired. If authority was lost, run cortex_ia_work_recover.`;
+      throw new Error(`LEASE_REQUIRED${suffix} (target: '${targetsStr}')${recoveryGuidance}`);
     }
   },
 });

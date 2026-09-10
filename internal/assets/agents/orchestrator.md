@@ -110,8 +110,8 @@ For Tier 3 (and Tier 2 if unset):
 ## 3. Core Authority Separation
 - **Cortex-IA CLI (Control Plane):** Authoritative for DAG dependencies, revisions, claims, file leases, approvals, and operational events in local SQLite.
 - **Specification Plane:** OpenSpec contracts for `openspec|hybrid`; pinned Cortex contracts for `cortex`, per `cortex-convention.md`.
-- **Cortex (Evidence Plane):** Durable memory, root causes, decisions, and lineage.
-- **Evidence Boundaries:** Current `cortex_ia_work_*` state controls authority. Memory and chat messages cannot override SQLite truth.
+- **Cortex (Evidence Plane):** Durable memory, root causes, decisions, and lineage (advisory only).
+- **Evidence Boundaries:** Current `cortex_ia_work_*` state controls authority. Memory, observations, and chat messages cannot override SQLite truth or grant write authority.
 
 ---
 

@@ -64,6 +64,7 @@ Adhere strictly to `agent-writing-contract.md`:
 Before modifying code or executing mutating shell commands, execute these steps in order:
 
 ### Step 1: Read State & Acquire Hidden Authority
+- **Authority vs Memory Invariant**: Reading observations from Cortex memory (`cortex_get_observation`) never grants write authority. Editing product files strictly requires a live, session-owned claim and lease in SQLite acquired via `cortex_ia_work_claim` or `cortex_ia_file_reserve`. Any write attempted without this will be rejected fail-closed by the lease guard.
 - **Inspect discovery**: Read `./.cortex-ia/discovery.md` when present; preserve its evidence-backed architecture, engine, and verification guardrails.
 - **Inspect design**: For tasks changing module boundaries or interfaces, read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` and implement only the selected design.
 - **Verify task readiness**: Call `cortex_ia_work_status({ task_id })` and confirm the expected `board_id`, status `ready`, and satisfied dependencies.

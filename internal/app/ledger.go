@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -14,7 +15,7 @@ func runLedger(args []string) error {
 	if len(args) == 0 || isHelp(args[0]) {
 		fmt.Println("Usage: cortex-ia ledger <subcommand> [options]")
 		fmt.Println("\nSubcommands:")
-		fmt.Println("  fact add <text> [--board <board-id>] [--source <source>]    Record a verified fact in the Task Ledger")
+		fmt.Println("  fact add <text> [--board <id>] [--source <src>] [--sync-cortex] Record a verified fact in Task Ledger (optionally synced to Cortex memory)")
 		fmt.Println("  fact list [--board <board-id>] [--json]                     List all verified facts in chronological order")
 		fmt.Println("  progress record --summary <text> [--drift] [--action <act>] Record an orchestrator progress evaluation")
 		fmt.Println("  status [--board <board-id>] [--json]                        Display full dual ledger report (facts + progress)")
@@ -42,6 +43,7 @@ func runLedger(args []string) error {
 		switch op {
 		case "add":
 			var text, boardID, source string
+			var syncCortex bool
 			boardID = delegation.DefaultBoardID
 			source = "orchestrator"
 
@@ -57,6 +59,8 @@ func runLedger(args []string) error {
 						source = args[i+1]
 						i++
 					}
+				case "--sync-cortex":
+					syncCortex = true
 				default:
 					if text == "" && !strings.HasPrefix(args[i], "-") {
 						text = args[i]
@@ -64,13 +68,20 @@ func runLedger(args []string) error {
 				}
 			}
 			if strings.TrimSpace(text) == "" {
-				return fmt.Errorf("fact text is required: cortex-ia ledger fact add <text> [--board <id>]")
+				return fmt.Errorf("fact text is required: cortex-ia ledger fact add <text> [--board <id>] [--sync-cortex]")
 			}
 			fact, err := store.AddFact(ctx, boardID, text, source)
 			if err != nil {
 				return err
 			}
 			fmt.Printf("✅ Recorded fact #%d on board %q: %s\n", fact.ID, fact.BoardID, fact.Fact)
+			if syncCortex {
+				if err := syncFactToCortex(boardID, text); err != nil {
+					fmt.Printf("⚠️  Cortex memory sync skipped: %v\n", err)
+				} else {
+					fmt.Printf("🧠 Synced fact to Cortex memory (topic: facts/%s)\n", boardID)
+				}
+			}
 			return nil
 
 		case "list":
@@ -215,4 +226,22 @@ func runLedger(args []string) error {
 	default:
 		return fmt.Errorf("unknown ledger command: %q (use fact, progress, or status)", sub)
 	}
+}
+
+func syncFactToCortex(boardID, factText string) error {
+	cortexBin, err := exec.LookPath("cortex")
+	if err != nil {
+		return fmt.Errorf("cortex executable not found on PATH: %w", err)
+	}
+	title := fmt.Sprintf("Fact: %s", factText)
+	if len(title) > 60 {
+		title = title[:57] + "..."
+	}
+	topicKey := fmt.Sprintf("facts/%s", boardID)
+	cmd := exec.Command(cortexBin, "save", title, factText, "--type", "discovery", "--topic", topicKey)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("cortex save failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
