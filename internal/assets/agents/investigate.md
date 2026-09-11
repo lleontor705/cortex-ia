@@ -99,11 +99,18 @@ Ground findings with exact paths, commands, exit codes, and limitations. For arc
   - Proceed with native investigation below:
 
 ## 2. Mandatory AST Ingestion Check & Navigation Policy
-1. **Check AST Ingestion**: First call `cortex_get_code_symbols(project, limit: 1)`. `cortex_project_dna` summarizes observations and is not an AST-ingestion oracle.
-2. **Auto-Trigger Ingestion if Missing**: If no symbols are returned (or if codebase is newly initialized), call `cortex_ingest_code(workspace_root_absolute_path, project)` IMMEDIATELY using the **absolute path to the project root** to run the Zero-CGO 2-Pass Static Extractor and populate `code_symbols` and `code_relations`. Never pass `.` because the MCP server runs in an isolated directory.
-3. **AST-Grounded Analysis**: Use filtered `cortex_get_code_symbols`, bounded source reads, and `cortex_detect_cycles`. Do not call `cortex_get_blast_radius` with a symbol: its current contract accepts an observation ID.
-4. **Adaptive Memory Retrieval**: Use `cortex_search(query, graph_expand: true)` or `cortex_graph` to traverse prior root-cause observations and debug lineage.
-5. **Fallback**: If specific symbol resolution needs text fallback, use `grep`, `glob`, and targeted `read`. Never block on missing LSP.
+- **Targeted Inspection Fast-Path & Tool Budget**:
+  - When assigned to verify or compare a specific artifact (e.g. checking if a stored procedure, table, or migration exists/matches in a database, or checking a single file):
+    - **Strict Tool Budget**: Limit to $\le 5$ tool calls. Query only the direct target (e.g. `SHOW CREATE PROCEDURE`, read the specified `.sql` file).
+    - **AST & Memory Bypass**: Do NOT trigger full AST ingestion (`cortex_ingest_code`), deep HippoRAG memory expansion, or repository-wide `grep`.
+    - **No Caller Traversal**: Do not search for application code callers (C#, TS, etc.) unless the prompt specifically demands call-chain tracing.
+    - Emit findings directly and exit immediately.
+- **General Exploration & Codebase Analysis**:
+  1. **Check AST Ingestion**: First call `cortex_get_code_symbols(project, limit: 1)`. `cortex_project_dna` summarizes observations and is not an AST-ingestion oracle.
+  2. **Auto-Trigger Ingestion if Missing**: If no symbols are returned (or if codebase is newly initialized), call `cortex_ingest_code(workspace_root_absolute_path, project)` IMMEDIATELY using the **absolute path to the project root** to run the Zero-CGO 2-Pass Static Extractor and populate `code_symbols` and `code_relations`. Never pass `.` because the MCP server runs in an isolated directory.
+  3. **AST-Grounded Analysis**: Use filtered `cortex_get_code_symbols`, bounded source reads, and `cortex_detect_cycles`. Do not call `cortex_get_blast_radius` with a symbol: its current contract accepts an observation ID.
+  4. **Adaptive Memory Retrieval**: Use `cortex_search(query, graph_expand: true)` or `cortex_graph` to traverse prior root-cause observations and debug lineage.
+  5. **Fallback**: If specific symbol resolution needs text fallback, use `grep`, `glob`, and targeted `read`. Never block on missing LSP.
 
 ## 3. Grounding & Receipt
 For defects and regressions, read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md`; return the executed red-capable command, reproduction verdict, minimized case, and ranked falsifiable hypotheses. Without an oracle for the exact symptom, return `INCONCLUSIVE`, not a root-cause claim. For retrospectives, return distinct versus repeated causes and ranked process improvements without editing them. Return the common completion receipt from `cortex-work-protocol.md`, including `phase_status`, `verification_verdict`, and `summary`, plus evidence references, root cause or ranked hypotheses, risks, and `next_route` (`stop`, `direct-change`, `fast-tdd`, `hotfix`, `sdd-lite`, or `sdd-full`). Never invent evidence.

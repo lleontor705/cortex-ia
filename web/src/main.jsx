@@ -1261,12 +1261,18 @@ function JobDetail({ job, error, loading, onClose }) {
 }
 
 function App() {
+  const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const initialView = queryParams.get('board') || queryParams.get('task') ? 'board' : (location.hash.slice(1) || 'overview');
+  const initialBoard = queryParams.get('board') || localStorage.getItem('cortex-board') || 'default';
+  const initialTaskID = queryParams.get('task');
+
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [boards, setBoards] = useState([]);
   const [snapshot, setSnapshot] = useState(null);
   const [configData, setConfigData] = useState(null);
-  const [view, setView] = useState(location.hash.slice(1) || 'overview');
-  const [currentBoard, setCurrentBoard] = useState(localStorage.getItem('cortex-board') || 'default');
+  const [view, setView] = useState(initialView);
+  const [currentBoard, setCurrentBoard] = useState(initialBoard);
+  const [targetTaskID, setTargetTaskID] = useState(initialTaskID);
   const [boardModal, setBoardModal] = useState(false);
   const [taskModal, setTaskModal] = useState(false);
   const [detail, setDetail] = useState(null);
@@ -1382,8 +1388,22 @@ function App() {
   }, [boards, currentBoard]);
 
   useEffect(() => {
-    history.replaceState(null, '', `#${view}`);
+    const search = window.location.search;
+    history.replaceState(null, '', `${window.location.pathname}${search}#${view}`);
   }, [view]);
+
+  useEffect(() => {
+    if (!targetTaskID) return;
+    const allTasks = [
+      ...(snapshot?.tasks || []),
+      ...(dashboard?.active_work || [])
+    ];
+    const found = allTasks.find(t => t.task_id === targetTaskID);
+    if (found) {
+      setDetail(found);
+      setTargetTaskID(null);
+    }
+  }, [targetTaskID, snapshot, dashboard]);
 
   useEffect(() => {
     if (view !== 'board' || !currentBoard) return;

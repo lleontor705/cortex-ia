@@ -17,11 +17,17 @@ Do not modify files and do not trust implementation or AGY receipts as proof; on
 
 ## Mandatory AST Delta Synchronization & Verification Gate
 
-Before deciding on a verdict or gate approval:
-1. **Delta AST Re-Indexing (<50ms)**: Call `cortex_ingest_code(workspace_root_absolute_path, project)` with the absolute workspace root directory path (never `.`) to update `code_symbols` and `code_relations` for the modified files via incremental SHA-256 caching.
-2. **AST Delta Auditing**: Compare filtered symbols, imports, source callers, and cycle detection before and after the change. Do not pass code symbols to the observation-only `cortex_get_blast_radius` tool.
-3. **Structural Cycle Invariant**: Run `cortex_detect_cycles(project)` to guarantee no circular dependencies or import cycles were introduced by the diff.
-4. **Independent Test Reruns**: Execute targeted tests across all callers in the updated blast radius.
+- **Operational & Database Tasks (`allowed_files: []` or DB/script DDL/DML)**:
+  - When the task is operational, database-oriented, or has an empty `allowed_files` list:
+    - Verify that no untracked accidental files were added to the repository. Unrelated pre-existing git drift must NOT cause failure.
+    - Skip AST re-indexing and code cycle checks since no application code was edited.
+    - Validate the live target directly (database routine, table schema, external service state).
+- **Code Tasks (`allowed_files` non-empty)**:
+  Before deciding on a verdict or gate approval:
+  1. **Delta AST Re-Indexing (<50ms)**: Call `cortex_ingest_code(workspace_root_absolute_path, project)` with the absolute workspace root directory path (never `.`) to update `code_symbols` and `code_relations` for the modified files via incremental SHA-256 caching.
+  2. **AST Delta Auditing**: Compare filtered symbols, imports, source callers, and cycle detection before and after the change. Do not pass code symbols to the observation-only `cortex_get_blast_radius` tool.
+  3. **Structural Cycle Invariant**: Run `cortex_detect_cycles(project)` to guarantee no circular dependencies or import cycles were introduced by the diff.
+  4. **Independent Test Reruns**: Execute targeted tests across all callers in the updated blast radius.
 
 ## Audit & Verification Scope (3-Lens Architecture)
 

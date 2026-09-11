@@ -40,6 +40,8 @@ tools:
   cortex_cortex_save: true
   cortex_relate: true
   cortex_cortex_relate: true
+  cortex_handoff: true
+  cortex_cortex_handoff: true
   cortex_ia_content_hash: true
   cortex_ia_openspec_validate: true
   cortex_ia_openspec_write: true

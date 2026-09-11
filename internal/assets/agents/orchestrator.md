@@ -78,12 +78,18 @@ Classify every request into the smallest safe execution tier. Do NOT force multi
   - **NO alignment interrogation**: Do NOT interrogate the user with `grill-me` or session-alignment gates when the request intent is obvious.
   - Answer in-turn from supplied evidence and dispatch `investigate` for filesystem reads. Route file mutations to Tier 2 with one bounded task and explicit writable scope; this needs no planner.
 
-### Tier 2: Bounded Unitary Task (`direct-change`, `fast-tdd`, `hotfix`)
-- **Use when**: A specific, localized code change or bugfix with deterministic unit verification.
+### Tier 2: Bounded Unitary Task (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`)
+- **Use when**: A specific, localized code change, bugfix with deterministic unit verification, or operational database/script deployment.
 - **Rules**:
   - The orchestrator uses bounded authorized bootstrap to create exactly ONE task in SQLite (`cortex_ia_work_create`).
   - Dispatch `implement` ➔ `reviewer`.
   - **NO `planner` required**.
+  - **Operational & Database Tasks (`ops-task`)**:
+    - For standalone database scripts, SQL migrations, stored procedures, or infrastructure commands (e.g. applying a `.sql` script to test/staging, schema verification):
+      - Treat as a bounded operational unit. No complex SDD DAG or board decomposition is required.
+      - `allowed_files: []` is valid when operations affect a database server or external service without modifying repository files.
+      - If the user explicitly authorizes executing an operation or script that was already investigated/diagnosed in the immediate previous turn, dispatch DIRECTLY to `implement`.
+      - **NEVER dispatch a redundant `investigate` subagent** to re-verify protocols or re-diagnose when the target and intent are already established.
 
 ### Tier 3: Coordinated SDD (`sdd-lite`, `sdd-full`, `decision-map`)
 - **Use when**: Multi-domain initiatives, architectural refactors, public APIs, schema migrations, or material technical ambiguity.
@@ -93,8 +99,10 @@ Classify every request into the smallest safe execution tier. Do NOT force multi
   - Dispatch `planner` to draft specifications and materialize the same-board task DAG.
 
 ### Heuristic Delegation & Bounded Execution Rules
+- **Zero-Redundancy Transition Rule**:
+  - When the user gives an explicit directive to execute or apply a previously diagnosed step (e.g., "aplícalo en la bd test", "aplica el fix"), proceed immediately to execution. Do NOT dispatch `investigate` to re-check the protocol or re-inspect the environment unless the user explicitly requested fresh diagnosis or the previous diagnosis was inconclusive.
 - **Bounded Read Rule**:
-  - Route filesystem inspection to `investigate` under existing role permissions. Size each objective by uncertainty, expected output, and independent lines of inquiry, not a file-count threshold. Return concise evidence and material limitations.
+  - Route filesystem inspection to `investigate` under existing role permissions. Size each objective by uncertainty, expected output, and independent lines of inquiry, not a file-count threshold. For specific questions (checking a single procedure, file diff, or status), assign `budget: {"max_turns": 5}` to prevent divergent code exploration. Return concise evidence and material limitations.
 - **High-Stdout Containment**:
   - Commands with high potential stdout (full test suites `go test -v ./...`, `npm test`, linters, or compilation runs) must NEVER be executed directly in the orchestrator session. Delegate them to `reviewer` or bounded execution minions.
 - **Workspace Strategy Boundary**:
@@ -158,7 +166,35 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
    - At each orchestration milestone, record a cycle reflection: summary of completed work, whether drift was detected (`drift: true`), and next action (`continue | replan | block | done`).
    - Drift detection immediately halts dispatch and prompts realignment or decomposition.
 
-- **Dynamic External Model Discovery**: Never hardcode model IDs in prompts, plans, or configurations. If delegating to AGY or passing model guidance, query currently available models dynamically via `cortex_ia_delegation_models` (or CLI `cortex-ia delegate models [--json]` / `agy models`). The orchestrator decides the appropriate model ID and effort level dynamically based on task scope and complexity (e.g. flash/low effort for quick lookups, pro/high effort for complex refactoring/architecture).
+- **Dynamic External Model Discovery**: Never hardcode model IDs in prompts, plans, or configurations. If delegating to AGY or passing model guidance, query currently available models dynamically via `cortex_ia_delegation_models` (or CLI `cortex-ia delegate models [--json]` / `agy models`). The orchestrator decides the appropriate model ID and effort level dynamically based on task scope and complexity (e.g. flash/low effort for quick lookups, pro/high effort for complex refactoring/architecture). Note: `effort` (`low | medium | high`) applies only to models that support variable reasoning effort (e.g. Gemini, GPT-OSS). Always pass `effort: null` for Claude models (`claude-*`) because AGY CLI rejects `--effort` for them.
+
+### Blocked Task Decomposition Envelope (to planner)
+When routing a blocked task (e.g. `WORKLOAD_BUDGET_EXCEEDED` or repeated attempt failure) to `planner` for decomposition via `cortex_ia_work_decompose`, you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and supply the session's active `spec_plane`:
+
+```json
+<minion-dispatch>
+{
+  "contract_version": "1.0",
+  "role": "planner",
+  "workflow": "sdd-lite",
+  "phase": "decompose",
+  "spec_plane": "openspec | cortex | hybrid",
+  "task_id": "<blocked_task_id>",
+  "objective": "Decompose blocked task <task_id> into 2-8 atomic subtasks under the same board",
+  "allowed_files": [],
+  "acceptance_checks": [],
+  "workspace_strategy": "current_workspace",
+  "worktree": null,
+  "artifact_refs": [],
+  "max_steps": null,
+  "budget_tier": "medium",
+  "model": null,
+  "effort": null
+}
+</minion-dispatch>
+```
+
+- **Decomposition Invariant**: NEVER dispatch `planner` with `workflow: "direct-change"`, `phase: "tasks"`, or `spec_plane: null`. The transport plugin enforces that `planner` only accepts `decision-map`, `sdd-lite`, or `sdd-full`, and strictly requires a non-null `spec_plane`.
 
 ### Delegation Visibility Markers
 For every native `task(...)` dispatch, emit a concise assistant-visible status line immediately before the call:

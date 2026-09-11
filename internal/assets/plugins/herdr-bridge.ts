@@ -1245,7 +1245,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
             allowed_files: args.allowed_files || [],
             output_schema: receiptSchema,
             model: args.model || undefined,
-            effort: args.effort || undefined
+            effort: (args.model && /^claude-/i.test(args.model)) ? undefined : (args.effort || undefined)
           });
 
           const config = bridgeConfig();

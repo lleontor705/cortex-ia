@@ -127,11 +127,17 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 | `direct-change` | Clear, reversible, single-domain change with fast verification | `orchestrator -> implement -> (reviewer) -> orchestrator` | `implement` |
 | `fast-tdd` | Localized functional unit with deterministic oracle | `orchestrator -> implement -> reviewer -> orchestrator` | `fast-tdd`, `ast-impact-analysis` |
 | `hotfix` | Urgent production or service containment | `orchestrator -> implement -> reviewer -> orchestrator` | `hotfix-triage`, `implement` |
+| `ops-task` | Standalone DB script, SQL migration, stored procedure, or direct infrastructure command | `orchestrator -> implement -> reviewer -> orchestrator` | `implement` |
 | `sdd-lite` | Moderate risk, single domain, multi-file feature | `orchestrator -> planner -> implement minions (parallel waves) -> reviewer -> orchestrator` | `planner`, `parallel-dispatch`, `implement`, `reviewer` |
 | `sdd-full` | High risk, cross-domain, public API, security, migration | `orchestrator -> investigate -> planner -> implement minions (parallel waves) -> dual reviewer -> orchestrator` | Full SDD skill suite, `parallel-dispatch` |
 
 | `review` | Dedicated independent audit of an existing diff or branch | `orchestrator -> reviewer -> orchestrator` | `code-review-adversary`, `mutation-testing` |
 | `retrospective` | Repeated evidenced failure, exhausted durable attempts, or explicit workflow analysis | `orchestrator -> investigate (retrospective) -> orchestrator` | `workflow-retrospective`, `investigate` |
+
+### Pragmatic Execution & Anti-Overengineering Invariants
+1. **Zero-Redundancy Transition**: When the user explicitly authorizes executing or applying a change/script that was already investigated in the preceding turn (e.g. "aplícalo en la bd test"), proceed DIRECTLY to `implement`. Never dispatch a redundant `investigate` pass to re-verify protocols or re-diagnose.
+2. **Targeted Inspection Budget**: When `investigate` is tasked with verifying a specific artifact (SP, table, single file), enforce a strict budget of $\le 5$ tool calls, query only the direct target, and bypass full AST re-ingestion, broad repo `grep`, or caller traversal.
+3. **Decoupled Working Tree for Operational/DB Tasks**: Operational/database tasks (`allowed_files: []`) verify live external targets (procedure existence, signature, body, test queries). Reviewers must NOT fail or halt on pre-existing unrelated git modifications.
 
 ---
 

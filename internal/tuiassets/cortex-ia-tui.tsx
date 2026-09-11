@@ -4,7 +4,7 @@ import type {
   TuiPluginModule,
   TuiThemeCurrent,
 } from "@opencode-ai/plugin/tui";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -186,6 +186,26 @@ function cortexExecutable(): string {
   return process.platform === "win32" ? "cortex-ia.exe" : "cortex-ia";
 }
 
+function openWebConsole(boardId?: string, taskId?: string): void {
+  const args = ["web", "--open", "--daemon"];
+  if (boardId) {
+    args.push("--board", boardId);
+  }
+  if (taskId) {
+    args.push("--task", taskId);
+  }
+  try {
+    const child = spawn(cortexExecutable(), args, {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+  } catch {
+    // ignore launch errors in TUI UI click
+  }
+}
+
 function shortID(id: string): string {
   return id.length > 13 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 }
@@ -324,6 +344,9 @@ function CortexCockpitHeader(props: {
         >
           <text fg={CORTEX_THEME.amberGold}>{` [${props.spinner()} ACTIVO]`}</text>
         </Show>
+        <text fg={CORTEX_THEME.neonCyan} onMouseDown={() => openWebConsole()} selectable={false}>
+          {" [🌐 Web]"}
+        </text>
       </box>
 
       {/* Project Root on its own dedicated line to prevent word wrapping */}
@@ -345,26 +368,41 @@ function OperationalKPIHud(props: {
   spinner: () => string;
   theme: TuiThemeCurrent;
 }) {
+  const isAllZero = () =>
+    props.activeExecutions === 0 &&
+    props.inReview === 0 &&
+    props.doneTasks === 0 &&
+    props.attentionCount === 0;
+
   return (
     <box flexDirection="column" marginTop={1}>
-      {/* Row 1 */}
-      <box flexDirection="row">
-        <text fg={props.activeExecutions > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
-          {`[${props.activeExecutions > 0 ? props.spinner() : "●"} ${props.activeExecutions} CURSO] `}
-        </text>
-        <text fg={props.inReview > 0 ? CORTEX_THEME.brandPurple : CORTEX_THEME.slateMuted}>
-          {`[◆ ${props.inReview} REVW]`}
-        </text>
-      </box>
-      {/* Row 2 */}
-      <box flexDirection="row" marginTop={0}>
-        <text fg={props.doneTasks > 0 ? CORTEX_THEME.emeraldGreen : CORTEX_THEME.slateMuted}>
-          {`[✓ ${props.doneTasks} DONE] `}
-        </text>
-        <text fg={props.attentionCount > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted}>
-          {`[${props.attentionCount > 0 ? "✕" : "○"} ${props.attentionCount} ALRT]`}
-        </text>
-      </box>
+      <Show
+        when={!isAllZero()}
+        fallback={
+          <box flexDirection="row">
+            <text fg={CORTEX_THEME.slateMuted}>○ 0 curso · 0 revw · 0 done · 0 alrt</text>
+          </box>
+        }
+      >
+        {/* Row 1 */}
+        <box flexDirection="row">
+          <text fg={props.activeExecutions > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
+            {`[${props.activeExecutions > 0 ? props.spinner() : "●"} ${props.activeExecutions} CURSO] `}
+          </text>
+          <text fg={props.inReview > 0 ? CORTEX_THEME.brandPurple : CORTEX_THEME.slateMuted}>
+            {`[◆ ${props.inReview} REVW]`}
+          </text>
+        </box>
+        {/* Row 2 */}
+        <box flexDirection="row" marginTop={0}>
+          <text fg={props.doneTasks > 0 ? CORTEX_THEME.emeraldGreen : CORTEX_THEME.slateMuted}>
+            {`[✓ ${props.doneTasks} DONE] `}
+          </text>
+          <text fg={props.attentionCount > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted}>
+            {`[${props.attentionCount > 0 ? "✕" : "○"} ${props.attentionCount} ALRT]`}
+          </text>
+        </box>
+      </Show>
     </box>
   );
 }
@@ -525,6 +563,17 @@ function ActiveTaskHero(props: {
           )}
         </Show>
       </box>
+
+      {/* 1-Click to Web Action Button */}
+      <box
+        flexDirection="row"
+        marginTop={0}
+        onMouseDown={() => openWebConsole(props.task.board_id, props.task.task_id)}
+      >
+        <text fg={CORTEX_THEME.neonCyan} selectable={false}>
+          {"  [ 🌐 Ver detalle en Web ]"}
+        </text>
+      </box>
     </box>
   );
 }
@@ -550,7 +599,14 @@ function TaskRows(props: {
                 </text>
                 <text fg={chip.color}>{`[${chip.tag}] `}</text>
                 <text fg={isProg ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight}>
-                  {clipped(task.task_id, Math.max(8, props.textLimit - 9))}
+                  {clipped(task.task_id, Math.max(8, props.textLimit - 14))}
+                </text>
+                <text
+                  fg={CORTEX_THEME.neonCyan}
+                  onMouseDown={() => openWebConsole(task.board_id, task.task_id)}
+                  selectable={false}
+                >
+                  {" [🌐]"}
                 </text>
               </box>
               <box flexDirection="row">
@@ -708,8 +764,15 @@ function OperationalBottomDashboard(props: {
       {/* Panel Header */}
       <box flexDirection="row">
         <text fg={CORTEX_THEME.brandViolet}>🧠 </text>
-        <text fg={CORTEX_THEME.pureWhite}>{props.layout.compact ? "CONTROL" : "CONTROL MATRIX "}</text>
+        <text fg={CORTEX_THEME.pureWhite}>{props.layout.compact ? "CONTROL " : "CONTROL MATRIX "}</text>
         <text fg={CORTEX_THEME.neonCyan}>◈</text>
+        <text
+          fg={CORTEX_THEME.neonCyan}
+          onMouseDown={() => openWebConsole(props.snapshot.tasks[0]?.board_id)}
+          selectable={false}
+        >
+          {"  [🌐 Web]"}
+        </text>
       </box>
 
       {/* Synapse Pulse / Status Line */}
@@ -896,7 +959,21 @@ export function SidebarStatus(props: {
       <Show when={props.snapshotError()}>
         <text fg={CORTEX_THEME.roseRed} marginTop={1}>No se pudo actualizar · datos no confirmados</text>
       </Show>
-      <text fg={CORTEX_THEME.slateMuted}>{clipped(`OpenCode nativo: ${props.nativeActivity() || "sin estado"}`, layout().textLimit)}</text>
+      <box flexDirection="row" marginTop={0}>
+        <text fg={
+          props.nativeActivity() === "busy"
+            ? CORTEX_THEME.amberGold
+            : props.nativeActivity() === "idle"
+            ? CORTEX_THEME.emeraldGreen
+            : CORTEX_THEME.slateMuted
+        }>
+          {props.nativeActivity() === "busy"
+            ? `${props.spinner()} OpenCode: ocupado`
+            : props.nativeActivity() === "idle"
+            ? "● OpenCode: en espera"
+            : `○ OpenCode: ${props.nativeActivity() || "sin estado"}`}
+        </text>
+      </box>
 
       <Show when={props.scopeReady() && Boolean(props.snapshot().generated_at)}>
         {/* 2. Micro-HUD de Métricas Operacionales */}
@@ -1033,10 +1110,14 @@ function HomeBottomStatus(props: {
           }
         >
           {(task: () => DashboardTask) => (
-            <box flexDirection="row">
+            <box
+              flexDirection="row"
+              onMouseDown={() => openWebConsole(task().board_id, task().task_id)}
+            >
               <text fg={CORTEX_THEME.amberGold}>{`[${props.spinner()} ${task().task_id}] `}</text>
               <text fg={CORTEX_THEME.pureWhite}>{clipped(task().title, 20)}</text>
               <text fg={CORTEX_THEME.slateMuted}>{` · ${counts().active} activos`}</text>
+              <text fg={CORTEX_THEME.neonCyan}>{" [🌐]"}</text>
             </box>
           )}
         </Show>

@@ -407,7 +407,8 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	if strings.TrimSpace(request.Effort) != "" {
 		effort = strings.TrimSpace(request.Effort)
 	}
-	if effort != "" {
+	// AGY CLI rejects --effort for Claude models (reasoning is pre-configured or incompatible with --effort)
+	if effort != "" && !strings.HasPrefix(strings.ToLower(model), "claude-") {
 		args = append(args, "--effort", effort)
 	}
 	schemaPath := ""

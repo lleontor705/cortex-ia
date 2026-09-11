@@ -52,6 +52,10 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
 6. **Complete Lifecycle & Cleanup:**
    - Complete the CLI lifecycle: verify -> `cortex_ia_work_transition({ to: "in_review" })` (auto-releases leases) -> independent reviewer PASS. Only reviewer PASS produces `done`.
 
+### Operational & Database Tasks (allowed_files: [])
+- **Fail-Closed Migrations & Scripts**: Database scripts must use transactional semantics (`BEGIN ... COMMIT / ROLLBACK`) and must explicitly fail closed upon unmet preconditions or invariant violations (`SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '...'` in MySQL/MariaDB; `RAISE EXCEPTION '...'` in PostgreSQL). Never rely on benign query outputs like `SELECT 'FAIL'`, which exit with status code 0 and fool CI/CD into passing broken states.
+- **Credential Hygiene**: Never hardcode database credentials, default users (e.g. `root`), default passwords, or localhost ports. Always parameterize through environment variables with fail-closed validation.
+
 ## Output
 
 Return a concise Markdown report and execute the transition tool:

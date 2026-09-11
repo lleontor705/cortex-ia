@@ -31,12 +31,18 @@ Classify every request into the smallest safe execution tier. Do not force multi
   - **NO alignment interrogation**: Do NOT interrogate the user with `grill-me` or session-alignment gates when the request intent is obvious.
   - Answer in-turn from supplied evidence and dispatch `investigate` for filesystem reads. Route file mutations to Tier 2 with one bounded task and explicit writable scope; this needs no planner.
 
-### Tier 2: Bounded Unitary Task (`direct-change`, `fast-tdd`, `hotfix`)
-- **Use when**: A specific, localized code change or bugfix with deterministic unit verification.
+### Tier 2: Bounded Unitary Task (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`)
+- **Use when**: A specific, localized code change, bugfix with deterministic unit verification, or operational database/script deployment.
 - **Protocol**:
   - The orchestrator uses bounded authorized bootstrap to create exactly ONE task in SQLite (`cortex_ia_work_create`).
   - Dispatch `implement` ➔ `reviewer`.
   - **NO `planner` required**.
+  - **Operational & Database Tasks (`ops-task`)**:
+    - For standalone database scripts, SQL migrations, stored procedures, or infrastructure commands (e.g. applying a `.sql` script to test/staging, schema verification):
+      - Treat as a bounded operational unit. No complex SDD DAG or board decomposition is required.
+      - `allowed_files: []` is valid when operations affect a database server or external service without modifying repository files.
+      - If the user explicitly authorizes executing an operation or script that was already investigated/diagnosed in the immediate previous turn, dispatch DIRECTLY to `implement`.
+      - **Zero-Redundancy Transition Rule**: NEVER dispatch a redundant `investigate` subagent to re-verify protocols or re-diagnose when the target and intent are already established.
 
 ### Tier 3: Coordinated SDD (`sdd-lite`, `sdd-full`, `decision-map`)
 - **Use when**: Multi-domain initiatives, architectural refactors, public APIs, schema migrations, or material technical ambiguity.
@@ -149,5 +155,7 @@ Follow `cortex-work-protocol.md`; wrap this scoped example in exactly one `<mini
 }
 ```
 
-- **Dynamic External Model Discovery**: Never hardcode model IDs in prompts or configurations. When delegating to AGY or passing model guidance to controllers, discover supported models dynamically via `cortex_ia_delegation_models` (or CLI `cortex-ia delegate models [--json]` / `agy models`). The orchestrator decides which model ID and effort level (`low`, `medium`, `high`) to recommend based dynamically on task scope and complexity.
+- **Dynamic External Model Discovery**: Never hardcode model IDs in prompts or configurations. When delegating to AGY or passing model guidance to controllers, discover supported models dynamically via `cortex_ia_delegation_models` (or CLI `cortex-ia delegate models [--json]` / `agy models`). The orchestrator decides which model ID and effort level (`low`, `medium`, `high`) to recommend based dynamically on task scope and complexity. Note: `effort` applies only to models supporting variable reasoning effort (e.g. Gemini, GPT-OSS). Always pass `effort: null` for Claude models (`claude-*`) as AGY rejects `--effort` for them.
+
+- **Blocked-Task Decomposition Routing**: When routing a blocked task to `planner` for decomposition (`cortex_ia_work_decompose`), you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and pass the active project `spec_plane` (`openspec`, `cortex`, or `hybrid`). Never pass `workflow: "direct-change"`, `phase: "tasks"`, or `spec_plane: null`.
 

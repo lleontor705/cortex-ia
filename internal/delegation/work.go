@@ -865,7 +865,7 @@ func (s *Store) RecoverWork(ctx context.Context) (int64, error) {
 	now := s.timestamp()
 	var recovered int64
 	err := s.immediate(ctx, func(conn *sql.Conn) error {
-		rows, err := conn.QueryContext(ctx, `SELECT item_id FROM work_claims WHERE expires_at<=? ORDER BY item_id`, now)
+		rows, err := conn.QueryContext(ctx, `SELECT c.item_id FROM work_claims c JOIN work_items w ON c.item_id=w.id WHERE c.expires_at<=? AND w.status='in_progress' ORDER BY c.item_id`, now)
 		if err != nil {
 			return err
 		}

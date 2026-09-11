@@ -216,7 +216,7 @@ Usage:
   cortex-ia ledger fact|progress|status
                                       Inspect or update the Dual Ledger (facts + progress)
   cortex-ia ui snapshot              Print a bounded read-only TUI snapshot
-  cortex-ia web [--addr 127.0.0.1:7331] [--open]
+  cortex-ia web [--addr 127.0.0.1:7331] [--board <id>] [--task <id>] [--open] [--daemon]
                                       Launch local Cortex-IA web dashboard in browser
   cortex-ia report error|config|status Report operational errors with HMAC signature
   cortex-ia doctor                   Assess installation health (read-only)

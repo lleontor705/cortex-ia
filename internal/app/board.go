@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
@@ -149,30 +151,80 @@ func runBoard(args []string) error {
 }
 
 func runWeb(args []string) error {
-	opts, positionals, err := workOptions(args, map[string]bool{"--addr": false})
+	if len(args) > 0 && isHelp(args[0]) {
+		fmt.Println("Usage: cortex-ia web [--addr <loopback-host:port>] [--board <board-id>] [--task <task-id>] [--open] [--daemon]")
+		fmt.Println("\nOptions:")
+		fmt.Println("  --addr <host:port>   Listen or connect address (default: 127.0.0.1:7331)")
+		fmt.Println("  --board <board-id>   Open directly to a specific board")
+		fmt.Println("  --task <task-id>     Open directly to a specific task modal")
+		fmt.Println("  --open, -o           Open dashboard URL in default browser")
+		fmt.Println("  --daemon, -d         Start server in background if not already running")
+		return nil
+	}
+	opts, positionals, err := workOptions(args, map[string]bool{
+		"--addr":  false,
+		"--board": false,
+		"--task":  false,
+	})
 	if err != nil {
-		return fmt.Errorf("usage: cortex-ia web [--addr <loopback-host:port>] [--open]")
+		return fmt.Errorf("usage: cortex-ia web [--addr <loopback-host:port>] [--board <board-id>] [--task <task-id>] [--open] [--daemon]")
 	}
 	shouldOpen := false
+	isDaemon := false
 	for _, p := range positionals {
-		if p == "--open" || p == "-o" {
+		switch p {
+		case "--open", "-o":
 			shouldOpen = true
-		} else {
-			return fmt.Errorf("unknown argument %q; usage: cortex-ia web [--addr <loopback-host:port>] [--open]", p)
+		case "--daemon", "-d":
+			isDaemon = true
+		default:
+			return fmt.Errorf("unknown argument %q; usage: cortex-ia web [--addr <loopback-host:port>] [--board <board-id>] [--task <task-id>] [--open] [--daemon]", p)
 		}
 	}
 	for _, a := range args {
-		if a == "--open" || a == "-o" {
+		switch a {
+		case "--open", "-o":
 			shouldOpen = true
+		case "--daemon", "-d":
+			isDaemon = true
 		}
 	}
 	address := cortexiaweb.NormalizeAddress(oneOption(opts, "--addr"))
+	boardID := oneOption(opts, "--board")
+	taskID := oneOption(opts, "--task")
+	targetURL := buildWebURL(address, boardID, taskID)
+
 	if isServerHealthy(address) {
 		fmt.Printf("Cortex-IA web is already running at http://%s\n", address)
 		if shouldOpen {
-			openBrowserURL("http://" + address)
+			openBrowserURL(targetURL)
 		} else {
 			fmt.Println("Use --open to view in browser or specify a different address with --addr.")
+		}
+		return nil
+	}
+
+	if isDaemon {
+		exe, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("failed to get executable path: %w", err)
+		}
+		cmd := exec.Command(exe, "board", "serve", "--addr", address)
+		cmd.Stdin = nil
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start background web server: %w", err)
+		}
+		fmt.Printf("Started background Cortex-IA web server at http://%s\n", address)
+		if shouldOpen {
+			for i := 0; i < 10; i++ {
+				time.Sleep(100 * time.Millisecond)
+				if isServerHealthy(address) {
+					break
+				}
+			}
+			openBrowserURL(targetURL)
 		}
 		return nil
 	}
@@ -190,10 +242,26 @@ func runWeb(args []string) error {
 	if shouldOpen {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
-			openBrowserURL("http://" + address)
+			openBrowserURL(targetURL)
 		}()
 	}
 	return serveCortexIAWeb(store, address)
+}
+
+func buildWebURL(address, boardID, taskID string) string {
+	baseURL := "http://" + address + "/"
+	params := url.Values{}
+	if strings.TrimSpace(boardID) != "" {
+		params.Set("board", strings.TrimSpace(boardID))
+	}
+	if strings.TrimSpace(taskID) != "" {
+		params.Set("task", strings.TrimSpace(taskID))
+	}
+	encoded := params.Encode()
+	if encoded != "" {
+		baseURL += "?" + encoded + "#board"
+	}
+	return baseURL
 }
 
 func isServerHealthy(address string) bool {

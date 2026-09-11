@@ -99,26 +99,37 @@ Before native audit commands, call `cortex_ia_delegate_start` once with `role: "
    - If `spec_plane=openspec|hybrid`: Read OpenSpec artifacts (`openspec/changes/<change-name>/`).
    - If `spec_plane=cortex`: Retrieve pinned immutable observations via `cortex_get_observation` per `cortex-convention.md`.
 3. **Cryptographic Validation**: For each pinned observation, call `cortex_ia_content_hash({ content })` and compare the SHA-256 against the task's contract pin.
+4. **Review Authority Binding**: For tasks with status `in_review`, review authority and the implementation owner are durably recorded in `work_reviews`. The task is fully eligible for review and approval even if the implementation claim TTL in `work_claims` has elapsed or expired (as implementation writing has completed and file leases have been released). Never emit `ERR_TASK_BLOCKED` or halt review due to an expired or missing implementation claim when the task is in `in_review`.
 - **GATE 1 (Early Exit)**: If any pin is missing, truncated, or SHA-256 does not match:
   - Call `cortex_ia_report_error` with `ERR_VERIFICATION_FAIL`.
   - Halt and return `verification_verdict: "BLOCKED"`. Do not proceed to Phase 2.
 
 ### Phase 2: Working Tree & Static Cleanliness Gate (Budget: <= 4 steps)
-1. **Clean Baseline**: Run `git status` to verify clean working tree and no unstaged drift in unassigned files.
-2. **AST Delta Re-Indexing (<50ms)**: Call `cortex_ingest_code(workspace_root_absolute_path, project)` with the **absolute workspace root directory path** (never `.`) to update `code_symbols` and `code_relations`.
-3. **Structural Cycle Invariant**: Call `cortex_detect_cycles(project)` to guarantee no circular dependencies or import cycles were introduced.
-4. **Static Analysis & Linters**: Run `go vet ./...` or `golangci-lint run ./...` (or language equivalent) on modified packages.
-- **GATE 2 (Early Exit)**: If circular dependencies are introduced, syntax errors exist, or linters fail:
-  - Halt and return `verification_verdict: "FAIL"` citing Lens 1 (Structural Regression). Do not proceed to Phase 3.
+- **Scope Differentiation (Code vs Operational/Database Tasks)**:
+  - **For Code Tasks (`allowed_files` non-empty)**:
+    1. **Clean Baseline**: Run `git status` to verify clean working tree and no unstaged drift in unassigned files. Pre-existing uncommitted changes in unrelated files do NOT fail the review if they are independent of the task's assigned files.
+    2. **AST Delta Re-Indexing (<50ms)**: Call `cortex_ingest_code(workspace_root_absolute_path, project)` with the **absolute workspace root directory path** (never `.`) to update `code_symbols` and `code_relations`.
+    3. **Structural Cycle Invariant**: Call `cortex_detect_cycles(project)` to guarantee no circular dependencies or import cycles were introduced.
+    4. **Static Analysis & Linters**: Run `go vet ./...` or `golangci-lint run ./...` (or language equivalent) on modified packages.
+    - **GATE 2 (Early Exit)**: If circular dependencies are introduced, syntax errors exist, or linters fail:
+      - Halt and return `verification_verdict: "FAIL"` citing Lens 1 (Structural Regression). Do not proceed to Phase 3.
+  - **For Operational & Database Tasks (`allowed_files` empty or DB/script DDL/DML)**:
+    1. **Working Tree Isolation**: Verify that the operation did NOT leave untracked temporary or accidental files in the repository. Unrelated pre-existing working tree drift in repository files must NOT block or halt database task verification.
+    2. **Bypass Code Scans**: Skip AST re-indexing and code linters since no codebase files were modified. Proceed directly to Phase 3.
 
 ### Phase 3: Existing Test Oracle Verification (Budget: <= 6 steps)
-1. **Execute Implementer's Test Suite**: Run targeted unit and integration tests across modified packages and callers in the blast radius:
-   `go test -v -count=1 ./<modified-pkg>/...`
-2. **Requirement Coverage**: Confirm that existing test assertions specifically cover the requirements specified in the task contract (e.g. REQ-TEL-001/002).
-- **GATE 3 (Early Exit)**:
-  - If any test fails ($ExitCode \neq 0$): Halt and return `verification_verdict: "FAIL"` citing failing test output.
-  - If requirement test coverage is absent: Halt and return `verification_verdict: "FAIL"` citing `Missing test oracle coverage for requirements`.
-  - Do NOT write new tests. Do not proceed to Phase 4.
+- **For Code Tasks**:
+  1. **Execute Implementer's Test Suite**: Run targeted unit and integration tests across modified packages and callers in the blast radius:
+     `go test -v -count=1 ./<modified-pkg>/...`
+  2. **Requirement Coverage**: Confirm that existing test assertions specifically cover the requirements specified in the task contract (e.g. REQ-TEL-001/002).
+  - **GATE 3 (Early Exit)**:
+    - If any test fails ($ExitCode \neq 0$): Halt and return `verification_verdict: "FAIL"` citing failing test output.
+    - If requirement test coverage is absent: Halt and return `verification_verdict: "FAIL"` citing `Missing test oracle coverage for requirements`.
+    - Do NOT write new tests. Do not proceed to Phase 4.
+- **For Operational & Database Tasks**:
+  1. **Target Oracle Verification**: Query the live database or service to verify the deployed object directly (e.g. `SHOW CREATE PROCEDURE`, verify parameter signatures, verify existence/body, run read-only test queries).
+  2. **Acceptance Match**: Confirm that parameters, logic, and isolation criteria defined in acceptance criteria are satisfied.
+  - **GATE 3 (Early Exit)**: If the database object signature, parameters, or test queries fail, halt and return `verification_verdict: "FAIL"` citing the live discrepancy. Do not proceed to Phase 4.
 
 ### Phase 4: Multi-Lens Adversarial Audit & Security Gate (Budget: <= 8 steps)
 Audit the actual `git diff` of the allowed files across the three mandatory lenses:
