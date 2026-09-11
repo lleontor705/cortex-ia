@@ -191,7 +191,14 @@ function firstExecutable(name: "cortex-ia" | "herdr"): string {
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
   const candidates = name === "herdr"
-    ? ["herdr", path.join(local, "Programs", "Herdr", "bin", "herdr.exe"), path.join(home, ".cargo", "bin", "herdr.exe"), "/usr/local/bin/herdr", "/usr/bin/herdr"]
+    ? [
+        "herdr",
+        path.join(home, ".herdr", "packages", "standalone", "releases", "0.9.0-x86_64-pc-windows-msvc", "herdr.exe"),
+        path.join(local, "Programs", "Herdr", "bin", "herdr.exe"),
+        path.join(home, ".cargo", "bin", "herdr.exe"),
+        "/usr/local/bin/herdr",
+        "/usr/bin/herdr"
+      ]
     : [
         path.join(home, "go", "bin", "cortex-ia.exe"),
         "cortex-ia",
@@ -302,11 +309,22 @@ function bridgeConfig(): {
 }
 
 function isHerdrInUse(): boolean {
-  return Boolean(
-    process.env.HERDR_PANE_ID ||
-    process.env.HERDR_WORKSPACE_ID ||
-    process.env.HERDR_ENV === "1"
-  );
+  if (Boolean(process.env.HERDR_PANE_ID || process.env.HERDR_WORKSPACE_ID || process.env.HERDR_ENV === "1")) {
+    return true;
+  }
+  try {
+    const herdr = firstExecutable("herdr");
+    if (!herdr) return false;
+    const out = execFileSync(herdr, ["status", "server"], {
+      encoding: "utf-8",
+      timeout: 1500,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+    return out.includes("status: running") || out.includes("endpoint_compatible: yes");
+  } catch {
+    return false;
+  }
 }
 
 function hasExecutable(name: string): boolean {
@@ -1160,6 +1178,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       },
       async execute(args, context) {
         if (args.prefer_native) {
+          logDelegation(`ℹ️ [CORTEX-IA] Delegación para rol '${args.role}' omitida por prefer_native=true.`);
           return JSON.stringify({
             delegated: false,
             execution_mode: "native",
@@ -1177,6 +1196,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
               !["external_enabled", "delegation_disabled", "role_native"].includes(policy.reason) ||
               policy.external_enabled !== (policy.reason === "external_enabled")) throw new Error("invalid delegation policy receipt");
           if (!policy.external_enabled) {
+            logDelegation(`ℹ️ [CORTEX-IA] Rol '${args.role}' configurado nativo en cortex-delegation.json (reason: ${policy.reason}).`);
             return JSON.stringify({ delegated: false, execution_mode: "native", reason: policy.reason, action: "USE_NATIVE_SUBAGENT" });
           }
           stage = "request";
@@ -1268,7 +1288,8 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
               execFileSync(herdr, ["pane", "run", openedPane, firstExecutable("cortex-ia"), ...worker], { encoding: "utf-8", windowsHide: true });
               emitDelegationEvent({ kind: "delegation", job_id: job.job_id, role: args.role, status: job.status, transport, pane_id: openedPane, tab_id: openedTab || undefined, workspace: path.resolve(context.directory) });
               return JSON.stringify({ delegated: true, execution_mode: executionMode(transport), job_id: job.job_id, status: job.status, transport, pane_id: openedPane, tab_id: openedTab || undefined });
-            } catch {
+            } catch (err: any) {
+              logDelegation(`❌ [CORTEX-IA] Error al crear pestaña/panel en Herdr: ${err?.message || String(err)}`);
               let cancellationStatus = "cancellation_unknown";
               try {
                 const cancelled = parseJSON(cortex(["delegate", "cancel", job.job_id]));

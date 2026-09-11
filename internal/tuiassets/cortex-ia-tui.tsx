@@ -129,7 +129,7 @@ type SidebarLayout = { compact: boolean; textLimit: number; gaugeWidth: number }
 function sidebarLayout(width: number): SidebarLayout {
   const measured = Number.isFinite(width) && width > 0 ? Math.floor(width) : 0;
   return {
-    compact: measured === 0 || measured < 32,
+    compact: measured === 0 || measured < 40,
     textLimit: Math.max(8, measured ? measured - 6 : 26),
     gaugeWidth: Math.max(3, Math.min(14, measured ? measured - 14 : 8)),
   };
@@ -300,6 +300,11 @@ function CortexCockpitHeader(props: {
   pulse: () => string;
   theme: TuiThemeCurrent;
 }) {
+  const projectName = createMemo(() => {
+    if (!props.projectRoot) return "";
+    return path.basename(props.projectRoot);
+  });
+
   return (
     <box
       flexDirection="column"
@@ -311,7 +316,8 @@ function CortexCockpitHeader(props: {
       {/* Brand Title + Pulse Badge */}
       <box flexDirection="row">
         <text fg={CORTEX_THEME.brandViolet}>🧠 </text>
-        <text fg={CORTEX_THEME.pureWhite}>{clipped("CORTEX·IA v2.0", props.textLimit)}</text>
+        <text fg={CORTEX_THEME.pureWhite}>CORTEX·IA</text>
+        <text fg={CORTEX_THEME.slateMuted}> v2.0</text>
         <Show
           when={props.isExecuting()}
           fallback={<text fg={CORTEX_THEME.emeraldGreen}> [● STANDBY]</text>}
@@ -320,14 +326,13 @@ function CortexCockpitHeader(props: {
         </Show>
       </box>
 
-      {/* Subtitle & Project Root */}
-      <box flexDirection="row">
-        <text fg={CORTEX_THEME.slateMuted}>{clipped("Neural Control Bridge", props.textLimit)}</text>
-        <Show when={props.projectRoot}>
-          <text fg={CORTEX_THEME.slateBorder}> │ </text>
-          <text fg={CORTEX_THEME.skyBlue}>{clipped(path.basename(props.projectRoot!), Math.max(4, props.textLimit - 8))}</text>
-        </Show>
-      </box>
+      {/* Project Root on its own dedicated line to prevent word wrapping */}
+      <Show when={projectName()}>
+        <box flexDirection="row" marginTop={0}>
+          <text fg={CORTEX_THEME.skyBlue}>📁 </text>
+          <text fg={CORTEX_THEME.skyBlue}>{clipped(projectName(), Math.max(6, props.textLimit - 4))}</text>
+        </box>
+      </Show>
     </box>
   );
 }
@@ -392,7 +397,7 @@ function Section(props: {
           {displayTitle()}
         </text>
         <Show when={displayBadge()}>
-          <text fg={CORTEX_THEME.skyBlue}>{props.compact ? ` [${displayBadge()}]` : ` [ ${displayBadge()} ]`}</text>
+          <text fg={CORTEX_THEME.skyBlue}>{` [${displayBadge()}]`}</text>
         </Show>
       </box>
       <Show when={props.expanded()}>{props.children}</Show>
@@ -532,7 +537,7 @@ function TaskRows(props: {
   textLimit: number;
 }) {
   return (
-    <Show when={props.tasks.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  Sin tareas durables activas</text>}>
+    <Show when={props.tasks.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  ○ Sin tareas en cola</text>}>
       <For each={props.tasks.slice(0, MAX_VISIBLE_ROWS)}>
         {(task) => {
           const chip = taskStatusChip(task.status);
@@ -570,7 +575,7 @@ function DelegationRows(props: {
   textLimit: number;
 }) {
   return (
-    <Show when={props.jobs.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  Sin ejecuciones delegadas</text>}>
+    <Show when={props.jobs.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  ○ Sin workers activos</text>}>
       <For each={props.jobs.slice(0, MAX_VISIBLE_ROWS)}>
         {(job) => {
           const isRunning = ["running", "starting", "accepted"].includes(job.status);
@@ -613,7 +618,7 @@ function DelegationRows(props: {
 
 function AttentionRows(props: { items: AttentionItem[]; theme: TuiThemeCurrent; compact?: boolean; textLimit: number }) {
   return (
-    <Show when={props.items.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  Sin alertas</text>}>
+    <Show when={props.items.length > 0} fallback={<text fg={CORTEX_THEME.emeraldGreen}>  ✓ Sin alertas pendientes</text>}>
       <For each={props.items.slice(0, MAX_VISIBLE_ROWS)}>
         {(item) => (
           <box flexDirection="column">
@@ -679,12 +684,17 @@ function OperationalBottomDashboard(props: {
   });
 
   const healthColor = createMemo(() => {
-    const rate = successRate() ?? 0;
+    const rate = successRate();
+    if (rate === undefined) return CORTEX_THEME.slateMuted;
     if (rate >= 90) return CORTEX_THEME.emeraldGreen;
     if (rate >= 70) return CORTEX_THEME.neonCyan;
     if (rate >= 50) return CORTEX_THEME.amberGold;
     return CORTEX_THEME.roseRed;
   });
+
+  const hasMetrics = createMemo(
+    () => succeededJobs() > 0 || failedJobs() > 0 || activeJobs() > 0 || totalLeases() > 0 || blockedTasks() > 0
+  );
 
   return (
     <box
@@ -703,7 +713,7 @@ function OperationalBottomDashboard(props: {
       </box>
 
       {/* Synapse Pulse / Status Line */}
-      <Show when={!props.layout.compact}><box flexDirection="row">
+      <box flexDirection="row">
         <Show
           when={activeJobs() > 0}
           fallback={
@@ -716,65 +726,73 @@ function OperationalBottomDashboard(props: {
             {`  ${props.spinner()} SYNAPSE: MOTOR ACTIVO`}
           </text>
         </Show>
-      </box></Show>
+      </box>
 
-      {/* Grid Fila 1: Píldoras de Éxito y Fallos */}
-      <Show when={!props.layout.compact}><box flexDirection="row" marginTop={0}>
-        <text fg={CORTEX_THEME.emeraldGreen}>{`[ ✓ ${succeededJobs()} ÉXITO ] `}</text>
-        <text fg={failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted}>
-          {`[ ✕ ${failedJobs()} FALLO ]`}
-        </text>
-      </box></Show>
-
-      {/* Grid Fila 2: Píldoras de En Curso y Locks */}
-      <box flexDirection={props.layout.compact ? "column" : "row"} marginTop={0}>
+      {/* Grid: Pills only when metrics exist, otherwise clean standby indicator */}
+      <Show
+        when={hasMetrics()}
+        fallback={
+          <box flexDirection="row">
+            <text fg={CORTEX_THEME.slateMuted}>  Standby · 0 ejecuciones</text>
+          </box>
+        }
+      >
         <Show
-          when={props.layout.compact}
+          when={!props.layout.compact}
           fallback={
             <box flexDirection="row">
-              <text fg={activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
-                {`[ ${activeJobs() > 0 ? props.spinner() : "●"} ${activeJobs()} CURSO ] `}
-              </text>
-              <text fg={totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted}>
-                {`[ 🛡 ${totalLeases()} LOCKS ] `}
-              </text>
+              <text fg={succeededJobs() > 0 ? CORTEX_THEME.emeraldGreen : CORTEX_THEME.slateMuted}>{`✓${succeededJobs()} `}</text>
+              <text fg={failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted}>{`✕${failedJobs()} `}</text>
+              <text fg={activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>{`●${activeJobs()} `}</text>
+              <text fg={totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted}>{`🛡${totalLeases()}`}</text>
               <Show when={blockedTasks() > 0}>
-                <text fg={CORTEX_THEME.roseRed}>{`[ ✕ ${blockedTasks()} BLCK ]`}</text>
+                <text fg={CORTEX_THEME.roseRed}>{` ✕${blockedTasks()}b`}</text>
               </Show>
             </box>
           }
         >
           <box flexDirection="row">
+            <text fg={CORTEX_THEME.emeraldGreen}>{`[ ✓ ${succeededJobs()} ÉXITO ] `}</text>
+            <text fg={failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted}>
+              {`[ ✕ ${failedJobs()} FALLO ]`}
+            </text>
+          </box>
+          <box flexDirection="row">
             <text fg={activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
-              {`${activeJobs()} ext · `}
+              {`[ ${activeJobs() > 0 ? props.spinner() : "●"} ${activeJobs()} CURSO ] `}
             </text>
             <text fg={totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted}>
-              {`${totalLeases()} locks`}
+              {`[ 🛡 ${totalLeases()} LOCKS ] `}
             </text>
             <Show when={blockedTasks() > 0}>
-              <text fg={CORTEX_THEME.roseRed}>{` · ${blockedTasks()} blck`}</text>
+              <text fg={CORTEX_THEME.roseRed}>{`[ ✕ ${blockedTasks()} BLCK ]`}</text>
             </Show>
           </box>
         </Show>
-      </box>
+      </Show>
 
       {/* Micro Medidor de Salud Operativa */}
-      <box flexDirection="row" marginTop={0}>
+      <box flexDirection="row">
         <text fg={CORTEX_THEME.slateMuted}>Salud: </text>
-        <text fg={healthColor()}>{healthBars().filled}</text>
-        <text fg={CORTEX_THEME.slateBorder}>{healthBars().empty}</text>
-        <text fg={healthColor()}>{successRate() === undefined ? "N/A · sin historial" : ` ${successRate()}%`}</text>
+        <Show
+          when={successRate() !== undefined}
+          fallback={<text fg={CORTEX_THEME.slateMuted}>○ standby</text>}
+        >
+          <text fg={healthColor()}>{healthBars().filled}</text>
+          <text fg={CORTEX_THEME.slateBorder}>{healthBars().empty}</text>
+          <text fg={healthColor()}>{` ${successRate()}%`}</text>
+        </Show>
       </box>
 
       {/* Autoridad SQLite y DAG */}
-      <box flexDirection="row" marginTop={0}>
+      <box flexDirection="row">
         <text fg={CORTEX_THEME.slateMuted}>
           {props.layout.compact ? "Autoridad: SQLite" : `📋 DAG: ${doneTasks()}/${totalTasks()} · Autoridad: SQLite`}
         </text>
       </box>
 
       {/* Frescura de Datos / Telemetría */}
-      <box flexDirection="row" marginTop={0}>
+      <box flexDirection="row">
         <Show
           when={props.stale}
           fallback={
@@ -784,7 +802,7 @@ function OperationalBottomDashboard(props: {
           }
         >
           <text fg={CORTEX_THEME.amberGold}>
-              {props.layout.compact ? "Datos no confirmados" : `🟡 Snapshot desfasado (+${syncAgeSec()}s)`}
+            {props.layout.compact ? "🟡 Desfasado" : `🟡 Snapshot desfasado (+${syncAgeSec()}s)`}
           </text>
         </Show>
       </box>
@@ -925,8 +943,8 @@ export function SidebarStatus(props: {
           title="Tablero de Tareas"
           shortTitle="Tareas"
           icon="📋"
-          badge={`${props.snapshot().summary.active_tasks || 0} act / ${totalTasks()} tot`}
-          shortBadge={`${props.snapshot().summary.active_tasks || 0}/${totalTasks()}`}
+          badge={totalTasks() > 0 ? `${props.snapshot().summary.active_tasks || 0} act / ${totalTasks()} tot` : undefined}
+          shortBadge={totalTasks() > 0 ? `${props.snapshot().summary.active_tasks || 0}/${totalTasks()}` : undefined}
           compact={layout().compact}
           expanded={props.tasksExpanded}
           onToggle={props.toggleTasks}
@@ -940,8 +958,8 @@ export function SidebarStatus(props: {
           title="Workers & Delegación"
           shortTitle="Workers"
           icon="🤖"
-          badge={`${activeDelegationsCount()} act / ${totalDelegationsCount()} tot`}
-          shortBadge={`${activeDelegationsCount()}/${totalDelegationsCount()}`}
+          badge={totalDelegationsCount() > 0 ? `${activeDelegationsCount()} act / ${totalDelegationsCount()} tot` : undefined}
+          shortBadge={totalDelegationsCount() > 0 ? `${activeDelegationsCount()}/${totalDelegationsCount()}` : undefined}
           compact={layout().compact}
           expanded={props.delegationsExpanded}
           onToggle={props.toggleDelegations}
@@ -955,8 +973,8 @@ export function SidebarStatus(props: {
           title="Centro de Atención"
           shortTitle="Alertas"
           icon="⚠️"
-          badge={`${counts().attention} alertas`}
-          shortBadge={`${counts().attention}`}
+          badge={counts().attention > 0 ? `${counts().attention} alertas` : undefined}
+          shortBadge={counts().attention > 0 ? `${counts().attention}` : undefined}
           compact={layout().compact}
           expanded={props.attentionExpanded}
           onToggle={props.toggleAttention}

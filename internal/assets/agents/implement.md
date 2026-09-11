@@ -82,8 +82,8 @@ Before modifying code or executing mutating shell commands, execute these steps 
 ### Step 2: Delegation Gate (Dynamic External CLI / Herdr)
 - Require an explicit `dispatch_envelope.workspace_strategy`: `current_workspace` is the sole supported strategy; `isolated_worktree` is retired.
 - `current_workspace` uses the controller workspace sequentially under live per-file reservations (`cortex_ia_file_reserve`); an external AGY leaf remains exclusive during its execution window, and native controllers must not edit concurrently.
-- **Native Constraint Check**: If the dispatch envelope specifies `prefer_native: true`, `execution_mode: "native"`, or was dispatched as a native-only repair/remediation, pass `prefer_native: true` to `cortex_ia_delegate_start` to bypass external leaf spawning and proceed natively immediately.
-- Otherwise, call `cortex_ia_delegate_start` with `role: "implement"`, `task_id`, `objective`, `workspace_strategy: "current_workspace"`, `allowed_files`, and `acceptance_checks`.
+- **Native Constraint Check**: Pass `prefer_native: true` ONLY if the dispatch envelope or user explicitly specifies `prefer_native: true` or `execution_mode: "native"`. Otherwise, let `cortex-delegation.json` decide.
+- Call `cortex_ia_delegate_start` with `role: "implement"`, `task_id`, `objective`, `workspace_strategy: "current_workspace"`, `allowed_files`, and `acceptance_checks`.
 - **If the bridge returns `delegated: true`** (e.g. `execution_mode: "herdr_multiplexed"` or `"direct_cli"`):
   - An external leaf worker is executing in a Herdr pane or background process.
   - Call `cortex_ia_delegation_wait({ job_id })` once (terminal success automatically attaches `result`).

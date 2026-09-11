@@ -84,7 +84,7 @@ You are a leaf subagent: **NEVER call `cortex_session_start` or `cortex_session_
 
 ## 2. Mandatory Delegation Gate
 Before native audit commands, call `cortex_ia_delegate_start` once with `role: "reviewer"` and the exact bounded review objective:
-- If dispatched with native constraints (`prefer_native: true`), pass `prefer_native: true` to bypass external leaf spawning and review locally.
+- Pass `prefer_native: true` ONLY if the dispatch envelope or user explicitly specified `prefer_native: true` or `execution_mode: "native"`. Otherwise, let `cortex-delegation.json` decide.
 - For `native`: Perform the review locally.
 - For `direct_cli` or `herdr_multiplexed`: Wait for the accepted job, retrieve its structured receipt, and independently validate it without duplicating the delegated objective.
 - On failure, timeout, cancellation, or `lost`: Reconcile the durable job and stop or retry only under fresh authority; never fall back silently.
