@@ -380,10 +380,15 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	if timeout > 0 {
 		printTimeout = timeout.String()
 	}
+	workDir := request.Workspace
+	if request.Role == "implement" {
+		workDir = request.executionDirectory()
+	}
 	args := []string{
 		"--output-format", "stream-json",
 		"--print-timeout", printTimeout,
 		"--disable-slash-commands",
+		"--add-dir", workDir,
 	}
 	if skip {
 		args = append(args, "--dangerously-skip-permissions")
@@ -713,6 +718,11 @@ func isolatedAGYEnvironment(home string) []string {
 		"TEMP": true, "TMP": true, "TMPDIR": true, "LANG": true, "LC_ALL": true, "TERM": true,
 		"COLORTERM": true, "NO_COLOR": true, "HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true,
 		"SSL_CERT_FILE": true, "SSL_CERT_DIR": true,
+		"LOCALAPPDATA": true, "APPDATA": true, "ALLUSERSPROFILE": true, "PROGRAMDATA": true,
+		"PROGRAMFILES": true, "PROGRAMFILES(X86)": true, "PROGRAMW6432": true, "SYSTEMDRIVE": true,
+		"GEMINI_API_KEY": true, "GOOGLE_API_KEY": true, "GOOGLE_APPLICATION_CREDENTIALS": true,
+		"ANTHROPIC_API_KEY": true, "OPENAI_API_KEY": true,
+		"ANTIGRAVITY_AGENT": true, "AGY_AGENT": true,
 	}
 	environment := make([]string, 0, len(allowed)+4)
 	for _, item := range os.Environ() {
@@ -905,6 +915,10 @@ func externalPrompt(request Request) string {
 	b.WriteString("You are an external leaf executor supervised by cortex-ia. Do not use the cortex-ia work control plane or Cortex MCP, do not start or end a session, and do not delegate or spawn subagents. Return only the requested structured result.\n\n")
 	b.WriteString("Role: ")
 	b.WriteString(request.Role)
+	if request.Workspace != "" {
+		b.WriteString("\nWorkspace directory: ")
+		b.WriteString(filepath.ToSlash(request.Workspace))
+	}
 	if request.TaskID != "" {
 		b.WriteString("\nTask ID: ")
 		b.WriteString(request.TaskID)

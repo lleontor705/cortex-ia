@@ -130,8 +130,8 @@ function sidebarLayout(width: number): SidebarLayout {
   const measured = Number.isFinite(width) && width > 0 ? Math.floor(width) : 0;
   return {
     compact: measured === 0 || measured < 32,
-    textLimit: Math.max(8, measured ? measured - 6 : 18),
-    gaugeWidth: Math.max(3, Math.min(14, measured ? measured - 14 : 6)),
+    textLimit: Math.max(8, measured ? measured - 6 : 26),
+    gaugeWidth: Math.max(3, Math.min(14, measured ? measured - 14 : 8)),
   };
 }
 
@@ -314,9 +314,9 @@ function CortexCockpitHeader(props: {
         <text fg={CORTEX_THEME.pureWhite}>{clipped("CORTEX·IA v2.0", props.textLimit)}</text>
         <Show
           when={props.isExecuting()}
-          fallback={<text fg={CORTEX_THEME.emeraldGreen}>[● STANDBY]</text>}
+          fallback={<text fg={CORTEX_THEME.emeraldGreen}> [● STANDBY]</text>}
         >
-          <text fg={CORTEX_THEME.amberGold}>{`[${props.spinner()} NEURAL ACT]`}</text>
+          <text fg={CORTEX_THEME.amberGold}>{` [${props.spinner()} ACTIVO]`}</text>
         </Show>
       </box>
 
@@ -324,7 +324,7 @@ function CortexCockpitHeader(props: {
       <box flexDirection="row">
         <text fg={CORTEX_THEME.slateMuted}>{clipped("Neural Control Bridge", props.textLimit)}</text>
         <Show when={props.projectRoot}>
-          <text fg={CORTEX_THEME.slateBorder}>│ </text>
+          <text fg={CORTEX_THEME.slateBorder}> │ </text>
           <text fg={CORTEX_THEME.skyBlue}>{clipped(path.basename(props.projectRoot!), Math.max(4, props.textLimit - 8))}</text>
         </Show>
       </box>
@@ -345,19 +345,19 @@ function OperationalKPIHud(props: {
       {/* Row 1 */}
       <box flexDirection="row">
         <text fg={props.activeExecutions > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
-          {`[ ${props.activeExecutions > 0 ? props.spinner() : "●"} ${props.activeExecutions} CURSO ] `}
+          {`[${props.activeExecutions > 0 ? props.spinner() : "●"} ${props.activeExecutions} CURSO] `}
         </text>
         <text fg={props.inReview > 0 ? CORTEX_THEME.brandPurple : CORTEX_THEME.slateMuted}>
-          {`[ ◆ ${props.inReview} REVW ]`}
+          {`[◆ ${props.inReview} REVW]`}
         </text>
       </box>
       {/* Row 2 */}
       <box flexDirection="row" marginTop={0}>
         <text fg={props.doneTasks > 0 ? CORTEX_THEME.emeraldGreen : CORTEX_THEME.slateMuted}>
-          {`[ ✓ ${props.doneTasks} DONE ] `}
+          {`[✓ ${props.doneTasks} DONE] `}
         </text>
         <text fg={props.attentionCount > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted}>
-          {`[ ${props.attentionCount > 0 ? "✕" : "○"} ${props.attentionCount} ALRT ]`}
+          {`[${props.attentionCount > 0 ? "✕" : "○"} ${props.attentionCount} ALRT]`}
         </text>
       </box>
     </box>
@@ -404,6 +404,7 @@ function MultiColorProgressBar(props: {
   done: number;
   inReview: number;
   inProgress: number;
+  blocked?: number;
   total: number;
   width?: number;
   compact: boolean;
@@ -415,8 +416,10 @@ function MultiColorProgressBar(props: {
   const doneW = Math.round((props.done / total) * w);
   const revW = Math.round((props.inReview / total) * w);
   const progW = Math.round((props.inProgress / total) * w);
-  const emptyW = Math.max(0, w - doneW - revW - progW);
+  const blckW = Math.round(((props.blocked || 0) / total) * w);
+  const emptyW = Math.max(0, w - doneW - revW - progW - blckW);
   const pct = Math.round((props.done / total) * 100);
+  const waiting = Math.max(0, props.total - props.done - props.inReview - props.inProgress - (props.blocked || 0));
 
   return (
     <box flexDirection="column" marginTop={1}>
@@ -425,6 +428,9 @@ function MultiColorProgressBar(props: {
         <text fg={CORTEX_THEME.emeraldGreen}>{"█".repeat(doneW)}</text>
         <text fg={CORTEX_THEME.brandPurple}>{"▓".repeat(revW)}</text>
         <text fg={CORTEX_THEME.amberGold}>{"▒".repeat(progW)}</text>
+        <Show when={blckW > 0}>
+          <text fg={CORTEX_THEME.roseRed}>{"▓".repeat(blckW)}</text>
+        </Show>
         <text fg={CORTEX_THEME.slateBorder}>{"░".repeat(emptyW)}</text>
         <text fg={CORTEX_THEME.pureWhite}>{` ${pct}%`}</text>
         <text fg={CORTEX_THEME.slateMuted}>{props.compact ? "" : ` (${props.done}/${props.total})`}</text>
@@ -433,9 +439,10 @@ function MultiColorProgressBar(props: {
         <text fg={CORTEX_THEME.emeraldGreen}>{`✓${props.done} `}</text>
         <text fg={CORTEX_THEME.brandPurple}>{`◆${props.inReview} `}</text>
         <text fg={CORTEX_THEME.amberGold}>{`●${props.inProgress} `}</text>
-        <text fg={CORTEX_THEME.slateMuted}>
-          {`○${Math.max(0, props.total - props.done - props.inReview - props.inProgress)}`}
-        </text>
+        <Show when={(props.blocked || 0) > 0}>
+          <text fg={CORTEX_THEME.roseRed}>{`✕${props.blocked} `}</text>
+        </Show>
+        <text fg={CORTEX_THEME.slateMuted}>{`○${waiting}`}</text>
       </box>
     </box>
   );
@@ -538,12 +545,12 @@ function TaskRows(props: {
                 </text>
                 <text fg={chip.color}>{`[${chip.tag}] `}</text>
                 <text fg={isProg ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight}>
-                  {clipped(`${task.task_id} · ${task.title}`, Math.max(8, props.textLimit - 9))}
+                  {clipped(task.task_id, Math.max(8, props.textLimit - 9))}
                 </text>
               </box>
               <box flexDirection="row">
                 <text fg={CORTEX_THEME.slateMuted}>
-                  {`     ${clipped(task.board_id, props.compact ? 8 : 10)}${task.owner ? ` · ${clipped(task.owner, props.compact ? 6 : 8)}` : ""}${task.lease_count ? ` · 🛡 ${task.lease_count}lk` : ""}`}
+                  {`     ${clipped(task.title, Math.max(8, props.textLimit - 5))}${task.owner ? ` · ${clipped(task.owner, 6)}` : ""}${task.lease_count ? ` · 🛡 ${task.lease_count}lk` : ""}`}
                 </text>
               </box>
             </box>
@@ -762,7 +769,7 @@ function OperationalBottomDashboard(props: {
       {/* Autoridad SQLite y DAG */}
       <box flexDirection="row" marginTop={0}>
         <text fg={CORTEX_THEME.slateMuted}>
-          {props.layout.compact ? `SQLite · DAG ${doneTasks()}/${totalTasks()}` : `📋 DAG: ${doneTasks()}/${totalTasks()} · Autoridad: SQLite`}
+          {props.layout.compact ? "Autoridad: SQLite" : `📋 DAG: ${doneTasks()}/${totalTasks()} · Autoridad: SQLite`}
         </text>
       </box>
 
@@ -772,7 +779,7 @@ function OperationalBottomDashboard(props: {
           when={props.stale}
           fallback={
             <text fg={CORTEX_THEME.emeraldGreen}>
-              {props.layout.compact ? "En vivo" : `🟢 En vivo · Sync hace ${syncAgeSec()}s`}
+              {props.layout.compact ? "🟢 En vivo" : `🟢 En vivo · Sync hace ${syncAgeSec()}s`}
             </text>
           }
         >
@@ -838,6 +845,7 @@ export function SidebarStatus(props: {
   const doneTasks = createMemo(() => props.snapshot().summary.done || 0);
   const inReviewTasks = createMemo(() => props.snapshot().summary.in_review || 0);
   const inProgressTasks = createMemo(() => props.snapshot().summary.in_progress || 0);
+  const blockedTasks = createMemo(() => props.snapshot().summary.blocked || 0);
   const totalTasks = createMemo(() => props.snapshot().summary.total_tasks || props.snapshot().tasks.length);
 
   return (
@@ -889,10 +897,11 @@ export function SidebarStatus(props: {
             done={doneTasks()}
             inReview={inReviewTasks()}
             inProgress={inProgressTasks()}
-              total={totalTasks()}
-              width={layout().gaugeWidth}
-              compact={layout().compact}
-              textLimit={layout().textLimit}
+            blocked={blockedTasks()}
+            total={totalTasks()}
+            width={layout().gaugeWidth}
+            compact={layout().compact}
+            textLimit={layout().textLimit}
             theme={props.theme}
           />
         </Show>

@@ -40,8 +40,8 @@ function sidebarLayout(width) {
   const measured = Number.isFinite(width) && width > 0 ? Math.floor(width) : 0;
   return {
     compact: measured === 0 || measured < 32,
-    textLimit: Math.max(8, measured ? measured - 6 : 18),
-    gaugeWidth: Math.max(3, Math.min(14, measured ? measured - 14 : 6))
+    textLimit: Math.max(8, measured ? measured - 6 : 26),
+    gaugeWidth: Math.max(3, Math.min(14, measured ? measured - 14 : 8))
   };
 }
 var EMPTY_SNAPSHOT = {
@@ -248,110 +248,64 @@ function conversationScope(api) {
 }
 function CortexCockpitHeader(props) {
   return (() => {
-    var _el$ = _$createElement("box"), _el$2 = _$createElement("box"), _el$3 = _$createElement("text"), _el$5 = _$createElement("text"), _el$7 = _$createElement("text"), _el$9 = _$createElement("text"), _el$1 = _$createElement("text"), _el$12 = _$createElement("box"), _el$13 = _$createElement("text");
+    var _el$ = _$createElement("box"), _el$2 = _$createElement("box"), _el$3 = _$createElement("text"), _el$5 = _$createElement("text"), _el$7 = _$createElement("box"), _el$8 = _$createElement("text");
     _$insertNode(_el$, _el$2);
-    _$insertNode(_el$, _el$12);
+    _$insertNode(_el$, _el$7);
     _$setProp(_el$, "flexDirection", "column");
     _$setProp(_el$, "borderStyle", "rounded");
     _$setProp(_el$, "paddingLeft", 1);
     _$setProp(_el$, "paddingRight", 1);
     _$insertNode(_el$2, _el$3);
     _$insertNode(_el$2, _el$5);
-    _$insertNode(_el$2, _el$7);
-    _$insertNode(_el$2, _el$9);
-    _$insertNode(_el$2, _el$1);
     _$setProp(_el$2, "flexDirection", "row");
     _$insertNode(_el$3, _$createTextNode(`\u{1F9E0} `));
-    _$insertNode(_el$5, _$createTextNode(`CORTEX`));
-    _$insertNode(_el$7, _$createTextNode(`\xB7`));
-    _$insertNode(_el$9, _$createTextNode(`IA `));
-    _$insertNode(_el$1, _$createTextNode(`v2.0 `));
+    _$insert(_el$5, () => clipped("CORTEX\xB7IA v2.0", props.textLimit));
     _$insert(_el$2, _$createComponent(Show, {
       get when() {
         return props.isExecuting();
       },
       get fallback() {
         return (() => {
-          var _el$18 = _$createElement("text");
-          _$insertNode(_el$18, _$createTextNode(`[\u25CF STANDBY]`));
-          _$effect((_$p) => _$setProp(_el$18, "fg", CORTEX_THEME.emeraldGreen, _$p));
-          return _el$18;
+          var _el$10 = _$createElement("text");
+          _$insertNode(_el$10, _$createTextNode(` [\u25CF STANDBY]`));
+          _$effect((_$p) => _$setProp(_el$10, "fg", CORTEX_THEME.emeraldGreen, _$p));
+          return _el$10;
         })();
       },
       get children() {
-        var _el$11 = _$createElement("text");
-        _$insert(_el$11, () => `[${props.spinner()} NEURAL ACT]`);
-        _$effect((_$p) => _$setProp(_el$11, "fg", CORTEX_THEME.amberGold, _$p));
-        return _el$11;
+        var _el$6 = _$createElement("text");
+        _$insert(_el$6, () => ` [${props.spinner()} ACTIVO]`);
+        _$effect((_$p) => _$setProp(_el$6, "fg", CORTEX_THEME.amberGold, _$p));
+        return _el$6;
       }
     }), null);
-    _$insertNode(_el$12, _el$13);
-    _$setProp(_el$12, "flexDirection", "row");
-    _$insertNode(_el$13, _$createTextNode(`Neural Control Bridge `));
-    _$insert(_el$12, _$createComponent(Show, {
+    _$insertNode(_el$7, _el$8);
+    _$setProp(_el$7, "flexDirection", "row");
+    _$insert(_el$8, () => clipped("Neural Control Bridge", props.textLimit));
+    _$insert(_el$7, _$createComponent(Show, {
       get when() {
         return props.projectRoot;
       },
       get children() {
         return [(() => {
-          var _el$15 = _$createElement("text");
-          _$insertNode(_el$15, _$createTextNode(`\u2502 `));
-          _$effect((_$p) => _$setProp(_el$15, "fg", CORTEX_THEME.slateBorder, _$p));
-          return _el$15;
+          var _el$9 = _$createElement("text");
+          _$insertNode(_el$9, _$createTextNode(` \u2502 `));
+          _$effect((_$p) => _$setProp(_el$9, "fg", CORTEX_THEME.slateBorder, _$p));
+          return _el$9;
         })(), (() => {
-          var _el$17 = _$createElement("text");
-          _$insert(_el$17, () => clipped(path.basename(props.projectRoot), 13));
-          _$effect((_$p) => _$setProp(_el$17, "fg", CORTEX_THEME.skyBlue, _$p));
-          return _el$17;
+          var _el$1 = _$createElement("text");
+          _$insert(_el$1, () => clipped(path.basename(props.projectRoot), Math.max(4, props.textLimit - 8)));
+          _$effect((_$p) => _$setProp(_el$1, "fg", CORTEX_THEME.skyBlue, _$p));
+          return _el$1;
         })()];
       }
     }), null);
     _$effect((_p$) => {
-      var _v$ = props.isExecuting() ? CORTEX_THEME.amberGold : CORTEX_THEME.brandIndigo, _v$2 = CORTEX_THEME.brandViolet, _v$3 = CORTEX_THEME.pureWhite, _v$4 = CORTEX_THEME.neonCyan, _v$5 = CORTEX_THEME.skyBlue, _v$6 = CORTEX_THEME.brandPurple, _v$7 = CORTEX_THEME.slateMuted;
+      var _v$ = props.isExecuting() ? CORTEX_THEME.amberGold : CORTEX_THEME.brandIndigo, _v$2 = CORTEX_THEME.brandViolet, _v$3 = CORTEX_THEME.pureWhite, _v$4 = CORTEX_THEME.slateMuted;
       _v$ !== _p$.e && (_p$.e = _$setProp(_el$, "borderColor", _v$, _p$.e));
       _v$2 !== _p$.t && (_p$.t = _$setProp(_el$3, "fg", _v$2, _p$.t));
       _v$3 !== _p$.a && (_p$.a = _$setProp(_el$5, "fg", _v$3, _p$.a));
-      _v$4 !== _p$.o && (_p$.o = _$setProp(_el$7, "fg", _v$4, _p$.o));
-      _v$5 !== _p$.i && (_p$.i = _$setProp(_el$9, "fg", _v$5, _p$.i));
-      _v$6 !== _p$.n && (_p$.n = _$setProp(_el$1, "fg", _v$6, _p$.n));
-      _v$7 !== _p$.s && (_p$.s = _$setProp(_el$13, "fg", _v$7, _p$.s));
-      return _p$;
-    }, {
-      e: void 0,
-      t: void 0,
-      a: void 0,
-      o: void 0,
-      i: void 0,
-      n: void 0,
-      s: void 0
-    });
-    return _el$;
-  })();
-}
-function OperationalKPIHud(props) {
-  return (() => {
-    var _el$20 = _$createElement("box"), _el$21 = _$createElement("box"), _el$22 = _$createElement("text"), _el$23 = _$createElement("text"), _el$24 = _$createElement("box"), _el$25 = _$createElement("text"), _el$26 = _$createElement("text");
-    _$insertNode(_el$20, _el$21);
-    _$insertNode(_el$20, _el$24);
-    _$setProp(_el$20, "flexDirection", "column");
-    _$setProp(_el$20, "marginTop", 1);
-    _$insertNode(_el$21, _el$22);
-    _$insertNode(_el$21, _el$23);
-    _$setProp(_el$21, "flexDirection", "row");
-    _$insert(_el$22, () => `[ ${props.activeExecutions > 0 ? props.spinner() : "\u25CF"} ${props.activeExecutions} CURSO ] `);
-    _$insert(_el$23, () => `[ \u25C6 ${props.inReview} REVW ]`);
-    _$insertNode(_el$24, _el$25);
-    _$insertNode(_el$24, _el$26);
-    _$setProp(_el$24, "flexDirection", "row");
-    _$setProp(_el$24, "marginTop", 0);
-    _$insert(_el$25, () => `[ \u2713 ${props.doneTasks} DONE ] `);
-    _$insert(_el$26, () => `[ ${props.attentionCount > 0 ? "\u2715" : "\u25CB"} ${props.attentionCount} ALRT ]`);
-    _$effect((_p$) => {
-      var _v$8 = props.activeExecutions > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted, _v$9 = props.inReview > 0 ? CORTEX_THEME.brandPurple : CORTEX_THEME.slateMuted, _v$0 = props.doneTasks > 0 ? CORTEX_THEME.emeraldGreen : CORTEX_THEME.slateMuted, _v$1 = props.attentionCount > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted;
-      _v$8 !== _p$.e && (_p$.e = _$setProp(_el$22, "fg", _v$8, _p$.e));
-      _v$9 !== _p$.t && (_p$.t = _$setProp(_el$23, "fg", _v$9, _p$.t));
-      _v$0 !== _p$.a && (_p$.a = _$setProp(_el$25, "fg", _v$0, _p$.a));
-      _v$1 !== _p$.o && (_p$.o = _$setProp(_el$26, "fg", _v$1, _p$.o));
+      _v$4 !== _p$.o && (_p$.o = _$setProp(_el$8, "fg", _v$4, _p$.o));
       return _p$;
     }, {
       e: void 0,
@@ -359,50 +313,84 @@ function OperationalKPIHud(props) {
       a: void 0,
       o: void 0
     });
-    return _el$20;
+    return _el$;
+  })();
+}
+function OperationalKPIHud(props) {
+  return (() => {
+    var _el$12 = _$createElement("box"), _el$13 = _$createElement("box"), _el$14 = _$createElement("text"), _el$15 = _$createElement("text"), _el$16 = _$createElement("box"), _el$17 = _$createElement("text"), _el$18 = _$createElement("text");
+    _$insertNode(_el$12, _el$13);
+    _$insertNode(_el$12, _el$16);
+    _$setProp(_el$12, "flexDirection", "column");
+    _$setProp(_el$12, "marginTop", 1);
+    _$insertNode(_el$13, _el$14);
+    _$insertNode(_el$13, _el$15);
+    _$setProp(_el$13, "flexDirection", "row");
+    _$insert(_el$14, () => `[${props.activeExecutions > 0 ? props.spinner() : "\u25CF"} ${props.activeExecutions} CURSO] `);
+    _$insert(_el$15, () => `[\u25C6 ${props.inReview} REVW]`);
+    _$insertNode(_el$16, _el$17);
+    _$insertNode(_el$16, _el$18);
+    _$setProp(_el$16, "flexDirection", "row");
+    _$setProp(_el$16, "marginTop", 0);
+    _$insert(_el$17, () => `[\u2713 ${props.doneTasks} DONE] `);
+    _$insert(_el$18, () => `[${props.attentionCount > 0 ? "\u2715" : "\u25CB"} ${props.attentionCount} ALRT]`);
+    _$effect((_p$) => {
+      var _v$5 = props.activeExecutions > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted, _v$6 = props.inReview > 0 ? CORTEX_THEME.brandPurple : CORTEX_THEME.slateMuted, _v$7 = props.doneTasks > 0 ? CORTEX_THEME.emeraldGreen : CORTEX_THEME.slateMuted, _v$8 = props.attentionCount > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted;
+      _v$5 !== _p$.e && (_p$.e = _$setProp(_el$14, "fg", _v$5, _p$.e));
+      _v$6 !== _p$.t && (_p$.t = _$setProp(_el$15, "fg", _v$6, _p$.t));
+      _v$7 !== _p$.a && (_p$.a = _$setProp(_el$17, "fg", _v$7, _p$.a));
+      _v$8 !== _p$.o && (_p$.o = _$setProp(_el$18, "fg", _v$8, _p$.o));
+      return _p$;
+    }, {
+      e: void 0,
+      t: void 0,
+      a: void 0,
+      o: void 0
+    });
+    return _el$12;
   })();
 }
 function Section(props) {
   const displayTitle = createMemo(() => props.compact && props.shortTitle ? props.shortTitle : props.title);
   const displayBadge = createMemo(() => props.compact && props.shortBadge ? props.shortBadge : props.badge);
   return (() => {
-    var _el$27 = _$createElement("box"), _el$28 = _$createElement("box"), _el$29 = _$createElement("text"), _el$31 = _$createElement("text");
-    _$insertNode(_el$27, _el$28);
-    _$setProp(_el$27, "flexDirection", "column");
-    _$setProp(_el$27, "marginTop", 1);
-    _$insertNode(_el$28, _el$29);
-    _$insertNode(_el$28, _el$31);
-    _$setProp(_el$28, "flexDirection", "row");
-    _$setProp(_el$29, "selectable", false);
-    _$insert(_el$29, () => props.expanded() ? "\u25BC " : "\u25B6 ");
-    _$insert(_el$28, _$createComponent(Show, {
+    var _el$19 = _$createElement("box"), _el$20 = _$createElement("box"), _el$21 = _$createElement("text"), _el$23 = _$createElement("text");
+    _$insertNode(_el$19, _el$20);
+    _$setProp(_el$19, "flexDirection", "column");
+    _$setProp(_el$19, "marginTop", 1);
+    _$insertNode(_el$20, _el$21);
+    _$insertNode(_el$20, _el$23);
+    _$setProp(_el$20, "flexDirection", "row");
+    _$setProp(_el$21, "selectable", false);
+    _$insert(_el$21, () => props.expanded() ? "\u25BC " : "\u25B6 ");
+    _$insert(_el$20, _$createComponent(Show, {
       get when() {
         return props.icon;
       },
       get children() {
-        var _el$30 = _$createElement("text");
-        _$insert(_el$30, () => `${props.icon} `);
-        _$effect((_$p) => _$setProp(_el$30, "fg", CORTEX_THEME.brandViolet, _$p));
-        return _el$30;
+        var _el$22 = _$createElement("text");
+        _$insert(_el$22, () => `${props.icon} `);
+        _$effect((_$p) => _$setProp(_el$22, "fg", CORTEX_THEME.brandViolet, _$p));
+        return _el$22;
       }
-    }), _el$31);
-    _$setProp(_el$31, "selectable", false);
-    _$insert(_el$31, displayTitle);
-    _$insert(_el$28, _$createComponent(Show, {
+    }), _el$23);
+    _$setProp(_el$23, "selectable", false);
+    _$insert(_el$23, displayTitle);
+    _$insert(_el$20, _$createComponent(Show, {
       get when() {
         return displayBadge();
       },
       get children() {
-        var _el$32 = _$createElement("text");
-        _$insert(_el$32, (() => {
+        var _el$24 = _$createElement("text");
+        _$insert(_el$24, (() => {
           var _c$ = _$memo(() => !!props.compact);
           return () => _c$() ? ` [${displayBadge()}]` : ` [ ${displayBadge()} ]`;
         })());
-        _$effect((_$p) => _$setProp(_el$32, "fg", CORTEX_THEME.skyBlue, _$p));
-        return _el$32;
+        _$effect((_$p) => _$setProp(_el$24, "fg", CORTEX_THEME.skyBlue, _$p));
+        return _el$24;
       }
     }), null);
-    _$insert(_el$27, _$createComponent(Show, {
+    _$insert(_el$19, _$createComponent(Show, {
       get when() {
         return props.expanded();
       },
@@ -411,70 +399,95 @@ function Section(props) {
       }
     }), null);
     _$effect((_p$) => {
-      var _v$10 = props.onToggle, _v$11 = props.expanded() ? CORTEX_THEME.neonCyan : CORTEX_THEME.slateMuted, _v$12 = CORTEX_THEME.pureWhite;
-      _v$10 !== _p$.e && (_p$.e = _$setProp(_el$28, "onMouseDown", _v$10, _p$.e));
-      _v$11 !== _p$.t && (_p$.t = _$setProp(_el$29, "fg", _v$11, _p$.t));
-      _v$12 !== _p$.a && (_p$.a = _$setProp(_el$31, "fg", _v$12, _p$.a));
+      var _v$9 = props.onToggle, _v$0 = props.expanded() ? CORTEX_THEME.neonCyan : CORTEX_THEME.slateMuted, _v$1 = CORTEX_THEME.pureWhite;
+      _v$9 !== _p$.e && (_p$.e = _$setProp(_el$20, "onMouseDown", _v$9, _p$.e));
+      _v$0 !== _p$.t && (_p$.t = _$setProp(_el$21, "fg", _v$0, _p$.t));
+      _v$1 !== _p$.a && (_p$.a = _$setProp(_el$23, "fg", _v$1, _p$.a));
       return _p$;
     }, {
       e: void 0,
       t: void 0,
       a: void 0
     });
-    return _el$27;
+    return _el$19;
   })();
 }
 function MultiColorProgressBar(props) {
-  const w = props.width || 14;
+  const w = Math.max(3, Math.min(props.width || 14, props.textLimit - (props.compact ? 8 : 14)));
   const total = Math.max(props.total, 1);
   const doneW = Math.round(props.done / total * w);
   const revW = Math.round(props.inReview / total * w);
   const progW = Math.round(props.inProgress / total * w);
-  const emptyW = Math.max(0, w - doneW - revW - progW);
+  const blckW = Math.round((props.blocked || 0) / total * w);
+  const emptyW = Math.max(0, w - doneW - revW - progW - blckW);
   const pct = Math.round(props.done / total * 100);
+  const waiting = Math.max(0, props.total - props.done - props.inReview - props.inProgress - (props.blocked || 0));
   return (() => {
-    var _el$33 = _$createElement("box"), _el$34 = _$createElement("box"), _el$35 = _$createElement("text"), _el$37 = _$createElement("text"), _el$38 = _$createElement("text"), _el$39 = _$createElement("text"), _el$40 = _$createElement("text"), _el$41 = _$createElement("text"), _el$42 = _$createElement("text"), _el$43 = _$createElement("box"), _el$44 = _$createElement("text"), _el$45 = _$createElement("text"), _el$46 = _$createElement("text"), _el$47 = _$createElement("text");
-    _$insertNode(_el$33, _el$34);
-    _$insertNode(_el$33, _el$43);
-    _$setProp(_el$33, "flexDirection", "column");
-    _$setProp(_el$33, "marginTop", 1);
-    _$insertNode(_el$34, _el$35);
-    _$insertNode(_el$34, _el$37);
-    _$insertNode(_el$34, _el$38);
-    _$insertNode(_el$34, _el$39);
-    _$insertNode(_el$34, _el$40);
-    _$insertNode(_el$34, _el$41);
-    _$insertNode(_el$34, _el$42);
-    _$setProp(_el$34, "flexDirection", "row");
-    _$insertNode(_el$35, _$createTextNode(`DAG: `));
-    _$insert(_el$37, () => "\u2588".repeat(doneW));
-    _$insert(_el$38, () => "\u2593".repeat(revW));
-    _$insert(_el$39, () => "\u2592".repeat(progW));
-    _$insert(_el$40, () => "\u2591".repeat(emptyW));
-    _$insert(_el$41, ` ${pct}%`);
-    _$insert(_el$42, () => ` (${props.done}/${props.total})`);
-    _$insertNode(_el$43, _el$44);
-    _$insertNode(_el$43, _el$45);
-    _$insertNode(_el$43, _el$46);
-    _$insertNode(_el$43, _el$47);
-    _$setProp(_el$43, "flexDirection", "row");
-    _$insert(_el$44, () => `\u2713${props.done} `);
-    _$insert(_el$45, () => `\u25C6${props.inReview} `);
-    _$insert(_el$46, () => `\u25CF${props.inProgress} `);
-    _$insert(_el$47, () => `\u25CB${Math.max(0, props.total - props.done - props.inReview - props.inProgress)}`);
+    var _el$25 = _$createElement("box"), _el$26 = _$createElement("box"), _el$27 = _$createElement("text"), _el$28 = _$createElement("text"), _el$29 = _$createElement("text"), _el$30 = _$createElement("text"), _el$32 = _$createElement("text"), _el$33 = _$createElement("text"), _el$34 = _$createElement("text"), _el$35 = _$createElement("box"), _el$36 = _$createElement("text"), _el$37 = _$createElement("text"), _el$38 = _$createElement("text"), _el$40 = _$createElement("text");
+    _$insertNode(_el$25, _el$26);
+    _$insertNode(_el$25, _el$35);
+    _$setProp(_el$25, "flexDirection", "column");
+    _$setProp(_el$25, "marginTop", 1);
+    _$insertNode(_el$26, _el$27);
+    _$insertNode(_el$26, _el$28);
+    _$insertNode(_el$26, _el$29);
+    _$insertNode(_el$26, _el$30);
+    _$insertNode(_el$26, _el$32);
+    _$insertNode(_el$26, _el$33);
+    _$insertNode(_el$26, _el$34);
+    _$setProp(_el$26, "flexDirection", "row");
+    _$insert(_el$27, () => props.compact ? "D:" : "DAG: ");
+    _$insert(_el$28, () => "\u2588".repeat(doneW));
+    _$insert(_el$29, () => "\u2593".repeat(revW));
+    _$insert(_el$30, () => "\u2592".repeat(progW));
+    _$insert(_el$26, _$createComponent(Show, {
+      when: blckW > 0,
+      get children() {
+        var _el$31 = _$createElement("text");
+        _$insert(_el$31, () => "\u2593".repeat(blckW));
+        _$effect((_$p) => _$setProp(_el$31, "fg", CORTEX_THEME.roseRed, _$p));
+        return _el$31;
+      }
+    }), _el$32);
+    _$insert(_el$32, () => "\u2591".repeat(emptyW));
+    _$insert(_el$33, ` ${pct}%`);
+    _$insert(_el$34, (() => {
+      var _c$2 = _$memo(() => !!props.compact);
+      return () => _c$2() ? "" : ` (${props.done}/${props.total})`;
+    })());
+    _$insertNode(_el$35, _el$36);
+    _$insertNode(_el$35, _el$37);
+    _$insertNode(_el$35, _el$38);
+    _$insertNode(_el$35, _el$40);
+    _$setProp(_el$35, "flexDirection", "row");
+    _$insert(_el$36, () => `\u2713${props.done} `);
+    _$insert(_el$37, () => `\u25C6${props.inReview} `);
+    _$insert(_el$38, () => `\u25CF${props.inProgress} `);
+    _$insert(_el$35, _$createComponent(Show, {
+      get when() {
+        return (props.blocked || 0) > 0;
+      },
+      get children() {
+        var _el$39 = _$createElement("text");
+        _$insert(_el$39, () => `\u2715${props.blocked} `);
+        _$effect((_$p) => _$setProp(_el$39, "fg", CORTEX_THEME.roseRed, _$p));
+        return _el$39;
+      }
+    }), _el$40);
+    _$insert(_el$40, `\u25CB${waiting}`);
     _$effect((_p$) => {
-      var _v$13 = CORTEX_THEME.neonCyan, _v$14 = CORTEX_THEME.emeraldGreen, _v$15 = CORTEX_THEME.brandPurple, _v$16 = CORTEX_THEME.amberGold, _v$17 = CORTEX_THEME.slateBorder, _v$18 = CORTEX_THEME.pureWhite, _v$19 = CORTEX_THEME.slateMuted, _v$20 = CORTEX_THEME.emeraldGreen, _v$21 = CORTEX_THEME.brandPurple, _v$22 = CORTEX_THEME.amberGold, _v$23 = CORTEX_THEME.slateMuted;
-      _v$13 !== _p$.e && (_p$.e = _$setProp(_el$35, "fg", _v$13, _p$.e));
-      _v$14 !== _p$.t && (_p$.t = _$setProp(_el$37, "fg", _v$14, _p$.t));
-      _v$15 !== _p$.a && (_p$.a = _$setProp(_el$38, "fg", _v$15, _p$.a));
-      _v$16 !== _p$.o && (_p$.o = _$setProp(_el$39, "fg", _v$16, _p$.o));
-      _v$17 !== _p$.i && (_p$.i = _$setProp(_el$40, "fg", _v$17, _p$.i));
-      _v$18 !== _p$.n && (_p$.n = _$setProp(_el$41, "fg", _v$18, _p$.n));
-      _v$19 !== _p$.s && (_p$.s = _$setProp(_el$42, "fg", _v$19, _p$.s));
-      _v$20 !== _p$.h && (_p$.h = _$setProp(_el$44, "fg", _v$20, _p$.h));
-      _v$21 !== _p$.r && (_p$.r = _$setProp(_el$45, "fg", _v$21, _p$.r));
-      _v$22 !== _p$.d && (_p$.d = _$setProp(_el$46, "fg", _v$22, _p$.d));
-      _v$23 !== _p$.l && (_p$.l = _$setProp(_el$47, "fg", _v$23, _p$.l));
+      var _v$10 = CORTEX_THEME.neonCyan, _v$11 = CORTEX_THEME.emeraldGreen, _v$12 = CORTEX_THEME.brandPurple, _v$13 = CORTEX_THEME.amberGold, _v$14 = CORTEX_THEME.slateBorder, _v$15 = CORTEX_THEME.pureWhite, _v$16 = CORTEX_THEME.slateMuted, _v$17 = CORTEX_THEME.emeraldGreen, _v$18 = CORTEX_THEME.brandPurple, _v$19 = CORTEX_THEME.amberGold, _v$20 = CORTEX_THEME.slateMuted;
+      _v$10 !== _p$.e && (_p$.e = _$setProp(_el$27, "fg", _v$10, _p$.e));
+      _v$11 !== _p$.t && (_p$.t = _$setProp(_el$28, "fg", _v$11, _p$.t));
+      _v$12 !== _p$.a && (_p$.a = _$setProp(_el$29, "fg", _v$12, _p$.a));
+      _v$13 !== _p$.o && (_p$.o = _$setProp(_el$30, "fg", _v$13, _p$.o));
+      _v$14 !== _p$.i && (_p$.i = _$setProp(_el$32, "fg", _v$14, _p$.i));
+      _v$15 !== _p$.n && (_p$.n = _$setProp(_el$33, "fg", _v$15, _p$.n));
+      _v$16 !== _p$.s && (_p$.s = _$setProp(_el$34, "fg", _v$16, _p$.s));
+      _v$17 !== _p$.h && (_p$.h = _$setProp(_el$36, "fg", _v$17, _p$.h));
+      _v$18 !== _p$.r && (_p$.r = _$setProp(_el$37, "fg", _v$18, _p$.r));
+      _v$19 !== _p$.d && (_p$.d = _$setProp(_el$38, "fg", _v$19, _p$.d));
+      _v$20 !== _p$.l && (_p$.l = _$setProp(_el$40, "fg", _v$20, _p$.l));
       return _p$;
     }, {
       e: void 0,
@@ -489,7 +502,7 @@ function MultiColorProgressBar(props) {
       d: void 0,
       l: void 0
     });
-    return _el$33;
+    return _el$25;
   })();
 }
 function ActiveTaskHero(props) {
@@ -506,68 +519,68 @@ function ActiveTaskHero(props) {
     return diff > 0 ? formatDuration(diff) : "expirado";
   });
   return (() => {
-    var _el$48 = _$createElement("box"), _el$49 = _$createElement("box"), _el$50 = _$createElement("text"), _el$51 = _$createElement("box"), _el$52 = _$createElement("text"), _el$54 = _$createElement("text"), _el$55 = _$createElement("box"), _el$56 = _$createElement("text"), _el$58 = _$createElement("text"), _el$59 = _$createElement("box");
+    var _el$41 = _$createElement("box"), _el$42 = _$createElement("box"), _el$43 = _$createElement("text"), _el$44 = _$createElement("box"), _el$45 = _$createElement("text"), _el$47 = _$createElement("text"), _el$48 = _$createElement("box"), _el$49 = _$createElement("text"), _el$51 = _$createElement("text"), _el$52 = _$createElement("box");
+    _$insertNode(_el$41, _el$42);
+    _$insertNode(_el$41, _el$44);
+    _$insertNode(_el$41, _el$48);
+    _$insertNode(_el$41, _el$52);
+    _$setProp(_el$41, "flexDirection", "column");
+    _$setProp(_el$41, "marginTop", 1);
+    _$setProp(_el$41, "paddingLeft", 1);
+    _$setProp(_el$41, "paddingRight", 1);
+    _$setProp(_el$41, "borderStyle", "rounded");
+    _$insertNode(_el$42, _el$43);
+    _$setProp(_el$42, "flexDirection", "row");
+    _$insert(_el$43, () => clipped(`${props.spinner()} \u26A1 TAREA EN EJECUCI\xD3N`, props.textLimit));
+    _$insertNode(_el$44, _el$45);
+    _$insertNode(_el$44, _el$47);
+    _$setProp(_el$44, "flexDirection", "row");
+    _$insertNode(_el$45, _$createTextNode(`\u{1F3AF} `));
+    _$insert(_el$47, () => clipped(`${props.task.task_id} \xB7 ${props.task.title}`, props.textLimit - 3));
     _$insertNode(_el$48, _el$49);
     _$insertNode(_el$48, _el$51);
-    _$insertNode(_el$48, _el$55);
-    _$insertNode(_el$48, _el$59);
-    _$setProp(_el$48, "flexDirection", "column");
-    _$setProp(_el$48, "marginTop", 1);
-    _$setProp(_el$48, "paddingLeft", 1);
-    _$setProp(_el$48, "paddingRight", 1);
-    _$setProp(_el$48, "borderStyle", "rounded");
-    _$insertNode(_el$49, _el$50);
-    _$setProp(_el$49, "flexDirection", "row");
-    _$insert(_el$50, () => `${props.spinner()} \u26A1 TAREA EN EJECUCI\xD3N`);
-    _$insertNode(_el$51, _el$52);
-    _$insertNode(_el$51, _el$54);
-    _$setProp(_el$51, "flexDirection", "row");
-    _$insertNode(_el$52, _$createTextNode(`\u{1F3AF} `));
-    _$insert(_el$54, () => clipped(`${props.task.task_id} \xB7 ${props.task.title}`, 26));
-    _$insertNode(_el$55, _el$56);
-    _$insertNode(_el$55, _el$58);
-    _$setProp(_el$55, "flexDirection", "row");
-    _$insertNode(_el$56, _$createTextNode(` \u23F1 `));
-    _$insert(_el$58, () => `+${elapsed()} `);
-    _$insert(_el$55, _$createComponent(Show, {
+    _$setProp(_el$48, "flexDirection", "row");
+    _$insertNode(_el$49, _$createTextNode(` \u23F1 `));
+    _$insert(_el$51, () => `+${elapsed()} `);
+    _$insert(_el$48, _$createComponent(Show, {
       get when() {
         return ttlRemaining();
       },
       children: (ttl) => (() => {
-        var _el$60 = _$createElement("text");
-        _$insert(_el$60, () => `\u2502 \u{1F6E1} TTL: ${ttl()}${props.task.lease_count ? ` (${props.task.lease_count} lk)` : ""}`);
-        _$effect((_$p) => _$setProp(_el$60, "fg", ttl() === "expirado" ? CORTEX_THEME.roseRed : CORTEX_THEME.skyBlue, _$p));
-        return _el$60;
+        var _el$53 = _$createElement("text");
+        _$insert(_el$53, () => `\u2502 \u{1F6E1} TTL: ${ttl()}${props.task.lease_count ? ` (${props.task.lease_count} lk)` : ""}`);
+        _$effect((_$p) => _$setProp(_el$53, "fg", ttl() === "expirado" ? CORTEX_THEME.roseRed : CORTEX_THEME.skyBlue, _$p));
+        return _el$53;
       })()
     }), null);
-    _$setProp(_el$59, "flexDirection", "row");
-    _$insert(_el$59, _$createComponent(Show, {
+    _$setProp(_el$52, "flexDirection", "row");
+    _$insert(_el$52, _$createComponent(Show, {
       get when() {
         return props.activeDelegation;
       },
       get fallback() {
         return (() => {
-          var _el$61 = _$createElement("text");
-          _$insert(_el$61, () => `  \u{1F9D1}\u200D\u{1F4BB} OpenCode Nativo${props.task.owner ? ` (${clipped(props.task.owner, 10)})` : ""}`);
-          _$effect((_$p) => _$setProp(_el$61, "fg", CORTEX_THEME.brandPurple, _$p));
-          return _el$61;
+          var _el$54 = _$createElement("text");
+          _$insert(_el$54, () => clipped(`  \u{1F4CB} Tarea durable${props.task.owner ? ` (${props.task.owner})` : ""}`, props.textLimit));
+          _$effect((_$p) => _$setProp(_el$54, "fg", CORTEX_THEME.brandPurple, _$p));
+          return _el$54;
         })();
       },
       children: (del) => (() => {
-        var _el$62 = _$createElement("text");
-        _$insert(_el$62, () => `  \u{1F916} AGY ${del().transport || "direct"}${del().pane_id ? ` \xB7 ${del().pane_id}` : ""}${del().attempt ? ` \xB7 int #${del().attempt}` : ""}`);
-        _$effect((_$p) => _$setProp(_el$62, "fg", CORTEX_THEME.neonCyan, _$p));
-        return _el$62;
+        var _el$55 = _$createElement("text");
+        _$insert(_el$55, () => `  \u{1F916} AGY ${del().transport || "direct"}${del().pane_id ? ` \xB7 ${del().pane_id}` : ""}${del().attempt ? ` \xB7 int #${del().attempt}` : ""}`);
+        _$effect((_$p) => _$setProp(_el$55, "fg", CORTEX_THEME.neonCyan, _$p));
+        return _el$55;
       })()
     }));
     _$effect((_p$) => {
-      var _v$24 = CORTEX_THEME.amberGold, _v$25 = CORTEX_THEME.amberGold, _v$26 = CORTEX_THEME.skyBlue, _v$27 = CORTEX_THEME.pureWhite, _v$28 = CORTEX_THEME.slateMuted, _v$29 = CORTEX_THEME.amberGold;
-      _v$24 !== _p$.e && (_p$.e = _$setProp(_el$48, "borderColor", _v$24, _p$.e));
-      _v$25 !== _p$.t && (_p$.t = _$setProp(_el$50, "fg", _v$25, _p$.t));
-      _v$26 !== _p$.a && (_p$.a = _$setProp(_el$52, "fg", _v$26, _p$.a));
-      _v$27 !== _p$.o && (_p$.o = _$setProp(_el$54, "fg", _v$27, _p$.o));
-      _v$28 !== _p$.i && (_p$.i = _$setProp(_el$56, "fg", _v$28, _p$.i));
-      _v$29 !== _p$.n && (_p$.n = _$setProp(_el$58, "fg", _v$29, _p$.n));
+      var _v$21 = CORTEX_THEME.amberGold, _v$22 = CORTEX_THEME.amberGold, _v$23 = CORTEX_THEME.skyBlue, _v$24 = CORTEX_THEME.pureWhite, _v$25 = CORTEX_THEME.slateMuted, _v$26 = CORTEX_THEME.amberGold;
+      _v$21 !== _p$.e && (_p$.e = _$setProp(_el$41, "borderColor", _v$21, _p$.e));
+      _v$22 !== _p$.t && (_p$.t = _$setProp(_el$43, "fg", _v$22, _p$.t));
+      _v$23 !== _p$.a && (_p$.a = _$setProp(_el$45, "fg", _v$23, _p$.a));
+      _v$24 !== _p$.o && (_p$.o = _$setProp(_el$47, "fg", _v$24, _p$.o));
+      _v$25 !== _p$.i && (_p$.i = _$setProp(_el$49, "fg", _v$25, _p$.i));
+      _v$26 !== _p$.n && (_p$.n = _$setProp(_el$51, "fg", _v$26, _p$.n));
       return _p$;
     }, {
       e: void 0,
@@ -577,7 +590,7 @@ function ActiveTaskHero(props) {
       i: void 0,
       n: void 0
     });
-    return _el$48;
+    return _el$41;
   })();
 }
 function TaskRows(props) {
@@ -587,10 +600,10 @@ function TaskRows(props) {
     },
     get fallback() {
       return (() => {
-        var _el$63 = _$createElement("text");
-        _$insertNode(_el$63, _$createTextNode(` Sin tareas durables activas`));
-        _$effect((_$p) => _$setProp(_el$63, "fg", CORTEX_THEME.slateMuted, _$p));
-        return _el$63;
+        var _el$56 = _$createElement("text");
+        _$insertNode(_el$56, _$createTextNode(` Sin tareas durables activas`));
+        _$effect((_$p) => _$setProp(_el$56, "fg", CORTEX_THEME.slateMuted, _$p));
+        return _el$56;
       })();
     },
     get children() {
@@ -602,27 +615,27 @@ function TaskRows(props) {
           const chip = taskStatusChip(task.status);
           const isProg = task.status === "in_progress";
           return (() => {
-            var _el$65 = _$createElement("box"), _el$66 = _$createElement("box"), _el$67 = _$createElement("text"), _el$68 = _$createElement("text"), _el$69 = _$createElement("text"), _el$70 = _$createElement("box"), _el$71 = _$createElement("text");
-            _$insertNode(_el$65, _el$66);
-            _$insertNode(_el$65, _el$70);
-            _$setProp(_el$65, "flexDirection", "column");
-            _$setProp(_el$65, "marginTop", 0);
-            _$insertNode(_el$66, _el$67);
-            _$insertNode(_el$66, _el$68);
-            _$insertNode(_el$66, _el$69);
-            _$setProp(_el$66, "flexDirection", "row");
-            _$insert(_el$67, () => `  ${isProg ? props.spinner() : chip.icon} `);
-            _$insert(_el$68, () => `[${chip.tag}] `);
-            _$insert(_el$69, () => clipped(`${task.task_id} \xB7 ${task.title}`, props.compact ? 18 : 24));
-            _$insertNode(_el$70, _el$71);
-            _$setProp(_el$70, "flexDirection", "row");
-            _$insert(_el$71, () => `     ${clipped(task.board_id, props.compact ? 8 : 10)}${task.owner ? ` \xB7 ${clipped(task.owner, props.compact ? 6 : 8)}` : ""}${task.lease_count ? ` \xB7 \u{1F6E1} ${task.lease_count}lk` : ""}`);
+            var _el$58 = _$createElement("box"), _el$59 = _$createElement("box"), _el$60 = _$createElement("text"), _el$61 = _$createElement("text"), _el$62 = _$createElement("text"), _el$63 = _$createElement("box"), _el$64 = _$createElement("text");
+            _$insertNode(_el$58, _el$59);
+            _$insertNode(_el$58, _el$63);
+            _$setProp(_el$58, "flexDirection", "column");
+            _$setProp(_el$58, "marginTop", 0);
+            _$insertNode(_el$59, _el$60);
+            _$insertNode(_el$59, _el$61);
+            _$insertNode(_el$59, _el$62);
+            _$setProp(_el$59, "flexDirection", "row");
+            _$insert(_el$60, () => `  ${isProg ? props.spinner() : chip.icon} `);
+            _$insert(_el$61, () => `[${chip.tag}] `);
+            _$insert(_el$62, () => clipped(task.task_id, Math.max(8, props.textLimit - 9)));
+            _$insertNode(_el$63, _el$64);
+            _$setProp(_el$63, "flexDirection", "row");
+            _$insert(_el$64, () => `     ${clipped(task.title, Math.max(8, props.textLimit - 5))}${task.owner ? ` \xB7 ${clipped(task.owner, 6)}` : ""}${task.lease_count ? ` \xB7 \u{1F6E1} ${task.lease_count}lk` : ""}`);
             _$effect((_p$) => {
-              var _v$30 = chip.color, _v$31 = chip.color, _v$32 = isProg ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight, _v$33 = CORTEX_THEME.slateMuted;
-              _v$30 !== _p$.e && (_p$.e = _$setProp(_el$67, "fg", _v$30, _p$.e));
-              _v$31 !== _p$.t && (_p$.t = _$setProp(_el$68, "fg", _v$31, _p$.t));
-              _v$32 !== _p$.a && (_p$.a = _$setProp(_el$69, "fg", _v$32, _p$.a));
-              _v$33 !== _p$.o && (_p$.o = _$setProp(_el$71, "fg", _v$33, _p$.o));
+              var _v$27 = chip.color, _v$28 = chip.color, _v$29 = isProg ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight, _v$30 = CORTEX_THEME.slateMuted;
+              _v$27 !== _p$.e && (_p$.e = _$setProp(_el$60, "fg", _v$27, _p$.e));
+              _v$28 !== _p$.t && (_p$.t = _$setProp(_el$61, "fg", _v$28, _p$.t));
+              _v$29 !== _p$.a && (_p$.a = _$setProp(_el$62, "fg", _v$29, _p$.a));
+              _v$30 !== _p$.o && (_p$.o = _$setProp(_el$64, "fg", _v$30, _p$.o));
               return _p$;
             }, {
               e: void 0,
@@ -630,7 +643,7 @@ function TaskRows(props) {
               a: void 0,
               o: void 0
             });
-            return _el$65;
+            return _el$58;
           })();
         }
       });
@@ -644,10 +657,10 @@ function DelegationRows(props) {
     },
     get fallback() {
       return (() => {
-        var _el$72 = _$createElement("text");
-        _$insertNode(_el$72, _$createTextNode(` Sin ejecuciones delegadas`));
-        _$effect((_$p) => _$setProp(_el$72, "fg", CORTEX_THEME.slateMuted, _$p));
-        return _el$72;
+        var _el$65 = _$createElement("text");
+        _$insertNode(_el$65, _$createTextNode(` Sin ejecuciones delegadas`));
+        _$effect((_$p) => _$setProp(_el$65, "fg", CORTEX_THEME.slateMuted, _$p));
+        return _el$65;
       })();
     },
     get children() {
@@ -657,7 +670,7 @@ function DelegationRows(props) {
         },
         children: (job) => {
           const isRunning = ["running", "starting", "accepted"].includes(job.status);
-          const chip = roleChip(job.role);
+          const chip = roleChip(job.role || "");
           const elapsed = createMemo(() => {
             if (!isRunning || !job.updated_at) return "";
             const t = Date.parse(job.updated_at);
@@ -665,37 +678,37 @@ function DelegationRows(props) {
           });
           const statusCol = isRunning ? CORTEX_THEME.amberGold : job.status === "succeeded" ? CORTEX_THEME.emeraldGreen : CORTEX_THEME.roseRed;
           return (() => {
-            var _el$74 = _$createElement("box"), _el$75 = _$createElement("box"), _el$76 = _$createElement("text"), _el$77 = _$createElement("text"), _el$78 = _$createElement("text"), _el$79 = _$createElement("text"), _el$80 = _$createElement("box"), _el$81 = _$createElement("text");
-            _$insertNode(_el$74, _el$75);
-            _$insertNode(_el$74, _el$80);
-            _$setProp(_el$74, "flexDirection", "column");
-            _$setProp(_el$74, "marginTop", 0);
-            _$insertNode(_el$75, _el$76);
-            _$insertNode(_el$75, _el$77);
-            _$insertNode(_el$75, _el$78);
-            _$insertNode(_el$75, _el$79);
-            _$setProp(_el$75, "flexDirection", "row");
-            _$setProp(_el$76, "fg", statusCol);
-            _$insert(_el$76, () => `  ${isRunning ? props.spinner() : job.status === "succeeded" ? "\u2713" : "\u2715"} `);
-            _$insert(_el$77, () => `${chip.icon} [${chip.tag}] `);
-            _$insert(_el$78, () => job.role || "worker");
-            _$setProp(_el$79, "fg", statusCol);
-            _$insert(_el$79, elapsed);
-            _$insertNode(_el$80, _el$81);
-            _$setProp(_el$80, "flexDirection", "row");
-            _$insert(_el$81, () => `     ${shortID(job.job_id)} \xB7 ${job.transport || "direct"}${job.pane_id ? ` \xB7 ${job.pane_id}` : ""}${job.attempt ? ` \xB7 int #${job.attempt}` : ""}`);
+            var _el$67 = _$createElement("box"), _el$68 = _$createElement("box"), _el$69 = _$createElement("text"), _el$70 = _$createElement("text"), _el$71 = _$createElement("text"), _el$72 = _$createElement("text"), _el$73 = _$createElement("box"), _el$74 = _$createElement("text");
+            _$insertNode(_el$67, _el$68);
+            _$insertNode(_el$67, _el$73);
+            _$setProp(_el$67, "flexDirection", "column");
+            _$setProp(_el$67, "marginTop", 0);
+            _$insertNode(_el$68, _el$69);
+            _$insertNode(_el$68, _el$70);
+            _$insertNode(_el$68, _el$71);
+            _$insertNode(_el$68, _el$72);
+            _$setProp(_el$68, "flexDirection", "row");
+            _$setProp(_el$69, "fg", statusCol);
+            _$insert(_el$69, () => `  ${isRunning ? props.spinner() : job.status === "succeeded" ? "\u2713" : "\u2715"} `);
+            _$insert(_el$70, () => `${chip.icon} [${chip.tag}] `);
+            _$insert(_el$71, () => clipped(job.role || "worker", Math.max(6, props.textLimit - 12)));
+            _$setProp(_el$72, "fg", statusCol);
+            _$insert(_el$72, elapsed);
+            _$insertNode(_el$73, _el$74);
+            _$setProp(_el$73, "flexDirection", "row");
+            _$insert(_el$74, () => clipped(`     ${shortID(job.job_id)} \xB7 ${job.transport || "direct"}${job.pane_id ? ` \xB7 ${job.pane_id}` : ""}${job.attempt ? ` \xB7 int #${job.attempt}` : ""}`, props.textLimit));
             _$effect((_p$) => {
-              var _v$34 = chip.color, _v$35 = isRunning ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight, _v$36 = CORTEX_THEME.slateMuted;
-              _v$34 !== _p$.e && (_p$.e = _$setProp(_el$77, "fg", _v$34, _p$.e));
-              _v$35 !== _p$.t && (_p$.t = _$setProp(_el$78, "fg", _v$35, _p$.t));
-              _v$36 !== _p$.a && (_p$.a = _$setProp(_el$81, "fg", _v$36, _p$.a));
+              var _v$31 = chip.color, _v$32 = isRunning ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight, _v$33 = CORTEX_THEME.slateMuted;
+              _v$31 !== _p$.e && (_p$.e = _$setProp(_el$70, "fg", _v$31, _p$.e));
+              _v$32 !== _p$.t && (_p$.t = _$setProp(_el$71, "fg", _v$32, _p$.t));
+              _v$33 !== _p$.a && (_p$.a = _$setProp(_el$74, "fg", _v$33, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$74;
+            return _el$67;
           })();
         }
       });
@@ -709,10 +722,10 @@ function AttentionRows(props) {
     },
     get fallback() {
       return (() => {
-        var _el$82 = _$createElement("text");
-        _$insertNode(_el$82, _$createTextNode(` Sin alertas`));
-        _$effect((_$p) => _$setProp(_el$82, "fg", CORTEX_THEME.slateMuted, _$p));
-        return _el$82;
+        var _el$75 = _$createElement("text");
+        _$insertNode(_el$75, _$createTextNode(` Sin alertas`));
+        _$effect((_$p) => _$setProp(_el$75, "fg", CORTEX_THEME.slateMuted, _$p));
+        return _el$75;
       })();
     },
     get children() {
@@ -721,28 +734,28 @@ function AttentionRows(props) {
           return props.items.slice(0, MAX_VISIBLE_ROWS);
         },
         children: (item) => (() => {
-          var _el$84 = _$createElement("box"), _el$85 = _$createElement("box"), _el$86 = _$createElement("text"), _el$88 = _$createElement("text"), _el$89 = _$createElement("text");
-          _$insertNode(_el$84, _el$85);
-          _$insertNode(_el$84, _el$89);
-          _$setProp(_el$84, "flexDirection", "column");
-          _$insertNode(_el$85, _el$86);
-          _$insertNode(_el$85, _el$88);
-          _$setProp(_el$85, "flexDirection", "row");
-          _$insertNode(_el$86, _$createTextNode(`  \u2715 `));
-          _$insert(_el$88, () => clipped(item.title, props.compact ? 20 : 26));
-          _$insert(_el$89, () => `     ${clipped(item.detail, props.compact ? 20 : 28)}`);
+          var _el$77 = _$createElement("box"), _el$78 = _$createElement("box"), _el$79 = _$createElement("text"), _el$81 = _$createElement("text"), _el$82 = _$createElement("text");
+          _$insertNode(_el$77, _el$78);
+          _$insertNode(_el$77, _el$82);
+          _$setProp(_el$77, "flexDirection", "column");
+          _$insertNode(_el$78, _el$79);
+          _$insertNode(_el$78, _el$81);
+          _$setProp(_el$78, "flexDirection", "row");
+          _$insertNode(_el$79, _$createTextNode(`  \u2715 `));
+          _$insert(_el$81, () => clipped(item.title, Math.max(8, props.textLimit - 4)));
+          _$insert(_el$82, () => `     ${clipped(item.detail, Math.max(8, props.textLimit - 5))}`);
           _$effect((_p$) => {
-            var _v$37 = CORTEX_THEME.roseRed, _v$38 = CORTEX_THEME.pureWhite, _v$39 = CORTEX_THEME.slateMuted;
-            _v$37 !== _p$.e && (_p$.e = _$setProp(_el$86, "fg", _v$37, _p$.e));
-            _v$38 !== _p$.t && (_p$.t = _$setProp(_el$88, "fg", _v$38, _p$.t));
-            _v$39 !== _p$.a && (_p$.a = _$setProp(_el$89, "fg", _v$39, _p$.a));
+            var _v$34 = CORTEX_THEME.roseRed, _v$35 = CORTEX_THEME.pureWhite, _v$36 = CORTEX_THEME.slateMuted;
+            _v$34 !== _p$.e && (_p$.e = _$setProp(_el$79, "fg", _v$34, _p$.e));
+            _v$35 !== _p$.t && (_p$.t = _$setProp(_el$81, "fg", _v$35, _p$.t));
+            _v$36 !== _p$.a && (_p$.a = _$setProp(_el$82, "fg", _v$36, _p$.a));
             return _p$;
           }, {
             e: void 0,
             t: void 0,
             a: void 0
           });
-          return _el$84;
+          return _el$77;
         })()
       });
     }
@@ -783,202 +796,202 @@ function OperationalBottomDashboard(props) {
     return CORTEX_THEME.roseRed;
   });
   return (() => {
-    var _el$90 = _$createElement("box"), _el$91 = _$createElement("box"), _el$92 = _$createElement("text"), _el$94 = _$createElement("text"), _el$95 = _$createElement("text"), _el$102 = _$createElement("box"), _el$107 = _$createElement("box"), _el$108 = _$createElement("text"), _el$110 = _$createElement("text"), _el$111 = _$createElement("text"), _el$112 = _$createElement("text"), _el$113 = _$createElement("box"), _el$114 = _$createElement("text"), _el$115 = _$createElement("box");
-    _$insertNode(_el$90, _el$91);
-    _$insertNode(_el$90, _el$102);
-    _$insertNode(_el$90, _el$107);
-    _$insertNode(_el$90, _el$113);
-    _$insertNode(_el$90, _el$115);
-    _$setProp(_el$90, "flexDirection", "column");
-    _$setProp(_el$90, "marginTop", 1);
-    _$setProp(_el$90, "paddingLeft", 1);
-    _$setProp(_el$90, "paddingRight", 1);
-    _$setProp(_el$90, "borderStyle", "rounded");
-    _$insertNode(_el$91, _el$92);
-    _$insertNode(_el$91, _el$94);
-    _$insertNode(_el$91, _el$95);
-    _$setProp(_el$91, "flexDirection", "row");
-    _$insertNode(_el$92, _$createTextNode(`\u{1F9E0} `));
-    _$insert(_el$94, () => props.layout.compact ? "CONTROL" : "CONTROL MATRIX ");
-    _$insertNode(_el$95, _$createTextNode(`\u25C8`));
-    _$insert(_el$90, _$createComponent(Show, {
+    var _el$83 = _$createElement("box"), _el$84 = _$createElement("box"), _el$85 = _$createElement("text"), _el$87 = _$createElement("text"), _el$88 = _$createElement("text"), _el$95 = _$createElement("box"), _el$100 = _$createElement("box"), _el$101 = _$createElement("text"), _el$103 = _$createElement("text"), _el$104 = _$createElement("text"), _el$105 = _$createElement("text"), _el$106 = _$createElement("box"), _el$107 = _$createElement("text"), _el$108 = _$createElement("box");
+    _$insertNode(_el$83, _el$84);
+    _$insertNode(_el$83, _el$95);
+    _$insertNode(_el$83, _el$100);
+    _$insertNode(_el$83, _el$106);
+    _$insertNode(_el$83, _el$108);
+    _$setProp(_el$83, "flexDirection", "column");
+    _$setProp(_el$83, "marginTop", 1);
+    _$setProp(_el$83, "paddingLeft", 1);
+    _$setProp(_el$83, "paddingRight", 1);
+    _$setProp(_el$83, "borderStyle", "rounded");
+    _$insertNode(_el$84, _el$85);
+    _$insertNode(_el$84, _el$87);
+    _$insertNode(_el$84, _el$88);
+    _$setProp(_el$84, "flexDirection", "row");
+    _$insertNode(_el$85, _$createTextNode(`\u{1F9E0} `));
+    _$insert(_el$87, () => props.layout.compact ? "CONTROL" : "CONTROL MATRIX ");
+    _$insertNode(_el$88, _$createTextNode(`\u25C8`));
+    _$insert(_el$83, _$createComponent(Show, {
       get when() {
         return !props.layout.compact;
       },
       get children() {
-        var _el$97 = _$createElement("box");
-        _$setProp(_el$97, "flexDirection", "row");
-        _$insert(_el$97, _$createComponent(Show, {
+        var _el$90 = _$createElement("box");
+        _$setProp(_el$90, "flexDirection", "row");
+        _$insert(_el$90, _$createComponent(Show, {
           get when() {
             return activeJobs() > 0;
           },
           get fallback() {
             return (() => {
-              var _el$117 = _$createElement("text");
-              _$insert(_el$117, () => `  ${props.pulse()} SYNAPSE: SINCRONIZADO`);
-              _$effect((_$p) => _$setProp(_el$117, "fg", CORTEX_THEME.emeraldGreen, _$p));
-              return _el$117;
+              var _el$110 = _$createElement("text");
+              _$insert(_el$110, () => `  ${props.pulse()} SYNAPSE: SINCRONIZADO`);
+              _$effect((_$p) => _$setProp(_el$110, "fg", CORTEX_THEME.emeraldGreen, _$p));
+              return _el$110;
             })();
           },
           get children() {
-            var _el$98 = _$createElement("text");
-            _$insert(_el$98, () => `  ${props.spinner()} SYNAPSE: MOTOR ACTIVO`);
-            _$effect((_$p) => _$setProp(_el$98, "fg", CORTEX_THEME.amberGold, _$p));
-            return _el$98;
+            var _el$91 = _$createElement("text");
+            _$insert(_el$91, () => `  ${props.spinner()} SYNAPSE: MOTOR ACTIVO`);
+            _$effect((_$p) => _$setProp(_el$91, "fg", CORTEX_THEME.amberGold, _$p));
+            return _el$91;
           }
         }));
-        return _el$97;
+        return _el$90;
       }
-    }), _el$102);
-    _$insert(_el$90, _$createComponent(Show, {
+    }), _el$95);
+    _$insert(_el$83, _$createComponent(Show, {
       get when() {
         return !props.layout.compact;
       },
       get children() {
-        var _el$99 = _$createElement("box"), _el$100 = _$createElement("text"), _el$101 = _$createElement("text");
-        _$insertNode(_el$99, _el$100);
-        _$insertNode(_el$99, _el$101);
-        _$setProp(_el$99, "flexDirection", "row");
-        _$setProp(_el$99, "marginTop", 0);
-        _$insert(_el$100, () => `[ \u2713 ${succeededJobs()} \xC9XITO ] `);
-        _$insert(_el$101, () => `[ \u2715 ${failedJobs()} FALLO ]`);
+        var _el$92 = _$createElement("box"), _el$93 = _$createElement("text"), _el$94 = _$createElement("text");
+        _$insertNode(_el$92, _el$93);
+        _$insertNode(_el$92, _el$94);
+        _$setProp(_el$92, "flexDirection", "row");
+        _$setProp(_el$92, "marginTop", 0);
+        _$insert(_el$93, () => `[ \u2713 ${succeededJobs()} \xC9XITO ] `);
+        _$insert(_el$94, () => `[ \u2715 ${failedJobs()} FALLO ]`);
         _$effect((_p$) => {
-          var _v$40 = CORTEX_THEME.emeraldGreen, _v$41 = failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted;
-          _v$40 !== _p$.e && (_p$.e = _$setProp(_el$100, "fg", _v$40, _p$.e));
-          _v$41 !== _p$.t && (_p$.t = _$setProp(_el$101, "fg", _v$41, _p$.t));
+          var _v$37 = CORTEX_THEME.emeraldGreen, _v$38 = failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted;
+          _v$37 !== _p$.e && (_p$.e = _$setProp(_el$93, "fg", _v$37, _p$.e));
+          _v$38 !== _p$.t && (_p$.t = _$setProp(_el$94, "fg", _v$38, _p$.t));
           return _p$;
         }, {
           e: void 0,
           t: void 0
         });
-        return _el$99;
+        return _el$92;
       }
-    }), _el$102);
-    _$setProp(_el$102, "flexDirection", "row");
-    _$setProp(_el$102, "marginTop", 0);
-    _$insert(_el$102, _$createComponent(Show, {
+    }), _el$95);
+    _$setProp(_el$95, "marginTop", 0);
+    _$insert(_el$95, _$createComponent(Show, {
       get when() {
         return props.layout.compact;
       },
       get fallback() {
         return (() => {
-          var _el$118 = _$createElement("box"), _el$119 = _$createElement("text"), _el$120 = _$createElement("text");
-          _$insertNode(_el$118, _el$119);
-          _$insertNode(_el$118, _el$120);
-          _$setProp(_el$118, "flexDirection", "row");
-          _$insert(_el$119, () => `[ ${activeJobs() > 0 ? props.spinner() : "\u25CF"} ${activeJobs()} CURSO ] `);
-          _$insert(_el$120, () => `[ \u{1F6E1} ${totalLeases()} LOCKS ] `);
-          _$insert(_el$118, _$createComponent(Show, {
+          var _el$111 = _$createElement("box"), _el$112 = _$createElement("text"), _el$113 = _$createElement("text");
+          _$insertNode(_el$111, _el$112);
+          _$insertNode(_el$111, _el$113);
+          _$setProp(_el$111, "flexDirection", "row");
+          _$insert(_el$112, () => `[ ${activeJobs() > 0 ? props.spinner() : "\u25CF"} ${activeJobs()} CURSO ] `);
+          _$insert(_el$113, () => `[ \u{1F6E1} ${totalLeases()} LOCKS ] `);
+          _$insert(_el$111, _$createComponent(Show, {
             get when() {
               return blockedTasks() > 0;
             },
             get children() {
-              var _el$121 = _$createElement("text");
-              _$insert(_el$121, () => `[ \u2715 ${blockedTasks()} BLCK ]`);
-              _$effect((_$p) => _$setProp(_el$121, "fg", CORTEX_THEME.roseRed, _$p));
-              return _el$121;
+              var _el$114 = _$createElement("text");
+              _$insert(_el$114, () => `[ \u2715 ${blockedTasks()} BLCK ]`);
+              _$effect((_$p) => _$setProp(_el$114, "fg", CORTEX_THEME.roseRed, _$p));
+              return _el$114;
             }
           }), null);
           _$effect((_p$) => {
-            var _v$53 = activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted, _v$54 = totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted;
-            _v$53 !== _p$.e && (_p$.e = _$setProp(_el$119, "fg", _v$53, _p$.e));
-            _v$54 !== _p$.t && (_p$.t = _$setProp(_el$120, "fg", _v$54, _p$.t));
+            var _v$51 = activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted, _v$52 = totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted;
+            _v$51 !== _p$.e && (_p$.e = _$setProp(_el$112, "fg", _v$51, _p$.e));
+            _v$52 !== _p$.t && (_p$.t = _$setProp(_el$113, "fg", _v$52, _p$.t));
             return _p$;
           }, {
             e: void 0,
             t: void 0
           });
-          return _el$118;
+          return _el$111;
         })();
       },
       get children() {
-        var _el$103 = _$createElement("box"), _el$104 = _$createElement("text"), _el$105 = _$createElement("text");
-        _$insertNode(_el$103, _el$104);
-        _$insertNode(_el$103, _el$105);
-        _$setProp(_el$103, "flexDirection", "row");
-        _$insert(_el$104, () => `${activeJobs()} ext \xB7 `);
-        _$insert(_el$105, () => `${totalLeases()} locks`);
-        _$insert(_el$103, _$createComponent(Show, {
+        var _el$96 = _$createElement("box"), _el$97 = _$createElement("text"), _el$98 = _$createElement("text");
+        _$insertNode(_el$96, _el$97);
+        _$insertNode(_el$96, _el$98);
+        _$setProp(_el$96, "flexDirection", "row");
+        _$insert(_el$97, () => `${activeJobs()} ext \xB7 `);
+        _$insert(_el$98, () => `${totalLeases()} locks`);
+        _$insert(_el$96, _$createComponent(Show, {
           get when() {
             return blockedTasks() > 0;
           },
           get children() {
-            var _el$106 = _$createElement("text");
-            _$insert(_el$106, () => ` \xB7 ${blockedTasks()} blck`);
-            _$effect((_$p) => _$setProp(_el$106, "fg", CORTEX_THEME.roseRed, _$p));
-            return _el$106;
+            var _el$99 = _$createElement("text");
+            _$insert(_el$99, () => ` \xB7 ${blockedTasks()} blck`);
+            _$effect((_$p) => _$setProp(_el$99, "fg", CORTEX_THEME.roseRed, _$p));
+            return _el$99;
           }
         }), null);
         _$effect((_p$) => {
-          var _v$42 = activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted, _v$43 = totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted;
-          _v$42 !== _p$.e && (_p$.e = _$setProp(_el$104, "fg", _v$42, _p$.e));
-          _v$43 !== _p$.t && (_p$.t = _$setProp(_el$105, "fg", _v$43, _p$.t));
+          var _v$39 = activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted, _v$40 = totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted;
+          _v$39 !== _p$.e && (_p$.e = _$setProp(_el$97, "fg", _v$39, _p$.e));
+          _v$40 !== _p$.t && (_p$.t = _$setProp(_el$98, "fg", _v$40, _p$.t));
           return _p$;
         }, {
           e: void 0,
           t: void 0
         });
-        return _el$103;
+        return _el$96;
       }
     }));
-    _$insertNode(_el$107, _el$108);
-    _$insertNode(_el$107, _el$110);
-    _$insertNode(_el$107, _el$111);
-    _$insertNode(_el$107, _el$112);
-    _$setProp(_el$107, "flexDirection", "row");
-    _$setProp(_el$107, "marginTop", 0);
-    _$insertNode(_el$108, _$createTextNode(`Salud: `));
-    _$insert(_el$110, () => healthBars().filled);
-    _$insert(_el$111, () => healthBars().empty);
-    _$insert(_el$112, (() => {
-      var _c$2 = _$memo(() => successRate() === void 0);
-      return () => _c$2() ? "N/A \xB7 sin historial" : ` ${successRate()}%`;
+    _$insertNode(_el$100, _el$101);
+    _$insertNode(_el$100, _el$103);
+    _$insertNode(_el$100, _el$104);
+    _$insertNode(_el$100, _el$105);
+    _$setProp(_el$100, "flexDirection", "row");
+    _$setProp(_el$100, "marginTop", 0);
+    _$insertNode(_el$101, _$createTextNode(`Salud: `));
+    _$insert(_el$103, () => healthBars().filled);
+    _$insert(_el$104, () => healthBars().empty);
+    _$insert(_el$105, (() => {
+      var _c$3 = _$memo(() => successRate() === void 0);
+      return () => _c$3() ? "N/A \xB7 sin historial" : ` ${successRate()}%`;
     })());
-    _$insertNode(_el$113, _el$114);
-    _$setProp(_el$113, "flexDirection", "row");
-    _$setProp(_el$113, "marginTop", 0);
-    _$insert(_el$114, (() => {
-      var _c$3 = _$memo(() => !!props.layout.compact);
-      return () => _c$3() ? `DAG ${doneTasks()}/${totalTasks()}` : `\u{1F4CB} DAG: ${doneTasks()}/${totalTasks()} \xB7 Autoridad: SQLite`;
+    _$insertNode(_el$106, _el$107);
+    _$setProp(_el$106, "flexDirection", "row");
+    _$setProp(_el$106, "marginTop", 0);
+    _$insert(_el$107, (() => {
+      var _c$4 = _$memo(() => !!props.layout.compact);
+      return () => _c$4() ? "Autoridad: SQLite" : `\u{1F4CB} DAG: ${doneTasks()}/${totalTasks()} \xB7 Autoridad: SQLite`;
     })());
-    _$setProp(_el$115, "flexDirection", "row");
-    _$setProp(_el$115, "marginTop", 0);
-    _$insert(_el$115, _$createComponent(Show, {
+    _$setProp(_el$108, "flexDirection", "row");
+    _$setProp(_el$108, "marginTop", 0);
+    _$insert(_el$108, _$createComponent(Show, {
       get when() {
         return props.stale;
       },
       get fallback() {
         return (() => {
-          var _el$122 = _$createElement("text");
-          _$insert(_el$122, (() => {
-            var _c$5 = _$memo(() => !!props.layout.compact);
-            return () => _c$5() ? "En vivo" : `\u{1F7E2} En vivo \xB7 Sync hace ${syncAgeSec()}s`;
+          var _el$115 = _$createElement("text");
+          _$insert(_el$115, (() => {
+            var _c$6 = _$memo(() => !!props.layout.compact);
+            return () => _c$6() ? "\u{1F7E2} En vivo" : `\u{1F7E2} En vivo \xB7 Sync hace ${syncAgeSec()}s`;
           })());
-          _$effect((_$p) => _$setProp(_el$122, "fg", CORTEX_THEME.emeraldGreen, _$p));
-          return _el$122;
+          _$effect((_$p) => _$setProp(_el$115, "fg", CORTEX_THEME.emeraldGreen, _$p));
+          return _el$115;
         })();
       },
       get children() {
-        var _el$116 = _$createElement("text");
-        _$insert(_el$116, (() => {
-          var _c$4 = _$memo(() => !!props.layout.compact);
-          return () => _c$4() ? "Datos no confirmados" : `\u{1F7E1} Snapshot desfasado (+${syncAgeSec()}s)`;
+        var _el$109 = _$createElement("text");
+        _$insert(_el$109, (() => {
+          var _c$5 = _$memo(() => !!props.layout.compact);
+          return () => _c$5() ? "Datos no confirmados" : `\u{1F7E1} Snapshot desfasado (+${syncAgeSec()}s)`;
         })());
-        _$effect((_$p) => _$setProp(_el$116, "fg", CORTEX_THEME.amberGold, _$p));
-        return _el$116;
+        _$effect((_$p) => _$setProp(_el$109, "fg", CORTEX_THEME.amberGold, _$p));
+        return _el$109;
       }
     }));
     _$effect((_p$) => {
-      var _v$44 = failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.brandIndigo, _v$45 = CORTEX_THEME.brandViolet, _v$46 = CORTEX_THEME.pureWhite, _v$47 = CORTEX_THEME.neonCyan, _v$48 = CORTEX_THEME.slateMuted, _v$49 = healthColor(), _v$50 = CORTEX_THEME.slateBorder, _v$51 = healthColor(), _v$52 = CORTEX_THEME.slateMuted;
-      _v$44 !== _p$.e && (_p$.e = _$setProp(_el$90, "borderColor", _v$44, _p$.e));
-      _v$45 !== _p$.t && (_p$.t = _$setProp(_el$92, "fg", _v$45, _p$.t));
-      _v$46 !== _p$.a && (_p$.a = _$setProp(_el$94, "fg", _v$46, _p$.a));
-      _v$47 !== _p$.o && (_p$.o = _$setProp(_el$95, "fg", _v$47, _p$.o));
-      _v$48 !== _p$.i && (_p$.i = _$setProp(_el$108, "fg", _v$48, _p$.i));
-      _v$49 !== _p$.n && (_p$.n = _$setProp(_el$110, "fg", _v$49, _p$.n));
-      _v$50 !== _p$.s && (_p$.s = _$setProp(_el$111, "fg", _v$50, _p$.s));
-      _v$51 !== _p$.h && (_p$.h = _$setProp(_el$112, "fg", _v$51, _p$.h));
-      _v$52 !== _p$.r && (_p$.r = _$setProp(_el$114, "fg", _v$52, _p$.r));
+      var _v$41 = failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.brandIndigo, _v$42 = CORTEX_THEME.brandViolet, _v$43 = CORTEX_THEME.pureWhite, _v$44 = CORTEX_THEME.neonCyan, _v$45 = props.layout.compact ? "column" : "row", _v$46 = CORTEX_THEME.slateMuted, _v$47 = healthColor(), _v$48 = CORTEX_THEME.slateBorder, _v$49 = healthColor(), _v$50 = CORTEX_THEME.slateMuted;
+      _v$41 !== _p$.e && (_p$.e = _$setProp(_el$83, "borderColor", _v$41, _p$.e));
+      _v$42 !== _p$.t && (_p$.t = _$setProp(_el$85, "fg", _v$42, _p$.t));
+      _v$43 !== _p$.a && (_p$.a = _$setProp(_el$87, "fg", _v$43, _p$.a));
+      _v$44 !== _p$.o && (_p$.o = _$setProp(_el$88, "fg", _v$44, _p$.o));
+      _v$45 !== _p$.i && (_p$.i = _$setProp(_el$95, "flexDirection", _v$45, _p$.i));
+      _v$46 !== _p$.n && (_p$.n = _$setProp(_el$101, "fg", _v$46, _p$.n));
+      _v$47 !== _p$.s && (_p$.s = _$setProp(_el$103, "fg", _v$47, _p$.s));
+      _v$48 !== _p$.h && (_p$.h = _$setProp(_el$104, "fg", _v$48, _p$.h));
+      _v$49 !== _p$.r && (_p$.r = _$setProp(_el$105, "fg", _v$49, _p$.r));
+      _v$50 !== _p$.d && (_p$.d = _$setProp(_el$107, "fg", _v$50, _p$.d));
       return _p$;
     }, {
       e: void 0,
@@ -989,9 +1002,10 @@ function OperationalBottomDashboard(props) {
       n: void 0,
       s: void 0,
       h: void 0,
-      r: void 0
+      r: void 0,
+      d: void 0
     });
-    return _el$90;
+    return _el$83;
   })();
 }
 function SidebarStatus(props) {
@@ -1012,7 +1026,7 @@ function SidebarStatus(props) {
     const actDel = s.active_delegations || 0;
     return Math.max(inProg, actDel);
   });
-  const isExecuting = createMemo(() => props.nativeActivity() === "busy" || activeExecutionsCount() > 0 || Boolean(activeDelegation()));
+  const isExecuting = createMemo(() => props.nativeActivity() === "busy" || Boolean(activeDelegation()));
   const activeDelegationsCount = createMemo(() => {
     if (typeof props.snapshot().summary.active_delegations === "number") {
       return props.snapshot().summary.active_delegations;
@@ -1023,19 +1037,26 @@ function SidebarStatus(props) {
   const doneTasks = createMemo(() => props.snapshot().summary.done || 0);
   const inReviewTasks = createMemo(() => props.snapshot().summary.in_review || 0);
   const inProgressTasks = createMemo(() => props.snapshot().summary.in_progress || 0);
+  const blockedTasks = createMemo(() => props.snapshot().summary.blocked || 0);
   const totalTasks = createMemo(() => props.snapshot().summary.total_tasks || props.snapshot().tasks.length);
   return (() => {
-    var _el$123 = _$createElement("box");
-    _$use((node) => setRootWidth(Math.max(0, node.width || 0)), _el$123);
-    _$setProp(_el$123, "flexDirection", "column");
-    _$setProp(_el$123, "onSizeChange", (width) => setRootWidth(Math.max(0, width || 0)));
-    _$insert(_el$123, _$createComponent(CortexCockpitHeader, {
+    var _el$116 = _$createElement("box"), _el$123 = _$createElement("text");
+    _$insertNode(_el$116, _el$123);
+    _$use((node) => setRootWidth(Math.max(0, node.width || 0)), _el$116);
+    _$setProp(_el$116, "flexDirection", "column");
+    _$setProp(_el$116, "onSizeChange", function() {
+      setRootWidth(Math.max(0, this.width || 0));
+    });
+    _$insert(_el$116, _$createComponent(CortexCockpitHeader, {
       isExecuting,
       get nativeActivity() {
         return props.nativeActivity;
       },
       get projectRoot() {
         return props.snapshot().project_root;
+      },
+      get textLimit() {
+        return layout().textLimit;
       },
       get spinner() {
         return props.spinner;
@@ -1046,44 +1067,45 @@ function SidebarStatus(props) {
       get theme() {
         return props.theme;
       }
-    }), null);
-    _$insert(_el$123, _$createComponent(Show, {
+    }), _el$123);
+    _$insert(_el$116, _$createComponent(Show, {
       get when() {
         return !props.scopeReady();
       },
       get children() {
-        var _el$124 = _$createElement("text");
-        _$insertNode(_el$124, _$createTextNode(`Conversaci\xF3n no disponible \xB7 esperando metadatos`));
-        _$setProp(_el$124, "marginTop", 1);
-        _$effect((_$p) => _$setProp(_el$124, "fg", CORTEX_THEME.amberGold, _$p));
-        return _el$124;
+        var _el$117 = _$createElement("text");
+        _$insertNode(_el$117, _$createTextNode(`Conversaci\xF3n no disponible \xB7 esperando metadatos`));
+        _$setProp(_el$117, "marginTop", 1);
+        _$effect((_$p) => _$setProp(_el$117, "fg", CORTEX_THEME.amberGold, _$p));
+        return _el$117;
       }
-    }), null);
-    _$insert(_el$123, _$createComponent(Show, {
+    }), _el$123);
+    _$insert(_el$116, _$createComponent(Show, {
       get when() {
         return _$memo(() => !!(props.scopeReady() && !props.snapshot().generated_at))() && !props.snapshotError();
       },
       get children() {
-        var _el$126 = _$createElement("text");
-        _$insertNode(_el$126, _$createTextNode(`Cargando estado de la conversaci\xF3n\u2026`));
-        _$setProp(_el$126, "marginTop", 1);
-        _$effect((_$p) => _$setProp(_el$126, "fg", CORTEX_THEME.slateMuted, _$p));
-        return _el$126;
+        var _el$119 = _$createElement("text");
+        _$insertNode(_el$119, _$createTextNode(`Cargando estado de la conversaci\xF3n\u2026`));
+        _$setProp(_el$119, "marginTop", 1);
+        _$effect((_$p) => _$setProp(_el$119, "fg", CORTEX_THEME.slateMuted, _$p));
+        return _el$119;
       }
-    }), null);
-    _$insert(_el$123, _$createComponent(Show, {
+    }), _el$123);
+    _$insert(_el$116, _$createComponent(Show, {
       get when() {
         return props.snapshotError();
       },
       get children() {
-        var _el$128 = _$createElement("text");
-        _$insertNode(_el$128, _$createTextNode(`No se pudo actualizar \xB7 datos no confirmados`));
-        _$setProp(_el$128, "marginTop", 1);
-        _$effect((_$p) => _$setProp(_el$128, "fg", CORTEX_THEME.roseRed, _$p));
-        return _el$128;
+        var _el$121 = _$createElement("text");
+        _$insertNode(_el$121, _$createTextNode(`No se pudo actualizar \xB7 datos no confirmados`));
+        _$setProp(_el$121, "marginTop", 1);
+        _$effect((_$p) => _$setProp(_el$121, "fg", CORTEX_THEME.roseRed, _$p));
+        return _el$121;
       }
-    }), null);
-    _$insert(_el$123, _$createComponent(Show, {
+    }), _el$123);
+    _$insert(_el$123, () => clipped(`OpenCode nativo: ${props.nativeActivity() || "sin estado"}`, layout().textLimit));
+    _$insert(_el$116, _$createComponent(Show, {
       get when() {
         return _$memo(() => !!props.scopeReady())() && Boolean(props.snapshot().generated_at);
       },
@@ -1122,6 +1144,9 @@ function SidebarStatus(props) {
               get inProgress() {
                 return inProgressTasks();
               },
+              get blocked() {
+                return blockedTasks();
+              },
               get total() {
                 return totalTasks();
               },
@@ -1130,6 +1155,9 @@ function SidebarStatus(props) {
               },
               get compact() {
                 return layout().compact;
+              },
+              get textLimit() {
+                return layout().textLimit;
               },
               get theme() {
                 return props.theme;
@@ -1152,6 +1180,9 @@ function SidebarStatus(props) {
             },
             get spinner() {
               return props.spinner;
+            },
+            get textLimit() {
+              return layout().textLimit;
             },
             get theme() {
               return props.theme;
@@ -1192,6 +1223,9 @@ function SidebarStatus(props) {
               },
               get compact() {
                 return layout().compact;
+              },
+              get textLimit() {
+                return layout().textLimit;
               }
             });
           }
@@ -1233,6 +1267,9 @@ function SidebarStatus(props) {
               },
               get compact() {
                 return layout().compact;
+              },
+              get textLimit() {
+                return layout().textLimit;
               }
             });
           }
@@ -1268,6 +1305,9 @@ function SidebarStatus(props) {
               },
               get compact() {
                 return layout().compact;
+              },
+              get textLimit() {
+                return layout().textLimit;
               }
             });
           }
@@ -1299,7 +1339,8 @@ function SidebarStatus(props) {
         })];
       }
     }), null);
-    return _el$123;
+    _$effect((_$p) => _$setProp(_el$123, "fg", CORTEX_THEME.slateMuted, _$p));
+    return _el$116;
   })();
 }
 function HomeBottomStatus(props) {
@@ -1311,96 +1352,96 @@ function HomeBottomStatus(props) {
       return visible();
     },
     get children() {
-      var _el$130 = _$createElement("box"), _el$131 = _$createElement("text"), _el$133 = _$createElement("text"), _el$135 = _$createElement("text"), _el$137 = _$createElement("text"), _el$139 = _$createElement("text");
-      _$insertNode(_el$130, _el$131);
-      _$insertNode(_el$130, _el$133);
-      _$insertNode(_el$130, _el$135);
-      _$insertNode(_el$130, _el$137);
-      _$insertNode(_el$130, _el$139);
-      _$setProp(_el$130, "paddingLeft", 1);
-      _$setProp(_el$130, "paddingRight", 1);
-      _$setProp(_el$130, "flexDirection", "row");
-      _$insertNode(_el$131, _$createTextNode(`\u{1F9E0} `));
-      _$insertNode(_el$133, _$createTextNode(`CORTEX`));
-      _$insertNode(_el$135, _$createTextNode(`\xB7`));
-      _$insertNode(_el$137, _$createTextNode(`IA `));
-      _$insertNode(_el$139, _$createTextNode(`\u2502 `));
-      _$insert(_el$130, _$createComponent(Show, {
+      var _el$124 = _$createElement("box"), _el$125 = _$createElement("text"), _el$127 = _$createElement("text"), _el$129 = _$createElement("text"), _el$131 = _$createElement("text"), _el$133 = _$createElement("text");
+      _$insertNode(_el$124, _el$125);
+      _$insertNode(_el$124, _el$127);
+      _$insertNode(_el$124, _el$129);
+      _$insertNode(_el$124, _el$131);
+      _$insertNode(_el$124, _el$133);
+      _$setProp(_el$124, "paddingLeft", 1);
+      _$setProp(_el$124, "paddingRight", 1);
+      _$setProp(_el$124, "flexDirection", "row");
+      _$insertNode(_el$125, _$createTextNode(`\u{1F9E0} `));
+      _$insertNode(_el$127, _$createTextNode(`CORTEX`));
+      _$insertNode(_el$129, _$createTextNode(`\xB7`));
+      _$insertNode(_el$131, _$createTextNode(`IA `));
+      _$insertNode(_el$133, _$createTextNode(`\u2502 `));
+      _$insert(_el$124, _$createComponent(Show, {
         get when() {
           return activeTask();
         },
         get fallback() {
           return (() => {
-            var _el$141 = _$createElement("box"), _el$142 = _$createElement("text"), _el$143 = _$createElement("text"), _el$145 = _$createElement("text");
-            _$insertNode(_el$141, _el$142);
-            _$insertNode(_el$141, _el$143);
-            _$insertNode(_el$141, _el$145);
-            _$setProp(_el$141, "flexDirection", "row");
-            _$insert(_el$142, () => `\u25CF ${counts().active} en curso`);
-            _$insertNode(_el$143, _$createTextNode(` \xB7 `));
-            _$insert(_el$145, () => `\u25C6 ${counts().review} rev`);
-            _$insert(_el$141, _$createComponent(Show, {
+            var _el$135 = _$createElement("box"), _el$136 = _$createElement("text"), _el$137 = _$createElement("text"), _el$139 = _$createElement("text");
+            _$insertNode(_el$135, _el$136);
+            _$insertNode(_el$135, _el$137);
+            _$insertNode(_el$135, _el$139);
+            _$setProp(_el$135, "flexDirection", "row");
+            _$insert(_el$136, () => `\u25CF ${counts().active} en curso`);
+            _$insertNode(_el$137, _$createTextNode(` \xB7 `));
+            _$insert(_el$139, () => `\u25C6 ${counts().review} rev`);
+            _$insert(_el$135, _$createComponent(Show, {
               get when() {
                 return counts().attention > 0;
               },
               get children() {
                 return [(() => {
-                  var _el$146 = _$createElement("text");
-                  _$insertNode(_el$146, _$createTextNode(` \xB7 `));
-                  _$effect((_$p) => _$setProp(_el$146, "fg", CORTEX_THEME.slateBorder, _$p));
-                  return _el$146;
+                  var _el$140 = _$createElement("text");
+                  _$insertNode(_el$140, _$createTextNode(` \xB7 `));
+                  _$effect((_$p) => _$setProp(_el$140, "fg", CORTEX_THEME.slateBorder, _$p));
+                  return _el$140;
                 })(), (() => {
-                  var _el$148 = _$createElement("text");
-                  _$insert(_el$148, () => `\u2715 ${counts().attention} alert`);
-                  _$effect((_$p) => _$setProp(_el$148, "fg", CORTEX_THEME.roseRed, _$p));
-                  return _el$148;
+                  var _el$142 = _$createElement("text");
+                  _$insert(_el$142, () => `\u2715 ${counts().attention} alert`);
+                  _$effect((_$p) => _$setProp(_el$142, "fg", CORTEX_THEME.roseRed, _$p));
+                  return _el$142;
                 })()];
               }
             }), null);
             _$effect((_p$) => {
-              var _v$60 = CORTEX_THEME.amberGold, _v$61 = CORTEX_THEME.slateBorder, _v$62 = CORTEX_THEME.brandPurple;
-              _v$60 !== _p$.e && (_p$.e = _$setProp(_el$142, "fg", _v$60, _p$.e));
-              _v$61 !== _p$.t && (_p$.t = _$setProp(_el$143, "fg", _v$61, _p$.t));
-              _v$62 !== _p$.a && (_p$.a = _$setProp(_el$145, "fg", _v$62, _p$.a));
+              var _v$58 = CORTEX_THEME.amberGold, _v$59 = CORTEX_THEME.slateBorder, _v$60 = CORTEX_THEME.brandPurple;
+              _v$58 !== _p$.e && (_p$.e = _$setProp(_el$136, "fg", _v$58, _p$.e));
+              _v$59 !== _p$.t && (_p$.t = _$setProp(_el$137, "fg", _v$59, _p$.t));
+              _v$60 !== _p$.a && (_p$.a = _$setProp(_el$139, "fg", _v$60, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$141;
+            return _el$135;
           })();
         },
         children: (task) => (() => {
-          var _el$149 = _$createElement("box"), _el$150 = _$createElement("text"), _el$151 = _$createElement("text"), _el$152 = _$createElement("text");
-          _$insertNode(_el$149, _el$150);
-          _$insertNode(_el$149, _el$151);
-          _$insertNode(_el$149, _el$152);
-          _$setProp(_el$149, "flexDirection", "row");
-          _$insert(_el$150, () => `[${props.spinner()} ${task().task_id}] `);
-          _$insert(_el$151, () => clipped(task().title, 20));
-          _$insert(_el$152, () => ` \xB7 ${counts().active} activos`);
+          var _el$143 = _$createElement("box"), _el$144 = _$createElement("text"), _el$145 = _$createElement("text"), _el$146 = _$createElement("text");
+          _$insertNode(_el$143, _el$144);
+          _$insertNode(_el$143, _el$145);
+          _$insertNode(_el$143, _el$146);
+          _$setProp(_el$143, "flexDirection", "row");
+          _$insert(_el$144, () => `[${props.spinner()} ${task().task_id}] `);
+          _$insert(_el$145, () => clipped(task().title, 20));
+          _$insert(_el$146, () => ` \xB7 ${counts().active} activos`);
           _$effect((_p$) => {
-            var _v$63 = CORTEX_THEME.amberGold, _v$64 = CORTEX_THEME.pureWhite, _v$65 = CORTEX_THEME.slateMuted;
-            _v$63 !== _p$.e && (_p$.e = _$setProp(_el$150, "fg", _v$63, _p$.e));
-            _v$64 !== _p$.t && (_p$.t = _$setProp(_el$151, "fg", _v$64, _p$.t));
-            _v$65 !== _p$.a && (_p$.a = _$setProp(_el$152, "fg", _v$65, _p$.a));
+            var _v$61 = CORTEX_THEME.amberGold, _v$62 = CORTEX_THEME.pureWhite, _v$63 = CORTEX_THEME.slateMuted;
+            _v$61 !== _p$.e && (_p$.e = _$setProp(_el$144, "fg", _v$61, _p$.e));
+            _v$62 !== _p$.t && (_p$.t = _$setProp(_el$145, "fg", _v$62, _p$.t));
+            _v$63 !== _p$.a && (_p$.a = _$setProp(_el$146, "fg", _v$63, _p$.a));
             return _p$;
           }, {
             e: void 0,
             t: void 0,
             a: void 0
           });
-          return _el$149;
+          return _el$143;
         })()
       }), null);
       _$effect((_p$) => {
-        var _v$55 = CORTEX_THEME.brandViolet, _v$56 = CORTEX_THEME.pureWhite, _v$57 = CORTEX_THEME.neonCyan, _v$58 = CORTEX_THEME.skyBlue, _v$59 = CORTEX_THEME.slateBorder;
-        _v$55 !== _p$.e && (_p$.e = _$setProp(_el$131, "fg", _v$55, _p$.e));
-        _v$56 !== _p$.t && (_p$.t = _$setProp(_el$133, "fg", _v$56, _p$.t));
-        _v$57 !== _p$.a && (_p$.a = _$setProp(_el$135, "fg", _v$57, _p$.a));
-        _v$58 !== _p$.o && (_p$.o = _$setProp(_el$137, "fg", _v$58, _p$.o));
-        _v$59 !== _p$.i && (_p$.i = _$setProp(_el$139, "fg", _v$59, _p$.i));
+        var _v$53 = CORTEX_THEME.brandViolet, _v$54 = CORTEX_THEME.pureWhite, _v$55 = CORTEX_THEME.neonCyan, _v$56 = CORTEX_THEME.skyBlue, _v$57 = CORTEX_THEME.slateBorder;
+        _v$53 !== _p$.e && (_p$.e = _$setProp(_el$125, "fg", _v$53, _p$.e));
+        _v$54 !== _p$.t && (_p$.t = _$setProp(_el$127, "fg", _v$54, _p$.t));
+        _v$55 !== _p$.a && (_p$.a = _$setProp(_el$129, "fg", _v$55, _p$.a));
+        _v$56 !== _p$.o && (_p$.o = _$setProp(_el$131, "fg", _v$56, _p$.o));
+        _v$57 !== _p$.i && (_p$.i = _$setProp(_el$133, "fg", _v$57, _p$.i));
         return _p$;
       }, {
         e: void 0,
@@ -1409,7 +1450,7 @@ function HomeBottomStatus(props) {
         o: void 0,
         i: void 0
       });
-      return _el$130;
+      return _el$124;
     }
   });
 }

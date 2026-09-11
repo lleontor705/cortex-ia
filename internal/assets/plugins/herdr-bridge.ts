@@ -331,20 +331,21 @@ function launchNativeTerminal(
   const isLinux = process.platform === "linux";
 
   if (isWin) {
+    const quotedArgs = workerArgs.map((arg) => (arg.includes(" ") ? `"${arg}"` : arg)).join(" ");
+    const fullCmd = `"${cortexBin}" ${quotedArgs}`;
+
     // 1. Try Windows Terminal (wt.exe) if available
     if (hasExecutable("wt.exe")) {
       try {
-        return spawn("wt.exe", ["-d", cwd, "--title", title, cortexBin, ...workerArgs], {
+        return spawn("wt.exe", ["-d", cwd, "--title", title, "cmd.exe", "/c", `${fullCmd} & pause`], {
           detached: true,
           stdio: "ignore",
           windowsHide: false
         });
       } catch {}
     }
-    // 2. Universal Windows fallback: cmd.exe /c start
-    const quotedArgs = workerArgs.map((arg) => (arg.includes(" ") ? `"${arg}"` : arg)).join(" ");
-    const fullCmd = `"${cortexBin}" ${quotedArgs}`;
-    return spawn("cmd.exe", ["/c", "start", title, "cmd.exe", "/c", `${fullCmd} & pause`], {
+    // 2. Universal Windows fallback: cmd.exe /c start with quoted title
+    return spawn("cmd.exe", ["/c", "start", `"${title}"`, "cmd.exe", "/c", `${fullCmd} & pause`], {
       cwd,
       detached: true,
       stdio: "ignore",
@@ -1234,9 +1235,11 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           if (config.useHerdr && herdr && isHerdrInUse()) transport = "herdr";
 
           stage = "create";
+          logDelegation(`🚀 [CORTEX-IA] Solicitando delegación para rol '${args.role}' (Transport: ${transport})`);
           let job = parseJSON(cortex(["delegate", "create", "--request-file", requestPath, "--transport", transport]));
           acceptedJob = job;
           acceptedTransport = transport;
+          logDelegation(`⚡ [CORTEX-IA] Job de delegación aceptado: ${job.job_id} (Rol: ${args.role}, Transport: ${transport})`);
 
           if (transport === "herdr") {
             let openedPane = "";
@@ -1315,9 +1318,11 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
             });
           }
           child.unref();
+          logDelegation(`💻 [CORTEX-IA] Worker lanzado para job: ${job.job_id} (${args.role})`);
           emitDelegationEvent({ kind: "delegation", job_id: job.job_id, role: args.role, status: job.status, transport, workspace: path.resolve(context.directory) });
           return JSON.stringify({ delegated: true, execution_mode: executionMode(transport), job_id: job.job_id, status: job.status, transport });
         } catch (error: any) {
+          logDelegation(`❌ [CORTEX-IA] Fallo en delegación (stage: ${stage}): ${error?.message || error}`);
           if (acceptedJob?.job_id) {
             return JSON.stringify({
               delegated: true,
@@ -1377,6 +1382,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           }
 
           if (terminal.has(job?.status)) {
+            logDelegation(`🏁 [CORTEX-IA] Job de delegación ${args.job_id} finalizado: ${job.status} (Rol: ${job.role || "unknown"})`);
             emitDelegationEvent({ kind: "delegation", job_id: args.job_id, role: job.role, status: job.status, transport: job.transport });
             const config = bridgeConfig();
             if (config.autoClose) {
