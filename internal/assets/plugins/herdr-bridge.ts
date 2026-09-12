@@ -193,6 +193,9 @@ function firstExecutable(name: "cortex-ia" | "herdr"): string {
   const candidates = name === "herdr"
     ? [
         "herdr",
+        path.join(home, ".local", "bin", "herdr"),
+        path.join(home, ".cargo", "bin", "herdr"),
+        "/opt/homebrew/bin/herdr",
         path.join(home, ".herdr", "packages", "standalone", "releases", "0.9.0-x86_64-pc-windows-msvc", "herdr.exe"),
         path.join(local, "Programs", "Herdr", "bin", "herdr.exe"),
         path.join(home, ".cargo", "bin", "herdr.exe"),
@@ -200,10 +203,12 @@ function firstExecutable(name: "cortex-ia" | "herdr"): string {
         "/usr/bin/herdr"
       ]
     : [
-        path.join(home, "go", "bin", "cortex-ia.exe"),
         "cortex-ia",
-        path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
+        path.join(home, "go", "bin", "cortex-ia"),
         path.join(home, ".local", "bin", "cortex-ia"),
+        "/opt/homebrew/bin/cortex-ia",
+        path.join(home, "go", "bin", "cortex-ia.exe"),
+        path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
         "/usr/local/bin/cortex-ia",
         "/usr/bin/cortex-ia"
       ];

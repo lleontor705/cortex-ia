@@ -161,6 +161,9 @@ func ResolveHerdr() (string, error) {
 	candidates := []string{
 		filepath.Join(local, "Programs", "Herdr", "bin", "herdr.exe"),
 		filepath.Join(home, ".cargo", "bin", "herdr.exe"),
+		filepath.Join(home, ".cargo", "bin", "herdr"),
+		filepath.Join(home, ".local", "bin", "herdr"),
+		"/opt/homebrew/bin/herdr",
 		"/usr/local/bin/herdr", "/usr/bin/herdr",
 	}
 	return firstRegular(candidates, "herdr")
@@ -178,6 +181,9 @@ func ResolveAGY() (string, error) {
 	return firstRegular([]string{
 		filepath.Join(local, "agy", "bin", "agy.exe"),
 		filepath.Join(home, ".agy", "bin", "agy"),
+		filepath.Join(home, ".local", "bin", "agy"),
+		filepath.Join(home, ".cargo", "bin", "agy"),
+		"/opt/homebrew/bin/agy",
 		"/usr/local/bin/agy", "/usr/bin/agy",
 	}, "agy")
 }

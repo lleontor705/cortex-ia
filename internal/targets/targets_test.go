@@ -3,7 +3,6 @@ package targets
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -37,6 +36,12 @@ func TestParseTargets(t *testing.T) {
 
 func TestInstallAndUninstallAGY(t *testing.T) {
 	tempHome := t.TempDir()
+	binDir := t.TempDir()
+	agyPath := filepath.Join(binDir, "agy")
+	if err := os.WriteFile(agyPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write fake agy: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	// Dry run
 	res, err := InstallAGY(tempHome, true)
@@ -91,14 +96,7 @@ func TestInstallAndUninstallAGY(t *testing.T) {
 		t.Errorf("expected skills directory with skill directories, got err=%v len=%d", err, len(entries))
 	}
 
-	// Validate with agy CLI if present on the system
-	if agyBin, err := exec.LookPath("agy"); err == nil {
-		cmd := exec.Command(agyBin, "plugin", "validate", pluginDir)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Errorf("agy plugin validate failed on generated plugin: %v (output: %s)", err, string(out))
-		}
-	}
+	// The CLI validation path is covered with deterministic fake binaries below.
 
 	// Verify config.json has plugin enabled
 	configFile := filepath.Join(tempHome, ".gemini", "config", "config.json")
@@ -125,6 +123,20 @@ func TestInstallAndUninstallAGY(t *testing.T) {
 	}
 	if _, err := os.Stat(pluginDir); !os.IsNotExist(err) {
 		t.Errorf("plugin dir was not removed after uninstall")
+	}
+}
+
+func TestInstallAGYReturnsValidationError(t *testing.T) {
+	tempHome := t.TempDir()
+	binDir := t.TempDir()
+	agyPath := filepath.Join(binDir, "agy")
+	if err := os.WriteFile(agyPath, []byte("#!/bin/sh\necho validation failed >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write fake agy: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if _, err := InstallAGY(tempHome, false); err == nil {
+		t.Fatal("InstallAGY succeeded after agy plugin validation failed")
 	}
 }
 

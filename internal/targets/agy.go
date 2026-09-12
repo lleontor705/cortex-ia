@@ -150,9 +150,11 @@ func InstallAGY(homeDir string, dryRun bool) (*TargetResult, error) {
 		}
 		if agyBin, err := exec.LookPath("agy"); err == nil {
 			cmd := exec.Command(agyBin, "plugin", "validate", pluginDir)
-			if out, err := cmd.CombinedOutput(); err == nil {
-				res.Changes = append(res.Changes, fmt.Sprintf("validated plugin %q with agy CLI (%s)", AGYPluginName, strings.TrimSpace(string(out))))
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				return nil, fmt.Errorf("validate AGY plugin %q: %w: %s", AGYPluginName, err, strings.TrimSpace(string(out)))
 			}
+			res.Changes = append(res.Changes, fmt.Sprintf("validated plugin %q with agy CLI (%s)", AGYPluginName, strings.TrimSpace(string(out))))
 		}
 	}
 

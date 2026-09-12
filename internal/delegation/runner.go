@@ -472,13 +472,6 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 			return nil, -1, err
 		}
 	}
-	sandboxHome, err := os.MkdirTemp("", "cortex-ia-agy-home-*")
-	if err != nil {
-		return nil, -1, err
-	}
-	defer func() { _ = os.RemoveAll(sandboxHome) }()
-	cmd.Env = isolatedAGYEnvironment(sandboxHome)
-
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, -1, err
@@ -741,32 +734,6 @@ func printResultSummary(output []byte) {
 	}
 }
 
-func isolatedAGYEnvironment(home string) []string {
-	allowed := map[string]bool{
-		"PATH": true, "PATHEXT": true, "SYSTEMROOT": true, "WINDIR": true, "COMSPEC": true,
-		"TEMP": true, "TMP": true, "TMPDIR": true, "LANG": true, "LC_ALL": true, "TERM": true,
-		"COLORTERM": true, "NO_COLOR": true, "HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true,
-		"SSL_CERT_FILE": true, "SSL_CERT_DIR": true,
-		"LOCALAPPDATA": true, "APPDATA": true, "ALLUSERSPROFILE": true, "PROGRAMDATA": true,
-		"PROGRAMFILES": true, "PROGRAMFILES(X86)": true, "PROGRAMW6432": true, "SYSTEMDRIVE": true,
-		"GEMINI_API_KEY": true, "GOOGLE_API_KEY": true, "GOOGLE_APPLICATION_CREDENTIALS": true,
-		"ANTHROPIC_API_KEY": true, "OPENAI_API_KEY": true,
-		"ANTIGRAVITY_AGENT": true, "AGY_AGENT": true,
-	}
-	environment := make([]string, 0, len(allowed)+4)
-	for _, item := range os.Environ() {
-		key, _, _ := strings.Cut(item, "=")
-		if allowed[strings.ToUpper(key)] {
-			environment = append(environment, item)
-		}
-	}
-	environment = append(environment, "HOME="+home, "USERPROFILE="+home)
-	if volume := filepath.VolumeName(home); volume != "" {
-		environment = append(environment, "HOMEDRIVE="+volume, "HOMEPATH="+strings.TrimPrefix(home, volume))
-	}
-	return environment
-}
-
 func gitOutput(directory string, args ...string) ([]byte, error) {
 	git, err := exec.LookPath("git")
 	if err != nil {
@@ -913,10 +880,60 @@ func workspacePathFingerprint(directory, relativePath string) (string, error) {
 	return hex.EncodeToString(digest.Sum(nil)), nil
 }
 
-func changedWorktreePaths(directory string) ([]string, error) {
-	tracked, err := gitOutput(directory, "diff", "--name-only", "--no-renames", "-z", "HEAD", "--")
+func isInsideGitWorktree(directory string) bool {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return false
+	}
+	cmd := exec.Command(git, "rev-parse", "--is-inside-work-tree")
+	cmd.Dir = directory
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	out, err := cmd.Output()
+	return err == nil && strings.TrimSpace(string(out)) == "true"
+}
+
+func nonGitWorkspacePaths(directory string) ([]string, error) {
+	var paths []string
+	cleanDir := filepath.Clean(directory)
+	err := filepath.WalkDir(cleanDir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if p != cleanDir {
+				if strings.HasPrefix(name, ".") || name == "node_modules" || name == "vendor" {
+					return filepath.SkipDir
+				}
+				if _, statErr := os.Stat(filepath.Join(p, ".git")); statErr == nil {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		if strings.HasPrefix(name, ".") {
+			return nil
+		}
+		rel, err := filepath.Rel(cleanDir, p)
+		if err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+			paths = append(paths, filepath.ToSlash(rel))
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func changedWorktreePaths(directory string) ([]string, error) {
+	if !isInsideGitWorktree(directory) {
+		return nonGitWorkspacePaths(directory)
+	}
+	tracked, err := gitOutput(directory, "diff", "--name-only", "--no-renames", "-z", "HEAD", "--")
+	if err != nil {
+		tracked = nil
 	}
 	untracked, err := gitOutput(directory, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
@@ -1133,16 +1150,24 @@ func resolveAGY() (string, error) {
 	if path, err := exec.LookPath("agy"); err == nil {
 		return path, nil
 	}
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join(home, ".local", "bin", "agy"),
+		"/opt/homebrew/bin/agy",
+		filepath.Join(home, ".cargo", "bin", "agy"),
+		filepath.Join(home, ".agy", "bin", "agy"),
+		"/usr/local/bin/agy",
+		"/usr/bin/agy",
+	}
 	if runtime.GOOS == "windows" {
-		home, _ := os.UserHomeDir()
-		candidates := []string{
+		candidates = []string{
 			filepath.Join(home, "AppData", "Local", "agy", "bin", "agy.exe"),
 			filepath.Join(os.Getenv("LOCALAPPDATA"), "agy", "bin", "agy.exe"),
 		}
-		for _, candidate := range candidates {
-			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-				return candidate, nil
-			}
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
 		}
 	}
 	return "", errors.New("agy executable not found")
