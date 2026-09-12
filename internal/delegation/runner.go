@@ -115,6 +115,9 @@ func (r *Request) Validate() error {
 			return errors.New("project must resolve to the delegation workspace")
 		}
 	}
+	if r.WorkspaceMode == WorkspaceIsolated {
+		return errors.New("isolated_worktree strategy is retired; use current_workspace")
+	}
 	if r.Role == "implement" {
 		if strings.TrimSpace(r.TaskID) == "" {
 			return errors.New("implement delegation requires a task id")
@@ -123,8 +126,6 @@ func (r *Request) Validate() error {
 			return errors.New("implement delegation requires at least one allowed file")
 		}
 		switch r.WorkspaceMode {
-		case WorkspaceIsolated:
-			return errors.New("isolated_worktree strategy is retired; use current_workspace")
 		case WorkspaceCurrent:
 			if r.Worktree != "" {
 				return errors.New("current_workspace strategy must not include worktree")
@@ -251,8 +252,11 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	defer cancel()
 	watchDone := make(chan struct{})
 	defer close(watchDone)
-	go watchCancellation(runCtx, store, id, cancel, watchDone)
-	go keepAliveAuthorityAndJob(runCtx, store, id, owner, request.TaskID, cancel, watchDone)
+	taskID := ""
+	if request.Role == "implement" {
+		taskID = request.TaskID
+	}
+	go keepAliveAuthorityAndJob(runCtx, store, id, owner, taskID, cancel, watchDone)
 	output, exitCode, runErr := runAGY(runCtx, request, role, timeout)
 	if current, getErr := store.Get(context.Background(), id); getErr == nil && current.Status == StatusCancelled {
 		return nil

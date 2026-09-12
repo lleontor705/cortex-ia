@@ -7,7 +7,6 @@ import * as path from "node:path";
 
 const receiptSchema = {
   type: "object",
-  additionalProperties: false,
   required: ["phase_status", "execution_status", "verification_verdict", "summary"],
   properties: {
     phase_status: { type: "string" },
@@ -15,7 +14,12 @@ const receiptSchema = {
     verification_verdict: { type: "string" },
     summary: { type: "string" },
     changed_files: { type: "array", items: { type: "string" } },
-    checks: { type: "array", items: { type: "string" } }
+    checks: { type: "array", items: { type: "string" } },
+    evidence_refs: { type: "array", items: { type: "string" } },
+    task_ids: { type: "array", items: { type: "string" } },
+    artifact_refs: { type: "array", items: { type: "string" } },
+    risks: { type: "array", items: { type: "string" } },
+    next_route: { type: "string" }
   }
 };
 

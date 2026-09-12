@@ -1,6 +1,6 @@
 # Cortex-IA Skill Registry
 
-Last synchronized: 2026-09-12T06:35:07.682Z
+Last synchronized: 2026-09-12T17:38:44.800Z
 Total discovered skills: 16
 
 | Skill | Scope | Description | Location |
