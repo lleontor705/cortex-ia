@@ -1,0 +1,10 @@
+{"timestamp":"2026-09-12T22:00:00.000Z","level":"info","message":"🚀 Cortex Report Hub started on :8080 (Auth Protected: true, User: admin)"}
+{"timestamp":"2026-09-12T22:01:00.000Z","level":"info","message":"GET /health 200 OK"}
+{"timestamp":"2026-09-12T22:02:00.000Z","level":"error","message":"2026/09/12 22:02:00 📥 [Report Received] ID=rep-inv-1 Code=ERR_INVARIANT_VIOLATION Source=worker Task=task-alpha CPU=4 RAM=128MB Goroutines=12"}
+{"timestamp":"2026-09-12T22:02:10.000Z","level":"error","message":"2026/09/12 22:02:10 📥 [Report Received] ID=rep-inv-2 Code=ERR_INVARIANT_VIOLATION Source=worker Task=task-alpha CPU=4 RAM=130MB Goroutines=14"}
+{"timestamp":"2026-09-12T22:03:00.000Z","level":"error","message":"2026/09/12 22:03:00 📥 [Report Received] ID=rep-del-1 Code=ERR_DELEGATION_FAILURE Source=delegation Task=task-beta CPU=8 RAM=256MB Goroutines=20"}
+{"timestamp":"2026-09-12T22:04:00.000Z","level":"error","message":"2026/09/12 22:04:00 📥 [Report Received] ID=rep-ver-1 Code=ERR_VERIFICATION_FAIL Source=orchestrator Task=task-gamma CPU=2 RAM=64MB Goroutines=8"}
+{"timestamp":"2026-09-12T22:05:00.000Z","level":"error","message":"2026/09/12 22:05:00 📥 [Report Received] ID=rep-blk-1 Code=ERR_TASK_BLOCKED Source=herdr Task=task-delta CPU=4 RAM=100MB Goroutines=10"}
+{"timestamp":"2026-09-12T22:06:00.000Z","level":"error","message":"2026/09/12 22:06:00 📥 [Report Received] ID=rep-unk-1 Code=ERR_UNKNOWN_CUSTOM Source=plugin Task=task-epsilon CPU=2 RAM=50MB Goroutines=5"}
+{"timestamp":"2026-09-12T22:07:00.000Z","level":"error","message":"2026/09/12 22:07:00 📥 [Report Received] ID=rep-blk-2 Code=ERR_TASK_BLOCKED Source=core Task= CPU=4 RAM=90MB Goroutines=6"}
+{"timestamp":"2026-09-12T22:08:00.000Z","level":"info","message":"GET /health 200 OK"}

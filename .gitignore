@@ -24,6 +24,7 @@ coverage.html
 # OS
 .DS_Store
 Thumbs.db
+._*
 
 # Go
 vendor/
