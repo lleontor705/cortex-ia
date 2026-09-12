@@ -49,9 +49,15 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
 5. **Diff Review & Proactive Memory (MANDATORY):**
    - Review the diff for scope creep, secrets, unsafe paths, and accidental generated drift.
    - **In-Memory Immutability & Contract Integrity**: Ensure multi-record validations do not mutate caller input in-place, and never weaken contracts by silently skipping invalid records to force green tests.
+   - **Code-Intelligence Noninterference (REQ-PRIV-007)**: Code intelligence and AST metadata (`DocSummary`, `Reasoning`, syntax symbols, callers, relationships) are structural codebase components and must NEVER be redacted or mutated by privacy/sanitize routines.
+   - **Test Scaffolding Hygiene**: Do not append new test suites to an existing test file if that file already has > 300 LOC. If adding tests to a shared fixture risks pushing the diff beyond the workload budget, create a dedicated modular test file (e.g. `<domain>_<slice>_test.go`).
    - Persist any bug root cause, discovery, gotcha, or decision made in Cortex (`cortex_save` with standard taxonomies: `bugfix/*`, `gotchas/*`, `architecture/*`). Never dump full stdout.
 6. **Pre-Transition Workload Preflight & Cleanup:**
-   - Run `git diff --stat` before transitioning. If cumulative changed lines exceed the limit (<= 500 LOC in Go, <= 350 LOC in TS/Python), **transitioning to `in_review` is strictly forbidden**: transition to `blocked` with `WORKLOAD_BUDGET_EXCEEDED` to trigger DAG decomposition.
+   - Run `git diff --numstat` to check categorized churn before transitioning:
+     - **Source Logic**: <= 350 LOC in Go/Rust/Java/C#, <= 250 LOC in TS/Python (churn weighted: additions + 0.2 * deletions).
+     - **Test & Fixture Files**: <= 600 LOC (modular, <= 250 LOC per new file).
+     - **Declarative Data / Schemas**: Excluded from algorithmic line budget.
+   - If source logic lines exceed the cap, **transitioning to `in_review` is strictly forbidden**: transition to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if tests exceed 600 LOC) to trigger DAG decomposition.
    - Complete the CLI lifecycle: verify -> `cortex_ia_work_transition({ to: "in_review" })` (auto-releases leases) -> independent reviewer PASS. Only reviewer PASS produces `done`.
 
 ### Operational & Database Tasks (allowed_files: [])

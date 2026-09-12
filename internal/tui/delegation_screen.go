@@ -13,12 +13,13 @@ import (
 // Items:
 // 0: Multiplexor Herdr (AutoSplit & UseHerdr)
 // 1: Delegación Externa (DelegationEnabled)
-// 2: implement
-// 3: investigate
-// 4: reviewer
-// 5: planner
-// 6: [ Guardar Configuración ]
-// 7: [ Volver al Menú Principal ]
+// 2: Modelo AGY Predeterminado (DefaultModel)
+// 3: implement
+// 4: investigate
+// 5: reviewer
+// 6: planner
+// 7: [ Guardar Configuración ]
+// 8: [ Volver al Menú Principal ]
 
 func (m model) updateDelegation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key := msg.String(); key {
@@ -34,14 +35,18 @@ func (m model) updateDelegation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.delegationCursor--
 		}
 	case "down", "j":
-		if m.delegationCursor < 7 {
+		if m.delegationCursor < 8 {
 			m.delegationCursor++
 		}
-	case " ", "tab", "right", "left":
+	case "left":
+		m = m.cycleDelegationModel(false)
+	case "right":
+		m = m.cycleDelegationModel(true)
+	case " ", "tab":
 		m = m.toggleDelegationItem(m.delegationCursor)
 	case "enter":
 		switch m.delegationCursor {
-		case 6:
+		case 7:
 			// Save
 			configDir := filepath.Join(m.homeDir, ".config", "opencode")
 			if err := delegation.Save(configDir, m.delegationCfg); err != nil {
@@ -49,7 +54,7 @@ func (m model) updateDelegation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			} else {
 				m.delegationSavedMsg = stylePass.Render("✔ Configuración guardada en ~/.config/opencode/cortex-delegation.json")
 			}
-		case 7:
+		case 8:
 			m.screen = screenHome
 			m.cursor = 1
 			return m, homeTick()
@@ -60,16 +65,83 @@ func (m model) updateDelegation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) cycleDelegationModel(forward bool) model {
+	m.delegationSavedMsg = ""
+	models := m.availableModels
+	if len(models) == 0 {
+		models = delegation.KnownAGYModels
+	}
+	switch m.delegationCursor {
+	case 2:
+		oldDefault := m.delegationCfg.DefaultModel
+		if oldDefault == "" {
+			oldDefault = delegation.DefaultAGYModel
+		}
+		if forward {
+			m.delegationCfg.DefaultModel = delegation.NextModel(oldDefault, models)
+		} else {
+			m.delegationCfg.DefaultModel = delegation.PrevModel(oldDefault, models)
+		}
+		for role, r := range m.delegationCfg.Roles {
+			if r.Delegate && r.CLI == "agy" && (r.Model == "" || r.Model == oldDefault) {
+				r.Model = m.delegationCfg.DefaultModel
+				m.delegationCfg.Roles[role] = r
+			}
+		}
+	case 3, 4, 5, 6:
+		role := delegationRoles[m.delegationCursor-3]
+		if m.delegationCfg.Roles == nil {
+			m.delegationCfg.Roles = make(map[string]delegation.RoleConfig)
+		}
+		r := m.delegationCfg.Roles[role]
+		if r.Delegate && r.CLI == "agy" {
+			currentModel := r.Model
+			if currentModel == "" {
+				currentModel = m.delegationCfg.DefaultModel
+			}
+			if currentModel == "" {
+				currentModel = delegation.DefaultAGYModel
+			}
+			if forward {
+				r.Model = delegation.NextModel(currentModel, models)
+			} else {
+				r.Model = delegation.PrevModel(currentModel, models)
+			}
+			m.delegationCfg.Roles[role] = r
+		}
+	case 0, 1:
+		m = m.toggleDelegationItem(m.delegationCursor)
+	}
+	m.opts.DelegationConfig = &m.delegationCfg
+	return m
+}
+
 func (m model) toggleDelegationItem(cursor int) model {
 	m.delegationSavedMsg = ""
+	models := m.availableModels
+	if len(models) == 0 {
+		models = delegation.KnownAGYModels
+	}
 	switch cursor {
 	case 0:
 		m.delegationCfg.UseHerdr = !m.delegationCfg.UseHerdr
 		m.delegationCfg.HerdrSettings.AutoSplit = m.delegationCfg.UseHerdr
 	case 1:
 		m.delegationCfg.DelegationEnabled = !m.delegationCfg.DelegationEnabled
-	case 2, 3, 4, 5:
-		role := delegationRoles[cursor-2]
+	case 2:
+		oldDefault := m.delegationCfg.DefaultModel
+		if oldDefault == "" {
+			oldDefault = delegation.DefaultAGYModel
+		}
+		m.delegationCfg.DefaultModel = delegation.NextModel(oldDefault, models)
+		for role, r := range m.delegationCfg.Roles {
+			if r.Delegate && r.CLI == "agy" && (r.Model == "" || r.Model == oldDefault) {
+				r.Model = m.delegationCfg.DefaultModel
+				m.delegationCfg.Roles[role] = r
+			}
+		}
+	case 3, 4, 5, 6:
+		role := delegationRoles[cursor-3]
 		if m.delegationCfg.Roles == nil {
 			m.delegationCfg.Roles = make(map[string]delegation.RoleConfig)
 		}
@@ -78,6 +150,12 @@ func (m model) toggleDelegationItem(cursor int) model {
 			r.Delegate = true
 			r.CLI = "agy"
 			r.SkipPermissions = true
+			if r.Model == "" {
+				r.Model = m.delegationCfg.DefaultModel
+				if r.Model == "" {
+					r.Model = delegation.DefaultAGYModel
+				}
+			}
 			if role == "implement" {
 				r.Mode = "accept-edits"
 			} else {
@@ -133,9 +211,26 @@ func (m model) viewDelegation() string {
 	}
 	content = append(content, truncate(line1, width))
 
+	// 2: Default AGY Model
+	defModel := m.delegationCfg.DefaultModel
+	if defModel == "" {
+		defModel = delegation.DefaultAGYModel
+	}
+	dispName := delegation.ModelDisplayName(defModel, m.availableModels)
+	modelStatus := stylePass.Render(fmt.Sprintf("[ %s ]", defModel))
+	if dispName != defModel {
+		modelStatus = stylePass.Render(fmt.Sprintf("[ %s (%s) ]", defModel, dispName))
+	}
+	line2 := fmt.Sprintf("  • %-26s ➔ %s", "Modelo AGY Predeterminado", modelStatus)
+	if m.delegationCursor == 2 {
+		cursorLine = len(content)
+		line2 = styleSelected.Render(fmt.Sprintf("> • %-26s ➔ %s", "Modelo AGY Predeterminado", modelStatus))
+	}
+	content = append(content, truncate(line2, width))
+
 	content = append(content, "", styleDim.Render("Motores por rol / subagente:"))
 
-	// 2..5: Roles
+	// 3..6: Roles
 	for i, role := range delegationRoles {
 		r := m.delegationCfg.Roles[role]
 		status := styleDim.Render("[ Nativo OpenCode ]")
@@ -144,10 +239,17 @@ func (m model) viewDelegation() string {
 			if r.Mode != "" {
 				modeText = " · " + r.Mode
 			}
-			status = stylePass.Render(fmt.Sprintf("[ Antigravity CLI (agy)%s ]", modeText))
+			activeModel := r.Model
+			if activeModel == "" {
+				activeModel = m.delegationCfg.DefaultModel
+			}
+			if activeModel == "" {
+				activeModel = delegation.DefaultAGYModel
+			}
+			status = stylePass.Render(fmt.Sprintf("[ Antigravity CLI (agy)%s ] · Modelo: %s", modeText, activeModel))
 		}
 		line := fmt.Sprintf("  • %-26s ➔ %s", role, status)
-		if m.delegationCursor == i+2 {
+		if m.delegationCursor == i+3 {
 			cursorLine = len(content)
 			line = styleSelected.Render(fmt.Sprintf("> • %-26s ➔ %s", role, status))
 		}
@@ -161,21 +263,21 @@ func (m model) viewDelegation() string {
 	}
 
 	btnSave := "  [ Guardar Configuración ]"
-	if m.delegationCursor == 6 {
+	if m.delegationCursor == 7 {
 		cursorLine = len(content)
 		btnSave = styleSelected.Render("> [ Guardar Configuración ]")
 	}
 	content = append(content, truncate(btnSave, width))
 
 	btnBack := "  [ Volver al Menú Principal ]"
-	if m.delegationCursor == 7 {
+	if m.delegationCursor == 8 {
 		cursorLine = len(content)
 		btnBack = styleSelected.Render("> [ Volver al Menú Principal ]")
 	}
 	content = append(content, truncate(btnBack, width))
 
 	var bottom []string
-	bottom = append(bottom, m.footer("space/tab alternar · enter guardar/seleccionar · b/esc volver"))
+	bottom = append(bottom, m.footer("space/tab alternar · ←/→ cambiar modelo · enter guardar/seleccionar · b/esc volver"))
 	offset := cursorOffset(cursorLine, len(content), m.bodyHeight(), len(top), len(bottom))
 	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), offset, "up/down"), "\n")
 }

@@ -210,14 +210,18 @@ sequenceDiagram
 ```
 
 ### Review Workload Guard & Stacked Units
-- **Line Count Limits**:
-  - Concise languages (TS, Python): max **<= 350 lines** per task node.
-  - Typed/verbose languages (Go, Rust, Java): max **<= 500 lines** per task node.
-- **Pre-Transition Workload Preflight**: Implementers MUST check `git diff --stat` before calling `cortex_ia_work_transition({ to: "in_review" })`. If cumulative changed lines exceed the limit, transitioning to `in_review` is strictly forbidden: transition directly to `blocked` with reason `WORKLOAD_BUDGET_EXCEEDED` to trigger immediate DAG decomposition.
+- **Decoupled Semantic Workload Budget**:
+  - **Source Logic Limits**: max **<= 350 lines** in Go/Rust/Java, **<= 250 lines** in TS/Python with weighted deletions (0.2x).
+  - **Test & Fixtures**: max **<= 600 lines** total, with modular test files bounded to <= 250 LOC per task.
+  - **Declarative Data / Schemas**: Excluded from algorithmic logic budgets.
+- **Pre-Transition Workload Preflight**: Implementers MUST check categorized churn (`git diff --numstat`) before calling `cortex_ia_work_transition({ to: "in_review" })`. If source logic changed lines exceed the cap, transitioning to `in_review` is strictly forbidden: transition directly to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if test fixtures exceed 600 LOC) to trigger immediate DAG decomposition.
 - **Anti-Revision Loop Circuit Breaker**: If a task accumulates **two (2) consecutive review FAIL verdicts**, the orchestrator MUST NOT re-dispatch an implementer on the same monolithic task node. It MUST route the task to `planner` with `phase: "decompose"` for atomic decomposition into stacked units (<= 250 LOC).
 - **In-Memory Immutability & Contract Preservation Invariants**:
   - Multi-record/batch validation must operate on defensive copies or without mutating caller-owned structs/pointers in-place prior to whole-request validation.
   - Implementers must NEVER alter or weaken contracts (e.g. converting atomic rejection into "skip invalid records") to force tests green.
+- **Modular Test Scaffolding Policy**: Never append test suites to an existing test file exceeding 300 LOC. Planners and implementers must allocate dedicated modular test files (`<domain>_<slice>_test.go`) bounded to <= 250 LOC per task.
+- **AST & Code-Intelligence Noninterference (`REQ-PRIV-007`)**: AST structures, doc summaries (`DocSummary`), graph relations, and reasoning (`Reasoning`) are structural codebase components and must NEVER be redacted or mutated by privacy/sanitize routines.
+- **Transient Quota Exhaustion Fallback**: When external delegation fails due to model quota exhaustion (`QUOTA_EXCEEDED` / "usage limit has been reached"), the controller/orchestrator reconciles the job and may fall back immediately to native execution under fresh local authority without marking the task permanently blocked.
 - **Stacked Work Units**:
   1. *Layer 1 (Contracts)*: Types, interfaces, schemas, and test scaffolding.
   2. *Layer 2 (Core)*: Domain business logic and internal algorithmic engines.

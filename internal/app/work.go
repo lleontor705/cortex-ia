@@ -32,6 +32,7 @@ func runWork(args []string) error {
 		fmt.Println("  transition <task-id> --claim-token <token> --to <status>    Transition task state")
 		fmt.Println("  approve <task-id> --reviewer <id> --verdict <PASS|FAIL>     Approve/review a task")
 		fmt.Println("  retry <task-id> --revision <n>                              Retry a task")
+		fmt.Println("  revise --plan <file|@stdin>                                 Safely revise an unclaimed task definition")
 		fmt.Println("  decompose <task-id> --revision <n> --plan <file|@stdin>       Replace a blocked task with atomic tasks")
 		fmt.Println("  recover                                                     Recover expired claims/leases")
 		fmt.Println("  verify-lease --path <file> [--task <id>] [--owner <owner>]  Verify active file lease")
@@ -55,6 +56,7 @@ func runWork(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer func() { _ = store.Close() }()
 	ctx := context.Background()
 	switch sub {
 	case "create":
@@ -126,6 +128,8 @@ func runWork(args []string) error {
 			return err
 		}
 		return printJSON(item)
+	case "revise":
+		return runWorkRevise(store, args[1:])
 	case "review-refresh":
 		opts, positionals, err := workOptions(args[1:], map[string]bool{"--revision": false})
 		if err != nil || len(positionals) != 1 {

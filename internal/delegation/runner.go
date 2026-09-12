@@ -31,6 +31,18 @@ const (
 )
 
 var errInvalidReceipt = errors.New("invalid delegation receipt")
+var ErrQuotaExceeded = errors.New("delegation quota or rate limit exceeded")
+
+func isQuotaOrRateLimit(text string) bool {
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "usage limit has been reached") ||
+		strings.Contains(lower, "rate limit") ||
+		strings.Contains(lower, "rate_limit") ||
+		strings.Contains(lower, "insufficient_quota") ||
+		strings.Contains(lower, "resource_exhausted") ||
+		strings.Contains(lower, "too many requests") ||
+		strings.Contains(lower, "quota exceeded")
+}
 
 // Request is a transient handoff document. The bridge deletes it before AGY
 // starts; only its objective digest and operational metadata enter SQLite.
@@ -251,12 +263,18 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 		if receiptErr := validateStructuredReceipt(output, request.OutputSchema); receiptErr == nil {
 			return store.Complete(ctx, id, StatusSucceeded, receipt, "", "")
 		} else {
-			runErr = receiptErr
+			if isQuotaOrRateLimit(string(output)) {
+				runErr = fmt.Errorf("%w: %v", ErrQuotaExceeded, receiptErr)
+			} else {
+				runErr = receiptErr
+			}
 		}
 	}
 	status, code := StatusFailed, "AGY_FAILED"
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 		status, code = StatusTimedOut, "TIMEOUT"
+	} else if errors.Is(runErr, ErrQuotaExceeded) {
+		code = "QUOTA_EXCEEDED"
 	} else if errors.Is(runErr, errInvalidReceipt) {
 		code = "INVALID_RECEIPT"
 	}
@@ -310,6 +328,8 @@ func remoteFailureClass(code string, outputBytes int) (string, bool) {
 	switch code {
 	case "TIMEOUT":
 		return "timeout", true
+	case "QUOTA_EXCEEDED":
+		return "quota_exhausted", true
 	case "INVALID_RECEIPT":
 		return "invalid_receipt", true
 	case "AGY_FAILED":
@@ -367,6 +387,37 @@ func watchCancellation(ctx context.Context, store *Store, id string, cancel cont
 	}
 }
 
+func buildAGYArgs(request Request, role RoleConfig, printTimeout, workDir string, skip bool) []string {
+	args := []string{
+		"--output-format", "stream-json",
+		"--print-timeout", printTimeout,
+		"--disable-slash-commands",
+		"--add-dir", workDir,
+	}
+	if skip {
+		args = append(args, "--dangerously-skip-permissions")
+	}
+	if role.Mode != "" && role.Mode != "plan" {
+		args = append(args, "--mode", role.Mode)
+	}
+	// External delegation model is strictly determined by the user/TUI configuration (role.Model).
+	// Agents are NOT permitted to select or override the delegation model.
+	model := role.Model
+	if model == "" {
+		model = DefaultAGYModel
+	}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	effort := role.Effort
+	// AGY CLI rejects --effort for Claude models (reasoning is pre-configured or incompatible with --effort),
+	// and passing --effort without an explicit model is unsafe because AGY defaults to the system model (often Claude).
+	if effort != "" && supportsEffort(model) {
+		args = append(args, "--effort", effort)
+	}
+	return args
+}
+
 func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.Duration) ([]byte, int, error) {
 	skip, err := skipPermissions(role)
 	if err != nil {
@@ -384,34 +435,7 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	if request.Role == "implement" {
 		workDir = request.executionDirectory()
 	}
-	args := []string{
-		"--output-format", "stream-json",
-		"--print-timeout", printTimeout,
-		"--disable-slash-commands",
-		"--add-dir", workDir,
-	}
-	if skip {
-		args = append(args, "--dangerously-skip-permissions")
-	}
-	if role.Mode != "" && role.Mode != "plan" {
-		args = append(args, "--mode", role.Mode)
-	}
-	model := role.Model
-	if strings.TrimSpace(request.Model) != "" {
-		model = strings.TrimSpace(request.Model)
-	}
-	if model != "" {
-		args = append(args, "--model", model)
-	}
-	effort := role.Effort
-	if strings.TrimSpace(request.Effort) != "" {
-		effort = strings.TrimSpace(request.Effort)
-	}
-	// AGY CLI rejects --effort for Claude models (reasoning is pre-configured or incompatible with --effort),
-	// and passing --effort without an explicit model is unsafe because AGY defaults to the system model (often Claude).
-	if effort != "" && supportsEffort(model) {
-		args = append(args, "--effort", effort)
-	}
+	args := buildAGYArgs(request, role, printTimeout, workDir, skip)
 	schemaPath := ""
 	if len(request.OutputSchema) > 0 {
 		file, err := os.CreateTemp("", "cortex-ia-schema-*.json")
@@ -496,8 +520,8 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 				activityMu.Lock()
 				idle := time.Since(lastActivity)
 				activityMu.Unlock()
-				if idle >= 30*time.Minute {
-					fmt.Printf("\n⚠️ [%s] Inactivity watchdog: no output for 30 minutes, terminating frozen process...\n", request.Role)
+				if idle >= 15*time.Minute {
+					fmt.Printf("\n⚠️ [%s] Inactivity watchdog: no output for 15 minutes, terminating frozen process...\n", request.Role)
 					_ = os.Stdout.Sync()
 					if cmd.Process != nil {
 						_ = cmd.Process.Kill()
@@ -653,7 +677,10 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 		if errors.As(err, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		}
-		if stderr.Len() > 0 {
+		combinedText := strings.TrimSpace(stderr.String() + " " + fullResponseText.String())
+		if isQuotaOrRateLimit(combinedText) {
+			err = fmt.Errorf("%w: %s", ErrQuotaExceeded, bounded(combinedText, 512))
+		} else if stderr.Len() > 0 {
 			err = fmt.Errorf("agy exited %d: %s", exitCode, bounded(stderr.String(), 512))
 		}
 	}

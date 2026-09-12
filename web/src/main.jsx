@@ -537,6 +537,10 @@ function SettingsView({ configData, onRefresh }) {
               <b>{cfg.use_herdr ? 'Herdr Multiplexed (Terminal Split)' : 'Direct CLI (Subproceso)'}</b>
             </div>
             <div class="setting-row">
+              <span>Modelo AGY Predeterminado</span>
+              <b><code>{cfg.default_model || 'gemini-3.8-flash-high'}</code></b>
+            </div>
+            <div class="setting-row">
               <span>Dirección de Split</span>
               <b><code>split {herdr.split_direction || 'right'}</code></b>
             </div>
@@ -611,6 +615,10 @@ function SettingsView({ configData, onRefresh }) {
                 <div class="role-field">
                   <span>Modo Operativo</span>
                   <b><code>{roleCfg.mode || 'default'}</code></b>
+                </div>
+                <div class="role-field">
+                  <span>Modelo Asignado</span>
+                  <b><code>{roleCfg.model || (roleCfg.delegate ? (cfg.default_model || 'gemini-3.8-flash-high') : 'N/A (Nativo)')}</code></b>
                 </div>
                 <div class="role-field">
                   <span>Delegación Externa</span>

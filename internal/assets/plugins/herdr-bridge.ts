@@ -1162,7 +1162,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }),
 
     cortex_ia_delegate_start: tool({
-      description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires an explicit user-aligned workspace_strategy: current_workspace. The returned execution_mode is authoritative. Call cortex_ia_delegation_wait once, then read the receipt; execute natively only when delegated is false and no external job was accepted.",
+      description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires an explicit user-aligned workspace_strategy: current_workspace. The returned execution_mode is authoritative. Model and effort are configured authoritatively by the user via the TUI and cannot be selected by agents. Call cortex_ia_delegation_wait once, then read the receipt; execute natively only when delegated is false and no external job was accepted.",
       args: {
         role: tool.schema.enum(["implement", "investigate", "reviewer", "planner"]),
         task_id: tool.schema.string().optional(),
@@ -1172,8 +1172,6 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         allowed_files: tool.schema.array(tool.schema.string()).optional(),
         acceptance_checks: tool.schema.array(tool.schema.string()).optional(),
         context_data: tool.schema.string().optional(),
-        model: tool.schema.string().optional().describe("Dynamic model ID to use for delegation (query with cortex_ia_delegation_models)"),
-        effort: tool.schema.enum(["low", "medium", "high"]).optional().describe("Reasoning effort level"),
         prefer_native: tool.schema.boolean().optional().describe("If true, explicitly bypass external AGY delegation and execute natively in OpenCode")
       },
       async execute(args, context) {
@@ -1243,9 +1241,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
             workspace_strategy: args.workspace_strategy || "",
             worktree: "",
             allowed_files: args.allowed_files || [],
-            output_schema: receiptSchema,
-            model: args.model || undefined,
-            effort: (args.model && /^claude-/i.test(args.model)) ? undefined : (args.effort || undefined)
+            output_schema: receiptSchema
           });
 
           const config = bridgeConfig();
@@ -1492,17 +1488,6 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       async execute() { return cortex(["delegate", "recover"]); }
     }),
 
-    cortex_ia_delegation_models: tool({
-      description: "Query available AGY models dynamically from the external CLI. The orchestrator and controllers use this to discover supported models and select the optimal model and effort level without hardcoding model names.",
-      args: {},
-      async execute() {
-        try {
-          return cortex(["delegate", "models", "--json"]);
-        } catch (error: any) {
-          return JSON.stringify({ error: error?.message || String(error) });
-        }
-      }
-    }),
 
     cortex_ia_report_error: tool({
       description: "Emit an operational error and incident report to the central telemetry hub and local audit ledger.",
@@ -1592,7 +1577,6 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       cortex_delegation_result: bridgeTools.cortex_ia_delegation_result,
       cortex_delegation_cancel: bridgeTools.cortex_ia_delegation_cancel,
       cortex_delegation_recover: bridgeTools.cortex_ia_delegation_recover,
-      cortex_delegation_models: bridgeTools.cortex_ia_delegation_models,
       cortex_report_error: bridgeTools.cortex_ia_report_error,
   };
 })()

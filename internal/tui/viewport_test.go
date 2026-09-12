@@ -177,12 +177,12 @@ func TestDelegationScreenViewport(t *testing.T) {
 		t.Fatalf("view height %d exceeds terminal height %d", lines, m.height)
 	}
 
-	// Move cursor to item 6: [ Guardar Configuración ]
-	for i := 0; i < 6; i++ {
+	// Move cursor to item 7: [ Guardar Configuración ]
+	for i := 0; i < 7; i++ {
 		m = press(m, "down")
 	}
-	if m.delegationCursor != 6 {
-		t.Fatalf("expected delegationCursor 6, got %d", m.delegationCursor)
+	if m.delegationCursor != 7 {
+		t.Fatalf("expected delegationCursor 7, got %d", m.delegationCursor)
 	}
 	viewSave := m.View()
 	if !strings.Contains(viewSave, "Guardar Configuración") {
@@ -192,10 +192,10 @@ func TestDelegationScreenViewport(t *testing.T) {
 		t.Fatalf("view height %d exceeds terminal height %d", lines, m.height)
 	}
 
-	// Move cursor to item 7: [ Volver al Menú Principal ]
+	// Move cursor to item 8: [ Volver al Menú Principal ]
 	m = press(m, "down")
-	if m.delegationCursor != 7 {
-		t.Fatalf("expected delegationCursor 7, got %d", m.delegationCursor)
+	if m.delegationCursor != 8 {
+		t.Fatalf("expected delegationCursor 8, got %d", m.delegationCursor)
 	}
 	viewBack := m.View()
 	if !strings.Contains(viewBack, "Volver al Menú Principal") {
@@ -206,7 +206,7 @@ func TestDelegationScreenViewport(t *testing.T) {
 	}
 
 	// Move cursor back to item 0: Multiplexor Herdr.
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 8; i++ {
 		m = press(m, "up")
 	}
 	if m.delegationCursor != 0 {

@@ -141,6 +141,7 @@ type model struct {
 	// Standalone Delegation screen state
 	delegationCursor   int
 	delegationSavedMsg string
+	availableModels    []delegation.AGYModel
 
 	// Web Console state
 	webReady    bool
@@ -164,12 +165,13 @@ type webErrMsg struct {
 func newModel(svc ServiceAPI, homeDir, version string) model {
 	cfg, _ := delegation.Load(filepath.Join(homeDir, ".config", "opencode"))
 	m := model{
-		svc:           svc,
-		homeDir:       homeDir,
-		version:       version,
-		screen:        screenHome,
-		opts:          install.DefaultOptions(),
-		delegationCfg: cfg,
+		svc:             svc,
+		homeDir:         homeDir,
+		version:         version,
+		screen:          screenHome,
+		opts:            install.DefaultOptions(),
+		delegationCfg:   cfg,
+		availableModels: delegation.KnownAGYModels,
 	}
 	m.opts.DelegationConfig = &m.delegationCfg
 	return m

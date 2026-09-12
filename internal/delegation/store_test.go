@@ -503,6 +503,179 @@ claude-sonnet-4-6       Claude Sonnet 4.6 (Thinking)
 	}
 }
 
+func TestBuildAGYArgs_ModelNotSelectableByAgent(t *testing.T) {
+	// 1. role has a specific model configured in TUI; agent request sends a different model.
+	role := RoleConfig{
+		Delegate: true,
+		CLI:      "agy",
+		Mode:     "accept-edits",
+		Model:    "gemini-3.7-flash-high",
+		Effort:   "medium",
+	}
+	req := Request{
+		Role:      "implement",
+		Objective: "Test task",
+		Workspace: "/test/workspace",
+		Model:     "agent-chosen-model-should-be-ignored",
+		Effort:    "low",
+	}
+	args := buildAGYArgs(req, role, "1h", "/test/workspace", false)
+
+	// Verify --model uses role.Model ("gemini-3.7-flash-high"), NOT req.Model
+	foundModel := ""
+	foundEffort := ""
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "--model" {
+			foundModel = args[i+1]
+		}
+		if args[i] == "--effort" {
+			foundEffort = args[i+1]
+		}
+	}
+	if foundModel != "gemini-3.7-flash-high" {
+		t.Fatalf("expected --model to be role model 'gemini-3.7-flash-high', got %q (args: %v)", foundModel, args)
+	}
+	if foundEffort != "medium" {
+		t.Fatalf("expected --effort to be role effort 'medium', got %q (args: %v)", foundEffort, args)
+	}
+
+	// 2. role has empty model; should default to DefaultAGYModel.
+	roleEmpty := RoleConfig{
+		Delegate: true,
+		CLI:      "agy",
+	}
+	argsDefault := buildAGYArgs(req, roleEmpty, "1h", "/test/workspace", false)
+	foundModelDefault := ""
+	for i := 0; i < len(argsDefault)-1; i++ {
+		if argsDefault[i] == "--model" {
+			foundModelDefault = argsDefault[i+1]
+		}
+	}
+	if foundModelDefault != DefaultAGYModel {
+		t.Fatalf("expected --model to fallback to DefaultAGYModel %q, got %q", DefaultAGYModel, foundModelDefault)
+	}
+}
+
+func TestDelegationAllFourRoles(t *testing.T) {
+	ctx := context.Background()
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "delegation.db")
+	store, err := OpenStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	workspace, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working dir: %v", err)
+	}
+
+	// Setup board and task for implement
+	_, _ = store.CreateBoard(ctx, "default", "Default Board", "")
+	_, err = store.CreateWorkInBoard(ctx, "default", "task-impl", "Implement task", nil)
+	if err != nil {
+		t.Fatalf("failed to create work item: %v", err)
+	}
+	claim, err := store.ClaimWork(ctx, "task-impl", "implement-agent", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("failed to claim work item: %v", err)
+	}
+	_, err = store.ReserveWorkLease(ctx, "task-impl", claim.Token, "pkg/foo.go", 5*time.Minute)
+	if err != nil {
+		t.Fatalf("failed to reserve lease: %v", err)
+	}
+
+	testCases := []struct {
+		role              string
+		taskID            string
+		allowedFiles      []string
+		workspaceStrategy string
+		expectedMode      string
+	}{
+		{
+			role:              "implement",
+			taskID:            "task-impl",
+			allowedFiles:      []string{"pkg/foo.go"},
+			workspaceStrategy: "current_workspace",
+			expectedMode:      "accept-edits",
+		},
+		{
+			role:              "investigate",
+			taskID:            "",
+			allowedFiles:      nil,
+			workspaceStrategy: "",
+			expectedMode:      "plan",
+		},
+		{
+			role:              "planner",
+			taskID:            "",
+			allowedFiles:      nil,
+			workspaceStrategy: "",
+			expectedMode:      "plan",
+		},
+		{
+			role:              "reviewer",
+			taskID:            "task-impl",
+			allowedFiles:      nil,
+			workspaceStrategy: "",
+			expectedMode:      "plan",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.role, func(t *testing.T) {
+			req := Request{
+				Role:          tc.role,
+				TaskID:        tc.taskID,
+				Objective:     "Execute objective for " + tc.role,
+				Workspace:     workspace,
+				WorkspaceMode: tc.workspaceStrategy,
+				AllowedFiles:  tc.allowedFiles,
+			}
+			if err := req.Validate(); err != nil {
+				t.Fatalf("request validation failed for role %s: %v", tc.role, err)
+			}
+
+			job, err := CreateFromRequest(ctx, store, req, "direct")
+			if err != nil {
+				t.Fatalf("failed to create job for role %s: %v", tc.role, err)
+			}
+			if job.Role != tc.role {
+				t.Fatalf("expected job role %s, got %s", tc.role, job.Role)
+			}
+			if job.Status != StatusAccepted {
+				t.Fatalf("expected job status accepted, got %s", job.Status)
+			}
+
+			// Verify AGY args building for this role
+			roleCfg := RoleConfig{
+				Delegate: true,
+				CLI:      "agy",
+				Mode:     tc.expectedMode,
+				Model:    DefaultAGYModel,
+			}
+			args := buildAGYArgs(req, roleCfg, "1h", workspace, true)
+			hasModel := false
+			hasMode := false
+			for i := 0; i < len(args)-1; i++ {
+				if args[i] == "--model" && args[i+1] == DefaultAGYModel {
+					hasModel = true
+				}
+				if args[i] == "--mode" && args[i+1] == tc.expectedMode {
+					hasMode = true
+				}
+			}
+			if !hasModel {
+				t.Errorf("args for %s missing --model %s: %v", tc.role, DefaultAGYModel, args)
+			}
+			if tc.expectedMode != "plan" && !hasMode {
+				t.Errorf("args for %s missing --mode %s: %v", tc.role, tc.expectedMode, args)
+			}
+		})
+	}
+}
+
 func TestOpenStoreReadOnly_ConcurrentWithImmediateTransaction(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "delegation.db")

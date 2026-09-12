@@ -244,7 +244,49 @@ func (m model) updateWizardRoles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.wizardCursor < len(delegationRoles) { // 0..3: roles, 4: continue button
 			m.wizardCursor++
 		}
-	case " ", "tab", "right", "left":
+	case "left":
+		if m.wizardCursor < len(delegationRoles) {
+			role := delegationRoles[m.wizardCursor]
+			r := m.delegationCfg.Roles[role]
+			if r.Delegate && r.CLI == "agy" {
+				models := m.availableModels
+				if len(models) == 0 {
+					models = delegation.KnownAGYModels
+				}
+				currentModel := r.Model
+				if currentModel == "" {
+					currentModel = m.delegationCfg.DefaultModel
+				}
+				if currentModel == "" {
+					currentModel = delegation.DefaultAGYModel
+				}
+				r.Model = delegation.PrevModel(currentModel, models)
+				m.delegationCfg.Roles[role] = r
+				m.opts.DelegationConfig = &m.delegationCfg
+			}
+		}
+	case "right":
+		if m.wizardCursor < len(delegationRoles) {
+			role := delegationRoles[m.wizardCursor]
+			r := m.delegationCfg.Roles[role]
+			if r.Delegate && r.CLI == "agy" {
+				models := m.availableModels
+				if len(models) == 0 {
+					models = delegation.KnownAGYModels
+				}
+				currentModel := r.Model
+				if currentModel == "" {
+					currentModel = m.delegationCfg.DefaultModel
+				}
+				if currentModel == "" {
+					currentModel = delegation.DefaultAGYModel
+				}
+				r.Model = delegation.NextModel(currentModel, models)
+				m.delegationCfg.Roles[role] = r
+				m.opts.DelegationConfig = &m.delegationCfg
+			}
+		}
+	case " ", "tab":
 		if m.wizardCursor < len(delegationRoles) {
 			role := delegationRoles[m.wizardCursor]
 			if m.delegationCfg.Roles == nil {
@@ -256,6 +298,12 @@ func (m model) updateWizardRoles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				r.Delegate = true
 				r.CLI = "agy"
 				r.SkipPermissions = true
+				if r.Model == "" {
+					r.Model = m.delegationCfg.DefaultModel
+					if r.Model == "" {
+						r.Model = delegation.DefaultAGYModel
+					}
+				}
 				if role == "implement" {
 					r.Mode = "accept-edits"
 				} else {
@@ -288,7 +336,7 @@ func (m model) viewWizardRoles() string {
 		"",
 		styleSubtitle.Render("Asignación de Motores por Fase / Subagente:"),
 		"",
-		styleDim.Render("Presiona Espacio o Tab para alternar entre [Nativo] y [agy supervisado]:"),
+		styleDim.Render("Presiona Espacio o Tab para alternar motor; ← / → para cambiar modelo AGY:"),
 		"",
 	}
 
@@ -299,7 +347,14 @@ func (m model) viewWizardRoles() string {
 		status := styleDim.Render("[ Nativo OpenCode ]")
 		if r.Delegate {
 			if r.CLI == "agy" {
-				status = stylePass.Render("[ Antigravity CLI (agy) ]")
+				activeModel := r.Model
+				if activeModel == "" {
+					activeModel = m.delegationCfg.DefaultModel
+				}
+				if activeModel == "" {
+					activeModel = delegation.DefaultAGYModel
+				}
+				status = stylePass.Render(fmt.Sprintf("[ AGY (%s) ]", activeModel))
 			}
 		}
 		line := fmt.Sprintf("  • %-12s ➔ %s", role, status)
@@ -319,7 +374,7 @@ func (m model) viewWizardRoles() string {
 	content = append(content, truncate(btnText, width))
 
 	var bottom []string
-	bottom = append(bottom, m.footer("space/tab cambiar motor · enter continuar a review · b volver"))
+	bottom = append(bottom, m.footer("space/tab cambiar motor · ←/→ cambiar modelo · enter continuar a review · b volver"))
 	offset := cursorOffset(cursorLine, len(content), m.bodyHeight(), len(top), len(bottom))
 	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), offset, "up/down"), "\n")
 }

@@ -149,13 +149,11 @@ Follow `cortex-work-protocol.md`; wrap this scoped example in exactly one `<mini
   "acceptance_checks": [],
   "budget": {"max_turns": null, "max_retries": 1},
   "stop_conditions": [],
-  "escalate_when": [],
-  "model": null,
-  "effort": null
+  "escalate_when": []
 }
 ```
 
-- **Dynamic External Model Discovery**: Never hardcode model IDs in prompts or configurations. When delegating to AGY or passing model guidance to controllers, discover supported models dynamically via `cortex_ia_delegation_models` (or CLI `cortex-ia delegate models [--json]` / `agy models`). The orchestrator decides which model ID and effort level (`low`, `medium`, `high`) to recommend based dynamically on task scope and complexity. Note: `effort` applies only to models supporting variable reasoning effort (e.g. Gemini, GPT-OSS). Always pass `effort: null` for Claude models (`claude-*`) as AGY rejects `--effort` for them.
+- **External Model Configuration**: The model and reasoning effort used for external AGY delegation are configured authoritatively by the user via the TUI / `cortex-delegation.json`. Agents must never attempt to select, recommend, or override the delegation model.
 
 - **Blocked-Task Decomposition Routing**: When routing a blocked task to `planner` for decomposition (`cortex_ia_work_decompose`), you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and pass the active project `spec_plane` (`openspec`, `cortex`, or `hybrid`). Never pass `workflow: "direct-change"`, `phase: "tasks"`, or `spec_plane: null`.
 

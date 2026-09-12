@@ -1,0 +1,86 @@
+{
+  "proposal_kind": "work_create_plan",
+  "plan_semantics": "DECLARATIVE_UNEXECUTED_CREATION_PLAN_FOR_TWO_ENGINE_FEATURE_TASKS_ON_DEDICATED_WORK_REVISE_BOARD; separate prerequisite engine initiative, not a Pi recovery payload and not accepted by the current CLI",
+  "execution_status": "ready_for_independent_review_only_no_materialization",
+  "board_id": "work-revise",
+  "workspace": "D:/cortex-ia",
+  "workflow": "sdd-lite",
+  "change_id": "work-revise",
+  "spec_plane": "hybrid",
+  "contract_pin": {
+    "transport": "workspace_file",
+    "project": "D:/cortex-ia",
+    "locator": "openspec/changes/work-revise/plan.md",
+    "sha256": "2d43163abaeb5ee9abc7ae39d75379b6e597b680bc16cc3f23d1b47c64c95785"
+  },
+  "tasks": [
+    {
+      "task_id": "work-revise-1",
+      "title": "[delegation] Implement safe work definition revision",
+      "objective": "Add the store-level engine for an official bounded task definition revision operation. The implementation must accept only unclaimed ready/backlog tasks at an expected revision, preserve task identity, board, workspace and dependencies, and update objective, acceptance, verification, allowed files, title, and the complete SDD contract atomically. All replacement workspace-file pins must be validated read-only before mutation, SDD bindings must not be silently dropped, and every rejection path must leave durable task state unchanged.",
+      "acceptance_criteria": "GIVEN an unclaimed ready/backlog task at the expected revision, WHEN a valid revision plan supplies a complete definition and SDD contract, THEN the definition updates atomically, revision increments once, identity/dependencies are preserved, and a bounded audit event is appended. GIVEN active, claimed, leased, in_review, done, blocked, or superseded task state, WHEN revision is requested, THEN the operation rejects without mutation. GIVEN stale expected revision, unknown fields, dropped SDD binding, invalid allowed file, or mismatched workspace-file pin, WHEN validation runs, THEN the operation fails before DB mutation.",
+      "verification": "go test -count=1 ./internal/delegation -run 'TestReviseWorkDefinition'",
+      "allowed_files": [
+        "internal/delegation/work_revise.go",
+        "internal/delegation/work_revise_test.go"
+      ],
+      "dependencies": [],
+      "sdd_contract": {
+        "version": 1,
+        "workflow": "sdd-lite",
+        "change_id": "work-revise",
+        "spec_plane": "hybrid",
+        "pins": [
+          {
+            "transport": "workspace_file",
+            "project": "D:/cortex-ia",
+            "locator": "openspec/changes/work-revise/plan.md",
+            "sha256": "2d43163abaeb5ee9abc7ae39d75379b6e597b680bc16cc3f23d1b47c64c95785"
+          }
+        ],
+        "requirement_ids": [
+          "REQ-WORK-001",
+          "REQ-WORK-002",
+          "REQ-WORK-003"
+        ]
+      },
+      "line_budget_target": 250,
+      "go_line_cap": 500
+    },
+    {
+      "task_id": "work-revise-2",
+      "title": "[app] Add work revise CLI plan parser",
+      "objective": "Expose the safe revision engine through a bounded `cortex-ia work revise --plan <file|@stdin>` CLI path. The parser must use a versioned JSON payload with explicit task, board, project, expected revision, expected status, workflow, and change identity protections, and must reject all unknown fields before calling the store. The CLI should avoid ad-hoc flags that could omit SDD binding, preserve existing help/command behavior, and include app-level tests proving no board mutation occurs on malformed input.",
+      "acceptance_criteria": "GIVEN a valid JSON revision plan, WHEN `work revise --plan` runs, THEN it calls the store revision operation and prints the updated task JSON. GIVEN an unknown top-level, definition, or contract field, WHEN the plan is decoded, THEN the command fails before opening a mutation path. GIVEN missing identity fields, stale expected status/revision, or omitted SDD contract for an SDD task, WHEN the command runs, THEN it returns an actionable error and leaves state unchanged.",
+      "verification": "go test -count=1 ./internal/app -run 'TestWorkRevise'",
+      "allowed_files": [
+        "internal/app/work_revise.go",
+        "internal/app/work_revise_test.go",
+        "internal/app/work.go"
+      ],
+      "dependencies": [
+        "work-revise-1"
+      ],
+      "sdd_contract": {
+        "version": 1,
+        "workflow": "sdd-lite",
+        "change_id": "work-revise",
+        "spec_plane": "hybrid",
+        "pins": [
+          {
+            "transport": "workspace_file",
+            "project": "D:/cortex-ia",
+            "locator": "openspec/changes/work-revise/plan.md",
+            "sha256": "2d43163abaeb5ee9abc7ae39d75379b6e597b680bc16cc3f23d1b47c64c95785"
+          }
+        ],
+        "requirement_ids": [
+          "REQ-WORK-002",
+          "REQ-WORK-004"
+        ]
+      },
+      "line_budget_target": 250,
+      "go_line_cap": 500
+    }
+  ]
+}

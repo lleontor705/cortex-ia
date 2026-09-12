@@ -41,18 +41,90 @@ type TerminalSettings struct {
 	KeepOpenOnError bool   `json:"keep_open_on_error,omitempty"`
 }
 
+// DefaultAGYModel is the default external model configured for AGY.
+const DefaultAGYModel = "gemini-3.8-flash-high"
+
+// KnownAGYModels provides the canonical list of external AGY models with display names.
+var KnownAGYModels = []AGYModel{
+	{ID: "gemini-3.8-flash-high", Name: "Gemini 3.8 Flash (High)"},
+	{ID: "gemini-3.8-flash-medium", Name: "Gemini 3.8 Flash (Medium)"},
+	{ID: "gemini-3.8-flash-low", Name: "Gemini 3.8 Flash (Low)"},
+	{ID: "gemini-3.7-flash-high", Name: "Gemini 3.7 Flash (High)"},
+	{ID: "gemini-3.7-flash-medium", Name: "Gemini 3.7 Flash (Medium)"},
+	{ID: "gemini-3.7-flash-low", Name: "Gemini 3.7 Flash (Low)"},
+	{ID: "gemini-3.6-flash-high", Name: "Gemini 3.6 Flash (High)"},
+	{ID: "gemini-3.6-flash-medium", Name: "Gemini 3.6 Flash (Medium)"},
+	{ID: "gemini-3.6-flash-low", Name: "Gemini 3.6 Flash (Low)"},
+	{ID: "gemini-3.1-pro-high", Name: "Gemini 3.1 Pro (High)"},
+	{ID: "gemini-3.1-pro-low", Name: "Gemini 3.1 Pro (Low)"},
+	{ID: "claude-sonnet-4-6", Name: "Claude Sonnet 4.6 (Thinking)"},
+	{ID: "claude-opus-4-6-thinking", Name: "Claude Opus 4.6 (Thinking)"},
+	{ID: "gpt-oss-120b-medium", Name: "GPT-OSS 120B (Medium)"},
+}
+
+func NextModel(current string, models []AGYModel) string {
+	if len(models) == 0 {
+		models = KnownAGYModels
+	}
+	idx := -1
+	for i, m := range models {
+		if m.ID == current {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return models[0].ID
+	}
+	return models[(idx+1)%len(models)].ID
+}
+
+func PrevModel(current string, models []AGYModel) string {
+	if len(models) == 0 {
+		models = KnownAGYModels
+	}
+	idx := -1
+	for i, m := range models {
+		if m.ID == current {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return models[len(models)-1].ID
+	}
+	return models[(idx-1+len(models))%len(models)].ID
+}
+
+func ModelDisplayName(id string, models []AGYModel) string {
+	if len(models) == 0 {
+		models = KnownAGYModels
+	}
+	for _, m := range models {
+		if m.ID == id {
+			return m.Name
+		}
+	}
+	if id == "" {
+		return DefaultAGYModel
+	}
+	return id
+}
+
 type DelegationConfig struct {
 	Version           string                `json:"version"`
 	DelegationEnabled bool                  `json:"delegation_enabled"`
 	UseHerdr          bool                  `json:"use_herdr"`
 	HerdrSettings     HerdrSettings         `json:"herdr_settings"`
 	TerminalSettings  TerminalSettings      `json:"terminal_settings,omitempty"`
+	DefaultModel      string                `json:"default_model,omitempty"`
 	Roles             map[string]RoleConfig `json:"roles"`
 }
 
 func NormalConfig() DelegationConfig {
 	return DelegationConfig{
 		Version:       "2.0.0",
+		DefaultModel:  DefaultAGYModel,
 		HerdrSettings: HerdrSettings{SplitDirection: "right", TimeoutSeconds: 1800, Presentation: "tab", AutoClose: true},
 		Roles: map[string]RoleConfig{
 			"implement": {CLI: "native"}, "investigate": {CLI: "native"},
@@ -66,10 +138,11 @@ func DefaultDelegationConfig(useHerdr bool) DelegationConfig {
 	cfg.DelegationEnabled = true
 	cfg.UseHerdr = useHerdr
 	cfg.HerdrSettings.AutoSplit = useHerdr
-	cfg.Roles["implement"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "accept-edits", SkipPermissions: true}
-	cfg.Roles["investigate"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true}
-	cfg.Roles["planner"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true}
-	cfg.Roles["reviewer"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true}
+	cfg.DefaultModel = DefaultAGYModel
+	cfg.Roles["implement"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "accept-edits", SkipPermissions: true, Model: DefaultAGYModel}
+	cfg.Roles["investigate"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true, Model: DefaultAGYModel}
+	cfg.Roles["planner"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true, Model: DefaultAGYModel}
+	cfg.Roles["reviewer"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true, Model: DefaultAGYModel}
 	return cfg
 }
 
@@ -189,6 +262,15 @@ func Load(configDir string) (DelegationConfig, error) {
 			} else {
 				roleCfg.Mode = "plan"
 			}
+			cfg.Roles[role] = roleCfg
+		}
+	}
+	if cfg.DefaultModel == "" {
+		cfg.DefaultModel = DefaultAGYModel
+	}
+	for role, roleCfg := range cfg.Roles {
+		if roleCfg.CLI == "agy" && roleCfg.Model == "" {
+			roleCfg.Model = cfg.DefaultModel
 			cfg.Roles[role] = roleCfg
 		}
 	}

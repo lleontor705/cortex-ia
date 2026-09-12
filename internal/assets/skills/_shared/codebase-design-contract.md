@@ -59,3 +59,10 @@ When a task is blocked because its scope is too broad, the orchestrator decides 
 - **Orchestrator:** decide when investigation, design comparison, or decomposition is needed; dispatch the responsible role and monitor authoritative DAG state.
 - **Implement:** preserve the selected interface and dependency direction; do not add speculative abstraction or unapproved architecture variants.
 - **Reviewer:** detect architectural regression, including widened interfaces, shallow wrappers, misplaced seams, new cycles, and tests coupled to implementation details.
+
+## Code-Intelligence Invariant & Test Partitioning Boundary
+
+1. **AST & Code-Intelligence Noninterference (REQ-PRIV-007)**:
+   Codebase intelligence structures—including AST symbols, doc summaries (`DocSummary`), graph relations, call reasoning (`Reasoning`), and semantic tokens—are immutable codebase structure, not user data or session state. Sanitization, redaction, or privacy preflight logic must NEVER redact, strip, or alter code intelligence fields.
+2. **Modular Test Fixture Partitioning**:
+   Test fixtures must remain bounded and modular. Never append extensive test suites to a pre-existing test file exceeding 300 LOC. Assign dedicated, modular test files for new features, negative cases, or fault injections (bounded to <= 250 LOC per test file) to prevent workload budget overruns.

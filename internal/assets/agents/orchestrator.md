@@ -48,7 +48,6 @@ tools:
   cortex_ia_content_hash: true
   cortex_ia_openspec_validate: true
   cortex_ia_change_archive: true
-  cortex_ia_delegation_models: true
   cortex_ia_delegation_cancel: true
   cortex_ia_delegation_recover: true
   cortex_ia_report_error: true
@@ -151,9 +150,7 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
   "worktree": null,
   "artifact_refs": ["string"],
   "max_steps": 30,
-  "budget_tier": "low | medium | high",
-  "model": "string | null",
-  "effort": "low | medium | high | null"
+  "budget_tier": "low | medium | high"
 }
 </minion-dispatch>
 ```
@@ -166,10 +163,10 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
    - At each orchestration milestone, record a cycle reflection: summary of completed work, whether drift was detected (`drift: true`), and next action (`continue | replan | block | done`).
    - Drift detection immediately halts dispatch and prompts realignment or decomposition.
 
-- **Dynamic External Model Discovery**: Never hardcode model IDs in prompts, plans, or configurations. If delegating to AGY or passing model guidance, query currently available models dynamically via `cortex_ia_delegation_models` (or CLI `cortex-ia delegate models [--json]` / `agy models`). The orchestrator decides the appropriate model ID and effort level dynamically based on task scope and complexity (e.g. flash/low effort for quick lookups, pro/high effort for complex refactoring/architecture). Note: `effort` (`low | medium | high`) applies only to models that support variable reasoning effort (e.g. Gemini, GPT-OSS). Always pass `effort: null` for Claude models (`claude-*`) because AGY CLI rejects `--effort` for them.
+- **External Model Configuration**: The model and reasoning effort used for external AGY delegation are configured authoritatively by the user via the TUI (`cortex-ia` -> Configure Delegation) and saved in `cortex-delegation.json`. Agents do NOT select, recommend, or override the delegation model.
 
 ### Blocked Task Decomposition Envelope (to planner)
-When routing a blocked task (e.g. `WORKLOAD_BUDGET_EXCEEDED`, two consecutive review FAIL verdicts, or repeated attempt failure) to `planner` for decomposition via `cortex_ia_work_decompose`, you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and supply the session's active `spec_plane`. **A task that fails review twice must NEVER be retried directly as the same monolithic task**; it must be decomposed into stacked subtasks (<= 250 LOC).
+When routing a blocked task (e.g. `WORKLOAD_SOURCE_BUDGET_EXCEEDED`, `WORKLOAD_TEST_BUDGET_EXCEEDED`, two consecutive review FAIL verdicts, or repeated attempt failure) to `planner` for decomposition via `cortex_ia_work_decompose`, you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and supply the session's active `spec_plane`. **A task that fails review twice must NEVER be retried directly as the same monolithic task**; it must be decomposed into stacked subtasks (<= 250 LOC).
 
 ```json
 <minion-dispatch>
@@ -187,9 +184,7 @@ When routing a blocked task (e.g. `WORKLOAD_BUDGET_EXCEEDED`, two consecutive re
   "worktree": null,
   "artifact_refs": [],
   "max_steps": null,
-  "budget_tier": "medium",
-  "model": null,
-  "effort": null
+  "budget_tier": "medium"
 }
 </minion-dispatch>
 ```
