@@ -1213,8 +1213,5 @@ func supportsEffort(model string) bool {
 		return false
 	}
 	lower := strings.ToLower(trimmed)
-	if strings.Contains(lower, "claude") {
-		return false
-	}
-	return true
+	return !strings.Contains(lower, "claude")
 }
