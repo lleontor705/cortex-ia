@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 90" width="100%" height="100%">
+  <defs>
+    <!-- Background / Shadow filters -->
+    <filter id="cortex-glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <linearGradient id="cortex-grad-violet-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="50%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+
+    <linearGradient id="cortex-grad-cyan-emerald" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+
+    <linearGradient id="cortex-badge-fill" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E1B4B" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#0C1E38" stop-opacity="0.8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Brand Icon Badge -->
+  <g transform="translate(10, 8)">
+    <!-- Hexagonal / Shield Outer Frame -->
+    <rect x="0" y="0" width="74" height="74" rx="18" fill="url(#cortex-badge-fill)" stroke="url(#cortex-grad-violet-cyan)" stroke-width="2"/>
+    
+    <!-- Neural Brain / Cortex Circuits -->
+    <g transform="translate(13, 13)" filter="url(#cortex-glow)">
+      <!-- Left Hemisphere Outer Curve -->
+      <path d="M 24 6 C 14 6, 6 14, 6 24 C 6 32, 12 38, 16 42 C 20 40, 24 38, 24 32" 
+            fill="none" stroke="#8B5CF6" stroke-width="2.5" stroke-linecap="round"/>
+      
+      <!-- Right Hemisphere Outer Curve -->
+      <path d="M 24 6 C 34 6, 42 14, 42 24 C 42 32, 36 38, 32 42 C 28 40, 24 38, 24 32" 
+            fill="none" stroke="#06B6D4" stroke-width="2.5" stroke-linecap="round"/>
+
+      <!-- Synaptic Circuit Traces (Left) -->
+      <path d="M 12 18 L 18 18 L 22 22 L 22 28" fill="none" stroke="#A78BFA" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M 10 26 L 16 26 L 19 29" fill="none" stroke="#8B5CF6" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M 15 34 L 20 34" fill="none" stroke="#A78BFA" stroke-width="1.8" stroke-linecap="round"/>
+
+      <!-- Synaptic Circuit Traces (Right) -->
+      <path d="M 36 18 L 30 18 L 26 22 L 26 28" fill="none" stroke="#38BDF8" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M 38 26 L 32 26 L 29 29" fill="none" stroke="#06B6D4" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M 33 34 L 28 34" fill="none" stroke="#10B981" stroke-width="1.8" stroke-linecap="round"/>
+
+      <!-- Central Core / Axis -->
+      <line x1="24" y1="8" x2="24" y2="34" stroke="#F8FAFC" stroke-width="2" stroke-dasharray="3 2" opacity="0.8"/>
+
+      <!-- Neural Synapse Nodes (Glowing Dots) -->
+      <circle cx="12" cy="18" r="2.2" fill="#C4B5FD"/>
+      <circle cx="22" cy="28" r="2.2" fill="#8B5CF6"/>
+      <circle cx="10" cy="26" r="2" fill="#A78BFA"/>
+      <circle cx="36" cy="18" r="2.2" fill="#67E8F9"/>
+      <circle cx="26" cy="28" r="2.2" fill="#06B6D4"/>
+      <circle cx="38" cy="26" r="2" fill="#38BDF8"/>
+      <circle cx="24" cy="14" r="2.5" fill="#FFFFFF"/>
+      <circle cx="24" cy="36" r="2" fill="#10B981"/>
+    </g>
+  </g>
+
+  <!-- Typography -->
+  <g transform="translate(102, 24)">
+    <!-- Main Title -->
+    <text x="0" y="32" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="34" font-weight="900" letter-spacing="-0.03em" fill="#F8FAFC">
+      CORTEX<tspan fill="url(#cortex-grad-cyan-emerald)">·IA</tspan>
+    </text>
+
+    <!-- Subtitle -->
+    <text x="2" y="52" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="700" letter-spacing="0.16em" text-transform="uppercase" fill="#94A3B8">
+      ADAPTIVE DEVELOPMENT HARNESS
+    </text>
+  </g>
+</svg>

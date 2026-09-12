@@ -15,6 +15,7 @@ import {
   createRoot,
   createSignal,
 } from "solid-js";
+import { useTerminalDimensions } from "@opentui/solid";
 import type { BoxRenderable } from "@opentui/core";
 
 const SNAPSHOT_POLL_INTERVAL_MS = 2500;
@@ -454,28 +455,30 @@ function MultiColorProgressBar(props: {
   textLimit: number;
   theme: TuiThemeCurrent;
 }) {
-  const w = Math.max(3, Math.min(props.width || 14, props.textLimit - (props.compact ? 8 : 14)));
-  const total = Math.max(props.total, 1);
-  const doneW = Math.round((props.done / total) * w);
-  const revW = Math.round((props.inReview / total) * w);
-  const progW = Math.round((props.inProgress / total) * w);
-  const blckW = Math.round(((props.blocked || 0) / total) * w);
-  const emptyW = Math.max(0, w - doneW - revW - progW - blckW);
-  const pct = Math.round((props.done / total) * 100);
-  const waiting = Math.max(0, props.total - props.done - props.inReview - props.inProgress - (props.blocked || 0));
+  const w = createMemo(() => Math.max(3, Math.min(props.width || 14, props.textLimit - (props.compact ? 8 : 14))));
+  const total = createMemo(() => Math.max(props.total, 1));
+  const doneW = createMemo(() => Math.min(w(), Math.round((props.done / total()) * w())));
+  const revW = createMemo(() => Math.min(Math.max(0, w() - doneW()), Math.round((props.inReview / total()) * w())));
+  const progW = createMemo(() => Math.min(Math.max(0, w() - doneW() - revW()), Math.round((props.inProgress / total()) * w())));
+  const blckW = createMemo(() => Math.min(Math.max(0, w() - doneW() - revW() - progW()), Math.round(((props.blocked || 0) / total()) * w())));
+  const emptyW = createMemo(() => Math.max(0, w() - doneW() - revW() - progW() - blckW()));
+  const pct = createMemo(() => Math.min(100, Math.max(0, Math.round((props.done / total()) * 100))));
+  const waiting = createMemo(() =>
+    Math.max(0, props.total - props.done - props.inReview - props.inProgress - (props.blocked || 0))
+  );
 
   return (
     <box flexDirection="column" marginTop={1}>
       <box flexDirection="row">
         <text fg={CORTEX_THEME.neonCyan}>{props.compact ? "D:" : "DAG: "}</text>
-        <text fg={CORTEX_THEME.emeraldGreen}>{"█".repeat(doneW)}</text>
-        <text fg={CORTEX_THEME.brandPurple}>{"▓".repeat(revW)}</text>
-        <text fg={CORTEX_THEME.amberGold}>{"▒".repeat(progW)}</text>
-        <Show when={blckW > 0}>
-          <text fg={CORTEX_THEME.roseRed}>{"▓".repeat(blckW)}</text>
+        <text fg={CORTEX_THEME.emeraldGreen}>{"█".repeat(doneW())}</text>
+        <text fg={CORTEX_THEME.brandPurple}>{"▓".repeat(revW())}</text>
+        <text fg={CORTEX_THEME.amberGold}>{"▒".repeat(progW())}</text>
+        <Show when={blckW() > 0}>
+          <text fg={CORTEX_THEME.roseRed}>{"▓".repeat(blckW())}</text>
         </Show>
-        <text fg={CORTEX_THEME.slateBorder}>{"░".repeat(emptyW)}</text>
-        <text fg={CORTEX_THEME.pureWhite}>{` ${pct}%`}</text>
+        <text fg={CORTEX_THEME.slateBorder}>{"░".repeat(emptyW())}</text>
+        <text fg={CORTEX_THEME.pureWhite}>{` ${pct()}%`}</text>
         <text fg={CORTEX_THEME.slateMuted}>{props.compact ? "" : ` (${props.done}/${props.total})`}</text>
       </box>
       <box flexDirection="row">
@@ -485,7 +488,7 @@ function MultiColorProgressBar(props: {
         <Show when={(props.blocked || 0) > 0}>
           <text fg={CORTEX_THEME.roseRed}>{`✕${props.blocked} `}</text>
         </Show>
-        <text fg={CORTEX_THEME.slateMuted}>{`○${waiting}`}</text>
+        <text fg={CORTEX_THEME.slateMuted}>{`○${waiting()}`}</text>
       </box>
     </box>
   );
@@ -1126,6 +1129,67 @@ function HomeBottomStatus(props: {
   );
 }
 
+const CORTEX_LOGO_BRAILLE = [
+  "       ⣠⣶⣿⣿⣿⣿⣶⣤⡀       ⢀⣤⣶⣿⣿⣿⣿⣶⣄",
+  "    ⢰⣿⣿⠟⠉   ⠙⢿⣿⣷⡀   ⢠⣾⣿⡿⠋   ⠈⠻⣿⣿⡆",
+  "   ⢠⣿⣿⠋  ⢀⣤⣤⣀  ⠹⣿⣿⣄⣠⣿⣿⠏  ⣀⣤⣤⡀  ⠙⣿⣿⡄",
+  "   ⣾⣿⠃  ⢰⣿⣿⣿⣿⣷⡀ ⠹⣿⣿⣿⣿⠏ ⢠⣾⣿⣿⣿⣿⡆  ⠘⣿⣷",
+  "  ⢸⣿⡟   ⠸⣿⣿⣿⣿⣿⣿⣆ ⠹⣿⣿⠏ ⣰⣿⣿⣿⣿⣿⣿⠇   ⢻⣿⡇",
+  "  ⠘⣿⣧    ⠈⠛⠿⣿⣿⣿⣿⣷⣄⠙⠋⣠⣾⣿⣿⣿⣿⠿⠛⠁    ⣼⣿⠃",
+  "   ⠹⣿⣧⡀     ⠈⠙⠿⣿⣿⣿⡆⢰⣿⣿⣿⠿⠋⠁     ⢀⣼⣿⠏",
+  "    ⠙⢿⣿⣦⡀   ⢀⣠⣴⣿⣿⣿⡇⢸⣿⣿⣿⣦⣄⡀   ⢀⣴⣿⡿⠋",
+  "      ⠉⠛⠿⣿⣿⣿⣿⣿⣿⡿⠛⠁ ⠈⠛⢿⣿⣿⣿⣿⣿⣿⠿⠛⠉",
+  "  ██████╗ ██████╗ ██████╗ ████████╗███████╗██╗  ██╗     ██╗ █████╗ ",
+  " ██╔════╝██╔═══██╗██╔══██╗╚══██╔══╝██╔════╝╚██╗██╔╝     ██║██╔══██╗",
+  " ██║     ██║   ██║██████╔╝   ██║   █████╗   ╚███╔╝█████╗██║███████║",
+  " ██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗╚════╝██║██╔══██║",
+  " ╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗     ██║██║  ██║",
+  "  ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝     ╚═╝╚═╝  ╚═╝",
+];
+
+function HomeLogo() {
+  const dim = useTerminalDimensions();
+  const isLarge = createMemo(() => {
+    const d = dim();
+    return d.height >= CORTEX_LOGO_BRAILLE.length + 5 && d.width >= 72;
+  });
+
+  return (
+    <box flexDirection="column" alignItems="center" marginBottom={1}>
+      <Show
+        when={isLarge()}
+        fallback={
+          <box flexDirection="column" alignItems="center">
+            <text fg={CORTEX_THEME.neonCyan} bold={true}>
+              {"◈ CORTEX · IA ◈"}
+            </text>
+            <text fg={CORTEX_THEME.slateMuted}>
+              {"[Adaptive Cognitive Control Plane]"}
+            </text>
+          </box>
+        }
+      >
+        <For each={CORTEX_LOGO_BRAILLE}>
+          {(line, index) => {
+            const color =
+              index() < 4
+                ? CORTEX_THEME.brandViolet
+                : index() < 9
+                ? CORTEX_THEME.neonCyan
+                : index() < 12
+                ? CORTEX_THEME.skyBlue
+                : CORTEX_THEME.brandPurple;
+            return <text fg={color}>{line}</text>;
+          }}
+        </For>
+        <text fg={CORTEX_THEME.slateMuted} marginTop={1}>
+          {"⚡ OpenCode Multi-Agent Control Plane & Task DAG ⚡"}
+        </text>
+      </Show>
+    </box>
+  );
+}
+
 function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
   const nativeActivity = createMemo(() => nativeSessionActivity(api));
   const scopeReady = createMemo(() => Boolean(conversationScope(api)?.project));
@@ -1235,6 +1299,9 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
   api.slots.register({
     order: 85,
     slots: {
+      home_logo() {
+        return <HomeLogo />;
+      },
       sidebar_content(ctx) {
         return (
           <SidebarStatus

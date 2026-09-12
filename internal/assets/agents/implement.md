@@ -96,10 +96,13 @@ Before modifying code or executing mutating shell commands, execute these steps 
 - **Authority validation**: Before claiming that an existing attempt is still owned, call `cortex_ia_work_status` and require `bridge_authority.usable=true`, `owned_by_current_session=true`, and `durable_claim_live=true`; before any write additionally require `bridge_authority.write_usable=true`. Durable `status=in_progress` alone is not authority.
 - **Heartbeat renewal**: Renew with `cortex_ia_work_renew` and `cortex_ia_work_lease_renew` before TTL expiry.
 - **Authority loss**: If authority expires or a bridge reload loses its in-memory handle, STOP writing immediately, preserve the diff, and return `BLOCKED` for reconciliation; never reclaim blindly.
-- **Workload Budget Guard (<= 400 lines)**: Monitor the volume of changes. If implementation starts to exceed ~400 changed lines, STOP modifying. Do not force an oversized unit into one task: transition to `blocked` with reason `WORKLOAD_BUDGET_EXCEEDED` and request the orchestrator to route decomposition via `planner` (`cortex_ia_work_decompose`).
+- **Workload Budget Guard (<= 400 lines target, <= 500 lines hard cap in Go, <= 350 lines in TS/Python)**: Monitor the volume of changes. If implementation starts to exceed the budget, STOP modifying. Do not force an oversized unit into one task: transition to `blocked` with reason `WORKLOAD_BUDGET_EXCEEDED` and request the orchestrator to route decomposition via `planner` (`cortex_ia_work_decompose`).
 
 ### Step 4: Rules & Evidence Compliance
 - **Invariant Rules**: Strictly adhere to all constraints passed in `dispatch_envelope.project_rules`.
+- **In-Memory Immutability & Contract Integrity**:
+  - Validation routines for collections or batches must operate on defensive copies or avoid mutating caller-supplied structures in-place before the entire request is proven valid.
+  - NEVER weaken contracts by silently skipping invalid records (`skip invalid records`) to force green test results; all validation failures must reject atomically unless partial success is explicitly specified in the contract.
 - **Agent Assets**: When the task changes prompts, skills, commands, `AGENTS.md`, or shared contracts, read `~/.cortex-ia/opencode/contracts/agent-writing-contract.md`; use explicit triggers, checkable completion criteria, progressive disclosure, and one source of truth.
 - **Closed-Loop Remediation**: If `evidence_refs` contains a prior failure gotcha (e.g. `gotchas/<task_id>`), read it via `cortex_get_observation` to avoid repeating the same root cause.
 
@@ -114,6 +117,7 @@ Before modifying code or executing mutating shell commands, execute these steps 
 - Never dump full stdout; never persist authority tokens.
 
 ### Step 7: Transition & Review
+- **Pre-Transition Workload Preflight**: Before transitioning to `in_review`, run `git diff --stat` to measure changed lines. If changed lines exceed the hard cap (<= 500 LOC in Go, <= 350 LOC in TS/Python), **transitioning to `in_review` is strictly forbidden**. You MUST transition to `blocked` with `WORKLOAD_BUDGET_EXCEEDED`.
 - Follow the canonical completion order: verify -> sanitized evidence -> `cortex_ia_work_transition({ to: "in_review" })` (file leases are auto-released on transition) -> independent reviewer -> `cortex_ia_work_approve`.
 - The implementation claim remains until review so self-approval remains detectable; approval releases it.
 - Only reviewer `PASS` can produce `done`. On implementation FAIL or BLOCKED, transition to `blocked` to release authority and log evidence.

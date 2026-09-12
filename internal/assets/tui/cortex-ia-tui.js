@@ -12,6 +12,7 @@ import { execFile, spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { For, Show, createEffect, createMemo, createRoot, createSignal } from "solid-js";
+import { useTerminalDimensions } from "@opentui/solid";
 var SNAPSHOT_POLL_INTERVAL_MS = 2500;
 var SNAPSHOT_STALE_MS = 1e4;
 var MAX_VISIBLE_ROWS = 4;
@@ -470,15 +471,15 @@ function Section(props) {
   })();
 }
 function MultiColorProgressBar(props) {
-  const w = Math.max(3, Math.min(props.width || 14, props.textLimit - (props.compact ? 8 : 14)));
-  const total = Math.max(props.total, 1);
-  const doneW = Math.round(props.done / total * w);
-  const revW = Math.round(props.inReview / total * w);
-  const progW = Math.round(props.inProgress / total * w);
-  const blckW = Math.round((props.blocked || 0) / total * w);
-  const emptyW = Math.max(0, w - doneW - revW - progW - blckW);
-  const pct = Math.round(props.done / total * 100);
-  const waiting = Math.max(0, props.total - props.done - props.inReview - props.inProgress - (props.blocked || 0));
+  const w = createMemo(() => Math.max(3, Math.min(props.width || 14, props.textLimit - (props.compact ? 8 : 14))));
+  const total = createMemo(() => Math.max(props.total, 1));
+  const doneW = createMemo(() => Math.min(w(), Math.round(props.done / total() * w())));
+  const revW = createMemo(() => Math.min(Math.max(0, w() - doneW()), Math.round(props.inReview / total() * w())));
+  const progW = createMemo(() => Math.min(Math.max(0, w() - doneW() - revW()), Math.round(props.inProgress / total() * w())));
+  const blckW = createMemo(() => Math.min(Math.max(0, w() - doneW() - revW() - progW()), Math.round((props.blocked || 0) / total() * w())));
+  const emptyW = createMemo(() => Math.max(0, w() - doneW() - revW() - progW() - blckW()));
+  const pct = createMemo(() => Math.min(100, Math.max(0, Math.round(props.done / total() * 100))));
+  const waiting = createMemo(() => Math.max(0, props.total - props.done - props.inReview - props.inProgress - (props.blocked || 0)));
   return (() => {
     var _el$32 = _$createElement("box"), _el$33 = _$createElement("box"), _el$34 = _$createElement("text"), _el$35 = _$createElement("text"), _el$36 = _$createElement("text"), _el$37 = _$createElement("text"), _el$39 = _$createElement("text"), _el$40 = _$createElement("text"), _el$41 = _$createElement("text"), _el$42 = _$createElement("box"), _el$43 = _$createElement("text"), _el$44 = _$createElement("text"), _el$45 = _$createElement("text"), _el$47 = _$createElement("text");
     _$insertNode(_el$32, _el$33);
@@ -494,20 +495,22 @@ function MultiColorProgressBar(props) {
     _$insertNode(_el$33, _el$41);
     _$setProp(_el$33, "flexDirection", "row");
     _$insert(_el$34, () => props.compact ? "D:" : "DAG: ");
-    _$insert(_el$35, () => "\u2588".repeat(doneW));
-    _$insert(_el$36, () => "\u2593".repeat(revW));
-    _$insert(_el$37, () => "\u2592".repeat(progW));
+    _$insert(_el$35, () => "\u2588".repeat(doneW()));
+    _$insert(_el$36, () => "\u2593".repeat(revW()));
+    _$insert(_el$37, () => "\u2592".repeat(progW()));
     _$insert(_el$33, _$createComponent(Show, {
-      when: blckW > 0,
+      get when() {
+        return blckW() > 0;
+      },
       get children() {
         var _el$38 = _$createElement("text");
-        _$insert(_el$38, () => "\u2593".repeat(blckW));
+        _$insert(_el$38, () => "\u2593".repeat(blckW()));
         _$effect((_$p) => _$setProp(_el$38, "fg", CORTEX_THEME.roseRed, _$p));
         return _el$38;
       }
     }), _el$39);
-    _$insert(_el$39, () => "\u2591".repeat(emptyW));
-    _$insert(_el$40, ` ${pct}%`);
+    _$insert(_el$39, () => "\u2591".repeat(emptyW()));
+    _$insert(_el$40, () => ` ${pct()}%`);
     _$insert(_el$41, (() => {
       var _c$ = _$memo(() => !!props.compact);
       return () => _c$() ? "" : ` (${props.done}/${props.total})`;
@@ -531,7 +534,7 @@ function MultiColorProgressBar(props) {
         return _el$46;
       }
     }), _el$47);
-    _$insert(_el$47, `\u25CB${waiting}`);
+    _$insert(_el$47, () => `\u25CB${waiting()}`);
     _$effect((_p$) => {
       var _v$13 = CORTEX_THEME.neonCyan, _v$14 = CORTEX_THEME.emeraldGreen, _v$15 = CORTEX_THEME.brandPurple, _v$16 = CORTEX_THEME.amberGold, _v$17 = CORTEX_THEME.slateBorder, _v$18 = CORTEX_THEME.pureWhite, _v$19 = CORTEX_THEME.slateMuted, _v$20 = CORTEX_THEME.emeraldGreen, _v$21 = CORTEX_THEME.brandPurple, _v$22 = CORTEX_THEME.amberGold, _v$23 = CORTEX_THEME.slateMuted;
       _v$13 !== _p$.e && (_p$.e = _$setProp(_el$34, "fg", _v$13, _p$.e));
@@ -1566,6 +1569,68 @@ function HomeBottomStatus(props) {
     }
   });
 }
+var CORTEX_LOGO_BRAILLE = ["       \u28E0\u28F6\u28FF\u28FF\u28FF\u28FF\u28F6\u28E4\u2840       \u2880\u28E4\u28F6\u28FF\u28FF\u28FF\u28FF\u28F6\u28C4", "    \u28B0\u28FF\u28FF\u281F\u2809   \u2819\u28BF\u28FF\u28F7\u2840   \u28A0\u28FE\u28FF\u287F\u280B   \u2808\u283B\u28FF\u28FF\u2846", "   \u28A0\u28FF\u28FF\u280B  \u2880\u28E4\u28E4\u28C0  \u2839\u28FF\u28FF\u28C4\u28E0\u28FF\u28FF\u280F  \u28C0\u28E4\u28E4\u2840  \u2819\u28FF\u28FF\u2844", "   \u28FE\u28FF\u2803  \u28B0\u28FF\u28FF\u28FF\u28FF\u28F7\u2840 \u2839\u28FF\u28FF\u28FF\u28FF\u280F \u28A0\u28FE\u28FF\u28FF\u28FF\u28FF\u2846  \u2818\u28FF\u28F7", "  \u28B8\u28FF\u285F   \u2838\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u28C6 \u2839\u28FF\u28FF\u280F \u28F0\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u2807   \u28BB\u28FF\u2847", "  \u2818\u28FF\u28E7    \u2808\u281B\u283F\u28FF\u28FF\u28FF\u28FF\u28F7\u28C4\u2819\u280B\u28E0\u28FE\u28FF\u28FF\u28FF\u28FF\u283F\u281B\u2801    \u28FC\u28FF\u2803", "   \u2839\u28FF\u28E7\u2840     \u2808\u2819\u283F\u28FF\u28FF\u28FF\u2846\u28B0\u28FF\u28FF\u28FF\u283F\u280B\u2801     \u2880\u28FC\u28FF\u280F", "    \u2819\u28BF\u28FF\u28E6\u2840   \u2880\u28E0\u28F4\u28FF\u28FF\u28FF\u2847\u28B8\u28FF\u28FF\u28FF\u28E6\u28C4\u2840   \u2880\u28F4\u28FF\u287F\u280B", "      \u2809\u281B\u283F\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u287F\u281B\u2801 \u2808\u281B\u28BF\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u283F\u281B\u2809", "  \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2557  \u2588\u2588\u2557     \u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2557 ", " \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D\u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2557\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557\u255A\u2550\u2550\u2588\u2588\u2554\u2550\u2550\u255D\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D\u255A\u2588\u2588\u2557\u2588\u2588\u2554\u255D     \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557", " \u2588\u2588\u2551     \u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255D   \u2588\u2588\u2551   \u2588\u2588\u2588\u2588\u2588\u2557   \u255A\u2588\u2588\u2588\u2554\u255D\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551", " \u2588\u2588\u2551     \u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557   \u2588\u2588\u2551   \u2588\u2588\u2554\u2550\u2550\u255D   \u2588\u2588\u2554\u2588\u2588\u2557\u255A\u2550\u2550\u2550\u2550\u255D\u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2551", " \u255A\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u255A\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255D\u2588\u2588\u2551  \u2588\u2588\u2551   \u2588\u2588\u2551   \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2554\u255D \u2588\u2588\u2557     \u2588\u2588\u2551\u2588\u2588\u2551  \u2588\u2588\u2551", "  \u255A\u2550\u2550\u2550\u2550\u2550\u255D \u255A\u2550\u2550\u2550\u2550\u2550\u255D \u255A\u2550\u255D  \u255A\u2550\u255D   \u255A\u2550\u255D   \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u255D\u255A\u2550\u255D  \u255A\u2550\u255D     \u255A\u2550\u255D\u255A\u2550\u255D  \u255A\u2550\u255D"];
+function HomeLogo() {
+  const dim = useTerminalDimensions();
+  const isLarge = createMemo(() => {
+    const d = dim();
+    return d.height >= CORTEX_LOGO_BRAILLE.length + 5 && d.width >= 72;
+  });
+  return (() => {
+    var _el$170 = _$createElement("box");
+    _$setProp(_el$170, "flexDirection", "column");
+    _$setProp(_el$170, "alignItems", "center");
+    _$setProp(_el$170, "marginBottom", 1);
+    _$insert(_el$170, _$createComponent(Show, {
+      get when() {
+        return isLarge();
+      },
+      get fallback() {
+        return (() => {
+          var _el$173 = _$createElement("box"), _el$174 = _$createElement("text"), _el$176 = _$createElement("text");
+          _$insertNode(_el$173, _el$174);
+          _$insertNode(_el$173, _el$176);
+          _$setProp(_el$173, "flexDirection", "column");
+          _$setProp(_el$173, "alignItems", "center");
+          _$insertNode(_el$174, _$createTextNode(`\u25C8 CORTEX \xB7 IA \u25C8`));
+          _$setProp(_el$174, "bold", true);
+          _$insertNode(_el$176, _$createTextNode(`[Adaptive Cognitive Control Plane]`));
+          _$effect((_p$) => {
+            var _v$69 = CORTEX_THEME.neonCyan, _v$70 = CORTEX_THEME.slateMuted;
+            _v$69 !== _p$.e && (_p$.e = _$setProp(_el$174, "fg", _v$69, _p$.e));
+            _v$70 !== _p$.t && (_p$.t = _$setProp(_el$176, "fg", _v$70, _p$.t));
+            return _p$;
+          }, {
+            e: void 0,
+            t: void 0
+          });
+          return _el$173;
+        })();
+      },
+      get children() {
+        return [_$createComponent(For, {
+          each: CORTEX_LOGO_BRAILLE,
+          children: (line, index) => {
+            const color = index() < 4 ? CORTEX_THEME.brandViolet : index() < 9 ? CORTEX_THEME.neonCyan : index() < 12 ? CORTEX_THEME.skyBlue : CORTEX_THEME.brandPurple;
+            return (() => {
+              var _el$178 = _$createElement("text");
+              _$setProp(_el$178, "fg", color);
+              _$insert(_el$178, line);
+              return _el$178;
+            })();
+          }
+        }), (() => {
+          var _el$171 = _$createElement("text");
+          _$insertNode(_el$171, _$createTextNode(`\u26A1 OpenCode Multi-Agent Control Plane &amp; Task DAG \u26A1`));
+          _$setProp(_el$171, "marginTop", 1);
+          _$effect((_$p) => _$setProp(_el$171, "fg", CORTEX_THEME.slateMuted, _$p));
+          return _el$171;
+        })()];
+      }
+    }));
+    return _el$170;
+  })();
+}
 function initialize(api, disposeRoot) {
   const nativeActivity = createMemo(() => nativeSessionActivity(api));
   const scopeReady = createMemo(() => Boolean(conversationScope(api)?.project));
@@ -1648,6 +1713,9 @@ function initialize(api, disposeRoot) {
   api.slots.register({
     order: 85,
     slots: {
+      home_logo() {
+        return _$createComponent(HomeLogo, {});
+      },
       sidebar_content(ctx) {
         return _$createComponent(SidebarStatus, {
           nativeActivity,

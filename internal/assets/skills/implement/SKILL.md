@@ -48,8 +48,10 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
    - Run focused checks, then proportional regression. Record command, exit code, revision, timestamp, and concise result.
 5. **Diff Review & Proactive Memory (MANDATORY):**
    - Review the diff for scope creep, secrets, unsafe paths, and accidental generated drift.
+   - **In-Memory Immutability & Contract Integrity**: Ensure multi-record validations do not mutate caller input in-place, and never weaken contracts by silently skipping invalid records to force green tests.
    - Persist any bug root cause, discovery, gotcha, or decision made in Cortex (`cortex_save` with standard taxonomies: `bugfix/*`, `gotchas/*`, `architecture/*`). Never dump full stdout.
-6. **Complete Lifecycle & Cleanup:**
+6. **Pre-Transition Workload Preflight & Cleanup:**
+   - Run `git diff --stat` before transitioning. If cumulative changed lines exceed the limit (<= 500 LOC in Go, <= 350 LOC in TS/Python), **transitioning to `in_review` is strictly forbidden**: transition to `blocked` with `WORKLOAD_BUDGET_EXCEEDED` to trigger DAG decomposition.
    - Complete the CLI lifecycle: verify -> `cortex_ia_work_transition({ to: "in_review" })` (auto-releases leases) -> independent reviewer PASS. Only reviewer PASS produces `done`.
 
 ### Operational & Database Tasks (allowed_files: [])

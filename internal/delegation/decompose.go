@@ -88,9 +88,24 @@ func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision i
 			return err
 		}
 		if contractJSON != "" {
-			for _, step := range normalized {
-				if len(step.AllowedFiles) == 0 {
-					return errors.New("SDD decomposition requires writable scope for every child")
+			var parentAllowedJSON string
+			_ = conn.QueryRowContext(ctx, `SELECT allowed_files_json FROM work_definitions WHERE item_id=?`, id).Scan(&parentAllowedJSON)
+			var parentAllowed []string
+			if parentAllowedJSON != "" {
+				_ = json.Unmarshal([]byte(parentAllowedJSON), &parentAllowed)
+			}
+			// If the parent task had a writable scope, ensure that at least one child retains a writable scope.
+			// Individual children may be read-only verification, audit, or aggregate provenance gates (allowed_files: []).
+			if len(parentAllowed) > 0 {
+				hasWritableChild := false
+				for _, step := range normalized {
+					if len(step.AllowedFiles) > 0 {
+						hasWritableChild = true
+						break
+					}
+				}
+				if !hasWritableChild {
+					return errors.New("SDD decomposition requires at least one child with a writable scope when parent has writable scope")
 				}
 			}
 		}

@@ -1,6 +1,28 @@
 import { render } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import './styles.css';
+import {
+  CortexLogoMark,
+  IconOverview,
+  IconBoards,
+  IconDelegation,
+  IconActivity,
+  IconSettings,
+  IconSearch,
+  IconPlus,
+  IconRefresh,
+  IconCheck,
+  IconAlert,
+  IconClock,
+  IconTerminal,
+  IconExternal,
+  IconShield,
+  IconCopy,
+  IconArchive,
+  IconChevronDown,
+  IconChevronRight,
+  IconX
+} from './icons.jsx';
 
 const states = [
   ['backlog', 'Backlog'],
@@ -73,34 +95,34 @@ function PageHeader({ eyebrow, title, description, action }) {
 function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNewBoard }) {
   const [showArchived, setShowArchived] = useState(false);
   const nav = [
-    ['overview', '⌂', 'Resumen'],
-    ['sessions', '◎', 'Boards'],
-    ['delegations', '⇄', 'Delegación'],
-    ['activity', '↯', 'Actividad'],
-    ['settings', '⚙', 'Ecosistema']
+    ['overview', IconOverview, 'Resumen'],
+    ['sessions', IconBoards, 'Boards'],
+    ['delegations', IconDelegation, 'Delegación'],
+    ['activity', IconActivity, 'Actividad'],
+    ['settings', IconSettings, 'Ecosistema']
   ];
   const activeBoards = boards.filter(b => b.status !== 'archived');
   const archivedBoards = boards.filter(b => b.status === 'archived');
 
   return (
     <aside class="sidebar">
-      <button class="brand" onClick={() => onView('overview')}>
-        <span class="brand-mark">C</span>
-        <span>
+      <button class="brand" onClick={() => onView('overview')} title="Cortex-IA Operations Console">
+        <CortexLogoMark size={36} />
+        <span class="brand-text">
           <strong>Cortex-IA</strong>
           <small>Operations Console</small>
         </span>
       </button>
       <p class="side-label">CONTROL</p>
       <nav class="primary-nav" aria-label="Navegación principal">
-        {nav.map(([id, icon, label]) => (
+        {nav.map(([id, IconComponent, label]) => (
           <button
             key={id}
             class={`nav-link ${view === id ? 'active' : ''}`}
             aria-current={view === id ? 'page' : undefined}
             onClick={() => onView(id)}
           >
-            <span class="nav-icon">{icon}</span>
+            <span class="nav-icon"><IconComponent size={16} /></span>
             <span class="nav-text">{label}</span>
             {id === 'sessions' && <b>{dashboard.summary.sessions || 0}</b>}
             {id === 'delegations' && <b>{dashboard.summary.active_delegations || 0}</b>}
@@ -109,7 +131,9 @@ function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNew
       </nav>
       <div class="board-heading">
         <p class="side-label">TASK BOARDS</p>
-        <button onClick={onNewBoard} aria-label="Crear tablero" title="Nuevo board / tablero">+</button>
+        <button onClick={onNewBoard} aria-label="Crear tablero" title="Nuevo board / tablero">
+          <IconPlus size={12} />
+        </button>
       </div>
       <nav class="board-nav" aria-label="Tableros">
         {activeBoards.length ? activeBoards.map(board => (
@@ -522,7 +546,7 @@ function SettingsView({ configData, onRefresh }) {
             </div>
             <div class="setting-row">
               <span>Timeout por Tarea</span>
-              <b>{herdr.timeout_seconds || 900} segundos</b>
+              <b>{herdr.timeout_seconds || 1800} segundos</b>
             </div>
           </div>
         </section>
@@ -1577,7 +1601,9 @@ function App() {
             {currentHealth.state === 'degraded' && (
               <button class="button small retry-btn" onClick={retryCurrent}>Reintentar</button>
             )}
-            <button class="icon-button" onClick={refresh} aria-label="Actualizar datos" title="Refrescar datos">↻</button>
+            <button class="icon-button" onClick={refresh} aria-label="Actualizar datos" title="Refrescar datos">
+              <IconRefresh size={15} />
+            </button>
           </div>
         </header>
 

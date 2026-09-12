@@ -213,6 +213,11 @@ sequenceDiagram
 - **Line Count Limits**:
   - Concise languages (TS, Python): max **<= 350 lines** per task node.
   - Typed/verbose languages (Go, Rust, Java): max **<= 500 lines** per task node.
+- **Pre-Transition Workload Preflight**: Implementers MUST check `git diff --stat` before calling `cortex_ia_work_transition({ to: "in_review" })`. If cumulative changed lines exceed the limit, transitioning to `in_review` is strictly forbidden: transition directly to `blocked` with reason `WORKLOAD_BUDGET_EXCEEDED` to trigger immediate DAG decomposition.
+- **Anti-Revision Loop Circuit Breaker**: If a task accumulates **two (2) consecutive review FAIL verdicts**, the orchestrator MUST NOT re-dispatch an implementer on the same monolithic task node. It MUST route the task to `planner` with `phase: "decompose"` for atomic decomposition into stacked units (<= 250 LOC).
+- **In-Memory Immutability & Contract Preservation Invariants**:
+  - Multi-record/batch validation must operate on defensive copies or without mutating caller-owned structs/pointers in-place prior to whole-request validation.
+  - Implementers must NEVER alter or weaken contracts (e.g. converting atomic rejection into "skip invalid records") to force tests green.
 - **Stacked Work Units**:
   1. *Layer 1 (Contracts)*: Types, interfaces, schemas, and test scaffolding.
   2. *Layer 2 (Core)*: Domain business logic and internal algorithmic engines.

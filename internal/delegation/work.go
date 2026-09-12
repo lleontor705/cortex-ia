@@ -185,8 +185,8 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 		return WorkItem{}, err
 	}
 	if definition.Contract != nil {
-		if len(allowedFiles) == 0 || definition.Objective == "" || definition.Acceptance == "" || definition.Verification == "" {
-			return WorkItem{}, errors.New("SDD task requires scope, objective, acceptance and verification")
+		if definition.Objective == "" || definition.Acceptance == "" || definition.Verification == "" {
+			return WorkItem{}, errors.New("SDD task requires objective, acceptance and verification")
 		}
 		if err := verifyWorkspacePins(workspace, definition.Contract, "", ""); err != nil {
 			return WorkItem{}, err

@@ -407,8 +407,9 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	if strings.TrimSpace(request.Effort) != "" {
 		effort = strings.TrimSpace(request.Effort)
 	}
-	// AGY CLI rejects --effort for Claude models (reasoning is pre-configured or incompatible with --effort)
-	if effort != "" && !strings.HasPrefix(strings.ToLower(model), "claude-") {
+	// AGY CLI rejects --effort for Claude models (reasoning is pre-configured or incompatible with --effort),
+	// and passing --effort without an explicit model is unsafe because AGY defaults to the system model (often Claude).
+	if effort != "" && supportsEffort(model) {
 		args = append(args, "--effort", effort)
 	}
 	schemaPath := ""
@@ -1200,4 +1201,20 @@ func ListAvailableModels(ctx context.Context) ([]AGYModel, error) {
 	}
 
 	return ParseModelsOutput(stdout.Bytes()), nil
+}
+
+// supportsEffort reports whether a model supports the --effort CLI flag.
+// AGY rejects --effort for Claude models (reasoning is pre-configured or incompatible).
+// When model is empty, passing --effort is unsafe because AGY defaults to
+// the system/user configured model, which is often a Claude variant.
+func supportsEffort(model string) bool {
+	trimmed := strings.TrimSpace(model)
+	if trimmed == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.Contains(lower, "claude") {
+		return false
+	}
+	return true
 }

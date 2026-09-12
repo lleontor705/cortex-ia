@@ -631,3 +631,78 @@ func TestVerifySessionWorkLeases_Batch(t *testing.T) {
 		t.Errorf("expected unleased invalid, got: %+v", results[2])
 	}
 }
+
+func TestDecomposeWithReadOnlyGate(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "delegation.db")
+
+	store, err := OpenStore(dbPath)
+	if err != nil {
+		t.Fatalf("OpenStore failed: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	sessionID := "ses_decomptest123"
+
+	_, _ = store.CreateBoard(ctx, "test-board", "Test Board", "")
+	item, err := store.CreateWorkInBoardWithDefinition(ctx, "test-board", "task-parent", "Parent Task", nil, WorkDefinition{
+		ConversationOwnership: ConversationOwnership{
+			OpenCodeSessionID:     sessionID,
+			OpenCodeRootSessionID: sessionID,
+		},
+		Project:      tempDir,
+		Objective:    "Implement feature with large changes",
+		Acceptance:   "Pass all tests",
+		Verification: "go test ./...",
+		AllowedFiles: []string{"src/feature.go"},
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkInBoardWithDefinition failed: %v", err)
+	}
+
+	claim, err := store.ClaimWork(ctx, item.ID, "opencode-session:"+sessionID, 10*time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimWork failed: %v", err)
+	}
+
+	itemClaimed, err := store.GetWork(ctx, item.ID)
+	if err != nil {
+		t.Fatalf("GetWork failed: %v", err)
+	}
+
+	blockedItem, err := store.TransitionWork(ctx, item.ID, claim.Token, itemClaimed.Revision, WorkBlocked)
+	if err != nil {
+		t.Fatalf("TransitionWork to blocked failed: %v", err)
+	}
+
+	steps := []WorkStepDefinition{
+		{
+			ID:           "task-child-impl",
+			Title:        "Implement core changes",
+			Objective:    "Implement logic",
+			Acceptance:   "All core unit tests pass",
+			Verification: "go test ./src/core",
+			AllowedFiles: []string{"src/feature.go"},
+		},
+		{
+			ID:           "task-child-gate",
+			Title:        "Provenance and verification gate",
+			Objective:    "Verify aggregate handoff and integration",
+			Acceptance:   "All integration tests pass",
+			Verification: "go test ./...",
+			AllowedFiles: []string{}, // Read-only verification gate
+		},
+	}
+
+	decomp, err := store.DecomposeWork(ctx, "task-parent", blockedItem.Revision, steps)
+	if err != nil {
+		t.Fatalf("DecomposeWork failed with read-only gate: %v", err)
+	}
+	if len(decomp.Children) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(decomp.Children))
+	}
+	if len(decomp.Children[1].AllowedFiles) != 0 {
+		t.Errorf("expected child 1 (gate) to have empty allowed files, got %v", decomp.Children[1].AllowedFiles)
+	}
+}

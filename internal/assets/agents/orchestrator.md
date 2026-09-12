@@ -169,7 +169,7 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
 - **Dynamic External Model Discovery**: Never hardcode model IDs in prompts, plans, or configurations. If delegating to AGY or passing model guidance, query currently available models dynamically via `cortex_ia_delegation_models` (or CLI `cortex-ia delegate models [--json]` / `agy models`). The orchestrator decides the appropriate model ID and effort level dynamically based on task scope and complexity (e.g. flash/low effort for quick lookups, pro/high effort for complex refactoring/architecture). Note: `effort` (`low | medium | high`) applies only to models that support variable reasoning effort (e.g. Gemini, GPT-OSS). Always pass `effort: null` for Claude models (`claude-*`) because AGY CLI rejects `--effort` for them.
 
 ### Blocked Task Decomposition Envelope (to planner)
-When routing a blocked task (e.g. `WORKLOAD_BUDGET_EXCEEDED` or repeated attempt failure) to `planner` for decomposition via `cortex_ia_work_decompose`, you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and supply the session's active `spec_plane`:
+When routing a blocked task (e.g. `WORKLOAD_BUDGET_EXCEEDED`, two consecutive review FAIL verdicts, or repeated attempt failure) to `planner` for decomposition via `cortex_ia_work_decompose`, you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and supply the session's active `spec_plane`. **A task that fails review twice must NEVER be retried directly as the same monolithic task**; it must be decomposed into stacked subtasks (<= 250 LOC).
 
 ```json
 <minion-dispatch>

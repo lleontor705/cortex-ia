@@ -36,8 +36,8 @@ Audit correctness, security, resilience, and architectural conformance. A tool u
 Run three logically independent review passes:
 
 1. **Lens 1: Functional & Structural Regression:** Verify AST delta re-indexing (`cortex_ingest_code`), test execution across callers, zero circular dependency regressions (`cortex_detect_cycles`), and task acceptance criteria (OpenSpec artifacts for openspec/hybrid; when `spec_plane=cortex`, follow `cortex-convention.md`).
-2. **Lens 2: Resilience & Security Guardrails:** Inspect boundary conditions, error handling, deterministic resource/lock release, and strict absence of secret or authority token leakage (`claim_token`, `lease_token`).
-3. **Lens 3: Architecture & Discovery Conformance:** Verify diff against confirmed architectural boundaries in `./.cortex-ia/discovery.md` and design contracts in `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. Ensure interfaces remain narrow and changes stay within workload budgets.
+2. **Lens 2: Resilience & Security Guardrails:** Inspect boundary conditions, in-memory immutability (verifying that multi-record/batch preflights do not mutate input structures in-place before whole-request validation), contract fidelity (ensuring no silent error suppression or unauthorized "skip" semantics to force green tests), deterministic resource/lock release, and strict absence of secret or authority token leakage (`claim_token`, `lease_token`).
+3. **Lens 3: Architecture & Discovery Conformance:** Verify diff against confirmed architectural boundaries in `./.cortex-ia/discovery.md` and design contracts in `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. Ensure interfaces remain narrow, line counts strictly obey the hard limit (<= 500 LOC in Go, <= 350 LOC in TS/Python), and changes stay within workload budgets.
 
 Return verdicts for each lens independently. Global `verification_verdict` is `PASS` only when all three lenses are `PASS` and every mandatory executable check succeeds. Any BLOCKER in any lens fails the review.
 
