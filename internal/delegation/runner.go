@@ -252,6 +252,7 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	defer cancel()
 	watchDone := make(chan struct{})
 	defer close(watchDone)
+	go watchCancellation(runCtx, store, id, cancel, watchDone)
 	taskID := ""
 	if request.Role == "implement" {
 		taskID = request.TaskID
