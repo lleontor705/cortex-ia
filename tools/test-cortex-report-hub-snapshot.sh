@@ -77,7 +77,7 @@ echo ""
 # -----------------------------------------------------------------------------
 log_test "1. Parse mixed logs fixture and verify code mappings"
 set +e
-OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/mixed_logs.jsonl" "$SNAPSHOT_TOOL" 2>&1)
+OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/mixed_logs.jsonl" bash "$SNAPSHOT_TOOL" 2>&1)
 CODE=$?
 set -e
 assert_exit_code 0 "$CODE" "Runs successfully on mixed_logs.jsonl"
@@ -148,7 +148,7 @@ assert_not_contains "$OUT" "GET /health" "Non-report health check log omitted fr
 # -----------------------------------------------------------------------------
 log_test "2. Verify ID capping at max 20 per group"
 set +e
-OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/capping.jsonl" "$SNAPSHOT_TOOL" 2>&1)
+OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/capping.jsonl" bash "$SNAPSHOT_TOOL" 2>&1)
 CODE=$?
 set -e
 assert_exit_code 0 "$CODE" "Runs successfully on capping.jsonl"
@@ -171,7 +171,7 @@ assert g["ids"][-1] == "id-20"
 # -----------------------------------------------------------------------------
 log_test "3. Verify token/secret redaction and string length capping"
 set +e
-OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/redaction.jsonl" "$SNAPSHOT_TOOL" 2>&1)
+OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/redaction.jsonl" bash "$SNAPSHOT_TOOL" 2>&1)
 CODE=$?
 set -e
 assert_exit_code 0 "$CODE" "Runs successfully on redaction.jsonl"
@@ -210,7 +210,7 @@ log_test "4. Verify malformed input rejection with non-zero exit and terse stder
 
 # Case A: Broken JSON
 set +e
-ERR_OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/malformed_json.jsonl" "$SNAPSHOT_TOOL" 2>&1 1>/dev/null)
+ERR_OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/malformed_json.jsonl" bash "$SNAPSHOT_TOOL" 2>&1 1>/dev/null)
 CODE=$?
 set -e
 assert_exit_code 1 "$CODE" "Rejects invalid JSON with non-zero exit"
@@ -218,7 +218,7 @@ assert_contains "$ERR_OUT" "error: malformed JSON" "Terse stderr contains 'error
 
 # Case B: Incomplete Report Received record
 set +e
-ERR_OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/malformed_report_missing_fields.jsonl" "$SNAPSHOT_TOOL" 2>&1 1>/dev/null)
+ERR_OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/malformed_report_missing_fields.jsonl" bash "$SNAPSHOT_TOOL" 2>&1 1>/dev/null)
 CODE=$?
 set -e
 assert_exit_code 1 "$CODE" "Rejects missing fields in Report Received record"
@@ -226,7 +226,7 @@ assert_contains "$ERR_OUT" "error: malformed Report Received record" "Terse stde
 
 # Case C: Missing log file
 set +e
-ERR_OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/nonexistent.jsonl" "$SNAPSHOT_TOOL" 2>&1 1>/dev/null)
+ERR_OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/nonexistent.jsonl" bash "$SNAPSHOT_TOOL" 2>&1 1>/dev/null)
 CODE=$?
 set -e
 assert_exit_code 1 "$CODE" "Rejects non-existent log source file"
@@ -237,7 +237,7 @@ assert_contains "$ERR_OUT" "error: log source file not found" "Terse stderr cont
 # -----------------------------------------------------------------------------
 log_test "5. Empty logs handling"
 set +e
-OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/empty_logs.jsonl" "$SNAPSHOT_TOOL" 2>&1)
+OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/empty_logs.jsonl" bash "$SNAPSHOT_TOOL" 2>&1)
 CODE=$?
 set -e
 assert_exit_code 0 "$CODE" "Returns 0 on logs with no error reports"
@@ -245,7 +245,7 @@ assert_exit_code 0 "$CODE" "Returns 0 on logs with no error reports"
 
 # Test /dev/null
 set +e
-OUT=$(REPORT_HUB_LOG_SOURCE="/dev/null" "$SNAPSHOT_TOOL" 2>&1)
+OUT=$(REPORT_HUB_LOG_SOURCE="/dev/null" bash "$SNAPSHOT_TOOL" 2>&1)
 CODE=$?
 set -e
 assert_exit_code 0 "$CODE" "Returns 0 on empty /dev/null source"
@@ -256,9 +256,9 @@ assert_exit_code 0 "$CODE" "Returns 0 on empty /dev/null source"
 # -----------------------------------------------------------------------------
 log_test "6. Verify CLI argument and stdin pipe support"
 set +e
-OUT_ARG=$("$SNAPSHOT_TOOL" "$FIXTURES_DIR/mixed_logs.jsonl" 2>&1)
+OUT_ARG=$(bash "$SNAPSHOT_TOOL" "$FIXTURES_DIR/mixed_logs.jsonl" 2>&1)
 CODE_ARG=$?
-OUT_STDIN=$(cat "$FIXTURES_DIR/mixed_logs.jsonl" | REPORT_HUB_LOG_SOURCE="-" "$SNAPSHOT_TOOL" 2>&1)
+OUT_STDIN=$(cat "$FIXTURES_DIR/mixed_logs.jsonl" | REPORT_HUB_LOG_SOURCE="-" bash "$SNAPSHOT_TOOL" 2>&1)
 CODE_STDIN=$?
 set -e
 assert_exit_code 0 "$CODE_ARG" "CLI argument syntax works"
@@ -270,7 +270,7 @@ assert_exit_code 0 "$CODE_STDIN" "Stdin pipe syntax works"
 # -----------------------------------------------------------------------------
 log_test "7. Verify no state writes to disk"
 GIT_STATUS_BEFORE=$(git status --porcelain)
-REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/mixed_logs.jsonl" "$SNAPSHOT_TOOL" > /dev/null
+REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/mixed_logs.jsonl" bash "$SNAPSHOT_TOOL" > /dev/null
 GIT_STATUS_AFTER=$(git status --porcelain)
 [ "$GIT_STATUS_BEFORE" = "$GIT_STATUS_AFTER" ] && log_pass "No unexpected disk or git state mutations" || log_fail "State changed during snapshot run"
 
