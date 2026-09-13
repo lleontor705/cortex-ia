@@ -62,7 +62,6 @@ tools:
   cortex_ia_board_status: true
   cortex_ia_work_list: true
   cortex_ia_work_status: true
-  cortex_ia_ledger_status: true
   cortex_ia_delegate_start: true
   cortex_ia_delegation_status: true
   cortex_ia_delegation_wait: true

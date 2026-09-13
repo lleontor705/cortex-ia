@@ -97,18 +97,27 @@ Execute ONLY the phase specified in the dispatch envelope (written to `openspec/
 - **Phase `design`**: Write design (`openspec/changes/<change-name>/design.md` or pinned snapshot) with data models, interface definitions, sequence flows, and trade-offs.
 - **Phase `tasks`**: Write tasks contract (`openspec/changes/<change-name>/tasks.md` or pinned snapshot) and create the SQLite task DAG with dependency-ordered `cortex-ia work create` commands. Do not name or load skills absent from the installed inventory.
 
-## 2. Review Workload Guard & DAG Decomposition Rules
+## 2. Review Workload Guard, Micro-Tasking & DAG Topology Rules
 - **Shared Design Contract**: Read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. For an orchestrator-routed named architecture decision with material ambiguity, produce 2-3 contract-level alternatives, compare depth, locality, dependency direction, seams, blast radius, and reversibility, then select or recommend one before task creation.
+- **Micro-Task Sizing & Atomic Scope**:
+  - *Single Responsibility*: Each task represents exactly ONE conceptual delta or narrow vertical slice. Never combine multiple domains or unrelated refactors into one task node.
+  - *Blast Radius Limit*: Restrict `allowed_files` to 1-3 files per task. Never assign monolithic directories or broad globs.
+  - *LOC Budget*: Forecast <= 150-250 lines of code per task (source + test combined). If an implementation exceeds 250 LOC, mandate stacked decomposition (Contracts -> Core -> Integration).
+  - *Modular Test Scaffolding*: Always allocate a dedicated modular test file (`<domain>_<slice>_test.go` <= 250 LOC). Never assign or append test suites to existing test files exceeding 300 LOC.
+- **Wave-Based DAG Topology & Parallelism**:
+  - *Disjoint Files*: All tasks in the same parallel execution wave MUST have mutually disjoint `allowed_files` to prevent write collisions.
+  - *Zero Artificial Serialization*: Do NOT sequence tasks unless there is a genuine compile-time or interface dependency. Keep independent vertical slices parallel so they enter `ready` concurrently for `parallel-dispatch`.
+  - *Standard Wave Progression*:
+    - *Wave 1 (Contracts & Foundations)*: Declarative schemas, interface contracts, error types, and test fixtures.
+    - *Wave 2..N (Parallel Slices)*: Domain implementations with mutually disjoint writable files.
+    - *Wave N+1 (Integration & Wiring)*: Public APIs, CLI dispatchers, and end-to-end regression oracles.
 - **Strict Quality Standards for Every Created Task (`cortex_ia_work_create`)**:
   - `title`: Short, imperative summary naming the affected module (e.g. `[auth] Validate JWT bearer token format and expiration`).
   - `objective`: Thorough technical explanation (minimum 2-3 substantive sentences) describing context, expected input/output contract, failure modes, and architectural rationale. Never use vague or one-line placeholders.
   - `acceptance_criteria`: Observable, verifiable checklist or Given/When/Then scenarios specifying concrete behavior. Never leave empty or generic.
   - `verification`: Exact reproducible command with flags (e.g. `go test -v ./internal/auth/... -run TestJWTBearer`). MUST be a pure executable command line without comments, expected output descriptions, quotes, or parenthetical remarks (e.g. never write `node --test ... (expected exit 0)`). Explanations belong strictly in `acceptance_criteria` or `objective`.
   - `allowed_files`: Complete, explicit array of workspace-relative paths to be created or modified. Never empty for implementation tasks.
-  - `dependencies`: Include ONLY genuine executable prerequisites. Do NOT artificially sequence independent tasks; if two tasks touch disjoint files and are functionally independent, keep their dependencies disjoint so they enter `ready` concurrently for parallel execution.
-- **Parallel Group Maximization**: Group tasks whose `allowed_files` are mutually disjoint into parallel execution waves so the orchestrator can dispatch them simultaneously via `parallel-dispatch`.
-- **Vertical Slices by Default**: For behavior changes, each task delivers one narrow, complete, independently verifiable path through every required layer.
-- **Line Count Cap**: Every task node in the DAG must forecast **<= 350 changed lines** (TS, Python) or **<= 500 lines** (Go, Rust, Java).
+  - `dependencies`: Include ONLY genuine executable prerequisites.
 - **Deterministic Oracles**: Every task must define an exact verification command with expected exit code `0`.
 
 ## 3. Tool Execution Protocol

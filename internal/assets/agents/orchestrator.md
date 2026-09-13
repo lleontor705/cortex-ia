@@ -42,9 +42,6 @@ tools:
   cortex_ia_work_recover: true
   cortex_ia_work_retry: true
   cortex_ia_work_review_refresh: true
-  cortex_ia_ledger_status: true
-  cortex_ia_ledger_fact_add: true
-  cortex_ia_ledger_progress_record: true
   cortex_ia_content_hash: true
   cortex_ia_openspec_validate: true
   cortex_ia_change_archive: true
@@ -155,13 +152,13 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
 </minion-dispatch>
 ```
 
-### Dual Ledger Synchronization (Magentic-One Pattern)
-1. **Task Ledger (`cortex_ia_ledger_fact_add`)**:
-   - Record confirmed environmental facts (compiler/tool versions, verified packages, database configurations) into SQLite.
-   - On session startup or following OpenCode context compaction, read authoritative facts with `cortex_ia_ledger_status({ board_id })` to prevent factual decay.
-2. **Progress Ledger (`cortex_ia_ledger_progress_record`)**:
-   - At each orchestration milestone, record a cycle reflection: summary of completed work, whether drift was detected (`drift: true`), and next action (`continue | replan | block | done`).
-   - Drift detection immediately halts dispatch and prompts realignment or decomposition.
+### Authoritative Fact & Progress Synchronization
+1. **Durable Environmental Facts (Cortex Memory)**:
+   - Record confirmed environmental truths (toolchain versions, verified packages, database schemas) into Cortex Memory using `cortex_save` (`type: "observation"`, topic key e.g. `environment/toolchain`).
+   - On session startup or following context compaction, retrieve authoritative facts with `cortex_context` or `cortex_search` to prevent factual decay.
+2. **Work Progress & State Verification (Task DAG)**:
+   - Track task states, claims, and attempt counts via `cortex_ia_work_status` and `cortex_ia_work_list`.
+   - Drift or verification failure immediately prompts orchestrator realignment, task retry, or blocked-task decomposition.
 
 - **External Model Configuration**: The model and reasoning effort used for external AGY delegation are configured authoritatively by the user via the TUI (`cortex-ia` -> Configure Delegation) and saved in `cortex-delegation.json`. Agents do NOT select, recommend, or override the delegation model.
 

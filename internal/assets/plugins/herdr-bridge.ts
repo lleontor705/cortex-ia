@@ -117,8 +117,106 @@ function workPath(value: string): string {
   return normalized;
 }
 
-function durableWorkStatus(taskID: string): any {
-  return parseJSON(cortex(["work", "status", taskID]));
+function durableWorkStatus(taskID: string, presentationRole?: string): any {
+  const cmd = ["work", "status", taskID];
+  if (presentationRole) cmd.push("--role", presentationRole);
+  return parseJSON(cortex(cmd));
+}
+
+export interface CachedProjectionEntry {
+  taskID: string;
+  revision: number;
+  sessionID: string;
+  asOf: string;
+  projection: any;
+}
+
+export const cachedProjections = new Map<string, CachedProjectionEntry>();
+
+export function deepFreeze<T>(obj: T): Readonly<T> {
+  if (obj === null || typeof obj !== "object") return obj;
+  Object.freeze(obj);
+  for (const key of Object.keys(obj)) {
+    const val = (obj as any)[key];
+    if (val !== null && (typeof val === "object" || typeof val === "function") && !Object.isFrozen(val)) {
+      deepFreeze(val);
+    }
+  }
+  return obj;
+}
+
+export function deepCopy<T>(obj: T): T {
+  if (obj === null || typeof obj !== "object") return obj;
+  return JSON.parse(JSON.stringify(obj));
+}
+
+export function getUnknownProjection(taskID: string): any {
+  return deepFreeze({
+    task_id: taskID,
+    revision: 0,
+    status: "unknown",
+    authority_available: false,
+    candidate_actions: [],
+    blockers: [],
+    notes: [],
+  });
+}
+
+export function handleWorkStatusFailure(taskID: string): any {
+  const unknownProj = getUnknownProjection(taskID);
+  cachedProjections.set(taskID, {
+    taskID,
+    revision: 0,
+    sessionID: "",
+    asOf: new Date().toISOString(),
+    projection: unknownProj,
+  });
+  return unknownProj;
+}
+
+export function processWorkStatusResponse(
+  requestedTaskID: string,
+  sessionID: string,
+  response: any
+): { accepted: boolean; reason?: string; projection: any } {
+  if (!response || typeof response !== "object") {
+    handleWorkStatusFailure(requestedTaskID);
+    return { accepted: false, reason: "INVALID_RESPONSE_OBJECT", projection: getUnknownProjection(requestedTaskID) };
+  }
+
+  const responseTaskID = response.task_id || response.projection?.task_id;
+  if (!responseTaskID || responseTaskID !== requestedTaskID) {
+    return { accepted: false, reason: "RESPONSE_TASK_MISMATCH", projection: getUnknownProjection(requestedTaskID) };
+  }
+
+  const responseSessionID = response.opencode_session_id || response.session_id;
+  if (responseSessionID && responseSessionID !== sessionID && sessionID !== "host-system") {
+    return { accepted: false, reason: "RESPONSE_SESSION_MISMATCH", projection: getUnknownProjection(requestedTaskID) };
+  }
+
+  const rev = Number(response.revision || response.projection?.revision || 0);
+  const cached = cachedProjections.get(requestedTaskID);
+  if (cached && rev < cached.revision) {
+    return { accepted: false, reason: "STALE_REVISION_DISCARDED", projection: cached.projection };
+  }
+
+  const rawProj = response.projection || {
+    task_id: requestedTaskID,
+    revision: rev,
+    status: response.status || "unknown",
+    authority_available: Boolean(response.found !== false),
+  };
+
+  const frozenProj = deepFreeze(deepCopy(rawProj));
+  cachedProjections.set(requestedTaskID, {
+    taskID: requestedTaskID,
+    revision: rev,
+    sessionID,
+    asOf: response.projection?.as_of || new Date().toISOString(),
+    projection: frozenProj,
+  });
+
+  return { accepted: true, projection: frozenProj };
 }
 
 function bridgeAuthorityView(taskID: string, durable: any, sessionID: string) {
@@ -778,46 +876,6 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       async execute(args) { return cortex(["board", "status", args.board_id]); }
     }),
 
-    cortex_ia_ledger_status: tool({
-      description: "Read the dual ledger report (Task Ledger facts and Progress Ledger cycle evaluations) for an initiative board.",
-      args: { board_id: tool.schema.string().optional() },
-      async execute(args) {
-        const command = ["ledger", "status"];
-        if (args.board_id) command.push("--board", args.board_id);
-        return cortex(command);
-      }
-    }),
-
-    cortex_ia_ledger_fact_add: tool({
-      description: "Record an authoritative environmental or technical fact into the Task Ledger. Optionally syncs as a durable observation in Cortex Memory.",
-      args: {
-        fact: tool.schema.string(),
-        board_id: tool.schema.string().optional(),
-        source: tool.schema.string().optional(),
-        sync_cortex: tool.schema.boolean().optional().describe("If true, also syncs this fact as a persistent discovery observation in Cortex memory")
-      },
-      async execute(args) {
-        const command = ["ledger", "fact", "add", args.fact];
-        if (args.board_id) command.push("--board", args.board_id);
-        if (args.source) command.push("--source", args.source);
-        if (args.sync_cortex) command.push("--sync-cortex");
-        return cortex(command);
-      }
-    }),
-
-    cortex_ia_ledger_progress_record: tool({
-      description: "Record an orchestrator progress evaluation, drift detection, and intended action into the Progress Ledger.",
-      args: { summary: tool.schema.string(), cycle: tool.schema.number().optional(), drift: tool.schema.boolean().optional(), action: tool.schema.string().optional(), board_id: tool.schema.string().optional() },
-      async execute(args) {
-        const command = ["ledger", "progress", "record", "--summary", args.summary];
-        if (args.board_id) command.push("--board", args.board_id);
-        if (args.action) command.push("--action", args.action);
-        if (args.cycle) command.push("--cycle", String(args.cycle));
-        if (args.drift) command.push("--drift");
-        return cortex(command);
-      }
-    }),
-
     cortex_ia_work_create: tool({
       description: "Create one work item in a durable same-board DAG.",
       args: {
@@ -882,12 +940,21 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
 
     cortex_ia_work_status: tool({
       description: "Read one durable Cortex-IA work item plus token-free bridge authority usability for the current session. Returns not_found if the task does not exist in SQLite.",
-      args: { task_id: tool.schema.string() },
+      args: { task_id: tool.schema.string(), role: tool.schema.string().optional() },
       async execute(args, context) {
+        const hostRole = activeSubagents.get(context.sessionID)?.role || "unknown";
         try {
-          const durable = durableWorkStatus(args.task_id);
-          return JSON.stringify({ ...durable, found: true, bridge_authority: bridgeAuthorityView(args.task_id, durable, context.sessionID) });
+          const durable = durableWorkStatus(args.task_id, hostRole);
+          const processed = processWorkStatusResponse(args.task_id, context.sessionID, durable);
+          const bridgeAuth = bridgeAuthorityView(args.task_id, durable, context.sessionID);
+          return JSON.stringify({
+            ...durable,
+            found: true,
+            projection: processed.projection,
+            bridge_authority: bridgeAuth,
+          });
         } catch (error: any) {
+          handleWorkStatusFailure(args.task_id);
           const stderr = (error?.stderr?.toString?.() || error?.message || "");
           if (stderr.includes("work item not found")) {
             return JSON.stringify({
@@ -896,6 +963,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
               status: "not_found",
               error: "work item not found",
               message: `Work item "${args.task_id}" not found in Cortex-IA SQLite work database. Note: Cortex MCP observation IDs (e.g. #84) are evidence/memories, not SQLite work task items, and early SDD planning phases (propose, spec, design) have no work tasks created yet.`,
+              projection: getUnknownProjection(args.task_id),
               bridge_authority: bridgeAuthorityView(args.task_id, null, context.sessionID)
             });
           }
@@ -1533,11 +1601,10 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
   // same trusted host-role boundary. New tools must be classified explicitly.
   const roles = ["orchestrator", "discovery", "planner", "investigate", "implement", "reviewer"];
   const controllers = ["planner", "investigate", "implement", "reviewer"];
-  const readers = new Set(["content_hash", "openspec_validate", "board_list", "board_status", "ledger_status", "work_list", "work_status", "delegation_status", "delegation_wait", "delegation_result", "delegation_models"]);
+  const readers = new Set(["content_hash", "openspec_validate", "board_list", "board_status", "work_list", "work_status", "delegation_status", "delegation_wait", "delegation_result", "delegation_models"]);
   const mutations: Record<string, string[]> = {
     openspec_write: ["planner"], change_archive: ["planner"], discovery_write: ["discovery"],
     board_create: ["planner", "orchestrator"], work_create: ["planner", "orchestrator"],
-    ledger_fact_add: roles, ledger_progress_record: ["orchestrator"],
     work_recover: ["orchestrator"], work_retry: ["orchestrator"], work_review_refresh: ["orchestrator"], work_decompose: ["planner"],
     work_claim: ["implement"], work_renew: ["implement"],
     file_reserve: ["implement"], work_lease_renew: ["implement"],
@@ -1569,9 +1636,6 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       cortex_board_create: bridgeTools.cortex_ia_board_create,
       cortex_board_list: bridgeTools.cortex_ia_board_list,
       cortex_board_status: bridgeTools.cortex_ia_board_status,
-      cortex_ledger_status: bridgeTools.cortex_ia_ledger_status,
-      cortex_ledger_fact_add: bridgeTools.cortex_ia_ledger_fact_add,
-      cortex_ledger_progress_record: bridgeTools.cortex_ia_ledger_progress_record,
       cortex_work_create: bridgeTools.cortex_ia_work_create,
       cortex_work_list: bridgeTools.cortex_ia_work_list,
       cortex_work_status: bridgeTools.cortex_ia_work_status,
