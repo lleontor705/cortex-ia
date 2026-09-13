@@ -1,0 +1,205 @@
+{
+  "version": 1,
+  "metric": {
+    "min_block_words": 20,
+    "max_exempt_summary_words": 80,
+    "exempt_invariants": [
+      "host_precedence",
+      "role_authority",
+      "live_claims_leases",
+      "accepted_job_reconciliation",
+      "no_secrets"
+    ]
+  },
+  "corpus": [
+    "internal/assets/AGENTS.md",
+    "internal/assets/agents/discovery.md",
+    "internal/assets/agents/implement.md",
+    "internal/assets/agents/investigate.md",
+    "internal/assets/agents/orchestrator.md",
+    "internal/assets/agents/planner.md",
+    "internal/assets/agents/reviewer.md",
+    "internal/assets/skills/ast-impact-analysis/SKILL.md",
+    "internal/assets/skills/code-review-adversary/SKILL.md",
+    "internal/assets/skills/context-distiller/SKILL.md",
+    "internal/assets/skills/discovery/SKILL.md",
+    "internal/assets/skills/fast-tdd/SKILL.md",
+    "internal/assets/skills/grill-me/SKILL.md",
+    "internal/assets/skills/hotfix-triage/SKILL.md",
+    "internal/assets/skills/implement/SKILL.md",
+    "internal/assets/skills/investigate/SKILL.md",
+    "internal/assets/skills/mutation-testing/SKILL.md",
+    "internal/assets/skills/orchestrator/SKILL.md",
+    "internal/assets/skills/parallel-dispatch/SKILL.md",
+    "internal/assets/skills/planner/SKILL.md",
+    "internal/assets/skills/property-based-testing/SKILL.md",
+    "internal/assets/skills/spike-prototype/SKILL.md",
+    "internal/assets/skills/workflow-retrospective/SKILL.md",
+    "internal/assets/skills/_shared/agent-writing-contract.md",
+    "internal/assets/skills/_shared/codebase-design-contract.md",
+    "internal/assets/skills/_shared/cortex-convention.md",
+    "internal/assets/skills/_shared/cortex-work-protocol.md",
+    "internal/assets/skills/_shared/diagnosis-loop-contract.md",
+    "internal/assets/skills/_shared/workflow-map.md",
+    "internal/assets/commands/cortex-code.md",
+    "internal/assets/commands/cortex-ingest.md",
+    "internal/assets/commands/cortex-watch.md",
+    "internal/assets/commands/discover.md",
+    "internal/assets/commands/hotfix.md",
+    "internal/assets/commands/investigate.md",
+    "internal/assets/commands/resume.md",
+    "internal/assets/commands/review.md",
+    "internal/assets/commands/sdd.md",
+    "internal/assets/commands/spike.md",
+    "internal/assets/commands/status.md",
+    "internal/assets/commands/tdd.md",
+    "internal/assets/commands/work.md"
+  ],
+  "batches": {
+    "C21": {
+      "name": "asset-guide-startup-routing",
+      "files": [
+        "internal/assets/AGENTS.md"
+      ]
+    },
+    "C22": {
+      "name": "asset-guide-lifecycle-memory",
+      "files": [
+        "internal/assets/AGENTS.md"
+      ]
+    },
+    "C23": {
+      "name": "read-only-controllers",
+      "files": [
+        "internal/assets/agents/discovery.md",
+        "internal/assets/agents/investigate.md"
+      ]
+    },
+    "C24": {
+      "name": "implement-review-controllers",
+      "files": [
+        "internal/assets/agents/implement.md",
+        "internal/assets/agents/reviewer.md"
+      ]
+    },
+    "C25": {
+      "name": "coordination-planning-controllers",
+      "files": [
+        "internal/assets/agents/orchestrator.md",
+        "internal/assets/agents/planner.md"
+      ]
+    },
+    "C26": {
+      "name": "shared-canonical-ownership",
+      "files": [
+        "internal/assets/skills/_shared/agent-writing-contract.md",
+        "internal/assets/skills/_shared/codebase-design-contract.md",
+        "internal/assets/skills/_shared/cortex-convention.md",
+        "internal/assets/skills/_shared/cortex-work-protocol.md",
+        "internal/assets/skills/_shared/diagnosis-loop-contract.md",
+        "internal/assets/skills/_shared/workflow-map.md"
+      ]
+    },
+    "C27": {
+      "name": "implement-review-procedures",
+      "files": [
+        "internal/assets/skills/code-review-adversary/SKILL.md",
+        "internal/assets/skills/fast-tdd/SKILL.md",
+        "internal/assets/skills/hotfix-triage/SKILL.md",
+        "internal/assets/skills/implement/SKILL.md"
+      ]
+    },
+    "C28": {
+      "name": "evidence-investigation-procedures",
+      "files": [
+        "internal/assets/skills/ast-impact-analysis/SKILL.md",
+        "internal/assets/skills/context-distiller/SKILL.md",
+        "internal/assets/skills/discovery/SKILL.md",
+        "internal/assets/skills/investigate/SKILL.md"
+      ]
+    },
+    "C29": {
+      "name": "planning-dispatch-procedures",
+      "files": [
+        "internal/assets/skills/orchestrator/SKILL.md",
+        "internal/assets/skills/parallel-dispatch/SKILL.md",
+        "internal/assets/skills/planner/SKILL.md"
+      ]
+    },
+    "C30": {
+      "name": "specialist-procedure-pointers",
+      "files": [
+        "internal/assets/skills/grill-me/SKILL.md",
+        "internal/assets/skills/mutation-testing/SKILL.md",
+        "internal/assets/skills/property-based-testing/SKILL.md",
+        "internal/assets/skills/spike-prototype/SKILL.md",
+        "internal/assets/skills/workflow-retrospective/SKILL.md"
+      ]
+    },
+    "C31": {
+      "name": "command-entrypoints",
+      "files": [
+        "internal/assets/commands/cortex-code.md",
+        "internal/assets/commands/cortex-ingest.md",
+        "internal/assets/commands/cortex-watch.md",
+        "internal/assets/commands/discover.md",
+        "internal/assets/commands/hotfix.md",
+        "internal/assets/commands/investigate.md",
+        "internal/assets/commands/resume.md",
+        "internal/assets/commands/review.md",
+        "internal/assets/commands/sdd.md",
+        "internal/assets/commands/spike.md",
+        "internal/assets/commands/status.md",
+        "internal/assets/commands/tdd.md",
+        "internal/assets/commands/work.md"
+      ]
+    },
+    "C32": {
+      "name": "transport-minimization",
+      "files": [
+        "internal/assets/plugins/cortex-subagent-transport.ts"
+      ]
+    }
+  },
+  "canonical_concepts": {
+    "work_protocol": {
+      "canonical_file": "internal/assets/skills/_shared/cortex-work-protocol.md",
+      "permitted_pointers": [
+        "internal/assets/AGENTS.md",
+        "internal/assets/agents/orchestrator.md"
+      ]
+    },
+    "evidence_convention": {
+      "canonical_file": "internal/assets/skills/_shared/cortex-convention.md",
+      "permitted_pointers": [
+        "internal/assets/AGENTS.md",
+        "internal/assets/agents/discovery.md"
+      ]
+    },
+    "workflow_routing": {
+      "canonical_file": "internal/assets/skills/_shared/workflow-map.md",
+      "permitted_pointers": [
+        "internal/assets/AGENTS.md",
+        "internal/assets/skills/orchestrator/SKILL.md"
+      ]
+    },
+    "codebase_design": {
+      "canonical_file": "internal/assets/skills/_shared/codebase-design-contract.md",
+      "permitted_pointers": [
+        "internal/assets/skills/planner/SKILL.md"
+      ]
+    },
+    "diagnosis_loop": {
+      "canonical_file": "internal/assets/skills/_shared/diagnosis-loop-contract.md",
+      "permitted_pointers": [
+        "internal/assets/skills/investigate/SKILL.md"
+      ]
+    },
+    "agent_writing": {
+      "canonical_file": "internal/assets/skills/_shared/agent-writing-contract.md",
+      "permitted_pointers": [
+        "internal/assets/skills/_shared/workflow-map.md"
+      ]
+    }
+  }
+}
