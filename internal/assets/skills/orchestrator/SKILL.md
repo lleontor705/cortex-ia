@@ -155,5 +155,9 @@ Follow `cortex-work-protocol.md`; wrap this scoped example in exactly one `<mini
 
 - **External Model Configuration**: The model and reasoning effort used for external AGY delegation are configured authoritatively by the user via the TUI / `cortex-delegation.json`. Agents must never attempt to select, recommend, or override the delegation model.
 
+- **Role Assignment & File Scope Boundaries**:
+  - `implement` minions require a concrete, non-empty `allowed_files` array corresponding to leased repository files.
+  - Read-only tasks, forensic audits, reproduction verifications, unleased repository inspections, and operational checks (`allowed_files: []`) MUST NEVER be dispatched to the `implement` role. Route them strictly to `investigate` (or `reviewer` if auditing completed code). Dispatching `implement` with an empty file scope is a transport error (`SUBAGENT_TRANSPORT_ERROR`) and will be rejected.
+
 - **Blocked-Task Decomposition Routing**: When routing a blocked task to `planner` for decomposition (`cortex_ia_work_decompose`), you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and pass the active project `spec_plane` (`openspec`, `cortex`, or `hybrid`). Never pass `workflow: "direct-change"`, `phase: "tasks"`, or `spec_plane: null`.
 

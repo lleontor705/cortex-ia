@@ -220,6 +220,12 @@ sequenceDiagram
   - Multi-record/batch validation must operate on defensive copies or without mutating caller-owned structs/pointers in-place prior to whole-request validation.
   - Implementers must NEVER alter or weaken contracts (e.g. converting atomic rejection into "skip invalid records") to force tests green.
 - **Modular Test Scaffolding Policy**: Never append test suites to an existing test file exceeding 300 LOC. Planners and implementers must allocate dedicated modular test files (`<domain>_<slice>_test.go`) bounded to <= 250 LOC per task.
+- **Role Assignment & Verification Command Integrity**:
+  - Implementation minions (`role: "implement"`) require a non-empty `allowed_files` array. Read-only investigations, audits, and unleased checks (`allowed_files: []`) must route to `investigate` or `reviewer`.
+  - Task `verification` fields MUST be raw, standalone executable commands with zero comments or parenthetical descriptions (e.g. never append `(expected exit 0)`).
+- **Operational & Database Invariants**:
+  - Parameterize DB scripts via environment variables; never embed credentials or secrets.
+  - Unapproved destructive operations (`DROP TABLE`, `TRUNCATE`, bulk `DELETE`) on shared tables are strictly prohibited without pre-captured verified backups and exact rollbacks. Synthetic test data must be cleaned up via rollback or teardown.
 - **AST & Code-Intelligence Noninterference (`REQ-PRIV-007`)**: AST structures, doc summaries (`DocSummary`), graph relations, and reasoning (`Reasoning`) are structural codebase components and must NEVER be redacted or mutated by privacy/sanitize routines.
 - **Transient Quota Exhaustion Fallback**: When external delegation fails due to model quota exhaustion (`QUOTA_EXCEEDED` / "usage limit has been reached"), the controller/orchestrator reconciles the job and may fall back immediately to native execution under fresh local authority without marking the task permanently blocked.
 - **Stacked Work Units**:

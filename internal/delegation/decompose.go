@@ -33,7 +33,7 @@ type normalizedWorkStep struct {
 // DecomposeWork atomically replaces one blocked task with a sequential chain
 // of smaller tasks. The original remains in the append-only history and is
 // presented as superseded; downstream dependencies move to the final child.
-func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision int64, steps []WorkStepDefinition) (WorkDecomposition, error) {
+func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision int64, steps []WorkStepDefinition, contractOverride ...*SDDContract) (WorkDecomposition, error) {
 	id = strings.TrimSpace(id)
 	if id == "" || expectedRevision <= 0 {
 		return WorkDecomposition{}, errors.New("task id and positive revision are required")
@@ -83,6 +83,13 @@ func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision i
 		contract, err := decodeContract(contractJSON)
 		if err != nil {
 			return err
+		}
+		if len(contractOverride) > 0 && contractOverride[0] != nil {
+			contract = contractOverride[0]
+			contractJSON, err = encodeContract(contract)
+			if err != nil {
+				return err
+			}
 		}
 		if err := requireOpenSDDChange(ctx, conn, boardID, contract); err != nil {
 			return err

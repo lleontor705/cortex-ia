@@ -28,7 +28,7 @@ If no red-capable oracle can be produced within the granted read-only scope, sto
 
 ## Regression seam
 
-Convert the minimized reproduction into a persistent regression test only when the repository permits that test class and the seam exercises the real failure pattern through a public interface. When persistent tests are out of policy or no faithful seam exists, retain an ephemeral smoke/oracle receipt and report the missing seam as architecture evidence for the planner.
+Convert the minimized reproduction into a persistent regression test only when the repository permits that test class and the seam exercises the real failure pattern through a public interface. Permitted persistent test classes are strictly bounded to TUI, simple install-copy, and user-authorized critical regressions (authority, transport, recovery, updater verification), in dedicated modular files <= 250 lines (never appending to files > 300 lines) with temporary homes and synthetic inputs, without contract weakening (such as silently skipping invalid records) or real state access. When persistent tests are out of policy or no faithful seam exists, retain an ephemeral smoke/oracle receipt and report the missing seam as architecture evidence for the planner. Deeper unrelated transactional exploration remains ephemeral.
 
 Expected values must come from a specification, known-good literal, captured contract, or other independent source. An oracle that recomputes the implementation's result is tautological.
 

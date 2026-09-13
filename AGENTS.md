@@ -55,6 +55,7 @@ The delegation bridge returns the effective mode. That return value is authorita
 - A native controller may supervise no more than one external leaf for its bounded objective. The leaf cannot spawn another agent or CLI.
 - Parallel native writers may share one workspace without Git worktrees only when each controller owns a distinct live task claim and reserves each writable file individually with `cortex_ia_file_reserve` before editing that file. Acquire multiple files in deterministic sorted order, release each with `cortex_ia_file_release`, clean partial acquisition immediately on conflict, and stop writing on conflict or expiry. Mailbox/resource locks do not replace file reservations.
 - External AGY implementation requires `current_workspace` as the single supported workspace strategy (`isolated_worktree` is retired). A current-workspace external AGY leaf remains exclusive for its execution window, forbids concurrent native edits, and must preserve pre-existing unleased changes against a pre-run baseline.
+- Implementation minions require a non-empty `allowed_files` list corresponding to leased repository paths. Read-only tasks, forensic audits, and unleased inspections (`allowed_files: []`) must route to `investigate` or `reviewer`. Verification commands in tasks and task DAGs must be raw, executable commands without comments or parenthetical explanations.
 
 ## Verification
 
@@ -62,9 +63,11 @@ The delegation bridge returns the effective mode. That return value is authorita
 - **Testing Scope & Anti-Overengineering Rule**: No crear tests innecesarios ni sobreingenierizados. Las pruebas persistentes se limitan exclusivamente a:
   1. Interfaz TUI (`internal/tui/...`).
   2. Validación simple de existencia y copia de archivos/carpetas hacia OpenCode (`internal/pipeline/install_test.go`).
-- Persistent tests protect the TUI and clean asset installation/copying into OpenCode. Deeper SQLite, delegation, CLI, and embedded-web transactional oracles run as isolated ephemeral smokes and are deleted after execution.
+  3. Pruebas de regresión críticas acotadas y autorizadas para verificación de autoridad (`internal/delegation/...`), transporte (`internal/assets/plugins/...`), recuperación (`internal/install/...`) y actualizador (`internal/updater/...`).
+- Persistent tests protect the TUI, clean asset installation/copying into OpenCode, and user-approved critical boundaries (authority, transport, recovery, updater). Deeper SQLite, delegation, CLI, and embedded-web transactional oracles run as isolated ephemeral smokes and are deleted after execution.
+- Tests must remain modular: dedicated new test files at most 250 lines, and never append new suites to existing test files exceeding 300 lines.
+- Tests use temporary home directories and synthetic inputs. Never point tests at the developer's real agent configuration or user state, and never weaken contracts by silently skipping invalid records.
 - Focus a package with `go test ./internal/tui/...`; focus a test with `go test ./internal/pipeline -run '^TestInstall_DryRun$' -count=1`.
-- Tests use temporary home directories. Never point pipeline or TUI tests at the developer's real agent configuration.
 
 ## Architecture
 

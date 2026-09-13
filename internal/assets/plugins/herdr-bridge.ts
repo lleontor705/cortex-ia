@@ -921,6 +921,12 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       args: {
         task_id: tool.schema.string(),
         revision: tool.schema.number(),
+        contract: tool.schema.object({
+          version: tool.schema.number(), workflow: tool.schema.enum(["sdd-lite", "sdd-full"]),
+          change_id: tool.schema.string(), spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid"]),
+          pins: tool.schema.array(tool.schema.object({ transport: tool.schema.string(), project: tool.schema.string(), locator: tool.schema.string(), sha256: tool.schema.string() })),
+          requirement_ids: tool.schema.array(tool.schema.string())
+        }).optional().describe("Optional upgraded SDD contract when decomposing a direct-change task to SDD-lite or updating the change contract"),
         tasks: tool.schema.array(tool.schema.object({
           task_id: tool.schema.string(),
           title: tool.schema.string(),
@@ -931,9 +937,11 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         }))
       },
       async execute(args) {
+        const plan: Record<string, unknown> = { tasks: args.tasks };
+        if (args.contract) plan.contract = args.contract;
         return cortexInput(
           ["work", "decompose", args.task_id, "--revision", String(args.revision), "--plan", "@stdin"],
-          JSON.stringify({ tasks: args.tasks })
+          JSON.stringify(plan)
         );
       }
     }),

@@ -380,21 +380,29 @@ func runWork(args []string) error {
 		return printJSON(item)
 	case "decompose":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("decompose <task-id> --revision <n> --plan <file|@stdin>", nil)
+			return workUsage("decompose <task-id> --revision <n> --plan <file|@stdin> [--contract-file <file>]", nil)
 		}
-		id, opts, err := workIDOptions(args[1:], map[string]bool{"--revision": false, "--plan": false})
+		id, opts, err := workIDOptions(args[1:], map[string]bool{"--revision": false, "--plan": false, "--contract-file": false})
 		if err != nil {
-			return workUsage("decompose <task-id> --revision <n> --plan <file|@stdin>", err)
+			return workUsage("decompose <task-id> --revision <n> --plan <file|@stdin> [--contract-file <file>]", err)
 		}
 		revision, err := positiveRevision(oneOption(opts, "--revision"))
 		if err != nil {
 			return err
 		}
-		steps, err := readWorkDecompositionPlan(oneOption(opts, "--plan"))
+		plan, err := readWorkDecompositionPlan(oneOption(opts, "--plan"))
 		if err != nil {
 			return err
 		}
-		result, err := store.DecomposeWork(ctx, id, revision, steps)
+		contract := plan.Contract
+		if file := oneOption(opts, "--contract-file"); file != "" {
+			contractFromFile, err := delegation.ReadSDDContract(file)
+			if err != nil {
+				return err
+			}
+			contract = contractFromFile
+		}
+		result, err := store.DecomposeWork(ctx, id, revision, plan.Tasks, contract)
 		if err != nil {
 			return err
 		}
@@ -631,9 +639,14 @@ func workUsage(usage string, cause error) error {
 	return nil
 }
 
-func readWorkDecompositionPlan(source string) ([]delegation.WorkStepDefinition, error) {
+type workDecompositionPlan struct {
+	Contract *delegation.SDDContract         `json:"contract,omitempty"`
+	Tasks    []delegation.WorkStepDefinition `json:"tasks"`
+}
+
+func readWorkDecompositionPlan(source string) (workDecompositionPlan, error) {
 	if strings.TrimSpace(source) == "" {
-		return nil, errors.New("decomposition plan is required")
+		return workDecompositionPlan{}, errors.New("decomposition plan is required")
 	}
 	var reader io.Reader
 	var file *os.File
@@ -643,28 +656,29 @@ func readWorkDecompositionPlan(source string) ([]delegation.WorkStepDefinition, 
 		var err error
 		file, err = os.Open(source)
 		if err != nil {
-			return nil, fmt.Errorf("open decomposition plan: %w", err)
+			return workDecompositionPlan{}, fmt.Errorf("open decomposition plan: %w", err)
 		}
 		defer func() { _ = file.Close() }()
 		reader = file
 	}
 	data, err := io.ReadAll(io.LimitReader(reader, 64*1024+1))
 	if err != nil {
-		return nil, fmt.Errorf("read decomposition plan: %w", err)
+		return workDecompositionPlan{}, fmt.Errorf("read decomposition plan: %w", err)
 	}
 	if len(data) > 64*1024 {
-		return nil, errors.New("decomposition plan exceeds 64 KiB")
+		return workDecompositionPlan{}, errors.New("decomposition plan exceeds 64 KiB")
 	}
-	var plan struct {
-		Tasks []delegation.WorkStepDefinition `json:"tasks"`
-	}
+	var plan workDecompositionPlan
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&plan); err != nil {
-		return nil, fmt.Errorf("decode decomposition plan: %w", err)
+		return workDecompositionPlan{}, fmt.Errorf("decode decomposition plan: %w", err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return nil, errors.New("decomposition plan must contain exactly one JSON object")
+		return workDecompositionPlan{}, errors.New("decomposition plan must contain exactly one JSON object")
 	}
-	return plan.Tasks, nil
+	if len(plan.Tasks) == 0 {
+		return workDecompositionPlan{}, errors.New("decomposition plan requires at least one task")
+	}
+	return plan, nil
 }

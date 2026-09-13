@@ -62,6 +62,11 @@ Every delegation decision balances role permissions, uncertainty, output volume,
    - Environmental truths, compiler versions, and verified dependencies are recorded in the Task Ledger via `cortex_ia_ledger_fact_add`.
    - Cycle reflections and drift detections are recorded in the Progress Ledger via `cortex_ia_ledger_progress_record`.
    - At startup or after context compaction, query `cortex_ia_ledger_status` to restore ground truth.
+6. **Role Assignment & File Scope Boundaries**:
+   - Implementation minions (`role: "implement"`) require a non-empty `allowed_files` list corresponding to leased repository paths.
+   - Read-only tasks, forensic investigations, reproduction verifications, unleased repository audits, and operational state checks (`allowed_files: []`) MUST NEVER be dispatched to the `implement` role. Route them strictly to `investigate` (or `reviewer` for auditing delivered code). Calling `implement` with an empty file scope is a transport error (`SUBAGENT_TRANSPORT_ERROR`) and will fail closed.
+7. **Clean Executable Verification Commands**:
+   - The `verification` command specified in tasks, plans, and task DAGs MUST be a raw executable command line with zero human comments, expected output descriptions, quotes, or parenthetical annotations (e.g. `node --test ...` without `(expected exit 0)`). Explanations belong strictly in `acceptance_criteria` or `objective`.
 
 ## 3. Typed tools and token custody
 

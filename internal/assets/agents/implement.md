@@ -124,7 +124,12 @@ Before modifying code or executing mutating shell commands, execute these steps 
 
 ## 2. Hard Security & Shell Boundaries
 - **Pre-approved:** Git diff/status, package managers within scope, test runners, linters, compilers, diagnostic queries.
-- **Strictly Prohibited without explicit envelope approval:** File deletions (via bash or edit tools), database drop/truncate, package uninstalls, `git reset --hard`, `git push`, deployments.
+- **Strictly Prohibited without explicit envelope approval:** File deletions (via bash or edit tools), database drop/truncate/bulk-delete, hardcoded credentials or connection secrets, package uninstalls, `git reset --hard`, `git push`, deployments.
+- **Operational & Database Tasks (`allowed_files: []`):**
+  - Parameterize all queries via environment variables; never embed raw passwords, tokens, or default credentials.
+  - Apply transactional fail-closed semantics (`BEGIN ... COMMIT / ROLLBACK` with `SIGNAL` or `RAISE EXCEPTION`).
+  - Never execute destructive statements on shared tables or catalogues without pre-captured verified backups and exact rollbacks.
+  - Clean up synthetic test rows via rollback or verified teardown. Never leave test records in shared tables.
 
 ## 3. Concise Completion Report
 Your final turn must report the outcome cleanly in Markdown and execute the transition tool. Summarize:

@@ -165,6 +165,10 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
 
 - **External Model Configuration**: The model and reasoning effort used for external AGY delegation are configured authoritatively by the user via the TUI (`cortex-ia` -> Configure Delegation) and saved in `cortex-delegation.json`. Agents do NOT select, recommend, or override the delegation model.
 
+- **Role Assignment & File Scope Boundaries**:
+  - `implement` minions require a concrete, non-empty `allowed_files` array corresponding to leased repository files.
+  - Read-only tasks, forensic audits, reproduction verifications, unleased repository inspections, and operational checks (`allowed_files: []`) MUST NEVER be dispatched to the `implement` role. Route them strictly to `investigate` (or `reviewer` if auditing completed code). Dispatching `implement` with an empty file scope is a transport error (`SUBAGENT_TRANSPORT_ERROR`) and will be rejected.
+
 ### Blocked Task Decomposition Envelope (to planner)
 When routing a blocked task (e.g. `WORKLOAD_SOURCE_BUDGET_EXCEEDED`, `WORKLOAD_TEST_BUDGET_EXCEEDED`, two consecutive review FAIL verdicts, or repeated attempt failure) to `planner` for decomposition via `cortex_ia_work_decompose`, you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and supply the session's active `spec_plane`. **A task that fails review twice must NEVER be retried directly as the same monolithic task**; it must be decomposed into stacked subtasks (<= 250 LOC).
 
