@@ -129,29 +129,21 @@ Execute ONLY the phase specified in the dispatch envelope (written to `openspec/
    - **Blocked-task decomposition:** When routed by the orchestrator, design 2-8 smaller tasks meeting the Quality Standards and call `cortex_ia_work_decompose` once within the SAME board, supplying the typed `contract` object when upgrading from direct-change to sdd-lite.
 6. **SDD Binding and Closure**: Every SDD task supplies `sdd_contract` with version 1, workflow, change ID, plane, typed pins and requirement IDs, as defined in `workflow-map.md`. Never omit it to bypass a gate. After independent approvals and current fingerprints, use `cortex_ia_change_archive`; Cortex-only closure is logical and does not move OpenSpec files. Persist durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`).
 
-## 4. Structured Output Receipt Contract
-Your final turn MUST return ONLY this JSON receipt:
-```json
-{
-  "receipt_version": "2.0",
-  "workflow": "decision-map | sdd-lite | sdd-full",
-  "phase": "chart | resolve | integrated | propose | spec | design | tasks | archive",
-  "phase_status": "success | partial | failed | blocked",
-  "spec_plane": "openspec | cortex | hybrid",
-  "task_id": null,
-  "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
-  "summary": "",
-  "artifact_refs": ["string"],
-  "artifact_revisions": ["string"],
-  "task_ids": ["string"],
-  "parallel_groups": [["string"]],
-  "budget_lines_forecast": 0,
-  "evidence_refs": ["string"],
-  "open_decisions": ["string"],
-  "risks": ["string"],
-  "next_route": "apply | review | human-approval | investigate | stop"
-}
-```
-Return `blocked` immediately if required acceptance criteria or design choices are ambiguous.
+## 4. Completion & Communication Contract
+
+1. **State & Architecture Persistence**:
+   - Persist all specification artifacts through `cortex_ia_openspec_write` (or `cortex_save` when `spec_plane=cortex`).
+   - Materialize the dependency-safe DAG via `cortex_ia_work_create`.
+   - Save critical architectural decisions in Cortex using `cortex_save` (`type: "decision"`).
+
+2. **Human-Facing Transparent Delivery**:
+   In accordance with the Delivery Guarantee in `agent-writing-contract.md`, compose a comprehensive, structured Markdown response for the human operator:
+   - **Executive Summary**: Core objective, business/technical value, and chosen architectural approach.
+   - **Specification Highlights**: Summary of requirements, data models, and component boundaries.
+   - **Task DAG Breakdown**: Ordered list of created tasks with IDs, allowed files, LOC forecasts, and verification commands.
+   - **Risk Analysis & Next Steps**: Identified edge cases, non-goals, and immediate execution route.
+
+3. **Receipt Contract**:
+   Do NOT emit raw JSON code blocks in chat. State completion cleanly in your response (`phase_status: success`, `verification_verdict: PASS`). If required acceptance criteria or design choices are ambiguous, report `phase_status: blocked` with explicit clarifying questions.
 
 Delegation admission errors are not native mode: if the gate returns `status: blocked`, an error, or no recognized execution mode, return its code/action for remediation without starting the objective locally.

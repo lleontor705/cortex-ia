@@ -5,25 +5,44 @@ import * as path from "node:path";
 
 const CORTEX_ROLES = new Set(["discovery", "investigate", "planner", "implement", "reviewer"]);
 
-function resolveCortexExecutable(): string | null {
+function resolveExecutable(cmd: string): string | null {
+  const isWin = process.platform === "win32";
+  const locator = isWin ? "where.exe" : "which";
+  try {
+    const out = execFileSync(locator, [cmd], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+    }).trim();
+    if (out) {
+      const first = out.split(/\r?\n/)[0].trim();
+      if (path.isAbsolute(first) && fs.existsSync(first)) {
+        return first;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function resolveCortexExecutable(directory?: string): string | null {
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
   const candidates = [
     path.join(home, "go", "bin", "cortex-ia.exe"),
-    "cortex-ia",
     path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
     path.join(home, ".local", "bin", "cortex-ia"),
     "/usr/local/bin/cortex-ia",
     "/usr/bin/cortex-ia",
   ];
   for (const candidate of candidates) {
-    if (candidate !== "cortex-ia" && fs.existsSync(candidate)) return candidate;
-    if (candidate === "cortex-ia") {
-      try {
-        execFileSync(candidate, ["version"], { stdio: "ignore", windowsHide: true });
-        return candidate;
-      } catch {}
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  const resolved = resolveExecutable("cortex-ia");
+  if (resolved) {
+    if (directory && path.resolve(resolved).startsWith(path.resolve(directory) + path.sep)) {
+      return null;
     }
+    return resolved;
   }
   return null;
 }
@@ -126,7 +145,7 @@ export const CortexTaskLatchPlugin: Plugin = async (ctx) => {
         failedSessions.set(input.sessionID, failure);
 
         // Record platform operational incident in SQLite ledger
-        const cortexBin = resolveCortexExecutable();
+        const cortexBin = resolveCortexExecutable(ctx.directory);
         if (cortexBin && failure.taskId) {
           try {
             execFileSync(

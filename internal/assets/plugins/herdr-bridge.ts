@@ -1195,12 +1195,16 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }),
 
     cortex_ia_work_transition: tool({
-      description: "Transition a claimed task using authority retained by the bridge. Only in_review, in_progress, and blocked are accepted.",
+      description: "Transition a claimed task using authority retained by the bridge. Emits authoritative completion receipt without requiring raw JSON text in chat.",
       args: {
         task_id: tool.schema.string(),
         to: tool.schema.enum(["in_review", "in_progress", "blocked"]).optional(),
         status: tool.schema.enum(["in_review", "in_progress", "blocked"]).optional().describe("Alias for 'to'"),
-        revision: tool.schema.number().optional()
+        revision: tool.schema.number().optional(),
+        summary: tool.schema.string().optional().describe("Human-readable execution summary"),
+        verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"]).optional().describe("Verification verdict"),
+        evidence_refs: tool.schema.array(tool.schema.string()).optional().describe("Pointers to verified test files, commands or observations"),
+        changed_files: tool.schema.array(tool.schema.string()).optional().describe("List of modified workspace files")
       },
       async execute(args, context) {
         const targetState = args.to || args.status;
@@ -1230,14 +1234,17 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         reviewer: tool.schema.string().optional().describe("Legacy display hint; reviewer identity always comes from the host session"),
         verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"]),
         evidence: tool.schema.string().optional(),
-        revision: tool.schema.number().optional()
+        revision: tool.schema.number().optional(),
+        summary: tool.schema.string().optional().describe("Independent review summary and lens verdict"),
+        findings: tool.schema.array(tool.schema.string()).optional().describe("List of review findings or blockers")
       },
       async execute(args, context) {
         if (workAuthority.get(args.task_id)?.sessionID === context.sessionID) throw new Error("implementation session cannot approve its own task");
         const rawVerdict = String(args.verdict || "").toUpperCase();
         const verdict = ["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"].includes(rawVerdict) ? rawVerdict : args.verdict;
         const command = ["work", "approve", args.task_id, "--reviewer", controllerIdentity(context.sessionID), "--verdict", verdict];
-        if (args.evidence) command.push("--evidence", args.evidence);
+        const evidenceStr = args.evidence || (args.summary ? (args.summary + (args.findings && args.findings.length ? ` (Findings: ${args.findings.join("; ")})` : "")) : "");
+        if (evidenceStr) command.push("--evidence", evidenceStr);
         if (args.revision) command.push("--revision", String(args.revision));
         const result = cortex(command);
         workAuthority.delete(args.task_id);

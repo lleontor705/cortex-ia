@@ -3,25 +3,44 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-function firstCortexIA(): string {
+function resolveExecutable(cmd: string): string | null {
+  const isWin = process.platform === "win32";
+  const locator = isWin ? "where.exe" : "which";
+  try {
+    const out = execFileSync(locator, [cmd], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+    }).trim();
+    if (out) {
+      const first = out.split(/\r?\n/)[0].trim();
+      if (path.isAbsolute(first) && fs.existsSync(first)) {
+        return first;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function firstCortexIA(directory?: string): string {
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
   const candidates = [
     path.join(home, "go", "bin", "cortex-ia.exe"),
-    "cortex-ia",
     path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
     path.join(home, ".local", "bin", "cortex-ia"),
     "/usr/local/bin/cortex-ia",
     "/usr/bin/cortex-ia",
   ];
   for (const candidate of candidates) {
-    if (candidate !== "cortex-ia" && fs.existsSync(candidate)) return candidate;
-    if (candidate === "cortex-ia") {
-      try {
-        execFileSync(candidate, ["version"], { stdio: "ignore", windowsHide: true });
-        return candidate;
-      } catch {}
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  const resolved = resolveExecutable("cortex-ia");
+  if (resolved) {
+    if (directory && path.resolve(resolved).startsWith(path.resolve(directory) + path.sep)) {
+      throw new Error("SECURITY_ERROR: cortex-ia executable found inside workspace directory is untrusted");
     }
+    return resolved;
   }
   throw new Error("cortex-ia executable not found");
 }
@@ -43,7 +62,18 @@ function targetFiles(toolName: string, args: Record<string, any>): string[] {
     if (!targets.length || targets.length > 128) throw new Error("LEASE_CHECK_FAILED: patch must expose 1-128 target paths");
     return targets;
   }
-  const direct = [args?.TargetFile, args?.targetFile, args?.filePath, args?.file_path, args?.path, args?.file].filter(value => value !== undefined);
+  const direct = [
+    args?.TargetFile,
+    args?.targetFile,
+    args?.filePath,
+    args?.file_path,
+    args?.path,
+    args?.file,
+    args?.destination,
+    args?.dest,
+    args?.target,
+    args?.target_path,
+  ].filter(value => value !== undefined);
   if (!direct.length || direct.some(value => typeof value !== "string" || !value || value !== direct[0])) throw new Error("LEASE_CHECK_FAILED: a single verifiable target path is required");
   return [direct[0]];
 }
@@ -80,7 +110,7 @@ export const CortexLeaseGuardPlugin: Plugin = async (ctx) => ({
     if (typeof input.sessionID !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(input.sessionID)) throw new Error("LEASE_CHECK_FAILED: host session identity is required");
     const targets = [...new Set(targetFiles(toolName, (output?.args || {}) as Record<string, any>).map(target => relativeTarget(ctx.directory, target)))].sort();
     if (!targets.length) return;
-    const cortex = firstCortexIA();
+    const cortex = firstCortexIA(ctx.directory);
 
     try {
       let raw: string | undefined;

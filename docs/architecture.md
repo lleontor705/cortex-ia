@@ -128,3 +128,12 @@ Every configuration modification follows an ACID pipeline:
 3. **Backup**: Captures a snapshot manifest of every file to be touched into `~/.cortex-ia/backups/<timestamp>/`.
 4. **Apply**: Atomically applies writes using temporary files and filesystem renames. JSONC configuration files are three-way merged, preserving user comments.
 5. **Rollback on Error**: If any step in Apply fails, the engine immediately reverts all touched files from the verified backup snapshot before returning an error.
+
+---
+
+## 5. Security Hardening & Zero-Trust Invariants
+
+- **Loopback & Cross-Site Protection (`internal/cortexiaweb/server.go`)**: The embedded web dashboard binds exclusively to loopback interfaces (`127.0.0.1`, `[::1]`). Requests presenting `Sec-Fetch-Site: cross-site` or non-loopback `Host` headers are rejected with HTTP 403 Forbidden to protect against DNS rebinding and CSRF attacks.
+- **Binary PATH Hijacking Prevention (`cortex-lease-guard.ts` & `cortex-task-latch.ts`)**: Executable resolution resolves canonical absolute system paths and strictly forbids invoking binaries located within the working directory (`ctx.directory`), eliminating local PATH hijacking risks on Windows.
+- **Typed Tool Receipts in SQLite**: Machine-readable state transitions and reviews bypass LLM chat output completely. Subagents emit typed parameters via `cortex_ia_work_transition` and `cortex_ia_work_approve`, which are stored directly in `~/.cortex-ia/delegation.db`. Chat turns conclude with clean, token-efficient Markdown summaries.
+

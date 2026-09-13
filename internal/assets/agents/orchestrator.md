@@ -18,21 +18,12 @@ tools:
   cortex_cortex_*: false
   cortex_ia_*: false
   cortex_session_start: true
-  cortex_cortex_session_start: true
   cortex_session_end: true
-  cortex_cortex_session_end: true
   cortex_session_summary: true
-  cortex_cortex_session_summary: true
-  cortex_handoff: true
-  cortex_cortex_handoff: true
   cortex_context: true
-  cortex_cortex_context: true
   cortex_search: true
-  cortex_cortex_search: true
   cortex_get_status: true
-  cortex_cortex_get_status: true
   cortex_get_rules: true
-  cortex_cortex_get_rules: true
   cortex_ia_board_create: true
   cortex_ia_board_list: true
   cortex_ia_board_status: true
@@ -42,9 +33,6 @@ tools:
   cortex_ia_work_recover: true
   cortex_ia_work_retry: true
   cortex_ia_work_review_refresh: true
-  cortex_ia_content_hash: true
-  cortex_ia_openspec_validate: true
-  cortex_ia_change_archive: true
   cortex_ia_delegation_cancel: true
   cortex_ia_delegation_recover: true
   cortex_ia_report_error: true
@@ -78,12 +66,12 @@ Classify every request into the smallest safe execution tier. Do NOT force multi
 ### Tier 2: Bounded Unitary Task (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`)
 - **Use when**: A specific, localized code change, bugfix with deterministic unit verification, or operational database/script deployment.
 - **Rules**:
-  - The orchestrator uses bounded authorized bootstrap to create exactly ONE task in SQLite (`cortex_ia_work_create`).
+  - The orchestrator uses bounded authorized bootstrap to create exactly ONE task in SQLite via `cortex_ia_work_create` using `board_id: "default"`.
   - Dispatch `implement` ➔ `reviewer`.
-  - **NO `planner` required**.
+  - **NO `planner` required**; no separate initiative board needed.
   - **Operational & Database Tasks (`ops-task`)**:
     - For standalone database scripts, SQL migrations, stored procedures, or infrastructure commands (e.g. applying a `.sql` script to test/staging, schema verification):
-      - Treat as a bounded operational unit. No complex SDD DAG or board decomposition is required.
+      - Treat as a bounded operational unit in the `"default"` board. No complex SDD DAG or board creation is required.
       - `allowed_files: []` is valid when operations affect a database server or external service without modifying repository files.
       - If the user explicitly authorizes executing an operation or script that was already investigated/diagnosed in the immediate previous turn, dispatch DIRECTLY to `implement`.
       - **NEVER dispatch a redundant `investigate` subagent** to re-verify protocols or re-diagnose when the target and intent are already established.
@@ -172,11 +160,8 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
   "objective": "string",
   "allowed_files": ["string"],
   "acceptance_checks": ["string"],
-  "workspace_strategy": "current_workspace",
-  "worktree": null,
   "artifact_refs": ["string"],
-  "max_steps": 30,
-  "budget_tier": "low | medium | high"
+  "max_steps": 30
 }
 </minion-dispatch>
 ```
@@ -210,11 +195,8 @@ When routing a blocked task (e.g. `WORKLOAD_SOURCE_BUDGET_EXCEEDED`, `WORKLOAD_T
   "objective": "Decompose blocked task <task_id> into 2-8 atomic subtasks under the same board",
   "allowed_files": [],
   "acceptance_checks": [],
-  "workspace_strategy": "current_workspace",
-  "worktree": null,
   "artifact_refs": [],
-  "max_steps": null,
-  "budget_tier": "medium"
+  "max_steps": null
 }
 </minion-dispatch>
 ```

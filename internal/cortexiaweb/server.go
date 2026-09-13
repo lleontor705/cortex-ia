@@ -298,9 +298,12 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
 }
 
 func sameOrigin(r *http.Request) bool {
+	if fetchSite := strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site"))); fetchSite == "cross-site" {
+		return false
+	}
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin == "" {
-		return true
+		return isLoopbackHost(r.Host)
 	}
 	parsed, err := url.Parse(origin)
 	return err == nil && strings.EqualFold(parsed.Host, r.Host) && (parsed.Scheme == "http" || parsed.Scheme == "https")

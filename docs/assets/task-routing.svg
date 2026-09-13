@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 440" font-family="'Segoe UI',system-ui,sans-serif">
-  <rect width="880" height="440" rx="12" fill="#0f1117"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 470" font-family="'Segoe UI',system-ui,sans-serif">
+  <rect width="880" height="470" rx="12" fill="#0f1117"/>
 
   <text x="440" y="32" text-anchor="middle" fill="#c0caf5" font-size="18" font-weight="700">OpenCode Task Routing &amp; Slash Commands</text>
   <text x="440" y="50" text-anchor="middle" fill="#565f89" font-size="11">How user intent maps to OpenCode commands, execution routes, and sub-agents</text>
@@ -49,29 +49,37 @@
   <rect x="450" y="238" width="415" height="30" rx="5" fill="#1e2030" stroke="#D32F2F" stroke-width="1"/>
   <text x="657" y="257" text-anchor="middle" fill="#c0caf5" font-size="9.5">@reviewer (code-review-adversary + mutation tests)</text>
 
-  <!-- Row 6: Spike Prototype -->
-  <rect x="15" y="276" width="170" height="30" rx="5" fill="#1e2030" stroke="#ff9e64" stroke-width="1"/>
-  <text x="100" y="295" text-anchor="middle" fill="#c0caf5" font-size="10">Technical Uncertainty</text>
-  <rect x="230" y="276" width="180" height="30" rx="5" fill="#1e2030" stroke="#ff9e64" stroke-width="1.2"/>
-  <text x="320" y="295" text-anchor="middle" fill="#ff9e64" font-size="11" font-weight="600">/spike</text>
-  <rect x="450" y="276" width="415" height="30" rx="5" fill="#1e2030" stroke="#ff9e64" stroke-width="1"/>
-  <text x="657" y="295" text-anchor="middle" fill="#c0caf5" font-size="9.5">@investigate (spike-prototype in disposable scratch)</text>
+  <!-- Row 6: Project Onboarding & Discovery -->
+  <rect x="15" y="276" width="170" height="30" rx="5" fill="#1e2030" stroke="#06B6D4" stroke-width="1"/>
+  <text x="100" y="295" text-anchor="middle" fill="#c0caf5" font-size="10">Project Onboarding</text>
+  <rect x="230" y="276" width="180" height="30" rx="5" fill="#1e2030" stroke="#06B6D4" stroke-width="1.2"/>
+  <text x="320" y="295" text-anchor="middle" fill="#22D3EE" font-size="11" font-weight="600">/discover</text>
+  <rect x="450" y="276" width="415" height="30" rx="5" fill="#1e2030" stroke="#06B6D4" stroke-width="1"/>
+  <text x="657" y="295" text-anchor="middle" fill="#c0caf5" font-size="9.5">@discovery (Skills, Stack, Rules &amp; .cortex-ia/discovery.md)</text>
 
-  <!-- Row 7: Diagnostic Investigation -->
-  <rect x="15" y="314" width="170" height="30" rx="5" fill="#1e2030" stroke="#78909C" stroke-width="1"/>
-  <text x="100" y="333" text-anchor="middle" fill="#c0caf5" font-size="10">Root Cause Diagnosis</text>
-  <rect x="230" y="314" width="180" height="30" rx="5" fill="#1e2030" stroke="#78909C" stroke-width="1.2"/>
-  <text x="320" y="333" text-anchor="middle" fill="#78909C" font-size="11" font-weight="600">/investigate</text>
-  <rect x="450" y="314" width="415" height="30" rx="5" fill="#1e2030" stroke="#78909C" stroke-width="1"/>
-  <text x="657" y="333" text-anchor="middle" fill="#c0caf5" font-size="9.5">@investigate (Read-Only Code Audit &amp; Hypothesis Map)</text>
+  <!-- Row 7: Spike Prototype -->
+  <rect x="15" y="314" width="170" height="30" rx="5" fill="#1e2030" stroke="#ff9e64" stroke-width="1"/>
+  <text x="100" y="333" text-anchor="middle" fill="#c0caf5" font-size="10">Technical Uncertainty</text>
+  <rect x="230" y="314" width="180" height="30" rx="5" fill="#1e2030" stroke="#ff9e64" stroke-width="1.2"/>
+  <text x="320" y="333" text-anchor="middle" fill="#ff9e64" font-size="11" font-weight="600">/spike</text>
+  <rect x="450" y="314" width="415" height="30" rx="5" fill="#1e2030" stroke="#ff9e64" stroke-width="1"/>
+  <text x="657" y="333" text-anchor="middle" fill="#c0caf5" font-size="9.5">@investigate (spike-prototype in disposable scratch)</text>
 
-  <!-- Row 8: Status & Resume -->
-  <rect x="15" y="352" width="170" height="30" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
-  <text x="100" y="371" text-anchor="middle" fill="#c0caf5" font-size="10">Session Tracking</text>
-  <rect x="230" y="352" width="180" height="30" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1.2"/>
-  <text x="320" y="371" text-anchor="middle" fill="#c0caf5" font-size="11" font-weight="600">/status | /resume</text>
-  <rect x="450" y="352" width="415" height="30" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
-  <text x="657" y="371" text-anchor="middle" fill="#c0caf5" font-size="9.5">@orchestrator (Reconcile ForgeSpec CAS &amp; Cortex Session)</text>
+  <!-- Row 8: Diagnostic Investigation -->
+  <rect x="15" y="352" width="170" height="30" rx="5" fill="#1e2030" stroke="#78909C" stroke-width="1"/>
+  <text x="100" y="371" text-anchor="middle" fill="#c0caf5" font-size="10">Root Cause Diagnosis</text>
+  <rect x="230" y="352" width="180" height="30" rx="5" fill="#1e2030" stroke="#78909C" stroke-width="1.2"/>
+  <text x="320" y="371" text-anchor="middle" fill="#78909C" font-size="11" font-weight="600">/investigate</text>
+  <rect x="450" y="352" width="415" height="30" rx="5" fill="#1e2030" stroke="#78909C" stroke-width="1"/>
+  <text x="657" y="371" text-anchor="middle" fill="#c0caf5" font-size="9.5">@investigate (Read-Only Code Audit &amp; Hypothesis Map)</text>
+
+  <!-- Row 9: Status & Resume -->
+  <rect x="15" y="390" width="170" height="30" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+  <text x="100" y="409" text-anchor="middle" fill="#c0caf5" font-size="10">Session Tracking</text>
+  <rect x="230" y="390" width="180" height="30" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1.2"/>
+  <text x="320" y="409" text-anchor="middle" fill="#c0caf5" font-size="11" font-weight="600">/status | /resume</text>
+  <rect x="450" y="390" width="415" height="30" rx="5" fill="#1e2030" stroke="#565f89" stroke-width="1"/>
+  <text x="657" y="409" text-anchor="middle" fill="#c0caf5" font-size="9.5">@orchestrator (Reconcile SQLite CAS DAG &amp; Cortex Session)</text>
 
   <!-- Connectors -->
   <line x1="185" y1="101" x2="228" y2="101" stroke="#4A90D9" stroke-width="1"/>
@@ -95,5 +103,5 @@
   <polygon points="446,212 452,215 446,218" fill="#2E7D32"/>
 
   <!-- Legend / Footer -->
-  <text x="440" y="415" text-anchor="middle" fill="#565f89" font-size="9">All commands run in OpenCode · Supported by Cortex, ForgeSpec &amp; Context7 MCPs</text>
+  <text x="440" y="445" text-anchor="middle" fill="#565f89" font-size="9">All commands run in OpenCode · Supported by Cortex-IA Control Plane &amp; Cortex MCP</text>
 </svg>

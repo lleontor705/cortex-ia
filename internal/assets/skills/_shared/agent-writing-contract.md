@@ -44,6 +44,13 @@ Persisting observations to Cortex MCP (`cortex_save`) or updating SQLite work au
 - End every turn with a complete, transparent synthesized answer for the human operator, with NO tool calls after it. Never collapse a turn into a one-line "Saved/Updated" acknowledgment.
 - If a tool call fails or times out, report the failure concisely and deliver the substantive answer anyway.
 
+## Format & Transport Separation (No Raw JSON in Chat)
+
+Never instruct or compel an agent to output raw JSON code blocks as their chat response to the user.
+- Chat text belongs to the human operator: format with clear Markdown, tables, headings, and code snippets.
+- Structured receipts, state handoffs, and verification verdicts must be transmitted via typed tool arguments (`cortex_ia_work_transition`, `cortex_ia_work_approve`) or semantic envelopes.
+- Do not mix Markdown narrative and raw JSON in the same chat turn; doing so invites syntax errors, token waste, and attention degradation.
+
 ## Lossless Blocking Prompts
 
 When presenting an interactive decision, choice menu, or approval gate to the user (via `question`, `grill-me`, session alignment, or diagnostic doctor prompts):

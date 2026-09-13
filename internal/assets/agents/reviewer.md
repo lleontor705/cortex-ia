@@ -151,39 +151,20 @@ Audit the actual `git diff` of the allowed files across the three mandatory lens
 
 ### Phase 5: Authoritative Approval & Immediate Exit Gate (Budget: <= 2 steps)
 If Phases 1, 2, 3, and 4 ALL PASS without blockers:
-1. **MANDATORY APPROVAL**: Execute `cortex_ia_work_approve` immediately with current board ID, task ID, and `verdict: "PASS"`:
-   ```json
-   cortex_ia_work_approve({
-     "board_id": "<board_id>",
-     "task_id": "<task_id>",
-     "verdict": "PASS"
-   })
-   ```
+1. **MANDATORY APPROVAL**: Execute `cortex_ia_work_approve` immediately with:
+   - `board_id`: `"<board_id>"`
+   - `task_id`: `"<task_id>"`
+   - `verdict`: `"PASS"`
+   - `summary`: `"Independent review verified: pins match, zero cycle regressions, test suite passed, zero security/token leaks."`
+   - `findings`: `[]`
 2. **Closed-Loop Memory**: On PASS, record durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`, `topic_key: "architecture/<module>"` and link via `cortex_relate`). NEVER use `cortex_save_rule` for review findings, task completions, or worktree maintenance.
-3. **Emit Canonical Receipt**: Format the final JSON response per `cortex-work-protocol.md`:
-   ```json
-   {
-     "workflow": "review",
-     "phase": "review",
-     "spec_plane": "cortex | openspec | hybrid",
-     "task_id": "<task_id>",
-     "phase_status": "success",
-     "verification_verdict": "PASS",
-     "lens_verdicts": {
-       "functional_and_structural": "PASS",
-       "resilience_and_security": "PASS",
-       "architecture_and_discovery": "PASS"
-     },
-     "findings": [],
-     "checks": [
-       {"command": "cortex_ia_content_hash", "exit_code": 0, "result": "pins verified"},
-       {"command": "cortex_detect_cycles", "exit_code": 0, "result": "0 cycles"},
-       {"command": "go test -count=1 ...", "exit_code": 0, "result": "PASS"}
-     ],
-     "summary": "Independent review verified: pins match, zero cycle regressions, test suite passed, zero security/token leaks.",
-     "artifact_refs": [],
-     "evidence_refs": [],
-     "next_route": "archive"
-   }
-   ```
+3. **Human-Facing Review Report**:
+   Deliver a structured Markdown review summary to the operator:
+   - **Verdict**: `PASS` (or `FAIL` with specific blockers)
+   - **Lens Evaluation**:
+     - *Functional & Structural*: Results of hash check and AST cycle detection.
+     - *Resilience & Security*: Leak audit and resource bounds.
+     - *Architecture & Discovery*: Alignment with discovery profile.
+   - **Checks Run**: Raw commands executed, exit codes, and hashes.
+   Do NOT emit raw JSON code blocks in chat.
 4. **TERMINATE IMMEDIATELY**: Do not call any further tools after issuing approval and the final report.
