@@ -2,8 +2,10 @@ package install
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
+	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 )
 
@@ -46,6 +48,31 @@ type InstallReceipt struct {
 	// on disk for a safe retry.
 	RestoreError string   `json:"restore_error,omitempty"`
 	Warnings     []string `json:"warnings,omitempty"`
+	// PostPipelineEffects records the outcome of each separate post-pipeline effect.
+	PostPipelineEffects []PostPipelineEffect `json:"post_pipeline_effects,omitempty"`
+	// PartialSuccess reports that verified earlier effects survive a later failure.
+	PartialSuccess bool `json:"partial_success,omitempty"`
+}
+
+// PostPipelineEffectStatus represents the outcome of an individual post-pipeline effect.
+type PostPipelineEffectStatus string
+
+const (
+	EffectStatusNotRequested PostPipelineEffectStatus = "not_requested"
+	EffectStatusUnchanged    PostPipelineEffectStatus = "unchanged"
+	EffectStatusChanged      PostPipelineEffectStatus = "changed"
+	EffectStatusFailed       PostPipelineEffectStatus = "failed"
+	EffectStatusNotAttempted PostPipelineEffectStatus = "not_attempted"
+)
+
+// PostPipelineEffect records the bounded v1 outcome of a separate effect
+// executed after confirmed pipeline success.
+type PostPipelineEffect struct {
+	Kind               string                   `json:"kind"`
+	Status             PostPipelineEffectStatus `json:"status"`
+	TransactionCovered bool                     `json:"transaction_covered"`
+	Error              string                   `json:"error,omitempty"`
+	Destination        string                   `json:"destination,omitempty"`
 }
 
 // newInstallReceipt projects the engine plan and receipt onto the service
@@ -117,4 +144,127 @@ func flaggedUnqualified(name string, warnings []string) bool {
 		}
 	}
 	return false
+}
+
+// applyPostPipelineEffects executes the post-pipeline separate effects in order:
+// 1. Environment configuration
+// 2. TUI plugin registration
+// 3. Delegation bridge configuration
+func applyPostPipelineEffects(homeDir string, opts Options, receipt *InstallReceipt) error {
+	if opts.DryRun {
+		return nil
+	}
+	var effects []PostPipelineEffect
+	var stopped bool
+	var firstErr error
+	var survivingChanges bool
+
+	// 1. Environment
+	if opts.SkipEnvironment {
+		effects = append(effects, PostPipelineEffect{
+			Kind: "environment", Status: EffectStatusNotRequested, TransactionCovered: false,
+		})
+	} else if stopped {
+		effects = append(effects, PostPipelineEffect{
+			Kind: "environment", Status: EffectStatusNotAttempted, TransactionCovered: false,
+		})
+	} else {
+		changed, err := ConfigureEnvironmentWithResult(homeDir)
+		if err != nil {
+			stopped = true
+			firstErr = fmt.Errorf("configure environment: %w", err)
+			effects = append(effects, PostPipelineEffect{
+				Kind: "environment", Status: EffectStatusFailed, TransactionCovered: false, Error: err.Error(),
+			})
+		} else if changed {
+			survivingChanges = true
+			effects = append(effects, PostPipelineEffect{
+				Kind: "environment", Status: EffectStatusChanged, TransactionCovered: false,
+			})
+		} else {
+			effects = append(effects, PostPipelineEffect{
+				Kind: "environment", Status: EffectStatusUnchanged, TransactionCovered: false,
+			})
+		}
+	}
+
+	// 2. TUI Plugin
+	if opts.SkipTUIPlugin {
+		effects = append(effects, PostPipelineEffect{
+			Kind: "tui_plugin", Status: EffectStatusNotRequested, TransactionCovered: false,
+		})
+	} else if stopped {
+		effects = append(effects, PostPipelineEffect{
+			Kind: "tui_plugin", Status: EffectStatusNotAttempted, TransactionCovered: false,
+		})
+	} else {
+		tuiPath, changed, err := ConfigureTUIPluginWithResult(homeDir)
+		if err != nil {
+			stopped = true
+			if firstErr == nil {
+				firstErr = fmt.Errorf("configure tui plugin: %w", err)
+			}
+			effects = append(effects, PostPipelineEffect{
+				Kind: "tui_plugin", Status: EffectStatusFailed, TransactionCovered: false, Error: err.Error(),
+			})
+		} else if changed {
+			survivingChanges = true
+			if receipt != nil {
+				receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/tui.jsonc")
+			}
+			effects = append(effects, PostPipelineEffect{
+				Kind: "tui_plugin", Status: EffectStatusChanged, TransactionCovered: false, Destination: tuiPath,
+			})
+		} else {
+			effects = append(effects, PostPipelineEffect{
+				Kind: "tui_plugin", Status: EffectStatusUnchanged, TransactionCovered: false, Destination: tuiPath,
+			})
+		}
+	}
+
+	// 3. Delegation configuration
+	if opts.DelegationConfig == nil {
+		effects = append(effects, PostPipelineEffect{
+			Kind: "delegation_config", Status: EffectStatusNotRequested, TransactionCovered: false,
+		})
+	} else if stopped {
+		effects = append(effects, PostPipelineEffect{
+			Kind: "delegation_config", Status: EffectStatusNotAttempted, TransactionCovered: false,
+		})
+	} else {
+		configDir := filepath.Join(homeDir, ".config", "opencode")
+		res, err := delegation.SaveWithResult(configDir, *opts.DelegationConfig, delegation.SaveOptions{AllowOverwrite: true})
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("save delegation bridge configuration: %w", err)
+			}
+			effects = append(effects, PostPipelineEffect{
+				Kind: "delegation_config", Status: EffectStatusFailed, TransactionCovered: false, Error: err.Error(),
+			})
+		} else if res.Outcome == delegation.ConfigOutcomeChanged || res.Outcome == delegation.ConfigOutcomeCreated {
+			survivingChanges = true
+			if receipt != nil {
+				receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/cortex-delegation.json")
+			}
+			effects = append(effects, PostPipelineEffect{
+				Kind: "delegation_config", Status: EffectStatusChanged, TransactionCovered: false, Destination: filepath.Join(configDir, "cortex-delegation.json"),
+			})
+		} else {
+			effects = append(effects, PostPipelineEffect{
+				Kind: "delegation_config", Status: EffectStatusUnchanged, TransactionCovered: false, Destination: filepath.Join(configDir, "cortex-delegation.json"),
+			})
+		}
+	}
+
+	if receipt != nil {
+		receipt.PostPipelineEffects = effects
+		hasPriorChanges := len(receipt.Changed) > 0 || survivingChanges
+		if firstErr != nil && hasPriorChanges {
+			receipt.PartialSuccess = true
+		}
+		if survivingChanges {
+			receipt.Converged = false
+		}
+	}
+	return firstErr
 }
