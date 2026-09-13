@@ -50,7 +50,7 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
    - Review the diff for scope creep, secrets, unsafe paths, and accidental generated drift.
    - **In-Memory Immutability & Contract Integrity**: Ensure multi-record validations do not mutate caller input in-place, and never weaken contracts by silently skipping invalid records to force green tests.
    - **Code-Intelligence Noninterference (REQ-PRIV-007)**: Code intelligence and AST metadata (`DocSummary`, `Reasoning`, syntax symbols, callers, relationships) are structural codebase components and must NEVER be redacted or mutated by privacy/sanitize routines.
-   - **Test Scaffolding Hygiene**: Do not append new test suites to an existing test file if that file already has > 300 LOC. If adding tests to a shared fixture risks pushing the diff beyond the workload budget, create a dedicated modular test file (e.g. `<domain>_<slice>_test.go`).
+    - **Test Policy & Scaffolding Hygiene**: Persistent tests are strictly limited to TUI, simple install-copy, and user-authorized critical regression boundaries (authority, transport, recovery, updater verification) using temporary homes and synthetic inputs. Deeper unrelated transactional exploration remains ephemeral. Do not append new test suites to an existing test file if that file already has > 300 LOC; create dedicated modular test files bounded to <= 250 LOC per file. Tests must never access real developer state or weaken contracts (no silently skipping invalid records).
    - Persist any bug root cause, discovery, gotcha, or decision made in Cortex (`cortex_save` with standard taxonomies: `bugfix/*`, `gotchas/*`, `architecture/*`). Never dump full stdout.
 6. **Pre-Transition Workload Preflight & Cleanup:**
    - Run `git diff --numstat` to check categorized churn before transitioning:
@@ -63,6 +63,8 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
 ### Operational & Database Tasks (allowed_files: [])
 - **Fail-Closed Migrations & Scripts**: Database scripts must use transactional semantics (`BEGIN ... COMMIT / ROLLBACK`) and must explicitly fail closed upon unmet preconditions or invariant violations (`SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '...'` in MySQL/MariaDB; `RAISE EXCEPTION '...'` in PostgreSQL). Never rely on benign query outputs like `SELECT 'FAIL'`, which exit with status code 0 and fool CI/CD into passing broken states.
 - **Credential Hygiene**: Never hardcode database credentials, default users (e.g. `root`), default passwords, or localhost ports. Always parameterize through environment variables with fail-closed validation.
+- **Destructive Operations & Shared Tables**: Never generate or execute unapproved destructive operations (`DROP TABLE`, `TRUNCATE`, bulk `DELETE`) against shared catalogues or operational tables without explicit authorization, pre-captured verified backups, and exact reversible rollbacks.
+- **Verification & Cleanup**: Test scripts must use parameterized execution and guarantee cleanup of synthetic or test rows through transaction rollbacks or verified teardowns. Never leave test records in shared tables.
 
 ## Output
 

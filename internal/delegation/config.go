@@ -221,22 +221,88 @@ func NeedsSave(configDir string, cfg DelegationConfig) (bool, error) {
 	return !bytes.Equal(current, data), nil
 }
 
-func Save(configDir string, cfg DelegationConfig) error {
+type ConfigOutcome string
+
+const (
+	ConfigOutcomeCreated ConfigOutcome = "created"
+	ConfigOutcomeChanged ConfigOutcome = "changed"
+	ConfigOutcomeNoOp    ConfigOutcome = "noop"
+)
+
+var (
+	ErrPreimageMismatch = errors.New("delegation config: expected preimage does not match existing content")
+	ErrOverwriteDenied  = errors.New("delegation config: unauthorized overwrite of existing configuration")
+	ErrMalformedConfig  = errors.New("delegation config: malformed existing configuration")
+)
+
+type SaveOptions struct {
+	ExpectedPreimage []byte
+	RequirePreimage  bool
+	AllowOverwrite   bool
+}
+
+type ConfigWriteResult struct {
+	Outcome      ConfigOutcome
+	ConfigPath   string
+	BytesWritten int
+}
+
+func SaveWithResult(configDir string, cfg DelegationConfig, opts SaveOptions) (ConfigWriteResult, error) {
+	configPath := ResolveConfigPath(configDir)
+	res := ConfigWriteResult{ConfigPath: configPath}
+
 	data, err := encodedConfig(cfg)
 	if err != nil {
-		return err
+		return res, fmt.Errorf("validate requested config: %w", err)
 	}
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		return err
-	}
-	current, readErr := os.ReadFile(ResolveConfigPath(configDir))
-	if readErr == nil && bytes.Equal(current, data) {
-		return nil
-	}
+
+	current, readErr := os.ReadFile(configPath)
+	exists := readErr == nil
+
 	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-		return readErr
+		return res, fmt.Errorf("read existing config: %w", readErr)
 	}
-	_, err = filemerge.WriteFileAtomic(ResolveConfigPath(configDir), data, 0o600)
+
+	if opts.RequirePreimage && ((exists && !bytes.Equal(current, opts.ExpectedPreimage)) || (!exists && len(opts.ExpectedPreimage) > 0)) {
+		return res, ErrPreimageMismatch
+	}
+
+	if exists {
+		var existingCfg DelegationConfig
+		if err := json.Unmarshal(current, &existingCfg); err != nil {
+			return res, fmt.Errorf("%w: %v", ErrMalformedConfig, err)
+		}
+	}
+
+	if exists && bytes.Equal(current, data) {
+		res.Outcome = ConfigOutcomeNoOp
+		return res, nil
+	}
+
+	if exists && !opts.AllowOverwrite {
+		return res, ErrOverwriteDenied
+	}
+
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return res, fmt.Errorf("create config dir: %w", err)
+	}
+
+	_, err = filemerge.WriteFileAtomic(configPath, data, 0o600)
+	if err != nil {
+		return res, fmt.Errorf("atomic write: %w", err)
+	}
+
+	res.BytesWritten = len(data)
+	if exists {
+		res.Outcome = ConfigOutcomeChanged
+	} else {
+		res.Outcome = ConfigOutcomeCreated
+	}
+	return res, nil
+}
+
+func Save(configDir string, cfg DelegationConfig) error {
+	_, err := SaveWithResult(configDir, cfg, SaveOptions{AllowOverwrite: true})
 	return err
 }
 

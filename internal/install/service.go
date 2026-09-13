@@ -1,16 +1,5 @@
-// Package install composes the OpenCode transactional copy engine
-// (internal/pipeline), the OpenCode MCP manager (internal/mcpmanager), the
-// v2 state documents (internal/state), and the retained backup primitives
-// (internal/backup) into the single installation service consumed by the CLI
-// and the TUI.
-//
-// The service is OpenCode-only by construction: it never dispatches on agent
-// identities and exposes exactly the operations a front end needs — plan,
-// install, sync, doctor, rollback, uninstall, and managed MCP
-// add/list/remove. It owns no copy, digest, or merge logic of its own: asset
-// planning and transactional apply live in the pipeline, MCP ownership and
-// JSONC merging live in the MCP manager, and digests are the recorded v2
-// metadata digests or the manager's semantic digests.
+// Package install composes the OpenCode transactional copy engine, MCP manager,
+// v2 state documents, and backup primitives into the single installation service.
 package install
 
 import (
@@ -99,6 +88,10 @@ type Options struct {
 	ExpectedPlanDigest string
 	// DelegationConfig optionally carries user choices for Herdr and external CLI delegation.
 	DelegationConfig *delegation.DelegationConfig
+	// SkipEnvironment disables environment configuration.
+	SkipEnvironment bool
+	// SkipTUIPlugin disables OpenCode TUI plugin registration.
+	SkipTUIPlugin bool
 }
 
 // DefaultOptions returns the recommended OpenCode selection as data: Cortex
@@ -124,17 +117,7 @@ func (s *Service) request(opts Options) pipeline.Request {
 	}
 }
 
-// lockForMutation acquires the canonical cross-process home lock for a
-// mutating operation. The home directory is materialized first (the
-// operation is already authorized to create everything beneath it); a
-// symlinked or irregular home still fails closed inside homelock. It
-// returns the release closure the caller must defer — the lock is always
-// released, including on every error path after acquisition. A release
-// failure cannot strand the home: lock authority is the process-local OS
-// handle, which the OS frees at process exit, so the operation's own
-// outcome stands and the error is explicitly discarded. Contention past
-// the bounded timeout returns an error wrapping ErrHomeBusy without any
-// install mutation: no backup, journal, state, or config write runs.
+// lockForMutation acquires the canonical cross-process home lock for mutating operations.
 func (s *Service) lockForMutation(timeout time.Duration) (func(), error) {
 	if timeout <= 0 {
 		timeout = DefaultHomeLockTimeout
@@ -153,9 +136,7 @@ func (s *Service) lockForMutation(timeout time.Duration) (func(), error) {
 	return release, nil
 }
 
-// Plan derives the complete install or sync operation set for the options. It is
-// read-only: no directories, journals, backups, state, or lock files are
-// created, and no MCP entry is touched.
+// Plan derives the complete install or sync operation set for the options.
 func (s *Service) Plan(opts Options) (*pipeline.Plan, error) {
 	req := s.request(opts)
 	meta := state.LoadMetadataV2(s.homeDir)
@@ -165,23 +146,7 @@ func (s *Service) Plan(opts Options) (*pipeline.Plan, error) {
 	return pipeline.PlanInstall(req)
 }
 
-// Install plans and (unless the options carry DryRun) transactionally applies
-// the embedded OpenCode asset set and the managed MCP selection. Preview
-// planning is lock-free and read-only. When no ExpectedPlanDigest is supplied,
-// every zero-write outcome (dry-run, converged, or conflicts) returns without
-// touching the lock. When ExpectedPlanDigest is supplied, converged and
-// conflict outcomes are re-planned under lock via pipeline.ApplyConfirmed so
-// stale confirmations fail as typed drift before mutation.
-// The mutating path acquires the canonical cross-process home lock and then re-plans
-// under that lock through pipeline.ApplyConfirmed: the freshly derived plan
-// reflects any concurrent mutation that landed before the lock was
-// acquired, and the caller-confirmed ExpectedPlanDigest (when supplied) is
-// compared against the fresh plan digest before the backup or journal may
-// begin — a stale confirmation is a typed drift error with zero mutation.
-// The lock is released on every exit; contention is a typed ErrHomeBusy
-// with zero mutation. The receipt is the durable evidence of what was
-// configured, qualified, changed, and backed up; a converged request
-// performs zero writes.
+// Install plans and applies the embedded OpenCode asset set and managed MCP selection.
 func (s *Service) Install(opts Options) (*InstallReceipt, error) {
 	req := s.request(opts)
 	plan, err := pipeline.PlanInstall(req)
@@ -192,68 +157,14 @@ func (s *Service) Install(opts Options) (*InstallReceipt, error) {
 		plan, receipt, err := pipeline.InstallV2(req)
 		return newInstallReceipt(plan, receipt), err
 	}
-	if opts.ExpectedPlanDigest != "" && (plan.Converged || len(plan.Conflicts) > 0) {
-		return s.applyPlanWithConfirmation(opts, req, plan, pipeline.PlanInstall, "install")
-	}
-	if plan.Converged {
-		receipt := newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest, Converged: true})
-		changed, err := s.saveDelegationWithLock(opts)
-		if changed {
-			receipt.Converged = false
-			receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/cortex-delegation.json")
-		}
-		return receipt, err
-	}
-	if len(plan.Conflicts) > 0 {
-		return newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest, Conflicts: plan.Conflicts}), &pipeline.ConflictError{Conflicts: plan.Conflicts}
-	}
-	release, err := s.lockForMutation(opts.LockTimeout)
-	if err != nil {
-		return newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest}), fmt.Errorf("install: %w", err)
-	}
-	defer release()
-	plan, receipt, err := pipeline.ApplyConfirmed(req, pipeline.PlanInstall)
-	if err == nil {
-		var changed bool
-		changed, err = s.saveDelegation(opts)
-		if changed && receipt != nil {
-			receipt.Changes = append(receipt.Changes, "managed-update .config/opencode/cortex-delegation.json")
-		}
-	}
-	return newInstallReceipt(plan, receipt), err
-}
-
-func (s *Service) applyPlanWithConfirmation(opts Options, req pipeline.Request, plan *pipeline.Plan, planner func(pipeline.Request) (*pipeline.Plan, error), op string) (*InstallReceipt, error) {
-	release, err := s.lockForMutation(opts.LockTimeout)
-	if err != nil {
-		return newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: planDigestForReceipt(plan)}), fmt.Errorf("%s: %w", op, err)
-	}
-	defer release()
-	plan, receipt, err := pipeline.ApplyConfirmed(req, planner)
-	if err == nil {
-		var changed bool
-		changed, err = s.saveDelegation(opts)
-		if changed && receipt != nil {
-			receipt.Changes = append(receipt.Changes, "managed-update .config/opencode/cortex-delegation.json")
-		}
-	}
-	return newInstallReceipt(plan, receipt), err
+	return s.applyServicePlan(opts, req, plan, pipeline.PlanInstall, "install")
 }
 
 // Sync reconciles an installed home with the current embedded asset set:
 // every asset and MCP effect is re-planned, stale owned artifacts are added
 // as deletions, and the result is transactionally applied. Stale deletion is
 // ownership- and digest-accredited by the engine; anything else fails
-// closed. Locking follows Install exactly: preview planning is lock-free, and
-// when no ExpectedPlanDigest is supplied, zero-write outcomes never lock. When
-// ExpectedPlanDigest is supplied, converged/conflict returns also lock and
-// re-validate the confirmed digest before returning. The mutating path then holds
-// the canonical home lock from before the backup until the apply finishes,
-// releasing it
-// on every exit. The mutating path re-plans under the lock through
-// pipeline.ApplyConfirmed, so the applied plan reflects concurrent
-// mutations and the caller-confirmed ExpectedPlanDigest is compared against
-// the fresh plan digest before the backup or journal may begin.
+// closed.
 func (s *Service) Sync(opts Options) (*InstallReceipt, error) {
 	req := s.request(opts)
 	plan, err := pipeline.PlanSync(req)
@@ -264,81 +175,42 @@ func (s *Service) Sync(opts Options) (*InstallReceipt, error) {
 		plan, receipt, err := pipeline.SyncV2(req)
 		return newInstallReceipt(plan, receipt), err
 	}
+	return s.applyServicePlan(opts, req, plan, pipeline.PlanSync, "sync")
+}
+
+func (s *Service) applyServicePlan(opts Options, req pipeline.Request, plan *pipeline.Plan, planner func(pipeline.Request) (*pipeline.Plan, error), op string) (*InstallReceipt, error) {
 	if opts.ExpectedPlanDigest != "" && (plan.Converged || len(plan.Conflicts) > 0) {
-		return s.applyPlanWithConfirmation(opts, req, plan, pipeline.PlanSync, "sync")
+		return s.applyPlanWithConfirmation(opts, req, plan, planner, op)
 	}
 	if plan.Converged {
 		receipt := newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest, Converged: true})
-		changed, err := s.saveDelegationWithLock(opts)
-		if changed {
-			receipt.Converged = false
-			receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/cortex-delegation.json")
+		release, err := s.lockForMutation(opts.LockTimeout)
+		if err != nil {
+			return receipt, fmt.Errorf("%s: %w", op, err)
 		}
+		defer release()
+		err = applyPostPipelineEffects(s.homeDir, opts, receipt)
 		return receipt, err
 	}
 	if len(plan.Conflicts) > 0 {
 		return newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest, Conflicts: plan.Conflicts}), &pipeline.ConflictError{Conflicts: plan.Conflicts}
 	}
+	return s.applyPlanWithConfirmation(opts, req, plan, planner, op)
+}
+
+func (s *Service) applyPlanWithConfirmation(opts Options, req pipeline.Request, plan *pipeline.Plan, planner func(pipeline.Request) (*pipeline.Plan, error), op string) (*InstallReceipt, error) {
 	release, err := s.lockForMutation(opts.LockTimeout)
 	if err != nil {
-		return newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: plan.Digest}), fmt.Errorf("sync: %w", err)
+		return newInstallReceipt(plan, &pipeline.Receipt{PlanDigest: planDigestForReceipt(plan)}), fmt.Errorf("%s: %w", op, err)
 	}
 	defer release()
-	plan, receipt, err := pipeline.ApplyConfirmed(req, pipeline.PlanSync)
+	plan, receipt, err := pipeline.ApplyConfirmed(req, planner)
+	outReceipt := newInstallReceipt(plan, receipt)
 	if err == nil {
-		var changed bool
-		changed, err = s.saveDelegation(opts)
-		if changed && receipt != nil {
-			receipt.Changes = append(receipt.Changes, "managed-update .config/opencode/cortex-delegation.json")
-		}
+		postErr := applyPostPipelineEffects(s.homeDir, opts, outReceipt)
+		return outReceipt, postErr
 	}
-	return newInstallReceipt(plan, receipt), err
-}
-
-func (s *Service) saveDelegation(opts Options) (bool, error) {
-	if opts.DryRun {
-		return false, nil
-	}
-	// Configure OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS="true" across OS
-	_ = ConfigureEnvironment(s.homeDir)
-	// Ensure OpenCode TUI plugin is registered in ~/.config/opencode/tui.jsonc
-	_, _ = ConfigureTUIPlugin(s.homeDir)
-
-	if opts.DelegationConfig == nil {
-		return false, nil
-	}
-	configDir := filepath.Join(s.homeDir, ".config", "opencode")
-	needed, err := delegation.NeedsSave(configDir, *opts.DelegationConfig)
-	if err != nil {
-		return false, fmt.Errorf("inspect delegation bridge configuration: %w", err)
-	}
-	if !needed {
-		return false, nil
-	}
-	if err := delegation.Save(configDir, *opts.DelegationConfig); err != nil {
-		return false, fmt.Errorf("save delegation bridge configuration: %w", err)
-	}
-	return true, nil
-}
-
-func (s *Service) saveDelegationWithLock(opts Options) (bool, error) {
-	if opts.DryRun || opts.DelegationConfig == nil {
-		return false, nil
-	}
-	configDir := filepath.Join(s.homeDir, ".config", "opencode")
-	needed, err := delegation.NeedsSave(configDir, *opts.DelegationConfig)
-	if err != nil {
-		return false, fmt.Errorf("inspect delegation bridge configuration: %w", err)
-	}
-	if !needed {
-		return false, nil
-	}
-	release, err := s.lockForMutation(opts.LockTimeout)
-	if err != nil {
-		return false, fmt.Errorf("save delegation bridge configuration: %w", err)
-	}
-	defer release()
-	return s.saveDelegation(opts)
+	return outReceipt, err
 }
 
 func planDigestForReceipt(plan *pipeline.Plan) string {
@@ -357,4 +229,115 @@ func (s *Service) ListBackups() ([]backup.Manifest, error) {
 		return manifests[i].CreatedAt.After(manifests[j].CreatedAt)
 	})
 	return manifests, nil
+}
+
+// EffectRecoveryOptions defines explicit parameters for retrying separate post-pipeline effects.
+type EffectRecoveryOptions struct {
+	LockTimeout      time.Duration
+	DelegationConfig *delegation.DelegationConfig
+	ExpectedPreimage []byte
+	RequirePreimage  bool
+	RetryEnvironment bool
+	RetryTUIPlugin   bool
+}
+
+// RecoverEffect re-inspects and retries separate post-pipeline effects under the canonical home lock
+// with explicit authorization bound to an expected preimage rather than pipeline PlanDigest.
+// Pipeline journal, backup, and state remain untouched.
+func (s *Service) RecoverEffect(opts EffectRecoveryOptions) (*InstallReceipt, error) {
+	release, err := s.lockForMutation(opts.LockTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("recover effect: %w", err)
+	}
+	defer release()
+
+	meta := state.LoadMetadataV2(s.homeDir)
+	receipt := &InstallReceipt{
+		TransactionID: meta.Metadata.TransactionID,
+		BackupID:      meta.Metadata.BackupID,
+		Converged:     true,
+	}
+
+	var effects []PostPipelineEffect
+	var firstErr error
+	var survivingChanges bool
+
+	if opts.RetryEnvironment {
+		changed, err := ConfigureEnvironmentWithResult(s.homeDir)
+		if err != nil {
+			firstErr = fmt.Errorf("recover environment: %w", err)
+			effects = append(effects, PostPipelineEffect{
+				Kind: "environment", Status: EffectStatusFailed, Error: err.Error(),
+			})
+		} else if changed {
+			survivingChanges = true
+			effects = append(effects, PostPipelineEffect{
+				Kind: "environment", Status: EffectStatusChanged,
+			})
+		} else {
+			effects = append(effects, PostPipelineEffect{
+				Kind: "environment", Status: EffectStatusUnchanged,
+			})
+		}
+	}
+
+	if opts.RetryTUIPlugin && firstErr == nil {
+		tuiPath, changed, err := ConfigureTUIPluginWithResult(s.homeDir)
+		if err != nil {
+			firstErr = fmt.Errorf("recover tui plugin: %w", err)
+			effects = append(effects, PostPipelineEffect{
+				Kind: "tui_plugin", Status: EffectStatusFailed, Error: err.Error(),
+			})
+		} else if changed {
+			survivingChanges = true
+			receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/tui.jsonc")
+			effects = append(effects, PostPipelineEffect{
+				Kind: "tui_plugin", Status: EffectStatusChanged, Destination: tuiPath,
+			})
+		} else {
+			effects = append(effects, PostPipelineEffect{
+				Kind: "tui_plugin", Status: EffectStatusUnchanged, Destination: tuiPath,
+			})
+		}
+	}
+
+	if opts.DelegationConfig != nil && firstErr == nil {
+		configDir := filepath.Join(s.homeDir, ".config", "opencode")
+		saveOpts := delegation.SaveOptions{
+			ExpectedPreimage: opts.ExpectedPreimage,
+			RequirePreimage:  opts.RequirePreimage,
+			AllowOverwrite:   true,
+		}
+		res, err := delegation.SaveWithResult(configDir, *opts.DelegationConfig, saveOpts)
+		if err != nil {
+			firstErr = fmt.Errorf("recover delegation config: %w", err)
+			effects = append(effects, PostPipelineEffect{
+				Kind: "delegation_config", Status: EffectStatusFailed, Error: err.Error(),
+			})
+		} else if res.Outcome == delegation.ConfigOutcomeChanged || res.Outcome == delegation.ConfigOutcomeCreated {
+			survivingChanges = true
+			receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/cortex-delegation.json")
+			effects = append(effects, PostPipelineEffect{
+				Kind: "delegation_config", Status: EffectStatusChanged, Destination: filepath.Join(configDir, "cortex-delegation.json"),
+			})
+		} else {
+			effects = append(effects, PostPipelineEffect{
+				Kind: "delegation_config", Status: EffectStatusUnchanged, Destination: filepath.Join(configDir, "cortex-delegation.json"),
+			})
+		}
+	}
+
+	receipt.PostPipelineEffects = effects
+	if survivingChanges {
+		receipt.Converged = false
+	}
+	if firstErr != nil && survivingChanges {
+		receipt.PartialSuccess = true
+	}
+	return receipt, firstErr
+}
+
+// RecoverPostPipelineEffects is an alias for RecoverEffect.
+func (s *Service) RecoverPostPipelineEffects(opts EffectRecoveryOptions) (*InstallReceipt, error) {
+	return s.RecoverEffect(opts)
 }

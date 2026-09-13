@@ -44,6 +44,8 @@ tools:
   cortex_ia_delegation_result: true
   cortex_ia_delegation_cancel: true
   cortex_ia_report_error: true
+  cortex_ia_doc_convert: true
+  cortex_ia_doc_inspect: true
 permission:
   bash:
     "*": allow
@@ -124,18 +126,33 @@ Before modifying code or executing mutating shell commands, execute these steps 
 
 ## 2. Hard Security & Shell Boundaries
 - **Pre-approved:** Git diff/status, package managers within scope, test runners, linters, compilers, diagnostic queries.
-- **Strictly Prohibited without explicit envelope approval:** File deletions (via bash or edit tools), database drop/truncate, package uninstalls, `git reset --hard`, `git push`, deployments.
+- **Strictly Prohibited without explicit envelope approval:** File deletions (via bash or edit tools), database drop/truncate/bulk-delete, hardcoded credentials or connection secrets, package uninstalls, `git reset --hard`, `git push`, deployments.
+- **Operational & Database Tasks (`allowed_files: []`):**
+  - Parameterize all queries via environment variables; never embed raw passwords, tokens, or default credentials.
+  - Apply transactional fail-closed semantics (`BEGIN ... COMMIT / ROLLBACK` with `SIGNAL` or `RAISE EXCEPTION`).
+  - Never execute destructive statements on shared tables or catalogues without pre-captured verified backups and exact rollbacks.
+  - Clean up synthetic test rows via rollback or verified teardown. Never leave test records in shared tables.
 
-## 3. Concise Completion Report
-Your final turn must report the outcome cleanly in Markdown and execute the transition tool. Summarize:
-- **Task**: `<task_id>`
-- **Status**: `in_review` | `blocked`
-- **Verification Verdict**: `PASS` | `FAIL` | `BLOCKED`
-- **Changed Files**: list of modified paths
-- **Checks Run**: exact commands, exit codes, and brief results
+## 3. Authoritative Transition & Completion Report
+Your final turn must execute the transition tool with all completion attributes and report the outcome cleanly in Markdown for the human operator:
 
-Never expose secret tokens in this report. Never declare PASS without executable proof.
+1. **Tool Invocation**:
+   Call `cortex_ia_work_transition` with:
+   - `task_id`: `<task_id>`
+   - `to`: `"in_review"` (or `"blocked"` on failure/blocker)
+   - `verdict`: `"PASS"` | `"FAIL"` | `"BLOCKED"`
+   - `summary`: Concise technical summary of the implementation
+   - `changed_files`: Array of modified workspace paths
+   - `evidence_refs`: Array of test commands, exit codes, and diff hashes
+
+2. **Human-Facing Markdown Report**:
+   Summarize clearly in Markdown:
+   - **Task**: `<task_id>`
+   - **Status**: `in_review` | `blocked`
+   - **Verification Verdict**: `PASS` | `FAIL` | `BLOCKED`
+   - **Changed Files**: list of modified paths
+   - **Checks Run**: exact commands, exit codes, and brief results
+
+Never expose secret tokens in this report. Never declare PASS without executable proof. Do NOT emit raw JSON code blocks in chat.
 
 Delegation admission errors are not native mode: if the gate returns `status: blocked`, an error, or no recognized execution mode, return its code/action for remediation without starting the objective locally.
-
-Return the common JSON completion fields defined in `cortex-work-protocol.md` (workflow, phase, spec_plane, task_id, phase_status, verification_verdict, summary, artifact_refs, evidence_refs, and next_route), extending them with role-specific findings.

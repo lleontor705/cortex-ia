@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -129,8 +130,14 @@ func TestInstallAndUninstallAGY(t *testing.T) {
 func TestInstallAGYReturnsValidationError(t *testing.T) {
 	tempHome := t.TempDir()
 	binDir := t.TempDir()
-	agyPath := filepath.Join(binDir, "agy")
-	if err := os.WriteFile(agyPath, []byte("#!/bin/sh\necho validation failed >&2\nexit 1\n"), 0o755); err != nil {
+	agyName := "agy"
+	script := "#!/bin/sh\necho validation failed >&2\nexit 1\n"
+	if runtime.GOOS == "windows" {
+		agyName = "agy.cmd"
+		script = "@echo validation failed >&2\r\n@exit /b 1\r\n"
+	}
+	agyPath := filepath.Join(binDir, agyName)
+	if err := os.WriteFile(agyPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake agy: %v", err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))

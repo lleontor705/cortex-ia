@@ -6,6 +6,11 @@ import (
 )
 
 func TestInstallServiceLifecycle(t *testing.T) {
+	cleanup := SetWindowsEnvRunnerForTesting(func(cmd string, args ...string) ([]byte, error) {
+		return []byte("ok"), nil
+	})
+	defer cleanup()
+
 	tempHome := t.TempDir()
 
 	svc, err := New(tempHome)

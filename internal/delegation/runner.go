@@ -963,28 +963,63 @@ func changedWorktreePaths(directory string) ([]string, error) {
 
 func externalPrompt(request Request) string {
 	var b strings.Builder
-	b.WriteString("You are an external leaf executor supervised by cortex-ia. Do not use the cortex-ia work control plane or Cortex MCP, do not start or end a session, and do not delegate or spawn subagents. Return only the requested structured result.\n\n")
-	b.WriteString("Role: ")
-	b.WriteString(request.Role)
-	if request.Workspace != "" {
-		b.WriteString("\nWorkspace directory: ")
-		b.WriteString(filepath.ToSlash(request.Workspace))
-	}
+
+	b.WriteString("# Autonomous Leaf Execution Task\n\n")
+	b.WriteString("You are an isolated leaf execution worker supervised by cortex-ia.\n")
+	b.WriteString("- **Authority Boundary**: Execute strictly within your assigned scope. Do not use the cortex-ia work control plane or Cortex MCP, do not manage session lifecycle, and do not invoke or delegate to other subagents.\n")
+	fmt.Fprintf(&b, "- **Environment**: OS: %s (runtime: %s/%s) | Workspace: %s\n\n",
+		runtime.GOOS, runtime.GOOS, runtime.GOARCH, filepath.ToSlash(request.Workspace))
+
+	b.WriteString("---\n\n")
+	b.WriteString("## Task Context\n")
+	fmt.Fprintf(&b, "- **Assigned Role**: `%s`\n", request.Role)
 	if request.TaskID != "" {
-		b.WriteString("\nTask ID: ")
-		b.WriteString(request.TaskID)
+		fmt.Fprintf(&b, "- **Task ID**: `%s`\n", request.TaskID)
 	}
+	if request.WorkspaceMode != "" {
+		fmt.Fprintf(&b, "- **Workspace Strategy**: `%s`\n", request.WorkspaceMode)
+	}
+
 	if len(request.AllowedFiles) > 0 {
-		b.WriteString("\nAllowed files: ")
-		b.WriteString(strings.Join(request.AllowedFiles, ", "))
-		if request.Role == "implement" {
-			b.WriteString("\nDo not modify files outside this list.")
-		} else {
-			b.WriteString("\nFocus inspection on these files.")
+		b.WriteString("- **Allowed Files**:\n")
+		for _, f := range request.AllowedFiles {
+			fmt.Fprintf(&b, "  - `%s`\n", filepath.ToSlash(f))
 		}
+		if request.Role == "implement" {
+			b.WriteString("\n> [!IMPORTANT]\n")
+			b.WriteString("> **Blast Radius Enforcement**:\n")
+			b.WriteString("> You are strictly restricted to editing ONLY the allowed files listed above.\n")
+			b.WriteString("> Modifying any file outside this list is a fatal contract violation. If completing the objective requires editing unlisted files, stop immediately and report `status: \"blocked\"`.\n")
+		} else {
+			b.WriteString("\n> [!NOTE]\n")
+			b.WriteString("> **Read-Only Scope**: Focus inspection exclusively on the target files above. Do not modify any workspace files.\n")
+		}
+	} else if request.Role == "investigate" || request.Role == "reviewer" {
+		b.WriteString("\n> [!NOTE]\n")
+		b.WriteString("> **Read-Only Scope**: This is an inspection/audit task. Do not modify any workspace files.\n")
 	}
-	b.WriteString("\n\nObjective:\n")
+
+	b.WriteString("\n---\n\n")
+	b.WriteString("## Objective & Requirements\n\n")
 	b.WriteString(request.Objective)
+	b.WriteString("\n\n---\n\n")
+
+	b.WriteString("## Execution Protocol\n")
+	switch request.Role {
+	case "implement":
+		b.WriteString("1. **Inspect First**: Read and inspect the existing allowed files before applying changes.\n")
+		b.WriteString("2. **Surgical Edits**: Keep diffs minimal, preserve existing code structure and comments, and obey modular limits (Go logic ≤ 350 LOC, test files ≤ 250 LOC).\n")
+		b.WriteString("3. **Execute Verification**: Run all applicable tests and acceptance check commands in the terminal to verify your changes pass (exit code 0).\n")
+		b.WriteString("4. **Structured Result**: Output your final result matching the required JSON schema with verified facts, changed files, and execution status.\n")
+	case "reviewer":
+		b.WriteString("1. **Independent Verification**: Inspect diffs and rerun test/lint commands without altering workspace source code.\n")
+		b.WriteString("2. **Falsifiable Evidence**: Provide clear PASS or FAIL verdict with reproducible command evidence.\n")
+		b.WriteString("3. **Structured Result**: Output your final review receipt matching the required JSON schema.\n")
+	default:
+		b.WriteString("1. **Targeted Diagnosis**: Perform bounded read-only inspection and diagnostics without mutating workspace files.\n")
+		b.WriteString("2. **Structured Findings**: Summarize root causes, architecture findings, and evidence matching the required JSON schema.\n")
+	}
+
 	return b.String()
 }
 

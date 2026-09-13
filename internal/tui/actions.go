@@ -159,11 +159,17 @@ func installRunCmd(svc ServiceAPI, mode string, opts install.Options) tea.Cmd {
 
 // onInstallDone renders install/sync receipts. PASS derives from the
 // receipt, never from a nil error alone: the service must succeed AND
-// every MCP the run configured must carry valid qualification evidence.
+// every MCP the run configured must carry valid qualification evidence,
+// with zero separate post-pipeline effect failures or partial success.
 // Configured-only entries surface as a visible FAIL with a remedy.
 func (m model) onInstallDone(msg installMsg) (tea.Model, tea.Cmd) {
 	m.advanceRunning()
-	res := opResult{title: m.running.title, pass: msg.err == nil && installQualificationPasses(msg.receipt)}
+	hasSeparateFailure := receiptHasSeparateFailure(msg.receipt)
+	isDryRun := msg.receipt != nil && msg.receipt.DryRun
+	res := opResult{
+		title: m.running.title,
+		pass:  msg.err == nil && !isDryRun && installQualificationPasses(msg.receipt) && !hasSeparateFailure,
+	}
 	if msg.receipt != nil {
 		res.changed = len(msg.receipt.Changed)
 		res.backupID = msg.receipt.BackupID
@@ -179,13 +185,21 @@ func (m model) onInstallDone(msg installMsg) (tea.Model, tea.Cmd) {
 		)
 	}
 	res.rollbackCmd = rollbackCommand(res.backupID)
-	res.canRollback = res.backupID != "" && res.pass
+	res.canRollback = res.backupID != "" && res.pass && !hasSeparateFailure
 	if msg.err != nil {
+		hasSurvivingChanges := msg.receipt != nil && (len(msg.receipt.Changed) > 0 || msg.receipt.PartialSuccess)
 		if errors.Is(msg.err, pipeline.ErrPlanDrift) {
-			res.detail = append(res.detail,
-				"plan drift: this home changed after the plan was confirmed; nothing was written.",
-				"remedy: go back and review the fresh plan, then confirm it again.",
-			)
+			if hasSurvivingChanges {
+				res.detail = append(res.detail,
+					"plan drift: this home changed after the plan was confirmed; surviving changes remain on disk.",
+					"remedy: run reconciliation to retry or inspect surviving changes.",
+				)
+			} else {
+				res.detail = append(res.detail,
+					"plan drift: this home changed after the plan was confirmed; nothing was written.",
+					"remedy: go back and review the fresh plan, then confirm it again.",
+				)
+			}
 		}
 		res.detail = append(res.detail, "error: "+msg.err.Error())
 	}
@@ -193,6 +207,21 @@ func (m model) onInstallDone(msg installMsg) (tea.Model, tea.Cmd) {
 	m.resultScroll = 0
 	m.screen = screenResult
 	return m, nil
+}
+
+func receiptHasSeparateFailure(receipt *install.InstallReceipt) bool {
+	if receipt == nil {
+		return false
+	}
+	if receipt.PartialSuccess {
+		return true
+	}
+	for _, eff := range receipt.PostPipelineEffects {
+		if eff.Status == install.EffectStatusFailed {
+			return true
+		}
+	}
+	return false
 }
 
 // installQualificationPasses reports whether an install/sync receipt earns
@@ -234,6 +263,25 @@ func installDetail(receipt *install.InstallReceipt) []string {
 	}
 	if len(receipt.Qualified) > 0 {
 		detail = append(detail, fmt.Sprintf("Qualified MCPs: %s", strings.Join(receipt.Qualified, ", ")))
+	}
+	if receipt.DryRun {
+		detail = append(detail, "Dry-run: preview only; nothing was written.")
+	}
+	if receipt.Restored {
+		detail = append(detail, fmt.Sprintf("Failed apply restored from backup (error: %s)", receipt.RestoreError))
+	}
+	for _, eff := range receipt.PostPipelineEffects {
+		if eff.Error != "" {
+			detail = append(detail, fmt.Sprintf("Effect %s: %s (error: %s)", eff.Kind, eff.Status, eff.Error))
+		} else {
+			detail = append(detail, fmt.Sprintf("Effect %s: %s", eff.Kind, eff.Status))
+		}
+	}
+	if receipt.PartialSuccess {
+		detail = append(detail,
+			"Partial success: separate effect failed; surviving changes remain on disk.",
+			"Guidance: run fresh reconciliation to retry failed separate effects.",
+		)
 	}
 	for _, conflict := range receipt.Conflicts {
 		detail = append(detail, fmt.Sprintf("conflict %s: %s (%s)", conflict.Target, conflict.Kind, conflict.Reason))

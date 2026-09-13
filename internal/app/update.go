@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -33,6 +34,9 @@ func runUpdate(args []string) error {
 	fmt.Printf("Checking for cortex-ia updates (current: %s)...\n", Version)
 	rel, hasUpdate, err := client.CheckLatest(ctx, Version)
 	if err != nil {
+		if errors.Is(err, updater.ErrNoTrustedKey) {
+			return err
+		}
 		return fmt.Errorf("update check failed: %w", err)
 	}
 
@@ -48,7 +52,10 @@ func runUpdate(args []string) error {
 	}
 
 	fmt.Printf("Downloading and applying %s...\n", rel.TagName)
-	if err := client.ApplyUpdate(ctx, rel); err != nil {
+	if err := client.ApplyUpdate(ctx, Version, rel); err != nil {
+		if errors.Is(err, updater.ErrNoTrustedKey) {
+			return err
+		}
 		return fmt.Errorf("update failed: %w", err)
 	}
 

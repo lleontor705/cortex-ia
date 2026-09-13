@@ -22,7 +22,7 @@ The snapshot utility fetches recent logs (or reads from a local JSONL source), i
 When `REPORT_HUB_LOG_SOURCE` is unset, the utility queries Railway directly:
 
 ```bash
-./tools/cortex-report-hub-snapshot.sh
+bash ./tools/cortex-report-hub-snapshot.sh
 ```
 
 This executes exactly:
@@ -39,13 +39,13 @@ railway logs --project 8d1c83da-fcde-4fa9-b4ca-7dd4401bc89f \
 Set `REPORT_HUB_LOG_SOURCE` to read from a local file instead of Railway:
 
 ```bash
-REPORT_HUB_LOG_SOURCE=/path/to/logs.jsonl ./tools/cortex-report-hub-snapshot.sh
+REPORT_HUB_LOG_SOURCE=/path/to/logs.jsonl bash ./tools/cortex-report-hub-snapshot.sh
 ```
 
 Alternatively, pass the file as a CLI argument:
 
 ```bash
-./tools/cortex-report-hub-snapshot.sh /path/to/logs.jsonl
+bash ./tools/cortex-report-hub-snapshot.sh /path/to/logs.jsonl
 ```
 
 ### 3. Pipeline / Stdin Mode
@@ -53,7 +53,7 @@ Alternatively, pass the file as a CLI argument:
 Set `REPORT_HUB_LOG_SOURCE="-"` or pass `-` to read from standard input:
 
 ```bash
-cat logs.jsonl | REPORT_HUB_LOG_SOURCE="-" ./tools/cortex-report-hub-snapshot.sh
+cat logs.jsonl | REPORT_HUB_LOG_SOURCE="-" bash ./tools/cortex-report-hub-snapshot.sh
 ```
 
 ## Error Code Mapping Matrix
@@ -96,7 +96,7 @@ If no `Report Received` records are present in the log window, it returns `[]`.
 Run the automated fixture test suite:
 
 ```bash
-./tools/test-cortex-report-hub-snapshot.sh
+bash ./tools/test-cortex-report-hub-snapshot.sh
 ```
 
 Test fixtures are maintained under `testdata/report_hub_fixtures/`:

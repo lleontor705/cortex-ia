@@ -22,17 +22,19 @@ Built as a single portable Go binary, Cortex-IA solves the fundamental challenge
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                   CORTEX-IA ECOSYSTEM                                       │
 │                                                                                             │
-│  ┌───────────────────────┐   ┌─────────────────────────────┐   ┌─────────────────────────┐  │
-│  │   OpenCode Agents     │   │   CORTEX-IA Control Plane   │   │  Herdr Multiplexing     │  │
-│  │  (Orchestrator, TDD,  │──▶│  (SQLite ACID DAG, Leases,  │──▶│  (Live Stream Terminals,│  │
-│  │   Reviewer, Planner)  │   │   CAS Revisions, OpenSpec)  │   │   NDJSON Telemetry)     │  │
-│  └───────────────────────┘   └─────────────────────────────┘   └─────────────────────────┘  │
-│                                            │                                                │
-│                                            ▼                                                │
-│                              ┌───────────────────────────┐                                  │
-│                              │     CORTEX Server (MCP)   │                                  │
-│                              │  (AST Graph & Blast Tree) │                                  │
-│                              └───────────────────────────┘                                  │
+│  ┌──────────────────────────┐   ┌─────────────────────────────┐   ┌─────────────────────────┐  │
+│  │     OpenCode Agents      │   │   CORTEX-IA Control Plane   │   │  Herdr Multiplexing     │  │
+│  │ (Orchestrator, Discovery,│──▶│  (SQLite ACID DAG, Leases,  │──▶│  (Live Stream Terminals,│  │
+│  │  Investigate, Planner,   │   │   CAS Revisions, OpenSpec)  │   │   NDJSON Telemetry)     │  │
+│  │   Implement, Reviewer)   │   │                             │   │                         │  │
+│  └──────────────────────────┘   └─────────────────────────────┘   └─────────────────────────┘  │
+│                                             │                                                │
+│                                             ▼                                                │
+│                               ┌───────────────────────────┐                                  │
+│                               │     CORTEX Server (MCP)   │                                  │
+│                               │  (AST Graph & Blast Tree) │                                  │
+│                               │  (Epistemic Evidence DB)  │                                  │
+│                               └───────────────────────────┘                                  │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -41,15 +43,17 @@ Built as a single portable Go binary, Cortex-IA solves the fundamental challenge
 ## 🌟 Key Superpowers
 
 - 🔒 **Zero-Race Concurrency with Exclusive File Leases (`work lease`)**  
-  Prevents agents from overwriting each other's code. Agents must atomically reserve exclusive workspace-relative file paths with TTL leases before editing.
+  Prevents agents from overwriting each other's code. Agents must atomically reserve exclusive workspace-relative file paths with TTL leases before editing. Parallel native implementers safely share the workspace via disjoint file reservations (`cortex_ia_file_reserve`).
 - 🎯 **Deterministic Task DAG with Optimistic CAS Locking (`work claim` / `transition`)**  
-  Tasks transition through strict state machines (`backlog ➔ ready ➔ in_progress ➔ in_review ➔ done`). Dependent tasks automatically unlock only when prior dependencies pass review.
+  Tasks transition through strict state machines (`backlog ➔ ready ➔ in_progress ➔ in_review ➔ done`). Downstream dependencies automatically unlock only when prior dependencies receive an independent review approval.
 - 🛡️ **Mandatory Independent Review Gates (`work approve`)**  
   Implementers cannot self-approve. An independent reviewer agent must verify test suites and recorded evidence before marking any task complete.
+- 🧹 **Zero Raw JSON Chat Hygiene & Typed Tool Authority**  
+  Eliminates token bloat and hallucinated text parsing. Structured receipts are passed directly via typed tool calls (`cortex_ia_work_transition` and `cortex_ia_work_approve`) stored atomically in SQLite, while chat displays clean, readable Markdown summaries.
 - 📺 **Live Real-time Terminal Telemetry in Herdr Panes (`delegate worker`)**  
   Watch external worker agents think and act in real-time. Features live action humanization, sub-second tool execution telemetry, animated activity spinners, and streamed textual reasoning.
 - 📐 **Native OpenSpec SDD Integration (`cortex-ia openspec`)**  
-  Built-in support for Specification-Driven Development proposals, RFC 2119 delta specifications, and task decompositions.
+  Built-in support for Specification-Driven Development proposals, RFC 2119 delta specifications, and task decompositions bounded to ≤350 LOC.
 - 📊 **Real-time Web Operations Dashboard (`cortex-ia web`)**  
   Embedded, single-binary Web UI with real-time SSE streaming for live board state visualization, task creation, and audit logging.
 
@@ -170,11 +174,24 @@ All commands output structured JSON, support both positional arguments and named
   <img src="docs/assets/multi-agent-orchestration.svg" alt="Multi-Agent Orchestration" width="100%" />
 </p>
 
-1. **`orchestrator` (Primary)**: Triage, startup alignment, session lifecycle, and task DAG dispatch. Never claims tasks or holds file leases.
-2. **`investigate` (Subagent)**: Root-cause diagnosis, AST blast radius inspection, and read-only audits.
-3. **`planner` (Subagent)**: Writes OpenSpec delta specifications and decomposes tasks (≤350 LOC).
-4. **`implement` (Subagent)**: Atomically claims one task, reserves exclusive file leases, runs TDD oracles, and transitions to review.
-5. **`reviewer` (Subagent)**: Independently verifies git diffs, executes test oracles, and grants `PASS` approval to unlock downstream dependencies.
+1. **`orchestrator` (Primary)**: Triage, startup alignment, Cortex session lifecycle, and DAG dispatch. Never claims tasks or holds file leases.
+2. **`discovery` (Subagent)**: Inspects skills, toolchains, engines, and project architecture into the durable `.cortex-ia/discovery.md` profile.
+3. **`investigate` (Subagent)**: Root-cause diagnosis, AST blast radius inspection, spikes, and read-only diagnostic audits.
+4. **`planner` (Subagent)**: Writes OpenSpec delta specifications (RFC 2119), Given/When/Then contracts, and decomposes task DAGs (≤350 LOC).
+5. **`implement` (Subagent)**: Atomically claims one task, reserves exclusive file leases, runs fast TDD loops, and transitions to review via typed tools.
+6. **`reviewer` (Subagent)**: Independently verifies git diffs, executes test oracles, and grants `PASS` approval to unlock downstream dependencies.
+
+---
+
+## 🚦 3-Tier Organic Routing Model
+
+Cortex-IA matches user requests to the smallest, safest workflow using a three-tier model:
+
+| Tier | Workflows | Characteristics | Execution Model |
+|---|---|---|---|
+| **Tier 1: Fast Path** | `direct-answer`, `discovery`, `investigate`, `spike`, `hotfix`, `fast-tdd`, `ops-task` | Direct execution without task DAG overhead. Specialized for Q&A, onboarding, root-cause diagnosis, or fast unit TDD. | Single-turn dispatch via `orchestrator ➔ subagent ➔ orchestrator`. |
+| **Tier 2: Bounded Unitary Task** | `direct-change` | Single-domain, low-risk changes with fast verification. Uses `board_id: "default"`. | Claim task ➔ exclusive file lease ➔ edit & test ➔ `cortex_ia_work_transition` ➔ independent review gate. |
+| **Tier 3: Coordinated SDD** | `sdd-lite`, `sdd-full` | High-complexity, multi-file features or cross-domain architectural changes. | Stable initiative board ➔ OpenSpec delta specs ➔ DAG decomposition (≤350 LOC) ➔ parallel implementation minions ➔ adversarial review. |
 
 ---
 
@@ -226,7 +243,7 @@ When tasks are delegated to external workers, Cortex-IA streams human-readable a
 
 - 📖 [Quickstart Guide](docs/quickstart.md) — Guided first-time setup and onboarding
 - 🏛️ [Architecture Deep-Dive](docs/architecture.md) — Internal engine layers, models, and SQLite concurrency
-- 🤖 [Agent Roles & Contracts](docs/agents.md) — 5-role coordination topology and typed receipt schemas
+- 🤖 [Agent Roles & Contracts](docs/agents.md) — 6-role coordination topology and typed receipt contracts
 - 🧠 [Cortex Memory & Graph](docs/cortex-memory.md) — AST symbol graph, blast radius, and durable observations
 - 📑 [SDD Workflow Guide](docs/sdd-workflow.md) — Specification-Driven Development lifecycle with OpenSpec
 - 🔒 [MCP & Security Boundaries](docs/codebase/mcp-boundaries.md) — Separation of authority and security rules

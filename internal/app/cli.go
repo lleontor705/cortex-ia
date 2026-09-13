@@ -249,6 +249,10 @@ func previewAndApply(command string, flags runFlags, opts install.Options, apply
 		var drift *pipeline.PlanDriftError
 		switch {
 		case errors.As(err, &drift):
+			if receipt != nil && (len(receipt.Changed) > 0 || receipt.PartialSuccess) {
+				printInstallReceipt(command, receipt)
+				return fmt.Errorf("%s: confirmed plan is stale; surviving changes exist on disk (run reconciliation): %w", command, err)
+			}
 			return fmt.Errorf("%s: the confirmed plan is stale; nothing was written (preview again and re-confirm): %w", command, err)
 		case errors.Is(err, install.ErrHomeBusy):
 			return fmt.Errorf("%s: another process holds this home's lock; nothing was written: %w", command, err)
@@ -293,43 +297,59 @@ func printConflicts(conflicts []pipeline.Conflict) {
 	}
 }
 
-func printInstallReceipt(title string, receipt *install.InstallReceipt) {
+func renderInstallReceipt(title string, receipt *install.InstallReceipt) string {
 	if receipt == nil {
-		return
+		return ""
 	}
-	fmt.Printf("%s — plan %s\n", title, receipt.PlanDigest)
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s — plan %s\n", title, receipt.PlanDigest)
 	if receipt.DryRun {
-		fmt.Println("  Dry-run: nothing was written.")
+		b.WriteString("  Dry-run: nothing was written.\n")
+	} else if receipt.Converged && len(receipt.Changed) == 0 {
+		b.WriteString("  Already converged: zero writes needed.\n")
 	}
-	if receipt.Converged {
-		fmt.Println("  Already converged: zero writes needed.")
-	}
-	fmt.Printf("  Configured MCPs: %s\n", strings.Join(defaultStringSlice(receipt.Configured), ", "))
+	fmt.Fprintf(&b, "  Configured MCPs: %s\n", strings.Join(defaultStringSlice(receipt.Configured), ", "))
 	if len(receipt.Qualified) > 0 {
-		fmt.Printf("  Qualified MCPs: %s\n", strings.Join(receipt.Qualified, ", "))
+		fmt.Fprintf(&b, "  Qualified MCPs: %s\n", strings.Join(receipt.Qualified, ", "))
 	}
-	fmt.Printf("  Changed: %d\n", len(receipt.Changed))
+	fmt.Fprintf(&b, "  Changed: %d\n", len(receipt.Changed))
 	for _, change := range receipt.Changed {
-		fmt.Printf("    %s\n", change)
+		fmt.Fprintf(&b, "    %s\n", change)
 	}
 	if overwrites := overwriteTargets(receipt); len(overwrites) > 0 {
-		fmt.Printf("  Overwrites: %d\n", len(overwrites))
+		fmt.Fprintf(&b, "  Overwrites: %d\n", len(overwrites))
 		for _, target := range overwrites {
-			fmt.Printf("    %s\n", target)
+			fmt.Fprintf(&b, "    %s\n", target)
 		}
 	}
 	if receipt.BackupID != "" {
-		fmt.Printf("  Backup: %s (verified: %v)\n", receipt.BackupID, receipt.BackupVerified)
+		fmt.Fprintf(&b, "  Backup: %s (verified: %v)\n", receipt.BackupID, receipt.BackupVerified)
 	}
 	if receipt.TransactionID != "" {
-		fmt.Printf("  Transaction: %s\n", receipt.TransactionID)
+		fmt.Fprintf(&b, "  Transaction: %s\n", receipt.TransactionID)
 	}
 	if receipt.Restored {
-		fmt.Printf("  Failed apply restored from backup (error: %s)\n", receipt.RestoreError)
+		fmt.Fprintf(&b, "  Failed apply restored from backup (error: %s)\n", receipt.RestoreError)
+	}
+	for _, eff := range receipt.PostPipelineEffects {
+		if eff.Error != "" {
+			fmt.Fprintf(&b, "  Effect %s: %s (error: %s)\n", eff.Kind, eff.Status, eff.Error)
+		} else {
+			fmt.Fprintf(&b, "  Effect %s: %s\n", eff.Kind, eff.Status)
+		}
+	}
+	if receipt.PartialSuccess {
+		b.WriteString("  Partial success: separate effect failed; surviving changes remain on disk.\n")
+		b.WriteString("  Guidance: run fresh reconciliation to retry failed separate effects.\n")
 	}
 	for _, warning := range receipt.Warnings {
-		fmt.Printf("  Warning: %s\n", warning)
+		fmt.Fprintf(&b, "  Warning: %s\n", warning)
 	}
+	return b.String()
+}
+
+func printInstallReceipt(title string, receipt *install.InstallReceipt) {
+	fmt.Print(renderInstallReceipt(title, receipt))
 }
 
 // runMCP dispatches the managed MCP subcommands. Add accepts catalog

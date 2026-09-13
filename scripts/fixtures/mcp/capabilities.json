@@ -1,0 +1,1020 @@
+{
+  "cortex": {
+    "version": "cortex v2.3.9",
+    "executable_path": "C:\\Users\\usrLuisLeon\\go\\bin\\cortex.exe",
+    "executable_sha256": "69afe4f91c6552b30b81c16c06efb044684f382752c6effe3287cc2f249df98d",
+    "protocol_version": "2024-11-05",
+    "server_info": {
+      "name": "cortex",
+      "version": "2.0.0"
+    },
+    "capabilities": {
+      "tools": {
+        "listChanged": true
+      }
+    },
+    "tools_count": 35,
+    "tools": [
+      {
+        "name": "cortex_analyze_architecture",
+        "description": "Analyze knowledge and code graph architecture, detecting communities, god nodes (centrality score), import cycles, and modular cohesion.",
+        "inputSchema": {
+          "properties": {
+            "project": {
+              "description": "Project name to analyze",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_capture_passive",
+        "description": "Extract and save structured learnings from text output. Use this at the end of a task to capture knowledge automatically.\n\nThe tool looks for sections like \"## Key Learnings:\" or \"## Aprendizajes Clave:\" and extracts numbered or bulleted items. Each item is saved as a separate observation.\n\nDuplicates are automatically detected and skipped  -- safe to call multiple times with the same content.",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "description": "The text output containing a '## Key Learnings:' section with numbered or bulleted items",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project name",
+              "type": "string"
+            },
+            "session_id": {
+              "description": "Session ID (default: manual-save-{project})",
+              "type": "string"
+            },
+            "source": {
+              "description": "Source identifier (e.g. 'subagent-stop', 'session-end')",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_code_find",
+        "description": "Searches indexed code symbols with substring, regex, kind filter, and relevance ranking across 13 languages.",
+        "inputSchema": {
+          "properties": {
+            "file_path": {
+              "description": "Filter by file path substring",
+              "type": "string"
+            },
+            "is_regex": {
+              "description": "Treat query as a regular expression (default: false)",
+              "type": "boolean"
+            },
+            "kind": {
+              "description": "Filter by symbol kind (func, method, struct, class, interface, etc.)",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Maximum symbols to return (default: 50)",
+              "type": "number"
+            },
+            "project": {
+              "description": "Project name (defaults to 'default')",
+              "type": "string"
+            },
+            "query": {
+              "description": "Query substring or regular expression to search",
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_code_map",
+        "description": "Generate a compact, token-budgeted structural map of the repository's key AST symbols, functions, and types for LLM system prompts (inspired by Aider).",
+        "inputSchema": {
+          "properties": {
+            "budget": {
+              "description": "Maximum token budget (default: 2048)",
+              "type": "number"
+            },
+            "project": {
+              "description": "Project name (defaults to 'default')",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_code_tests",
+        "description": "Analyzes the code graph in reverse to locate all test files and test functions that exercise a target symbol, file, or git diff, returning recommended minimal test execution commands for Fast-TDD.",
+        "inputSchema": {
+          "properties": {
+            "hops": {
+              "description": "Maximum hops in the reverse call graph (default: 3)",
+              "type": "number"
+            },
+            "project": {
+              "description": "Project name (defaults to 'default')",
+              "type": "string"
+            },
+            "target": {
+              "description": "Target symbol name, symbol ID, or relative file path",
+              "type": "string"
+            }
+          },
+          "required": [
+            "target"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_consolidate",
+        "description": "Find observations that share the same topic_key and could be consolidated. Returns candidates grouped by topic key. Use cortex_save with the same topic_key to create a merged observation, then cortex_relate with 'supersedes' to link old ones.",
+        "inputSchema": {
+          "properties": {
+            "project": {
+              "description": "Project to search for consolidation candidates",
+              "type": "string"
+            },
+            "topic_key": {
+              "description": "Specific topic key to consolidate. If empty, returns all groups with 2+ observations.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "project"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_context",
+        "description": "Get recent memory context from previous sessions. Shows recent sessions and observations to understand what was done before.",
+        "inputSchema": {
+          "properties": {
+            "limit": {
+              "description": "Number of observations to retrieve (default: 20)",
+              "type": "number"
+            },
+            "project": {
+              "description": "Filter by project (omit for all projects)",
+              "type": "string"
+            },
+            "scope": {
+              "description": "Filter observations by scope: project (default) or personal",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_detect_cycles",
+        "description": "Detect circular dependencies and import/call cycles across code entities in the knowledge graph.",
+        "inputSchema": {
+          "properties": {
+            "project": {
+              "description": "Project name to inspect",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_get_agent_context",
+        "description": "Extracts an optimized prompt-injection context pack containing active project rules, architectural decisions, gotchas/bugfix lessons, and core architectural hubs.",
+        "inputSchema": {
+          "properties": {
+            "format": {
+              "description": "Output format: 'xml', 'markdown', or 'json' (default: 'xml')",
+              "type": "string"
+            },
+            "include_repo_map": {
+              "description": "Whether to include a token-budgeted repo map (default: false)",
+              "type": "boolean"
+            },
+            "project": {
+              "description": "Project name (defaults to 'default')",
+              "type": "string"
+            },
+            "repo_map_budget": {
+              "description": "Maximum token budget for repo map if included (default: 1024)",
+              "type": "number"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_get_blast_radius",
+        "description": "Calculate the blast radius (impacted downstream code entities, callers, and related observations) when modifying a code symbol, file, or observation.",
+        "inputSchema": {
+          "properties": {
+            "depth": {
+              "description": "Traversal depth (default: 3)",
+              "type": "number"
+            },
+            "observation_id": {
+              "description": "Legacy argument: Observation ID or symbol reference to analyze",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "project": {
+              "description": "Project name (defaults to 'default')",
+              "type": "string"
+            },
+            "target": {
+              "description": "Code symbol name (e.g. CalculateTax), file path (e.g. main.go), or node ID",
+              "type": "string"
+            }
+          },
+          "required": [
+            "observation_id"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_get_code_graph",
+        "description": "Get the full structural code graph with symbols and caller/callee relations for a project.",
+        "inputSchema": {
+          "properties": {
+            "project": {
+              "description": "Project name (defaults to 'default')",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_get_code_symbols",
+        "description": "Query indexed code symbols (functions, structs, interfaces, classes, tables) from the dedicated code_symbols table.",
+        "inputSchema": {
+          "properties": {
+            "file": {
+              "description": "Filter by file path",
+              "type": "string"
+            },
+            "kind": {
+              "description": "Filter by symbol kind (func, struct, interface, class, module, table)",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Maximum symbols to return (default: 100)",
+              "type": "number"
+            },
+            "package": {
+              "description": "Filter by package name",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project name (defaults to 'default')",
+              "type": "string"
+            },
+            "query": {
+              "description": "Search pattern for symbol name or signature",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_get_observation",
+        "description": "Get the full content of a specific observation by ID. Use when you need the complete, untruncated content of an observation found via cortex_search or cortex_timeline.",
+        "inputSchema": {
+          "properties": {
+            "id": {
+              "description": "The observation ID to retrieve",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_get_rules",
+        "description": "Retrieve active project and global directives, coding guidelines, and behavioral rules.",
+        "inputSchema": {
+          "properties": {
+            "project": {
+              "description": "Filter rules for a specific project. If omitted, retrieves all active project and global rules.",
+              "type": "string"
+            },
+            "topic": {
+              "description": "Filter by topic or subcategory (e.g. 'code-style', 'architecture', 'security').",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_get_status",
+        "description": "Get the active operational mode (local SQLite vs server PostgreSQL), version, storage status, and enabled capabilities.",
+        "inputSchema": {
+          "properties": {},
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_graph",
+        "description": "Traverse the knowledge graph starting from an observation. Returns related observations up to the specified depth, ordered by minimum hop then observation ID. Bounded by max_visited (default 1000, cap 10000, counts the root plus unique visited nodes) and max_results (default 100, cap 1000, counts emitted non-root rows); when eligible data is omitted the output reports truncated=true with the reason(s).",
+        "inputSchema": {
+          "properties": {
+            "depth": {
+              "description": "Traversal depth 1-10 (default: 1)",
+              "type": "number"
+            },
+            "max_results": {
+              "description": "Maximum emitted related observations 1-1000 (default: 100)",
+              "type": "number"
+            },
+            "max_visited": {
+              "description": "Global visited budget 1-10000 (default: 1000): the root plus unique visited nodes",
+              "type": "number"
+            },
+            "observation_id": {
+              "description": "Starting observation ID",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "observation_id"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_graph_path",
+        "description": "Find the lexicographically smallest shortest observation path between two nodes using bounded breadth-first traversal. On success the payload is the []int64 path (empty array when no path exists within the depth). If the max_visited budget (default 1000, cap 10000, counts the root plus unique visited nodes including the destination) is exhausted before the path can be proved or disproved, a stable traversal-truncated error is returned instead of a false no-path result.",
+        "inputSchema": {
+          "properties": {
+            "from_id": {
+              "description": "Starting observation ID",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "max_depth": {
+              "description": "Maximum traversal depth 1-10 (default: 5)",
+              "type": "number"
+            },
+            "max_visited": {
+              "description": "Global visited budget 1-10000 (default: 1000): the root plus unique visited nodes",
+              "type": "number"
+            },
+            "to_id": {
+              "description": "Destination observation ID",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "from_id",
+            "to_id"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_graph_relationships",
+        "description": "List incoming and outgoing relationships for an observation, including type, weight, confidence, provenance, and temporal metadata.",
+        "inputSchema": {
+          "properties": {
+            "observation_id": {
+              "description": "Observation ID",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "observation_id"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_handoff",
+        "description": "Record a durable, idempotent handoff: persist an observation (and an optional relation) exactly once per idempotency key.\n\nReplaying the identical payload under the same key returns the SAME observation with status \"replayed\"; the same key with a DIFFERENT payload is a conflict and mutates nothing. Any failure rolls back every effect — observation, relation, and receipt — atomically.\n\nobservation.session_id is required and must reference an existing local session; it is validated before any mutation.\n\nThe local namespace returns observation_ref.local_id only.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "idempotency_key": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Stable idempotency key; identical key+payload replays, differing payload conflicts"
+            },
+            "observation": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "content": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "type": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "project",
+                    "personal"
+                  ]
+                },
+                "session_id": {
+                  "type": "string",
+                  "description": "Session the observation belongs to; the local runtime requires a preexisting session and validates it before any mutation"
+                },
+                "topic_key": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "source": {
+                  "type": "string"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "title",
+                "content"
+              ],
+              "additionalProperties": false
+            },
+            "relation": {
+              "type": "object",
+              "properties": {
+                "target": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "local_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      },
+                      "required": [
+                        "local_id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "public_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "public_id"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "type": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "weight": {
+                  "type": "number"
+                },
+                "confidence": {
+                  "type": "number"
+                },
+                "reasoning": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target",
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            "capability_tuple": {
+              "description": "Opaque JSON evidence forwarded with the handoff; stored as data, never interpreted"
+            }
+          },
+          "required": [
+            "idempotency_key",
+            "observation"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "cortex_ingest_code",
+        "description": "Scan local project files (.go, .ts, .js, .py, .sql) using the Zero-CGO 2-Pass Static AST Extractor to index code symbols and dependencies into dedicated tables.",
+        "inputSchema": {
+          "properties": {
+            "max_files": {
+              "description": "Maximum files to scan (default: 500, max: 2000)",
+              "type": "number"
+            },
+            "path": {
+              "description": "Relative or absolute root path to scan (defaults to '.' or project root)",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project name (defaults to 'default')",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_project_dna",
+        "description": "Generate a structured summary of a project's key decisions, patterns, tech stack, and gotchas from stored observations. Useful for onboarding or context recovery.",
+        "inputSchema": {
+          "properties": {
+            "project": {
+              "description": "Project name to generate DNA for",
+              "type": "string"
+            }
+          },
+          "required": [
+            "project"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_relate",
+        "description": "Create a typed relationship between two observations in the knowledge graph.",
+        "inputSchema": {
+          "properties": {
+            "confidence": {
+              "description": "Confidence in this relationship 0.0-1.0 (default: 1.0)",
+              "type": "number"
+            },
+            "from_id": {
+              "description": "Source observation ID",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "reasoning": {
+              "description": "Why this relationship exists",
+              "type": "string"
+            },
+            "relation_type": {
+              "description": "Relationship type: references, relates_to, follows, supersedes, contradicts",
+              "type": "string"
+            },
+            "source": {
+              "description": "Who/what created this edge (e.g. 'ai', 'manual')",
+              "type": "string"
+            },
+            "to_id": {
+              "description": "Target observation ID",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "weight": {
+              "description": "Relationship strength 0.0-10.0 (default: 1.0)",
+              "type": "number"
+            }
+          },
+          "required": [
+            "from_id",
+            "to_id",
+            "relation_type"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_resolve_query",
+        "description": "Intelligently resolve a query using Cortex memory and knowledge graph in the active runtime mode (Local SQLite FTS5/Graph or Server PostgreSQL). Returns structured relevant observations, recent context, and operational metadata.",
+        "inputSchema": {
+          "properties": {
+            "limit": {
+              "description": "Maximum number of observations to retrieve (default: 10)",
+              "type": "number"
+            },
+            "project": {
+              "description": "Optional project filter (defaults to all or current workspace)",
+              "type": "string"
+            },
+            "query": {
+              "description": "The question, topic or search query to resolve",
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_revision_history",
+        "description": "Show structured revision snapshots for a specific observation. Use this when you want machine-readable history for topic_key upserts and updates.",
+        "inputSchema": {
+          "properties": {
+            "limit": {
+              "description": "Maximum number of revision snapshots to return (default: 20)",
+              "type": "number"
+            },
+            "observation_id": {
+              "description": "The observation ID to inspect",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "observation_id"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_save",
+        "description": "Save an important observation to persistent memory. Call this PROACTIVELY after completing significant work  -- don't wait to be asked.\n\nWHEN to save (call this after each of these):\n- Architectural decisions or tradeoffs\n- Bug fixes (what was wrong, why, how you fixed it)\n- New patterns or conventions established\n- Configuration changes or environment setup\n- Important discoveries or gotchas\n- File structure changes\n\nFORMAT for content  -- use this structured format:\n  **What**: [concise description of what was done]\n  **Why**: [the reasoning, user request, or problem that drove it]\n  **Where**: [files/paths affected, e.g. src/auth/middleware.ts, internal/store/store.go]\n  **Learned**: [any gotchas, edge cases, or decisions made  -- omit if none]\n\nTITLE should be short and searchable, like: \"JWT auth middleware\", \"FTS5 query sanitization\", \"Fixed N+1 in user list\"",
+        "inputSchema": {
+          "properties": {
+            "confidence": {
+              "description": "Confidence score 0.0-1.0 (default: 1.0). Lower values indicate less certainty.",
+              "type": "number"
+            },
+            "content": {
+              "description": "Structured content using **What**, **Why**, **Where**, **Learned** format",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project name",
+              "type": "string"
+            },
+            "scope": {
+              "description": "Scope for this observation: project (default) or personal",
+              "type": "string"
+            },
+            "session_id": {
+              "description": "Session ID to associate with (default: manual-save-{project})",
+              "type": "string"
+            },
+            "source": {
+              "description": "Origin of this observation: manual (default), ai, auto, import",
+              "type": "string"
+            },
+            "tags": {
+              "description": "Comma-separated tags (e.g. 'auth,jwt,security')",
+              "type": "string"
+            },
+            "title": {
+              "description": "Short, searchable title (e.g. 'JWT auth middleware', 'Fixed N+1 query')",
+              "type": "string"
+            },
+            "topic_key": {
+              "description": "Optional topic identifier for upserts (e.g. architecture/auth-model). Reuses and updates the latest observation in same project+scope.",
+              "type": "string"
+            },
+            "type": {
+              "description": "Category: decision, architecture, bugfix, pattern, config, discovery, learning (default: manual)",
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "content"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_save_prompt",
+        "description": "Save a user prompt to persistent memory. Use this to record what the user asked  -- their intent, questions, and requests  -- so future sessions have context about the user's goals.",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "description": "The user's prompt text",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project name",
+              "type": "string"
+            },
+            "session_id": {
+              "description": "Session ID to associate with (default: manual-save-{project})",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_save_rule",
+        "description": "Create or update a persistent project or global directive/rule in Cortex.",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "description": "Detailed description or markdown specification of the rule/directive",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project name (defaults to 'default')",
+              "type": "string"
+            },
+            "scope": {
+              "description": "Scope: 'project' or 'personal' (global) (default: 'project')",
+              "type": "string"
+            },
+            "title": {
+              "description": "Short summary of the rule (e.g. 'Always use Go 1.26 without CGO')",
+              "type": "string"
+            },
+            "topic_key": {
+              "description": "Hierarchical topic key (e.g. 'rules/go-version', 'rules/auth')",
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "content"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_score",
+        "description": "Get or recalculate the importance score for an observation. Score formula: base + accessBonus + recencyBonus + edgeBonus + typeBonus - agePenalty, clamped to [0.0, 5.0].",
+        "inputSchema": {
+          "properties": {
+            "observation_id": {
+              "description": "Observation ID to score",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "recalculate": {
+              "description": "Force recalculation (default: false)",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "observation_id"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_search",
+        "description": "Search your persistent memory across all sessions. Use this to find past decisions, bugs fixed, patterns used, files changed, or any context from previous coding sessions.",
+        "inputSchema": {
+          "properties": {
+            "graph_expand": {
+              "description": "Include graph-connected observations in results (default: false)",
+              "type": "boolean"
+            },
+            "limit": {
+              "description": "Max results (default: 10, max: 20)",
+              "type": "number"
+            },
+            "project": {
+              "description": "Filter by project name",
+              "type": "string"
+            },
+            "query": {
+              "description": "Search query  -- natural language or keywords",
+              "type": "string"
+            },
+            "scope": {
+              "description": "Filter by scope: project (default) or personal",
+              "type": "string"
+            },
+            "type": {
+              "description": "Filter by type: tool_use, file_change, command, file_read, search, manual, decision, architecture, bugfix, pattern",
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_search_hybrid",
+        "description": "Search using FTS5 full-text search. When vector search is enabled, combines FTS5 and vector results using Reciprocal Rank Fusion. Falls back to FTS5-only when vectors are disabled.",
+        "inputSchema": {
+          "properties": {
+            "limit": {
+              "description": "Max results (default: 10, max: 50)",
+              "type": "number"
+            },
+            "mode": {
+              "description": "Adaptive retrieval mode: 'auto' (Adaptive-RAG with HippoRAG and CRAG gating), 'direct' (fast factual), 'semantic' (hybrid vectors), 'multi_hop' (HippoRAG graph reasoning)",
+              "type": "string"
+            },
+            "project": {
+              "description": "Filter by project name",
+              "type": "string"
+            },
+            "query": {
+              "description": "Search query -- natural language or keywords",
+              "type": "string"
+            },
+            "scope": {
+              "description": "Filter by scope: project or personal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_session_end",
+        "description": "Mark a coding session as completed with an optional summary.",
+        "inputSchema": {
+          "properties": {
+            "id": {
+              "description": "Session identifier to close",
+              "type": "string"
+            },
+            "summary": {
+              "description": "Summary of what was accomplished",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_session_start",
+        "description": "Register the start of a new coding session. Call this at the beginning of a session to track activity.",
+        "inputSchema": {
+          "properties": {
+            "directory": {
+              "description": "Working directory",
+              "type": "string"
+            },
+            "id": {
+              "description": "Unique session identifier",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "project"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_session_summary",
+        "description": "Save a comprehensive end-of-session summary. Call this when a session is ending or when significant work is complete. This creates a structured summary that future sessions will use to understand what happened.\n\nFORMAT  -- use this exact structure in the content field:\n\n## Goal\n[One sentence: what were we building/working on in this session]\n\n## Instructions\n[User preferences, constraints, or context discovered during this session. Things a future agent needs to know about HOW the user wants things done. Skip if nothing notable.]\n\n## Discoveries\n- [Technical finding, gotcha, or learning 1]\n- [Technical finding 2]\n- [Important API behavior, config quirk, etc.]\n\n## Accomplished\n- Completed task 1  -- with key implementation details\n- Completed task 2  -- mention files changed\n- Identified but not yet done  -- for next session\n\n## Relevant Files\n- path/to/file.ts  -- [what it does or what changed]\n- path/to/other.go  -- [role in the architecture]\n\nGUIDELINES:\n- Be CONCISE but don't lose important details (file paths, error messages, decisions)\n- Focus on WHAT and WHY, not HOW (the code itself is in the repo)\n- Include things that would save a future agent time\n- The Discoveries section is the most valuable  -- capture gotchas and non-obvious learnings\n- Relevant Files should only include files that were significantly changed or are important for context",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "description": "Full session summary using the Goal/Instructions/Discoveries/Accomplished/Files format",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project name",
+              "type": "string"
+            },
+            "session_id": {
+              "description": "Session ID (default: manual-save-{project})",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content",
+            "project"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_suggest_topic_key",
+        "description": "Suggest a stable topic_key for memory upserts. Use this before cortex_save when you want evolving topics (like architecture decisions) to update a single observation over time.",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "description": "Observation content used as fallback if title is empty",
+              "type": "string"
+            },
+            "title": {
+              "description": "Observation title (preferred input for stable keys)",
+              "type": "string"
+            },
+            "type": {
+              "description": "Observation type/category, e.g. architecture, decision, bugfix",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      {
+        "name": "cortex_update",
+        "description": "Update an existing observation by ID. Only provided fields are changed.",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "description": "New content",
+              "type": "string"
+            },
+            "id": {
+              "description": "Observation ID to update",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "project": {
+              "description": "New project value",
+              "type": "string"
+            },
+            "scope": {
+              "description": "New scope: project or personal",
+              "type": "string"
+            },
+            "title": {
+              "description": "New title",
+              "type": "string"
+            },
+            "topic_key": {
+              "description": "New topic key (normalized internally)",
+              "type": "string"
+            },
+            "type": {
+              "description": "New type/category",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      }
+    ]
+  },
+  "context7": {
+    "package": "@upstash/context7-mcp",
+    "version": "4.1.0",
+    "resolved": "https://registry.npmjs.org/@upstash/context7-mcp/-/context7-mcp-4.1.0.tgz",
+    "integrity": "sha512-ngAkFwW3LsnRGpH3XTVrjDqm3QBT4ZRpLCnShI0cIfCG+ACt07TrkRZc3n7+qjkFTcM/xIDJcHUBK5bDXUa40w==",
+    "engines": {
+      "node": ">=20.18.1"
+    },
+    "executable": "dist/index.js",
+    "tools": [
+      "resolve-library-id",
+      "get-library-docs"
+    ]
+  }
+}

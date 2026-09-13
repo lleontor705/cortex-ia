@@ -1,0 +1,11 @@
+{
+  "name": "cortex-mcp-fixtures",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@upstash/context7-mcp": "4.1.0"
+  },
+  "engines": {
+    "node": ">=20.18.1"
+  }
+}

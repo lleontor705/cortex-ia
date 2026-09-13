@@ -1,4 +1,4 @@
-﻿# Quickstart Guide
+# Quickstart Guide
 
 Get up and running with **Cortex-IA** in three simple steps.
 
@@ -30,7 +30,7 @@ cortex-ia install
 ```
 
 This transactionally installs the embedded asset set under `~/.config/opencode/`:
-- `AGENTS.md` system prompt and 5 subagents (`orchestrator`, `investigate`, `planner`, `implement`, `reviewer`).
+- `AGENTS.md` system prompt and 6 native roles (`orchestrator`, `discovery`, `investigate`, `planner`, `implement`, `reviewer`).
 - SDD slash commands, skills, and Herdr delegation bridge plugin.
 - Registers the **Cortex** knowledge graph MCP server.
 

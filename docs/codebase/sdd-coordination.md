@@ -17,8 +17,9 @@ Review fingerprints are computed from the current definition and sorted allowed 
 ## Typed controller operations
 
 - Planner: `cortex_ia_openspec_validate({relative_directory,workflow,phase})` for OpenSpec/hybrid structural checks, `cortex_ia_work_create` for bound tasks, and `cortex_ia_change_archive` for closure.
-- Implement: claim one ready task, reserve every writable path, renew authority, verify and transition to review. Use typed tools so tokens remain in controller memory and stdin rather than prompts or command arguments.
-- Reviewer: inspect the exact contracts and diff, run relevant checks, and approve using current revision and bounded evidence. The implementation owner's identity cannot serve as reviewer.
-- Orchestrator: select routes, dispatch controllers, reconcile failures and deliver the result. It does not claim, implement or approve.
+- Implement: claim one ready task, reserve every writable path, renew authority, verify and transition to review via `cortex_ia_work_transition` with typed parameters (`summary`, `verdict`, `evidence_refs`, `changed_files`). Raw JSON text blocks in chat are strictly forbidden.
+- Reviewer: inspect the exact contracts and diff, run relevant checks, and approve using current revision and bounded evidence via `cortex_ia_work_approve` with typed parameters (`verdict`, `reason`, `summary`, `findings`). The implementation owner's identity cannot serve as reviewer.
+- Discovery: inspect project skills, stack, engines, and architecture; maintain `.cortex-ia/discovery.md` via `cortex_ia_discovery_write`. Strictly native and read-only.
+- Orchestrator: select routes across the 3-tier model, dispatch controllers, reconcile failures and deliver the result. It does not claim, implement or approve.
 
 The bridge verifies host roles; the store verifies transactional authority. Neither can infer semantic correctness from an exit code or the presence of an evidence string.

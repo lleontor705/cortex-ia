@@ -67,6 +67,12 @@ func runCLI(args []string) error {
 	case "web":
 		return runWeb(rest)
 
+	case "doc":
+		return runDoc(rest)
+
+	case "diagram":
+		return runDiagram(rest)
+
 	case "mcp":
 		return runMCP(rest)
 
@@ -218,6 +224,9 @@ Usage:
   cortex-ia ui snapshot              Print a bounded read-only TUI snapshot
   cortex-ia web [--addr 127.0.0.1:7331] [--board <id>] [--task <id>] [--open] [--daemon]
                                       Launch local Cortex-IA web dashboard in browser
+  cortex-ia doc convert|inspect      Convert office/PDF docs to Markdown or inspect metadata
+  cortex-ia diagram validate|render|compare|reach
+                                     Validate, render, compare, or trace system diagrams
   cortex-ia report error|config|status Report operational errors with HMAC signature
   cortex-ia doctor                   Assess installation health (read-only)
   cortex-ia rollback [backup-id]     Restore the recorded (or given) backup

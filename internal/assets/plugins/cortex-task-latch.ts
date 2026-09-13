@@ -5,25 +5,44 @@ import * as path from "node:path";
 
 const CORTEX_ROLES = new Set(["discovery", "investigate", "planner", "implement", "reviewer"]);
 
-function resolveCortexExecutable(): string | null {
+function resolveExecutable(cmd: string): string | null {
+  const isWin = process.platform === "win32";
+  const locator = isWin ? "where.exe" : "which";
+  try {
+    const out = execFileSync(locator, [cmd], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+    }).trim();
+    if (out) {
+      const first = out.split(/\r?\n/)[0].trim();
+      if (path.isAbsolute(first) && fs.existsSync(first)) {
+        return first;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function resolveCortexExecutable(directory?: string): string | null {
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
   const candidates = [
     path.join(home, "go", "bin", "cortex-ia.exe"),
-    "cortex-ia",
     path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
     path.join(home, ".local", "bin", "cortex-ia"),
     "/usr/local/bin/cortex-ia",
     "/usr/bin/cortex-ia",
   ];
   for (const candidate of candidates) {
-    if (candidate !== "cortex-ia" && fs.existsSync(candidate)) return candidate;
-    if (candidate === "cortex-ia") {
-      try {
-        execFileSync(candidate, ["version"], { stdio: "ignore", windowsHide: true });
-        return candidate;
-      } catch {}
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  const resolved = resolveExecutable("cortex-ia");
+  if (resolved) {
+    if (directory && path.resolve(resolved).startsWith(path.resolve(directory) + path.sep)) {
+      return null;
     }
+    return resolved;
   }
   return null;
 }
@@ -58,6 +77,25 @@ export const CortexTaskLatchPlugin: Plugin = async (ctx) => {
 
     "tool.execute.before": async (input, output) => {
       const toolName = (input?.tool || "").toLowerCase();
+
+      // Reject invented unlatch tools
+      if (["unlatch", "cortex_unlatch", "cortex_ia_unlatch", "cortex_work_unlatch"].includes(toolName)) {
+        throw new Error(
+          "CORTEX_UNLATCH_UNAVAILABLE: Unlatch tools do not exist. Latching is a safety mechanism; continuation requires orchestrator reconciliation and fresh authorized dispatch under cortex-work-protocol.md."
+        );
+      }
+
+      // Reject leaf recovery/retry bypass attempts
+      if (["cortex_recover", "cortex_ia_recover", "cortex_ia_work_recover", "cortex_ia_work_retry", "work_recover", "work_retry"].includes(toolName)) {
+        const args = (output?.args || {}) as Record<string, any>;
+        const callerRole = args.role || args.subagent_type || args.subagent;
+        if (callerRole !== "orchestrator" && callerRole !== undefined) {
+          throw new Error(
+            "CORTEX_RECOVERY_UNAUTHORIZED: Leaf subagents cannot perform recovery or retry. Reconciliation and retry are exclusive orchestrator responsibilities."
+          );
+        }
+      }
+
       if (toolName !== "task") return;
 
       const args = (output?.args || {}) as Record<string, any>;
@@ -66,10 +104,18 @@ export const CortexTaskLatchPlugin: Plugin = async (ctx) => {
 
       const previousFailure = failedSessions.get(input.sessionID);
       if (previousFailure) {
+        if (!previousFailure.taskId) {
+          throw new Error(
+            `CORTEX_DISPATCH_LATCHED: Earlier in this session '${previousFailure.role}' failed with '${previousFailure.reason}'. ` +
+            `Task identity is unknown; continuation capability is unavailable without an identified task. ` +
+            `Orchestrator must inspect session history and durable board state before initiating a fresh authorized task.`
+          );
+        }
         throw new Error(
-          `CORTEX_DISPATCH_LATCHED: Earlier in this session '${previousFailure.role}' failed with '${previousFailure.reason}'. ` +
+          `CORTEX_DISPATCH_LATCHED: Earlier in this session '${previousFailure.role}' failed with '${previousFailure.reason}' on task '${previousFailure.taskId}'. ` +
           `Task launches remain latched to prevent ungrounded re-dispatch loops. ` +
-          `Reconcile authority for task '${previousFailure.taskId || "unknown"}' before continuing.`
+          `Supported continuation: Orchestrator must reconcile prior work and durable task state in SQLite ` +
+          `(via 'cortex-ia work status' / 'cortex-ia work recover') before dispatching an explicitly authorized fresh attempt without reusing expired tokens.`
         );
       }
     },
@@ -99,7 +145,7 @@ export const CortexTaskLatchPlugin: Plugin = async (ctx) => {
         failedSessions.set(input.sessionID, failure);
 
         // Record platform operational incident in SQLite ledger
-        const cortexBin = resolveCortexExecutable();
+        const cortexBin = resolveCortexExecutable(ctx.directory);
         if (cortexBin && failure.taskId) {
           try {
             execFileSync(
@@ -129,7 +175,7 @@ export const CortexTaskLatchPlugin: Plugin = async (ctx) => {
         throw new Error(
           `CORTEX_SUBAGENT_EMPTY_RESULT: Subagent '${subagent}' produced no valid response. ` +
           `The process was likely aborted due to context length, timeout, or an unhandled exception. ` +
-          `Session is latched; reconcile task state in SQLite before continuing.`
+          `Session is latched; supported continuation requires orchestrator reconciliation of prior work and durable task state in SQLite before any fresh attempt.`
         );
       }
     },

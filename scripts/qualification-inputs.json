@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "tools": {
+    "go": {
+      "version": "1.26.1",
+      "gotoolchain": "local"
+    },
+    "golangci_lint": {
+      "version": "2.11.4"
+    },
+    "goreleaser": {
+      "version": "2",
+      "schema": 2
+    }
+  },
+  "actions": {
+    "actions/checkout@v4": {
+      "repo": "actions/checkout",
+      "ref": "v4",
+      "peeled_tag": "v4.4.0",
+      "commit": "11d5960a326750d5838078e36cf38b85af677262",
+      "url": "https://github.com/actions/checkout"
+    },
+    "actions/setup-go@v5": {
+      "repo": "actions/setup-go",
+      "ref": "v5",
+      "peeled_tag": "v5.6.0",
+      "commit": "40f1582b2485089dde7abd97c1529aa768e1baff",
+      "url": "https://github.com/actions/setup-go"
+    },
+    "golangci/golangci-lint-action@v8": {
+      "repo": "golangci/golangci-lint-action",
+      "ref": "v8",
+      "peeled_tag": "v8.0.0",
+      "commit": "4afd733a84b1f43292c63897423277bb7f4313a9",
+      "url": "https://github.com/golangci/golangci-lint-action"
+    },
+    "actions/upload-artifact@v4": {
+      "repo": "actions/upload-artifact",
+      "ref": "v4",
+      "peeled_tag": "v4.6.2",
+      "commit": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "url": "https://github.com/actions/upload-artifact"
+    },
+    "goreleaser/goreleaser-action@v6": {
+      "repo": "goreleaser/goreleaser-action",
+      "ref": "v6",
+      "peeled_tag": "v6.4.0",
+      "commit": "e435ccd777264be153ace6237001ef4d979d3a7a",
+      "url": "https://github.com/goreleaser/goreleaser-action"
+    },
+    "actions/github-script@v7": {
+      "repo": "actions/github-script",
+      "ref": "v7",
+      "peeled_tag": "v7.1.0",
+      "commit": "f28e40c7f34bde8b3046d885e986cb6290c5673b",
+      "url": "https://github.com/actions/github-script"
+    },
+    "actions/stale@v9": {
+      "repo": "actions/stale",
+      "ref": "v9",
+      "peeled_tag": "v9.1.0",
+      "commit": "5bef64f19d7facfb25b37b414482c7164d639639",
+      "url": "https://github.com/actions/stale"
+    }
+  },
+  "reusable_workflows": {
+    "lleontor705/ats-deploy-public/.github/workflows/quality-go.yml@main": {
+      "repo": "lleontor705/ats-deploy-public",
+      "ref": "main",
+      "workflow_file": ".github/workflows/quality-go.yml",
+      "commit": "fe9f00320a3a9618d6f8bb841eae891861ec5774",
+      "url": "https://github.com/lleontor705/ats-deploy-public"
+    },
+    "lleontor705/ats-deploy-public/.github/workflows/security-scan.yml@main": {
+      "repo": "lleontor705/ats-deploy-public",
+      "ref": "main",
+      "workflow_file": ".github/workflows/security-scan.yml",
+      "commit": "fe9f00320a3a9618d6f8bb841eae891861ec5774",
+      "url": "https://github.com/lleontor705/ats-deploy-public"
+    }
+  }
+}

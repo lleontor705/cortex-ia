@@ -22,6 +22,7 @@ flowchart LR
 
 - Structural validation checks phase-specific files, unique requirement IDs, complete scenario fields and task references. It does not assess whether scenarios are meaningful or code is correct.
 - Native mutation tools require session-owned live task authority. This admission check is not an operating-system sandbox for shell commands.
+- Persistent test policy strictly bounds persistent suites to TUI, simple install-copy, and user-authorized critical regression boundaries (authority, transport, recovery, updater verification). Tests must use temporary home directories and synthetic inputs, keep dedicated test files <= 250 lines without appending to files > 300 lines, and never weaken contracts (such as silently skipping invalid records) or touch real developer state. Deeper unrelated transactional exploration remains ephemeral.
 - SDD work stores typed contract pins and requirement IDs. Review records runtime-computed definition and writable-file fingerprints. Historical approvals retain their original evidence.
 - The reviewer retrieves the selected specification, evaluates the change and reruns appropriate checks. Remote Cortex content freshness is verified through its selected transport, not inferred from a stored hash.
 - Planner closes the change using `cortex_ia_change_archive` after durable approval and current fingerprint checks. Cortex-only closure is logical; OpenSpec/hybrid also archive the source change directory.

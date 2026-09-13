@@ -64,5 +64,5 @@ When a task is blocked because its scope is too broad, the orchestrator decides 
 
 1. **AST & Code-Intelligence Noninterference (REQ-PRIV-007)**:
    Codebase intelligence structures—including AST symbols, doc summaries (`DocSummary`), graph relations, call reasoning (`Reasoning`), and semantic tokens—are immutable codebase structure, not user data or session state. Sanitization, redaction, or privacy preflight logic must NEVER redact, strip, or alter code intelligence fields.
-2. **Modular Test Fixture Partitioning**:
-   Test fixtures must remain bounded and modular. Never append extensive test suites to a pre-existing test file exceeding 300 LOC. Assign dedicated, modular test files for new features, negative cases, or fault injections (bounded to <= 250 LOC per test file) to prevent workload budget overruns.
+2. **Modular Test Fixture Partitioning & Regression Policy**:
+   Test fixtures must remain bounded and modular. Persistent tests are limited to TUI, simple install-copy, and user-authorized critical regression boundaries (authority, transport, recovery, updater verification). Never append extensive test suites to a pre-existing test file exceeding 300 LOC. Assign dedicated, modular test files (bounded to <= 250 LOC per test file) using temporary home directories and synthetic inputs. Tests must never weaken contracts (such as silently skipping invalid records) or touch real developer state; deeper unrelated transactional exploration remains ephemeral.

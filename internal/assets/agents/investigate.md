@@ -62,13 +62,17 @@ tools:
   cortex_ia_board_status: true
   cortex_ia_work_list: true
   cortex_ia_work_status: true
-  cortex_ia_ledger_status: true
   cortex_ia_delegate_start: true
   cortex_ia_delegation_status: true
   cortex_ia_delegation_wait: true
   cortex_ia_delegation_result: true
   cortex_ia_delegation_cancel: true
   cortex_ia_report_error: true
+  cortex_ia_doc_convert: true
+  cortex_ia_doc_inspect: true
+  cortex_ia_diagram_validate: true
+  cortex_ia_diagram_render: true
+  cortex_ia_diagram_reach: true
 permission:
   bash:
     "*": allow
@@ -112,8 +116,8 @@ Ground findings with exact paths, commands, exit codes, and limitations. For arc
   4. **Adaptive Memory Retrieval**: Use `cortex_search(query, graph_expand: true)` or `cortex_graph` to traverse prior root-cause observations and debug lineage.
   5. **Fallback**: If specific symbol resolution needs text fallback, use `grep`, `glob`, and targeted `read`. Never block on missing LSP.
 
-## 3. Grounding & Receipt
-For defects and regressions, read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md`; return the executed red-capable command, reproduction verdict, minimized case, and ranked falsifiable hypotheses. Without an oracle for the exact symptom, return `INCONCLUSIVE`, not a root-cause claim. For retrospectives, return distinct versus repeated causes and ranked process improvements without editing them. Return the common completion receipt from `cortex-work-protocol.md`, including `phase_status`, `verification_verdict`, and `summary`, plus evidence references, root cause or ranked hypotheses, risks, and `next_route` (`stop`, `direct-change`, `fast-tdd`, `hotfix`, `sdd-lite`, or `sdd-full`). Never invent evidence.
+## 3. Grounding & Reporting
+For defects and regressions, read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md`; return the executed red-capable command, reproduction verdict, minimized case, and ranked falsifiable hypotheses. Without an oracle for the exact symptom, return `INCONCLUSIVE`, not a root-cause claim. For retrospectives, return distinct versus repeated causes and ranked process improvements without editing them. Deliver a clear, structured Markdown diagnosis report to the operator and orchestrator containing: `phase_status`, `verification_verdict`, concise summary, evidence references, root cause or ranked hypotheses, risks, and recommended `next_route` (`stop`, `direct-change`, `fast-tdd`, `hotfix`, `sdd-lite`, or `sdd-full`). Save durable evidence to Cortex MCP via `cortex_save`. Do NOT emit raw JSON code blocks in chat. Never invent evidence.
 
 ## 4. Exploration & Subsystem Mapping Boundary
 When dispatched to map a subsystem, size exploration by uncertainty, output volume, and evidence needed for the assigned question:

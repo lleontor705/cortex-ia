@@ -1,8 +1,10 @@
 package mcpmanager
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // ProbeEvidence is the explicit qualification outcome for one MCP server.
@@ -101,4 +103,111 @@ func RemoteURLProbe(preset Preset) (ProbeEvidence, error) {
 		Valid:      true,
 		Summary:    "remote URL is a well-formed http/https endpoint (offline probe: reachability is not tested)",
 	}, nil
+}
+
+// QualificationEvidence represents caller-supplied identity, schema, and capability evidence.
+type QualificationEvidence struct {
+	PackageName    string   `json:"package_name"`
+	Version        string   `json:"version"`
+	ExecutablePath string   `json:"executable_path"`
+	LockIntegrity  string   `json:"lock_integrity"`
+	ResolvedURL    string   `json:"resolved_url"`
+	RequiredTools  []string `json:"required_tools"`
+	OptionalAbsent []string `json:"optional_absent"`
+}
+
+// DefaultContext7QualificationEvidence returns the frozen qualified evidence for Context7 4.1.0.
+func DefaultContext7QualificationEvidence() QualificationEvidence {
+	return QualificationEvidence{
+		PackageName:    "@upstash/context7-mcp",
+		Version:        "4.1.0",
+		ExecutablePath: "dist/index.js",
+		LockIntegrity:  "sha512-ngAkFwW3LsnRGpH3XTVrjDqm3QBT4ZRpLCnShI0cIfCG+ACt07TrkRZc3n7+qjkFTcM/xIDJcHUBK5bDXUa40w==",
+		ResolvedURL:    "https://registry.npmjs.org/@upstash/context7-mcp/-/context7-mcp-4.1.0.tgz",
+		RequiredTools:  []string{"resolve-library-id", "get-library-docs"},
+		OptionalAbsent: []string{"prompts", "resources"},
+	}
+}
+
+// ValidateQualificationEvidence validates that caller-supplied evidence matches the pinned preset contract.
+func ValidateQualificationEvidence(preset Preset, evidence QualificationEvidence) (ProbeEvidence, error) {
+	if preset.Name == "" {
+		return ProbeEvidence{}, errors.New("preset name cannot be empty")
+	}
+	if evidence.PackageName == "" || evidence.Version == "" {
+		return ProbeEvidence{
+			ServerName: preset.Name,
+			Valid:      false,
+			Detail:     "malformed qualification evidence: package name or version empty",
+		}, errors.New("malformed qualification evidence")
+	}
+
+	if preset.Name == "context7" {
+		if evidence.PackageName != "@upstash/context7-mcp" {
+			return ProbeEvidence{
+				ServerName: preset.Name,
+				Valid:      false,
+				Detail:     fmt.Sprintf("package mismatch: expected @upstash/context7-mcp, got %s", evidence.PackageName),
+			}, fmt.Errorf("package mismatch: %s", evidence.PackageName)
+		}
+		if evidence.Version != "4.1.0" {
+			return ProbeEvidence{
+				ServerName: preset.Name,
+				Valid:      false,
+				Detail:     fmt.Sprintf("version mismatch: expected 4.1.0, got %s", evidence.Version),
+			}, fmt.Errorf("version mismatch: %s", evidence.Version)
+		}
+		if evidence.ExecutablePath != "" && evidence.ExecutablePath != "dist/index.js" {
+			return ProbeEvidence{
+				ServerName: preset.Name,
+				Valid:      false,
+				Detail:     fmt.Sprintf("executable mismatch: expected dist/index.js, got %s", evidence.ExecutablePath),
+			}, fmt.Errorf("executable mismatch: %s", evidence.ExecutablePath)
+		}
+		expectedIntegrity := "sha512-ngAkFwW3LsnRGpH3XTVrjDqm3QBT4ZRpLCnShI0cIfCG+ACt07TrkRZc3n7+qjkFTcM/xIDJcHUBK5bDXUa40w=="
+		if evidence.LockIntegrity == "" || evidence.LockIntegrity != expectedIntegrity {
+			return ProbeEvidence{
+				ServerName: preset.Name,
+				Valid:      false,
+				Detail:     "lockfile integrity mismatch or unpinned transitive resolution",
+			}, fmt.Errorf("lockfile integrity mismatch")
+		}
+
+		if len(evidence.RequiredTools) == 0 {
+			return ProbeEvidence{
+				ServerName: preset.Name,
+				Valid:      false,
+				Detail:     "missing required agent tools schema",
+			}, errors.New("missing required schema")
+		}
+		toolSet := make(map[string]bool)
+		for _, t := range evidence.RequiredTools {
+			toolSet[t] = true
+		}
+		if !toolSet["resolve-library-id"] && !toolSet["get-library-docs"] {
+			return ProbeEvidence{
+				ServerName: preset.Name,
+				Valid:      false,
+				Detail:     "missing required tool schema: resolve-library-id / get-library-docs",
+			}, errors.New("missing required schema tools")
+		}
+	}
+
+	summary := fmt.Sprintf("qualified %s@%s with frozen lock evidence", evidence.PackageName, evidence.Version)
+	if len(evidence.OptionalAbsent) > 0 {
+		summary += fmt.Sprintf(" (optional absent: %s)", strings.Join(evidence.OptionalAbsent, ", "))
+	}
+
+	return ProbeEvidence{
+		ServerName: preset.Name,
+		Valid:      true,
+		Summary:    summary,
+	}, nil
+}
+
+// OfflineQualificationProbe returns a ProbeFunc that validates caller-supplied qualification evidence.
+func OfflineQualificationProbe(evidence QualificationEvidence) ProbeFunc {
+	return func(preset Preset) (ProbeEvidence, error) {
+		return ValidateQualificationEvidence(preset, evidence)
+	}
 }

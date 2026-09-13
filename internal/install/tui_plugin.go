@@ -16,33 +16,40 @@ const (
 
 // ConfigureTUIPlugin ensures OpenCode's tui.jsonc contains the cortex-ia TUI plugin entry.
 func ConfigureTUIPlugin(homeDir string) (string, error) {
+	path, _, err := ConfigureTUIPluginWithResult(homeDir)
+	return path, err
+}
+
+// ConfigureTUIPluginWithResult ensures OpenCode's tui.jsonc contains the cortex-ia TUI plugin entry
+// and reports whether the file was modified.
+func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
 	if homeDir == "" {
 		var err error
 		homeDir, err = os.UserHomeDir()
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
 	configDir := filepath.Join(homeDir, ".config", "opencode")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		return "", err
+		return "", false, err
 	}
 	tuiPath := filepath.Join(configDir, "tui.jsonc")
 	plugins := []any{}
 	if raw, readErr := os.ReadFile(tuiPath); readErr == nil {
 		current, decodeErr := filemerge.DecodeJSONObject(raw)
 		if decodeErr != nil {
-			return "", decodeErr
+			return "", false, decodeErr
 		}
 		if configured, exists := current["plugin"]; exists {
 			values, ok := configured.([]any)
 			if !ok {
-				return "", errors.New("OpenCode tui.jsonc plugin must be an array")
+				return "", false, errors.New("OpenCode tui.jsonc plugin must be an array")
 			}
 			plugins = append(plugins, values...)
 		}
 	} else if !os.IsNotExist(readErr) {
-		return "", readErr
+		return "", false, readErr
 	}
 
 	filtered := make([]any, 0, len(plugins))
@@ -68,13 +75,14 @@ func ConfigureTUIPlugin(homeDir string) (string, error) {
 		"plugin":  plugins,
 	})
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	if _, err := filemerge.MutateJSONFile(tuiPath, filemerge.JSONMutation{Overlay: overlay}); err != nil {
-		return "", err
+	mutated, err := filemerge.MutateJSONFile(tuiPath, filemerge.JSONMutation{Overlay: overlay})
+	if err != nil {
+		return "", false, err
 	}
 	_ = CleanupLegacyFlatFiles(homeDir)
-	return tuiPath, nil
+	return tuiPath, mutated.Changed || mutated.Created, nil
 }
 
 // CleanupLegacyFlatFiles cleans up orphaned flat files like cortex-authority-state-*.json,

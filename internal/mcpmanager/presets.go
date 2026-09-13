@@ -68,7 +68,7 @@ var managedPresets = []Preset{
 		Name: "context7",
 		Entry: map[string]any{
 			"type":    "local",
-			"command": []any{"npx", "-y", "@upstash/context7-mcp"},
+			"command": []any{"npx", "-y", "@upstash/context7-mcp@4.1.0"},
 			"enabled": true,
 		},
 	},
