@@ -1,12 +1,9 @@
 package updater
 
 import (
-	"archive/tar"
-	"archive/zip"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,6 +59,9 @@ func New(repo string) *Client {
 // CheckLatest queries the GitHub Releases API for the newest published release.
 // It returns the Release, a boolean indicating if an update is available, and any error.
 func (c *Client) CheckLatest(ctx context.Context, currentVersion string) (*Release, bool, error) {
+	if err := RequireTrust(); err != nil {
+		return nil, false, err
+	}
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", c.Repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -86,7 +86,10 @@ func (c *Client) CheckLatest(ctx context.Context, currentVersion string) (*Relea
 		return nil, false, fmt.Errorf("failed to decode release payload: %w", err)
 	}
 
-	hasUpdate := IsNewer(currentVersion, rel.TagName)
+	hasUpdate, err := CheckUpdateCandidate(currentVersion, rel.TagName)
+	if err != nil {
+		hasUpdate = IsNewer(currentVersion, rel.TagName)
+	}
 	return &rel, hasUpdate, nil
 }
 
@@ -177,160 +180,53 @@ func FindAsset(assets []ReleaseAsset, targetOS, targetArch, tagName string) (*Re
 }
 
 // ApplyUpdate downloads the release asset for the current OS/Arch and replaces the running binary.
-func (c *Client) ApplyUpdate(ctx context.Context, rel *Release) error {
-	asset, err := FindAsset(rel.Assets, runtime.GOOS, runtime.GOARCH, rel.TagName)
+func (c *Client) ApplyUpdate(ctx context.Context, currentVersion string, rel *Release) error {
+	return c.ApplyUpdateToTarget(ctx, currentVersion, rel, "")
+}
+
+// ApplyUpdateToTarget downloads the release asset for the current OS/Arch, verifies metadata, signature,
+// and artifact digest, safely extracts the executable, and replaces the target binary.
+// If targetPath is empty, it resolves os.Executable().
+func (c *Client) ApplyUpdateToTarget(ctx context.Context, currentVersion string, rel *Release, targetPath string) error {
+	if err := RequireTrust(); err != nil {
+		return err
+	}
+	if rel == nil || strings.TrimSpace(rel.TagName) == "" {
+		return errors.New("release cannot be nil and tag name cannot be empty")
+	}
+	if IsDevOrUnknown(currentVersion) {
+		return fmt.Errorf("%w: current version is %q", ErrDevUnknownVersion, currentVersion)
+	}
+
+	archiveBytes, art, err := DownloadAndVerifyRelease(ctx, c.HTTPClient, c.Repo, currentVersion, rel)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.DownloadURL, nil)
+	binaryBytes, err := ValidateAndExtractBinary(archiveBytes, art.Name, runtime.GOOS)
 	if err != nil {
-		return fmt.Errorf("failed to create download request: %w", err)
-	}
-	req.Header.Set("User-Agent", UserAgent)
-	req.Header.Set("Accept", "application/octet-stream")
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download release asset: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("asset download returned status %s", resp.Status)
+		return err
 	}
 
-	archiveData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read downloaded archive: %w", err)
+	if targetPath == "" {
+		execPath, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("cannot locate current executable: %w", err)
+		}
+		execPath, err = filepath.EvalSymlinks(execPath)
+		if err != nil {
+			return fmt.Errorf("cannot resolve executable symlink: %w", err)
+		}
+		targetPath = execPath
 	}
 
-	binaryBytes, err := extractBinary(archiveData, asset.Name)
-	if err != nil {
-		return fmt.Errorf("failed to extract binary from archive: %w", err)
-	}
-
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("cannot locate current executable: %w", err)
-	}
-	execPath, err = filepath.EvalSymlinks(execPath)
-	if err != nil {
-		return fmt.Errorf("cannot resolve executable symlink: %w", err)
-	}
-
-	return replaceExecutable(execPath, binaryBytes)
-}
-
-func extractBinary(data []byte, filename string) ([]byte, error) {
-	binaryName := "cortex-ia"
-	if runtime.GOOS == "windows" {
-		binaryName = "cortex-ia.exe"
-	}
-
-	if strings.HasSuffix(filename, ".zip") {
-		return extractFromZip(data, binaryName)
-	}
-	if strings.HasSuffix(filename, ".tar.gz") || strings.HasSuffix(filename, ".tgz") {
-		return extractFromTarGz(data, binaryName)
-	}
-	return nil, fmt.Errorf("unsupported archive format: %s", filename)
+	return ReplaceExecutable(targetPath, binaryBytes, "")
 }
 
 func extractFromZip(data []byte, targetName string) ([]byte, error) {
-	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return nil, fmt.Errorf("invalid zip archive: %w", err)
-	}
-
-	for _, file := range r.File {
-		clean := filepath.Base(file.Name)
-		if strings.EqualFold(clean, targetName) {
-			rc, err := file.Open()
-			if err != nil {
-				return nil, err
-			}
-			content, err := io.ReadAll(rc)
-			_ = rc.Close()
-			if err != nil {
-				return nil, err
-			}
-			return content, nil
-		}
-	}
-	return nil, fmt.Errorf("executable %q not found in zip archive", targetName)
+	return ValidateAndExtractZip(data, targetName)
 }
 
 func extractFromTarGz(data []byte, targetName string) ([]byte, error) {
-	gz, err := gzip.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("invalid gzip archive: %w", err)
-	}
-	defer func() { _ = gz.Close() }()
-
-	tr := tar.NewReader(gz)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		clean := filepath.Base(hdr.Name)
-		if strings.EqualFold(clean, targetName) {
-			return io.ReadAll(tr)
-		}
-	}
-	return nil, fmt.Errorf("executable %q not found in tar.gz archive", targetName)
-}
-
-func replaceExecutable(targetPath string, newBytes []byte) error {
-	dir := filepath.Dir(targetPath)
-
-	if runtime.GOOS == "windows" {
-		// On Windows, moving a running executable is allowed by NTFS, but overwriting is not.
-		oldPath := targetPath + ".old"
-		_ = os.Remove(oldPath)
-
-		if err := os.Rename(targetPath, oldPath); err != nil {
-			return fmt.Errorf("failed to rotate running binary on windows: %w", err)
-		}
-
-		if err := os.WriteFile(targetPath, newBytes, 0o755); err != nil {
-			// Rollback if writing new executable failed
-			_ = os.Rename(oldPath, targetPath)
-			return fmt.Errorf("failed to write new binary: %w", err)
-		}
-
-		// Best-effort removal of the .old file
-		_ = os.Remove(oldPath)
-		return nil
-	}
-
-	// Unix-like systems: write to a temporary file in the same directory and atomic rename
-	tmpFile, err := os.CreateTemp(dir, "cortex-ia-update-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary binary: %w", err)
-	}
-	tmpName := tmpFile.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-
-	if _, err := tmpFile.Write(newBytes); err != nil {
-		_ = tmpFile.Close()
-		return fmt.Errorf("failed to write temporary binary: %w", err)
-	}
-	if err := tmpFile.Chmod(0o755); err != nil {
-		_ = tmpFile.Close()
-		return fmt.Errorf("failed to chmod binary: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("failed to close temporary binary: %w", err)
-	}
-
-	if err := os.Rename(tmpName, targetPath); err != nil {
-		return fmt.Errorf("failed to replace executable: %w", err)
-	}
-
-	return nil
+	return ValidateAndExtractTarGz(data, targetName)
 }
