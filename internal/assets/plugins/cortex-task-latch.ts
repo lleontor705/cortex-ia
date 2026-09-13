@@ -58,6 +58,25 @@ export const CortexTaskLatchPlugin: Plugin = async (ctx) => {
 
     "tool.execute.before": async (input, output) => {
       const toolName = (input?.tool || "").toLowerCase();
+
+      // Reject invented unlatch tools
+      if (["unlatch", "cortex_unlatch", "cortex_ia_unlatch", "cortex_work_unlatch"].includes(toolName)) {
+        throw new Error(
+          "CORTEX_UNLATCH_UNAVAILABLE: Unlatch tools do not exist. Latching is a safety mechanism; continuation requires orchestrator reconciliation and fresh authorized dispatch under cortex-work-protocol.md."
+        );
+      }
+
+      // Reject leaf recovery/retry bypass attempts
+      if (["cortex_recover", "cortex_ia_recover", "cortex_ia_work_recover", "cortex_ia_work_retry", "work_recover", "work_retry"].includes(toolName)) {
+        const args = (output?.args || {}) as Record<string, any>;
+        const callerRole = args.role || args.subagent_type || args.subagent;
+        if (callerRole !== "orchestrator" && callerRole !== undefined) {
+          throw new Error(
+            "CORTEX_RECOVERY_UNAUTHORIZED: Leaf subagents cannot perform recovery or retry. Reconciliation and retry are exclusive orchestrator responsibilities."
+          );
+        }
+      }
+
       if (toolName !== "task") return;
 
       const args = (output?.args || {}) as Record<string, any>;
@@ -66,10 +85,18 @@ export const CortexTaskLatchPlugin: Plugin = async (ctx) => {
 
       const previousFailure = failedSessions.get(input.sessionID);
       if (previousFailure) {
+        if (!previousFailure.taskId) {
+          throw new Error(
+            `CORTEX_DISPATCH_LATCHED: Earlier in this session '${previousFailure.role}' failed with '${previousFailure.reason}'. ` +
+            `Task identity is unknown; continuation capability is unavailable without an identified task. ` +
+            `Orchestrator must inspect session history and durable board state before initiating a fresh authorized task.`
+          );
+        }
         throw new Error(
-          `CORTEX_DISPATCH_LATCHED: Earlier in this session '${previousFailure.role}' failed with '${previousFailure.reason}'. ` +
+          `CORTEX_DISPATCH_LATCHED: Earlier in this session '${previousFailure.role}' failed with '${previousFailure.reason}' on task '${previousFailure.taskId}'. ` +
           `Task launches remain latched to prevent ungrounded re-dispatch loops. ` +
-          `Reconcile authority for task '${previousFailure.taskId || "unknown"}' before continuing.`
+          `Supported continuation: Orchestrator must reconcile prior work and durable task state in SQLite ` +
+          `(via 'cortex-ia work status' / 'cortex-ia work recover') before dispatching an explicitly authorized fresh attempt without reusing expired tokens.`
         );
       }
     },
@@ -129,7 +156,7 @@ export const CortexTaskLatchPlugin: Plugin = async (ctx) => {
         throw new Error(
           `CORTEX_SUBAGENT_EMPTY_RESULT: Subagent '${subagent}' produced no valid response. ` +
           `The process was likely aborted due to context length, timeout, or an unhandled exception. ` +
-          `Session is latched; reconcile task state in SQLite before continuing.`
+          `Session is latched; supported continuation requires orchestrator reconciliation of prior work and durable task state in SQLite before any fresh attempt.`
         );
       }
     },

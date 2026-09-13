@@ -7,11 +7,9 @@ import { createHash } from "node:crypto";
  */
 const TRANSPORT_ISOLATION_SYSTEM = [
   "You are an ephemeral OpenCode subagent operating under Cortex-IA work authority and Bounded Agent Contract.",
-  "- Authority Invariant: You have no Cortex session lifecycle authority. Role-specific board, task, and file permissions remain governed by cortex-work-protocol.md and the host. Planner may create its initiative board and DAG; no child gains orchestrator authority.",
-  "- File Authority: Board-backed implementation requires the live claim and file leases prescribed by cortex-work-protocol.md. Planning, discovery, and ephemeral direct changes follow their own scoped rules; this instruction does not grant new permissions. Stop writing on authority conflict or expiry.",
-  "- Bounded Scope: Follow the assigned <minion-dispatch> envelope (legacy <minion-contract> accepted) and return the common completion receipt defined in cortex-work-protocol.md, including phase_status, verification_verdict, and summary.",
-  "- Contract SLA: Follow cortex-work-protocol.md for role-specific step limits and resource budgets. Do not loop repetitively without emitting verifiable progress.",
-  "- Context Hygiene: Focus exclusively on your immediate objective; do not assume orchestrator routing duties."
+  "Host policy and role authority govern all operations; no subagent gains orchestrator delegation authority.",
+  "Live claims and path leases are required before modifying files; stop writing on conflict or expiry. Never persist tokens or secrets.",
+  "Follow the assigned dispatch envelope and emit the canonical completion receipt. Direct routing avoids unassigned duties; reconcile prior jobs before reattempting."
 ].join("\n");
 
 const ROLE_DEFAULT_STEPS: Record<string, number> = {
@@ -59,7 +57,116 @@ function outcomeFingerprint(tool: string, args: unknown, status: string, result:
   catch { return undefined; } // Oversized/unserializable outcomes cannot prove repetition.
 }
 
-function dispatchBudget(args: Record<string, any>, prompt: string): number {
+function validateNoDuplicateKeys(jsonString: string): void {
+  const stack: Set<string>[] = [];
+  let inString = false;
+  let escape = false;
+  let stringStart = -1;
+  let lastString = "";
+  let expectColon = false;
+
+  for (let i = 0; i < jsonString.length; i++) {
+    const char = jsonString[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (char === "\\") {
+        escape = true;
+      } else if (char === '"') {
+        inString = false;
+        const rawString = jsonString.slice(stringStart, i + 1);
+        try {
+          lastString = JSON.parse(rawString);
+        } catch {
+          lastString = rawString;
+        }
+        expectColon = true;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      escape = false;
+      stringStart = i;
+      continue;
+    }
+
+    if (char === "{") {
+      stack.push(new Set());
+      expectColon = false;
+    } else if (char === "}") {
+      stack.pop();
+      expectColon = false;
+    } else if (char === ":") {
+      if (expectColon && stack.length > 0) {
+        const currentSet = stack[stack.length - 1];
+        if (currentSet.has(lastString)) {
+          throw new Error(`SUBAGENT_TRANSPORT_ERROR: duplicate decoded key in dispatch envelope: ${lastString}`);
+        }
+        currentSet.add(lastString);
+        expectColon = false;
+      }
+    } else if (!/\s/.test(char)) {
+      expectColon = false;
+    }
+  }
+}
+
+function parseBudgetInteger(raw: unknown, source: string): number {
+  if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw <= 0 || raw > 1000) {
+    throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid step budget integer in ${source}`);
+  }
+  return raw;
+}
+
+function parseBudgetObject(obj: unknown, source: string): number {
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
+    throw new Error(`SUBAGENT_TRANSPORT_ERROR: malformed budget object in ${source}`);
+  }
+  const rec = obj as Record<string, any>;
+  const hasMaxTurns = Object.prototype.hasOwnProperty.call(rec, "max_turns");
+  const hasMaxSteps = Object.prototype.hasOwnProperty.call(rec, "max_steps");
+  if (!hasMaxTurns && !hasMaxSteps) {
+    throw new Error(`SUBAGENT_TRANSPORT_ERROR: missing budget count in ${source}`);
+  }
+  if (hasMaxTurns && hasMaxSteps) {
+    throw new Error(`SUBAGENT_TRANSPORT_ERROR: ambiguous budget object in ${source}; multiple forms even equal are rejected`);
+  }
+  const val = hasMaxTurns ? rec.max_turns : rec.max_steps;
+  return parseBudgetInteger(val, `${source}.${hasMaxTurns ? "max_turns" : "max_steps"}`);
+}
+
+function extractBudget(args: Record<string, any>, envelope: Record<string, any>): number | undefined {
+  const budgetList: { source: string; value: number }[] = [];
+
+  if (Object.prototype.hasOwnProperty.call(args, "steps")) {
+    budgetList.push({ source: "args.steps", value: parseBudgetInteger(args.steps, "args.steps") });
+  }
+  if (Object.prototype.hasOwnProperty.call(args, "max_steps")) {
+    budgetList.push({ source: "args.max_steps", value: parseBudgetInteger(args.max_steps, "args.max_steps") });
+  }
+  if (Object.prototype.hasOwnProperty.call(args, "budget")) {
+    budgetList.push({ source: "args.budget", value: parseBudgetObject(args.budget, "args.budget") });
+  }
+  if (Object.prototype.hasOwnProperty.call(envelope, "max_steps")) {
+    budgetList.push({ source: "envelope.max_steps", value: parseBudgetInteger(envelope.max_steps, "envelope.max_steps") });
+  }
+  if (Object.prototype.hasOwnProperty.call(envelope, "steps")) {
+    budgetList.push({ source: "envelope.steps", value: parseBudgetInteger(envelope.steps, "envelope.steps") });
+  }
+  if (Object.prototype.hasOwnProperty.call(envelope, "budget")) {
+    budgetList.push({ source: "envelope.budget", value: parseBudgetObject(envelope.budget, "envelope.budget") });
+  }
+
+  if (budgetList.length > 1) {
+    throw new Error("SUBAGENT_TRANSPORT_ERROR: ambiguous step budgets; multiple forms even equal are rejected");
+  }
+
+  return budgetList[0]?.value;
+}
+
+function dispatchInfo(args: Record<string, any>, prompt: string): { limit: number; operational: boolean } {
   const envelopes = [...prompt.matchAll(/<minion-(dispatch|contract)>([\s\S]*?)<\/minion-\1>/g)];
   let envelope: Record<string, any> = {};
   if (envelopes.length > 1 ||
@@ -69,12 +176,11 @@ function dispatchBudget(args: Record<string, any>, prompt: string): number {
   }
   if (envelopes.length) {
     try {
+      validateNoDuplicateKeys(envelopes[0][2]);
       envelope = JSON.parse(envelopes[0][2]);
-      const budgetKeys = [...envelopes[0][2].matchAll(/("(?:\\.|[^"\\])*")\s*:/g)]
-        .filter((match) => JSON.parse(match[1]) === "max_steps");
-      if (!envelope || typeof envelope !== "object" || Array.isArray(envelope) ||
-          budgetKeys.length > 1) throw new Error();
-    } catch {
+      if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) throw new Error();
+    } catch (e: any) {
+      if (e.message?.startsWith("SUBAGENT_TRANSPORT_ERROR:")) throw e;
       throw new Error("SUBAGENT_TRANSPORT_ERROR: malformed dispatch envelope");
     }
   }
@@ -83,6 +189,36 @@ function dispatchBudget(args: Record<string, any>, prompt: string): number {
   if (envelope.role !== undefined && envelope.role !== args.subagent_type) {
     throw new Error("SUBAGENT_TRANSPORT_ERROR: dispatch role does not match host task target");
   }
+  if (args.agent !== undefined && args.agent !== args.subagent_type) {
+    throw new Error("SUBAGENT_TRANSPORT_ERROR: dispatch agent does not match host task target");
+  }
+
+  let isOperational = false;
+  const role = envelope.role ?? args.agent ?? args.subagent_type;
+  if (role === "implement" && Array.isArray(envelope.allowed_files) && envelope.allowed_files.length === 0) {
+    const hasTarget = Boolean(envelope.operational_target || envelope.target);
+    const hasEffects = Boolean(
+      (Array.isArray(envelope.operational_effects) && envelope.operational_effects.length > 0) ||
+      (typeof envelope.operational_effects === "string" && envelope.operational_effects.trim()) ||
+      (Array.isArray(envelope.target_effects) && envelope.target_effects.length > 0) ||
+      (typeof envelope.target_effects === "string" && envelope.target_effects.trim())
+    );
+    const isOps = (envelope.workflow === "ops-task" || envelope.operation_type === "database" || envelope.operation_type === "ops" || envelope.is_operational === true) &&
+      hasTarget && hasEffects;
+
+    if (isOps) {
+      if (envelope.execution_mode === "external" || envelope.workspace_strategy === "isolated_worktree" || args.delegated === true) {
+        throw new Error("SUBAGENT_TRANSPORT_ERROR: external operational execution is unavailable; requires fresh orchestrator-native dispatch");
+      }
+      if (envelope.task_id === null || envelope.authority === false || envelope.authority_available === false || args.authority === false || args.authority_available === false) {
+        throw new Error("SUBAGENT_TRANSPORT_ERROR: operational implementation requires valid task authority");
+      }
+      isOperational = true;
+    } else {
+      throw new Error("SUBAGENT_TRANSPORT_ERROR: implementation requires an explicit file scope or authorized operational target and effects");
+    }
+  }
+
   if (envelope.contract_version !== undefined) {
     if (envelope.contract_version !== "1.0" ||
         !["discovery", "investigate", "planner", "implement", "reviewer"].includes(envelope.role) ||
@@ -91,9 +227,6 @@ function dispatchBudget(args: Record<string, any>, prompt: string): number {
         ![null, "openspec", "cortex", "hybrid"].includes(envelope.spec_plane) ||
         !["allowed_files", "acceptance_checks", "artifact_refs"].every(key => Array.isArray(envelope[key]) && envelope[key].every((item: unknown) => typeof item === "string"))) {
       throw new Error("SUBAGENT_TRANSPORT_ERROR: invalid common dispatch contract");
-    }
-    if (envelope.role === "implement" && envelope.allowed_files.length === 0) {
-      throw new Error("SUBAGENT_TRANSPORT_ERROR: implementation requires an explicit file scope");
     }
     if (envelope.role === "planner") {
       const phases: Record<string, string[]> = {
@@ -107,18 +240,13 @@ function dispatchBudget(args: Record<string, any>, prompt: string): number {
       }
     }
   }
-  const budgets = [];
-  for (const [object, key] of [[args, "steps"], [args, "max_steps"], [envelope, "max_steps"]] as const) {
-    if (Object.prototype.hasOwnProperty.call(object, key)) budgets.push(validBudget(object[key]));
-  }
-  if (budgets.length > 1) throw new Error("SUBAGENT_TRANSPORT_ERROR: ambiguous step budgets");
-  // Only the host task target grants this exemption, including original resume
-  // provenance. Envelope role claims never grant an unlimited allowance.
-  if (args.subagent_type === "planner") return Number.POSITIVE_INFINITY;
-  const role = envelope.role ?? args.agent ?? args.subagent_type;
-  const fallback = typeof role === "string" && Object.prototype.hasOwnProperty.call(ROLE_DEFAULT_STEPS, role)
-    ? ROLE_DEFAULT_STEPS[role] : DEFAULT_MAX_STEPS;
-  return budgets[0] ?? fallback;
+
+  const explicitBudget = extractBudget(args, envelope);
+  const hostRole = args.subagent_type;
+  if (hostRole === "planner") return { limit: Number.POSITIVE_INFINITY, operational: isOperational };
+  const fallback = typeof hostRole === "string" && Object.prototype.hasOwnProperty.call(ROLE_DEFAULT_STEPS, hostRole)
+    ? ROLE_DEFAULT_STEPS[hostRole] : DEFAULT_MAX_STEPS;
+  return { limit: explicitBudget ?? fallback, operational: isOperational };
 }
 
 // Admission only: the bridge still validates the retained claim/lease authority.
@@ -140,7 +268,8 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
   const childSessions = new Set<string>();
   const sessionStepCounts = new Map<string, number>();
   const sessionStepLimits = new Map<string, number>();
-  type Start = { callID: string; limit: number; childID?: string; part?: string; invalid?: boolean; resume?: boolean };
+  const operationalSessions = new Set<string>();
+  type Start = { callID: string; limit: number; childID?: string; part?: string; invalid?: boolean; resume?: boolean; operational?: boolean };
   // Retain dispatch identities/counters as tombstones until disposal: after is not child completion.
   const starts = new Map<string, Map<string, Start>>();
   const parents = new Map<string, string>();
@@ -196,7 +325,11 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
       if (owner && owner !== s && !s.resume) owner.invalid = true;
       if (conflict || (owner && owner !== s && !s.resume) ||
           (s.part && s.part !== identity) || (s.childID && s.childID !== data.sessionId)) s.invalid = true;
-      if (!s.invalid) { s.part = identity; s.childID = data.sessionId; }
+      if (!s.invalid) {
+        s.part = identity;
+        s.childID = data.sessionId;
+        if (s.operational) operationalSessions.add(data.sessionId);
+      }
     }
   };
   // Await SDK evidence, not event delivery (OpenCode invokes event hooks without awaiting).
@@ -250,7 +383,7 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
       const original = originals[0];
       const prompt = original.state.input.prompt || original.state.input.description;
       if (typeof prompt !== "string" || !prompt.trim()) return resumeFailure();
-      const limit = dispatchBudget(original.state.input, prompt);
+      const { limit, operational: isOperational } = dispatchInfo(original.state.input, prompt);
       const identity = JSON.stringify([original.messageID, original.id, original.callID]);
       const attempts = childHistory.flatMap(message => message.parts).filter(part => part.type === "tool");
       if (attempts.some(part => !part.callID || !["pending", "running", "completed", "error"].includes(part.state?.status))) return resumeFailure();
@@ -262,7 +395,7 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
       const existing = owners.get(id);
       if (existing?.invalid || (existing && existing.part !== identity) ||
           [...(starts.get(parent)?.values() ?? [])].some(start => start.childID === id && start.invalid)) return resumeFailure();
-      const start = existing ?? { callID: original.callID, limit, childID: id, part: identity };
+      const start = existing ?? { callID: original.callID, limit, childID: id, part: identity, operational: isOperational };
       const collision = starts.get(parent)?.get(original.callID);
       if (collision && collision !== existing && (collision.part !== identity || collision.invalid)) return resumeFailure();
       if (!starts.has(parent)) starts.set(parent, new Map());
@@ -270,6 +403,7 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
       parents.set(id, parent);
       childSessions.add(id);
       owners.set(id, start);
+      if (start.operational || isOperational) operationalSessions.add(id);
       sessionStepLimits.set(id, existing?.limit ?? limit);
       sessionStepCounts.set(id, Math.max(sessionStepCounts.get(id) ?? 0, attempts.length));
       cleanupCounts.set(id, Math.max(cleanupCounts.get(id) ?? 0, usedCleanup));
@@ -315,6 +449,9 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
       if (candidates.length !== 1) return fail();
       owners.set(id, candidates[0]);
       sessionStepLimits.set(id, candidates[0].limit);
+      if (candidates[0].operational) operationalSessions.add(id);
+    } else if (owner.operational) {
+      operationalSessions.add(id);
     }
   };
 
@@ -324,6 +461,7 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
       childSessions.clear();
       sessionStepCounts.clear();
       sessionStepLimits.clear();
+      operationalSessions.clear();
       starts.clear(); parents.clear(); deleted.clear(); owners.clear();
       cleanupCounts.clear();
       restorations.clear();
@@ -382,6 +520,13 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
           owners.get(sessionID)?.invalid || [...(starts.get(parents.get(sessionID) ?? "")?.values() ?? [])]
             .some(s => s.childID === sessionID && s.invalid)) return fail();
 
+      // Guard: operational subagents cannot execute repository write tools
+      if (operationalSessions.has(sessionID)) {
+        if (["edit", "write_to_file", "write", "apply_patch"].includes(toolName)) {
+          throw new Error("SUBAGENT_TRANSPORT_ERROR: repository write tools are forbidden for operational tasks; operations execute against target systems only");
+        }
+      }
+
       // Charge all ordinary tools, including nested task dispatches, before dispatch handling.
       if (sessionID && childSessions.has(sessionID)) {
         if (!input.callID || activeCalls.get(sessionID)?.has(input.callID)) return fail();
@@ -419,7 +564,7 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
           throw new Error("SUBAGENT_TRANSPORT_ERROR: task dispatch requires a non-empty prompt or envelope");
         }
 
-        const stepBudget = dispatchBudget(args, prompt);
+        const { limit: stepBudget, operational: isOperational } = dispatchInfo(args, prompt);
         if (!sessionID || !input.callID || starts.get(sessionID)?.has(input.callID)) {
           throw new Error("SUBAGENT_TRANSPORT_AMBIGUOUS: task requires a unique parent and callID pair");
         }
@@ -432,7 +577,13 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
               deleted.has(sessionID) || owners.get(resume)?.invalid) return resumeFailure();
           if (starts.get(sessionID)?.has(input.callID)) return fail();
         }
-        const start: Start = { callID: input.callID, limit: resume ? sessionStepLimits.get(resume)! : stepBudget, childID: resume || undefined, resume: !!resume };
+        const start: Start = {
+          callID: input.callID,
+          limit: resume ? sessionStepLimits.get(resume)! : stepBudget,
+          childID: resume || undefined,
+          resume: !!resume,
+          operational: resume ? operationalSessions.has(resume) : isOperational,
+        };
         if (!starts.has(sessionID)) starts.set(sessionID, new Map());
         starts.get(sessionID)!.set(input.callID, start);
       }
@@ -440,5 +591,5 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
   };
 };
 
+export { CortexSubagentTransportPlugin, dispatchInfo };
 export default CortexSubagentTransportPlugin;
-
