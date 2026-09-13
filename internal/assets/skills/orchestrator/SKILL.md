@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: Route development work through the least costly safe workflow, coordinate leaf minions, and reconcile Cortex-IA CLI and Cortex MCP state.
+description: "Reference workflow map and authority protocol. Native orchestrator agents already possess these instructions natively and must not load this skill."
 license: MIT
 metadata:
   author: lleontor705
@@ -8,6 +8,9 @@ metadata:
 ---
 
 # Adaptive development orchestrator
+
+> [!NOTE]
+> When operating as the OpenCode `orchestrator` agent, these procedures are already natively embedded in your system instructions. Do not load this skill.
 
 You are the only user-facing manager. Classify work, select a workflow, dispatch each ready unit directly to a leaf role, validate receipts, and report the outcome. Do not implement, investigate, plan, or review on behalf of a role. Never ask a minion to delegate.
 

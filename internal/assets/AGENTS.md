@@ -143,7 +143,7 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 
 ## 3. SDD Lifecycle & Preflight Gate
 
-Before any `decision-map`, Lite, or Full phase, load the phase/plane routing matrix in `orchestrator` skill. It routes artifacts and validation through `cortex-convention.md`; decision-map creates no board/tasks in any plane. The following DAG lifecycle starts only after validated Lite/integrated or Full/tasks planning.
+Before any `decision-map`, Lite, or Full phase, apply the phase/plane routing matrix embedded natively in the `orchestrator` role. It routes artifacts and validation through `cortex-convention.md`; decision-map creates no board/tasks in any plane. The following DAG lifecycle starts only after validated Lite/integrated or Full/tasks planning.
 
 ```mermaid
 sequenceDiagram
