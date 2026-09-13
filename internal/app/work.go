@@ -186,17 +186,19 @@ func runWork(args []string) error {
 		return printJSON(items)
 	case "status", "show", "get":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("status <task-id>", nil)
+			return workUsage("status <task-id> [--role <presentation-role>] [--actor <actor>]", nil)
 		}
-		id, err := oneWorkID(args[1:])
+		id, opts, err := workIDOptions(args[1:], map[string]bool{"--role": false, "--actor": false})
 		if err != nil {
-			return workUsage("status <task-id>", err)
+			return workUsage("status <task-id> [--role <presentation-role>] [--actor <actor>]", err)
 		}
-		item, err := store.GetWork(ctx, id)
+		role := oneOption(opts, "--role")
+		actor := oneOption(opts, "--actor")
+		out, err := getWorkStatus(ctx, store, id, role, actor)
 		if err != nil {
 			return err
 		}
-		return printJSON(item)
+		return printJSON(out)
 	case "claim":
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("claim <task-id> --owner <owner> [--ttl <duration>]", nil)
@@ -681,4 +683,27 @@ func readWorkDecompositionPlan(source string) (workDecompositionPlan, error) {
 		return workDecompositionPlan{}, errors.New("decomposition plan requires at least one task")
 	}
 	return plan, nil
+}
+
+type workStatusOutput struct {
+	delegation.WorkItem
+	Projection delegation.WorkProjection `json:"projection"`
+}
+
+func getWorkStatus(ctx context.Context, store *delegation.Store, id string, role string, actor string) (workStatusOutput, error) {
+	item, err := store.GetWork(ctx, id)
+	if err != nil {
+		return workStatusOutput{}, err
+	}
+	proj, projErr := store.ReadWorkProjection(ctx, id, role, actor, nil)
+	if projErr != nil {
+		proj = delegation.WorkProjection{
+			TaskID:             id,
+			AuthorityAvailable: false,
+		}
+	}
+	return workStatusOutput{
+		WorkItem:   item,
+		Projection: proj,
+	}, nil
 }
