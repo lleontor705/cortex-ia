@@ -29,7 +29,6 @@
     "internal/assets/skills/implement/SKILL.md",
     "internal/assets/skills/investigate/SKILL.md",
     "internal/assets/skills/mutation-testing/SKILL.md",
-    "internal/assets/skills/orchestrator/SKILL.md",
     "internal/assets/skills/parallel-dispatch/SKILL.md",
     "internal/assets/skills/planner/SKILL.md",
     "internal/assets/skills/property-based-testing/SKILL.md",
@@ -121,7 +120,6 @@
     "C29": {
       "name": "planning-dispatch-procedures",
       "files": [
-        "internal/assets/skills/orchestrator/SKILL.md",
         "internal/assets/skills/parallel-dispatch/SKILL.md",
         "internal/assets/skills/planner/SKILL.md"
       ]
@@ -180,7 +178,7 @@
       "canonical_file": "internal/assets/skills/_shared/workflow-map.md",
       "permitted_pointers": [
         "internal/assets/AGENTS.md",
-        "internal/assets/skills/orchestrator/SKILL.md"
+        "internal/assets/agents/orchestrator.md"
       ]
     },
     "codebase_design": {
