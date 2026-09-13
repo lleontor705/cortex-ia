@@ -81,6 +81,10 @@ func TestPostPipelineEffects(t *testing.T) {
 			return []byte("unchanged"), nil
 		})
 		defer runnerCleanup()
+		unixCleanup := SetUnixEnvRunnerForTesting(func(home string) (bool, error) {
+			return false, nil
+		})
+		defer unixCleanup()
 
 		rec, err := s.Install(opts)
 		if err != nil {
@@ -126,6 +130,10 @@ func TestPostPipelineEffects(t *testing.T) {
 			return nil, errors.New("simulated environment failure")
 		})
 		defer runnerCleanup()
+		unixCleanup := SetUnixEnvRunnerForTesting(func(home string) (bool, error) {
+			return false, errors.New("simulated environment failure")
+		})
+		defer unixCleanup()
 
 		cfg := delegation.NormalConfig()
 		opts := Options{DelegationConfig: &cfg}

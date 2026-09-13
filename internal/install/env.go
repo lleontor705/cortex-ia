@@ -19,6 +19,9 @@ const (
 // WindowsEnvRunner runs an external command during Windows environment configuration.
 type WindowsEnvRunner func(command string, args ...string) ([]byte, error)
 
+// UnixEnvRunner configures the persistent environment on Unix systems or substitutes it during testing.
+type UnixEnvRunner func(homeDir string) (bool, error)
+
 var (
 	defaultWindowsEnvRunner WindowsEnvRunner = func(command string, args ...string) ([]byte, error) {
 		cmd := exec.Command(command, args...)
@@ -26,6 +29,9 @@ var (
 	}
 	currentWindowsEnvRunner = defaultWindowsEnvRunner
 	envRunnerMu             sync.Mutex
+
+	currentUnixEnvRunner UnixEnvRunner
+	unixEnvRunnerMu      sync.Mutex
 )
 
 // SetWindowsEnvRunnerForTesting substitutes the Windows command runner during tests
@@ -39,6 +45,20 @@ func SetWindowsEnvRunnerForTesting(runner WindowsEnvRunner) func() {
 		envRunnerMu.Lock()
 		currentWindowsEnvRunner = prev
 		envRunnerMu.Unlock()
+	}
+}
+
+// SetUnixEnvRunnerForTesting substitutes the Unix environment configurator during tests
+// and returns a restoration function.
+func SetUnixEnvRunnerForTesting(runner UnixEnvRunner) func() {
+	unixEnvRunnerMu.Lock()
+	prev := currentUnixEnvRunner
+	currentUnixEnvRunner = runner
+	unixEnvRunnerMu.Unlock()
+	return func() {
+		unixEnvRunnerMu.Lock()
+		currentUnixEnvRunner = prev
+		unixEnvRunnerMu.Unlock()
 	}
 }
 
@@ -88,6 +108,17 @@ func configureWindowsEnvWithResult() (bool, error) {
 }
 
 func configureUnixEnv(homeDir string) (bool, error) {
+	unixEnvRunnerMu.Lock()
+	runner := currentUnixEnvRunner
+	unixEnvRunnerMu.Unlock()
+
+	if runner != nil {
+		return runner(homeDir)
+	}
+	return configureUnixEnvDefault(homeDir)
+}
+
+func configureUnixEnvDefault(homeDir string) (bool, error) {
 	if homeDir == "" {
 		var err error
 		homeDir, err = os.UserHomeDir()
@@ -106,20 +137,33 @@ func configureUnixEnv(homeDir string) (bool, error) {
 	marker := "# cortex-ia: OpenCode background subagents"
 
 	changed := false
+	foundAny := false
 	for _, target := range targets {
 		if _, err := os.Stat(target); err == nil {
+			foundAny = true
 			data, err := os.ReadFile(target)
 			if err != nil {
-				continue
+				return false, fmt.Errorf("read %s: %w", target, err)
 			}
 			content := string(data)
 			if !strings.Contains(content, EnvBackgroundSubagentsKey) {
 				block := fmt.Sprintf("\n%s\n%s\n", marker, exportLine)
-				if err := os.WriteFile(target, []byte(content+block), 0644); err == nil {
-					changed = true
+				if err := os.WriteFile(target, []byte(content+block), 0644); err != nil {
+					return false, fmt.Errorf("write %s: %w", target, err)
 				}
+				changed = true
 			}
 		}
 	}
+
+	if !foundAny {
+		target := filepath.Join(homeDir, ".profile")
+		block := fmt.Sprintf("%s\n%s\n", marker, exportLine)
+		if err := os.WriteFile(target, []byte(block), 0644); err != nil {
+			return false, fmt.Errorf("write %s: %w", target, err)
+		}
+		return true, nil
+	}
+
 	return changed, nil
 }

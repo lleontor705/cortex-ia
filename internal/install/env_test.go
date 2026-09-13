@@ -75,3 +75,50 @@ func containsSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+func TestConfigureUnixEnvironment(t *testing.T) {
+	tempHome := t.TempDir()
+
+	// 1. Clean directory fallback: creates .profile
+	changed, err := configureUnixEnvDefault(tempHome)
+	if err != nil {
+		t.Fatalf("configureUnixEnvDefault failed: %v", err)
+	}
+	if !changed {
+		t.Errorf("expected changed=true on clean directory")
+	}
+
+	profile := filepath.Join(tempHome, ".profile")
+	data, err := os.ReadFile(profile)
+	if err != nil {
+		t.Fatalf("failed to read created .profile: %v", err)
+	}
+	if !contains(string(data), EnvBackgroundSubagentsKey) {
+		t.Errorf("expected %s in created .profile, got: %s", EnvBackgroundSubagentsKey, string(data))
+	}
+
+	// 2. Converged run on same directory: returns changed=false
+	changed2, err := configureUnixEnvDefault(tempHome)
+	if err != nil {
+		t.Fatalf("second configureUnixEnvDefault failed: %v", err)
+	}
+	if changed2 {
+		t.Errorf("expected changed=false on converged second run")
+	}
+
+	// 3. Test runner substitute
+	called := false
+	cleanup := SetUnixEnvRunnerForTesting(func(home string) (bool, error) {
+		called = true
+		return true, nil
+	})
+	defer cleanup()
+
+	c, err := configureUnixEnv(tempHome)
+	if err != nil {
+		t.Fatalf("configureUnixEnv with runner failed: %v", err)
+	}
+	if !called || !c {
+		t.Errorf("expected substitute runner to be called and return true")
+	}
+}
