@@ -854,6 +854,97 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       }
     }),
 
+    cortex_ia_doc_convert: tool({
+      description: "Convert an office document (.docx, .xlsx, .pptx, .pdf, .odt, .rtf, .epub, .csv) into clean GitHub-Flavored Markdown (inspired by anydoc). Returns markdown text, format, and metadata.",
+      args: {
+        file_path: tool.schema.string(),
+        output_path: tool.schema.string().optional(),
+        format: tool.schema.string().optional(),
+        max_lines: tool.schema.number().optional(),
+        ocr: tool.schema.enum(["reject", "hosted"]).optional()
+      },
+      async execute(args, context) {
+        const cmd = ["doc", "convert", path.resolve(context.directory, args.file_path), "--json"];
+        if (args.output_path) cmd.push("-o", path.resolve(context.directory, args.output_path));
+        if (args.format) cmd.push("--format", args.format);
+        if (args.max_lines !== undefined) cmd.push("--max-lines", String(args.max_lines));
+        if (args.ocr) cmd.push("--ocr", args.ocr);
+        return cortex(cmd, context.directory);
+      }
+    }),
+
+    cortex_ia_doc_inspect: tool({
+      description: "Inspect an office or PDF document's format, metadata, section outline, or sheet/page count without loading full content (inspired by anydoc).",
+      args: {
+        file_path: tool.schema.string()
+      },
+      async execute(args, context) {
+        return cortex(["doc", "inspect", path.resolve(context.directory, args.file_path), "--json"], context.directory);
+      }
+    }),
+
+    cortex_ia_diagram_validate: tool({
+      description: "Validate a system diagram JSON specification (architecture, workflow, sequence, dataflow, lifecycle) against topological and structural rules (inspired by archify).",
+      args: {
+        spec_path: tool.schema.string(),
+        diagram_type: tool.schema.enum(["architecture", "workflow", "sequence", "dataflow", "lifecycle"]).optional(),
+        quality: tool.schema.enum(["standard", "showcase"]).optional()
+      },
+      async execute(args, context) {
+        const cmd = ["diagram", "validate"];
+        if (args.diagram_type) cmd.push(args.diagram_type);
+        cmd.push(path.resolve(context.directory, args.spec_path), "--json");
+        if (args.quality) cmd.push(`--quality=${args.quality}`);
+        return cortex(cmd, context.directory);
+      }
+    }),
+
+    cortex_ia_diagram_render: tool({
+      description: "Render a system diagram JSON specification into a standalone, interactive HTML file with dark/light themes and inline SVG (inspired by archify).",
+      args: {
+        spec_path: tool.schema.string(),
+        output_path: tool.schema.string(),
+        diagram_type: tool.schema.enum(["architecture", "workflow", "sequence", "dataflow", "lifecycle"]).optional(),
+        quality: tool.schema.enum(["standard", "showcase"]).optional()
+      },
+      async execute(args, context) {
+        const cmd = ["diagram", "render"];
+        if (args.diagram_type) cmd.push(args.diagram_type);
+        cmd.push(path.resolve(context.directory, args.spec_path), path.resolve(context.directory, args.output_path), "--json");
+        if (args.quality) cmd.push(`--quality=${args.quality}`);
+        return cortex(cmd, context.directory);
+      }
+    }),
+
+    cortex_ia_diagram_compare: tool({
+      description: "Compare two architecture diagram snapshots (base vs head) and produce an architectural delta report and optional visual comparison HTML (inspired by archify).",
+      args: {
+        base_spec_path: tool.schema.string(),
+        head_spec_path: tool.schema.string(),
+        output_html_path: tool.schema.string().optional()
+      },
+      async execute(args, context) {
+        const cmd = ["diagram", "compare", path.resolve(context.directory, args.base_spec_path), path.resolve(context.directory, args.head_spec_path)];
+        if (args.output_html_path) cmd.push(path.resolve(context.directory, args.output_html_path));
+        cmd.push("--json");
+        return cortex(cmd, context.directory);
+      }
+    }),
+
+    cortex_ia_diagram_reach: tool({
+      description: "Trace graph reachability (upstream dependencies or downstream impact) from a target component in a diagram specification (inspired by archify).",
+      args: {
+        spec_path: tool.schema.string(),
+        from_node: tool.schema.string(),
+        direction: tool.schema.enum(["upstream", "downstream", "both"]).optional()
+      },
+      async execute(args, context) {
+        const cmd = ["diagram", "reach", path.resolve(context.directory, args.spec_path), "--from", args.from_node, "--json"];
+        if (args.direction) cmd.push("--direction", args.direction);
+        return cortex(cmd, context.directory);
+      }
+    }),
+
     cortex_ia_board_create: tool({
       description: "Create one durable Cortex-IA initiative board.",
       args: { board_id: tool.schema.string(), title: tool.schema.string(), description: tool.schema.string().optional() },

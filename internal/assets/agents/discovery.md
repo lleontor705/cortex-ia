@@ -39,6 +39,10 @@ tools:
   cortex_discovery_write: true
   cortex_ia_discovery_write: true
   cortex_ia_report_error: true
+  cortex_ia_doc_convert: true
+  cortex_ia_doc_inspect: true
+  cortex_ia_diagram_validate: true
+  cortex_ia_diagram_render: true
 permission:
   bash:
     "*": deny

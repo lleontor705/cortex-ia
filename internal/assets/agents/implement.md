@@ -44,6 +44,8 @@ tools:
   cortex_ia_delegation_result: true
   cortex_ia_delegation_cancel: true
   cortex_ia_report_error: true
+  cortex_ia_doc_convert: true
+  cortex_ia_doc_inspect: true
 permission:
   bash:
     "*": allow
