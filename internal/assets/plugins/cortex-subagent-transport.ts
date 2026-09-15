@@ -595,5 +595,4 @@ Object.assign(CortexSubagentTransportPlugin, {
   dispatchInfo,
 });
 
-export { CortexSubagentTransportPlugin };
 export default CortexSubagentTransportPlugin;
