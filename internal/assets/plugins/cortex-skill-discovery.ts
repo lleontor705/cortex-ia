@@ -19,7 +19,7 @@ export interface SkillDiscoveryOptions {
   embeddedSkillsDirs?: string[];
 }
 
-export function canonicalPath(p: string): string {
+function canonicalPath(p: string): string {
   if (!p || typeof p !== "string" || !p.trim()) {
     throw new Error("CONTEXT_RESOLUTION_ERROR: invalid locator path");
   }
@@ -67,7 +67,7 @@ function scanDirForSkills(dir: string, origin: SkillOrigin, precedence: number):
   return map;
 }
 
-export function discoverInventory(
+function discoverInventory(
   dirs: string[],
   origin: SkillOrigin,
   precedence: number
@@ -87,7 +87,7 @@ export function discoverInventory(
   return combined;
 }
 
-export function resolveLocator(locator: string, _options: SkillDiscoveryOptions = {}): ResolvedSkill {
+function resolveLocator(locator: string, _options: SkillDiscoveryOptions = {}): ResolvedSkill {
   if (!locator || typeof locator !== "string" || !locator.trim()) {
     throw new Error("CONTEXT_RESOLUTION_ERROR: invalid locator path");
   }
@@ -111,7 +111,7 @@ export function resolveLocator(locator: string, _options: SkillDiscoveryOptions 
   };
 }
 
-export function resolveSkill(name: string, options: SkillDiscoveryOptions = {}): ResolvedSkill {
+function resolveSkill(name: string, options: SkillDiscoveryOptions = {}): ResolvedSkill {
   if (!name || typeof name !== "string" || !name.trim()) {
     throw new Error("CONTEXT_RESOLUTION_ERROR: skill name is required");
   }
@@ -135,7 +135,7 @@ export function resolveSkill(name: string, options: SkillDiscoveryOptions = {}):
   const hostSkills = discoverInventory(hostDirs, "host-installed", 1);
   if (hostSkills.has(name)) return hostSkills.get(name)!;
 
-  // 2. Repository (precedence 2)
+  // 2. Repository-local (precedence 2)
   const repoSkills = discoverInventory(repoDirs, "repository", 2);
   if (repoSkills.has(name)) return repoSkills.get(name)!;
 
@@ -146,7 +146,7 @@ export function resolveSkill(name: string, options: SkillDiscoveryOptions = {}):
   throw new Error(`CONTEXT_RESOLUTION_ERROR: skill '${name}' not found in any inventory`);
 }
 
-export function getAllDiscoveredSkills(options: SkillDiscoveryOptions = {}): ResolvedSkill[] {
+function getAllDiscoveredSkills(options: SkillDiscoveryOptions = {}): ResolvedSkill[] {
   const baseDir = options.directory || process.cwd();
   const home = process.env.USERPROFILE || process.env.HOME || "";
 
@@ -198,4 +198,13 @@ export const CortexSkillDiscoveryPlugin: Plugin = async (ctx) => {
   };
 };
 
+Object.assign(CortexSkillDiscoveryPlugin, {
+  canonicalPath,
+  discoverInventory,
+  resolveLocator,
+  resolveSkill,
+  getAllDiscoveredSkills,
+});
+
+export { CortexSkillDiscoveryPlugin };
 export default CortexSkillDiscoveryPlugin;

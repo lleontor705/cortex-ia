@@ -132,7 +132,7 @@ export type CortexMode = "server" | "hybrid" | "local"
 
 let cachedMode: CortexMode | null = null
 
-export async function detectCortexMode(): Promise<CortexMode> {
+async function detectCortexMode(): Promise<CortexMode> {
   if (cachedMode) return cachedMode
 
   if (process.env.CORTEX_MODE) {
@@ -173,7 +173,7 @@ export async function detectCortexMode(): Promise<CortexMode> {
   return "local"
 }
 
-export function isTokenlessEligible(mode: CortexMode, rawUrl: string = CORTEX_URL): boolean {
+function isTokenlessEligible(mode: CortexMode, rawUrl: string = CORTEX_URL): boolean {
   if (mode !== "local") return false
   try {
     const parsed = new URL(rawUrl)
@@ -276,7 +276,7 @@ const CORTEX_TOOLS = new Set([
 
 // ─── Mode-Aware Memory Instructions ──────────────────────────────────────────
 
-export function buildMemoryInstructions(mode: CortexMode = "server"): string {
+function buildMemoryInstructions(mode: CortexMode = "server"): string {
   if (mode === "server") {
     return `## Cortex Persistent Memory — Protocol (Mode: SERVER / PostgreSQL Multi-Tenant)
 
@@ -956,7 +956,14 @@ export const Cortex: Plugin = async (ctx) => {
         // Non-blocking: a hook failure must never break the host compaction.
       }
     },
-  }
-}
+  };
+};
 
+Object.assign(Cortex, {
+  detectCortexMode,
+  isTokenlessEligible,
+  buildMemoryInstructions,
+});
+
+export { Cortex };
 export default Cortex;

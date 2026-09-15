@@ -115,10 +115,20 @@ export async function loadPluginSource(tsSource, options = {}) {
     ? sandbox.module.exports
     : sandbox.exports;
 
-  const pluginFn = exported.default || exported.CortexSubagentTransportPlugin || exported.CortexDelegationBridge || exported.CortexPlugin || Object.values(exported).find(v => typeof v === 'function');
+  const pluginFn = exported.default || exported.CortexSubagentTransportPlugin || exported.CortexDelegationBridge || exported.CortexSkillDiscoveryPlugin || exported.CortexPlugin || Object.values(exported).find(v => typeof v === 'function');
+
+  const exportsProxy = new Proxy(exported, {
+    get(target, prop, receiver) {
+      if (prop in target) return Reflect.get(target, prop, receiver);
+      if (pluginFn && typeof pluginFn === 'function' && prop in pluginFn) {
+        return pluginFn[prop];
+      }
+      return undefined;
+    }
+  });
 
   return {
-    exports: exported,
+    exports: exportsProxy,
     pluginFn,
     instantiate: async (context = {}) => {
       if (typeof pluginFn !== 'function') {

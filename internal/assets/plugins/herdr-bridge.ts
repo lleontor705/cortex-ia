@@ -131,9 +131,9 @@ export interface CachedProjectionEntry {
   projection: any;
 }
 
-export const cachedProjections = new Map<string, CachedProjectionEntry>();
+const cachedProjections = new Map<string, CachedProjectionEntry>();
 
-export function deepFreeze<T>(obj: T): Readonly<T> {
+function deepFreeze<T>(obj: T): Readonly<T> {
   if (obj === null || typeof obj !== "object") return obj;
   Object.freeze(obj);
   for (const key of Object.keys(obj)) {
@@ -145,12 +145,12 @@ export function deepFreeze<T>(obj: T): Readonly<T> {
   return obj;
 }
 
-export function deepCopy<T>(obj: T): T {
+function deepCopy<T>(obj: T): T {
   if (obj === null || typeof obj !== "object") return obj;
   return JSON.parse(JSON.stringify(obj));
 }
 
-export function getUnknownProjection(taskID: string): any {
+function getUnknownProjection(taskID: string): any {
   return deepFreeze({
     task_id: taskID,
     revision: 0,
@@ -162,7 +162,7 @@ export function getUnknownProjection(taskID: string): any {
   });
 }
 
-export function handleWorkStatusFailure(taskID: string): any {
+function handleWorkStatusFailure(taskID: string): any {
   const unknownProj = getUnknownProjection(taskID);
   cachedProjections.set(taskID, {
     taskID,
@@ -174,7 +174,7 @@ export function handleWorkStatusFailure(taskID: string): any {
   return unknownProj;
 }
 
-export function processWorkStatusResponse(
+function processWorkStatusResponse(
   requestedTaskID: string,
   sessionID: string,
   response: any
@@ -548,7 +548,7 @@ function executionMode(transport: "direct" | "herdr"): ExecutionMode {
   return transport === "herdr" ? "herdr_multiplexed" : "direct_cli";
 }
 
-export function sanitizeUnicode(str: string): string {
+function sanitizeUnicode(str: string): string {
   if (typeof str !== "string") return "";
   if (typeof (str as any).toWellFormed === "function") {
     return (str as any).toWellFormed();
@@ -556,7 +556,7 @@ export function sanitizeUnicode(str: string): string {
   return str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD");
 }
 
-export function truncateUTF8Bytes(str: string, maxBytes: number): { text: string; truncated: boolean } {
+function truncateUTF8Bytes(str: string, maxBytes: number): { text: string; truncated: boolean } {
   if (!str) return { text: "", truncated: false };
   const clean = sanitizeUnicode(str);
   if (Buffer.byteLength(clean, "utf-8") <= maxBytes) {
@@ -575,7 +575,7 @@ export function truncateUTF8Bytes(str: string, maxBytes: number): { text: string
   return { text: result, truncated: false };
 }
 
-export function safeUnicodeSlice(str: string, maxChars: number): string {
+function safeUnicodeSlice(str: string, maxChars: number): string {
   if (!str) return "";
   const clean = sanitizeUnicode(str);
   const chars = Array.from(clean);
@@ -583,7 +583,7 @@ export function safeUnicodeSlice(str: string, maxChars: number): string {
   return chars.slice(0, maxChars).join("") + "...";
 }
 
-export function extractCompactReceipt(job: any, res: any, jobID: string): any {
+function extractCompactReceipt(job: any, res: any, jobID: string): any {
   const authoritativeStatus = job?.status || res?.status || "unknown";
   const isSuccess = authoritativeStatus === "succeeded";
   const exitCode = typeof job?.exit_code === "number" ? job.exit_code
@@ -1764,4 +1764,18 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
 
 };
 
+Object.assign(CortexDelegationBridge, {
+  cachedProjections,
+  deepFreeze,
+  deepCopy,
+  getUnknownProjection,
+  handleWorkStatusFailure,
+  processWorkStatusResponse,
+  sanitizeUnicode,
+  truncateUTF8Bytes,
+  safeUnicodeSlice,
+  extractCompactReceipt,
+});
+
+export { CortexDelegationBridge };
 export default CortexDelegationBridge;
