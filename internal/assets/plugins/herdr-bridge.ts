@@ -675,8 +675,6 @@ function extractCompactReceipt(job: any, res: any, jobID: string): any {
 }
 
 export const CortexDelegationBridge: Plugin = async ({ client }) => {
-  const aliases = process.env.CORTEX_IA_LEGACY_TOOL_ALIASES;
-  if (aliases !== undefined && aliases !== "true" && aliases !== "false") throw new Error("BRIDGE_CONFIG_INVALID: CORTEX_IA_LEGACY_TOOL_ALIASES must be true or false");
   // Only host session metadata proves ancestry; tool arguments and transcripts
   // must never supply conversation ownership.
   const conversationOwnership = async (sessionID: string, directory: string) => {
@@ -1695,8 +1693,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     })
   };
 
-  // Gate canonical definitions before exposing aliases, so both names share the
-  // same trusted host-role boundary. New tools must be classified explicitly.
+  // Gate canonical definitions before exposing tools. New tools must be classified explicitly.
   const roles = ["orchestrator", "discovery", "planner", "investigate", "implement", "reviewer"];
   const controllers = ["planner", "investigate", "implement", "reviewer"];
   const readers = new Set([
@@ -1731,39 +1728,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     };
   }
 
-  if (aliases !== "true") return bridgeTools;
-  return {
-    ...bridgeTools,
-      cortex_openspec_validate: bridgeTools.cortex_ia_openspec_validate,
-      cortex_openspec_write: bridgeTools.cortex_ia_openspec_write,
-      cortex_discovery_write: bridgeTools.cortex_ia_discovery_write,
-      cortex_board_create: bridgeTools.cortex_ia_board_create,
-      cortex_board_list: bridgeTools.cortex_ia_board_list,
-      cortex_board_status: bridgeTools.cortex_ia_board_status,
-      cortex_work_create: bridgeTools.cortex_ia_work_create,
-      cortex_work_list: bridgeTools.cortex_ia_work_list,
-      cortex_work_status: bridgeTools.cortex_ia_work_status,
-      cortex_work_recover: bridgeTools.cortex_ia_work_recover,
-      cortex_work_retry: bridgeTools.cortex_ia_work_retry,
-      cortex_work_decompose: bridgeTools.cortex_ia_work_decompose,
-      cortex_work_claim: bridgeTools.cortex_ia_work_claim,
-      cortex_work_renew: bridgeTools.cortex_ia_work_renew,
-      cortex_work_lease: bridgeTools.cortex_ia_file_reserve,
-      cortex_file_reserve: bridgeTools.cortex_ia_file_reserve,
-      cortex_work_lease_renew: bridgeTools.cortex_ia_work_lease_renew,
-      cortex_work_release: bridgeTools.cortex_ia_file_release,
-      cortex_work_release_all: bridgeTools.cortex_ia_work_release_all,
-      cortex_file_release: bridgeTools.cortex_ia_file_release,
-      cortex_work_transition: bridgeTools.cortex_ia_work_transition,
-      cortex_work_approve: bridgeTools.cortex_ia_work_approve,
-      cortex_delegate_start: bridgeTools.cortex_ia_delegate_start,
-      cortex_delegation_status: bridgeTools.cortex_ia_delegation_status,
-      cortex_delegation_wait: bridgeTools.cortex_ia_delegation_wait,
-      cortex_delegation_result: bridgeTools.cortex_ia_delegation_result,
-      cortex_delegation_cancel: bridgeTools.cortex_ia_delegation_cancel,
-      cortex_delegation_recover: bridgeTools.cortex_ia_delegation_recover,
-      cortex_report_error: bridgeTools.cortex_ia_report_error,
-  };
+  return bridgeTools;
 })()
 
 });
