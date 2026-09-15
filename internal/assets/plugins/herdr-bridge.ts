@@ -1699,7 +1699,10 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
   // same trusted host-role boundary. New tools must be classified explicitly.
   const roles = ["orchestrator", "discovery", "planner", "investigate", "implement", "reviewer"];
   const controllers = ["planner", "investigate", "implement", "reviewer"];
-  const readers = new Set(["content_hash", "openspec_validate", "board_list", "board_status", "work_list", "work_status", "delegation_status", "delegation_wait", "delegation_result", "delegation_models"]);
+  const readers = new Set([
+    "content_hash", "openspec_validate", "board_list", "board_status", "work_list", "work_status", "delegation_status", "delegation_wait", "delegation_result", "delegation_models",
+    "doc_inspect", "diagram_validate", "diagram_reach"
+  ]);
   const mutations: Record<string, string[]> = {
     openspec_write: ["planner"], change_archive: ["planner"], discovery_write: ["discovery"],
     board_create: ["planner", "orchestrator"], work_create: ["planner", "orchestrator"],
@@ -1709,6 +1712,9 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     work_release_all: ["implement"], file_release: ["implement"], work_transition: ["implement"],
     work_approve: ["reviewer"], delegate_start: controllers,
     delegation_cancel: [...controllers, "orchestrator"], delegation_recover: ["orchestrator"],
+    doc_convert: roles,
+    diagram_render: ["planner", "orchestrator", "investigate", "discovery"],
+    diagram_compare: ["planner", "orchestrator", "reviewer"],
     report_error: roles
   };
   for (const [name, definition] of Object.entries(bridgeTools) as [string, any][]) {
