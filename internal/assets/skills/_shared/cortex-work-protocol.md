@@ -130,7 +130,7 @@ The `execution_mode` returned by `cortex_ia_delegate_start` is authoritative:
 
 ## 6. Native background dispatch & parallel waves
 
-New callers use canonical `cortex_ia_*` bridge tool names. Legacy `cortex_*` bridge aliases are exposed only when `CORTEX_IA_LEGACY_TOOL_ALIASES=true` is explicitly configured at plugin startup. Aliases have the same runtime capability checks as canonical operations; enabling compatibility never grants another role's authority. Cortex MCP's independent `cortex_*` memory tools are unaffected.
+Callers strictly use canonical `cortex_ia_*` bridge tool names; legacy `cortex_*` bridge aliases are not supported. Cortex MCP's independent `cortex_*` memory tools are unaffected.
 
 Native asynchronous delegation requires `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`. Only the orchestrator launches a native role controller through OpenCode's `task` tool. Completion notifications are the normal join signal; avoid sleep loops and aggressive polling.
 
