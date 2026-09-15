@@ -206,5 +206,4 @@ Object.assign(CortexSkillDiscoveryPlugin, {
   getAllDiscoveredSkills,
 });
 
-export { CortexSkillDiscoveryPlugin };
 export default CortexSkillDiscoveryPlugin;

@@ -1748,5 +1748,4 @@ Object.assign(CortexDelegationBridge, {
   extractCompactReceipt,
 });
 
-export { CortexDelegationBridge };
 export default CortexDelegationBridge;

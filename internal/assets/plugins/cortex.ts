@@ -965,5 +965,4 @@ Object.assign(Cortex, {
   buildMemoryInstructions,
 });
 
-export { Cortex };
 export default Cortex;
