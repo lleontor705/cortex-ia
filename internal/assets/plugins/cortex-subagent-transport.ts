@@ -591,5 +591,9 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
   };
 };
 
-export { CortexSubagentTransportPlugin, dispatchInfo };
+Object.assign(CortexSubagentTransportPlugin, {
+  dispatchInfo,
+});
+
+export { CortexSubagentTransportPlugin };
 export default CortexSubagentTransportPlugin;
