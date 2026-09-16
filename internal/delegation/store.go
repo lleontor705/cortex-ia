@@ -724,6 +724,20 @@ func (s *Store) Get(ctx context.Context, id string) (Job, error) {
 	}
 	if lease.Valid {
 		job.LeaseExpiresAt = &lease.String
+		if (job.Status == StatusStarting || job.Status == StatusRunning || job.Status == StatusBlocked) && lease.String < s.timestamp() {
+			now := s.timestamp()
+			_ = s.immediate(ctx, func(conn *sql.Conn) error {
+				_, _ = conn.ExecContext(ctx, `UPDATE delegation_jobs SET status='lost', error_code='LEASE_EXPIRED', error_message='worker lease expired', lease_owner='', lease_expires_at=NULL, updated_at=?, finished_at=? WHERE id=? AND status=?`, now, now, id, job.Status)
+				_, _ = conn.ExecContext(ctx, `INSERT INTO delegation_receipts(job_id,status,output_json,output_hash,exit_code,created_at) VALUES(?,'lost','{}','',-1,?) ON CONFLICT(job_id) DO UPDATE SET status='lost', output_json='{}', output_hash='', exit_code=-1, created_at=excluded.created_at`, id, now)
+				_ = s.addEvent(ctx, conn, id, "lost", job.Status, StatusLost, "worker lease expired")
+				return nil
+			})
+			job.Status = StatusLost
+			job.ErrorCode = "LEASE_EXPIRED"
+			job.ErrorMessage = "worker lease expired"
+			job.LeaseOwner = ""
+			job.LeaseExpiresAt = nil
+		}
 	}
 	return job, nil
 }

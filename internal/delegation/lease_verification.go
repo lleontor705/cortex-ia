@@ -172,3 +172,23 @@ func (s *Store) VerifySessionWorkLease(ctx context.Context, filePath, workspace,
 	}
 	return res[0], nil
 }
+
+// HasActiveWorkspaceWork reports whether there are active in_progress tasks or active claims in this workspace.
+func (s *Store) HasActiveWorkspaceWork(ctx context.Context, workspace string) (bool, error) {
+	if workspace == "" {
+		return false, nil
+	}
+	workspaceKey, err := CanonicalWorkspace(workspace)
+	if err != nil {
+		workspaceKey = workspace
+	}
+	now := s.timestamp()
+	var count int
+	err = s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM work_items w
+		LEFT JOIN work_claims c ON c.item_id = w.id
+		WHERE (w.workspace = ? OR w.workspace = ?)
+		  AND (w.status = 'in_progress' OR (c.expires_at IS NOT NULL AND c.expires_at > ?))
+	`, workspace, workspaceKey, now).Scan(&count)
+	return count > 0, err
+}

@@ -468,14 +468,11 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	args = append(args, "--print", externalPrompt(request))
 
 	cmd := exec.CommandContext(ctx, agy, args...)
-	cmd.Dir = request.Workspace
+	cmd.Dir = request.executionDirectory()
 	var workspaceBaseline map[string]string
-	if request.Role == "implement" {
-		cmd.Dir = request.executionDirectory()
-		workspaceBaseline, err = captureWorkspaceBaseline(cmd.Dir)
-		if err != nil {
-			return nil, -1, err
-		}
+	workspaceBaseline, err = captureWorkspaceBaseline(cmd.Dir)
+	if err != nil {
+		return nil, -1, err
 	}
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -657,14 +654,16 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 		}
 	}
 	elapsed := time.Since(startTime).Round(time.Millisecond)
-	if request.Role == "implement" {
-		allowErr := validateWorkspaceChanges(request.executionDirectory(), request.AllowedFiles, workspaceBaseline)
-		if allowErr != nil {
-			if err != nil {
-				err = errors.Join(err, allowErr)
-			} else {
-				err = allowErr
-			}
+	allowedFiles := request.AllowedFiles
+	if request.Role != "implement" {
+		allowedFiles = nil // Read-only roles must not modify any files
+	}
+	allowErr := validateWorkspaceChanges(request.executionDirectory(), allowedFiles, workspaceBaseline)
+	if allowErr != nil {
+		if err != nil {
+			err = errors.Join(err, allowErr)
+		} else {
+			err = allowErr
 		}
 	}
 

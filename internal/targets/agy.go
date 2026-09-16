@@ -74,8 +74,8 @@ func InstallAGY(homeDir string, dryRun bool) (*TargetResult, error) {
 	mcp := map[string]any{
 		"mcpServers": map[string]any{
 			"cortex": map[string]any{
-				"command": "cortex-ia",
-				"args":    []string{"mcp", "serve"},
+				"command": "cortex",
+				"args":    []string{"mcp", "--tools=agent"},
 				"env":     map[string]string{},
 			},
 		},
