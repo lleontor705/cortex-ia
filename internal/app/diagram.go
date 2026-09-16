@@ -135,6 +135,13 @@ func runDiagramRender(args []string) error {
 		}
 	}
 
+	// If the first argument is a JSON file and no 3rd arg was given, shift so diagType defaults to "architecture"
+	if strings.HasSuffix(strings.ToLower(diagType), ".json") && outputFile == "" {
+		outputFile = specFile
+		specFile = diagType
+		diagType = "architecture"
+	}
+
 	if specFile == "" {
 		return fmt.Errorf("render requires an input specification JSON file")
 	}

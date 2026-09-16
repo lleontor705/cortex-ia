@@ -43,6 +43,11 @@ Return verdicts for each lens independently. Global `verification_verdict` is `P
 
 For every finding include severity (`BLOCKER`, `WARNING`, `NIT`), lens (`functional_and_structural | resilience_and_security | architecture_and_discovery`), path and line where applicable, evidence, impact, and remediation. A secret in the diff, destructive data risk, unmet acceptance criterion, circular dependency regression, or reproducible critical regression is a BLOCKER.
 
+### Reviewer Proportionality & Reality Anchor (Anti-Nitpicking)
+- **Reality Anchor**: Reviewers MUST anchor all findings directly to actual repository code, declared contract requirements, and real execution risks. Never evaluate or demand handling of hypothetical, theoretical, or out-of-scope inputs.
+- **Forbidding BLOCKERs on Synthetic Test Harness Edge Cases**: A reviewer MUST NEVER issue a `BLOCKER` or `FAIL` verdict based on hypothetical inputs to internal test helpers, test harnesses, or mocks when the actual repository code and specified contracts do not contain those inputs. Discrepancies on uncalled or unrealistic helper branches (e.g. tabs vs spaces in synthetic shell parsers, unquoted strings never emitted by config, unreached edge cases in test assertions) are strictly `NIT` or `WARNING`, NEVER a blocker.
+- **Contract & Scope Fidelity**: The review evaluates whether the task objective and acceptance criteria were satisfied. Reviewers must NOT invent new unstated requirements or demand generalized parsing engines when verifying concrete declarative configuration changes.
+
 ## Closed-Loop Memory & Durable Evidence
 - **On FAIL**: Use `context-distiller` to extract minimal failure locality (path, exact line, error signature) and save it in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"` and link with `cortex_relate`). Return `verification_verdict: "FAIL"` and link `evidence_ref: "gotchas/<task_id>"` so the subsequent fix minion avoids the same defect.
 - **On PASS**: Record durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`, `topic_key: "architecture/<module>"` and link with `cortex_relate`). NEVER use `cortex_save_rule` for review findings, task completions, or worktree maintenance.

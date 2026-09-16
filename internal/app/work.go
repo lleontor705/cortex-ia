@@ -29,6 +29,7 @@ func runWork(args []string) error {
 		fmt.Println("  lease <task-id> --claim-token <token> --path <file>         Reserve a file lease")
 		fmt.Println("  lease-renew --path <file> --lease-token <token>             Renew a file lease")
 		fmt.Println("  release --path <file> --lease-token <token>                 Release a file lease")
+		fmt.Println("  release-all <task-id> --claim-token <token>                 Release all file leases for a task")
 		fmt.Println("  transition <task-id> --claim-token <token> --to <status>    Transition task state")
 		fmt.Println("  approve <task-id> --reviewer <id> --verdict <PASS|FAIL>     Approve/review a task")
 		fmt.Println("  retry <task-id> --revision <n>                              Retry a task")
@@ -316,6 +317,22 @@ func runWork(args []string) error {
 			return err
 		}
 		return printJSON(map[string]any{"released": true, "path": oneOption(opts, "--path")})
+	case "release-all":
+		if len(args) > 1 && isHelp(args[1]) {
+			return workUsage("release-all <task-id> --claim-token <token>", nil)
+		}
+		id, opts, err := workIDOptions(args[1:], map[string]bool{"--claim-token": false})
+		if err != nil {
+			return workUsage("release-all <task-id> --claim-token <token>", err)
+		}
+		claimToken, err := workAuthorityOption(opts, "--claim-token")
+		if err != nil {
+			return err
+		}
+		if err := store.ReleaseAllWorkLeases(ctx, id, claimToken); err != nil {
+			return err
+		}
+		return printJSON(map[string]any{"released_all": true, "task_id": id})
 	case "transition":
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("transition <task-id> --claim-token <token> [--revision <n>] --to <in_review|in_progress|blocked>", nil)

@@ -122,6 +122,15 @@ export const CortexTaskLatchPlugin: Plugin = async (ctx) => {
 
     "tool.execute.after": async (input, output) => {
       const toolName = (input?.tool || "").toLowerCase();
+      // Clear latch when orchestrator reconciles via recovery, retry, or decomposition
+      if (
+        toolName === "cortex_ia_work_recover" ||
+        toolName === "cortex_ia_work_retry" ||
+        toolName === "cortex_ia_work_decompose"
+      ) {
+        failedSessions.delete(input.sessionID);
+        return;
+      }
       if (toolName !== "task") return;
 
       const args = (input?.args || {}) as Record<string, any>;

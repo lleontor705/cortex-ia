@@ -222,6 +222,7 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 			return fmt.Errorf("create work definition: %w", err)
 		}
 		seen := map[string]bool{}
+		hasUnresolved := false
 		for _, dependency := range dependencies {
 			dependency = strings.TrimSpace(dependency)
 			if dependency == "" || dependency == id || seen[dependency] {
@@ -229,7 +230,8 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 			}
 			seen[dependency] = true
 			var dependencyBoard, dependencyWorkspace string
-			if err := conn.QueryRowContext(ctx, `SELECT board_id,workspace FROM work_items WHERE id=?`, dependency).Scan(&dependencyBoard, &dependencyWorkspace); err != nil {
+			var depStatus WorkStatus
+			if err := conn.QueryRowContext(ctx, `SELECT board_id,workspace,status FROM work_items WHERE id=?`, dependency).Scan(&dependencyBoard, &dependencyWorkspace, &depStatus); err != nil {
 				return fmt.Errorf("read dependency %q: %w", dependency, err)
 			}
 			if dependencyBoard != boardID {
@@ -238,8 +240,17 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 			if dependencyWorkspace != "" && !WorkspacesCompatible(dependencyWorkspace, workspace) {
 				return fmt.Errorf("dependency %q belongs to another project", dependency)
 			}
+			if depStatus != WorkDone {
+				hasUnresolved = true
+			}
 			if _, err := conn.ExecContext(ctx, `INSERT INTO work_dependencies(item_id,depends_on) VALUES(?,?)`, id, dependency); err != nil {
 				return fmt.Errorf("add dependency %q: %w", dependency, err)
+			}
+		}
+		if len(dependencies) > 0 && !hasUnresolved {
+			status = WorkReady
+			if _, err := conn.ExecContext(ctx, `UPDATE work_items SET status=? WHERE id=?`, status, id); err != nil {
+				return fmt.Errorf("update work item ready status: %w", err)
 			}
 		}
 		return s.addWorkEvent(ctx, conn, id, "created", "", string(status), "")
@@ -650,6 +661,30 @@ func (s *Store) ReleaseWorkLease(ctx context.Context, path, leaseToken string) e
 	})
 }
 
+// ReleaseAllWorkLeases releases all active file leases associated with a task using its claim token.
+func (s *Store) ReleaseAllWorkLeases(ctx context.Context, id, claimToken string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("task id is required")
+	}
+	return s.immediate(ctx, func(conn *sql.Conn) error {
+		var currentClaim string
+		if err := conn.QueryRowContext(ctx, `SELECT token_hash FROM work_claims WHERE item_id=?`, id).Scan(&currentClaim); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: task %s has no active claim", ErrWorkConflict, id)
+			}
+			return err
+		}
+		if currentClaim != tokenHash(claimToken) {
+			return fmt.Errorf("%w: claim token mismatch", ErrWorkConflict)
+		}
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id); err != nil {
+			return err
+		}
+		return s.addWorkEvent(ctx, conn, id, "leases_released_all", "", "", "")
+	})
+}
+
 // ExtendTaskAuthority extends the active claim and all active file leases of an in_progress task.
 // This is used by active supervisors/workers during execution to ensure leases do not expire
 // during extended execution times.
@@ -865,33 +900,50 @@ func (s *Store) RecoverWork(ctx context.Context) (int64, error) {
 	now := s.timestamp()
 	var recovered int64
 	err := s.immediate(ctx, func(conn *sql.Conn) error {
-		rows, err := conn.QueryContext(ctx, `SELECT c.item_id FROM work_claims c JOIN work_items w ON c.item_id=w.id WHERE c.expires_at<=? AND w.status='in_progress' ORDER BY c.item_id`, now)
+		staleReviewThreshold := s.now().UTC().Add(-30 * time.Minute).Format(time.RFC3339Nano)
+		rows, err := conn.QueryContext(ctx, `
+			SELECT DISTINCT w.id, w.status FROM work_items w
+			LEFT JOIN work_claims c ON c.item_id = w.id
+			LEFT JOIN work_reviews r ON r.item_id = w.id
+			WHERE (w.status = 'in_progress' AND (c.expires_at IS NULL OR c.expires_at <= ?))
+			   OR (w.status = 'in_review' AND (c.expires_at IS NULL OR c.expires_at <= ? OR r.created_at <= ?))
+			ORDER BY w.id
+		`, now, now, staleReviewThreshold)
 		if err != nil {
 			return err
 		}
-		var ids []string
+		type itemToRecover struct {
+			id     string
+			status WorkStatus
+		}
+		var items []itemToRecover
 		for rows.Next() {
-			var id string
-			if err := rows.Scan(&id); err != nil {
+			var it itemToRecover
+			if err := rows.Scan(&it.id, &it.status); err != nil {
 				_ = rows.Close()
 				return err
 			}
-			ids = append(ids, id)
+			items = append(items, it)
 		}
 		if err := rows.Close(); err != nil {
 			return err
 		}
-		for _, id := range ids {
-			result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='blocked',revision=revision+1,updated_at=? WHERE id=? AND status='in_progress'`, now, id)
+		for _, it := range items {
+			result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='blocked',revision=revision+1,updated_at=? WHERE id=? AND status=?`, now, it.id, it.status)
 			if err != nil {
 				return err
 			}
 			changed, _ := result.RowsAffected()
 			recovered += changed
-			_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
-			_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
+			_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, it.id)
+			_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, it.id)
+			_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, it.id)
 			if changed == 1 {
-				if err := s.addWorkEvent(ctx, conn, id, "claim_expired", string(WorkInProgress), string(WorkBlocked), ""); err != nil {
+				eventReason := "claim_expired"
+				if it.status == WorkInReview {
+					eventReason = "review_abandoned"
+				}
+				if err := s.addWorkEvent(ctx, conn, it.id, eventReason, string(it.status), string(WorkBlocked), ""); err != nil {
 					return err
 				}
 			}

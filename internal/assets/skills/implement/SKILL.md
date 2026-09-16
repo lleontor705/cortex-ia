@@ -46,6 +46,7 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
    - Make the minimum coherent change. Avoid incidental refactors, dependency additions, generated-file edits outside canonical generators, and permission widening.
 4. **Focused Checks & Proportional Verification:**
    - Run focused checks, then proportional regression. Record command, exit code, revision, timestamp, and concise result.
+   - For declarative configs (Docker/Compose, YAML, JSON, `.dockerignore`, `.env*`), verify syntax and target values directly using standard parsers or real commands; NEVER invent ad-hoc shell lexers or custom grammar parsers.
 5. **Diff Review & Proactive Memory (MANDATORY):**
    - Review the diff for scope creep, secrets, unsafe paths, and accidental generated drift.
    - **In-Memory Immutability & Contract Integrity**: Ensure multi-record validations do not mutate caller input in-place, and never weaken contracts by silently skipping invalid records to force green tests.

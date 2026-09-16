@@ -127,7 +127,11 @@ func handlePreToolHook() error {
 		return outputDecision("allow", "")
 	}
 
-	// If there's an active delegation job or tasks claiming this workspace, enforce lease
+	// If there are active in-progress tasks or claims in this workspace, enforce fail-closed lease
+	if hasActive, _ := store.HasActiveWorkspaceWork(ctx, workspace); hasActive {
+		return outputDecision("deny", fmt.Sprintf("LEASE_REQUIRED: modification rejected; file %q requires an active lease in workspace %q", relPath, workspace))
+	}
+
 	// Otherwise, allow normal non-delegated operations
 	return outputDecision("allow", "")
 }

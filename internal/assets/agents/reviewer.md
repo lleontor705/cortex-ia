@@ -154,6 +154,10 @@ Audit the actual `git diff` of the allowed files across the three mandatory lens
 - **Mutation Testing Boundary**:
   - Do NOT mutate source code via bash or external scripts.
   - Evaluate test sensitivity by analyzing assertion strength, boundary predicates, and edge case assertions directly from the implementer's test source.
+- **Reviewer Proportionality & Reality Anchor (Anti-Nitpicking)**:
+  - Anchor all findings directly to actual repository code, declared contract requirements, and real execution risks. Never evaluate or demand handling of hypothetical, theoretical, or out-of-scope inputs.
+  - **Forbidding BLOCKERs on Synthetic Test Harness Edge Cases**: NEVER issue a `BLOCKER` or `FAIL` verdict based on hypothetical inputs to internal test helpers, test harnesses, or mocks when the actual repository code and specified contracts do not contain those inputs. Discrepancies on uncalled or unrealistic helper branches (e.g. tabs vs spaces in synthetic shell parsers, unquoted strings never emitted by config, unreached edge cases in test assertions) are strictly `NIT` or `WARNING`, NEVER a blocker.
+  - The review evaluates whether the task objective and acceptance criteria were satisfied. Do NOT invent new unstated requirements or demand generalized parsing engines when verifying concrete declarative configuration changes.
 - **GATE 4 (Early Exit)**: If any BLOCKER is found in any lens:
   - Save failure locality with `cortex_save` (`type: "bugfix"`, `topic_key: "gotchas/<task_id>"`) and `cortex_relate`.
   - Halt and return `verification_verdict: "FAIL"`. Do not proceed to Phase 5.

@@ -190,7 +190,15 @@ function processWorkStatusResponse(
   }
 
   const responseSessionID = response.opencode_session_id || response.session_id;
-  if (responseSessionID && responseSessionID !== sessionID && sessionID !== "host-system") {
+  const rootSessionID = response.opencode_root_session_id;
+  const parentSessionID = response.opencode_parent_session_id;
+  const isSessionMatch = !responseSessionID ||
+    responseSessionID === sessionID ||
+    sessionID === "host-system" ||
+    (rootSessionID && rootSessionID === sessionID) ||
+    (parentSessionID && parentSessionID === sessionID) ||
+    (typeof sessionID === "string" && (sessionID.startsWith("ses_") || sessionID.startsWith("subagent-")));
+  if (!isSessionMatch) {
     return { accepted: false, reason: "RESPONSE_SESSION_MISMATCH", projection: getUnknownProjection(requestedTaskID) };
   }
 
@@ -906,9 +914,8 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         quality: tool.schema.enum(["standard", "showcase"]).optional()
       },
       async execute(args, context) {
-        const cmd = ["diagram", "render"];
-        if (args.diagram_type) cmd.push(args.diagram_type);
-        cmd.push(path.resolve(context.directory, args.spec_path), path.resolve(context.directory, args.output_path), "--json");
+        const diagramType = args.diagram_type || "architecture";
+        const cmd = ["diagram", "render", diagramType, path.resolve(context.directory, args.spec_path), path.resolve(context.directory, args.output_path), "--json"];
         if (args.quality) cmd.push(`--quality=${args.quality}`);
         return cortex(cmd, context.directory);
       }
@@ -1407,9 +1414,19 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
               });
             }
           }
+          let taskContext = "";
+          if (args.task_id) {
+            try {
+              const statusRaw = cortex(["work", "status", args.task_id]);
+              if (statusRaw) {
+                taskContext = `Authoritative Task State (from Cortex-IA Work Authority):\n${statusRaw}`;
+              }
+            } catch {}
+          }
           const objective = [
             args.objective,
             args.acceptance_checks?.length ? `Acceptance checks:\n${args.acceptance_checks.map((v) => `- ${v}`).join("\n")}` : "",
+            taskContext,
             args.context_data ? `Context:\n${args.context_data}` : ""
           ].filter(Boolean).join("\n\n");
           requestPath = transientRequest({
@@ -1560,8 +1577,10 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         compact: tool.schema.boolean().optional().describe("If true, return a compact summary receipt preserving full durable storage")
       },
       async execute(args) {
-        const timeoutSeconds = args.timeout_seconds !== undefined ? Math.max(0, Math.floor(args.timeout_seconds)) : 0;
-        const deadline = timeoutSeconds > 0 ? Date.now() + timeoutSeconds * 1000 : Infinity;
+        const timeoutSeconds = args.timeout_seconds !== undefined && args.timeout_seconds > 0
+          ? Math.floor(args.timeout_seconds)
+          : 1800; // default 30-minute upper bound to prevent infinite polling deadlock
+        const deadline = Date.now() + timeoutSeconds * 1000;
         const isCompact = args.compact === true || args.compact === "true";
         const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out", "lost"]);
         let job: any;
