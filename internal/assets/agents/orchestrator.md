@@ -24,6 +24,9 @@ tools:
   cortex_search: true
   cortex_get_status: true
   cortex_get_rules: true
+  cortex_ia_content_hash: true
+  cortex_ia_snapshot_read: true
+  cortex_ia_openspec_validate: true
   cortex_ia_board_create: true
   cortex_ia_board_list: true
   cortex_ia_board_status: true
@@ -41,6 +44,7 @@ tools:
   cortex_ia_diagram_validate: true
   cortex_ia_diagram_render: true
   cortex_ia_diagram_compare: true
+  cortex_ia_diagram_reach: true
 ---
 
 # role/orchestrator [STATIC_PREFIX_V2]

@@ -36,10 +36,14 @@ tools:
   cortex_cortex_save: true
   cortex_relate: true
   cortex_cortex_relate: true
+  cortex_ia_content_hash: true
+  cortex_ia_snapshot_read: true
+  cortex_ia_openspec_validate: true
+  cortex_ia_board_list: true
+  cortex_ia_board_status: true
+  cortex_ia_work_list: true
   cortex_ia_work_status: true
   cortex_ia_work_approve: true
-  cortex_ia_board_status: true
-  cortex_ia_content_hash: true
   cortex_ia_delegate_start: true
   cortex_ia_delegation_status: true
   cortex_ia_delegation_wait: true
@@ -50,6 +54,7 @@ tools:
   cortex_ia_doc_inspect: true
   cortex_ia_diagram_validate: true
   cortex_ia_diagram_compare: true
+  cortex_ia_diagram_reach: true
 permission:
   bash:
     "*": allow

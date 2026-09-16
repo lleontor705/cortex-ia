@@ -58,6 +58,9 @@ tools:
   cortex_cortex_code_tests: true
   cortex_code_find: true
   cortex_cortex_code_find: true
+  cortex_ia_content_hash: true
+  cortex_ia_snapshot_read: true
+  cortex_ia_openspec_validate: true
   cortex_ia_board_list: true
   cortex_ia_board_status: true
   cortex_ia_work_list: true

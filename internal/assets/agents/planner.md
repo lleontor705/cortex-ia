@@ -43,6 +43,7 @@ tools:
   cortex_handoff: true
   cortex_cortex_handoff: true
   cortex_ia_content_hash: true
+  cortex_ia_snapshot_read: true
   cortex_ia_openspec_validate: true
   cortex_ia_openspec_write: true
   cortex_ia_change_archive: true
