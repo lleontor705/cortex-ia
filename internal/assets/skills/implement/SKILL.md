@@ -54,11 +54,11 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
     - **Test Policy & Scaffolding Hygiene**: Persistent tests are strictly limited to TUI, simple install-copy, and user-authorized critical regression boundaries (authority, transport, recovery, updater verification) using temporary homes and synthetic inputs. Deeper unrelated transactional exploration remains ephemeral. Do not append new test suites to an existing test file if that file already has > 300 LOC; create dedicated modular test files bounded to <= 250 LOC per file. Tests must never access real developer state or weaken contracts (no silently skipping invalid records).
    - Persist any bug root cause, discovery, gotcha, or decision made in Cortex (`cortex_save` with standard taxonomies: `bugfix/*`, `gotchas/*`, `architecture/*`). Never dump full stdout.
 6. **Pre-Transition Workload Preflight & Cleanup:**
-   - Run `git diff --numstat` to check categorized churn before transitioning:
-     - **Source Logic**: <= 350 LOC in Go/Rust/Java/C#, <= 250 LOC in TS/Python (churn weighted: additions + 0.2 * deletions).
-     - **Test & Fixture Files**: <= 600 LOC (modular, <= 250 LOC per new file).
-     - **Declarative Data / Schemas**: Excluded from algorithmic line budget.
-   - If source logic lines exceed the cap, **transitioning to `in_review` is strictly forbidden**: transition to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if tests exceed 600 LOC) to trigger DAG decomposition.
+   - Run `git diff --numstat` to check categorized churn before transitioning against active `workload_policy` (categorize by path: logic files evaluate against source budget, `*_test.*` and `test/**` evaluate against test budget, and declarative data/schemas/docs are exempt):
+     - **`strict`**: Source Logic <= 350 LOC in Go/Rust/Java/C#, <= 250 LOC in TS/Python (churn weighted: additions + 0.2 * deletions); Test & Fixture Files <= 600 LOC (modular, <= 250 LOC per new file). If source logic lines exceed the cap, **transitioning to `in_review` is strictly forbidden**: transition to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if tests exceed 600 LOC) to trigger DAG decomposition.
+     - **`flexible` (default)**: Source Logic <= 700 LOC in Go/Rust/Java/C#, <= 500 LOC in TS/Python; Tests <= 1200 LOC. If churn exceeds guidelines, record `workload_status: "EXCEEDED_ADVISORY"` and proceed to `in_review`.
+     - **`unbounded`**: Churn threshold checks are bypassed.
+     - **Declarative Data / Schemas**: Excluded from algorithmic line budget in all policies.
    - Complete the CLI lifecycle: verify -> `cortex_ia_work_transition({ to: "in_review" })` (auto-releases leases) -> independent reviewer PASS. Only reviewer PASS produces `done`.
 
 ### Operational & Database Tasks (allowed_files: [])

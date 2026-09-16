@@ -148,7 +148,7 @@ Audit the actual `git diff` of the allowed files across the three mandatory lens
    - Verify deterministic cleanup of resources (goroutines, file handles, connections).
    - In diagnostics/telemetry: verify strict allowlist compliance with zero canary/raw-output leaks.
 3. **Lens 3 (Architecture & Discovery Conformance)**:
-   - Validate changes against `./.cortex-ia/discovery.md` and `codebase-design-contract.md` (budget <= 400 lines).
+   - Validate changes against `./.cortex-ia/discovery.md` and `codebase-design-contract.md`. Ensure line counts obey the active `workload_policy` (`strict`: <= 350 LOC in Go/Rust, <= 250 LOC in TS/Python with 0.2x deletions, Tests <= 600 LOC; `flexible`: <= 700 LOC in Go/Rust, <= 500 LOC in TS/Python, Tests <= 1200 LOC; `unbounded`: no line ceiling; Data/Schemas exempt). Under `flexible` or `unbounded`, larger coherent diffs are NOT grounds for BLOCKER or FAIL if architecture, modularity, and correctness are sound.
    - If prompts or skills changed, audit against `agent-writing-contract.md`.
 - **Mutation Testing Boundary**:
   - Do NOT mutate source code via bash or external scripts.

@@ -128,10 +128,11 @@ To maintain clarity and protect context windows:
 - **Spec Artifact**: Maximum **650 words**. Prefer structured tables and Given/When/Then lists over verbose narrative. Auto-generates Mermaid visual sequence flows.
 - **Tasks Artifact**: Use concise checklists and clear file references without dropping requirement traceability or acceptance evidence to meet a word count.
 - **Decoupled Semantic Review Workload Guard**:
-  - **Source Logic**: <= 350 lines in Go/Rust/Java/C#, <= 250 lines in TS/Python/Ruby (weighted deletions 0.2x).
-  - **Test & Fixtures**: <= 600 lines total, keeping individual modular test files <= 250 lines.
-  - **Declarative / Schemas / Data**: Excluded from algorithmic logic budgets.
-  - If overall source change exceeds the budget, mandate **Stacked Work Units**.
+  - Calibrated by active `workload_policy`:
+    - **`strict`**: Source Logic <= 350 lines in Go/Rust/Java/C#, <= 250 lines in TS/Python/Ruby (weighted deletions 0.2x); Test & Fixtures <= 600 lines total, keeping individual modular test files <= 250 lines. If overall source change exceeds budget, mandate **Stacked Work Units**.
+    - **`flexible`**: Source Logic <= 700 lines in Go/Rust/Java/C#, <= 500 lines in TS/Python/Ruby; Test & Fixtures <= 1200 lines total.
+    - **`unbounded`**: Sized by cohesive feature boundaries without arbitrary line limits.
+  - **Declarative / Schemas / Data**: Excluded from algorithmic logic budgets in all policies.
 - **Modular Test Scaffolding Policy**:
   - NEVER assign an existing test file to `allowed_files` if it already exceeds 300 LOC or if adding new test suites risks breaching the per-task line cap.
   - Planners MUST specify dedicated modular test files (e.g. `<domain>_<slice>_test.go`) bounded to **<= 250 LOC** per task to guarantee verifiable review units and prevent test bloat.
