@@ -1407,9 +1407,19 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
               });
             }
           }
+          let taskContext = "";
+          if (args.task_id) {
+            try {
+              const statusRaw = cortex(["work", "status", args.task_id]);
+              if (statusRaw) {
+                taskContext = `Authoritative Task State (from Cortex-IA Work Authority):\n${statusRaw}`;
+              }
+            } catch {}
+          }
           const objective = [
             args.objective,
             args.acceptance_checks?.length ? `Acceptance checks:\n${args.acceptance_checks.map((v) => `- ${v}`).join("\n")}` : "",
+            taskContext,
             args.context_data ? `Context:\n${args.context_data}` : ""
           ].filter(Boolean).join("\n\n");
           requestPath = transientRequest({
