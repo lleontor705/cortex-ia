@@ -48,6 +48,7 @@ tools:
   cortex_ia_doc_convert: true
   cortex_ia_diagram_validate: true
   cortex_ia_diagram_render: true
+  cortex_ia_diagram_reach: true
 permission:
   bash:
     "*": deny
