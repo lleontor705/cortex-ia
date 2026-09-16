@@ -128,4 +128,20 @@ func TestReviewFreshness(t *testing.T) {
 	if reapproved.Verdict != "PASS" {
 		t.Fatalf("expected PASS on reapproval, got %s", reapproved.Verdict)
 	}
+
+	// 10. Test ListWorkApprovals and ComputeWorkFingerprint on SDD task
+	approvals, err := store.ListWorkApprovals(ctx, item.ID)
+	if err != nil {
+		t.Fatalf("ListWorkApprovals failed: %v", err)
+	}
+	if len(approvals) != 2 {
+		t.Fatalf("expected 2 approvals, got %d", len(approvals))
+	}
+	fp, err := store.ComputeWorkFingerprint(ctx, item.ID)
+	if err != nil {
+		t.Fatalf("ComputeWorkFingerprint failed: %v", err)
+	}
+	if len(fp.Files) != 1 || fp.ApprovedBinding == nil || fp.MatchesApproved == nil || !*fp.MatchesApproved {
+		t.Fatalf("expected matching approved fingerprint, got: %+v", fp)
+	}
 }

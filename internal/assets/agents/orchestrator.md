@@ -33,6 +33,8 @@ tools:
   cortex_ia_work_create: true
   cortex_ia_work_list: true
   cortex_ia_work_status: true
+  cortex_ia_work_approvals: true
+  cortex_ia_work_fingerprint: true
   cortex_ia_work_recover: true
   cortex_ia_work_retry: true
   cortex_ia_work_review_refresh: true

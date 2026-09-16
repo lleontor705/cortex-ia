@@ -1068,6 +1068,22 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       }
     }),
 
+    cortex_ia_work_approvals: tool({
+      description: "List historical approval records and review bindings for a durable task.",
+      args: { task_id: tool.schema.string() },
+      async execute(args) {
+        return cortex(["work", "approvals", args.task_id]);
+      }
+    }),
+
+    cortex_ia_work_fingerprint: tool({
+      description: "Calculate authoritative file and definition SHA-256 fingerprints for a task and verify whether they match the approved binding.",
+      args: { task_id: tool.schema.string() },
+      async execute(args) {
+        return cortex(["work", "fingerprint", args.task_id]);
+      }
+    }),
+
     cortex_ia_work_recover: tool({
       description: "Recover expired work claims and leases. This never restores old authority tokens.",
       args: {},

@@ -562,3 +562,83 @@ func requireOpenSDDChange(ctx context.Context, conn *sql.Conn, boardID string, c
 	}
 	return nil
 }
+
+// ComputeWorkFingerprint calculates the current authoritative fingerprints for a task's
+// definition and allowed files in the workspace, and compares them against any prior PASS approval.
+func (s *Store) ComputeWorkFingerprint(ctx context.Context, id string) (WorkFingerprint, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return WorkFingerprint{}, errors.New("task id is required")
+	}
+	var fp WorkFingerprint
+	fp.TaskID = id
+
+	var workspace, board, title, objective, acceptance, verification, filesJSON, contractJSON string
+	err := s.db.QueryRowContext(ctx, `SELECT i.workspace,i.board_id,i.title,d.objective,d.acceptance_criteria,d.verification,d.allowed_files_json,d.contract_json FROM work_items i JOIN work_definitions d ON d.item_id=i.id WHERE i.id=?`, id).Scan(&workspace, &board, &title, &objective, &acceptance, &verification, &filesJSON, &contractJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return WorkFingerprint{}, ErrWorkNotFound
+	}
+	if err != nil {
+		return WorkFingerprint{}, err
+	}
+	workspace, err = CanonicalWorkspace(workspace)
+	if err != nil {
+		return WorkFingerprint{}, err
+	}
+	fp.Workspace = workspace
+	fp.BoardID = board
+
+	var files []string
+	if err := json.Unmarshal([]byte(filesJSON), &files); err != nil {
+		return WorkFingerprint{}, fmt.Errorf("decode allowed files: %w", err)
+	}
+	sort.Strings(files)
+	entries := make([]WorkFileDigest, 0, len(files))
+	for _, file := range files {
+		clean, err := canonicalLeasePath(file)
+		if err != nil {
+			return WorkFingerprint{}, err
+		}
+		digest, err := fingerprintFile(workspace, clean)
+		if err != nil {
+			return WorkFingerprint{}, fmt.Errorf("fingerprint %s: %w", file, err)
+		}
+		entries = append(entries, WorkFileDigest{Path: file, Digest: digest})
+	}
+	fp.Files = entries
+	fp.ChangeSHA256 = hashJSON(entries)
+
+	var dependencies []string
+	deps, err := s.db.QueryContext(ctx, `SELECT depends_on FROM work_dependencies WHERE item_id=? ORDER BY depends_on`, id)
+	if err == nil {
+		for deps.Next() {
+			var dep string
+			if err := deps.Scan(&dep); err == nil {
+				dependencies = append(dependencies, dep)
+			}
+		}
+		_ = deps.Close()
+	}
+	sort.Strings(dependencies)
+
+	if contractJSON != "" {
+		if c, err := decodeContract(contractJSON); err == nil && c != nil {
+			if normalized, err := encodeContract(c); err == nil {
+				contractJSON = normalized
+			}
+		}
+	}
+	fp.DefinitionSHA256 = hashJSON([]any{id, board, workspace, title, objective, acceptance, verification, files, dependencies, contractJSON})
+
+	var approvedBindingJSON string
+	err = s.db.QueryRowContext(ctx, `SELECT binding_json FROM work_approvals WHERE item_id=? AND verdict='PASS' ORDER BY id DESC LIMIT 1`, id).Scan(&approvedBindingJSON)
+	if err == nil && approvedBindingJSON != "" {
+		var approved ReviewBinding
+		if err := json.Unmarshal([]byte(approvedBindingJSON), &approved); err == nil {
+			fp.ApprovedBinding = &approved
+			matches := (approved.ChangeSHA256 == fp.ChangeSHA256 && approved.DefinitionSHA256 == fp.DefinitionSHA256)
+			fp.MatchesApproved = &matches
+		}
+	}
+	return fp, nil
+}
