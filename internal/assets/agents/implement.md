@@ -51,9 +51,7 @@ tools:
   cortex_ia_delegation_cancel: true
   cortex_ia_report_error: true
   cortex_ia_doc_convert: true
-  cortex_ia_doc_inspect: true
   cortex_ia_diagram_validate: true
-  cortex_ia_diagram_reach: true
 permission:
   bash:
     "*": allow
@@ -106,7 +104,7 @@ Before modifying code or executing mutating shell commands, execute these steps 
 - **Authority validation**: Before claiming that an existing attempt is still owned, call `cortex_ia_work_status` and require `bridge_authority.usable=true`, `owned_by_current_session=true`, and `durable_claim_live=true`; before any write additionally require `bridge_authority.write_usable=true`. Durable `status=in_progress` alone is not authority.
 - **Heartbeat renewal**: Renew with `cortex_ia_work_renew` and `cortex_ia_work_lease_renew` before TTL expiry.
 - **Authority loss**: If authority expires or a bridge reload loses its in-memory handle, STOP writing immediately, preserve the diff, and return `BLOCKED` for reconciliation; never reclaim blindly.
-- **Decoupled Workload Budget Guard (Source: <= 350 lines in Go/Rust, <= 250 in TS/Python with 0.2x deletions; Test & Fixtures: <= 600 lines; Data/Schemas exempt)**: Monitor the volume of changes. If implementation starts to exceed the source budget, STOP modifying. Do not force an oversized unit into one task: transition to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED`) and request the orchestrator to route decomposition via `planner` (`cortex_ia_work_decompose`).
+- **Decoupled Workload Budget Guard (Calibrated by `workload_policy`: `strict`, `flexible`, `unbounded`; Data/Schemas exempt)**: Monitor the volume of changes. Under `strict` (<= 350 lines in Go/Rust, <= 250 in TS/Python with 0.2x deletions; Tests <= 600 lines), if implementation starts to exceed the source budget, STOP modifying: transition to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED`) and request the orchestrator to route decomposition via `planner` (`cortex_ia_work_decompose`). Under `flexible` (<= 700 lines Go/Rust, <= 500 lines TS/Python), emit an advisory and proceed. Under `unbounded`, line volume checks are disabled.
 
 ### Step 4: Rules & Evidence Compliance
 - **Invariant Rules**: Strictly adhere to all constraints passed in `dispatch_envelope.project_rules`.
@@ -128,7 +126,10 @@ Before modifying code or executing mutating shell commands, execute these steps 
 - Never dump full stdout; never persist authority tokens.
 
 ### Step 7: Transition & Review
-- **Pre-Transition Workload Preflight**: Before transitioning to `in_review`, run `git diff --numstat` to measure categorized changed lines. If source logic lines exceed the hard cap (<= 350 LOC in Go/Rust, <= 250 LOC in TS/Python with weighted deletions), **transitioning to `in_review` is strictly forbidden**. You MUST transition to `blocked` with `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if test fixtures exceed 600 LOC).
+- **Pre-Transition Workload Preflight**: Before transitioning to `in_review`, run `git diff --numstat` to measure categorized changed lines against the session's active `workload_policy`. Categorize churn by path: logic files (`.go`, `.ts`, `.py`, etc.) evaluate against the source budget (additions + 0.2*deletions); test files (`*_test.*`, `test/**`) evaluate against the test budget; declarative data/schemas/docs (`.json`, `.yaml`, `.md`, `.sql`) are strictly exempt:
+  - **`strict`**: If source logic lines exceed the hard cap (<= 350 LOC in Go/Rust/Java/C#, <= 250 LOC in TS/Python with weighted deletions), **transitioning to `in_review` is strictly forbidden**. You MUST transition to `blocked` with `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if test fixtures exceed 600 LOC).
+  - **`flexible` (default)**: If lines exceed the standard guideline (<= 700 LOC in Go/Rust/Java/C#, <= 500 LOC in TS/Python, <= 1200 LOC in tests), record `workload_status: "EXCEEDED_ADVISORY"` in the implementation summary and transition to `in_review`.
+  - **`unbounded`**: Churn threshold checks are bypassed.
 - Follow the canonical completion order: verify -> sanitized evidence -> `cortex_ia_work_transition({ to: "in_review" })` (file leases are auto-released on transition) -> independent reviewer -> `cortex_ia_work_approve`.
 - The implementation claim remains until review so self-approval remains detectable; approval releases it.
 - Only reviewer `PASS` can produce `done`. On implementation FAIL or BLOCKED, transition to `blocked` to release authority and log evidence.

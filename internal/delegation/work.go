@@ -47,14 +47,15 @@ type WorkItem struct {
 	AllowedFiles []string    `json:"allowed_files,omitempty"`
 	Replaces     string      `json:"replaces,omitempty"`
 	ReplacedBy   []string    `json:"replaced_by,omitempty"`
-	Status       WorkStatus  `json:"status"`
-	Revision     int64       `json:"revision"`
-	Dependencies []string    `json:"dependencies,omitempty"`
-	Claim        *WorkClaim  `json:"claim,omitempty"`
-	Review       *WorkReview `json:"review,omitempty"`
-	Leases       []WorkLease `json:"leases,omitempty"`
-	CreatedAt    string      `json:"created_at"`
-	UpdatedAt    string      `json:"updated_at"`
+	Status         WorkStatus    `json:"status"`
+	Revision       int64         `json:"revision"`
+	Dependencies   []string      `json:"dependencies,omitempty"`
+	Claim          *WorkClaim    `json:"claim,omitempty"`
+	Review         *WorkReview   `json:"review,omitempty"`
+	LatestApproval *WorkApproval `json:"latest_approval,omitempty"`
+	Leases         []WorkLease   `json:"leases,omitempty"`
+	CreatedAt      string        `json:"created_at"`
+	UpdatedAt      string        `json:"updated_at"`
 }
 
 type WorkDefinition struct {
@@ -93,16 +94,34 @@ type WorkLease struct {
 }
 
 type WorkApproval struct {
-	Binding        *ReviewBinding `json:"binding,omitempty"`
-	ItemID         string         `json:"task_id"`
-	Revision       int64          `json:"revision"`
-	Reviewer       string         `json:"reviewer"`
-	Verdict        string         `json:"verdict"`
-	Evidence       string         `json:"evidence,omitempty"`
-	ReviewID       string         `json:"review_id,omitempty"`
-	ReviewRevision int64          `json:"review_revision,omitempty"`
-	Attempt        int64          `json:"attempt,omitempty"`
-	CreatedAt      string         `json:"created_at"`
+	ID                  int64          `json:"id,omitempty"`
+	Binding             *ReviewBinding `json:"binding,omitempty"`
+	ItemID              string         `json:"task_id"`
+	Revision            int64          `json:"revision"`
+	Reviewer            string         `json:"reviewer"`
+	Verdict             string         `json:"verdict"`
+	Evidence            string         `json:"evidence,omitempty"`
+	ReviewID            string         `json:"review_id,omitempty"`
+	ReviewRevision      int64          `json:"review_revision,omitempty"`
+	Attempt             int64          `json:"attempt,omitempty"`
+	ImplementationOwner string         `json:"implementation_owner,omitempty"`
+	CreatedAt           string         `json:"created_at"`
+}
+
+type WorkFileDigest struct {
+	Path   string `json:"path"`
+	Digest string `json:"digest"`
+}
+
+type WorkFingerprint struct {
+	TaskID           string           `json:"task_id"`
+	BoardID          string           `json:"board_id"`
+	Workspace        string           `json:"workspace"`
+	DefinitionSHA256 string           `json:"definition_sha256"`
+	ChangeSHA256     string           `json:"change_sha256"`
+	Files            []WorkFileDigest `json:"files"`
+	ApprovedBinding  *ReviewBinding   `json:"approved_binding,omitempty"`
+	MatchesApproved  *bool            `json:"matches_approved,omitempty"`
 }
 
 func token() (string, error) {
@@ -410,7 +429,46 @@ func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return WorkItem{}, err
 	}
+	var approval WorkApproval
+	var approvalBinding string
+	err = s.db.QueryRowContext(ctx, `SELECT id,item_id,review_revision,reviewer,verdict,evidence,review_id,attempt,binding_json,implementation_owner,created_at FROM work_approvals WHERE item_id=? ORDER BY id DESC LIMIT 1`, id).Scan(&approval.ID, &approval.ItemID, &approval.Revision, &approval.Reviewer, &approval.Verdict, &approval.Evidence, &approval.ReviewID, &approval.Attempt, &approvalBinding, &approval.ImplementationOwner, &approval.CreatedAt)
+	if err == nil {
+		approval.ReviewRevision = approval.Revision
+		if approvalBinding != "" {
+			_ = json.Unmarshal([]byte(approvalBinding), &approval.Binding)
+		}
+		item.LatestApproval = &approval
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return WorkItem{}, err
+	}
 	return item, nil
+}
+
+// ListWorkApprovals returns all historical approval and review verdict records for a task.
+func (s *Store) ListWorkApprovals(ctx context.Context, id string) ([]WorkApproval, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, errors.New("task id is required")
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id,item_id,review_revision,reviewer,verdict,evidence,review_id,attempt,binding_json,implementation_owner,created_at FROM work_approvals WHERE item_id=? ORDER BY id DESC`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var approvals []WorkApproval
+	for rows.Next() {
+		var a WorkApproval
+		var binding string
+		if err := rows.Scan(&a.ID, &a.ItemID, &a.Revision, &a.Reviewer, &a.Verdict, &a.Evidence, &a.ReviewID, &a.Attempt, &binding, &a.ImplementationOwner, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		a.ReviewRevision = a.Revision
+		if binding != "" {
+			_ = json.Unmarshal([]byte(binding), &a.Binding)
+		}
+		approvals = append(approvals, a)
+	}
+	return approvals, rows.Err()
 }
 
 // ValidateDelegationAuthority verifies that an implementation delegation is

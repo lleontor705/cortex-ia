@@ -328,6 +328,31 @@ func TestWorkItemsClaimsAndLeases(t *testing.T) {
 		t.Errorf("expected PASS, got %s", approval.Verdict)
 	}
 
+	// 9b. ListWorkApprovals & LatestApproval
+	approvals, err := store.ListWorkApprovals(ctx, "t-1")
+	if err != nil {
+		t.Fatalf("ListWorkApprovals failed: %v", err)
+	}
+	if len(approvals) != 1 || approvals[0].Verdict != "PASS" {
+		t.Fatalf("expected 1 PASS approval, got %+v", approvals)
+	}
+	itemDone, err := store.GetWork(ctx, "t-1")
+	if err != nil {
+		t.Fatalf("GetWork failed: %v", err)
+	}
+	if itemDone.LatestApproval == nil || itemDone.LatestApproval.Verdict != "PASS" {
+		t.Fatalf("expected LatestApproval PASS, got %+v", itemDone.LatestApproval)
+	}
+
+	// 9c. ComputeWorkFingerprint
+	fp, err := store.ComputeWorkFingerprint(ctx, "t-1")
+	if err != nil {
+		t.Fatalf("ComputeWorkFingerprint failed: %v", err)
+	}
+	if fp.TaskID != "t-1" {
+		t.Fatalf("unexpected fingerprint result: %+v", fp)
+	}
+
 	// 10. List Work
 	workList, err := store.ListWork(ctx)
 	if err != nil {

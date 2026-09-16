@@ -96,6 +96,30 @@ func handlePreToolHook() error {
 	}
 	relPath = filepath.ToSlash(relPath)
 
+	// SpaceX simplification: Whitelist scratch, temp, and agent metadata paths
+	// so agents are never blocked from creating debug/scratch scripts or logs.
+	lowRel := strings.ToLower(relPath)
+	lowTarget := strings.ToLower(filepath.ToSlash(target))
+	isWhitelisted := func(p string) bool {
+		return strings.HasPrefix(p, "scratch/") ||
+			strings.Contains(p, "/scratch/") ||
+			strings.HasPrefix(p, ".tmp/") ||
+			strings.Contains(p, "/.tmp/") ||
+			strings.HasPrefix(p, "tmp/") ||
+			strings.Contains(p, "/tmp/") ||
+			strings.HasPrefix(p, ".gemini/") ||
+			strings.Contains(p, "/.gemini/") ||
+			strings.HasPrefix(p, ".cortex-ia/") ||
+			strings.Contains(p, "/.cortex-ia/") ||
+			strings.HasPrefix(p, ".git/") ||
+			strings.Contains(p, "/.git/") ||
+			strings.HasSuffix(p, ".tmp") ||
+			strings.HasSuffix(p, ".log")
+	}
+	if isWhitelisted(lowRel) || isWhitelisted(lowTarget) {
+		return outputDecision("allow", "")
+	}
+
 	// Check if delegation SQLite DB exists
 	dbPath, err := cortexDBPath()
 	if err != nil || !fileExists(dbPath) {

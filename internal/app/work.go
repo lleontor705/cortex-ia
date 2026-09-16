@@ -32,6 +32,8 @@ func runWork(args []string) error {
 		fmt.Println("  release-all <task-id> --claim-token <token>                 Release all file leases for a task")
 		fmt.Println("  transition <task-id> --claim-token <token> --to <status>    Transition task state")
 		fmt.Println("  approve <task-id> --reviewer <id> --verdict <PASS|FAIL>     Approve/review a task")
+		fmt.Println("  approvals <task-id>                                         List historical approval records")
+		fmt.Println("  fingerprint <task-id>                                       Calculate current fingerprints and compare with approval")
 		fmt.Println("  retry <task-id> --revision <n>                              Retry a task")
 		fmt.Println("  revise --plan <file|@stdin>                                 Safely revise an unclaimed task definition")
 		fmt.Println("  decompose <task-id> --revision <n> --plan <file|@stdin>       Replace a blocked task with atomic tasks")
@@ -46,7 +48,7 @@ func runWork(args []string) error {
 	dbPath := delegation.DefaultDBPath(home)
 	sub := strings.ToLower(args[0])
 	var store *delegation.Store
-	if sub == "verify-lease" || sub == "check-lease" || sub == "status" || sub == "list" {
+	if sub == "verify-lease" || sub == "check-lease" || sub == "status" || sub == "list" || sub == "approvals" || sub == "fingerprint" {
 		store, err = delegation.OpenStoreReadOnly(dbPath)
 		if err != nil {
 			store, err = delegation.OpenStore(dbPath)
@@ -200,6 +202,32 @@ func runWork(args []string) error {
 			return err
 		}
 		return printJSON(out)
+	case "approvals":
+		if len(args) > 1 && isHelp(args[1]) {
+			return workUsage("approvals <task-id>", nil)
+		}
+		id, _, err := workIDOptions(args[1:], nil)
+		if err != nil {
+			return workUsage("approvals <task-id>", err)
+		}
+		approvals, err := store.ListWorkApprovals(ctx, id)
+		if err != nil {
+			return err
+		}
+		return printJSON(approvals)
+	case "fingerprint":
+		if len(args) > 1 && isHelp(args[1]) {
+			return workUsage("fingerprint <task-id>", nil)
+		}
+		id, _, err := workIDOptions(args[1:], nil)
+		if err != nil {
+			return workUsage("fingerprint <task-id>", err)
+		}
+		fp, err := store.ComputeWorkFingerprint(ctx, id)
+		if err != nil {
+			return err
+		}
+		return printJSON(fp)
 	case "claim":
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("claim <task-id> --owner <owner> [--ttl <duration>]", nil)

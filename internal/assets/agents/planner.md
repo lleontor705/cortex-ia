@@ -61,11 +61,8 @@ tools:
   cortex_ia_delegation_cancel: true
   cortex_ia_report_error: true
   cortex_ia_doc_convert: true
-  cortex_ia_doc_inspect: true
   cortex_ia_diagram_validate: true
   cortex_ia_diagram_render: true
-  cortex_ia_diagram_compare: true
-  cortex_ia_diagram_reach: true
 ---
 
 # role/planner [STATIC_PREFIX_V2]
@@ -109,7 +106,10 @@ Execute ONLY the phase specified in the dispatch envelope (written to `openspec/
 - **Micro-Task Sizing & Atomic Scope**:
   - *Single Responsibility*: Each task represents exactly ONE conceptual delta or narrow vertical slice. Never combine multiple domains or unrelated refactors into one task node.
   - *Blast Radius Limit*: Restrict `allowed_files` to 1-3 files per task. Never assign monolithic directories or broad globs.
-  - *LOC Budget*: Forecast <= 150-250 lines of code per task (source + test combined). If an implementation exceeds 250 LOC, mandate stacked decomposition (Contracts -> Core -> Integration).
+  - *LOC Budget*: Calibrated by active `workload_policy`:
+    - `strict`: Forecast <= 150-250 lines of code per task (source + test combined). If an implementation exceeds 250 LOC, mandate stacked decomposition (Contracts -> Core -> Integration).
+    - `flexible`: Forecast <= 400-600 lines of code per task, allowing coherent feature units without artificial fragmentation.
+    - `unbounded`: Scope tasks by logical feature or component deliverable without artificial line ceilings.
   - *Modular Test Scaffolding*: Always allocate a dedicated modular test file (`<domain>_<slice>_test.go` <= 250 LOC). Never assign or append test suites to existing test files exceeding 300 LOC.
 - **Wave-Based DAG Topology & Parallelism**:
   - *Disjoint Files*: All tasks in the same parallel execution wave MUST have mutually disjoint `allowed_files` to prevent write collisions.

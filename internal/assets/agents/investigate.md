@@ -65,6 +65,8 @@ tools:
   cortex_ia_board_status: true
   cortex_ia_work_list: true
   cortex_ia_work_status: true
+  cortex_ia_work_approvals: true
+  cortex_ia_work_fingerprint: true
   cortex_ia_delegate_start: true
   cortex_ia_delegation_status: true
   cortex_ia_delegation_wait: true
@@ -72,10 +74,8 @@ tools:
   cortex_ia_delegation_cancel: true
   cortex_ia_report_error: true
   cortex_ia_doc_convert: true
-  cortex_ia_doc_inspect: true
   cortex_ia_diagram_validate: true
   cortex_ia_diagram_render: true
-  cortex_ia_diagram_reach: true
 permission:
   bash:
     "*": allow

@@ -26,10 +26,12 @@ flowchart TD
     subgraph Alignment ["Operating Conditions Alignment"]
         StartGate -->|Ask if unset| ModeChoice[Execution Mode:\nAuto vs Interactive]
         StartGate -->|Ask if unset| PlaneChoice[Spec & Memory Plane:\nOpenSpec vs Cortex vs Hybrid]
+        StartGate -->|Ask if unset| WorkloadChoice[Workload Policy:\nStrict vs Flexible vs Unbounded]
         StartGate -->|Fixed policy| WorkspaceChoice[External Implement Workspace:\nCurrent Workspace]
         
         ModeChoice --> AmbiguityCheck{High Design\nUncertainty?}
         PlaneChoice --> AmbiguityCheck
+        WorkloadChoice --> AmbiguityCheck
         WorkspaceChoice --> AmbiguityCheck
         
         AmbiguityCheck -->|Yes: Unresolved branches| InvFact[Dispatch investigate:\nAutonomous Fact-Finding]
@@ -77,11 +79,16 @@ flowchart TD
    - Carry the selected `spec_plane` in every phase dispatch. A one-time exception is scoped to that change, never a replacement for the user's general preference.
 3. **External Implement Workspace Strategy**:
    - **`current_workspace`**: Single supported implementation workspace strategy; `isolated_worktree` is retired. Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_ia_file_reserve` calls made before editing each file. An external AGY leaf remains exclusive during its execution window; its native controller must not edit concurrently, and Cortex-IA compares the final workspace against a pre-run baseline.
-4. **Design Grilling (`grill-me`)**:
+4. **Workload Policy (Task Line Budget)**:
+   - **`strict`**: Micro-task DAG architecture. Source logic <= 350 LOC (Go/Rust/Java/C#) or <= 250 LOC (TS/Python, deletions 0.2x); test/fixtures <= 600 LOC. Exceeding thresholds triggers mandatory `WORKLOAD_SOURCE_BUDGET_EXCEEDED` block and atomic DAG decomposition into stacked units (<= 250 LOC).
+   - **`flexible`**: *(Recommended / Default)* Standard development units. Source logic <= 700 LOC (Go/Rust/Java/C#) or <= 500 LOC (TS/Python); test/fixtures <= 1200 LOC. Exceeding thresholds emits a non-blocking advisory (`WORKLOAD_ADVISORY`), allowing transition to `in_review` unless reviewer objects on architectural grounds.
+   - **`unbounded`**: Rapid prototyping, spikes, or batch migrations. No LOC limits enforced or checked; preflight transition blocks for diff size are disabled.
+   - The orchestrator asks the user if unset during Tier 3 SDD preflight. In Tier 1 and Tier 2 (`direct-change`, `ops-task`, `hotfix`), do not ask; default to `flexible` or `unbounded` without DAG overhead.
+5. **Design Grilling (`grill-me`)**:
    - When encountering unstated architectural choices or trade-offs, execute structured interview rounds:
      `❓ Q1 - <Title>: <Options>` + `➡️ Recomendación: <Answer>`.
    - Autonomous fact-finding is strictly delegated to the `investigate` subagent: the orchestrator holds no inspection tools and never reads code directly, nor does it ask the user for data that `investigate` can discover in the repository.
-5. **Project Discovery Profile**:
+6. **Project Discovery Profile**:
    - The native `discovery` role owns `./.cortex-ia/discovery.md`. Dispatch it for project onboarding, explicit refresh, environment uncertainty, or a known stale profile.
    - The profile inventories installed skills, languages/project types, required engines, Cortex rule IDs/names, and evidence-backed architecture. It is a reviewable cache of observations, not authority: current manifests, repository evidence, active Cortex rules, and tool output win on conflict.
    - Planner, implementer, and reviewer envelopes carry the profile as an artifact reference. No other role may write it.
@@ -214,10 +221,15 @@ sequenceDiagram
 
 ### Review Workload Guard & Stacked Units
 - **Decoupled Semantic Workload Budget**:
-  - **Source Logic Limits**: max **<= 350 lines** in Go/Rust/Java, **<= 250 lines** in TS/Python with weighted deletions (0.2x).
-  - **Test & Fixtures**: max **<= 600 lines** total, with modular test files bounded to <= 250 LOC per task.
-  - **Declarative Data / Schemas**: Excluded from algorithmic logic budgets.
-- **Pre-Transition Workload Preflight**: Implementers MUST check categorized churn (`git diff --numstat`) before calling `cortex_ia_work_transition({ to: "in_review" })`. If source logic changed lines exceed the cap, transitioning to `in_review` is strictly forbidden: transition directly to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if test fixtures exceed 600 LOC) to trigger immediate DAG decomposition.
+  - Calibrated by the session's active `workload_policy` (`strict` | `flexible` | `unbounded`):
+    - **`strict`**: Source logic max **<= 350 lines** in Go/Rust/Java/C#, **<= 250 lines** in TS/Python with weighted deletions (0.2x). Test & fixtures max **<= 600 lines** total, with modular test files bounded to <= 250 LOC per task.
+    - **`flexible`**: Source logic max **<= 700 lines** in Go/Rust/Java/C#, **<= 500 lines** in TS/Python (0.2x deletions). Test & fixtures max **<= 1200 lines** total.
+    - **`unbounded`**: No line count constraints enforced.
+  - **Declarative Data / Schemas**: Excluded from algorithmic logic budgets in all policies.
+- **Pre-Transition Workload Preflight**: Implementers MUST check categorized churn (`git diff --numstat`) before calling `cortex_ia_work_transition({ to: "in_review" })`.
+  - Under `strict`: If source logic changed lines exceed the cap, transitioning to `in_review` is strictly forbidden: transition directly to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if test fixtures exceed 600 LOC) to trigger immediate DAG decomposition.
+  - Under `flexible`: If churn exceeds the standard guideline, implementer emits `workload_status: "EXCEEDED_ADVISORY"` in the task receipt and transitions to `in_review`. The reviewer evaluates if the scope is acceptable.
+  - Under `unbounded`: Churn threshold checking is bypassed.
 - **Anti-Revision Loop Circuit Breaker**: If a task accumulates **two (2) consecutive review FAIL verdicts**, the orchestrator MUST NOT re-dispatch an implementer on the same monolithic task node. It MUST route the task to `planner` with `phase: "decompose"` for atomic decomposition into stacked units (<= 250 LOC). **Exception**: Pure-test or tooling tasks (`allowed_files` purely tests) MUST NOT be decomposed; fix or simplify the test assertions directly.
 - **In-Memory Immutability & Contract Preservation Invariants**:
   - Multi-record/batch validation must operate on defensive copies or without mutating caller-owned structs/pointers in-place prior to whole-request validation.
@@ -293,6 +305,7 @@ stateDiagram-v2
   ],
   "workspace_strategy": "current_workspace",
   "worktree": null,
+  "workload_policy": "strict | flexible | unbounded",
   "artifact_refs": ["specs/auth/REQ-AUTH-001.md"]
 }
 </minion-dispatch>
@@ -305,6 +318,7 @@ Workers execute the transition tool (`cortex_ia_work_transition({ to: "in_review
 - **Task**: task-auth-001
 - **Status**: in_review
 - **Verification Verdict**: PASS
+- **Workload Status**: COMPLIANT | EXCEEDED_ADVISORY (lines count)
 - **Changed Files**:
   - internal/auth/middleware.go
   - internal/auth/middleware_test.go
