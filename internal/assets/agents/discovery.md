@@ -36,13 +36,20 @@ tools:
   cortex_cortex_analyze_architecture: true
   cortex_detect_cycles: true
   cortex_cortex_detect_cycles: true
-  cortex_discovery_write: true
+  cortex_ia_content_hash: true
+  cortex_ia_snapshot_read: true
+  cortex_ia_openspec_validate: true
+  cortex_ia_board_list: true
+  cortex_ia_board_status: true
+  cortex_ia_work_list: true
+  cortex_ia_work_status: true
   cortex_ia_discovery_write: true
   cortex_ia_report_error: true
   cortex_ia_doc_convert: true
   cortex_ia_doc_inspect: true
   cortex_ia_diagram_validate: true
   cortex_ia_diagram_render: true
+  cortex_ia_diagram_reach: true
 permission:
   bash:
     "*": deny
