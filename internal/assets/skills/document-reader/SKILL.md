@@ -13,7 +13,6 @@ Use this skill when dealing with office documents, spreadsheets, presentations, 
 
 ## 1. Core Tools
 
-- `cortex_ia_doc_inspect`: Inspect file format, byte size, sheet/page counts, and structural headings without reading full content into memory.
 - `cortex_ia_doc_convert`: Convert document to clean GitHub-Flavored Markdown.
 
 ## 2. Supported Formats
@@ -27,9 +26,7 @@ Use this skill when dealing with office documents, spreadsheets, presentations, 
 
 ## 3. Best Practices & Token Preservation
 
-1. **Inspect Before Convert**:
-   On large or unknown documents, run `cortex_ia_doc_inspect` first. It returns sheet names, slide counts, or section outlines without flooding LLM context.
-2. **Use `output_path` for Multi-Page Manuals**:
+1. **Use `output_path` for Multi-Page Manuals**:
    If a PDF or document is over 10 pages, convert to a file (`output_path: "docs/spec.md"`) and use standard reading tools (`read`, `grep`) on the generated Markdown.
 3. **Limit Lines**:
    Set `max_lines: 300` when quickly scanning an excerpt in context.

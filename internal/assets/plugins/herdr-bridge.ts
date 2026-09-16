@@ -879,16 +879,6 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       }
     }),
 
-    cortex_ia_doc_inspect: tool({
-      description: "Inspect an office or PDF document's format, metadata, section outline, or sheet/page count without loading full content (inspired by anydoc).",
-      args: {
-        file_path: tool.schema.string()
-      },
-      async execute(args, context) {
-        return cortex(["doc", "inspect", path.resolve(context.directory, args.file_path), "--json"], context.directory);
-      }
-    }),
-
     cortex_ia_diagram_validate: tool({
       description: "Validate a system diagram JSON specification (architecture, workflow, sequence, dataflow, lifecycle) against topological and structural rules (inspired by archify).",
       args: {
@@ -917,35 +907,6 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         const diagramType = args.diagram_type || "architecture";
         const cmd = ["diagram", "render", diagramType, path.resolve(context.directory, args.spec_path), path.resolve(context.directory, args.output_path), "--json"];
         if (args.quality) cmd.push(`--quality=${args.quality}`);
-        return cortex(cmd, context.directory);
-      }
-    }),
-
-    cortex_ia_diagram_compare: tool({
-      description: "Compare two architecture diagram snapshots (base vs head) and produce an architectural delta report and optional visual comparison HTML (inspired by archify).",
-      args: {
-        base_spec_path: tool.schema.string(),
-        head_spec_path: tool.schema.string(),
-        output_html_path: tool.schema.string().optional()
-      },
-      async execute(args, context) {
-        const cmd = ["diagram", "compare", path.resolve(context.directory, args.base_spec_path), path.resolve(context.directory, args.head_spec_path)];
-        if (args.output_html_path) cmd.push(path.resolve(context.directory, args.output_html_path));
-        cmd.push("--json");
-        return cortex(cmd, context.directory);
-      }
-    }),
-
-    cortex_ia_diagram_reach: tool({
-      description: "Trace graph reachability (upstream dependencies or downstream impact) from a target component in a diagram specification (inspired by archify).",
-      args: {
-        spec_path: tool.schema.string(),
-        from_node: tool.schema.string(),
-        direction: tool.schema.enum(["upstream", "downstream", "both"]).optional()
-      },
-      async execute(args, context) {
-        const cmd = ["diagram", "reach", path.resolve(context.directory, args.spec_path), "--from", args.from_node, "--json"];
-        if (args.direction) cmd.push("--direction", args.direction);
         return cortex(cmd, context.directory);
       }
     }),
@@ -1733,7 +1694,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
   const controllers = ["planner", "investigate", "implement", "reviewer"];
   const readers = new Set([
     "content_hash", "openspec_validate", "board_list", "board_status", "work_list", "work_status", "delegation_status", "delegation_wait", "delegation_result", "delegation_models",
-    "doc_inspect", "diagram_validate", "diagram_reach"
+    "diagram_validate"
   ]);
   const mutations: Record<string, string[]> = {
     openspec_write: ["planner"], change_archive: ["planner"], discovery_write: ["discovery"],
@@ -1746,7 +1707,6 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     delegation_cancel: [...controllers, "orchestrator"], delegation_recover: ["orchestrator"],
     doc_convert: roles,
     diagram_render: ["planner", "orchestrator", "investigate", "discovery"],
-    diagram_compare: ["planner", "orchestrator", "reviewer"],
     report_error: roles
   };
   for (const [name, definition] of Object.entries(bridgeTools) as [string, any][]) {
