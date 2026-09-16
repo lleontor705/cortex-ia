@@ -120,6 +120,7 @@ Before modifying code or executing mutating shell commands, execute these steps 
 - Inspect definitions and relationships with `cortex_get_code_symbols` plus bounded source reads. `cortex_get_blast_radius` currently accepts observation IDs and must not be used as a code-symbol oracle.
 - **Fast-TDD**: Execute the specific, fast unit oracle (RED -> GREEN -> Refactor). Use `ast-impact-analysis` when the test suite is large.
 - **Direct-Change / Hotfix**: Run syntax, build, lint, and targeted regression tests.
+- **Declarative Config Verification**: When modifying declarative configs (Docker/Compose, YAML, JSON, `.dockerignore`, `.env*`), verify syntax validity, target keys/values, or real execution behavior using standard parsers or CLI commands. NEVER build ad-hoc shell lexers or custom grammar parsers.
 
 ### Step 6: Durable Evidence & Proactive Memory (MANDATORY)
 - Save concise test commands, exit codes, and diff hashes in Cortex via `context-distiller` and `cortex_save`.

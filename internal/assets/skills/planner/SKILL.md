@@ -113,6 +113,11 @@ Use horizontal prerequisite tasks only for a genuine shared foundation that must
   - `dependencies`: Include ONLY genuine executable prerequisites.
 - Ensure every task is independently verifiable with exit code `0`.
 - Build dependencies from executable prerequisites, not presentation order. Minimize unnecessary chain depth, identify the critical path, and emit parallel groups only for ready tasks with disjoint writable files.
+- **Declarative Configuration Verification vs Programmatic Engines**:
+  - For declarative configuration files (e.g. `docker-compose.yml`, `compose.yaml`, `Dockerfile`, `.dockerignore`, `.env*`, `package.json`, CI YAML, JSON configs), verification must be simple and proportional: syntax validity using standard language parsers, direct key/value matching, or real CLI commands.
+  - Planners MUST NEVER invent tasks demanding ad-hoc shell lexers, custom grammar parsers, or complex AST tokenizers to inspect declarative configs.
+- **Anti-Decomposition of Pure Tests**:
+  - Tasks whose `allowed_files` consist purely of tests or test fixtures (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks) MUST NOT undergo DAG decomposition. A failing test harness must be simplified, corrected, or replaced with a standard oracle, never split into sub-tasks.
 
 
 ---

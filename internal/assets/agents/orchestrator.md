@@ -191,6 +191,8 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
 
 ### Blocked Task Decomposition Envelope (to planner)
 When routing a blocked task (e.g. `WORKLOAD_SOURCE_BUDGET_EXCEEDED`, `WORKLOAD_TEST_BUDGET_EXCEEDED`, two consecutive review FAIL verdicts, or repeated attempt failure) to `planner` for decomposition via `cortex_ia_work_decompose`, you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and supply the session's active `spec_plane`. **A task that fails review twice must NEVER be retried directly as the same monolithic task**; it must be decomposed into stacked subtasks (<= 250 LOC).
+- **Anti-Decomposition for Pure Tests**: Tasks whose `allowed_files` consist purely of tests, test fixtures, or test scaffolding (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks) MUST NOT be routed for DAG decomposition. Pure-test failures must be addressed by re-dispatching `implement` to fix or simplify the test assertions directly or prune invalid mock assumptions. Never decompose a test into more tests.
+- **Infrastructure & Config Pragmatism**: Single-file Docker, Compose, environment, or database script changes should be routed as `ops-task` or `direct-change`, avoiding unnecessary escalation to full SDD or decomposition.
 
 ```json
 <minion-dispatch>
