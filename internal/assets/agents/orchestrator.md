@@ -42,6 +42,7 @@ permission:
   cortex_ia_work_review_refresh: allow
   cortex_ia_delegation_cancel: allow
   cortex_ia_delegation_recover: allow
+  cortex_ia_delegation_reconcile: allow
   cortex_ia_report_error: allow
   cortex_ia_doc_convert: allow
   cortex_ia_diagram_validate: allow

@@ -1373,6 +1373,454 @@ textarea { min-height: 80px; resize: vertical; }
 }
 .empty strong { display: block; color: var(--text); font-size: 16px; margin-bottom: 4px; }
 
+/* ==========================================================================
+   Flow Canvas (Interactive DAG Node Graph)
+   ========================================================================== */
+.flow-canvas-container {
+  position: relative;
+  width: 100%;
+  height: 680px;
+  min-height: 520px;
+  overflow: hidden;
+  user-select: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background-color: #070a14;
+  background-image: radial-gradient(circle at 1.5px 1.5px, rgba(139, 92, 246, 0.16) 1.5px, transparent 0);
+  background-size: 28px 28px;
+  cursor: grab;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.5);
+}
+
+.flow-canvas-container:active {
+  cursor: grabbing;
+}
+
+.flow-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.flow-edges-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.flow-cable {
+  pointer-events: stroke;
+}
+
+.flow-cable-hitbox {
+  cursor: pointer;
+  pointer-events: stroke;
+}
+
+.flow-cable-path {
+  stroke-linecap: round;
+  transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.25s ease;
+}
+
+.flow-cable.cable-active .flow-cable-path {
+  stroke-dasharray: 6 6;
+  animation: flowDash 1.2s linear infinite;
+}
+
+.flow-cable.cable-highlight .flow-cable-path {
+  filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.85));
+  stroke-width: 3.5px !important;
+}
+
+.flow-cable.cable-dimmed {
+  opacity: 0.15;
+}
+
+@keyframes flowDash {
+  to {
+    stroke-dashoffset: -24px;
+  }
+}
+
+.flow-nodes-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.flow-node-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: auto;
+  cursor: grab;
+  background: rgba(13, 18, 32, 0.90);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, opacity 0.25s ease, filter 0.25s ease, transform 0.05s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+}
+
+.flow-node-card:active {
+  cursor: grabbing;
+}
+
+/* Card Status Themes */
+.flow-node-card.done {
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.12), 0 0 0 1px rgba(16, 185, 129, 0.2);
+}
+
+.flow-node-card.in_progress {
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.28), 0 0 0 1px rgba(139, 92, 246, 0.35);
+}
+
+.flow-node-card.in_review {
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.18), 0 0 0 1px rgba(99, 102, 241, 0.25);
+}
+
+.flow-node-card.ready {
+  border-color: rgba(6, 182, 212, 0.45);
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.14), 0 0 0 1px rgba(6, 182, 212, 0.2);
+}
+
+.flow-node-card.blocked {
+  border-color: rgba(244, 63, 94, 0.6);
+  box-shadow: 0 0 22px rgba(244, 63, 94, 0.28), 0 0 0 1px rgba(244, 63, 94, 0.3);
+}
+
+.flow-node-card.superseded {
+  border-color: rgba(71, 85, 105, 0.3);
+  border-style: dashed;
+  opacity: 0.7;
+}
+
+.flow-node-card.backlog {
+  border-color: rgba(100, 116, 139, 0.25);
+}
+
+/* Card Interactive States */
+.flow-node-card:hover,
+.flow-node-card.selected {
+  z-index: 25;
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.65), 0 0 18px rgba(139, 92, 246, 0.35);
+}
+
+.flow-node-card.dimmed {
+  opacity: 0.22;
+  filter: grayscale(0.65);
+}
+
+.flow-node-card.highlighted {
+  z-index: 20;
+  border-color: #8b5cf6;
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.45);
+}
+
+/* Card Header & Content */
+.flow-node-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.flow-node-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flow-node-badge code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: #cbd5e1;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.flow-rev-pill {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.status-chip.mini {
+  font-size: 10px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+
+.flow-node-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 48px;
+}
+
+.flow-node-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f8fafc;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.flow-node-objective {
+  margin: 0;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.flow-node-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  margin-top: auto;
+}
+
+.flow-signal-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.flow-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.flow-signal.active {
+  color: #38bdf8;
+}
+
+.flow-signal.muted {
+  color: #64748b;
+}
+
+.flow-signal .signal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #64748b;
+}
+
+.flow-signal.active .signal-dot {
+  background: #06b6d4;
+  box-shadow: 0 0 6px #06b6d4;
+}
+
+.pulsing {
+  animation: pulseGlow 1.8s infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+
+.flow-badges-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.flow-pill {
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #94a3b8;
+  font-family: var(--font-mono);
+}
+
+.flow-pill.deps.resolved {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.flow-pill.deps.pending {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+}
+
+/* Connection Ports */
+.flow-port {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0f172a;
+  border: 2px solid #64748b;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 15;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.flow-port .port-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.flow-port-in {
+  left: -7px;
+}
+
+.flow-port-out {
+  right: -7px;
+  border-color: #8b5cf6;
+}
+
+.flow-port-out .port-dot {
+  background: #8b5cf6;
+}
+
+.flow-port-in.resolved {
+  border-color: #10b981;
+}
+
+.flow-port-in.resolved .port-dot {
+  background: #10b981;
+}
+
+.flow-port-in.pending {
+  border-color: #f59e0b;
+}
+
+.flow-port-in.pending .port-dot {
+  background: #f59e0b;
+}
+
+/* Floating Controls Dock */
+.flow-controls-dock {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 30;
+}
+
+.flow-btn {
+  background: transparent;
+  border: none;
+  color: #cbd5e1;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.flow-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.flow-zoom-display {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #94a3b8;
+  padding: 0 4px;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* Minimap / Radar */
+.flow-minimap {
+  position: absolute;
+  bottom: 18px;
+  right: 18px;
+  width: 170px;
+  height: 110px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  z-index: 30;
+}
+
+.minimap-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.minimap-tag {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 8px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  pointer-events: none;
+}
+
 /* Responsive */
 @media (max-width: 1100px) {
   .metrics.five { grid-template-columns: repeat(3, 1fr); }
@@ -1404,4 +1852,8 @@ textarea { min-height: 80px; resize: vertical; }
   .control-rail { grid-template-columns: 1fr; }
   .dependency-row { grid-template-columns: 8px minmax(0, 1fr) auto; }
   .dependency-links { grid-column: 2 / -1; }
+  .flow-canvas-container { height: 500px; }
+  .flow-minimap { display: none; }
+  .flow-controls-dock { bottom: 10px; left: 10px; }
 }
+

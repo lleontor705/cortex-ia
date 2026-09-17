@@ -1,7 +1,6 @@
 package delegation
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -11,13 +10,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 type ContractPin struct {
@@ -483,66 +481,24 @@ func relocateContractPath(workspace, locator, sourcePath, destinationPath string
 	return clean, nil
 }
 
-type contractExportBuffer struct{ bytes.Buffer }
-
-func (b *contractExportBuffer) Write(data []byte) (int, error) {
-	if len(data) > 8*1024*1024-b.Len() {
-		return 0, errors.New("contract export exceeds 8 MiB")
-	}
-	return b.Buffer.Write(data)
-}
-
-// Local store reads are bounded and explicit, not atomic with SQLite task state.
-// Remote MCP pins require the controller's independent provider verification.
+// Local reads verify exact content through the same bounded stream as snapshot read.
+// Remote MCP pins still require independent verification through their own transport.
 func verifyLocalCortexPins(ctx context.Context, contract *SDDContract) error {
-	groups := map[string][]ContractPin{}
+	groups := map[string][]CortexSnapshotRequest{}
 	for _, pin := range contract.Pins {
 		if pin.Transport == "local_cortex_cli" {
-			groups[pin.Project] = append(groups[pin.Project], pin)
+			id, err := strconv.ParseInt(pin.Locator, 10, 64)
+			if err != nil {
+				return errors.New("invalid local Cortex observation ID")
+			}
+			groups[pin.Project] = append(groups[pin.Project], CortexSnapshotRequest{ID: id, ExpectedSHA256: pin.SHA256})
 		}
-	}
-	if len(groups) == 0 {
-		return nil
 	}
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	for project, pins := range groups {
-		var output contractExportBuffer
-		command := exec.CommandContext(bounded, "cortex", "export", "--project", project)
-		command.Stdout = &output
-		command.Stderr = io.Discard
-		if err := command.Run(); err != nil {
-			return errors.New("local Cortex pin export failed, timed out, or exceeded 8 MiB")
-		}
-		if !utf8.Valid(output.Bytes()) {
-			return errors.New("local Cortex export is not valid UTF-8")
-		}
-		var observations []struct {
-			ID      json.Number `json:"id"`
-			Project string      `json:"project"`
-			Content string      `json:"content"`
-		}
-		if err := json.Unmarshal(output.Bytes(), &observations); err != nil {
-			return errors.New("invalid structured local Cortex export")
-		}
-		for _, pin := range pins {
-			found := 0
-			for _, observation := range observations {
-				if observation.ID.String() != pin.Locator {
-					continue
-				}
-				found++
-				if observation.Project != project || len(observation.Content) > 1024*1024 {
-					return errors.New("local Cortex pin project or content bound mismatch")
-				}
-				digest := sha256.Sum256([]byte(observation.Content))
-				if hex.EncodeToString(digest[:]) != pin.SHA256 {
-					return errors.New("local Cortex contract pin changed; fresh contract required")
-				}
-			}
-			if found != 1 {
-				return errors.New("local Cortex contract observation missing or ambiguous")
-			}
+	for project, requests := range groups {
+		if _, err := ReadCortexSnapshots(bounded, project, requests); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -1,0 +1,37 @@
+{
+  "requirement_ids": [
+    "REQ-RECON-001",
+    "REQ-RECON-002",
+    "REQ-RECON-003"
+  ],
+  "workflow": "sdd-full",
+  "change_id": "lost-job-reconciliation",
+  "version": 1,
+  "spec_plane": "openspec",
+  "pins": [
+    {
+      "locator": "openspec/changes/lost-job-reconciliation/proposal.md",
+      "transport": "workspace_file",
+      "sha256": "83678fde9867bfc082cdceae52e5c38f06ddb90ff0b92d922da8bb4dc1d7cfb3",
+      "project": "D:/cortex-ia"
+    },
+    {
+      "locator": "openspec/changes/lost-job-reconciliation/design.md",
+      "transport": "workspace_file",
+      "sha256": "4b9bc825f7f6d424e952a47e7f0163dc4835e67ecd642183cab1f76d840506de",
+      "project": "D:/cortex-ia"
+    },
+    {
+      "locator": "openspec/changes/lost-job-reconciliation/specs/recovery/spec.md",
+      "transport": "workspace_file",
+      "sha256": "ef68469ae131fbb90adaa013595f94e80385964254ecbe1dea759e9ee4709427",
+      "project": "D:/cortex-ia"
+    },
+    {
+      "locator": "openspec/changes/lost-job-reconciliation/tasks.md",
+      "transport": "workspace_file",
+      "sha256": "460fad600709cd83219e5a063792fe017d76b433c092a122ef4755ccd55e67ba",
+      "project": "D:/cortex-ia"
+    }
+  ]
+}

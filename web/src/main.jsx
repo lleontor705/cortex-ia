@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import './styles.css';
+import { FlowCanvas } from './flow-canvas.jsx';
 import {
   CortexLogoMark,
   IconOverview,
@@ -21,7 +22,10 @@ import {
   IconArchive,
   IconChevronDown,
   IconChevronRight,
-  IconX
+  IconX,
+  IconFlow,
+  IconKanban,
+  IconList
 } from './icons.jsx';
 
 const states = [
@@ -692,7 +696,7 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
   const counts = board?.counts || {};
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [mode, setMode] = useState('flow');
+  const [mode, setMode] = useState('graph');
   const itemsByID = useMemo(() => new Map(items.map(item => [item.task_id, item])), [items]);
   const filteredItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -798,8 +802,33 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
         <section class="board-workspace">
           <header class="board-toolbar">
             <div class="view-switch" aria-label="Vista del tablero">
-              <button class={mode === 'flow' ? 'active' : ''} aria-pressed={mode === 'flow'} onClick={() => setMode('flow')}>Flujo</button>
-              <button class={mode === 'dependencies' ? 'active' : ''} aria-pressed={mode === 'dependencies'} onClick={() => setMode('dependencies')}>Dependencias</button>
+              <button
+                class={mode === 'graph' ? 'active' : ''}
+                aria-pressed={mode === 'graph'}
+                onClick={() => setMode('graph')}
+                title="Grafo DAG interactivo estilo ComfyUI / React Flow"
+              >
+                <IconFlow size={14} style="margin-right: 5px; vertical-align: -2px;" />
+                Grafo DAG
+              </button>
+              <button
+                class={mode === 'kanban' ? 'active' : ''}
+                aria-pressed={mode === 'kanban'}
+                onClick={() => setMode('kanban')}
+                title="Tablero de columnas Kanban"
+              >
+                <IconKanban size={14} style="margin-right: 5px; vertical-align: -2px;" />
+                Kanban
+              </button>
+              <button
+                class={mode === 'list' ? 'active' : ''}
+                aria-pressed={mode === 'list'}
+                onClick={() => setMode('list')}
+                title="Lista de dependencias"
+              >
+                <IconList size={14} style="margin-right: 5px; vertical-align: -2px;" />
+                Lista
+              </button>
             </div>
             <div class="board-filters">
               <select value={statusFilter} onChange={event => setStatusFilter(event.currentTarget.value)} aria-label="Filtrar por estado">
@@ -810,7 +839,15 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
             </div>
           </header>
           <div class="result-count">{filteredItems.length} de {items.length} tareas visibles</div>
-          {mode === 'flow' ? (
+          {mode === 'graph' ? (
+            <FlowCanvas
+              items={filteredItems}
+              itemsByID={itemsByID}
+              boardId={board.board_id}
+              onTask={onTask}
+              onNewTask={onNewTask}
+            />
+          ) : mode === 'kanban' ? (
             <section class="kanban">
               {states.map(([status, label]) => {
                 const cards = filteredItems.filter(item => item.status === status);
@@ -830,7 +867,9 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
                 );
               })}
             </section>
-          ) : <DependencyView items={filteredItems} itemsByID={itemsByID} onTask={onTask} />}
+          ) : (
+            <DependencyView items={filteredItems} itemsByID={itemsByID} onTask={onTask} />
+          )}
         </section>
 
         <aside class="control-rail">

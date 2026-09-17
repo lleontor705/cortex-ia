@@ -105,7 +105,7 @@ func runDiagramValidate(args []string) error {
 
 func runDiagramRender(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: cortex-ia diagram render <type> <spec.json> [output.html] [--quality standard|showcase] [--json]")
+		return fmt.Errorf("usage: cortex-ia diagram render <type> <spec.json> [output.html] --standalone [--quality standard|showcase] [--json]")
 	}
 
 	var diagType string
@@ -113,11 +113,19 @@ func runDiagramRender(args []string) error {
 	var outputFile string
 	quality := diagram.QualityShowcase
 	jsonOutput := false
+	standalone := false
+	authoritySource := ""
 
 	for _, arg := range args {
+		if strings.HasPrefix(arg, "--artifact-authority=") {
+			authoritySource = strings.TrimPrefix(arg, "--artifact-authority=")
+			continue
+		}
 		switch arg {
 		case "--json":
 			jsonOutput = true
+		case "--standalone":
+			standalone = true
 		case "--quality=showcase":
 			quality = diagram.QualityShowcase
 		case "--quality=standard":
@@ -150,9 +158,15 @@ func runDiagramRender(args []string) error {
 		outputFile = strings.TrimSuffix(specFile, ".json") + ".html"
 	}
 
+	check, closeGuard, err := artifactOutputGuard(outputFile, authoritySource, standalone)
+	if err != nil {
+		return err
+	}
+	defer closeGuard()
 	res, err := diagram.RenderFile(context.Background(), specFile, outputFile, diagram.RenderOptions{
 		DiagramType: diagram.DiagramType(diagType),
 		Quality:     quality,
+		BeforeWrite: check,
 	})
 	if err != nil {
 		return err

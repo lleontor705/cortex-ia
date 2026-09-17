@@ -1,4 +1,5 @@
 import { type Plugin, tool } from "@opencode-ai/plugin";
+import { Buffer } from "node:buffer";
 import { execFileSync, execSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
@@ -36,9 +37,19 @@ interface WorkAuthority {
   claimToken: string;
   leases: Map<string, string>;
   sessionID: string;
+  maintenance?: { active: boolean; lastProgress: number; timer?: ReturnType<typeof setTimeout>; abort?: AbortController; progress: Map<string, string>; reason?: string };
 }
 
 const workAuthority = new Map<string, WorkAuthority>();
+const maintenancePolicy = { interval_ms: 30000, status_timeout_ms: 5000, stale_progress_ms: 900000, ttl: "15m" };
+function stopMaintenance(authority: WorkAuthority, reason: string) {
+  const state = authority.maintenance;
+  if (!state) return;
+  state.active = false;
+  state.reason = reason;
+  if (state.timer !== undefined) clearTimeout(state.timer);
+  state.abort?.abort();
+}
 const controllerIdentity = (sessionID: string) => `opencode-session:${sessionID}`;
 const logDelegation = logLifecycle;
 
@@ -268,6 +279,7 @@ function bridgeAuthorityView(taskID: string, durable: any, sessionID: string) {
     usable,
     write_usable: writeUsable,
     retained_lease_paths: authority ? [...authority.leases.keys()].sort() : [],
+    maintenance: authority?.maintenance ? { active: authority.maintenance.active, reason: authority.maintenance.reason, ...maintenancePolicy } : undefined,
     action: writeUsable
       ? "CONTINUE_WITH_HEARTBEAT"
       : usable
@@ -314,7 +326,17 @@ function logLifecycle(msg: string) {
   } catch {}
 }
 
+const executableCache = new Map<string, { path: string; until: number; environment: string }>();
 function firstExecutable(name: "cortex-ia" | "herdr"): string {
+  const environment = [process.env.PATH, process.env.HOME, process.env.USERPROFILE, process.env.LOCALAPPDATA, process.cwd()].join("|");
+  const cached = executableCache.get(name);
+  if (cached && cached.until > Date.now() && cached.environment === environment &&
+      (cached.path === name || fs.existsSync(cached.path))) return cached.path;
+  executableCache.delete(name);
+  const remember = (value: string) => {
+    executableCache.set(name, { path: value, until: Date.now() + 60000, environment });
+    return value;
+  };
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
   const candidates = name === "herdr"
@@ -340,11 +362,11 @@ function firstExecutable(name: "cortex-ia" | "herdr"): string {
         "/usr/bin/cortex-ia"
       ];
   for (const candidate of candidates) {
-    if (candidate !== name && fs.existsSync(candidate)) return candidate;
+    if (candidate !== name && fs.existsSync(candidate)) return remember(candidate);
     if (candidate === name) {
       try {
-        execFileSync(candidate, name === "herdr" ? ["--version"] : ["version"], { stdio: "ignore", windowsHide: true });
-        return candidate;
+        execFileSync(candidate, name === "herdr" ? ["--version"] : ["version"], { stdio: "ignore", windowsHide: true, timeout: 5000 });
+        return remember(candidate);
       } catch {}
     }
   }
@@ -357,9 +379,11 @@ function cortex(args: string[], cwd?: string): string {
       encoding: "utf-8",
       cwd,
       windowsHide: true,
+      timeout: 120000,
       stdio: ["ignore", "pipe", "pipe"]
     });
   } catch (err: any) {
+    executableCache.delete("cortex-ia");
     const msg = String(err?.message || err);
     if (msg.includes("uv_spawn") || msg.includes("EUNKNOWN")) {
       try {
@@ -368,6 +392,7 @@ function cortex(args: string[], cwd?: string): string {
           encoding: "utf-8",
           cwd,
           windowsHide: true,
+          timeout: 120000,
           stdio: ["ignore", "pipe", "pipe"]
         });
       } catch {}
@@ -377,21 +402,47 @@ function cortex(args: string[], cwd?: string): string {
 }
 
 function cortexAuthorized(args: string[], token: string): string {
-  return execFileSync(firstExecutable("cortex-ia"), args, {
-    encoding: "utf-8",
-    input: token,
-    windowsHide: true,
-    stdio: ["pipe", "pipe", "pipe"]
-  });
+  return cortexInput(args, token);
 }
 
-function cortexInput(args: string[], input: string): string {
+function cortexInput(args: string[], input: string, timeout = 120000): string {
+  try {
   return execFileSync(firstExecutable("cortex-ia"), args, {
     encoding: "utf-8",
     input,
     windowsHide: true,
+    timeout,
     stdio: ["pipe", "pipe", "pipe"]
   });
+  } catch (error) {
+    executableCache.delete("cortex-ia");
+    throw error;
+  }
+}
+
+function artifactCommand(command: string[], outputPath: string, context: any): string {
+  if (context?.agent !== "implement" || typeof context.sessionID !== "string" ||
+      !/^[A-Za-z0-9_-]{1,256}$/.test(context.sessionID) || typeof context.directory !== "string") {
+    throw new Error("BRIDGE_ROLE_DENIED: artifact output requires the host implement controller");
+  }
+  const root = path.resolve(context.directory);
+  const relative = path.relative(root, path.resolve(root, outputPath));
+  if (!relative || path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`) || relative.includes(":") || relative.includes("\0")) {
+    throw new Error("LEASE_CHECK_FAILED: artifact output must be inside the workspace");
+  }
+  const leasePath = workPath(relative);
+  const owned = [...workAuthority.entries()].filter(([, authority]) => authority.sessionID === context.sessionID);
+  if (owned.length !== 1) throw new Error("LEASE_REQUIRED: artifact output requires one live task claim");
+  const [taskID] = owned[0];
+  const authority = authorityForSession(taskID, context.sessionID, true);
+  const leaseToken = authority.leases.get(leasePath);
+  if (!leaseToken) throw new Error("LEASE_REQUIRED: artifact output path is not reserved by this controller");
+  // The service checks physical containment and both live tokens at admission
+  // and again after conversion, immediately before output or renderer launch.
+  return cortexInput([...command, "--artifact-authority=@stdin"], JSON.stringify({
+    project: root, session_id: context.sessionID, role: context.agent,
+    task_id: taskID, path: leasePath, claim_token: authority.claimToken, lease_token: leaseToken,
+  }));
 }
 
 function parseJSON(text: string): any {
@@ -700,6 +751,55 @@ function extractCompactReceipt(job: any, res: any, jobID: string): any {
 }
 
 export const CortexDelegationBridge: Plugin = async ({ client }) => {
+  const startMaintenance = (taskID: string, authority: WorkAuthority, directory: string) => {
+    const state: NonNullable<WorkAuthority["maintenance"]> = { active: true, lastProgress: Date.now(), progress: new Map() };
+    authority.maintenance = state;
+    if (typeof client.session?.status !== "function" || !directory) {
+      stopMaintenance(authority, "host_status_unavailable_manual_renewal_required");
+      return;
+    }
+    const current = () => state.active && workAuthority.get(taskID) === authority && authority.maintenance === state;
+    const tick = async () => {
+      if (!current()) return;
+      if (Date.now() - state.lastProgress >= maintenancePolicy.stale_progress_ms) {
+        stopMaintenance(authority, "stale_progress"); return;
+      }
+      const abort = new AbortController();
+      state.abort = abort;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const response: any = await Promise.race([
+          client.session.status({ query: { directory }, signal: abort.signal }),
+          new Promise((_, reject) => { timeout = setTimeout(() => { abort.abort(); reject(new Error("host_status_timeout")); }, maintenancePolicy.status_timeout_ms); })
+        ]);
+        if (!current()) return;
+        const status = response?.data?.[authority.sessionID]?.type;
+        if (response?.error || !["busy", "retry"].includes(status)) {
+          stopMaintenance(authority, "host_idle_or_unknown"); return;
+        }
+        if (Date.now() - state.lastProgress >= maintenancePolicy.stale_progress_ms) {
+          stopMaintenance(authority, "stale_progress"); return;
+        }
+        const receipt = parseJSON(cortexInput(["work", "controller-renew", taskID, "--owner", controllerIdentity(authority.sessionID), "--authority", "@stdin", "--ttl", maintenancePolicy.ttl],
+          JSON.stringify({ claim_token: authority.claimToken, leases: Object.fromEntries(authority.leases) }), 10000));
+        if (receipt?.task_id !== taskID || receipt?.owner !== controllerIdentity(authority.sessionID) ||
+            receipt?.lease_count !== authority.leases.size || !(Date.parse(receipt?.expires_at) > Date.now())) {
+          throw new Error("controller_renewal_unconfirmed");
+        }
+      } catch {
+        stopMaintenance(authority, "maintenance_failed_manual_reconciliation_required");
+      } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+        state.abort = undefined;
+        if (current()) schedule();
+      }
+    };
+    const schedule = () => {
+      state.timer = setTimeout(tick, maintenancePolicy.interval_ms);
+      (state.timer as any)?.unref?.();
+    };
+    schedule();
+  };
   // Only host session metadata proves ancestry; tool arguments and transcripts
   // must never supply conversation ownership.
   const conversationOwnership = async (sessionID: string, directory: string) => {
@@ -721,6 +821,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
   };
   return ({
   dispose: async () => {
+    for (const authority of workAuthority.values()) stopMaintenance(authority, "disposed");
     workAuthority.clear();
     saveAuthorityState();
   },
@@ -729,6 +830,30 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     if (!event) return;
     const type = event.type || event.event || "";
     const sessionID = event.sessionID || event.sessionId || event.properties?.sessionID || event.properties?.info?.id || "";
+    const progress = type === "message.part.updated" ? event.properties?.part : type === "message.updated" ? event.properties?.info : undefined;
+    for (const authority of workAuthority.values()) {
+      const state = authority.maintenance;
+      if (!state?.active) continue;
+      if (type === "server.instance.disposed" ||
+          (["session.idle", "session.deleted", "session.error"].includes(type) && (sessionID === authority.sessionID || !sessionID)) ||
+          (type === "session.status" && sessionID === authority.sessionID && event.properties?.status?.type === "idle")) {
+        stopMaintenance(authority, type); continue;
+      }
+      if (progress?.sessionID === authority.sessionID && typeof progress.id === "string" && progress.id.length <= 256) {
+        if (Date.now() - state.lastProgress >= maintenancePolicy.stale_progress_ms) { stopMaintenance(authority, "stale_progress"); continue; }
+        // Only a changed host message/part advances progress; repeated busy/retry
+        // status and duplicate event delivery cannot maintain an orphan forever.
+        const key = `${type}:${progress.id}`;
+        const encoded = JSON.stringify(progress);
+        if (encoded.length > 1048576) continue;
+        const digest = createHash("sha256").update(encoded).digest("hex");
+        if (state.progress.get(key) !== digest) {
+          state.lastProgress = Date.now();
+          state.progress.set(key, digest);
+          if (state.progress.size > 128) state.progress.delete(state.progress.keys().next().value!);
+        }
+      }
+    }
 
     // 1. Detectar inicio de subagente o subtask
     if (type === "session.created" && event.properties?.info?.parentID) {
@@ -829,11 +954,18 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         const comparableTarget = process.platform === "win32" || process.platform === "darwin" ? target.toLowerCase() : target;
         const comparableRoot = process.platform === "win32" || process.platform === "darwin" ? allowedRoot.toLowerCase() : allowedRoot;
         if (!comparableTarget.startsWith(comparableRoot)) throw new Error("OpenSpec path escaped its managed root");
+        const bytes = Buffer.from(args.content, "utf-8");
+        if (bytes.toString("utf-8") !== args.content) throw new Error("OpenSpec write requires well-formed Unicode for exact UTF-8 encoding");
         fs.mkdirSync(path.dirname(target), { recursive: true });
-        const temporary = `${target}.${process.pid}.tmp`;
-        fs.writeFileSync(temporary, args.content, { encoding: "utf-8", mode: 0o644 });
-        fs.renameSync(temporary, target);
-        return JSON.stringify({ written: clean, bytes: Buffer.byteLength(args.content, "utf-8") });
+        const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+        try {
+          fs.writeFileSync(temporary, bytes, { mode: 0o644 });
+          fs.renameSync(temporary, target);
+        } finally {
+          try { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); } catch {}
+        }
+        const sha256 = createHash("sha256").update(bytes).digest("hex");
+        return JSON.stringify({ written: clean, bytes: bytes.length, sha256 });
       }
     }),
 
@@ -878,7 +1010,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }),
 
     cortex_ia_doc_convert: tool({
-      description: "Convert an office document (.docx, .xlsx, .pptx, .pdf, .odt, .rtf, .epub, .csv) into clean GitHub-Flavored Markdown (inspired by anydoc). Returns markdown text, format, and metadata.",
+      description: "Convert an office document into Markdown text and metadata. Inline output is read-only; output_path requires the host implement controller's live task and file lease.",
       args: {
         file_path: tool.schema.string(),
         output_path: tool.schema.string().optional(),
@@ -892,6 +1024,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         if (args.format) cmd.push("--format", args.format);
         if (args.max_lines !== undefined) cmd.push("--max-lines", String(args.max_lines));
         if (args.ocr) cmd.push("--ocr", args.ocr);
+        if (args.output_path) return artifactCommand(cmd, args.output_path, context);
         return cortex(cmd, context.directory);
       }
     }),
@@ -913,7 +1046,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }),
 
     cortex_ia_diagram_render: tool({
-      description: "Render a system diagram JSON specification into a standalone, interactive HTML file with dark/light themes and inline SVG (inspired by archify).",
+      description: "Render a diagram specification to interactive HTML. Requires the host implement controller's live task and output file lease.",
       args: {
         spec_path: tool.schema.string(),
         output_path: tool.schema.string(),
@@ -924,7 +1057,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         const diagramType = args.diagram_type || "architecture";
         const cmd = ["diagram", "render", diagramType, path.resolve(context.directory, args.spec_path), path.resolve(context.directory, args.output_path), "--json"];
         if (args.quality) cmd.push(`--quality=${args.quality}`);
-        return cortex(cmd, context.directory);
+        return artifactCommand(cmd, args.output_path, context);
       }
     }),
 
@@ -1105,7 +1238,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }),
 
     cortex_ia_work_claim: tool({
-      description: "Claim one ready work item. Optionally reserve initial files atomically. The bridge retains tokens in memory.",
+      description: "Claim one ready work item and optionally reserve initial files atomically. Tokens remain in memory. Auto-maintenance checks host busy/retry every 30s, renews to 15m, and stops after 15m without changed host message/part progress or on idle/error/dispose/delivery. Unavailable host status requires explicit manual renewal; expired authority cannot be revived.",
       args: {
         task_id: tool.schema.string(),
         path: tool.schema.string().optional().describe("Optional single workspace-relative file to reserve immediately upon claiming"),
@@ -1124,9 +1257,11 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         if (!claim?.claim_token) throw new Error("cortex-ia returned no claim token");
         const reserved = reservationReceipt(claim.reserved_files || [], targetPaths);
         const leases = new Map<string, string>(reserved.map(lease => [lease.path, lease.lease_token]));
-        workAuthority.set(args.task_id, { claimToken: claim.claim_token, leases, sessionID: context.sessionID });
+        const authority: WorkAuthority = { claimToken: claim.claim_token, leases, sessionID: context.sessionID };
+        workAuthority.set(args.task_id, authority);
+        startMaintenance(args.task_id, authority, context.directory);
         saveAuthorityState();
-        return JSON.stringify({ ...withoutToken(claim, "claim_token"), reserved_files: reserved.map(lease => withoutToken(lease, "lease_token")) });
+        return JSON.stringify({ ...withoutToken(claim, "claim_token"), reserved_files: reserved.map(lease => withoutToken(lease, "lease_token")), maintenance: { ...maintenancePolicy, active: authority.maintenance?.active, reason: authority.maintenance?.reason } });
       }
     }),
 
@@ -1187,23 +1322,19 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }),
 
     cortex_ia_work_release_all: tool({
-      description: "Release every file lease retained for one task. Returns partial failures for explicit reconciliation.",
+      description: "Release all task file leases in one transaction. Only a matching durable acknowledgement clears local reservations; failure requires explicit reconciliation.",
       args: { task_id: tool.schema.string() },
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID);
-        const released: string[] = [];
-        const failures: Array<{ path: string; error: string }> = [];
-        for (const [leasePath, leaseToken] of [...authority.leases.entries()]) {
-          try {
-            cortexAuthorized(["work", "release", "--path", leasePath, "--lease-token", "@stdin"], leaseToken);
-            authority.leases.delete(leasePath);
-            released.push(leasePath);
-          } catch (error: any) {
-            failures.push({ path: leasePath, error: error?.message || "release failed" });
-          }
+        const released = [...authority.leases.keys()];
+        stopMaintenance(authority, "release_all");
+        const receipt = parseJSON(cortexAuthorized(["work", "release-all", args.task_id, "--claim-token", "@stdin"], authority.claimToken));
+        if (receipt?.task_id !== args.task_id || receipt?.released_all !== true) {
+          throw new Error("WORK_RELEASE_UNCONFIRMED: reservations retained locally; query task status before retrying");
         }
+        authority.leases.clear();
         saveAuthorityState();
-        return JSON.stringify({ released, failures });
+        return JSON.stringify({ released, failures: [], ...receipt });
       }
     }),
 
@@ -1268,13 +1399,21 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         if (!targetState) throw new Error("'to' or 'status' is required for work transition");
         const authority = authorityForSession(args.task_id, context.sessionID);
         const command = ["work", "transition", args.task_id, "--claim-token", "@stdin", "--to", targetState];
+        if (targetState !== "in_progress") stopMaintenance(authority, "delivery");
         if (args.revision) command.push("--revision", String(args.revision));
+        if (args.summary !== undefined) command.push("--summary", args.summary);
+        if (args.verdict !== undefined) command.push("--verdict", args.verdict);
+        for (const ref of args.evidence_refs || []) command.push("--evidence-ref", ref);
+        for (const file of args.changed_files || []) command.push("--changed-file", file);
         const result = cortexAuthorized(command, authority.claimToken);
+        const delivered = parseJSON(result);
+        if (delivered?.task_id !== args.task_id || delivered?.status !== targetState ||
+            !Array.isArray(delivered?.leases) && delivered?.leases !== undefined ||
+            (targetState !== "in_progress" && delivered?.leases?.length)) {
+          throw new Error("WORK_TRANSITION_UNCONFIRMED: durable transition acknowledgement is missing or inconsistent; query task status before retrying");
+        }
         if (targetState === "in_review" || targetState === "blocked") {
-          try {
-            cortexAuthorized(["work", "release-all", args.task_id, "--claim-token", "@stdin"], authority.claimToken);
-            authority.leases.clear();
-          } catch {}
+          authority.leases.clear();
         }
         if (targetState === "blocked") {
           workAuthority.delete(args.task_id);
@@ -1311,7 +1450,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }),
 
     cortex_ia_delegate_start: tool({
-      description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires user-aligned current_workspace. The returned execution_mode is authoritative; native execution requires mode native with no error. Model and effort remain user-configured, never overridden. Scoped authentication currently supports Gemini only: configure CORTEX_IA_AGY_AUTH=gemini and GEMINI_API_KEY; other models fail actionably. See cortex-work-protocol.md section 5 for migration and isolation limits. Call cortex_ia_delegation_wait, then read the receipt; acceptance is not verified completion.",
+      description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires user-aligned current_workspace. The returned execution_mode is authoritative; native execution requires mode native with no error. Model and effort remain user-configured, never overridden. Authentication uses the existing AGY account/keyring by default. Optional Gemini API authentication uses CORTEX_IA_AGY_AUTH=gemini and GEMINI_API_KEY. See cortex-work-protocol.md section 5 for authentication and temporary-home limits. Call cortex_ia_delegation_wait, then read the receipt; acceptance is not verified completion.",
       args: {
         role: tool.schema.enum(["implement", "investigate", "reviewer", "planner"]),
         task_id: tool.schema.string().optional(),
@@ -1549,17 +1688,25 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         let consecutiveErrors = 0;
         do {
           try {
-            job = parseJSON(cortex(["delegate", "status", args.job_id]));
+            job = parseJSON(cortex(["delegate", "query", args.job_id]));
             consecutiveErrors = 0;
           } catch (err: any) {
-            consecutiveErrors++;
-            if (consecutiveErrors >= 5) {
-              throw err;
+            try {
+              job = parseJSON(cortex(["delegate", "status", args.job_id]));
+              consecutiveErrors = 0;
+            } catch (err2: any) {
+              consecutiveErrors++;
+              if (consecutiveErrors >= 5) {
+                throw err;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 1500));
+              continue;
             }
-            await new Promise((resolve) => setTimeout(resolve, 1500));
-            continue;
           }
 
+          if (job?.status === "lost" && job?.termination_reconciled === true && !job?.reconciliation_required) {
+            return JSON.stringify({ ...job, completed: false, action: "EXPLICIT_RETRY", message: "Prior execution was lost; termination is reconciled. Any retry requires fresh authority." });
+          }
           if (job?.reconciliation_required || job?.status === "lost") {
             return JSON.stringify({ ...job, completed: false, action: "RECONCILE_TERMINATION", message: "Process termination is unconfirmed; workspace remains fenced." });
           }
@@ -1571,10 +1718,12 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
               closeHerdrJobResources(args.job_id);
             }
             if (isCompact) {
-              let res: any = null;
-              try {
-                res = parseJSON(cortex(["delegate", "result", args.job_id]));
-              } catch {}
+              let res: any = job?.receipt || null;
+              if (!res && job?.status === "succeeded") {
+                try {
+                  res = parseJSON(cortex(["delegate", "result", args.job_id]));
+                } catch {}
+              }
               const compactResult = extractCompactReceipt(job, res, args.job_id);
               return JSON.stringify({
                 ...job,
@@ -1583,6 +1732,9 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
               });
             }
             if (job.status === "succeeded") {
+              if (job?.receipt) {
+                return JSON.stringify({ ...job, result: job.receipt });
+              }
               try {
                 const res = parseJSON(cortex(["delegate", "result", args.job_id]));
                 return JSON.stringify({ ...job, result: res });
@@ -1611,7 +1763,14 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       args: { job_id: tool.schema.string() },
       async execute(args) {
         let job: any = {};
-        try { job = parseJSON(cortex(["delegate", "status", args.job_id])); } catch {}
+        try {
+          job = parseJSON(cortex(["delegate", "query", args.job_id]));
+        } catch {
+          try { job = parseJSON(cortex(["delegate", "status", args.job_id])); } catch {}
+        }
+        if (job?.status === "lost" && job?.termination_reconciled === true && !job?.reconciliation_required) {
+          return JSON.stringify({ ...job, completed: false, action: "EXPLICIT_RETRY", message: "Prior execution was lost; termination is reconciled. Any retry requires fresh authority." });
+        }
         if (job?.reconciliation_required || job?.status === "lost") {
           return JSON.stringify({ ...job, completed: false, action: "RECONCILE_TERMINATION" });
         }
@@ -1625,14 +1784,18 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           });
         }
         let result = "";
-        try {
-          result = cortex(["delegate", "result", args.job_id]);
-        } catch (err: any) {
-          result = JSON.stringify({
-            job_id: args.job_id,
-            status: job?.status || "unknown",
-            error: err?.message || String(err)
-          });
+        if (job?.receipt_available && job?.receipt) {
+          result = JSON.stringify(job.receipt);
+        } else {
+          try {
+            result = cortex(["delegate", "result", args.job_id]);
+          } catch (err: any) {
+            result = JSON.stringify({
+              job_id: args.job_id,
+              status: job?.status || "unknown",
+              error: job?.receipt_missing ? "receipt_missing: delegation job completed without recording a receipt" : (err?.message || String(err))
+            });
+          }
         }
         emitDelegationEvent({ kind: "delegation", job_id: args.job_id, role: job.role, status: job.status || "result_read", transport: job.transport });
         if (["succeeded", "failed", "cancelled", "timed_out"].includes(job?.status)) closeHerdrJobResources(args.job_id);
@@ -1656,6 +1819,17 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       description: "Mark delegation workers with expired leases as lost.",
       args: {},
       async execute() { return cortex(["delegate", "recover"]); }
+    }),
+
+    cortex_ia_delegation_reconcile: tool({
+      description: "Audit prior-boot termination of a lost job using local OS evidence. Preserves failure history and requires fresh authority for any retry.",
+      args: { job_id: tool.schema.string(), reason: tool.schema.string() },
+      async execute(args, context) {
+        if (typeof args.reason !== "string" || !args.reason.trim() || Buffer.byteLength(args.reason.trim(), "utf8") > 1024 || args.reason.includes("\0")) {
+          throw new Error("A reconciliation reason of 1..1024 UTF-8 bytes is required");
+        }
+        return cortex(["delegate", "reconcile", args.job_id, "--reason", args.reason.trim(), "--session-id", context.sessionID]);
+      }
     }),
 
 
@@ -1697,9 +1871,9 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     file_reserve: ["implement"], work_lease_renew: ["implement"],
     work_release_all: ["implement"], file_release: ["implement"], work_transition: ["implement"],
     work_approve: ["reviewer"], delegate_start: controllers,
-    delegation_cancel: [...controllers, "orchestrator"], delegation_recover: ["orchestrator"],
+    delegation_cancel: [...controllers, "orchestrator"], delegation_recover: ["orchestrator"], delegation_reconcile: ["orchestrator"],
     doc_convert: roles,
-    diagram_render: ["planner", "orchestrator", "investigate", "discovery"],
+    diagram_render: ["implement"],
     report_error: roles
   };
   for (const [name, definition] of Object.entries(bridgeTools) as [string, any][]) {

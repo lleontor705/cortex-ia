@@ -20,7 +20,7 @@ func TestCLIDoc(t *testing.T) {
 
 	// 2. Convert to file
 	outFile := filepath.Join(tmpDir, "out.md")
-	if err := runDoc([]string{"convert", csvFile, "-o", outFile, "--json"}); err != nil {
+	if err := runDoc([]string{"convert", csvFile, "-o", outFile, "--json", "--standalone"}); err != nil {
 		t.Errorf("runDoc convert failed: %v", err)
 	}
 
@@ -56,7 +56,7 @@ func TestCLIDiagram(t *testing.T) {
 
 	// 2. Render
 	htmlFile := filepath.Join(tmpDir, "arch.html")
-	if err := runDiagram([]string{"render", "architecture", specFile, htmlFile, "--json"}); err != nil {
+	if err := runDiagram([]string{"render", "architecture", specFile, htmlFile, "--json", "--standalone"}); err != nil {
 		t.Errorf("runDiagram render failed: %v", err)
 	}
 	info, err := os.Stat(htmlFile)

@@ -46,6 +46,9 @@ func runCLI(args []string) error {
 	case "delegate":
 		return runDelegate(rest)
 
+	case "snapshot":
+		return runCortexSnapshot(rest)
+
 	case "work":
 		return runWork(rest)
 
@@ -207,6 +210,8 @@ Usage:
   cortex-ia delegate status|result|cancel <job-id>
                                       Inspect or cancel a delegated leaf job
   cortex-ia delegate recover         Mark workers with expired leases as lost
+  cortex-ia snapshot read --project <project> --id <id> [--expected-sha256 <digest>]
+                                      Read and verify one bounded local Cortex snapshot
   cortex-ia work create|list|status  Manage the local task DAG in Cortex SQLite
   cortex-ia work claim|renew         Acquire or renew bounded task authority
   cortex-ia work reserve|lease|lease-renew|release

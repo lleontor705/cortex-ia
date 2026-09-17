@@ -14,8 +14,9 @@ const sdk = { tool: Object.assign(definition => definition, { schema }) };
 
 function options(leased = [], symlink = '') {
   const calls = [];
+  const inputs = [];
   return {
-    calls, cwd: root, env: { USERPROFILE: home, HOME: home }, mockPluginSDK: sdk,
+    calls, inputs, cwd: root, env: { USERPROFILE: home, HOME: home }, mockPluginSDK: sdk,
     fs: {
       existsSync: p => p === executable,
       readFileSync: () => '',
@@ -24,8 +25,11 @@ function options(leased = [], symlink = '') {
       mkdirSync: () => {}, writeFileSync: () => {},
     },
     childProcess: {
-      execFileSync: (_file, args) => {
+      execFileSync: (_file, args, opts) => {
         calls.push(args);
+        inputs.push(opts?.input);
+        if (args[1] === 'claim') return JSON.stringify({ claim_token: 'synthetic-claim', reserved_files: leased.map(path => ({ path, lease_token: 'synthetic-lease' })) });
+        if (args[1] === 'status') return JSON.stringify({ status: 'in_progress', claim: { owner: 'opencode-session:test', expires_at: new Date(Date.now() + 60000).toISOString() } });
         if (args[1] === 'verify-lease') {
           const targets = args.flatMap((v, i) => v === '--path' ? [args[i + 1]] : []);
           return JSON.stringify({ valid: targets.every(t => leased.includes(t)),
@@ -51,6 +55,55 @@ test('actual bridge initializes every declared tool, including reviewer reads', 
   }
   await assert.rejects(bridge.tool.cortex_ia_work_claim.execute({ task_id: 'task-1' },
     { agent: 'reviewer', sessionID: 'test' }), /BRIDGE_ROLE_DENIED/);
+});
+
+test('inline conversion stays read-only and caller arguments cannot authorize output', async () => {
+  const opts = options();
+  const tools = (await (await loadPluginFile(bridgePath, opts)).instantiate({ client: {} })).tool;
+  const reviewer = { agent: 'reviewer', sessionID: 'test', directory: root };
+  await tools.cortex_ia_doc_convert.execute({ file_path: 'input.txt' }, reviewer);
+  const conversion = opts.calls.find(args => args[0] === 'doc');
+  assert.equal(conversion.includes('-o'), false);
+  assert.equal(conversion.includes('--artifact-authority=@stdin'), false);
+  await assert.rejects(tools.cortex_ia_doc_convert.execute({ file_path: 'input.txt', output_path: 'out.md', role: 'implement', sessionID: 'other', standalone: true }, reviewer), /BRIDGE_ROLE_DENIED/);
+  await assert.rejects(tools.cortex_ia_diagram_render.execute({ spec_path: 'spec.json', output_path: 'out.html' }, reviewer), /BRIDGE_ROLE_DENIED/);
+  assert.equal(opts.calls.filter(args => args[0] === 'doc').length, 1);
+});
+
+test('artifact tools pass only host-bound live authority over stdin', async () => {
+  const opts = options(['out.md']);
+  const tools = (await (await loadPluginFile(bridgePath, opts)).instantiate({ client: {} })).tool;
+  const context = { agent: 'implement', sessionID: 'test', directory: root };
+  await assert.rejects(tools.cortex_ia_doc_convert.execute({ file_path: 'input.txt', output_path: 'out.md' }, context), /LEASE_REQUIRED/);
+  await tools.cortex_ia_work_claim.execute({ task_id: 'task-1', paths: ['out.md'] }, context);
+  for (const name of ['cortex_ia_doc_convert', 'cortex_ia_diagram_render']) {
+    const output = await tools[name].execute({ file_path: 'input.txt', spec_path: 'spec.json', output_path: 'out.md', role: 'reviewer', project: '/outside' }, context);
+    const args = opts.calls.at(-1);
+    assert.ok(args.includes('--artifact-authority=@stdin'));
+    assert.equal(args.includes('--standalone'), false);
+    assert.equal(JSON.stringify(args).includes('synthetic-'), false);
+    assert.equal(output.includes('synthetic-'), false);
+    const authority = JSON.parse(opts.inputs.at(-1));
+    assert.equal(authority.session_id, 'test');
+    assert.equal(authority.role, 'implement');
+    assert.equal(authority.project, root);
+    assert.equal(authority.path, 'out.md');
+    assert.equal(authority.claim_token, 'synthetic-claim');
+  }
+  await assert.rejects(tools.cortex_ia_doc_convert.execute({ file_path: 'input.txt', output_path: '../out.md' }, context), /LEASE_CHECK_FAILED/);
+});
+
+test('native hook protects utility destinations but permits inline reading', async () => {
+  const opts = options(['out.md'], path.join(root, 'linked'));
+  const hook = (await (await loadPluginFile(guardPath, opts)).instantiate({ directory: root }))['tool.execute.before'];
+  await hook({ tool: 'cortex_ia_doc_convert', sessionID: 'test' }, { args: { file_path: 'input.txt' } });
+  assert.equal(opts.calls.length, 0);
+  for (const tool of ['cortex_ia_doc_convert', 'cortex_ia_diagram_render']) {
+    await hook({ tool, sessionID: 'test' }, { args: { output_path: 'out.md' } });
+    for (const output_path of ['unleased.md', '../outside.md', 'linked/out.md']) {
+      await assert.rejects(hook({ tool, sessionID: 'test' }, { args: { output_path } }), /LEASE_REQUIRED|LEASE_CHECK_FAILED/);
+    }
+  }
 });
 
 test('an unclassified declaration fails closed at bridge initialization', async () => {

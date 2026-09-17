@@ -46,6 +46,10 @@ function firstCortexIA(directory?: string): string {
 }
 
 function targetFiles(toolName: string, args: Record<string, any>): string[] {
+  if (toolName === "cortex_ia_doc_convert" || toolName === "cortex_ia_diagram_render") {
+    if (typeof args?.output_path !== "string" || !args.output_path) throw new Error("LEASE_CHECK_FAILED: an output path is required");
+    return [args.output_path];
+  }
   if (toolName === "apply_patch") {
     if (typeof args?.patchText !== "string" || args.patchText.length > 1024 * 1024) throw new Error("LEASE_CHECK_FAILED: bounded patchText is required");
     const lines = args.patchText.replace(/\r\n/g, "\n").trim().split("\n");
@@ -105,7 +109,8 @@ function relativeTarget(directory: string, target: string): string {
 export const CortexLeaseGuardPlugin: Plugin = async (ctx) => ({
   "tool.execute.before": async (input, output) => {
     const toolName = input?.tool?.toLowerCase() || "";
-    if (!["edit", "write_to_file", "write", "apply_patch"].includes(toolName)) return;
+    if (toolName === "cortex_ia_doc_convert" && !(output?.args as any)?.output_path) return;
+    if (!["edit", "write_to_file", "write", "apply_patch", "cortex_ia_doc_convert", "cortex_ia_diagram_render"].includes(toolName)) return;
 
     if (typeof input.sessionID !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(input.sessionID)) throw new Error("LEASE_CHECK_FAILED: host session identity is required");
     const rawTargets = targetFiles(toolName, (output?.args || {}) as Record<string, any>);

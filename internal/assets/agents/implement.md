@@ -53,6 +53,7 @@ permission:
   cortex_ia_report_error: allow
   cortex_ia_doc_convert: allow
   cortex_ia_diagram_validate: allow
+  cortex_ia_diagram_render: allow
   bash:
     "*": allow
     "git status*": allow

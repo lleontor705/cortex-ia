@@ -432,7 +432,7 @@ func buildAGYArgs(request Request, role RoleConfig, printTimeout, workDir string
 }
 
 func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.Duration) (result []byte, resultCode int, returnErr error) {
-	if model := strings.TrimSpace(role.Model); model != "" && !strings.HasPrefix(model, "gemini-") {
+	if model := strings.TrimSpace(role.Model); os.Getenv("CORTEX_IA_AGY_AUTH") == "gemini" && model != "" && !strings.HasPrefix(model, "gemini-") {
 		return nil, -1, fmt.Errorf("AGY_AUTH_MODEL_UNSUPPORTED: isolated Gemini authentication requires a gemini- model; configured model is not changed automatically")
 	}
 	skip, err := skipPermissions(role)

@@ -314,9 +314,12 @@ func TestWorkItemsClaimsAndLeases(t *testing.T) {
 		t.Fatalf("TransitionWork to in_review failed: %v", err)
 	}
 
-	// 8. Release Lease
-	if err := store.ReleaseWorkLease(ctx, "src/main.go", lease.Token); err != nil {
-		t.Fatalf("ReleaseWorkLease failed: %v", err)
+	// 8. Delivery has already released the lease atomically.
+	if len(itemReview.Leases) != 0 {
+		t.Fatal("transition retained file leases")
+	}
+	if err := store.ReleaseWorkLease(ctx, "src/main.go", lease.Token); err == nil {
+		t.Fatal("released lease token remained usable")
 	}
 
 	// 9. Approve Task

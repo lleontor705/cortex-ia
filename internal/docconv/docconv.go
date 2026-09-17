@@ -41,13 +41,14 @@ const (
 
 // ConvertOptions controls document conversion.
 type ConvertOptions struct {
-	FilePath   string
-	OutputPath string
-	Format     Format
-	MaxLines   int
-	OCRMode    string // "reject" or "hosted"
-	APIKey     string
-	Timeout    time.Duration
+	BeforeWrite func(string) error // Controller-owned authorization, rechecked after conversion.
+	FilePath    string
+	OutputPath  string
+	Format      Format
+	MaxLines    int
+	OCRMode     string // "reject" or "hosted"
+	APIKey      string
+	Timeout     time.Duration
 }
 
 // ConvertResult contains the converted Markdown and extraction metrics.
@@ -247,8 +248,18 @@ func Convert(ctx context.Context, opts ConvertOptions) (*ConvertResult, error) {
 	// Write to output file if requested
 	if opts.OutputPath != "" {
 		outClean := filepath.Clean(opts.OutputPath)
+		if opts.BeforeWrite != nil {
+			if err := opts.BeforeWrite(outClean); err != nil {
+				return nil, err
+			}
+		}
 		if err := os.MkdirAll(filepath.Dir(outClean), 0755); err != nil {
 			return nil, fmt.Errorf("create output directory: %w", err)
+		}
+		if opts.BeforeWrite != nil {
+			if err := opts.BeforeWrite(outClean); err != nil {
+				return nil, err
+			}
 		}
 		if err := os.WriteFile(outClean, []byte(mdContent), 0644); err != nil {
 			return nil, fmt.Errorf("write output markdown %s: %w", outClean, err)

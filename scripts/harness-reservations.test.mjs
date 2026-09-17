@@ -40,6 +40,8 @@ test('claim and reserve send one batch each and never expose authority tokens', 
   assert.equal(claims.length, 1);
   assert.deepEqual(claims[0].args.slice(-4), ['--path', 'b.go', '--path', 'a.go']);
   assert.equal(claimed.includes('secret-'), false);
+  assert.equal(JSON.parse(claimed).maintenance.active, false);
+  assert.equal(JSON.parse(claimed).maintenance.reason, 'host_status_unavailable_manual_renewal_required');
   assert.deepEqual(JSON.parse(claimed).reserved_files.map(x => x.path), ['a.go', 'b.go']);
   const reserved = await h.tools.cortex_ia_file_reserve.execute({ task_id: 'task', paths: ['d.go', 'c.go'] }, context);
   const acquisitions = h.calls.filter(x => x.args[1] === 'reserve');

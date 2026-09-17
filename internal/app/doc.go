@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/docconv"
 )
 
@@ -15,7 +17,7 @@ func runDoc(args []string) error {
 	if len(args) == 0 || isHelp(args[0]) {
 		fmt.Println("Usage: cortex-ia doc <subcommand> [options]")
 		fmt.Println("\nUniversal Document to Markdown converter (inspired by anydoc):")
-		fmt.Println("  convert <file> [-o <out.md>] [--format <format>] [--max-lines <n>] [--ocr hosted|reject] [--json]")
+		fmt.Println("  convert <file> [-o <out.md> --standalone] [--format <format>] [--max-lines <n>] [--ocr hosted|reject] [--json]")
 		fmt.Println("  inspect <file> [--json]")
 		return nil
 	}
@@ -41,12 +43,18 @@ func runDocConvert(args []string) error {
 	var maxLines int
 	var ocrMode string
 	jsonOutput := false
+	standalone := false
+	authoritySource := ""
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
 		case arg == "--json":
 			jsonOutput = true
+		case arg == "--standalone":
+			standalone = true
+		case strings.HasPrefix(arg, "--artifact-authority="):
+			authoritySource = strings.TrimPrefix(arg, "--artifact-authority=")
 		case arg == "-o" || arg == "--output":
 			if i+1 < len(args) {
 				i++
@@ -86,12 +94,18 @@ func runDocConvert(args []string) error {
 		return fmt.Errorf("doc convert requires an input file path")
 	}
 
+	check, closeGuard, err := artifactOutputGuard(outputPath, authoritySource, standalone)
+	if err != nil {
+		return err
+	}
+	defer closeGuard()
 	res, err := docconv.Convert(context.Background(), docconv.ConvertOptions{
-		FilePath:   filePath,
-		OutputPath: outputPath,
-		Format:     format,
-		MaxLines:   maxLines,
-		OCRMode:    ocrMode,
+		FilePath:    filePath,
+		OutputPath:  outputPath,
+		Format:      format,
+		MaxLines:    maxLines,
+		OCRMode:     ocrMode,
+		BeforeWrite: check,
 	})
 	if err != nil {
 		return err
@@ -110,6 +124,35 @@ func runDocConvert(args []string) error {
 	}
 
 	return nil
+}
+
+// CLI adapters parse intent; the delegation service owns output authorization.
+func artifactOutputGuard(outputPath, authoritySource string, standalone bool) (func(string) error, func(), error) {
+	noop := func() {}
+	if outputPath == "" {
+		return nil, noop, nil
+	}
+	var input io.Reader
+	if authoritySource != "" {
+		if authoritySource != "@stdin" {
+			return nil, noop, fmt.Errorf("artifact authority must arrive over stdin")
+		}
+		input = os.Stdin
+	}
+	home, err := cortexStateHome()
+	if err != nil {
+		return nil, noop, err
+	}
+	guard, err := delegation.OpenArtifactWriteGuard(delegation.DefaultDBPath(home), input, standalone)
+	if err != nil {
+		return nil, noop, err
+	}
+	check := func(target string) error { return guard.Check(context.Background(), target) }
+	if err := check(outputPath); err != nil {
+		_ = guard.Close()
+		return nil, noop, err
+	}
+	return check, func() { _ = guard.Close() }, nil
 }
 
 func runDocInspect(args []string) error {

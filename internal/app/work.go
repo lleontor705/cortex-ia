@@ -25,6 +25,7 @@ func runWork(args []string) error {
 		fmt.Println("  status <task-id>                                            Get task details")
 		fmt.Println("  claim <task-id> --owner <owner> [--path <file> ...] [--ttl <duration>]          Claim a task")
 		fmt.Println("  renew <task-id> --claim-token <token> [--ttl <duration>]    Renew a claim")
+		fmt.Println("  controller-renew <task-id> --owner <owner> --authority @stdin  Renew live claim and complete lease set")
 		fmt.Println("  reserve <task-id> --claim-token <token> --path <file>       Reserve files atomically")
 		fmt.Println("  lease <task-id> --claim-token <token> --path <file>         Reserve a file lease")
 		fmt.Println("  lease-renew --path <file> --lease-token <token>             Renew a file lease")
@@ -245,6 +246,39 @@ func runWork(args []string) error {
 			return err
 		}
 		return printJSON(claim)
+	case "controller-renew":
+		id, opts, err := workIDOptions(args[1:], map[string]bool{"--owner": false, "--authority": false, "--ttl": false})
+		if err != nil {
+			return err
+		}
+		if oneOption(opts, "--authority") != "@stdin" {
+			return errors.New("controller renewal authority must use @stdin")
+		}
+		ttl, err := workTTL(oneOption(opts, "--ttl"))
+		if err != nil {
+			return err
+		}
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, 1024*1024+1))
+		if err != nil {
+			return err
+		}
+		if len(data) > 1024*1024 {
+			return errors.New("controller authority exceeds 1 MiB")
+		}
+		var auth delegation.ControllerAuthority
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&auth); err != nil {
+			return errors.New("invalid controller authority envelope")
+		}
+		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+			return errors.New("controller authority must contain one JSON object")
+		}
+		receipt, err := store.RenewControllerAuthority(ctx, id, oneOption(opts, "--owner"), auth, ttl)
+		if err != nil {
+			return err
+		}
+		return printJSON(receipt)
 	case "renew":
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("renew <task-id> --claim-token <token> [--ttl <duration>]", nil)
@@ -366,9 +400,9 @@ func runWork(args []string) error {
 		return printJSON(map[string]any{"released_all": true, "task_id": id})
 	case "transition":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("transition <task-id> --claim-token <token> [--revision <n>] --to <in_review|in_progress|blocked>", nil)
+			return workUsage("transition <task-id> --claim-token <token|@stdin> [--revision <n>] --to <in_review|in_progress|blocked> [--summary <text>] [--verdict <verdict>] [--evidence-ref <ref> ...] [--changed-file <path> ...]", nil)
 		}
-		id, opts, err := workIDOptions(args[1:], map[string]bool{"--claim-token": false, "--revision": false, "--to": false})
+		id, opts, err := workIDOptions(args[1:], map[string]bool{"--claim-token": false, "--revision": false, "--to": false, "--summary": false, "--verdict": false, "--evidence-ref": true, "--changed-file": true})
 		if err != nil {
 			return workUsage("transition <task-id> --claim-token <token> [--revision <n>] --to <in_review|in_progress|blocked>", err)
 		}
@@ -383,7 +417,16 @@ func runWork(args []string) error {
 		if err != nil {
 			return err
 		}
-		item, err := store.TransitionWork(ctx, id, claimToken, revision, delegation.WorkStatus(oneOption(opts, "--to")))
+		var receipts []delegation.WorkSubmissionInput
+		if opts["--summary"] != nil || opts["--verdict"] != nil || opts["--evidence-ref"] != nil || opts["--changed-file"] != nil {
+			receipt := delegation.WorkSubmissionInput{Summary: oneOption(opts, "--summary"), EvidenceRefs: opts["--evidence-ref"], ChangedFiles: opts["--changed-file"]}
+			if opts["--verdict"] != nil {
+				verdict := oneOption(opts, "--verdict")
+				receipt.Verdict = &verdict
+			}
+			receipts = append(receipts, receipt)
+		}
+		item, err := store.TransitionWork(ctx, id, claimToken, revision, delegation.WorkStatus(oneOption(opts, "--to")), receipts...)
 		if err != nil {
 			return err
 		}

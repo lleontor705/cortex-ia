@@ -24,6 +24,7 @@ type RenderResult struct {
 
 // RenderOptions controls rendering.
 type RenderOptions struct {
+	BeforeWrite func(string) error // Admission and each write-producing boundary.
 	DiagramType DiagramType
 	Quality     QualityProfile
 	Timeout     time.Duration
@@ -54,6 +55,15 @@ func Render(ctx context.Context, specData []byte, outputHtmlPath string, opts Re
 	}
 
 	outClean := filepath.Clean(outputHtmlPath)
+	check := func() error {
+		if opts.BeforeWrite != nil {
+			return opts.BeforeWrite(outClean)
+		}
+		return nil
+	}
+	if err := check(); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(filepath.Dir(outClean), 0755); err != nil {
 		return nil, fmt.Errorf("create output directory: %w", err)
 	}
@@ -78,6 +88,9 @@ func Render(ctx context.Context, specData []byte, outputHtmlPath string, opts Re
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
 
+			if err := check(); err != nil {
+				return nil, err
+			}
 			if err := cmd.Run(); err == nil {
 				info, statErr := os.Stat(outClean)
 				if statErr == nil && info.Size() > 0 {
@@ -95,6 +108,9 @@ func Render(ctx context.Context, specData []byte, outputHtmlPath string, opts Re
 
 	// 2. Built-in standalone SVG + HTML generator fallback
 	htmlContent := generateNativeHtml(spec, diagType)
+	if err := check(); err != nil {
+		return nil, err
+	}
 	if err := os.WriteFile(outClean, []byte(htmlContent), 0644); err != nil {
 		return nil, fmt.Errorf("write output HTML %s: %w", outClean, err)
 	}

@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// Only explicit Gemini authentication is supported in an isolated home. The
-// provider setting and credential name are documented at
+// Default authentication uses AGY's account/keyring without copying profiles.
+// Explicit Gemini authentication uses the provider setting documented at
 // https://antigravity.google/docs/cli/install/#using-a-gemini-api-key .
 // This does not isolate the OS user, keyring, network or workspace configuration.
 func executionEnvironment(parent []string) (home string, env []string, err error) {
@@ -19,11 +19,12 @@ func executionEnvironment(parent []string) (home string, env []string, err error
 			values[strings.ToUpper(key)] = value
 		}
 	}
-	if values["CORTEX_IA_AGY_AUTH"] != "gemini" {
-		return "", nil, fmt.Errorf("AGY_AUTH_REQUIRED: isolated execution requires CORTEX_IA_AGY_AUTH=gemini and GEMINI_API_KEY; inherited profiles and keyring authentication are not provisioned")
+	mode := values["CORTEX_IA_AGY_AUTH"]
+	if mode != "" && mode != "account" && mode != "gemini" {
+		return "", nil, fmt.Errorf("AGY_AUTH_UNSUPPORTED: select account authentication or explicit gemini authentication")
 	}
 	key := values["GEMINI_API_KEY"]
-	if strings.TrimSpace(key) == "" || len(key) > 8192 || strings.ContainsAny(key, "\x00\r\n") {
+	if mode == "gemini" && (strings.TrimSpace(key) == "" || len(key) > 8192 || strings.ContainsAny(key, "\x00\r\n")) {
 		return "", nil, fmt.Errorf("AGY_AUTH_REQUIRED: provide a non-empty bounded GEMINI_API_KEY for explicitly selected Gemini authentication")
 	}
 	home, err = os.MkdirTemp("", "cortex-ia-execution-*")
@@ -40,8 +41,11 @@ func executionEnvironment(parent []string) (home string, env []string, err error
 			return home, nil, err
 		}
 	}
-	if err = os.WriteFile(filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"), []byte("{\"modelProvider\":\"gemini\"}\n"), 0o600); err != nil {
-		return home, nil, err
+	if mode == "gemini" {
+		if err = os.WriteFile(filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"), []byte("{\"modelProvider\":\"gemini\"}\n"), 0o600); err != nil {
+			return home, nil, err
+		}
+		env = append(env, "GEMINI_API_KEY="+key)
 	}
 	// Keep executable discovery and essential OS/locale values only. In particular
 	// no Cortex authority, cloud credentials, shell hooks or runtime preload flags.
@@ -53,5 +57,5 @@ func executionEnvironment(parent []string) (home string, env []string, err error
 	for _, pair := range [][2]string{{"HOME", home}, {"USERPROFILE", home}, {"APPDATA", filepath.Join(home, "appdata")}, {"LOCALAPPDATA", filepath.Join(home, "localappdata")}, {"XDG_CONFIG_HOME", filepath.Join(home, "config")}, {"XDG_CACHE_HOME", filepath.Join(home, "cache")}, {"XDG_DATA_HOME", filepath.Join(home, "data")}, {"TMPDIR", filepath.Join(home, "tmp")}, {"TMP", filepath.Join(home, "tmp")}, {"TEMP", filepath.Join(home, "tmp")}} {
 		env = append(env, pair[0]+"="+pair[1])
 	}
-	return home, append(env, "GEMINI_API_KEY="+key, "AGY_CLI_DISABLE_AUTO_UPDATE=true"), nil
+	return home, append(env, "AGY_CLI_DISABLE_AUTO_UPDATE=true"), nil
 }

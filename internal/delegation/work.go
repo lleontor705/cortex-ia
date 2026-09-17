@@ -37,25 +37,26 @@ var ErrWorkAttemptLimit = errors.New("work attempt limit reached")
 type WorkItem struct {
 	Contract *SDDContract `json:"contract,omitempty"`
 	ConversationOwnership
-	ID             string        `json:"task_id"`
-	BoardID        string        `json:"board_id"`
-	Workspace      string        `json:"workspace,omitempty"`
-	Title          string        `json:"title"`
-	Objective      string        `json:"objective,omitempty"`
-	Acceptance     string        `json:"acceptance_criteria,omitempty"`
-	Verification   string        `json:"verification,omitempty"`
-	AllowedFiles   []string      `json:"allowed_files,omitempty"`
-	Replaces       string        `json:"replaces,omitempty"`
-	ReplacedBy     []string      `json:"replaced_by,omitempty"`
-	Status         WorkStatus    `json:"status"`
-	Revision       int64         `json:"revision"`
-	Dependencies   []string      `json:"dependencies,omitempty"`
-	Claim          *WorkClaim    `json:"claim,omitempty"`
-	Review         *WorkReview   `json:"review,omitempty"`
-	LatestApproval *WorkApproval `json:"latest_approval,omitempty"`
-	Leases         []WorkLease   `json:"leases,omitempty"`
-	CreatedAt      string        `json:"created_at"`
-	UpdatedAt      string        `json:"updated_at"`
+	ID             string          `json:"task_id"`
+	BoardID        string          `json:"board_id"`
+	Workspace      string          `json:"workspace,omitempty"`
+	Title          string          `json:"title"`
+	Objective      string          `json:"objective,omitempty"`
+	Acceptance     string          `json:"acceptance_criteria,omitempty"`
+	Verification   string          `json:"verification,omitempty"`
+	AllowedFiles   []string        `json:"allowed_files,omitempty"`
+	Replaces       string          `json:"replaces,omitempty"`
+	ReplacedBy     []string        `json:"replaced_by,omitempty"`
+	Status         WorkStatus      `json:"status"`
+	Revision       int64           `json:"revision"`
+	Dependencies   []string        `json:"dependencies,omitempty"`
+	Claim          *WorkClaim      `json:"claim,omitempty"`
+	Review         *WorkReview     `json:"review,omitempty"`
+	LatestApproval *WorkApproval   `json:"latest_approval,omitempty"`
+	Submission     *WorkSubmission `json:"submission,omitempty"`
+	Leases         []WorkLease     `json:"leases,omitempty"`
+	CreatedAt      string          `json:"created_at"`
+	UpdatedAt      string          `json:"updated_at"`
 }
 
 type WorkDefinition struct {
@@ -94,6 +95,7 @@ type WorkLease struct {
 }
 
 type WorkApproval struct {
+	SubmissionID        string         `json:"submission_id,omitempty"`
 	ID                  int64          `json:"id,omitempty"`
 	Binding             *ReviewBinding `json:"binding,omitempty"`
 	ItemID              string         `json:"task_id"`
@@ -431,7 +433,7 @@ func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 	}
 	var approval WorkApproval
 	var approvalBinding string
-	err = s.db.QueryRowContext(ctx, `SELECT id,item_id,review_revision,reviewer,verdict,evidence,review_id,attempt,binding_json,implementation_owner,created_at FROM work_approvals WHERE item_id=? ORDER BY id DESC LIMIT 1`, id).Scan(&approval.ID, &approval.ItemID, &approval.Revision, &approval.Reviewer, &approval.Verdict, &approval.Evidence, &approval.ReviewID, &approval.Attempt, &approvalBinding, &approval.ImplementationOwner, &approval.CreatedAt)
+	err = s.db.QueryRowContext(ctx, `SELECT id,item_id,review_revision,reviewer,verdict,evidence,review_id,attempt,binding_json,implementation_owner,created_at,COALESCE(submission_id,'') FROM work_approvals WHERE item_id=? ORDER BY id DESC LIMIT 1`, id).Scan(&approval.ID, &approval.ItemID, &approval.Revision, &approval.Reviewer, &approval.Verdict, &approval.Evidence, &approval.ReviewID, &approval.Attempt, &approvalBinding, &approval.ImplementationOwner, &approval.CreatedAt, &approval.SubmissionID)
 	if err == nil {
 		approval.ReviewRevision = approval.Revision
 		if approvalBinding != "" {
@@ -441,7 +443,8 @@ func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return WorkItem{}, err
 	}
-	return item, nil
+	item.Submission, err = s.currentWorkSubmission(ctx, item)
+	return item, err
 }
 
 // ListWorkApprovals returns all historical approval and review verdict records for a task.
@@ -450,7 +453,7 @@ func (s *Store) ListWorkApprovals(ctx context.Context, id string) ([]WorkApprova
 	if id == "" {
 		return nil, errors.New("task id is required")
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,item_id,review_revision,reviewer,verdict,evidence,review_id,attempt,binding_json,implementation_owner,created_at FROM work_approvals WHERE item_id=? ORDER BY id DESC`, id)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,item_id,review_revision,reviewer,verdict,evidence,review_id,attempt,binding_json,implementation_owner,created_at,COALESCE(submission_id,'') FROM work_approvals WHERE item_id=? ORDER BY id DESC`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -459,7 +462,7 @@ func (s *Store) ListWorkApprovals(ctx context.Context, id string) ([]WorkApprova
 	for rows.Next() {
 		var a WorkApproval
 		var binding string
-		if err := rows.Scan(&a.ID, &a.ItemID, &a.Revision, &a.Reviewer, &a.Verdict, &a.Evidence, &a.ReviewID, &a.Attempt, &binding, &a.ImplementationOwner, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.ItemID, &a.Revision, &a.Reviewer, &a.Verdict, &a.Evidence, &a.ReviewID, &a.Attempt, &binding, &a.ImplementationOwner, &a.CreatedAt, &a.SubmissionID); err != nil {
 			return nil, err
 		}
 		a.ReviewRevision = a.Revision
@@ -757,7 +760,7 @@ func (s *Store) ReleaseAllWorkLeases(ctx context.Context, id, claimToken string)
 }
 
 // ExtendTaskAuthority extends the active claim and all active file leases of an in_progress task.
-// This is used by active supervisors/workers during execution to ensure leases do not expire
+// This is used by active supervisors/workers, never the native controller CLI, to ensure leases do not expire
 // during extended execution times.
 func (s *Store) ExtendTaskAuthority(ctx context.Context, id string, ttl time.Duration) error {
 	id = strings.TrimSpace(id)
@@ -797,9 +800,12 @@ func validWorkTransition(from, to WorkStatus) bool {
 	}
 }
 
-func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expectedRevision int64, to WorkStatus) (WorkItem, error) {
+func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expectedRevision int64, to WorkStatus, receipt ...WorkSubmissionInput) (WorkItem, error) {
 	if claimToken == "" {
 		return WorkItem{}, errors.New("claim token is required")
+	}
+	if len(receipt) > 1 {
+		return WorkItem{}, errors.New("only one submission is allowed per transition")
 	}
 	now := s.timestamp()
 	err := s.immediate(ctx, func(conn *sql.Conn) error {
@@ -824,12 +830,13 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 			}
 			return err
 		}
+		var reviewID string
 		if to == WorkInReview {
 			binding, err := currentReviewBinding(ctx, conn, id)
 			if err != nil {
 				return err
 			}
-			reviewID, err := newID()
+			reviewID, err = newID()
 			if err != nil {
 				return err
 			}
@@ -846,18 +853,40 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 				return fmt.Errorf("record work review: %w", err)
 			}
 		}
+		submissionID := ""
+		if len(receipt) == 1 {
+			var err error
+			submissionID, err = s.insertWorkSubmission(ctx, conn, WorkSubmission{WorkSubmissionInput: receipt[0], ItemID: id, Attempt: claimAttempt, ImplementationOwner: claimOwner, TransitionRevision: revision + 1, From: from, To: to, ReviewID: reviewID, CreatedAt: now})
+			if err != nil {
+				return err
+			}
+		}
+		if to == WorkInReview || to == WorkBlocked {
+			if _, err := conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id); err != nil {
+				return err
+			}
+		}
 		switch to {
 		case WorkBlocked:
-			_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
-			_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
-			_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
+			if _, err := conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id); err != nil {
+				return err
+			}
+			if _, err := conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id); err != nil {
+				return err
+			}
 		case WorkInProgress:
-			_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
+			if _, err := conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id); err != nil {
+				return err
+			}
 		}
 		if _, err := conn.ExecContext(ctx, `UPDATE work_items SET status=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, to, now, id, revision); err != nil {
 			return err
 		}
-		return s.addWorkEvent(ctx, conn, id, "transition", string(from), string(to), strconv.FormatInt(revision, 10))
+		detail := strconv.FormatInt(revision, 10)
+		if submissionID != "" {
+			detail += ":submission=" + submissionID
+		}
+		return s.addWorkEvent(ctx, conn, id, "transition", string(from), string(to), detail)
 	})
 	if err != nil {
 		return WorkItem{}, err
@@ -938,7 +967,13 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 		if verdict == "PASS" && evidence == "" {
 			return errors.New("PASS approval requires evidence")
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO work_approvals(item_id,reviewer,verdict,evidence,created_at,review_id,review_revision,attempt,binding_json,implementation_owner) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, reviewer, verdict, bounded(evidence, 512), now, approval.ReviewID, approval.ReviewRevision, approval.Attempt, binding, reviewOwner); err != nil {
+		var submissionID sql.NullString
+		submissionErr := conn.QueryRowContext(ctx, `SELECT id FROM work_submissions WHERE item_id=? AND attempt=? AND review_id=? AND transition_revision=?`, id, approval.Attempt, approval.ReviewID, approval.ReviewRevision).Scan(&submissionID)
+		if submissionErr != nil && !errors.Is(submissionErr, sql.ErrNoRows) {
+			return submissionErr
+		}
+		approval.SubmissionID = submissionID.String
+		if _, err := conn.ExecContext(ctx, `INSERT INTO work_approvals(item_id,reviewer,verdict,evidence,created_at,review_id,review_revision,attempt,binding_json,implementation_owner,submission_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, id, reviewer, verdict, bounded(evidence, 512), now, approval.ReviewID, approval.ReviewRevision, approval.Attempt, binding, reviewOwner, submissionID); err != nil {
 			return err
 		}
 		to := WorkBlocked

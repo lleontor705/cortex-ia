@@ -34,6 +34,7 @@ var ErrJobNotFound = errors.New("delegation job not found")
 var ErrInvalidTransition = errors.New("invalid delegation state transition")
 
 type Job struct {
+	TerminationReconciled  bool `json:"termination_reconciled,omitempty"`
 	CancellationRequested  bool `json:"cancellation_requested,omitempty"`
 	ReconciliationRequired bool `json:"reconciliation_required,omitempty"`
 	ConversationOwnership
@@ -69,6 +70,7 @@ type NewJob struct {
 }
 
 type Receipt struct {
+	TerminationReconciled  bool            `json:"termination_reconciled,omitempty"`
 	ReconciliationRequired bool            `json:"reconciliation_required,omitempty"`
 	JobID                  string          `json:"job_id"`
 	Status                 Status          `json:"status"`
@@ -182,8 +184,8 @@ func (s *Store) initialize(ctx context.Context) error {
 		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 			return fmt.Errorf("read migration ledger: %w", err)
 		}
-		if version > 12 {
-			return fmt.Errorf("cortex database schema %d is newer than supported schema 12", version)
+		if version > 14 {
+			return fmt.Errorf("cortex database schema %d is newer than supported schema 14", version)
 		}
 		statements := []string{
 			`CREATE TABLE IF NOT EXISTS delegation_jobs (
@@ -514,6 +516,16 @@ func (s *Store) initialize(ctx context.Context) error {
 				return err
 			}
 		}
+		if version < 13 {
+			if err := s.migrateReconciliation(ctx, conn); err != nil {
+				return err
+			}
+		}
+		if version < 14 {
+			if err := s.migrateWorkSubmissions(ctx, conn); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 }
@@ -587,12 +599,21 @@ func (s *Store) Create(ctx context.Context, input NewJob) (Job, error) {
 	job := Job{ID: id, Role: input.Role, TaskID: input.TaskID, ObjectiveDigest: input.ObjectiveDigest, Status: StatusAccepted, Transport: input.Transport, Workspace: input.Workspace, Worktree: input.Worktree, CreatedAt: now, UpdatedAt: now}
 	job.ConversationOwnership = input.ConversationOwnership
 	err = s.immediate(ctx, func(conn *sql.Conn) error {
-		var occupied int
-		if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM delegation_jobs WHERE workspace=? AND (status IN ('accepted','starting','running','blocked','lost') OR error_code IN ('CANCEL_REQUESTED','TERMINATION_UNCONFIRMED'))", job.Workspace).Scan(&occupied); err != nil {
+		var blocker string
+		var blockedStatus Status
+		err := conn.QueryRowContext(ctx, `SELECT j.id,j.status FROM delegation_jobs j WHERE j.workspace=? AND
+			(j.status IN ('accepted','starting','running','blocked') OR
+			((j.status='lost' OR j.error_code IN ('CANCEL_REQUESTED','TERMINATION_UNCONFIRMED')) AND NOT (j.status='lost' AND `+reconciledJobSQL+`)))
+			ORDER BY j.created_at,j.id LIMIT 1`, job.Workspace).Scan(&blocker, &blockedStatus)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		if occupied != 0 {
-			return fmt.Errorf("%w: workspace has an active or unreconciled external job", ErrWorkConflict)
+		if err == nil {
+			action := "wait or request cancellation and await worker acknowledgement"
+			if blockedStatus == StatusLost {
+				action = "inspect the job; explicitly use delegate reconcile " + blocker + " --reason <reason> only if prior-boot termination can be proved"
+			}
+			return fmt.Errorf("%w: workspace blocked by external job %s (%s); %s", ErrWorkConflict, blocker, blockedStatus, action)
 		}
 		if job.TaskID != "" {
 			var taskWorkspace string
@@ -606,7 +627,7 @@ func (s *Store) Create(ctx context.Context, input NewJob) (Job, error) {
 				}
 			}
 		}
-		_, err := conn.ExecContext(ctx, `INSERT INTO delegation_jobs(id, role, task_id, objective_digest, status, transport, workspace, worktree, created_at, updated_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, job.ID, job.Role, job.TaskID, job.ObjectiveDigest, job.Status, job.Transport, job.Workspace, job.Worktree, now, now, job.OpenCodeSessionID, job.OpenCodeRootSessionID, job.OpenCodeParentSessionID)
+		_, err = conn.ExecContext(ctx, `INSERT INTO delegation_jobs(id, role, task_id, objective_digest, status, transport, workspace, worktree, created_at, updated_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, job.ID, job.Role, job.TaskID, job.ObjectiveDigest, job.Status, job.Transport, job.Workspace, job.Worktree, now, now, job.OpenCodeSessionID, job.OpenCodeRootSessionID, job.OpenCodeParentSessionID)
 		if err != nil {
 			return err
 		}
@@ -736,7 +757,12 @@ func (s *Store) Get(ctx context.Context, id string) (Job, error) {
 		}
 	}
 	job.CancellationRequested = job.ErrorCode == "CANCEL_REQUESTED"
-	job.ReconciliationRequired = job.Status == StatusLost || job.ErrorCode == "TERMINATION_UNCONFIRMED"
+	if job.Status == StatusLost {
+		if err := s.db.QueryRowContext(ctx, `SELECT `+reconciledJobSQL+` FROM delegation_jobs j WHERE j.id=?`, id).Scan(&job.TerminationReconciled); err != nil {
+			return Job{}, err
+		}
+	}
+	job.ReconciliationRequired = (job.Status == StatusLost || job.ErrorCode == "TERMINATION_UNCONFIRMED") && !job.TerminationReconciled
 	return job, nil
 }
 
@@ -753,7 +779,10 @@ func (s *Store) Result(ctx context.Context, id string) (Receipt, error) {
 		return Receipt{}, ErrJobNotFound
 	}
 	receipt.Output = json.RawMessage(output)
-	receipt.ReconciliationRequired = receipt.Status == StatusLost
+	if err == nil && receipt.Status == StatusLost {
+		err = s.db.QueryRowContext(ctx, `SELECT j.status='lost' AND `+reconciledJobSQL+` FROM delegation_jobs j WHERE j.id=?`, id).Scan(&receipt.TerminationReconciled)
+	}
+	receipt.ReconciliationRequired = receipt.Status == StatusLost && !receipt.TerminationReconciled
 	return receipt, err
 }
 

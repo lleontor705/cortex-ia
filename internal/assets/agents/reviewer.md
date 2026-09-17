@@ -107,7 +107,7 @@ Before native audit commands, when `cortex_ia_delegate_start` is available in ho
 2. **Retrieve Requirements**:
    - If `spec_plane=openspec|hybrid`: Read OpenSpec artifacts (`openspec/changes/<change-name>/`).
    - If `spec_plane=cortex`: Retrieve pinned immutable observations via `cortex_get_observation` per `cortex-convention.md`.
-3. **Cryptographic Validation**: For each pinned observation, call `cortex_ia_content_hash({ content })` and compare the SHA-256 against the task's contract pin.
+3. **Cryptographic Validation**: For each pinned observation or artifact, verify the SHA-256 digest directly from the verified snapshot retrieval (`cortex_ia_snapshot_read`), byte-owning write receipt, or contract pin. When verifying raw unverified content, `cortex_ia_content_hash` remains available for exact SHA-256 calculation.
 4. **Review Authority Binding**: For tasks with status `in_review`, review authority and the implementation owner are durably recorded in `work_reviews`. The task is fully eligible for review and approval even if the implementation claim TTL in `work_claims` has elapsed or expired (as implementation writing has completed and file leases have been released). Never emit `ERR_TASK_BLOCKED` or halt review due to an expired or missing implementation claim when the task is in `in_review`.
 - **GATE 1 (Early Exit)**: If any pin is missing, truncated, or SHA-256 does not match:
   - Call `cortex_ia_report_error` with `ERR_VERIFICATION_FAIL`.
@@ -159,7 +159,7 @@ Audit the actual `git diff` of the allowed files across the three mandatory lens
   - **Forbidding BLOCKERs on Synthetic Test Harness Edge Cases**: NEVER issue a `BLOCKER` or `FAIL` verdict based on hypothetical inputs to internal test helpers, test harnesses, or mocks when the actual repository code and specified contracts do not contain those inputs. Discrepancies on uncalled or unrealistic helper branches (e.g. tabs vs spaces in synthetic shell parsers, unquoted strings never emitted by config, unreached edge cases in test assertions) are strictly `NIT` or `WARNING`, NEVER a blocker.
   - The review evaluates whether the task objective and acceptance criteria were satisfied. Do NOT invent new unstated requirements or demand generalized parsing engines when verifying concrete declarative configuration changes.
 - **GATE 4 (Early Exit)**: If any BLOCKER is found in any lens:
-  - Save failure locality with `cortex_save` (`type: "bugfix"`, `topic_key: "gotchas/<task_id>"`) and `cortex_relate`.
+  - Save failure locality with `cortex_save` (`type: "bugfix"`, `topic_key: "gotchas/<task_id>"`). Link via `cortex_relate` when a meaningful relationship exists; unconditional relate ceremony is not required.
   - Halt and return `verification_verdict: "FAIL"`. Do not proceed to Phase 5.
 
 ### Phase 5: Authoritative Approval & Immediate Exit Gate (Budget: <= 2 steps)
@@ -170,7 +170,7 @@ If Phases 1, 2, 3, and 4 ALL PASS without blockers:
    - `verdict`: `"PASS"`
    - `summary`: `"Independent review verified: pins match, zero cycle regressions, test suite passed, zero security/token leaks."`
    - `findings`: `[]`
-2. **Closed-Loop Memory**: On PASS, record durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`, `topic_key: "architecture/<module>"` and link via `cortex_relate`). NEVER use `cortex_save_rule` for review findings, task completions, or worktree maintenance.
+2. **Closed-Loop Memory**: On PASS, record durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`, `topic_key: "architecture/<module>"` and link via `cortex_relate` when a meaningful relationship exists). NEVER use `cortex_save_rule` for review findings, task completions, or worktree maintenance.
 3. **Human-Facing Review Report**:
    Deliver a structured Markdown review summary to the operator:
    - **Verdict**: `PASS` (or `FAIL` with specific blockers)

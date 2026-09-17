@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/delegation"
 )
@@ -19,9 +21,12 @@ func runDelegate(args []string) error {
 		fmt.Println("  policy --role <role>                             Read validated delegation policy")
 		fmt.Println("  create --request-file <path> [--transport <t>]   Create an external delegation job")
 		fmt.Println("  status <job-id>                                  Get job execution status")
+		fmt.Println("  query <job-id>                                   Get coherent job view with status and receipt")
+		fmt.Println("  wait <job-id> [--timeout <sec>]                  Wait for job completion with bounded polling")
 		fmt.Println("  result <job-id>                                  Get structured job receipt")
 		fmt.Println("  cancel <job-id>                                  Request cancellation; worker confirms termination")
 		fmt.Println("  recover                                          Recover lost/expired delegation jobs")
+		fmt.Println("  reconcile <job-id> --reason <text>               Prove prior-boot termination of a lost job")
 		fmt.Println("  worker --job <id> --request-file <path>          Run worker process for accepted job")
 		return nil
 	}
@@ -111,6 +116,37 @@ func runDelegate(args []string) error {
 			return err
 		}
 		return printJSON(job)
+	case "query", "view":
+		id, err := oneDelegateID(args[1:])
+		if err != nil {
+			return err
+		}
+		view, err := store.Query(ctx, id)
+		if err != nil {
+			return err
+		}
+		return printJSON(view)
+	case "wait":
+		if len(args) < 2 {
+			return errors.New("usage: cortex-ia delegate wait <job-id> [--timeout <seconds>]")
+		}
+		id := args[1]
+		timeout := 30 * time.Minute
+		for i := 2; i < len(args); i++ {
+			if args[i] == "--timeout" && i+1 < len(args) {
+				sec, err := strconv.Atoi(args[i+1])
+				if err != nil || sec <= 0 {
+					return errors.New("invalid timeout seconds")
+				}
+				timeout = time.Duration(sec) * time.Second
+				i++
+			}
+		}
+		view, err := store.Wait(ctx, id, timeout)
+		if err != nil {
+			return err
+		}
+		return printJSON(view)
 	case "result":
 		id, err := oneDelegateID(args[1:])
 		if err != nil {
@@ -134,6 +170,22 @@ func runDelegate(args []string) error {
 			return err
 		}
 		return printJSON(job)
+	case "reconcile":
+		if (len(args) != 4 && len(args) != 6) || args[1] == "" || args[2] != "--reason" || (len(args) == 6 && args[4] != "--session-id") {
+			return errors.New("usage: cortex-ia delegate reconcile <job-id> --reason <text> [--session-id <host-session>]")
+		}
+		sessionID := ""
+		if len(args) == 6 {
+			if args[5] == "" {
+				return errors.New("host session ID must not be empty")
+			}
+			sessionID = args[5]
+		}
+		proof, err := store.Reconcile(ctx, args[1], args[3], sessionID)
+		if err != nil {
+			return err
+		}
+		return printJSON(proof)
 	case "recover":
 		if len(args) != 1 {
 			return errors.New("usage: cortex-ia delegate recover")
