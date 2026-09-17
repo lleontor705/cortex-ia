@@ -166,7 +166,7 @@ function extractBudget(args: Record<string, any>, envelope: Record<string, any>)
   return budgetList[0]?.value;
 }
 
-function dispatchInfo(args: Record<string, any>, prompt: string): { limit: number; operational: boolean } {
+function dispatchInfo(args: Record<string, any>, prompt: string): { limit: number; operational: boolean; prompt: string } {
   const envelopes = [...prompt.matchAll(/<minion-(dispatch|contract)>([\s\S]*?)<\/minion-\1>/g)];
   let envelope: Record<string, any> = {};
   if (envelopes.length > 1 ||
@@ -193,30 +193,9 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
     throw new Error("SUBAGENT_TRANSPORT_ERROR: dispatch agent does not match host task target");
   }
 
-  let isOperational = false;
   const role = envelope.role ?? args.agent ?? args.subagent_type;
   if (role === "implement" && Array.isArray(envelope.allowed_files) && envelope.allowed_files.length === 0) {
-    const hasTarget = Boolean(envelope.operational_target || envelope.target);
-    const hasEffects = Boolean(
-      (Array.isArray(envelope.operational_effects) && envelope.operational_effects.length > 0) ||
-      (typeof envelope.operational_effects === "string" && envelope.operational_effects.trim()) ||
-      (Array.isArray(envelope.target_effects) && envelope.target_effects.length > 0) ||
-      (typeof envelope.target_effects === "string" && envelope.target_effects.trim())
-    );
-    const isOps = (envelope.workflow === "ops-task" || envelope.operation_type === "database" || envelope.operation_type === "ops" || envelope.is_operational === true) &&
-      hasTarget && hasEffects;
-
-    if (isOps) {
-      if (envelope.execution_mode === "external" || envelope.workspace_strategy === "isolated_worktree" || args.delegated === true) {
-        throw new Error("SUBAGENT_TRANSPORT_ERROR: external operational execution is unavailable; requires fresh orchestrator-native dispatch");
-      }
-      if (envelope.task_id === null || envelope.authority === false || envelope.authority_available === false || args.authority === false || args.authority_available === false) {
-        throw new Error("SUBAGENT_TRANSPORT_ERROR: operational implementation requires valid task authority");
-      }
-      isOperational = true;
-    } else {
-      throw new Error("SUBAGENT_TRANSPORT_ERROR: implementation requires an explicit file scope or authorized operational target and effects");
-    }
+    throw new Error("SUBAGENT_TRANSPORT_ERROR: implementation requires a non-empty file scope; external-effect authority is unavailable, route read-only operations to investigate or reviewer");
   }
 
   if (envelope.contract_version !== undefined) {
@@ -242,11 +221,24 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
   }
 
   const explicitBudget = extractBudget(args, envelope);
+  const workload = envelope.workload_policy ?? "flexible";
+  if (!["strict", "flexible", "unbounded"].includes(workload) || envelope.workload_policy === null) {
+    throw new Error("SUBAGENT_TRANSPORT_ERROR: workload_policy must be strict, flexible or unbounded");
+  }
+  // Normalize only after all aliases and routing fields pass validation. Keep
+  // caller input immutable; the dispatch hook replaces its outgoing prompt.
+  const normalized = { ...envelope, workload_policy: workload };
+  delete normalized.steps;
+  delete normalized.budget;
+  if (explicitBudget !== undefined) normalized.max_steps = explicitBudget;
+  const normalizedPrompt = envelopes.length
+    ? prompt.replace(envelopes[0][0], () => `<minion-dispatch>${JSON.stringify(normalized)}</minion-dispatch>`)
+    : explicitBudget !== undefined ? `${prompt}\n<minion-dispatch>${JSON.stringify(normalized)}</minion-dispatch>` : prompt;
   const hostRole = args.subagent_type;
-  if (hostRole === "planner") return { limit: Number.POSITIVE_INFINITY, operational: isOperational };
+  if (hostRole === "planner") return { limit: Number.POSITIVE_INFINITY, operational: false, prompt: normalizedPrompt };
   const fallback = typeof hostRole === "string" && Object.prototype.hasOwnProperty.call(ROLE_DEFAULT_STEPS, hostRole)
     ? ROLE_DEFAULT_STEPS[hostRole] : DEFAULT_MAX_STEPS;
-  return { limit: explicitBudget ?? fallback, operational: isOperational };
+  return { limit: explicitBudget ?? fallback, operational: false, prompt: normalizedPrompt };
 }
 
 // Admission only: the bridge still validates the retained claim/lease authority.
@@ -564,7 +556,7 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
           throw new Error("SUBAGENT_TRANSPORT_ERROR: task dispatch requires a non-empty prompt or envelope");
         }
 
-        const { limit: stepBudget, operational: isOperational } = dispatchInfo(args, prompt);
+        const { limit: stepBudget, operational: isOperational, prompt: normalizedPrompt } = dispatchInfo(args, prompt);
         if (!sessionID || !input.callID || starts.get(sessionID)?.has(input.callID)) {
           throw new Error("SUBAGENT_TRANSPORT_AMBIGUOUS: task requires a unique parent and callID pair");
         }
@@ -586,6 +578,11 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
         };
         if (!starts.has(sessionID)) starts.set(sessionID, new Map());
         starts.get(sessionID)!.set(input.callID, start);
+        const normalizedArgs = { ...args, prompt: normalizedPrompt };
+        delete normalizedArgs.steps;
+        delete normalizedArgs.max_steps;
+        delete normalizedArgs.budget;
+        output.args = normalizedArgs;
       }
     }
   };

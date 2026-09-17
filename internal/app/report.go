@@ -19,6 +19,7 @@ func runReport(args []string) error {
 		fmt.Println("\nSubcommands:")
 		fmt.Println("  error --code <code> --message <msg> [options]    Generate and send a signed error report")
 		fmt.Println("  config --endpoint <url> [--secret <key>]         Configure error reporting endpoint")
+		fmt.Println("  flush                                            Retry bounded queued reports")
 		fmt.Println("  status                                           Show current reporting configuration")
 		return nil
 	}
@@ -32,6 +33,14 @@ func runReport(args []string) error {
 	switch sub {
 	case "config":
 		return runReportConfig(home, args[1:])
+	case "flush":
+		cfg, err := telemetry.LoadConfig(home)
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		return telemetry.FlushReports(ctx, home, cfg)
 	case "status":
 		return runReportStatus(home)
 	case "error", "send":
@@ -61,7 +70,10 @@ func runReportConfig(home string, args []string) error {
 		return fmt.Errorf("usage: cortex-ia report config [--endpoint <url>] [--secret <key>] [--enable|--disable]")
 	}
 
-	cfg, _ := telemetry.LoadConfig(home)
+	cfg, err := telemetry.LoadConfig(home)
+	if err != nil {
+		return err
+	}
 	if ep := oneOption(opts, "--endpoint"); ep != "" {
 		cfg.Endpoint = telemetry.NormalizeEndpoint(ep)
 		cfg.Enabled = true
@@ -102,7 +114,7 @@ func runReportError(home string, args []string) error {
 	opts, _, err := workOptions(args, map[string]bool{
 		"--code": false, "--message": false, "--details": false,
 		"--task": false, "--job": false, "--board": false,
-		"--source": false, "--workspace": false,
+		"--source": false, "--workspace": false, "--session-id": false, "--role": false,
 	})
 	if err != nil {
 		return fmt.Errorf("usage: cortex-ia report error --code <code> --message <msg> [--details <text|@stdin>] [--task <id>] [--job <id>] [--source <source>]")
@@ -135,26 +147,35 @@ func runReportError(home string, args []string) error {
 
 	taskID, boardID, details = enrichReportMetadata(home, jobID, taskID, boardID, details)
 
-	cfg, _ := telemetry.LoadConfig(home)
+	cfg, err := telemetry.LoadConfig(home)
+	if err != nil {
+		return err
+	}
 	report := telemetry.CreateReport(source, code, msg, details, taskID, jobID, boardID, ws, Version, cfg.Secret)
 
-	// Print JSON report locally
+	report.SessionID = oneOption(opts, "--session-id")
+	report.SubagentRole = oneOption(opts, "--role")
+	telemetry.SanitizeReport(report, cfg.Secret)
+	telemetry.SignReport(report, cfg.Secret)
+	if err := telemetry.ValidateReport(report); err != nil {
+		return err
+	}
+	if cfg.Enabled {
+		if err := telemetry.EnqueueReport(home, report, cfg.Secret); err != nil {
+			return err
+		}
+	}
 	if err := printJSON(report); err != nil {
 		return err
 	}
-	if cfg.Secret == "" {
-		fmt.Fprintf(os.Stderr, "⚠️ Nota: Sin secreto de autenticación configurado (el reporte se envió sin firma HMAC oficial).\n")
-	}
-
-	// If endpoint is configured, dispatch HTTP
-	if cfg.Enabled && cfg.Endpoint != "" {
-		res, err := telemetry.SendReport(context.Background(), cfg.Endpoint, report)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️ Error al enviar reporte al backend (%s): %v\n", cfg.Endpoint, err)
-		} else {
-			fmt.Fprintf(os.Stderr, "🚀 Reporte enviado exitosamente a Railway backend [ID: %s]\n", res.ReportID)
+	if cfg.Enabled {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		if err := telemetry.FlushReports(ctx, home, cfg); err != nil {
+			return fmt.Errorf("report %s retained in local outbox: %w", report.ID, err)
 		}
 	}
+
 	return nil
 }
 

@@ -37,16 +37,16 @@ var ErrWorkAttemptLimit = errors.New("work attempt limit reached")
 type WorkItem struct {
 	Contract *SDDContract `json:"contract,omitempty"`
 	ConversationOwnership
-	ID           string      `json:"task_id"`
-	BoardID      string      `json:"board_id"`
-	Workspace    string      `json:"workspace,omitempty"`
-	Title        string      `json:"title"`
-	Objective    string      `json:"objective,omitempty"`
-	Acceptance   string      `json:"acceptance_criteria,omitempty"`
-	Verification string      `json:"verification,omitempty"`
-	AllowedFiles []string    `json:"allowed_files,omitempty"`
-	Replaces     string      `json:"replaces,omitempty"`
-	ReplacedBy   []string    `json:"replaced_by,omitempty"`
+	ID             string        `json:"task_id"`
+	BoardID        string        `json:"board_id"`
+	Workspace      string        `json:"workspace,omitempty"`
+	Title          string        `json:"title"`
+	Objective      string        `json:"objective,omitempty"`
+	Acceptance     string        `json:"acceptance_criteria,omitempty"`
+	Verification   string        `json:"verification,omitempty"`
+	AllowedFiles   []string      `json:"allowed_files,omitempty"`
+	Replaces       string        `json:"replaces,omitempty"`
+	ReplacedBy     []string      `json:"replaced_by,omitempty"`
 	Status         WorkStatus    `json:"status"`
 	Revision       int64         `json:"revision"`
 	Dependencies   []string      `json:"dependencies,omitempty"`
@@ -522,6 +522,11 @@ func (s *Store) ValidateDelegationAuthority(ctx context.Context, id string, allo
 }
 
 func (s *Store) ClaimWork(ctx context.Context, id, owner string, ttl time.Duration) (WorkClaim, error) {
+	result, err := s.ClaimWorkWithLeases(ctx, id, owner, nil, ttl)
+	return result.WorkClaim, err
+}
+
+func (s *Store) claimWork(ctx context.Context, conn *sql.Conn, id, owner string, ttl time.Duration) (WorkClaim, error) {
 	owner = strings.TrimSpace(owner)
 	if owner == "" || ttl <= 0 {
 		return WorkClaim{}, errors.New("owner and positive ttl are required")
@@ -532,7 +537,7 @@ func (s *Store) ClaimWork(ctx context.Context, id, owner string, ttl time.Durati
 	}
 	now, expires := s.timestamp(), s.now().UTC().Add(ttl).Format(time.RFC3339Nano)
 	claim := WorkClaim{Owner: owner, ExpiresAt: expires, Token: plain}
-	err = s.immediate(ctx, func(conn *sql.Conn) error {
+	err = func() error {
 		var status WorkStatus
 		var revision int64
 		if err := conn.QueryRowContext(ctx, `SELECT status,revision FROM work_items WHERE id=?`, id).Scan(&status, &revision); errors.Is(err, sql.ErrNoRows) {
@@ -581,7 +586,7 @@ func (s *Store) ClaimWork(ctx context.Context, id, owner string, ttl time.Durati
 		claim.Attempt = attempt
 		claim.Revision = revision + 1
 		return s.addWorkEvent(ctx, conn, id, "claimed", string(WorkReady), string(WorkInProgress), owner)
-	})
+	}()
 	return claim, err
 }
 
@@ -624,6 +629,14 @@ func canonicalLeasePath(value string) (string, error) {
 }
 
 func (s *Store) ReserveWorkLease(ctx context.Context, id, claimToken, path string, ttl time.Duration) (WorkLease, error) {
+	leases, err := s.ReserveWorkLeases(ctx, id, claimToken, []string{path}, ttl)
+	if err != nil {
+		return WorkLease{}, err
+	}
+	return leases[0], nil
+}
+
+func (s *Store) reserveWorkLease(ctx context.Context, conn *sql.Conn, id, claimToken, path string, ttl time.Duration) (WorkLease, error) {
 	leasePath, err := canonicalLeasePath(path)
 	if err != nil {
 		return WorkLease{}, err
@@ -637,7 +650,7 @@ func (s *Store) ReserveWorkLease(ctx context.Context, id, claimToken, path strin
 	}
 	now, expires := s.timestamp(), s.now().UTC().Add(ttl).Format(time.RFC3339Nano)
 	lease := WorkLease{Path: leasePath, ItemID: id, ExpiresAt: expires, Token: plain}
-	err = s.immediate(ctx, func(conn *sql.Conn) error {
+	err = func() error {
 		var status WorkStatus
 		if err := conn.QueryRowContext(ctx, `SELECT status FROM work_items WHERE id=?`, id).Scan(&status); errors.Is(err, sql.ErrNoRows) {
 			return ErrWorkNotFound
@@ -668,7 +681,7 @@ func (s *Store) ReserveWorkLease(ctx context.Context, id, claimToken, path strin
 			return fmt.Errorf("create lease: %w", err)
 		}
 		return s.addWorkEvent(ctx, conn, id, "lease_acquired", "", "", leasePath)
-	})
+	}()
 	return lease, err
 }
 

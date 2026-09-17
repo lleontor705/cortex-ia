@@ -23,9 +23,9 @@ func runWork(args []string) error {
 		fmt.Println("  create <id> <title> [--board <board>] [definition options]     Create a work task")
 		fmt.Println("  list [--board <board-id>]                                   List work items")
 		fmt.Println("  status <task-id>                                            Get task details")
-		fmt.Println("  claim <task-id> --owner <owner> [--ttl <duration>]          Claim a task")
+		fmt.Println("  claim <task-id> --owner <owner> [--path <file> ...] [--ttl <duration>]          Claim a task")
 		fmt.Println("  renew <task-id> --claim-token <token> [--ttl <duration>]    Renew a claim")
-		fmt.Println("  reserve <task-id> --claim-token <token> --path <file>       Reserve exactly one file")
+		fmt.Println("  reserve <task-id> --claim-token <token> --path <file>       Reserve files atomically")
 		fmt.Println("  lease <task-id> --claim-token <token> --path <file>         Reserve a file lease")
 		fmt.Println("  lease-renew --path <file> --lease-token <token>             Renew a file lease")
 		fmt.Println("  release --path <file> --lease-token <token>                 Release a file lease")
@@ -230,17 +230,17 @@ func runWork(args []string) error {
 		return printJSON(fp)
 	case "claim":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("claim <task-id> --owner <owner> [--ttl <duration>]", nil)
+			return workUsage("claim <task-id> --owner <owner> [--path <file> ...] [--ttl <duration>]", nil)
 		}
-		id, opts, err := workIDOptions(args[1:], map[string]bool{"--owner": false, "--ttl": false})
+		id, opts, err := workIDOptions(args[1:], map[string]bool{"--owner": false, "--ttl": false, "--path": true})
 		if err != nil {
-			return workUsage("claim <task-id> --owner <owner> [--ttl <duration>]", err)
+			return workUsage("claim <task-id> --owner <owner> [--path <file> ...] [--ttl <duration>]", err)
 		}
 		ttl, err := workTTL(oneOption(opts, "--ttl"))
 		if err != nil {
 			return err
 		}
-		claim, err := store.ClaimWork(ctx, id, oneOption(opts, "--owner"), ttl)
+		claim, err := store.ClaimWorkWithLeases(ctx, id, oneOption(opts, "--owner"), opts["--path"], ttl)
 		if err != nil {
 			return err
 		}
@@ -289,11 +289,11 @@ func runWork(args []string) error {
 		return printJSON(lease)
 	case "reserve", "file-reserve":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("reserve <task-id> --claim-token <token> --path <relative-path> [--ttl <duration>]", nil)
+			return workUsage("reserve <task-id> --claim-token <token> --path <relative-path> [--path <relative-path> ...] [--ttl <duration>]", nil)
 		}
-		id, opts, err := workIDOptions(args[1:], map[string]bool{"--claim-token": false, "--path": false, "--ttl": false})
+		id, opts, err := workIDOptions(args[1:], map[string]bool{"--claim-token": false, "--path": true, "--ttl": false})
 		if err != nil {
-			return workUsage("reserve <task-id> --claim-token <token> --path <relative-path> [--ttl <duration>]", err)
+			return workUsage("reserve <task-id> --claim-token <token> --path <relative-path> [--path <relative-path> ...] [--ttl <duration>]", err)
 		}
 		ttl, err := workTTL(oneOption(opts, "--ttl"))
 		if err != nil {
@@ -303,11 +303,14 @@ func runWork(args []string) error {
 		if err != nil {
 			return err
 		}
-		lease, err := store.ReserveWorkLease(ctx, id, claimToken, oneOption(opts, "--path"), ttl)
+		leases, err := store.ReserveWorkLeases(ctx, id, claimToken, opts["--path"], ttl)
 		if err != nil {
 			return err
 		}
-		return printJSON(lease)
+		if len(leases) == 1 {
+			return printJSON(leases[0])
+		}
+		return printJSON(map[string]any{"reserved": leases, "count": len(leases)})
 	case "lease-renew":
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("lease-renew --path <relative-path> --lease-token <token> [--ttl <duration>]", nil)

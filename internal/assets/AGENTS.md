@@ -116,7 +116,7 @@ The value returned by `cortex_ia_delegate_start` is authoritative. Agents MUST N
 | `direct_cli` | Cortex accepted and launched AGY directly; the controller only supervises, validates, and retains control-plane authority. |
 | `herdr_multiplexed` | Cortex accepted and launched AGY through Herdr; controller behavior is identical to `direct_cli`, with the pane serving only as presentation and multiplexing. |
 
-After `delegated=true` plus `job_id`, no controller may perform the same objective concurrently or fall back natively because of failure, timeout, cancellation, a missing pane, or `lost`. It MUST reconcile the durable job first and may retry only explicitly under fresh authority. `use_herdr=true` is only a preference; Cortex may return `direct_cli` after a safe pre-acceptance fallback.
+After `delegated=true` plus `job_id`, no controller may perform the same objective concurrently or fall back natively because of failure, timeout, cancellation, a missing pane, or `lost`. It MUST reconcile the durable job first and may retry only explicitly under fresh authority. `use_herdr=true` is only a preference; Cortex may return `direct_cli` after a safe pre-acceptance fallback. When `cortex_ia_delegate_start` is not exposed in the host's active tool inventory (e.g. Antigravity or native-only sessions), `native` mode is implicitly active. Controllers proceed directly with local execution using available tools and must not halt or report a delegation admission error.
 
 ---
 

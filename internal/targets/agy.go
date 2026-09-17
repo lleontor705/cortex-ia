@@ -190,10 +190,13 @@ func adaptAgentForAGY(agentPath string, data []byte) []byte {
 	}
 
 	var agyTools []string
-	if role == "reviewer" || role == "investigate" || role == "discovery" {
-		agyTools = []string{"run_command", "view_file", "grep_search", "find_by_name", "list_dir"}
-	} else {
-		agyTools = []string{"run_command", "write_to_file", "view_file", "grep_search", "find_by_name", "list_dir", "replace_file_content"}
+	switch role {
+	case "reviewer", "investigate", "discovery":
+		agyTools = []string{"run_command", "view_file", "grep_search", "find_by_name", "list_dir", "call_mcp_tool"}
+	case "orchestrator":
+		agyTools = []string{"run_command", "view_file", "invoke_subagent", "send_message", "manage_subagents", "ask_question", "call_mcp_tool"}
+	default:
+		agyTools = []string{"run_command", "write_to_file", "view_file", "grep_search", "find_by_name", "list_dir", "replace_file_content", "call_mcp_tool"}
 	}
 
 	var sb strings.Builder

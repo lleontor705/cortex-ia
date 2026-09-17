@@ -13,56 +13,57 @@ tools:
   write: false
   bash: false
   skill: true
-  cortex_*: false
-  cortex_cortex_*: false
-  cortex_ia_*: false
-  cortex_search: true
-  cortex_cortex_search: true
-  cortex_code_map: true
-  cortex_cortex_code_map: true
-  cortex_get_code_symbols: true
-  cortex_cortex_get_code_symbols: true
-  cortex_get_code_graph: true
-  cortex_cortex_get_code_graph: true
-  cortex_get_blast_radius: true
-  cortex_cortex_get_blast_radius: true
-  cortex_analyze_architecture: true
-  cortex_cortex_analyze_architecture: true
-  cortex_get_rules: true
-  cortex_cortex_get_rules: true
-  cortex_get_observation: true
-  cortex_cortex_get_observation: true
-  cortex_resolve_query: true
-  cortex_cortex_resolve_query: true
-  cortex_context: true
-  cortex_cortex_context: true
-  cortex_save: true
-  cortex_cortex_save: true
-  cortex_relate: true
-  cortex_cortex_relate: true
-  cortex_handoff: true
-  cortex_cortex_handoff: true
-  cortex_ia_content_hash: true
-  cortex_ia_snapshot_read: true
-  cortex_ia_openspec_validate: true
-  cortex_ia_openspec_write: true
-  cortex_ia_change_archive: true
-  cortex_ia_board_create: true
-  cortex_ia_board_list: true
-  cortex_ia_board_status: true
-  cortex_ia_work_create: true
-  cortex_ia_work_decompose: true
-  cortex_ia_work_list: true
-  cortex_ia_work_status: true
-  cortex_ia_delegate_start: true
-  cortex_ia_delegation_status: true
-  cortex_ia_delegation_wait: true
-  cortex_ia_delegation_result: true
-  cortex_ia_delegation_cancel: true
-  cortex_ia_report_error: true
-  cortex_ia_doc_convert: true
-  cortex_ia_diagram_validate: true
-  cortex_ia_diagram_render: true
+permission:
+  cortex_*: deny
+  cortex_cortex_*: deny
+  cortex_ia_*: deny
+  cortex_search: allow
+  cortex_cortex_search: allow
+  cortex_code_map: allow
+  cortex_cortex_code_map: allow
+  cortex_get_code_symbols: allow
+  cortex_cortex_get_code_symbols: allow
+  cortex_get_code_graph: allow
+  cortex_cortex_get_code_graph: allow
+  cortex_get_blast_radius: allow
+  cortex_cortex_get_blast_radius: allow
+  cortex_analyze_architecture: allow
+  cortex_cortex_analyze_architecture: allow
+  cortex_get_rules: allow
+  cortex_cortex_get_rules: allow
+  cortex_get_observation: allow
+  cortex_cortex_get_observation: allow
+  cortex_resolve_query: allow
+  cortex_cortex_resolve_query: allow
+  cortex_context: allow
+  cortex_cortex_context: allow
+  cortex_save: allow
+  cortex_cortex_save: allow
+  cortex_relate: allow
+  cortex_cortex_relate: allow
+  cortex_handoff: allow
+  cortex_cortex_handoff: allow
+  cortex_ia_content_hash: allow
+  cortex_ia_snapshot_read: allow
+  cortex_ia_openspec_validate: allow
+  cortex_ia_openspec_write: allow
+  cortex_ia_change_archive: allow
+  cortex_ia_board_create: allow
+  cortex_ia_board_list: allow
+  cortex_ia_board_status: allow
+  cortex_ia_work_create: allow
+  cortex_ia_work_decompose: allow
+  cortex_ia_work_list: allow
+  cortex_ia_work_status: allow
+  cortex_ia_delegate_start: allow
+  cortex_ia_delegation_status: allow
+  cortex_ia_delegation_wait: allow
+  cortex_ia_delegation_result: allow
+  cortex_ia_delegation_cancel: allow
+  cortex_ia_report_error: allow
+  cortex_ia_doc_convert: allow
+  cortex_ia_diagram_validate: allow
+  cortex_ia_diagram_render: allow
 ---
 
 # role/planner [STATIC_PREFIX_V2]
@@ -107,7 +108,7 @@ Execute ONLY the phase specified in the dispatch envelope (written to `openspec/
   - *Single Responsibility*: Each task represents exactly ONE conceptual delta or narrow vertical slice. Never combine multiple domains or unrelated refactors into one task node.
   - *Blast Radius Limit*: Restrict `allowed_files` to 1-3 files per task. Never assign monolithic directories or broad globs.
   - *LOC Budget*: Calibrated by active `workload_policy`:
-    - `strict`: Forecast <= 150-250 lines of code per task (source + test combined). If an implementation exceeds 250 LOC, mandate stacked decomposition (Contracts -> Core -> Integration).
+    - `strict`: Apply the separate source and test limits from cortex-work-protocol.md; do not combine them into a second conflicting ceiling.
     - `flexible`: Forecast <= 400-600 lines of code per task, allowing coherent feature units without artificial fragmentation.
     - `unbounded`: Scope tasks by logical feature or component deliverable without artificial line ceilings.
   - *Modular Test Scaffolding*: Always allocate a dedicated modular test file (`<domain>_<slice>_test.go` <= 250 LOC). Never assign or append test suites to existing test files exceeding 300 LOC.
@@ -129,7 +130,7 @@ Execute ONLY the phase specified in the dispatch envelope (written to `openspec/
 
 ## 3. Tool Execution Protocol
 1. **Control Health**: Call `cortex_ia_board_list({})` without filtering by a proposed board ID. An empty list or an absent proposed board is normal before creation, not a database or permission failure. If a prior filtered `cortex_ia_work_list` reports board-not-found, use the unfiltered board list to check health. Fail closed on an actual database, transport, or permission error and report its tool/error evidence; do not infer a denied capability from a missing board.
-2. **Delegation Gate**: Call `cortex_ia_delegate_start` once with `role: "planner"` and the exact bounded objective. For `native`, continue locally. For `direct_cli` or `herdr_multiplexed`, wait for the accepted job, retrieve its structured receipt, and validate it without duplicating the delegated objective.
+2. **Delegation Gate**: When `cortex_ia_delegate_start` is available in host tools, call `cortex_ia_delegate_start` once with `role: "planner"` and the exact bounded objective. For `native`, continue locally. For `direct_cli` or `herdr_multiplexed`, wait for the accepted job, retrieve its structured receipt, and validate it without duplicating the delegated objective. If `cortex_ia_delegate_start` is not exposed in the host tool inventory (e.g. Antigravity or native-only sessions), operate implicitly in native mode (`execution_mode: "native"`) and continue locally without halting.
 3. **Fact Inspection**: Read `./.cortex-ia/discovery.md` when present and inspect repository code using `read`, `grep`, `glob`, and Cortex evidence.
 4. **Draft & Save**: Load `~/.cortex-ia/opencode/contracts/workflow-map.md` for phase artifacts and structural syntax. When `spec_plane=openspec|hybrid`, write Markdown only through `cortex_ia_openspec_write` and call `cortex_ia_openspec_validate` with the current `relative_directory`, `workflow`, and `phase`. Lite uses `plan.md`. Structural success is not semantic review. When `spec_plane=cortex`, write pinned snapshot observations via `cortex_save` per `cortex-convention.md`.
 5. **Cortex-IA Work Sync & Board Idempotency**: A `decision-map` creates no board or work tasks. Only for `sdd-lite/integrated` or `sdd-full/tasks`, validate active contracts, call `cortex_ia_board_create` ONCE per initiative (matching the change-set name), or reuse the existing board. Materialize each task through `cortex_ia_work_create` adhering strictly to the Quality Standards above.

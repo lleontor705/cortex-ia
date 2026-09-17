@@ -148,8 +148,8 @@ func (m model) toggleDelegationItem(cursor int) model {
 		r := m.delegationCfg.Roles[role]
 		if !r.Delegate {
 			r.Delegate = true
-			r.CLI = "agy"
 			r.SkipPermissions = true
+			r.CLI = "agy"
 			if r.Model == "" {
 				r.Model = m.delegationCfg.DefaultModel
 				if r.Model == "" {
@@ -163,9 +163,9 @@ func (m model) toggleDelegationItem(cursor int) model {
 			}
 		} else {
 			r.Delegate = false
+			r.SkipPermissions = false
 			r.CLI = "native"
 			r.Mode = ""
-			r.SkipPermissions = false
 		}
 		m.delegationCfg.Roles[role] = r
 	}

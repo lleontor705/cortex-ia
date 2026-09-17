@@ -34,6 +34,8 @@ var ErrJobNotFound = errors.New("delegation job not found")
 var ErrInvalidTransition = errors.New("invalid delegation state transition")
 
 type Job struct {
+	CancellationRequested  bool `json:"cancellation_requested,omitempty"`
+	ReconciliationRequired bool `json:"reconciliation_required,omitempty"`
 	ConversationOwnership
 	ID              string  `json:"job_id"`
 	Role            string  `json:"role"`
@@ -67,12 +69,13 @@ type NewJob struct {
 }
 
 type Receipt struct {
-	JobID      string          `json:"job_id"`
-	Status     Status          `json:"status"`
-	Output     json.RawMessage `json:"output,omitempty"`
-	OutputHash string          `json:"output_hash,omitempty"`
-	ExitCode   int             `json:"exit_code"`
-	CreatedAt  string          `json:"created_at"`
+	ReconciliationRequired bool            `json:"reconciliation_required,omitempty"`
+	JobID                  string          `json:"job_id"`
+	Status                 Status          `json:"status"`
+	Output                 json.RawMessage `json:"output,omitempty"`
+	OutputHash             string          `json:"output_hash,omitempty"`
+	ExitCode               int             `json:"exit_code"`
+	CreatedAt              string          `json:"created_at"`
 }
 
 // ConversationOwnership is host-proven provenance, never claim or board identity.
@@ -584,6 +587,13 @@ func (s *Store) Create(ctx context.Context, input NewJob) (Job, error) {
 	job := Job{ID: id, Role: input.Role, TaskID: input.TaskID, ObjectiveDigest: input.ObjectiveDigest, Status: StatusAccepted, Transport: input.Transport, Workspace: input.Workspace, Worktree: input.Worktree, CreatedAt: now, UpdatedAt: now}
 	job.ConversationOwnership = input.ConversationOwnership
 	err = s.immediate(ctx, func(conn *sql.Conn) error {
+		var occupied int
+		if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM delegation_jobs WHERE workspace=? AND (status IN ('accepted','starting','running','blocked','lost') OR error_code IN ('CANCEL_REQUESTED','TERMINATION_UNCONFIRMED'))", job.Workspace).Scan(&occupied); err != nil {
+			return err
+		}
+		if occupied != 0 {
+			return fmt.Errorf("%w: workspace has an active or unreconciled external job", ErrWorkConflict)
+		}
 		if job.TaskID != "" {
 			var taskWorkspace string
 			err := conn.QueryRowContext(ctx, `SELECT workspace FROM work_items WHERE id=?`, job.TaskID).Scan(&taskWorkspace)
@@ -656,20 +666,39 @@ func (s *Store) ExtendJobLease(ctx context.Context, id, owner string, ttl time.D
 }
 
 func (s *Store) Complete(ctx context.Context, id string, status Status, receipt Receipt, code, message string) error {
+	return s.completeWorker(ctx, id, "", status, receipt, code, message)
+}
+
+func (s *Store) completeWorker(ctx context.Context, id, owner string, status Status, receipt Receipt, code, message string) error {
 	if status != StatusSucceeded && status != StatusFailed && status != StatusTimedOut && status != StatusCancelled {
 		return fmt.Errorf("%w: terminal status %q", ErrInvalidTransition, status)
 	}
 	if len(receipt.Output) > 1024*1024 {
 		return errors.New("delegation receipt exceeds 1 MiB")
 	}
-	now := s.timestamp()
 	return s.immediate(ctx, func(conn *sql.Conn) error {
+		now := s.timestamp()
 		var from Status
-		if err := conn.QueryRowContext(ctx, `SELECT status FROM delegation_jobs WHERE id=?`, id).Scan(&from); err != nil {
+		var currentOwner, currentCode string
+		var expires sql.NullString
+		if err := conn.QueryRowContext(ctx, `SELECT status,lease_owner,error_code,lease_expires_at FROM delegation_jobs WHERE id=?`, id).Scan(&from, &currentOwner, &currentCode, &expires); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrJobNotFound
 			}
 			return err
+		}
+		if owner != "" && (owner != currentOwner || !expires.Valid || expires.String <= now) {
+			return fmt.Errorf("%w: stale worker owner", ErrInvalidTransition)
+		}
+		if currentCode == "TERMINATION_UNCONFIRMED" {
+			return fmt.Errorf("%w: process cleanup requires reconciliation", ErrInvalidTransition)
+		}
+		if currentCode == "CANCEL_REQUESTED" {
+			if owner == "" {
+				return fmt.Errorf("%w: cancellation requires worker acknowledgement", ErrInvalidTransition)
+			}
+			status, code, message = StatusCancelled, "CANCELLED", "worker confirmed process termination and cleanup"
+			receipt = Receipt{Output: json.RawMessage("{}"), ExitCode: -1}
 		}
 		if from != StatusStarting && from != StatusRunning && from != StatusBlocked {
 			return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, from, status)
@@ -687,31 +716,6 @@ func (s *Store) Complete(ctx context.Context, id string, status Status, receipt 
 	})
 }
 
-func (s *Store) Cancel(ctx context.Context, id string) error {
-	now := s.timestamp()
-	return s.immediate(ctx, func(conn *sql.Conn) error {
-		var from Status
-		if err := conn.QueryRowContext(ctx, `SELECT status FROM delegation_jobs WHERE id=?`, id).Scan(&from); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return ErrJobNotFound
-			}
-			return err
-		}
-		if terminal(from) {
-			return nil
-		}
-		_, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET status='cancelled', error_code='CANCELLED', error_message='cancellation requested', lease_owner='', lease_expires_at=NULL, updated_at=?, finished_at=? WHERE id=? AND status=?`, now, now, id, from)
-		if err != nil {
-			return err
-		}
-		_, err = conn.ExecContext(ctx, `INSERT INTO delegation_receipts(job_id,status,output_json,output_hash,exit_code,created_at) VALUES(?,'cancelled','{}','',-1,?) ON CONFLICT(job_id) DO UPDATE SET status='cancelled', output_json='{}', output_hash='', exit_code=-1, created_at=excluded.created_at`, id, now)
-		if err != nil {
-			return err
-		}
-		return s.addEvent(ctx, conn, id, "cancelled", from, StatusCancelled, "cancellation requested")
-	})
-}
-
 func (s *Store) Get(ctx context.Context, id string) (Job, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id,role,task_id,objective_digest,status,transport,workspace,worktree,pid,pane_id,lease_owner,lease_expires_at,attempt,error_code,error_message,created_at,updated_at,started_at,finished_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id FROM delegation_jobs WHERE id=?`, id)
 	var job Job
@@ -725,20 +729,14 @@ func (s *Store) Get(ctx context.Context, id string) (Job, error) {
 	if lease.Valid {
 		job.LeaseExpiresAt = &lease.String
 		if (job.Status == StatusStarting || job.Status == StatusRunning || job.Status == StatusBlocked) && lease.String < s.timestamp() {
-			now := s.timestamp()
-			_ = s.immediate(ctx, func(conn *sql.Conn) error {
-				_, _ = conn.ExecContext(ctx, `UPDATE delegation_jobs SET status='lost', error_code='LEASE_EXPIRED', error_message='worker lease expired', lease_owner='', lease_expires_at=NULL, updated_at=?, finished_at=? WHERE id=? AND status=?`, now, now, id, job.Status)
-				_, _ = conn.ExecContext(ctx, `INSERT INTO delegation_receipts(job_id,status,output_json,output_hash,exit_code,created_at) VALUES(?,'lost','{}','',-1,?) ON CONFLICT(job_id) DO UPDATE SET status='lost', output_json='{}', output_hash='', exit_code=-1, created_at=excluded.created_at`, id, now)
-				_ = s.addEvent(ctx, conn, id, "lost", job.Status, StatusLost, "worker lease expired")
-				return nil
-			})
-			job.Status = StatusLost
-			job.ErrorCode = "LEASE_EXPIRED"
-			job.ErrorMessage = "worker lease expired"
-			job.LeaseOwner = ""
-			job.LeaseExpiresAt = nil
+			if _, err := s.recoverExpired(ctx, id); err != nil {
+				return Job{}, err
+			}
+			return s.Get(ctx, id)
 		}
 	}
+	job.CancellationRequested = job.ErrorCode == "CANCEL_REQUESTED"
+	job.ReconciliationRequired = job.Status == StatusLost || job.ErrorCode == "TERMINATION_UNCONFIRMED"
 	return job, nil
 }
 
@@ -755,14 +753,19 @@ func (s *Store) Result(ctx context.Context, id string) (Receipt, error) {
 		return Receipt{}, ErrJobNotFound
 	}
 	receipt.Output = json.RawMessage(output)
+	receipt.ReconciliationRequired = receipt.Status == StatusLost
 	return receipt, err
 }
 
 func (s *Store) Recover(ctx context.Context) (int64, error) {
+	return s.recoverExpired(ctx, "")
+}
+
+func (s *Store) recoverExpired(ctx context.Context, id string) (int64, error) {
 	now := s.timestamp()
 	var changed int64
 	err := s.immediate(ctx, func(conn *sql.Conn) error {
-		rows, err := conn.QueryContext(ctx, `SELECT id,status FROM delegation_jobs WHERE status IN ('starting','running','blocked') AND lease_expires_at IS NOT NULL AND lease_expires_at < ? ORDER BY id`, now)
+		rows, err := conn.QueryContext(ctx, `SELECT id,status FROM delegation_jobs WHERE status IN ('starting','running','blocked') AND lease_expires_at IS NOT NULL AND lease_expires_at < ? AND (?='' OR id=?) ORDER BY id`, now, id, id)
 		if err != nil {
 			return err
 		}
@@ -787,7 +790,7 @@ func (s *Store) Recover(ctx context.Context) (int64, error) {
 			return err
 		}
 		for _, job := range expired {
-			result, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET status='lost', error_code='LEASE_EXPIRED', error_message='worker lease expired', lease_owner='', lease_expires_at=NULL, updated_at=?, finished_at=? WHERE id=? AND status=?`, now, now, job.id, job.status)
+			result, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET status='lost', error_code=CASE WHEN error_code IN ('CANCEL_REQUESTED','TERMINATION_UNCONFIRMED') THEN error_code ELSE 'LEASE_EXPIRED' END, error_message='worker lease expired; process termination unconfirmed, reconciliation required', lease_expires_at=NULL, updated_at=?, finished_at=? WHERE id=? AND status=?`, now, now, job.id, job.status)
 			if err != nil {
 				return err
 			}

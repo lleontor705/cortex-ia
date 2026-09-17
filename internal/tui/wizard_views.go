@@ -161,9 +161,9 @@ func (m model) updateWizardDelegation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			r := m.delegationCfg.Roles[role]
 			r.Delegate = false
+			r.SkipPermissions = false
 			r.CLI = "native"
 			r.Mode = ""
-			r.SkipPermissions = false
 			m.delegationCfg.Roles[role] = r
 		}
 		m.screen = screenReview
@@ -293,11 +293,11 @@ func (m model) updateWizardRoles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.delegationCfg.Roles = make(map[string]delegation.RoleConfig)
 			}
 			r := m.delegationCfg.Roles[role]
-			// Cycle: Native -> AGY (safe role mode) -> Native.
+			// Cycle: Native -> AGY (unattended role mode) -> Native.
 			if !r.Delegate {
 				r.Delegate = true
-				r.CLI = "agy"
 				r.SkipPermissions = true
+				r.CLI = "agy"
 				if r.Model == "" {
 					r.Model = m.delegationCfg.DefaultModel
 					if r.Model == "" {
@@ -311,9 +311,9 @@ func (m model) updateWizardRoles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			} else {
 				r.Delegate = false
+				r.SkipPermissions = false
 				r.CLI = "native"
 				r.Mode = ""
-				r.SkipPermissions = false
 			}
 			m.delegationCfg.Roles[role] = r
 			m.opts.DelegationConfig = &m.delegationCfg

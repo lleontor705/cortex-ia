@@ -26,7 +26,7 @@ This is the single routing and phase matrix for Cortex-IA. Installed path: `~/.c
 | sdd-full / spec | planner | proposal.md and specs/**/spec.md | Pinned requirements | Unique requirement IDs and complete scenarios |
 | sdd-full / design | planner | Previous phase plus design.md | Pinned design | Interfaces, risks and verification approach |
 | sdd-full / tasks | planner | Previous phase plus tasks.md | Pinned tasks and contract references | Task references resolve to requirements before materialization |
-| Lite/Full / decompose | planner | Modified plan.md or tasks.md | Pinned decomposed tasks | 2-8 atomic child tasks (<= 250 LOC); parent superseded |
+| Lite/Full / decompose | planner | Modified plan.md or tasks.md | Pinned decomposed tasks | 2-8 coherent child tasks sized by workload_policy; parent superseded |
 | Lite/Full / apply | implement | Validated artifacts | Retrieved validated pins | Current authority, scoped change and verification evidence |
 | Lite/Full / verify or review | reviewer | Current artifacts and change | Current pins and change | Independent semantic review and current fingerprints |
 | Lite/Full / archive | planner | Archived change directory and durable receipt | Logical durable closure; no OpenSpec move | Applicable tasks approved and fingerprints current |

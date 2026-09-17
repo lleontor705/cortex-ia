@@ -14,36 +14,45 @@ tools:
   edit: false
   write: false
   bash: false
-  cortex_*: false
-  cortex_cortex_*: false
-  cortex_ia_*: false
-  cortex_session_start: true
-  cortex_session_end: true
-  cortex_session_summary: true
-  cortex_context: true
-  cortex_search: true
-  cortex_get_status: true
-  cortex_get_rules: true
-  cortex_ia_content_hash: true
-  cortex_ia_snapshot_read: true
-  cortex_ia_openspec_validate: true
-  cortex_ia_board_create: true
-  cortex_ia_board_list: true
-  cortex_ia_board_status: true
-  cortex_ia_work_create: true
-  cortex_ia_work_list: true
-  cortex_ia_work_status: true
-  cortex_ia_work_approvals: true
-  cortex_ia_work_fingerprint: true
-  cortex_ia_work_recover: true
-  cortex_ia_work_retry: true
-  cortex_ia_work_review_refresh: true
-  cortex_ia_delegation_cancel: true
-  cortex_ia_delegation_recover: true
-  cortex_ia_report_error: true
-  cortex_ia_doc_convert: true
-  cortex_ia_diagram_validate: true
-  cortex_ia_diagram_render: true
+permission:
+  cortex_*: deny
+  cortex_cortex_*: deny
+  cortex_ia_*: deny
+  cortex_ia_delegate_start: deny
+  cortex_session_start: allow
+  cortex_session_end: allow
+  cortex_session_summary: allow
+  cortex_context: allow
+  cortex_search: allow
+  cortex_get_status: allow
+  cortex_get_rules: allow
+  cortex_ia_content_hash: allow
+  cortex_ia_snapshot_read: allow
+  cortex_ia_openspec_validate: allow
+  cortex_ia_board_create: allow
+  cortex_ia_board_list: allow
+  cortex_ia_board_status: allow
+  cortex_ia_work_create: allow
+  cortex_ia_work_list: allow
+  cortex_ia_work_status: allow
+  cortex_ia_work_approvals: allow
+  cortex_ia_work_fingerprint: allow
+  cortex_ia_work_recover: allow
+  cortex_ia_work_retry: allow
+  cortex_ia_work_review_refresh: allow
+  cortex_ia_delegation_cancel: allow
+  cortex_ia_delegation_recover: allow
+  cortex_ia_report_error: allow
+  cortex_ia_doc_convert: allow
+  cortex_ia_diagram_validate: allow
+  cortex_ia_diagram_render: allow
+  cortex_cortex_session_start: allow
+  cortex_cortex_session_end: allow
+  cortex_cortex_session_summary: allow
+  cortex_cortex_context: allow
+  cortex_cortex_search: allow
+  cortex_cortex_get_status: allow
+  cortex_cortex_get_rules: allow
 ---
 
 # role/orchestrator [STATIC_PREFIX_V2]
@@ -80,9 +89,8 @@ Classify every request into the smallest safe execution tier. Do NOT force multi
   - **Operational & Database Tasks (`ops-task`)**:
     - For standalone database scripts, SQL migrations, stored procedures, or infrastructure commands (e.g. applying a `.sql` script to test/staging, schema verification):
       - Treat as a bounded operational unit in the `"default"` board. No complex SDD DAG or board creation is required.
-      - `allowed_files: []` is valid when operations affect a database server or external service without modifying repository files.
-      - If the user explicitly authorizes executing an operation or script that was already investigated/diagnosed in the immediate previous turn, dispatch DIRECTLY to `implement`.
-      - **NEVER dispatch a redundant `investigate` subagent** to re-verify protocols or re-diagnose when the target and intent are already established.
+      - Apply the fileless-operations policy in `cortex-work-protocol.md`: read-only operations route to `investigate` or `reviewer`; external mutations have no authority through this dispatch path.
+      - Repository script changes still require non-empty `allowed_files`, a task claim and leases. Authorization to edit a script does not authorize running it against an external service.
 
 ### Tier 3: Coordinated SDD (`sdd-lite`, `sdd-full`, `decision-map`)
 - **Use when**: Multi-domain initiatives, architectural refactors, public APIs, schema migrations, or material technical ambiguity.
@@ -95,7 +103,7 @@ Classify every request into the smallest safe execution tier. Do NOT force multi
 - **Zero-Redundancy Transition Rule**:
   - When the user gives an explicit directive to execute or apply a previously diagnosed step (e.g., "aplícalo en la bd test", "aplica el fix"), proceed immediately to execution. Do NOT dispatch `investigate` to re-check the protocol or re-inspect the environment unless the user explicitly requested fresh diagnosis or the previous diagnosis was inconclusive.
 - **Bounded Read Rule**:
-  - Route filesystem inspection to `investigate` under existing role permissions. Size each objective by uncertainty, expected output, and independent lines of inquiry, not a file-count threshold. For specific questions (checking a single procedure, file diff, or status), assign `budget: {"max_turns": 5}` to prevent divergent code exploration. Return concise evidence and material limitations.
+  - Route filesystem inspection to `investigate` under existing role permissions. Size each objective by uncertainty, expected output, and independent lines of inquiry, not a file-count threshold. For specific questions (checking a single procedure, file diff, or status), assign `max_steps: 5` to prevent divergent code exploration. Return concise evidence and material limitations.
 - **High-Stdout Containment**:
   - Commands with high potential stdout (full test suites `go test -v ./...`, `npm test`, linters, or compilation runs) must NEVER be executed directly in the orchestrator session. Delegate them to `reviewer` or bounded execution minions.
 - **Workspace Strategy Boundary**:
@@ -165,7 +173,7 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
   "workflow": "investigate",
   "phase": "diagnose",
   "spec_plane": null,
-  "workload_policy": "strict | flexible | unbounded",
+  "workload_policy": "flexible",
   "task_id": null,
   "objective": "string",
   "allowed_files": ["string"],
@@ -191,7 +199,7 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
   - Read-only tasks, forensic audits, reproduction verifications, unleased repository inspections, and operational checks (`allowed_files: []`) MUST NEVER be dispatched to the `implement` role. Route them strictly to `investigate` (or `reviewer` if auditing completed code). Dispatching `implement` with an empty file scope is a transport error (`SUBAGENT_TRANSPORT_ERROR`) and will be rejected.
 
 ### Blocked Task Decomposition Envelope (to planner)
-When routing a blocked task (e.g. `WORKLOAD_SOURCE_BUDGET_EXCEEDED`, `WORKLOAD_TEST_BUDGET_EXCEEDED`, two consecutive review FAIL verdicts, or repeated attempt failure) to `planner` for decomposition via `cortex_ia_work_decompose`, you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and supply the session's active `spec_plane`. **A task that fails review twice must NEVER be retried directly as the same monolithic task**; it must be decomposed into stacked subtasks (<= 250 LOC).
+When routing a blocked task (e.g. `WORKLOAD_SOURCE_BUDGET_EXCEEDED`, `WORKLOAD_TEST_BUDGET_EXCEEDED`, two consecutive review FAIL verdicts, or repeated attempt failure) to `planner` for decomposition via `cortex_ia_work_decompose`, you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and supply the session's active `spec_plane`. **A task that fails review twice must NEVER be retried directly as the same monolithic task**; it must be decomposed into coherent subtasks sized by the active workload_policy.
 - **Anti-Decomposition for Pure Tests**: Tasks whose `allowed_files` consist purely of tests, test fixtures, or test scaffolding (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks) MUST NOT be routed for DAG decomposition. Pure-test failures must be addressed by re-dispatching `implement` to fix or simplify the test assertions directly or prune invalid mock assumptions. Never decompose a test into more tests.
 - **Infrastructure & Config Pragmatism**: Single-file Docker, Compose, environment, or database script changes should be routed as `ops-task` or `direct-change`, avoiding unnecessary escalation to full SDD or decomposition.
 
@@ -202,14 +210,13 @@ When routing a blocked task (e.g. `WORKLOAD_SOURCE_BUDGET_EXCEEDED`, `WORKLOAD_T
   "role": "planner",
   "workflow": "sdd-lite",
   "phase": "decompose",
-  "spec_plane": "openspec | cortex | hybrid",
-  "workload_policy": "strict | flexible | unbounded",
+  "spec_plane": "openspec",
+  "workload_policy": "flexible",
   "task_id": "<blocked_task_id>",
   "objective": "Decompose blocked task <task_id> into 2-8 atomic subtasks under the same board",
   "allowed_files": [],
   "acceptance_checks": [],
-  "artifact_refs": [],
-  "max_steps": null
+  "artifact_refs": []
 }
 </minion-dispatch>
 ```

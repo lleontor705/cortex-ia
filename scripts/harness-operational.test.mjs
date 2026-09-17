@@ -1,248 +1,79 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
 import { loadPluginFile } from './harness-plugin-loader.mjs';
 
-function hashFile(filePath) {
-  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
-}
-
-test('dispatchInfo admits valid native operational envelope with explicit target/effects', async () => {
-  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
-  const { dispatchInfo } = mod.exports;
-
-  const prompt = `<minion-dispatch>
-{
-  "task_id": "task-ops-01",
-  "role": "implement",
-  "workflow": "ops-task",
-  "operational_target": "db:users",
-  "operational_effects": ["create index idx_email on users(email)"],
-  "allowed_files": []
-}
-</minion-dispatch>`;
-
-  const res = dispatchInfo({ subagent_type: 'implement' }, prompt);
-  assert.equal(res.operational, true);
-  assert.equal(res.limit, 70);
+const source = 'internal/assets/plugins/cortex-subagent-transport.ts';
+const envelope = (extra = {}) => ({
+  contract_version: '1.0', role: 'implement', workflow: 'direct-change', phase: 'apply',
+  spec_plane: null, task_id: 'work-ops', objective: 'Inspect the assigned synthetic operation',
+  allowed_files: [], acceptance_checks: [], artifact_refs: [], ...extra,
+});
+const prompt = (value) => `<minion-dispatch>${JSON.stringify(value)}</minion-dispatch>`;
+const load = () => loadPluginFile(source, {
+  childProcess: { execFileSync: () => assert.fail('External processes are forbidden') },
 });
 
-test('dispatchInfo rejects missing operational target or effects', async () => {
-  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
-  const { dispatchInfo } = mod.exports;
-
-  const promptNoEffects = `<minion-dispatch>
-{
-  "task_id": "task-ops-02",
-  "role": "implement",
-  "workflow": "ops-task",
-  "operational_target": "db:users",
-  "allowed_files": []
-}
-</minion-dispatch>`;
-  assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, promptNoEffects), {
-    message: /implementation requires an explicit file scope or authorized operational target and effects/
-  });
-
-  const promptNoTarget = `<minion-dispatch>
-{
-  "task_id": "task-ops-03",
-  "role": "implement",
-  "workflow": "ops-task",
-  "operational_effects": ["migration"],
-  "allowed_files": []
-}
-</minion-dispatch>`;
-  assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, promptNoTarget), {
-    message: /implementation requires an explicit file scope or authorized operational target and effects/
-  });
-});
-
-test('dispatchInfo rejects ordinary empty file scope and spoofed roles', async () => {
-  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
-  const { dispatchInfo } = mod.exports;
-
-  const ordinaryEmpty = `<minion-dispatch>
-{
-  "task_id": "task-impl-01",
-  "role": "implement",
-  "workflow": "sdd-lite",
-  "allowed_files": []
-}
-</minion-dispatch>`;
-  assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, ordinaryEmpty), {
-    message: /implementation requires an explicit file scope or authorized operational target and effects/
-  });
-
-  const spoofedRole = `<minion-dispatch>
-{
-  "task_id": "task-spoof-01",
-  "role": "planner",
-  "workflow": "sdd-full",
-  "allowed_files": []
-}
-</minion-dispatch>`;
-  assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, spoofedRole), {
-    message: /dispatch role does not match host task target/
-  });
-});
-
-test('dispatchInfo rejects external operational execution and unavailable authority', async () => {
-  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
-  const { dispatchInfo } = mod.exports;
-
-  const opsPrompt = `<minion-dispatch>
-{
-  "task_id": "task-ops-ext",
-  "role": "implement",
-  "workflow": "ops-task",
-  "operational_target": "sp_sync",
-  "operational_effects": ["exec sp_sync"],
-  "allowed_files": []
-}
-</minion-dispatch>`;
-
-  assert.throws(() => dispatchInfo({ subagent_type: 'implement', delegated: true }, opsPrompt), {
-    message: /external operational execution is unavailable; requires fresh orchestrator-native dispatch/
-  });
-
-  const extPrompt = opsPrompt.replace('"workflow": "ops-task",', '"workflow": "ops-task", "execution_mode": "external",');
-  assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, extPrompt), {
-    message: /external operational execution is unavailable; requires fresh orchestrator-native dispatch/
-  });
-
-  const noTaskPrompt = opsPrompt.replace('"task_id": "task-ops-ext",', '"task_id": null,');
-  assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, noTaskPrompt), {
-    message: /operational implementation requires valid task authority/
-  });
-
-  const noAuthPrompt = opsPrompt.replace('"task_id": "task-ops-ext",', '"task_id": "task-ops-ext", "authority": false,');
-  assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, noAuthPrompt), {
-    message: /operational implementation requires valid task authority/
-  });
-});
-
-test('plugin fixture blocks repository writes for operational child sessions and preserves baseline', async () => {
-  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
-  const { CortexSubagentTransportPlugin } = mod.exports;
-
-  const sessionDb = new Map([
-    ['root-ses', { id: 'root-ses', parentID: null }],
-    ['child-ops-ses', { id: 'child-ops-ses', parentID: 'root-ses' }],
-  ]);
-
-  const messagesDb = new Map([
-    ['root-ses', [
-      {
-        info: { id: 'msg-1', sessionID: 'root-ses', role: 'assistant' },
-        parts: [
-          {
-            id: 'part-task-1',
-            type: 'tool',
-            tool: 'task',
-            callID: 'call-task-ops-1',
-            sessionID: 'root-ses',
-            messageID: 'msg-1',
-            state: {
-              status: 'running',
-              input: {
-                subagent_type: 'implement',
-                prompt: `<minion-dispatch>
-{
-  "task_id": "task-ops-live",
-  "role": "implement",
-  "workflow": "ops-task",
-  "operational_target": "postgres://prod",
-  "operational_effects": ["apply schema"],
-  "allowed_files": []
-}
-</minion-dispatch>`
-              },
-              metadata: {
-                sessionId: 'child-ops-ses',
-                parentSessionId: 'root-ses'
-              }
-            }
-          }
-        ]
-      }
-    ]],
-    ['child-ops-ses', []]
-  ]);
-
-  const mockClient = {
-    session: {
-      get: async ({ path: { id } }) => {
-        const item = sessionDb.get(id);
-        if (!item) throw new Error('not found');
-        return { data: item };
-      },
-      messages: async ({ path: { id } }) => {
-        return { data: messagesDb.get(id) || [] };
-      }
+test('fileless implementation rejects target/effects and claimed authority in all execution modes', async () => {
+  const { exports: { dispatchInfo } } = await load();
+  const variants = [
+    {},
+    { operational_target: 'synthetic-db' },
+    { operational_effects: ['write'] },
+    { workflow: 'ops-task', operational_target: 'synthetic-db', operational_effects: ['write'] },
+    { workflow: 'ops-task', target: 'synthetic-db', target_effects: ['write'], authority: true, authority_available: true },
+    { operation_type: 'database', allowed_effects: ['write'], execution_mode: 'native' },
+    { is_operational: true, execution_mode: 'external' },
+    { task_id: null },
+    { authority: false },
+  ];
+  for (const extra of variants) {
+    for (const delegated of [false, true]) {
+      assert.throws(() => dispatchInfo({ subagent_type: 'implement', delegated }, prompt(envelope(extra))),
+        /implementation requires a non-empty file scope; external-effect authority is unavailable/);
     }
-  };
+  }
+  // Historical unversioned operational envelopes cannot restore the retired bypass.
+  assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, prompt({
+    role: 'implement', workflow: 'ops-task', operational_target: 'synthetic-db',
+    operational_effects: ['write'], allowed_files: [], task_id: 'legacy-work',
+  })), /external-effect authority is unavailable/);
+});
 
-  const plugin = await CortexSubagentTransportPlugin({ client: mockClient, directory: process.cwd() });
+test('read-only investigation and review retain canonical identity and budget validation', async () => {
+  const { exports: { dispatchInfo } } = await load();
+  for (const role of ['investigate', 'reviewer']) {
+    const value = envelope({ role, workflow: role, phase: 'inspect', task_id: null, max_steps: 5 });
+    const result = dispatchInfo({ subagent_type: role }, prompt(value));
+    assert.equal(result.limit, 5);
+    assert.equal(result.operational, false);
+    assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, prompt(value)), /role does not match/);
+    assert.throws(() => dispatchInfo({ subagent_type: role, max_steps: 5 }, prompt(value)), /ambiguous step budgets/);
+  }
+  assert.throws(() => dispatchInfo({ subagent_type: 'unknown' }, prompt(envelope({ role: 'unknown' }))), /invalid common dispatch contract/);
+});
 
-  await plugin['tool.execute.before'](
-    { tool: 'task', sessionID: 'root-ses', callID: 'call-task-ops-1' },
-    {
-      args: {
-        subagent_type: 'implement',
-        prompt: `<minion-dispatch>
-{
-  "task_id": "task-ops-live",
-  "role": "implement",
-  "workflow": "ops-task",
-  "operational_target": "postgres://prod",
-  "operational_effects": ["apply schema"],
-  "allowed_files": []
-}
-</minion-dispatch>`
-      }
+test('actual task hook rejects unsupported mutations and admits scoped or read-only dispatches', async () => {
+  const { exports: { CortexSubagentTransportPlugin } } = await load();
+  const plugin = await CortexSubagentTransportPlugin({ client: { session: {
+    get: async ({ path }) => ({ data: { id: path.id } }), messages: async () => ({ data: [] }),
+  } } });
+  try {
+    const rejected = { args: { subagent_type: 'implement', prompt: prompt(envelope({
+      workflow: 'ops-task', operational_target: 'synthetic-db', operational_effects: ['write'],
+    })) } };
+    const before = JSON.stringify(rejected);
+    await assert.rejects(plugin['tool.execute.before']({ tool: 'task', sessionID: 'root', callID: 'rejected' }, rejected),
+      /external-effect authority is unavailable/);
+    assert.equal(JSON.stringify(rejected), before, 'rejected admission must preserve caller input');
+    for (const role of ['implement', 'investigate', 'reviewer']) {
+      const allowed_files = role === 'implement' ? ['synthetic.go'] : [];
+      const output = { args: { subagent_type: role, prompt: prompt(envelope({ role, allowed_files, max_steps: 8 })) } };
+      await plugin['tool.execute.before']({ tool: 'task', sessionID: 'root', callID: role }, output);
+      const normalized = JSON.parse(output.args.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
+      assert.equal(normalized.role, role);
+      assert.equal(normalized.task_id, 'work-ops');
+      assert.equal(normalized.max_steps, 8);
+      assert.deepEqual(normalized.allowed_files, allowed_files);
     }
-  );
-
-  await plugin.event({
-    event: {
-      type: 'message.part.updated',
-      properties: { part: messagesDb.get('root-ses')[0].parts[0] }
-    }
-  });
-
-  const baselineFixture = path.join(process.cwd(), 'package.json');
-  const baselineHashBefore = hashFile(baselineFixture);
-
-  await plugin['tool.execute.before'](
-    { tool: 'read', sessionID: 'child-ops-ses', callID: 'call-child-read' },
-    { args: { path: 'package.json' } }
-  );
-
-  await assert.rejects(
-    async () => {
-      await plugin['tool.execute.before'](
-        { tool: 'write_to_file', sessionID: 'child-ops-ses', callID: 'call-child-write' },
-        { args: { target_file: 'package.json', content: 'mutated' } }
-      );
-    },
-    { message: /repository write tools are forbidden for operational tasks/ }
-  );
-
-  await assert.rejects(
-    async () => {
-      await plugin['tool.execute.before'](
-        { tool: 'edit', sessionID: 'child-ops-ses', callID: 'call-child-edit' },
-        { args: { target_file: 'package.json' } }
-      );
-    },
-    { message: /repository write tools are forbidden for operational tasks/ }
-  );
-
-  const baselineHashAfter = hashFile(baselineFixture);
-  assert.equal(baselineHashBefore, baselineHashAfter, 'unrelated baseline must remain preserved');
-
-  await plugin.dispose();
+  } finally { await plugin.dispose(); }
 });

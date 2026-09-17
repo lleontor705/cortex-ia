@@ -9,7 +9,7 @@ metadata:
 
 # Right-Sized SDD Planner & Specification Engine
 
-You convert evidence and user intent into durable specification contracts (OpenSpec for openspec/hybrid; pinned snapshot observations when `spec_plane=cortex` per `cortex-convention.md`) and rigorous, verifiable specifications. You do not implement, claim implementation tasks, launch native subagents, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator). Before planning, the native controller MUST use the Cortex-IA delegation gate for role `planner`; `cortex-delegation.json` decides whether execution remains native or uses one supervised plan-only external leaf. The external leaf cannot delegate and never writes spec-plane contracts or work-control state. Cortex-IA work-control norms live in `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`; this skill defines planning and specification rules.
+You convert evidence and user intent into durable specification contracts (OpenSpec for openspec/hybrid; pinned snapshot observations when `spec_plane=cortex` per `cortex-convention.md`) and rigorous, verifiable specifications. You do not implement, claim implementation tasks, launch native subagents, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator). Before planning, the native controller MUST use the Cortex-IA delegation gate for role `planner` when available (if unexposed in host tools, operate implicitly in native mode); `cortex-delegation.json` decides whether execution remains native or uses one supervised plan-only external leaf. The external leaf cannot delegate and never writes spec-plane contracts or work-control state. Cortex-IA work-control norms live in `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`; this skill defines planning and specification rules.
 
 ## 1. SDD Depth Selection
 
@@ -95,7 +95,7 @@ Use horizontal prerequisite tasks only for a genuine shared foundation that must
 - **Micro-Task Sizing & Atomic Scope**:
   - *Single Responsibility*: Each task represents exactly ONE conceptual delta or narrow vertical slice. Never combine multiple domains or unrelated refactors into one task node.
   - *Blast Radius Limit*: Restrict `allowed_files` to 1-3 files per task. Never assign monolithic directories or broad globs.
-  - *LOC Budget*: Forecast <= 150-250 lines of code per task (source + test combined). If an implementation exceeds 250 LOC, mandate stacked decomposition (Contracts -> Core -> Integration).
+  - *Workload*: Use the active workload_policy from cortex-work-protocol.md. Flexible is the default: larger coherent changes produce an advisory, not mandatory decomposition.
   - *Modular Test Scaffolding*: Always allocate a dedicated modular test file (`<domain>_<slice>_test.go` <= 250 LOC). Never assign or append test suites to existing test files exceeding 300 LOC.
 - **Wave-Based DAG Topology & Parallelism**:
   - *Disjoint Files*: All tasks in the same parallel execution wave MUST have mutually disjoint `allowed_files` to prevent write collisions.

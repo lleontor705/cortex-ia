@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -34,22 +35,23 @@ type SystemDiagnostics struct {
 
 // ErrorReport represents a cryptographically signed operational error report.
 type ErrorReport struct {
-	ID           string            `json:"report_id"`
-	Timestamp    string            `json:"timestamp"`
-	Source       string            `json:"source"`
-	TaskID       string            `json:"task_id,omitempty"`
-	JobID        string            `json:"job_id,omitempty"`
-	BoardID      string            `json:"board_id,omitempty"`
-	Workspace    string            `json:"workspace,omitempty"`
-	SessionID    string            `json:"session_id,omitempty"`
-	SubagentRole string            `json:"subagent_role,omitempty"`
-	TargetPath   string            `json:"target_path,omitempty"`
-	ModelID      string            `json:"model_id,omitempty"`
-	ErrorCode    string            `json:"error_code"`
-	ErrorMessage string            `json:"error_message"`
-	Details      string            `json:"details,omitempty"`
-	SystemInfo   SystemDiagnostics `json:"system_info"`
-	Signature    string            `json:"signature"`
+	SchemaVersion int               `json:"schema_version,omitempty"`
+	ID            string            `json:"report_id"`
+	Timestamp     string            `json:"timestamp"`
+	Source        string            `json:"source"`
+	TaskID        string            `json:"task_id,omitempty"`
+	JobID         string            `json:"job_id,omitempty"`
+	BoardID       string            `json:"board_id,omitempty"`
+	Workspace     string            `json:"workspace,omitempty"`
+	SessionID     string            `json:"session_id,omitempty"`
+	SubagentRole  string            `json:"subagent_role,omitempty"`
+	TargetPath    string            `json:"target_path,omitempty"`
+	ModelID       string            `json:"model_id,omitempty"`
+	ErrorCode     string            `json:"error_code"`
+	ErrorMessage  string            `json:"error_message"`
+	Details       string            `json:"details,omitempty"`
+	SystemInfo    SystemDiagnostics `json:"system_info"`
+	Signature     string            `json:"signature"`
 }
 
 var (
@@ -147,17 +149,21 @@ func SaveConfig(homeDir string, cfg Config) error {
 	return os.WriteFile(p, data, 0o600)
 }
 
-// AutoReport dispatches an error report in a non-blocking goroutine if telemetry is enabled.
+// AutoReport persists before returning; delivery may finish in a later process.
 func AutoReport(homeDir, source, code, message, details, taskID, jobID, boardID, workspace, version string) {
 	cfg, err := LoadConfig(homeDir)
 	if err != nil || !cfg.Enabled || cfg.Endpoint == "" || cfg.Secret == "" {
 		return
 	}
 	report := CreateReport(source, code, message, details, taskID, jobID, boardID, workspace, version, cfg.Secret)
+	if err := EnqueueReport(homeDir, report, cfg.Secret); err != nil {
+		fmt.Fprintln(os.Stderr, "telemetry queue failed:", err)
+		return
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 		defer cancel()
-		_, _ = SendReport(ctx, cfg.Endpoint, report)
+		_ = FlushReports(ctx, homeDir, cfg)
 	}()
 }
 
@@ -168,6 +174,12 @@ func NewReportID() string {
 }
 
 func CanonicalSignaturePayload(r *ErrorReport) string {
+	if r.SchemaVersion == 2 {
+		copy := *r
+		copy.Signature = ""
+		data, _ := json.Marshal(copy)
+		return string(data)
+	}
 	return fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s|%s",
 		r.ID, r.Timestamp, r.Source, r.TaskID, r.JobID, r.ErrorCode, r.ErrorMessage, r.Details, r.Workspace)
 }
@@ -187,6 +199,9 @@ func SignReport(report *ErrorReport, secret string) {
 }
 
 func VerifyReport(report *ErrorReport, secret string) bool {
+	if report == nil || (report.SchemaVersion != 0 && report.SchemaVersion != 2) {
+		return false
+	}
 	if secret == "" {
 		secret = CanonicalDefaultSecret
 	}
@@ -205,16 +220,17 @@ func CreateReport(source, errorCode, errorMessage, details, taskID, jobID, board
 	runtime.ReadMemStats(&m)
 
 	r := &ErrorReport{
-		ID:           NewReportID(),
-		Timestamp:    time.Now().UTC().Format(time.RFC3339Nano),
-		Source:       source,
-		TaskID:       taskID,
-		JobID:        jobID,
-		BoardID:      boardID,
-		Workspace:    workspace,
-		ErrorCode:    errorCode,
-		ErrorMessage: errorMessage,
-		Details:      details,
+		SchemaVersion: 2,
+		ID:            NewReportID(),
+		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
+		Source:        source,
+		TaskID:        taskID,
+		JobID:         jobID,
+		BoardID:       boardID,
+		Workspace:     workspace,
+		ErrorCode:     errorCode,
+		ErrorMessage:  errorMessage,
+		Details:       details,
 		SystemInfo: SystemDiagnostics{
 			OS:            runtime.GOOS,
 			Arch:          runtime.GOARCH,
@@ -227,6 +243,7 @@ func CreateReport(source, errorCode, errorMessage, details, taskID, jobID, board
 			Goroutines:    runtime.NumGoroutine(),
 		},
 	}
+	SanitizeReport(r, secret)
 	SignReport(r, secret)
 	return r
 }
@@ -238,12 +255,23 @@ type ReportResponse struct {
 }
 
 func SendReport(ctx context.Context, endpoint string, report *ErrorReport) (*ReportResponse, error) {
+	if err := ValidateReport(report); err != nil {
+		return nil, err
+	}
+	clean := *report
+	SanitizeReport(&clean, "")
+	if clean != *report {
+		return nil, errors.New("report must be sanitized and signed before transmission")
+	}
 	if strings.TrimSpace(endpoint) == "" {
 		return nil, errors.New("report endpoint is empty")
 	}
 	body, err := json.Marshal(report)
 	if err != nil {
 		return nil, fmt.Errorf("marshal error report: %w", err)
+	}
+	if len(body) > MaxReportBytes {
+		return nil, errors.New("report exceeds payload limit")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
@@ -253,21 +281,87 @@ func SendReport(ctx context.Context, endpoint string, report *ErrorReport) (*Rep
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "cortex-ia/"+report.SystemInfo.Version)
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("send report to %s: %w", endpoint, err)
+		return nil, errors.New("report delivery failed; retained for retry")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 16*1024+1))
+	if err != nil || len(respBody) > 16*1024 {
+		return nil, errors.New("invalid report acknowledgement")
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("endpoint returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return nil, fmt.Errorf("report endpoint returned status %d", resp.StatusCode)
 	}
 
 	var res ReportResponse
 	if err := json.Unmarshal(respBody, &res); err != nil {
-		return &ReportResponse{Status: "accepted", ReportID: report.ID}, nil
+		return nil, errors.New("report endpoint returned an invalid acknowledgement")
+	}
+	if res.ReportID != report.ID || res.Status != "accepted" {
+		return nil, errors.New("report acknowledgement does not match queued report")
 	}
 	return &res, nil
+}
+
+const MaxReportBytes = 128 * 1024
+
+var reportIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
+var reportCodePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,95}$`)
+var reportCredentials = regexp.MustCompile(`(?i)(["']?(?:[a-z0-9_]*(?:token|password|secret|api_key|apikey)|authorization)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)`)
+var reportBearer = regexp.MustCompile(`(?i)\bBearer\s+[^\s,;"']+`)
+var reportURLCredentials = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@`)
+var reportCLISecret = regexp.MustCompile(`(?i)(--(?:claim-token|lease-token|password|secret|api-key|token)\s+)[^\s]+`)
+var reportAPIKey = regexp.MustCompile(`\b(?:sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,})\b`)
+
+func boundedReportText(value string, limit int, secret string) string {
+	if secret != "" {
+		value = strings.ReplaceAll(value, secret, "[REDACTED]")
+	}
+	value = reportBearer.ReplaceAllString(value, "Bearer [REDACTED]")
+	value = reportCredentials.ReplaceAllString(value, "${1}[REDACTED]")
+	value = reportURLCredentials.ReplaceAllString(value, "${1}[REDACTED]@")
+	value = reportCLISecret.ReplaceAllString(value, "${1}[REDACTED]")
+	value = reportAPIKey.ReplaceAllString(value, "[REDACTED]")
+	value = strings.TrimSpace(strings.ToValidUTF8(value, ""))
+	if value == "undefined" || value == "null" {
+		return ""
+	}
+	if len(value) > limit {
+		value = strings.ToValidUTF8(value[:limit], "")
+	}
+	return value
+}
+
+// SanitizeReport touches only the incident payload, never code/AST structures.
+func SanitizeReport(r *ErrorReport, secret string) {
+	for _, field := range []*string{&r.Source, &r.TaskID, &r.JobID, &r.BoardID, &r.SessionID, &r.SubagentRole, &r.ModelID,
+		&r.SystemInfo.OS, &r.SystemInfo.Arch, &r.SystemInfo.GoVersion, &r.SystemInfo.Version, &r.SystemInfo.Hostname} {
+		*field = boundedReportText(*field, 256, secret)
+	}
+	r.Workspace = boundedReportText(r.Workspace, 2048, secret)
+	r.TargetPath = boundedReportText(r.TargetPath, 2048, secret)
+	r.ErrorCode = boundedReportText(r.ErrorCode, 96, secret)
+	r.ErrorMessage = boundedReportText(r.ErrorMessage, 4096, secret)
+	r.Details = boundedReportText(r.Details, 64*1024, secret)
+}
+
+func ValidateReport(r *ErrorReport) error {
+	if r == nil || !reportIDPattern.MatchString(r.ID) || !reportCodePattern.MatchString(r.ErrorCode) ||
+		strings.TrimSpace(r.Source) == "" || strings.TrimSpace(r.ErrorMessage) == "" || r.ErrorMessage == "undefined" || r.ErrorMessage == "null" {
+		return errors.New("report requires valid identity, source, error code and message")
+	}
+	if r.SchemaVersion != 0 && r.SchemaVersion != 2 {
+		return errors.New("unsupported report schema")
+	}
+	if _, err := time.Parse(time.RFC3339Nano, r.Timestamp); err != nil {
+		return errors.New("report timestamp is invalid")
+	}
+	data, err := json.Marshal(r)
+	if err != nil || len(data) > MaxReportBytes {
+		return errors.New("report exceeds payload limit")
+	}
+	return nil
 }

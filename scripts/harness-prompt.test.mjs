@@ -1,6 +1,43 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPluginFile } from './harness-plugin-loader.mjs';
+import fs from 'node:fs';
+
+test('actual dispatch hook sends normalized workload and a single budget', async () => {
+  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
+  const plugin = await mod.exports.CortexSubagentTransportPlugin({ client: { session: { get: async () => ({ data: { id: 'root' } }), messages: async () => ({ data: [] }) } } });
+  try {
+    for (const policy of [undefined, 'strict', 'flexible', 'unbounded']) {
+      const envelope = { task_id: 'work', role: 'implement', allowed_files: ['a.go'], workload_policy: policy };
+      const output = { args: { subagent_type: 'implement', budget: { max_turns: 12 }, prompt: `<minion-dispatch>${JSON.stringify(envelope)}</minion-dispatch>` } };
+      await plugin['tool.execute.before']({ tool: 'task', sessionID: 'root', callID: `call-${policy}` }, output);
+      const normalized = JSON.parse(output.args.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
+      assert.equal(normalized.workload_policy, policy ?? 'flexible');
+      assert.equal(normalized.max_steps, 12);
+      assert.equal(output.args.budget, undefined);
+      assert.equal(output.args.max_steps, undefined);
+      assert.deepEqual(normalized.allowed_files, ['a.go']);
+    }
+    for (const policy of [null, false, '', 'unknown']) {
+      assert.throws(() => mod.exports.dispatchInfo({ subagent_type: 'implement' }, `<minion-dispatch>${JSON.stringify({ workload_policy: policy })}</minion-dispatch>`), /workload_policy/);
+    }
+    assert.throws(() => mod.exports.dispatchInfo({ subagent_type: 'implement' }, '<minion-dispatch>{"allowed_files":[],"workflow":"ops-task","operational_target":"db","operational_effects":["write"],"authority":true}</minion-dispatch>'), /external-effect authority is unavailable/);
+  } finally { await plugin.dispose(); }
+});
+
+test('canonical agent examples pass the real dispatch parser', async () => {
+  const { exports: { dispatchInfo } } = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
+  let checked = 0;
+  for (const name of ['orchestrator', 'implement', 'planner', 'reviewer']) {
+    const text = fs.readFileSync(`internal/assets/agents/${name}.md`, 'utf8');
+    for (const match of text.matchAll(/<minion-dispatch>\s*(\{[\s\S]*?\})\s*<\/minion-dispatch>/g)) {
+      const envelope = JSON.parse(match[1]);
+      assert.doesNotThrow(() => dispatchInfo({ subagent_type: envelope.role }, match[0]));
+      checked++;
+    }
+  }
+  assert.ok(checked > 0, 'expected at least one executable example');
+});
 
 test('CortexSubagentTransportPlugin transforms system prompt for child subagents', async () => {
   const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');

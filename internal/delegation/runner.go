@@ -48,17 +48,18 @@ func isQuotaOrRateLimit(text string) bool {
 // starts; only its objective digest and operational metadata enter SQLite.
 type Request struct {
 	ConversationOwnership
-	Project       string          `json:"project,omitempty"`
-	Role          string          `json:"role"`
-	TaskID        string          `json:"task_id,omitempty"`
-	Objective     string          `json:"objective"`
-	Workspace     string          `json:"workspace"`
-	Worktree      string          `json:"worktree,omitempty"`
-	WorkspaceMode string          `json:"workspace_strategy,omitempty"`
-	AllowedFiles  []string        `json:"allowed_files,omitempty"`
-	OutputSchema  json.RawMessage `json:"output_schema,omitempty"`
-	Model         string          `json:"model,omitempty"`
-	Effort        string          `json:"effort,omitempty"`
+	Project        string          `json:"project,omitempty"`
+	Role           string          `json:"role"`
+	TaskID         string          `json:"task_id,omitempty"`
+	Objective      string          `json:"objective"`
+	Workspace      string          `json:"workspace"`
+	Worktree       string          `json:"worktree,omitempty"`
+	WorkspaceMode  string          `json:"workspace_strategy,omitempty"`
+	AllowedFiles   []string        `json:"allowed_files,omitempty"`
+	OutputSchema   json.RawMessage `json:"output_schema,omitempty"`
+	Model          string          `json:"model,omitempty"`
+	Effort         string          `json:"effort,omitempty"`
+	WorkloadPolicy string          `json:"workload_policy,omitempty"`
 }
 
 func ReadRequest(path string) (Request, error) {
@@ -89,6 +90,13 @@ func ReadRequest(path string) (Request, error) {
 }
 
 func (r *Request) Validate() error {
+	switch r.WorkloadPolicy {
+	case "":
+		r.WorkloadPolicy = "flexible"
+	case "strict", "flexible", "unbounded":
+	default:
+		return errors.New("workload_policy must be strict, flexible or unbounded")
+	}
 	if err := r.ConversationOwnership.Validate(); err != nil {
 		return err
 	}
@@ -259,14 +267,14 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	}
 	go keepAliveAuthorityAndJob(runCtx, store, id, owner, taskID, cancel, watchDone)
 	output, exitCode, runErr := runAGY(runCtx, request, role, timeout)
-	if current, getErr := store.Get(context.Background(), id); getErr == nil && current.Status == StatusCancelled {
-		return nil
+	if errors.Is(runErr, ErrTerminationUnconfirmed) {
+		return errors.Join(runErr, store.MarkTerminationUnconfirmed(context.Background(), id, owner))
 	}
 	hash := sha256.Sum256(output)
 	receipt := Receipt{Output: normalizeJSON(output), OutputHash: "sha256:" + hex.EncodeToString(hash[:]), ExitCode: exitCode}
 	if runErr == nil {
 		if receiptErr := validateStructuredReceipt(output, request.OutputSchema); receiptErr == nil {
-			return store.Complete(ctx, id, StatusSucceeded, receipt, "", "")
+			return store.CompleteWorker(context.Background(), id, owner, StatusSucceeded, receipt, "", "")
 		} else {
 			if isQuotaOrRateLimit(string(output)) {
 				runErr = fmt.Errorf("%w: %v", ErrQuotaExceeded, receiptErr)
@@ -285,7 +293,7 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 	}
 	message := runErr.Error()
 	telemetry.AutoReport(home, "delegation", "ERR_DELEGATION_FAILURE", "Delegated job failed", remoteFailureDiagnostics(request, job, code, exitCode, output), request.TaskID, id, "", "", "")
-	if completeErr := store.Complete(context.Background(), id, status, receipt, code, message); completeErr != nil {
+	if completeErr := store.CompleteWorker(context.Background(), id, owner, status, receipt, code, message); completeErr != nil {
 		return errors.Join(runErr, completeErr)
 	}
 	return runErr
@@ -384,7 +392,7 @@ func watchCancellation(ctx context.Context, store *Store, id string, cancel cont
 			return
 		case <-ticker.C:
 			job, err := store.Get(context.Background(), id)
-			if err == nil && (job.Status == StatusCancelled || job.Status == StatusLost) {
+			if err == nil && (job.ErrorCode == "CANCEL_REQUESTED" || job.Status == StatusCancelled || job.Status == StatusLost) {
 				cancel()
 				return
 			}
@@ -423,7 +431,10 @@ func buildAGYArgs(request Request, role RoleConfig, printTimeout, workDir string
 	return args
 }
 
-func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.Duration) ([]byte, int, error) {
+func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.Duration) (result []byte, resultCode int, returnErr error) {
+	if model := strings.TrimSpace(role.Model); model != "" && !strings.HasPrefix(model, "gemini-") {
+		return nil, -1, fmt.Errorf("AGY_AUTH_MODEL_UNSUPPORTED: isolated Gemini authentication requires a gemini- model; configured model is not changed automatically")
+	}
 	skip, err := skipPermissions(role)
 	if err != nil {
 		return nil, -1, err
@@ -469,6 +480,19 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 
 	cmd := exec.CommandContext(ctx, agy, args...)
 	cmd.Dir = request.executionDirectory()
+	home, env, err := executionEnvironment(os.Environ())
+	if err != nil {
+		return nil, -1, err
+	}
+	cmd.Env = env
+	cleanupHome := true
+	defer func() {
+		if cleanupHome {
+			if cleanupErr := os.RemoveAll(home); cleanupErr != nil {
+				returnErr = errors.Join(returnErr, ErrTerminationUnconfirmed, cleanupErr)
+			}
+		}
+	}()
 	var workspaceBaseline map[string]string
 	workspaceBaseline, err = captureWorkspaceBaseline(cmd.Dir)
 	if err != nil {
@@ -493,9 +517,15 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	_ = os.Stdout.Sync()
 
 	startTime := time.Now()
-	if err := cmd.Start(); err != nil {
+	stopTree, err := startProcessTree(cmd)
+	if err != nil {
+		if cmd.Process != nil {
+			cleanupHome = false
+			return nil, -1, errors.Join(ErrTerminationUnconfirmed, err)
+		}
 		return nil, -1, err
 	}
+	defer func() { _ = stopTree() }()
 
 	var lastActivity time.Time
 	var activityMu sync.Mutex
@@ -518,9 +548,7 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 				if idle >= 15*time.Minute {
 					fmt.Printf("\n⚠️ [%s] Inactivity watchdog: no output for 15 minutes, terminating frozen process...\n", request.Role)
 					_ = os.Stdout.Sync()
-					if cmd.Process != nil {
-						_ = cmd.Process.Kill()
-					}
+					_ = stopTree()
 					return
 				}
 				if idle >= 1200*time.Millisecond {
@@ -641,11 +669,18 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	}
 
 	scanErr := scanner.Err()
+	if scanErr != nil {
+		_ = stopTree()
+	}
 	close(doneHeartbeat)
 	fmt.Printf("\r                                                                               \r")
 	_ = os.Stdout.Sync()
 
 	err = cmd.Wait()
+	if stopErr := stopTree(); stopErr != nil {
+		cleanupHome = false
+		return nil, -1, errors.Join(err, ErrTerminationUnconfirmed, fmt.Errorf("external process tree cleanup unconfirmed; temporary home retained: %w", stopErr))
+	}
 	if scanErr != nil {
 		if err == nil {
 			err = fmt.Errorf("read AGY stream: %w", scanErr)
@@ -1004,10 +1039,23 @@ func externalPrompt(request Request) string {
 	b.WriteString("\n\n---\n\n")
 
 	b.WriteString("## Execution Protocol\n")
+	policy := request.WorkloadPolicy
+	if policy == "" {
+		policy = "flexible"
+	}
+	fmt.Fprintf(&b, "Workload policy: %s. ", policy)
+	switch policy {
+	case "strict":
+		b.WriteString("Follow the explicit source and test budgets in the assigned contract; report a blocker if those limits prevent completing the objective.\n")
+	case "flexible":
+		b.WriteString("Size is advisory: report unexpectedly large coherent changes and continue verification; line count alone is not a blocker.\n")
+	case "unbounded":
+		b.WriteString("No line-count ceiling applies; preserve scope, modularity and proportional verification.\n")
+	}
 	switch request.Role {
 	case "implement":
 		b.WriteString("1. **Inspect First**: Read and inspect the existing allowed files before applying changes.\n")
-		b.WriteString("2. **Surgical Edits**: Keep diffs minimal, preserve existing code structure and comments, and obey modular limits (Go logic ≤ 350 LOC, test files ≤ 250 LOC).\n")
+		b.WriteString("2. **Surgical Edits**: Keep diffs focused, preserve existing code structure and follow the assigned workload policy and repository test-file rules.\n")
 		b.WriteString("3. **Execute Verification**: Run all applicable tests and acceptance check commands in the terminal to verify your changes pass (exit code 0).\n")
 		b.WriteString("4. **Structured Result**: Output your final result matching the required JSON schema with verified facts, changed files, and execution status.\n")
 	case "reviewer":

@@ -20,7 +20,7 @@ func runDelegate(args []string) error {
 		fmt.Println("  create --request-file <path> [--transport <t>]   Create an external delegation job")
 		fmt.Println("  status <job-id>                                  Get job execution status")
 		fmt.Println("  result <job-id>                                  Get structured job receipt")
-		fmt.Println("  cancel <job-id>                                  Cancel an active job")
+		fmt.Println("  cancel <job-id>                                  Request cancellation; worker confirms termination")
 		fmt.Println("  recover                                          Recover lost/expired delegation jobs")
 		fmt.Println("  worker --job <id> --request-file <path>          Run worker process for accepted job")
 		return nil

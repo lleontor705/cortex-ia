@@ -29,6 +29,7 @@ The delegation bridge returns the effective mode. That return value is authorita
 - Never infer the effective mode from TUI preferences, `use_herdr`, installed binaries, or pane visibility.
 - After `delegated=true` plus `job_id`, never execute the same objective natively in parallel or fall back automatically after failure, timeout, cancellation, pane loss, or `lost`. Reconcile the durable job and retry explicitly under fresh authority.
 - Installer semantics are fixed: delegation disabled means `native`; delegation enabled plus Herdr disabled may produce `direct_cli`; delegation enabled plus Herdr enabled may produce `herdr_multiplexed` or a safe pre-acceptance `direct_cli` fallback.
+- When `cortex_ia_delegate_start` is unavailable in the host tool inventory (e.g. Antigravity or native-only sessions), `native` mode is implicitly active. Controllers proceed directly with local execution using available tools without halting.
 
 ## Task Boards and Work Authority
 

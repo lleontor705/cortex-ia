@@ -13,46 +13,46 @@ tools:
   edit: true
   bash: true
   skill: true
-  cortex_*: false
-  cortex_cortex_*: false
-  cortex_ia_*: false
-  cortex_get_rules: true
-  cortex_cortex_get_rules: true
-  cortex_get_observation: true
-  cortex_cortex_get_observation: true
-  cortex_get_code_symbols: true
-  cortex_cortex_get_code_symbols: true
-  cortex_context: true
-  cortex_cortex_context: true
-  cortex_save: true
-  cortex_cortex_save: true
-  cortex_code_tests: true
-  cortex_cortex_code_tests: true
-  cortex_code_find: true
-  cortex_cortex_code_find: true
-  cortex_ia_content_hash: true
-  cortex_ia_snapshot_read: true
-  cortex_ia_openspec_validate: true
-  cortex_ia_board_list: true
-  cortex_ia_board_status: true
-  cortex_ia_work_list: true
-  cortex_ia_work_status: true
-  cortex_ia_work_claim: true
-  cortex_ia_work_renew: true
-  cortex_ia_file_reserve: true
-  cortex_ia_file_release: true
-  cortex_ia_work_lease_renew: true
-  cortex_ia_work_release_all: true
-  cortex_ia_work_transition: true
-  cortex_ia_delegate_start: true
-  cortex_ia_delegation_status: true
-  cortex_ia_delegation_wait: true
-  cortex_ia_delegation_result: true
-  cortex_ia_delegation_cancel: true
-  cortex_ia_report_error: true
-  cortex_ia_doc_convert: true
-  cortex_ia_diagram_validate: true
 permission:
+  cortex_*: deny
+  cortex_cortex_*: deny
+  cortex_ia_*: deny
+  cortex_get_rules: allow
+  cortex_cortex_get_rules: allow
+  cortex_get_observation: allow
+  cortex_cortex_get_observation: allow
+  cortex_get_code_symbols: allow
+  cortex_cortex_get_code_symbols: allow
+  cortex_context: allow
+  cortex_cortex_context: allow
+  cortex_save: allow
+  cortex_cortex_save: allow
+  cortex_code_tests: allow
+  cortex_cortex_code_tests: allow
+  cortex_code_find: allow
+  cortex_cortex_code_find: allow
+  cortex_ia_content_hash: allow
+  cortex_ia_snapshot_read: allow
+  cortex_ia_openspec_validate: allow
+  cortex_ia_board_list: allow
+  cortex_ia_board_status: allow
+  cortex_ia_work_list: allow
+  cortex_ia_work_status: allow
+  cortex_ia_work_claim: allow
+  cortex_ia_work_renew: allow
+  cortex_ia_file_reserve: allow
+  cortex_ia_file_release: allow
+  cortex_ia_work_lease_renew: allow
+  cortex_ia_work_release_all: allow
+  cortex_ia_work_transition: allow
+  cortex_ia_delegate_start: allow
+  cortex_ia_delegation_status: allow
+  cortex_ia_delegation_wait: allow
+  cortex_ia_delegation_result: allow
+  cortex_ia_delegation_cancel: allow
+  cortex_ia_report_error: allow
+  cortex_ia_doc_convert: allow
+  cortex_ia_diagram_validate: allow
   bash:
     "*": allow
     "git status*": allow
@@ -90,14 +90,15 @@ Before modifying code or executing mutating shell commands, execute these steps 
 ### Step 2: Delegation Gate (Dynamic External CLI / Herdr)
 - Require an explicit `dispatch_envelope.workspace_strategy`: `current_workspace` is the sole supported strategy; `isolated_worktree` is retired.
 - `current_workspace` uses the controller workspace sequentially under live per-file reservations (`cortex_ia_file_reserve`); an external AGY leaf remains exclusive during its execution window, and native controllers must not edit concurrently.
-- **Native Constraint Check**: Pass `prefer_native: true` ONLY if the dispatch envelope or user explicitly specifies `prefer_native: true` or `execution_mode: "native"`. Otherwise, let `cortex-delegation.json` decide.
-- Call `cortex_ia_delegate_start` with `role: "implement"`, `task_id`, `objective`, `workspace_strategy: "current_workspace"`, `allowed_files`, and `acceptance_checks`.
+- **Execution policy**: The bridge evaluates configured delegation policy. Dispatch preferences never authorize bypassing that decision.
+- When `cortex_ia_delegate_start` is available in host tools, call `cortex_ia_delegate_start` with `role: "implement"`, `task_id`, `objective`, `workspace_strategy: "current_workspace"`, `allowed_files`, and `acceptance_checks`.
+- **Implicit Native Execution (Host Tool Inventory Invariant)**: If `cortex_ia_delegate_start` is not exposed in the host tool inventory (e.g. Antigravity or native-only sessions), operate implicitly in native mode (`execution_mode: "native"`). Proceed directly with native implementation using available tools under the acquired task authority without halting.
 - **If the bridge returns `delegated: true`** (e.g. `execution_mode: "herdr_multiplexed"` or `"direct_cli"`):
   - An external leaf worker is executing in a Herdr pane or background process.
   - Call `cortex_ia_delegation_wait({ job_id })` once (terminal success automatically attaches `result`).
   - Treat the external receipt as advisory evidence. Inspect the diff in the selected execution workspace, rerun every acceptance check there, then transition or block the task. **Do NOT run duplicate local code editing yourself while delegated.**
   - If the bridge returns `action: ASK_USER_FOR_WORKSPACE_STRATEGY`, stop and return the alignment question; do not treat `delegated: false` as permission for native execution.
-- **Only if the bridge returns `execution_mode: "native"` with no error** (or `prefer_native: true` was passed):
+- **Only if the bridge returns `execution_mode: "native"` with no error** (or operating in implicit native mode because the gate is unavailable):
   - Proceed with native execution under the already acquired authority.
 
 ### Step 3: Execution, Heartbeat & Workload Budget Guard
@@ -137,7 +138,7 @@ Before modifying code or executing mutating shell commands, execute these steps 
 ## 2. Hard Security & Shell Boundaries
 - **Pre-approved:** Git diff/status, package managers within scope, test runners, linters, compilers, diagnostic queries.
 - **Strictly Prohibited without explicit envelope approval:** File deletions (via bash or edit tools), database drop/truncate/bulk-delete, hardcoded credentials or connection secrets, package uninstalls, `git reset --hard`, `git push`, deployments.
-- **Operational & Database Tasks (`allowed_files: []`):**
+- **Repository database scripts (non-empty leased file scope; execution against external services is unsupported by this dispatch path):**
   - Parameterize all queries via environment variables; never embed raw passwords, tokens, or default credentials.
   - Apply transactional fail-closed semantics (`BEGIN ... COMMIT / ROLLBACK` with `SIGNAL` or `RAISE EXCEPTION`).
   - Never execute destructive statements on shared tables or catalogues without pre-captured verified backups and exact rollbacks.

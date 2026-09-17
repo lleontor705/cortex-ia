@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -38,6 +40,9 @@ func main() {
 		authPassword = secret // Default to CORTEX_REPORT_SECRET if DASHBOARD_PASSWORD is not set
 	}
 
+	if secret == "" || authPassword == "" {
+		log.Fatal("CORTEX_REPORT_SECRET and dashboard authentication are required")
+	}
 	dataDir := os.Getenv("DATA_DIR")
 	if dataDir == "" {
 		dataDir = "."
@@ -78,6 +83,7 @@ func main() {
 		mem_sys_mb INTEGER DEFAULT 0,
 		goroutines INTEGER DEFAULT 0,
 		signature TEXT NOT NULL DEFAULT '',
+		schema_version INTEGER NOT NULL DEFAULT 0,
 		created_at TEXT NOT NULL
 	);
 	CREATE INDEX IF NOT EXISTS reports_created_idx ON reports(created_at DESC);
@@ -114,6 +120,9 @@ func main() {
 		_, _ = db.Exec(idx)
 	}
 
+	if err := ensureReportSchemaVersion(db); err != nil {
+		log.Fatalf("Failed to migrate report signature schema: %v", err)
+	}
 	hub := &HubServer{
 		db:           db,
 		secret:       secret,
@@ -135,21 +144,32 @@ func main() {
 
 	addr := ":" + port
 	log.Printf("🚀 Cortex Report Hub started on %s (Auth Protected: %v, User: %s)", addr, authPassword != "", authUser)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
+}
+
+// Old stored reports used the legacy signature payload (schema version zero).
+func ensureReportSchemaVersion(db *sql.DB) error {
+	rows, err := db.Query("SELECT schema_version FROM reports LIMIT 0")
+	if err == nil {
+		return rows.Close()
+	}
+	_, err = db.Exec("ALTER TABLE reports ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 0")
+	return err
 }
 
 func (h *HubServer) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if h.authPassword == "" {
-			next(w, r)
+			http.Error(w, "authentication is unavailable", http.StatusServiceUnavailable)
 			return
 		}
 
 		// 1. HTTP Basic Auth
 		user, pass, ok := r.BasicAuth()
-		if ok && user == h.authUser && pass == h.authPassword {
+		if ok && user == h.authUser && subtle.ConstantTimeCompare([]byte(pass), []byte(h.authPassword)) == 1 {
 			next(w, r)
 			return
 		}
@@ -161,12 +181,6 @@ func (h *HubServer) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if r.Header.Get("X-Cortex-Key") == h.authPassword {
-			next(w, r)
-			return
-		}
-
-		// 3. Query Param (?token=...)
-		if r.URL.Query().Get("token") == h.authPassword {
 			next(w, r)
 			return
 		}
@@ -193,27 +207,34 @@ func (h *HubServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (h *HubServer) handleCreateReport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
-	var report telemetry.ErrorReport
-	if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON body: " + err.Error()})
+	if h.secret == "" {
+		http.Error(w, "report authentication is unavailable", http.StatusServiceUnavailable)
 		return
 	}
-
-	if report.ID == "" {
-		report.ID = telemetry.NewReportID()
+	r.Body = http.MaxBytesReader(w, r.Body, telemetry.MaxReportBytes)
+	decoder := json.NewDecoder(r.Body)
+	var report telemetry.ErrorReport
+	if err := decoder.Decode(&report); err != nil {
+		http.Error(w, "invalid or oversized report body", http.StatusBadRequest)
+		return
 	}
-	if report.Timestamp == "" {
-		report.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		http.Error(w, "report body must contain one object", http.StatusBadRequest)
+		return
 	}
-
-	// Verify cryptographic signature if secret is configured
-	if h.secret != "" {
-		if !telemetry.VerifyReport(&report, h.secret) {
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "cryptographic HMAC signature verification failed"})
-			return
-		}
+	if err := telemetry.ValidateReport(&report); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !telemetry.VerifyReport(&report, h.secret) {
+		http.Error(w, "invalid report signature", http.StatusUnauthorized)
+		return
+	}
+	telemetry.SanitizeReport(&report, h.secret)
+	telemetry.SignReport(&report, h.secret)
+	if err := telemetry.ValidateReport(&report); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -223,20 +244,36 @@ func (h *HubServer) handleCreateReport(w http.ResponseWriter, r *http.Request) {
 		session_id, subagent_role, target_path, model_id,
 		error_code, error_message, details, os, arch, go_version, version, hostname,
 		num_cpu, mem_alloc_mb, mem_sys_mb, goroutines,
-		signature, created_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		signature, schema_version, created_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING
 	`
-	_, err := h.db.ExecContext(r.Context(), insertSQL,
+	values := []any{
 		report.ID, report.Timestamp, report.Source, report.TaskID, report.JobID, report.BoardID, report.Workspace,
 		report.SessionID, report.SubagentRole, report.TargetPath, report.ModelID,
 		report.ErrorCode, report.ErrorMessage, report.Details,
 		report.SystemInfo.OS, report.SystemInfo.Arch, report.SystemInfo.GoVersion, report.SystemInfo.Version, report.SystemInfo.Hostname,
 		report.SystemInfo.NumCPU, report.SystemInfo.MemoryAllocMB, report.SystemInfo.MemorySysMB, report.SystemInfo.Goroutines,
-		report.Signature, now,
-	)
+		report.Signature, report.SchemaVersion, now,
+	}
+	_, err := h.db.ExecContext(r.Context(), insertSQL, values...)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "database insert failed: " + err.Error()})
+		return
+	}
+
+	// Compare the complete persisted payload, including legacy unsigned metadata.
+	columns := strings.Fields("id timestamp source task_id job_id board_id workspace session_id subagent_role target_path model_id error_code error_message details os arch go_version version hostname num_cpu mem_alloc_mb mem_sys_mb goroutines signature schema_version")
+	for i := range columns {
+		columns[i] += "=?"
+	}
+	var matching int
+	if err := h.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM reports WHERE "+strings.Join(columns, " AND "), values[:len(values)-1]...).Scan(&matching); err != nil {
+		http.Error(w, "report acknowledgement unavailable", http.StatusInternalServerError)
+		return
+	}
+	if matching != 1 {
+		http.Error(w, "report identity conflicts with existing evidence", http.StatusConflict)
 		return
 	}
 
@@ -264,7 +301,7 @@ func (h *HubServer) handleListReports(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(session_id, ''), COALESCE(subagent_role, ''), COALESCE(target_path, ''), COALESCE(model_id, ''),
 		       error_code, error_message, details, os, arch, go_version, version, hostname,
 		       COALESCE(num_cpu, 0), COALESCE(mem_alloc_mb, 0), COALESCE(mem_sys_mb, 0), COALESCE(goroutines, 0),
-		       signature, created_at
+		       signature, schema_version, created_at
 		FROM reports
 		ORDER BY created_at DESC
 		LIMIT ?
@@ -286,7 +323,7 @@ func (h *HubServer) handleListReports(w http.ResponseWriter, r *http.Request) {
 			&rep.ErrorCode, &rep.ErrorMessage, &rep.Details,
 			&rep.SystemInfo.OS, &rep.SystemInfo.Arch, &rep.SystemInfo.GoVersion, &rep.SystemInfo.Version, &host,
 			&rep.SystemInfo.NumCPU, &rep.SystemInfo.MemoryAllocMB, &rep.SystemInfo.MemorySysMB, &rep.SystemInfo.Goroutines,
-			&rep.Signature, &createdAt,
+			&rep.Signature, &rep.SchemaVersion, &createdAt,
 		)
 		if err != nil {
 			continue
@@ -315,7 +352,7 @@ func (h *HubServer) handleGetReport(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(session_id, ''), COALESCE(subagent_role, ''), COALESCE(target_path, ''), COALESCE(model_id, ''),
 		       error_code, error_message, details, os, arch, go_version, version, hostname,
 		       COALESCE(num_cpu, 0), COALESCE(mem_alloc_mb, 0), COALESCE(mem_sys_mb, 0), COALESCE(goroutines, 0),
-		       signature, created_at
+		       signature, schema_version, created_at
 		FROM reports WHERE id=?
 	`, id)
 
@@ -327,7 +364,7 @@ func (h *HubServer) handleGetReport(w http.ResponseWriter, r *http.Request) {
 		&rep.ErrorCode, &rep.ErrorMessage, &rep.Details,
 		&rep.SystemInfo.OS, &rep.SystemInfo.Arch, &rep.SystemInfo.GoVersion, &rep.SystemInfo.Version, &host,
 		&rep.SystemInfo.NumCPU, &rep.SystemInfo.MemoryAllocMB, &rep.SystemInfo.MemorySysMB, &rep.SystemInfo.Goroutines,
-		&rep.Signature, &createdAt,
+		&rep.Signature, &rep.SchemaVersion, &createdAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {

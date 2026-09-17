@@ -97,26 +97,6 @@ function relativeTarget(directory: string, target: string): string {
   return relative.replaceAll(path.sep, "/");
 }
 
-function isScratchOrTemp(p: string): boolean {
-  const norm = p.replace(/\\/g, "/").toLowerCase();
-  return (
-    norm.startsWith("scratch/") ||
-    norm.includes("/scratch/") ||
-    norm.startsWith(".tmp/") ||
-    norm.includes("/.tmp/") ||
-    norm.startsWith("tmp/") ||
-    norm.includes("/tmp/") ||
-    norm.startsWith(".gemini/") ||
-    norm.includes("/.gemini/") ||
-    norm.startsWith(".cortex-ia/") ||
-    norm.includes("/.cortex-ia/") ||
-    norm.startsWith(".git/") ||
-    norm.includes("/.git/") ||
-    norm.endsWith(".tmp") ||
-    norm.endsWith(".log")
-  );
-}
-
 /**
  * Fail-closed admission for native file tools. Typed planning/discovery tools
  * have separate policy. This hook does not sandbox shell writes or make the
@@ -129,12 +109,9 @@ export const CortexLeaseGuardPlugin: Plugin = async (ctx) => ({
 
     if (typeof input.sessionID !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(input.sessionID)) throw new Error("LEASE_CHECK_FAILED: host session identity is required");
     const rawTargets = targetFiles(toolName, (output?.args || {}) as Record<string, any>);
-    // Whitelist scratch and temp paths to prevent edit deadlocks during debugging and reproduction
-    const nonScratchTargets = rawTargets.filter(t => !isScratchOrTemp(t));
-    if (nonScratchTargets.length === 0) return;
-
-    const targets = [...new Set(nonScratchTargets.map(target => relativeTarget(ctx.directory, target)))].sort();
-    if (!targets.length) return;
+    // Every target must be contained and leased, including logs, scratch files,
+    // and control directories. Path names never confer mutation authority.
+    const targets = [...new Set(rawTargets.map(target => relativeTarget(ctx.directory, target)))].sort();
     const cortex = firstCortexIA(ctx.directory);
 
     try {

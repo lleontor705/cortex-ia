@@ -2,6 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPluginFile } from './harness-plugin-loader.mjs';
 
+test('dispatch normalizes each legacy budget once without mutating caller input', async () => {
+  const { exports: { dispatchInfo } } = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
+  for (const alias of [{ steps: 9 }, { budget: { max_turns: 9 } }, { budget: { max_steps: 9 } }, { max_steps: 9 }]) {
+    const envelope = { task_id: 'bounded', ...alias };
+    const args = { subagent_type: 'implement' };
+    const original = JSON.stringify(envelope);
+    const result = dispatchInfo(args, `<minion-contract>${original}</minion-contract>`);
+    const normalized = JSON.parse(result.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
+    assert.deepEqual(normalized, { task_id: 'bounded', workload_policy: 'flexible', max_steps: 9 });
+    assert.equal(JSON.stringify(envelope), original);
+    assert.equal(result.limit, 9);
+  }
+});
+
 test('dispatchInfo accepts canonical max_steps and deprecated budget.max_turns', async () => {
   const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
   const { dispatchInfo } = mod.exports;

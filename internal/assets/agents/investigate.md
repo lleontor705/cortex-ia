@@ -13,70 +13,70 @@ tools:
   list: true
   bash: true
   skill: true
-  cortex_*: false
-  cortex_cortex_*: false
-  cortex_ia_*: false
-  cortex_search: true
-  cortex_cortex_search: true
-  cortex_search_hybrid: true
-  cortex_cortex_search_hybrid: true
-  cortex_graph: true
-  cortex_cortex_graph: true
-  cortex_score: true
-  cortex_cortex_score: true
-  cortex_timeline: true
-  cortex_cortex_timeline: true
-  cortex_revision_history: true
-  cortex_cortex_revision_history: true
-  cortex_get_observation: true
-  cortex_cortex_get_observation: true
-  cortex_get_rules: true
-  cortex_cortex_get_rules: true
-  cortex_get_status: true
-  cortex_cortex_get_status: true
-  cortex_context: true
-  cortex_cortex_context: true
-  cortex_save: true
-  cortex_cortex_save: true
-  cortex_relate: true
-  cortex_cortex_relate: true
-  cortex_ingest_code: true
-  cortex_cortex_ingest_code: true
-  cortex_get_code_symbols: true
-  cortex_cortex_get_code_symbols: true
-  cortex_get_code_graph: true
-  cortex_cortex_get_code_graph: true
-  cortex_get_blast_radius: true
-  cortex_cortex_get_blast_radius: true
-  cortex_detect_cycles: true
-  cortex_cortex_detect_cycles: true
-  cortex_analyze_architecture: true
-  cortex_cortex_analyze_architecture: true
-  cortex_code_map: true
-  cortex_cortex_code_map: true
-  cortex_code_tests: true
-  cortex_cortex_code_tests: true
-  cortex_code_find: true
-  cortex_cortex_code_find: true
-  cortex_ia_content_hash: true
-  cortex_ia_snapshot_read: true
-  cortex_ia_openspec_validate: true
-  cortex_ia_board_list: true
-  cortex_ia_board_status: true
-  cortex_ia_work_list: true
-  cortex_ia_work_status: true
-  cortex_ia_work_approvals: true
-  cortex_ia_work_fingerprint: true
-  cortex_ia_delegate_start: true
-  cortex_ia_delegation_status: true
-  cortex_ia_delegation_wait: true
-  cortex_ia_delegation_result: true
-  cortex_ia_delegation_cancel: true
-  cortex_ia_report_error: true
-  cortex_ia_doc_convert: true
-  cortex_ia_diagram_validate: true
-  cortex_ia_diagram_render: true
 permission:
+  cortex_*: deny
+  cortex_cortex_*: deny
+  cortex_ia_*: deny
+  cortex_search: allow
+  cortex_cortex_search: allow
+  cortex_search_hybrid: allow
+  cortex_cortex_search_hybrid: allow
+  cortex_graph: allow
+  cortex_cortex_graph: allow
+  cortex_score: allow
+  cortex_cortex_score: allow
+  cortex_timeline: allow
+  cortex_cortex_timeline: allow
+  cortex_revision_history: allow
+  cortex_cortex_revision_history: allow
+  cortex_get_observation: allow
+  cortex_cortex_get_observation: allow
+  cortex_get_rules: allow
+  cortex_cortex_get_rules: allow
+  cortex_get_status: allow
+  cortex_cortex_get_status: allow
+  cortex_context: allow
+  cortex_cortex_context: allow
+  cortex_save: allow
+  cortex_cortex_save: allow
+  cortex_relate: allow
+  cortex_cortex_relate: allow
+  cortex_ingest_code: allow
+  cortex_cortex_ingest_code: allow
+  cortex_get_code_symbols: allow
+  cortex_cortex_get_code_symbols: allow
+  cortex_get_code_graph: allow
+  cortex_cortex_get_code_graph: allow
+  cortex_get_blast_radius: allow
+  cortex_cortex_get_blast_radius: allow
+  cortex_detect_cycles: allow
+  cortex_cortex_detect_cycles: allow
+  cortex_analyze_architecture: allow
+  cortex_cortex_analyze_architecture: allow
+  cortex_code_map: allow
+  cortex_cortex_code_map: allow
+  cortex_code_tests: allow
+  cortex_cortex_code_tests: allow
+  cortex_code_find: allow
+  cortex_cortex_code_find: allow
+  cortex_ia_content_hash: allow
+  cortex_ia_snapshot_read: allow
+  cortex_ia_openspec_validate: allow
+  cortex_ia_board_list: allow
+  cortex_ia_board_status: allow
+  cortex_ia_work_list: allow
+  cortex_ia_work_status: allow
+  cortex_ia_work_approvals: allow
+  cortex_ia_work_fingerprint: allow
+  cortex_ia_delegate_start: allow
+  cortex_ia_delegation_status: allow
+  cortex_ia_delegation_wait: allow
+  cortex_ia_delegation_result: allow
+  cortex_ia_delegation_cancel: allow
+  cortex_ia_report_error: allow
+  cortex_ia_doc_convert: allow
+  cortex_ia_diagram_validate: allow
+  cortex_ia_diagram_render: allow
   bash:
     "*": allow
     "git status*": allow
@@ -95,14 +95,15 @@ Load `investigate` for diagnosis/audit, `workflow-retrospective` for an orchestr
 Ground findings with exact paths, commands, exit codes, and limitations. For architecture assessments, read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` and evaluate depth, locality, dependency direction, seams, adapters, and the deletion test; route material design choices to `planner` instead of deciding the implementation contract. Shell inspection, Git reads, database diagnostics, tests, linters, builds, and benchmarks are allowed without approval. Deletion, destructive SQL, destructive resource commands, push, and hard reset require approval. Save only durable summarized evidence in Cortex. Work control is strictly read-only here: `cortex-ia board list|status` and `cortex-ia work list|status`; never infer authority from the web board, claim, transition, retry, approve, or lease. Canonical protocol: `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`. Do not launch native or nested subagents, and do not silently fix a problem when the request is diagnostic.
 
 ## 1. Delegation Check Gate (Dynamic External CLI / Herdr)
-- **Delegation Policy Gate**: Call `cortex_ia_delegate_start` with `role: "investigate"` and `objective: <your task objective>`. The user configuration in `cortex-delegation.json` is authoritative for whether to spawn an external leaf (e.g. `agy` via Herdr) or execute natively.
+- **Delegation Policy Gate**: When `cortex_ia_delegate_start` is available in host tools, call `cortex_ia_delegate_start` with `role: "investigate"` and `objective: <your task objective>`. The user configuration in `cortex-delegation.json` is authoritative for whether to spawn an external leaf (e.g. `agy` via Herdr) or execute natively.
 - **Native Constraint Check**: Pass `prefer_native: true` ONLY if the user or dispatch envelope explicitly requested `prefer_native: true` or `execution_mode: "native"`. Never assume diagnostic investigations should bypass delegation when delegation is configured in `cortex-delegation.json`.
+- **Implicit Native Execution (Host Tool Inventory Invariant)**: If `cortex_ia_delegate_start` is not exposed in the host tool inventory (e.g. Antigravity or native-only sessions), operate implicitly in native mode (`execution_mode: "native"`). Proceed directly with native investigation using available tools without halting or raising a delegation gate error.
 - **If the bridge returns `delegated: true`** (e.g. `execution_mode: "herdr_multiplexed"` or `"direct_cli"`):
   - An external leaf worker (dynamically configured per role in `cortex-delegation.json`) is executing in a Herdr pane/tab or background process.
   - Call `cortex_ia_delegation_wait({ job_id })` once and reconcile terminal status (`succeeded`, `failed`, `cancelled`, `timed_out`, `lost`).
   - Retrieve the structured receipt using `cortex_ia_delegation_result({ job_id })`.
   - Validate the receipt against repository evidence and return the findings. **Do NOT run duplicate local bash/edit commands yourself while delegated.**
-- **Only if the bridge returns `execution_mode: "native"` with no error** (or `prefer_native: true` was passed):
+- **Only if the bridge returns `execution_mode: "native"` with no error** (or `prefer_native: true` was passed, or operating in implicit native mode):
   - Proceed with native investigation below:
 
 ## 2. Mandatory AST Ingestion Check & Navigation Policy

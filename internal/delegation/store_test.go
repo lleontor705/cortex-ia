@@ -591,25 +591,7 @@ func TestDelegationAllFourRoles(t *testing.T) {
 	}
 	defer func() { _ = store.Close() }()
 
-	workspace, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("failed to get working dir: %v", err)
-	}
-
-	// Setup board and task for implement
 	_, _ = store.CreateBoard(ctx, "default", "Default Board", "")
-	_, err = store.CreateWorkInBoard(ctx, "default", "task-impl", "Implement task", nil)
-	if err != nil {
-		t.Fatalf("failed to create work item: %v", err)
-	}
-	claim, err := store.ClaimWork(ctx, "task-impl", "implement-agent", 5*time.Minute)
-	if err != nil {
-		t.Fatalf("failed to claim work item: %v", err)
-	}
-	_, err = store.ReserveWorkLease(ctx, "task-impl", claim.Token, "pkg/foo.go", 5*time.Minute)
-	if err != nil {
-		t.Fatalf("failed to reserve lease: %v", err)
-	}
 
 	testCases := []struct {
 		role              string
@@ -650,9 +632,26 @@ func TestDelegationAllFourRoles(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.role, func(t *testing.T) {
+			workspace := t.TempDir()
+			taskID := tc.taskID
+			if taskID != "" {
+				taskID += "-" + tc.role
+				if _, err := store.CreateWorkInBoardWithDefinition(ctx, "default", taskID, "Role task", nil, WorkDefinition{Project: workspace}); err != nil {
+					t.Fatal(err)
+				}
+				if tc.role == "implement" {
+					claim, err := store.ClaimWork(ctx, taskID, "implement-agent", 5*time.Minute)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err := store.ReserveWorkLease(ctx, taskID, claim.Token, "pkg/foo.go", 5*time.Minute); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
 			req := Request{
 				Role:          tc.role,
-				TaskID:        tc.taskID,
+				TaskID:        taskID,
 				Objective:     "Execute objective for " + tc.role,
 				Workspace:     workspace,
 				WorkspaceMode: tc.workspaceStrategy,

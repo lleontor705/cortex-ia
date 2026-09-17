@@ -117,6 +117,23 @@ function workPath(value: string): string {
   return normalized;
 }
 
+function reservationPaths(args: any): string[] {
+  if (args.paths !== undefined && !Array.isArray(args.paths)) throw new Error("paths must be an array");
+  const paths = [...(args.path === undefined ? [] : [args.path]), ...(args.paths || [])];
+  if (paths.length > 128 || paths.some(p => typeof p !== "string" || !p.trim())) throw new Error("reservation requires 1-128 nonempty paths");
+  // The authority service owns normalization, validation and duplicate rejection.
+  return paths;
+}
+
+function reservationReceipt(leases: any, requested: string[]): any[] {
+  if (!Array.isArray(leases) || leases.length !== requested.length) throw new Error("incomplete reservation receipt; reconcile durable authority before retry");
+  const expected = new Set(requested.map(p => workPath(p.trim())));
+  for (const lease of leases) {
+    if (typeof lease?.lease_token !== "string" || !lease.lease_token || !expected.delete(lease.path)) throw new Error("invalid reservation receipt; reconcile durable authority before retry");
+  }
+  return leases;
+}
+
 function durableWorkStatus(taskID: string, presentationRole?: string): any {
   const cmd = ["work", "status", taskID];
   if (presentationRole) cmd.push("--role", presentationRole);
@@ -1100,37 +1117,16 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         if ([...workAuthority.values()].some((authority) => authority.sessionID === context.sessionID)) {
           throw new Error("this implement session already owns one work task; dispatch a separate controller for additional work");
         }
-        const command = ["work", "claim", args.task_id, "--owner", controllerIdentity(context.sessionID)];
+        const targetPaths = reservationPaths(args);
+        const command = ["work", "claim", args.task_id, "--owner", controllerIdentity(context.sessionID), ...targetPaths.flatMap(p => ["--path", p])];
         if (args.ttl) command.push("--ttl", args.ttl);
         const claim = parseJSON(cortex(command));
         if (!claim?.claim_token) throw new Error("cortex-ia returned no claim token");
-        const leases = new Map<string, string>();
-        const authority = { claimToken: claim.claim_token, leases, sessionID: context.sessionID };
-        workAuthority.set(args.task_id, authority);
-        const targetPaths: string[] = [];
-        if (args.path) targetPaths.push(args.path);
-        if (Array.isArray(args.paths)) {
-          for (const p of args.paths) {
-            if (p && !targetPaths.includes(p)) targetPaths.push(p);
-          }
-        }
-        const reservedFiles: any[] = [];
-        for (const rawPath of targetPaths) {
-          const leasePath = workPath(rawPath);
-          const reserveCmd = ["work", "reserve", args.task_id, "--claim-token", "@stdin", "--path", leasePath];
-          if (args.ttl) reserveCmd.push("--ttl", args.ttl);
-          const lease = parseJSON(cortexAuthorized(reserveCmd, authority.claimToken));
-          if (lease?.lease_token && lease?.path) {
-            leases.set(lease.path, lease.lease_token);
-            reservedFiles.push(withoutToken(lease, "lease_token"));
-          }
-        }
+        const reserved = reservationReceipt(claim.reserved_files || [], targetPaths);
+        const leases = new Map<string, string>(reserved.map(lease => [lease.path, lease.lease_token]));
+        workAuthority.set(args.task_id, { claimToken: claim.claim_token, leases, sessionID: context.sessionID });
         saveAuthorityState();
-        const res = withoutToken(claim, "claim_token");
-        if (reservedFiles.length > 0) {
-          res.reserved_files = reservedFiles;
-        }
-        return JSON.stringify(res);
+        return JSON.stringify({ ...withoutToken(claim, "claim_token"), reserved_files: reserved.map(lease => withoutToken(lease, "lease_token")) });
       }
     }),
 
@@ -1155,26 +1151,14 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       },
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID, true);
-        const targetPaths: string[] = [];
-        if (args.path) targetPaths.push(args.path);
-        if (Array.isArray(args.paths)) {
-          for (const p of args.paths) {
-            if (p && !targetPaths.includes(p)) targetPaths.push(p);
-          }
-        }
-        if (targetPaths.length === 0) {
-          throw new Error("either 'path' or 'paths' must be provided to reserve files");
-        }
-        const results = [];
-        for (const rawPath of targetPaths) {
-          const leasePath = workPath(rawPath);
-          const command = ["work", "reserve", args.task_id, "--claim-token", "@stdin", "--path", leasePath];
-          if (args.ttl) command.push("--ttl", args.ttl);
-          const lease = parseJSON(cortexAuthorized(command, authority.claimToken));
-          if (!lease?.lease_token || !lease?.path) throw new Error("cortex-ia returned no lease authority for path: " + rawPath);
-          authority.leases.set(lease.path, lease.lease_token);
-          results.push(withoutToken(lease, "lease_token"));
-        }
+        const targetPaths = reservationPaths(args);
+        if (!targetPaths.length) throw new Error("either 'path' or 'paths' must be provided to reserve files");
+        const command = ["work", "reserve", args.task_id, "--claim-token", "@stdin", ...targetPaths.flatMap(p => ["--path", p])];
+        if (args.ttl) command.push("--ttl", args.ttl);
+        const response = parseJSON(cortexAuthorized(command, authority.claimToken));
+        const reserved = reservationReceipt(response?.reserved || [response], targetPaths);
+        for (const lease of reserved) authority.leases.set(lease.path, lease.lease_token);
+        const results = reserved.map(lease => withoutToken(lease, "lease_token"));
         saveAuthorityState();
         if (results.length === 1 && args.path) {
           return JSON.stringify(results[0]);
@@ -1327,7 +1311,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }),
 
     cortex_ia_delegate_start: tool({
-      description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires an explicit user-aligned workspace_strategy: current_workspace. The returned execution_mode is authoritative. Model and effort are configured authoritatively by the user via the TUI and cannot be selected by agents. Call cortex_ia_delegation_wait once, then read the receipt; execute natively only when delegated is false and no external job was accepted.",
+      description: "Ask cortex-ia to supervise one external AGY leaf. Implement requires user-aligned current_workspace. The returned execution_mode is authoritative; native execution requires mode native with no error. Model and effort remain user-configured, never overridden. Scoped authentication currently supports Gemini only: configure CORTEX_IA_AGY_AUTH=gemini and GEMINI_API_KEY; other models fail actionably. See cortex-work-protocol.md section 5 for migration and isolation limits. Call cortex_ia_delegation_wait, then read the receipt; acceptance is not verified completion.",
       args: {
         role: tool.schema.enum(["implement", "investigate", "reviewer", "planner"]),
         task_id: tool.schema.string().optional(),
@@ -1337,17 +1321,15 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         allowed_files: tool.schema.array(tool.schema.string()).optional(),
         acceptance_checks: tool.schema.array(tool.schema.string()).optional(),
         context_data: tool.schema.string().optional(),
-        prefer_native: tool.schema.boolean().optional().describe("If true, explicitly bypass external AGY delegation and execute natively in OpenCode")
+        workload_policy: tool.schema.enum(["strict", "flexible", "unbounded"]).optional().describe("Workload guidance forwarded to the leaf; omitted defaults to flexible"),
+        prefer_native: tool.schema.boolean().optional().describe("Legacy preference; cannot override configured delegation policy")
       },
       async execute(args, context) {
-        if (args.prefer_native) {
-          logDelegation(`ℹ️ [CORTEX-IA] Delegación para rol '${args.role}' omitida por prefer_native=true.`);
-          return JSON.stringify({
-            delegated: false,
-            execution_mode: "native",
-            reason: "requested_native",
-            action: "USE_NATIVE_SUBAGENT"
-          });
+        const workloadPolicy = args.workload_policy === undefined ? "flexible" : args.workload_policy;
+        if (!["strict", "flexible", "unbounded"].includes(workloadPolicy)) {
+          return JSON.stringify({ delegated: false, status: "blocked", error: {
+            code: "DELEGATION_REQUEST_INVALID", message: "workload_policy must be strict, flexible or unbounded"
+          }, action: "CORRECT_REQUEST_BEFORE_ACCEPTANCE" });
         }
         let requestPath = "";
         let acceptedJob: any = null;
@@ -1361,6 +1343,9 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           if (!policy.external_enabled) {
             logDelegation(`ℹ️ [CORTEX-IA] Rol '${args.role}' configurado nativo en cortex-delegation.json (reason: ${policy.reason}).`);
             return JSON.stringify({ delegated: false, execution_mode: "native", reason: policy.reason, action: "USE_NATIVE_SUBAGENT" });
+          }
+          if (args.prefer_native) {
+            return JSON.stringify({ delegated: false, status: "blocked", error: { code: "DELEGATION_POLICY_CONFLICT", message: "prefer_native cannot override configured external delegation" }, action: "FOLLOW_CONFIGURED_POLICY" });
           }
           stage = "request";
           if (args.worktree || args.workspace_strategy === "isolated_worktree") {
@@ -1416,6 +1401,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
             workspace_strategy: args.workspace_strategy || "",
             worktree: "",
             allowed_files: args.allowed_files || [],
+            workload_policy: workloadPolicy,
             output_schema: receiptSchema
           });
 
@@ -1464,11 +1450,10 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
               let cancellationStatus = "cancellation_unknown";
               try {
                 const cancelled = parseJSON(cortex(["delegate", "cancel", job.job_id]));
-                cancellationStatus = cancelled?.status || "cancelled";
+                cancellationStatus = cancelled?.cancellation_requested ? "cancellation_requested" : cancelled?.status || "cancellation_unknown";
               } catch {}
-              if (openedTab || openedPane) {
-                closeHerdrJobResources(job.job_id);
-              } else {
+              if (cancellationStatus === "cancelled") {
+                if (openedTab || openedPane) closeHerdrJobResources(job.job_id);
                 cleanupRequest(requestPath);
               }
               emitDelegationEvent({ kind: "delegation", job_id: job.job_id, role: args.role, status: cancellationStatus, transport: "herdr" });
@@ -1495,9 +1480,9 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
             let cancellationStatus = "cancellation_unknown";
             try {
               const cancelled = parseJSON(cortex(["delegate", "cancel", job.job_id]));
-              cancellationStatus = cancelled?.status || "cancelled";
+              cancellationStatus = cancelled?.cancellation_requested ? "cancellation_requested" : cancelled?.status || "cancellation_unknown";
             } catch {}
-            cleanupRequest(requestPath);
+            if (cancellationStatus === "cancelled") cleanupRequest(requestPath);
               emitDelegationEvent({ kind: "delegation", job_id: job.job_id, role: args.role, status: cancellationStatus, transport, workspace: path.resolve(context.directory) });
             return JSON.stringify({
               delegated: true,
@@ -1575,6 +1560,9 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
             continue;
           }
 
+          if (job?.reconciliation_required || job?.status === "lost") {
+            return JSON.stringify({ ...job, completed: false, action: "RECONCILE_TERMINATION", message: "Process termination is unconfirmed; workspace remains fenced." });
+          }
           if (terminal.has(job?.status)) {
             logDelegation(`🏁 [CORTEX-IA] Job de delegación ${args.job_id} finalizado: ${job.status} (Rol: ${job.role || "unknown"})`);
             emitDelegationEvent({ kind: "delegation", job_id: args.job_id, role: job.role, status: job.status, transport: job.transport });
@@ -1624,10 +1612,14 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       async execute(args) {
         let job: any = {};
         try { job = parseJSON(cortex(["delegate", "status", args.job_id])); } catch {}
-        if (job?.status && !["succeeded", "failed", "cancelled", "timed_out", "lost"].includes(job.status)) {
+        if (job?.reconciliation_required || job?.status === "lost") {
+          return JSON.stringify({ ...job, completed: false, action: "RECONCILE_TERMINATION" });
+        }
+        if (job?.status && !["succeeded", "failed", "cancelled", "timed_out"].includes(job.status)) {
           return JSON.stringify({
             job_id: args.job_id,
             status: job.status,
+            cancellation_requested: job.cancellation_requested === true,
             completed: false,
             message: `Delegation job is still in progress (status: ${job.status}). Use cortex_ia_delegation_wait to await completion.`
           });
@@ -1643,7 +1635,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           });
         }
         emitDelegationEvent({ kind: "delegation", job_id: args.job_id, role: job.role, status: job.status || "result_read", transport: job.transport });
-        closeHerdrJobResources(args.job_id);
+        if (["succeeded", "failed", "cancelled", "timed_out"].includes(job?.status)) closeHerdrJobResources(args.job_id);
         return result;
       }
     }),
@@ -1653,8 +1645,9 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       args: { job_id: tool.schema.string() },
       async execute(args) {
         const result = cortex(["delegate", "cancel", args.job_id]);
-        emitDelegationEvent({ kind: "delegation", job_id: args.job_id, status: "cancelled" });
-        closeHerdrJobResources(args.job_id);
+        const job = parseJSON(result);
+        emitDelegationEvent({ kind: "delegation", job_id: args.job_id, status: job?.cancellation_requested ? "cancellation_requested" : job?.status || "unknown" });
+        if (job?.status === "cancelled" && !job?.reconciliation_required) closeHerdrJobResources(args.job_id);
         return result;
       }
     }),
@@ -1675,8 +1668,8 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         task_id: tool.schema.string().optional().describe("Associated work task ID"),
         job_id: tool.schema.string().optional().describe("Associated delegation job ID")
       },
-      async execute(args) {
-        const cmd = ["report", "error", "--code", args.code, "--message", args.message];
+      async execute(args, context) {
+        const cmd = ["report", "error", "--code", args.code, "--message", args.message, "--session-id", context.sessionID, "--role", context.agent, "--source", context.agent, "--workspace", context.directory];
         if (args.details) cmd.push("--details", args.details);
         if (args.task_id) cmd.push("--task", args.task_id);
         if (args.job_id) cmd.push("--job", args.job_id);
@@ -1694,7 +1687,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
   const controllers = ["planner", "investigate", "implement", "reviewer"];
   const readers = new Set([
     "content_hash", "openspec_validate", "board_list", "board_status", "work_list", "work_status", "delegation_status", "delegation_wait", "delegation_result", "delegation_models",
-    "diagram_validate"
+    "diagram_validate", "work_approvals", "work_fingerprint"
   ]);
   const mutations: Record<string, string[]> = {
     openspec_write: ["planner"], change_archive: ["planner"], discovery_write: ["discovery"],

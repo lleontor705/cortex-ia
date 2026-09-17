@@ -139,10 +139,10 @@ func DefaultDelegationConfig(useHerdr bool) DelegationConfig {
 	cfg.UseHerdr = useHerdr
 	cfg.HerdrSettings.AutoSplit = useHerdr
 	cfg.DefaultModel = DefaultAGYModel
-	cfg.Roles["implement"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "accept-edits", SkipPermissions: true, Model: DefaultAGYModel}
-	cfg.Roles["investigate"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true, Model: DefaultAGYModel}
-	cfg.Roles["planner"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true, Model: DefaultAGYModel}
-	cfg.Roles["reviewer"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", SkipPermissions: true, Model: DefaultAGYModel}
+	cfg.Roles["implement"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "accept-edits", Model: DefaultAGYModel, SkipPermissions: true}
+	cfg.Roles["investigate"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", Model: DefaultAGYModel, SkipPermissions: true}
+	cfg.Roles["planner"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", Model: DefaultAGYModel, SkipPermissions: true}
+	cfg.Roles["reviewer"] = RoleConfig{Delegate: true, CLI: "agy", Mode: "plan", Model: DefaultAGYModel, SkipPermissions: true}
 	return cfg
 }
 

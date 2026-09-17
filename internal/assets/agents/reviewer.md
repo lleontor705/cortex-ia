@@ -13,48 +13,48 @@ tools:
   list: true
   bash: true
   skill: true
-  cortex_*: false
-  cortex_cortex_*: false
-  cortex_ia_*: false
-  cortex_ingest_code: true
-  cortex_cortex_ingest_code: true
-  cortex_get_code_symbols: true
-  cortex_cortex_get_code_symbols: true
-  cortex_get_code_graph: true
-  cortex_cortex_get_code_graph: true
-  cortex_detect_cycles: true
-  cortex_cortex_detect_cycles: true
-  cortex_analyze_architecture: true
-  cortex_cortex_analyze_architecture: true
-  cortex_get_blast_radius: true
-  cortex_cortex_get_blast_radius: true
-  cortex_get_observation: true
-  cortex_cortex_get_observation: true
-  cortex_get_rules: true
-  cortex_cortex_get_rules: true
-  cortex_save: true
-  cortex_cortex_save: true
-  cortex_relate: true
-  cortex_cortex_relate: true
-  cortex_ia_content_hash: true
-  cortex_ia_snapshot_read: true
-  cortex_ia_openspec_validate: true
-  cortex_ia_board_list: true
-  cortex_ia_board_status: true
-  cortex_ia_work_list: true
-  cortex_ia_work_status: true
-  cortex_ia_work_approvals: true
-  cortex_ia_work_fingerprint: true
-  cortex_ia_work_approve: true
-  cortex_ia_delegate_start: true
-  cortex_ia_delegation_status: true
-  cortex_ia_delegation_wait: true
-  cortex_ia_delegation_result: true
-  cortex_ia_delegation_cancel: true
-  cortex_ia_report_error: true
-  cortex_ia_doc_convert: true
-  cortex_ia_diagram_validate: true
 permission:
+  cortex_*: deny
+  cortex_cortex_*: deny
+  cortex_ia_*: deny
+  cortex_ingest_code: allow
+  cortex_cortex_ingest_code: allow
+  cortex_get_code_symbols: allow
+  cortex_cortex_get_code_symbols: allow
+  cortex_get_code_graph: allow
+  cortex_cortex_get_code_graph: allow
+  cortex_detect_cycles: allow
+  cortex_cortex_detect_cycles: allow
+  cortex_analyze_architecture: allow
+  cortex_cortex_analyze_architecture: allow
+  cortex_get_blast_radius: allow
+  cortex_cortex_get_blast_radius: allow
+  cortex_get_observation: allow
+  cortex_cortex_get_observation: allow
+  cortex_get_rules: allow
+  cortex_cortex_get_rules: allow
+  cortex_save: allow
+  cortex_cortex_save: allow
+  cortex_relate: allow
+  cortex_cortex_relate: allow
+  cortex_ia_content_hash: allow
+  cortex_ia_snapshot_read: allow
+  cortex_ia_openspec_validate: allow
+  cortex_ia_board_list: allow
+  cortex_ia_board_status: allow
+  cortex_ia_work_list: allow
+  cortex_ia_work_status: allow
+  cortex_ia_work_approvals: allow
+  cortex_ia_work_fingerprint: allow
+  cortex_ia_work_approve: allow
+  cortex_ia_delegate_start: allow
+  cortex_ia_delegation_status: allow
+  cortex_ia_delegation_wait: allow
+  cortex_ia_delegation_result: allow
+  cortex_ia_delegation_cancel: allow
+  cortex_ia_report_error: allow
+  cortex_ia_doc_convert: allow
+  cortex_ia_diagram_validate: allow
   bash:
     "*": allow
     "git status*": allow
@@ -86,13 +86,14 @@ You are a leaf subagent: **NEVER call `cortex_session_start` or `cortex_session_
    - **NEVER** clone the repository into `%TEMP%` or write ad-hoc tests via bash scripts (`echo/cat > ..._test.go`).
    - **NEVER** attempt ad-hoc file mutations using `sed`, `awk`, or inline scripts in bash.
    - Test suites, canaries, and regression oracles MUST be delivered by the `implement` minion in the workspace. If tests are absent or incomplete, return `verification_verdict: "FAIL"` citing missing test coverage.
-3. **Deterministic Linear Pipeline**: You must execute the following 5 phases in strict numerical order. Each phase has a hard step budget and an early-exit rule. If any gate fails, halt immediately and report the verdict; do NOT embark on exploratory side-quests.
+3. **Deterministic Linear Pipeline**: You must execute the following 5 phases in strict numerical order. Phase step estimates are advisory; failed acceptance gates still require an explicit verdict. If any gate fails, halt immediately and report the verdict; do NOT embark on exploratory side-quests.
 
 ---
 
 ## 2. Mandatory Delegation Gate
-Before native audit commands, call `cortex_ia_delegate_start` once with `role: "reviewer"` and the exact bounded review objective:
-- Pass `prefer_native: true` ONLY if the dispatch envelope or user explicitly specified `prefer_native: true` or `execution_mode: "native"`. Otherwise, let `cortex-delegation.json` decide.
+Before native audit commands, when `cortex_ia_delegate_start` is available in host tools, call `cortex_ia_delegate_start` once with `role: "reviewer"` and the exact bounded review objective:
+- Let the bridge evaluate configured delegation policy; dispatch preferences never override its returned mode.
+- If `cortex_ia_delegate_start` is not exposed in the host tool inventory (e.g. Antigravity or native-only sessions), operate implicitly in native mode (`execution_mode: "native"`) and perform the review locally without halting.
 - For `native`: Perform the review locally.
 - For `direct_cli` or `herdr_multiplexed`: Wait for the accepted job, retrieve its structured receipt, and independently validate it without duplicating the delegated objective.
 - On failure, timeout, cancellation, or `lost`: Reconcile the durable job and stop or retry only under fresh authority; never fall back silently.
