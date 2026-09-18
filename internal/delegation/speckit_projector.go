@@ -103,10 +103,10 @@ func (s *Store) ProjectSpecKitState(ctx context.Context, workspace string, chang
 
 	// 1. Render state.yaml
 	var sbState strings.Builder
-	sbState.WriteString(fmt.Sprintf("feature_id: %q\n", changeID))
-	sbState.WriteString(fmt.Sprintf("title: %q\n", changeID))
-	sbState.WriteString(fmt.Sprintf("phase: %q\n", phase))
-	sbState.WriteString(fmt.Sprintf("status: %q\n\n", status))
+	fmt.Fprintf(&sbState, "feature_id: %q\n", changeID)
+	fmt.Fprintf(&sbState, "title: %q\n", changeID)
+	fmt.Fprintf(&sbState, "phase: %q\n", phase)
+	fmt.Fprintf(&sbState, "status: %q\n\n", status)
 	sbState.WriteString("gates:\n")
 	sbState.WriteString("  spec:\n    status: \"APPROVED\"\n")
 	sbState.WriteString("  plan:\n    status: \"APPROVED\"\n")
@@ -117,16 +117,16 @@ func (s *Store) ProjectSpecKitState(ctx context.Context, workspace string, chang
 	}
 
 	if activeItem != nil {
-		sbState.WriteString(fmt.Sprintf("active_task: %q\n\n", activeItem.ID))
+		fmt.Fprintf(&sbState, "active_task: %q\n\n", activeItem.ID)
 	} else {
 		sbState.WriteString("active_task: \"\"\n\n")
 	}
 
 	sbState.WriteString("counters:\n")
-	sbState.WriteString(fmt.Sprintf("  tasks_total: %d\n", total))
-	sbState.WriteString(fmt.Sprintf("  tasks_done: %d\n", doneCount))
-	sbState.WriteString(fmt.Sprintf("  tasks_in_progress: %d\n", inProgressCount))
-	sbState.WriteString(fmt.Sprintf("  tasks_blocked: %d\n\n", blockedCount))
+	fmt.Fprintf(&sbState, "  tasks_total: %d\n", total)
+	fmt.Fprintf(&sbState, "  tasks_done: %d\n", doneCount)
+	fmt.Fprintf(&sbState, "  tasks_in_progress: %d\n", inProgressCount)
+	fmt.Fprintf(&sbState, "  tasks_blocked: %d\n\n", blockedCount)
 
 	sbState.WriteString("artifacts:\n")
 	sbState.WriteString("  spec: \"spec.md\"\n")
@@ -134,7 +134,7 @@ func (s *Store) ProjectSpecKitState(ctx context.Context, workspace string, chang
 	sbState.WriteString("  plan: \"plan.md\"\n")
 	sbState.WriteString("  tasks: \"tasks.md\"\n")
 	sbState.WriteString("  evidence: \"evidence.md\"\n\n")
-	sbState.WriteString(fmt.Sprintf("updated_at: %q\n", now))
+	fmt.Fprintf(&sbState, "updated_at: %q\n", now)
 
 	if err := os.WriteFile(filepath.Join(specDir, "state.yaml"), []byte(sbState.String()), 0o644); err != nil {
 		return fmt.Errorf("write state.yaml: %w", err)
@@ -155,13 +155,13 @@ func (s *Store) ProjectSpecKitState(ctx context.Context, workspace string, chang
 		if it.Acceptance != "" {
 			criteria = strings.ReplaceAll(it.Acceptance, "|", "\\|")
 		}
-		sbTasks.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s |\n",
-			it.ID, strings.ToUpper(string(it.Status)), "implementer", desc, deps, criteria))
+		fmt.Fprintf(&sbTasks, "| %s | %s | %s | %s | %s | %s |\n",
+			it.ID, strings.ToUpper(string(it.Status)), "implementer", desc, deps, criteria)
 	}
 	sbTasks.WriteString("\n")
 
 	for _, it := range changeItems {
-		sbTasks.WriteString(fmt.Sprintf("## %s\n\n", it.ID))
+		fmt.Fprintf(&sbTasks, "## %s\n\n", it.ID)
 		sbTasks.WriteString("### Objetivo\n\n")
 		if it.Objective != "" {
 			sbTasks.WriteString(it.Objective + "\n\n")
@@ -171,14 +171,14 @@ func (s *Store) ProjectSpecKitState(ctx context.Context, workspace string, chang
 		sbTasks.WriteString("### Rutas permitidas\n\n")
 		if len(it.AllowedFiles) > 0 {
 			for _, f := range it.AllowedFiles {
-				sbTasks.WriteString(fmt.Sprintf("- `%s`\n", f))
+				fmt.Fprintf(&sbTasks, "- `%s`\n", f)
 			}
 		} else {
 			sbTasks.WriteString("- *(ninguna asignada)*\n")
 		}
 		sbTasks.WriteString("\n### Validación\n\n")
 		if it.Verification != "" {
-			sbTasks.WriteString(fmt.Sprintf("- `%s`\n\n", it.Verification))
+			fmt.Fprintf(&sbTasks, "- `%s`\n\n", it.Verification)
 		} else {
 			sbTasks.WriteString("- *(sin comando de validación)*\n\n")
 		}
@@ -192,16 +192,16 @@ func (s *Store) ProjectSpecKitState(ctx context.Context, workspace string, chang
 	var sbEvidence strings.Builder
 	sbEvidence.WriteString("# Evidence\n\n")
 	for _, it := range changeItems {
-		sbEvidence.WriteString(fmt.Sprintf("## %s\n\n", it.ID))
-		sbEvidence.WriteString(fmt.Sprintf("- **Estado:** %s\n", it.Status))
+		fmt.Fprintf(&sbEvidence, "## %s\n\n", it.ID)
+		fmt.Fprintf(&sbEvidence, "- **Estado:** %s\n", it.Status)
 		if it.Verification != "" {
-			sbEvidence.WriteString(fmt.Sprintf("- **Comando:** `%s`\n", it.Verification))
+			fmt.Fprintf(&sbEvidence, "- **Comando:** `%s`\n", it.Verification)
 		}
 		if it.LatestApproval != nil {
-			sbEvidence.WriteString(fmt.Sprintf("- **Aprobador:** %s\n", it.LatestApproval.Reviewer))
-			sbEvidence.WriteString(fmt.Sprintf("- **Veredicto:** %s\n", it.LatestApproval.Verdict))
+			fmt.Fprintf(&sbEvidence, "- **Aprobador:** %s\n", it.LatestApproval.Reviewer)
+			fmt.Fprintf(&sbEvidence, "- **Veredicto:** %s\n", it.LatestApproval.Verdict)
 			if it.LatestApproval.Evidence != "" {
-				sbEvidence.WriteString(fmt.Sprintf("- **Evidencia:** %s\n", it.LatestApproval.Evidence))
+				fmt.Fprintf(&sbEvidence, "- **Evidencia:** %s\n", it.LatestApproval.Evidence)
 			}
 		}
 		sbEvidence.WriteString("\n")
