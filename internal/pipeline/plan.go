@@ -13,6 +13,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
 	"github.com/lleontor705/cortex-ia/internal/assets"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/internal/logging"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
@@ -86,6 +87,7 @@ func planCommon(req Request) (*Plan, error) {
 		plan.mappings = mappings
 		plan.Migration = &decision
 	}
+	logging.Debugf("pipeline.plan home=%s opencode_root=%s managed_assets=%d mapped=%d", home, root, len(managed), len(mappings))
 	return plan, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/herdr"
+	"github.com/lleontor705/cortex-ia/internal/logging"
 	"github.com/lleontor705/cortex-ia/internal/tui"
 )
 
@@ -26,6 +27,14 @@ func Run() error {
 // mutations stay in internal/install.Service; delegation lifecycle mutations
 // stay in internal/delegation. The dispatcher owns neither policy.
 func runCLI(args []string) error {
+	args, debugRequested := stripDebugFlag(args)
+	if debugRequested || debugEnvEnabled() {
+		enableDebugLogging(args)
+	}
+	if len(args) == 0 {
+		return tui.Run(Version)
+	}
+
 	if err := preflightCLI(args); err != nil {
 		return err
 	}
@@ -114,6 +123,53 @@ func runCLI(args []string) error {
 		}
 		return fmt.Errorf("unknown command: %s (use 'cortex-ia help' for usage)", args[0])
 	}
+}
+
+// stripDebugFlag removes every exact `--debug` token that appears before the
+// first bare "--" separator and reports whether any was found. Tokens after
+// the separator are verbatim command data (the local MCP command vector) and
+// are never scanned or rewritten, so a server argument that happens to be
+// `--debug` stays representable.
+func stripDebugFlag(args []string) ([]string, bool) {
+	found := false
+	stripped := make([]string, 0, len(args))
+	for i, arg := range args {
+		if arg == "--" {
+			stripped = append(stripped, args[i:]...)
+			break
+		}
+		if arg == "--debug" {
+			found = true
+			continue
+		}
+		stripped = append(stripped, arg)
+	}
+	return stripped, found
+}
+
+// debugEnvEnabled reports whether CORTEX_IA_DEBUG requests debug tracing.
+// Only the documented truthy spellings activate it.
+func debugEnvEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CORTEX_IA_DEBUG"))) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+// enableDebugLogging activates the stderr + file debug sinks and records the
+// invocation header. Debug output never touches stdout; stdout stays reserved
+// for machine-readable command receipts.
+func enableDebugLogging(args []string) {
+	stateHome, err := cortexStateHome()
+	if err != nil {
+		logging.Enable("")
+		logging.Debugf("cortex-ia invocation args=%q version=%s state_home=<unresolved: %v>", args, Version, err)
+		return
+	}
+	logging.Enable(stateHome)
+	logging.Debugf("cortex-ia invocation args=%q version=%s state_home=%s", args, Version, stateHome)
 }
 
 // retiredCommands are removed legacy surfaces. They fail clearly instead of

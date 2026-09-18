@@ -13,6 +13,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	"github.com/lleontor705/cortex-ia/internal/installmeta"
+	"github.com/lleontor705/cortex-ia/internal/logging"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
@@ -35,6 +36,7 @@ func Apply(req Request, plan *Plan) (*Receipt, error) {
 	if err := revalidatePreconditions(plan); err != nil {
 		return &Receipt{PlanDigest: plan.Digest}, err
 	}
+	logging.Debugf("pipeline.apply home=%s effects=%d digest=%s", plan.HomeDir, len(plan.Effects), plan.Digest)
 
 	home := plan.HomeDir
 	now := req.now()
@@ -51,6 +53,7 @@ func Apply(req Request, plan *Plan) (*Receipt, error) {
 	}
 	receipt.BackupID = backupID
 	receipt.BackupVerified = true
+	logging.Debugf("pipeline.apply.backup backup_id=%s dir=%s", backupID, snapshotDir)
 
 	// The journal captures every declared preimage before the first write.
 	// Its checkpoint root lives inside the backup directory so journal
@@ -61,6 +64,7 @@ func Apply(req Request, plan *Plan) (*Receipt, error) {
 	}
 
 	fail := func(stage string, err error) (*Receipt, error) {
+		logging.Debugf("pipeline.apply.rollback stage=%s error=%v", stage, err)
 		wrapped := fmt.Errorf("%s: %w", stage, err)
 		if restoreErr := journal.RestoreAndVerify(); restoreErr != nil {
 			receipt.RestoreError = restoreErr.Error()

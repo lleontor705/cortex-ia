@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lleontor705/cortex-ia/internal/logging"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -117,6 +119,7 @@ func OpenStore(path string) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("delegation database path is required")
 	}
+	logging.Debugf("delegation.store.open path=%s", path)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create delegation state directory: %w", err)
 	}
@@ -187,6 +190,7 @@ func (s *Store) initialize(ctx context.Context) error {
 		if version > 14 {
 			return fmt.Errorf("cortex database schema %d is newer than supported schema 14", version)
 		}
+		logging.Debugf("delegation.store.migrate current_version=%d", version)
 		statements := []string{
 			`CREATE TABLE IF NOT EXISTS delegation_jobs (
 				id TEXT PRIMARY KEY,
@@ -715,12 +719,25 @@ func (s *Store) Claim(ctx context.Context, id, owner string, pid int, ttl time.D
 		if err != nil {
 			return err
 		}
-		return s.requireTransition(ctx, conn, result, id, StatusAccepted, StatusStarting)
+		if err := s.requireTransition(ctx, conn, result, id, StatusAccepted, StatusStarting); err != nil {
+			return err
+		}
+		if logging.Enabled() {
+			var attempt int
+			if qerr := conn.QueryRowContext(ctx, `SELECT attempt FROM delegation_jobs WHERE id=?`, id).Scan(&attempt); qerr == nil {
+				logging.Debugf("delegation.job.claim id=%s owner=%s pid=%d attempt=%d ttl=%s", id, owner, pid, attempt, ttl)
+			}
+		}
+		return nil
 	})
 }
 
 func (s *Store) MarkRunning(ctx context.Context, id string) error {
-	return s.transition(ctx, id, []Status{StatusStarting}, StatusRunning, "", "")
+	err := s.transition(ctx, id, []Status{StatusStarting}, StatusRunning, "", "")
+	if err == nil {
+		logging.Debugf("delegation.job.running id=%s", id)
+	}
+	return err
 }
 
 func (s *Store) MarkBlocked(ctx context.Context, id, detail string) error {
@@ -765,7 +782,7 @@ func (s *Store) completeWorker(ctx context.Context, id, owner string, status Sta
 	if len(receipt.Output) > 1024*1024 {
 		return errors.New("delegation receipt exceeds 1 MiB")
 	}
-	return s.immediate(ctx, func(conn *sql.Conn) error {
+	err := s.immediate(ctx, func(conn *sql.Conn) error {
 		now := s.timestamp()
 		var from Status
 		var currentOwner, currentCode string
@@ -803,6 +820,10 @@ func (s *Store) completeWorker(ctx context.Context, id, owner string, status Sta
 		}
 		return s.addEvent(ctx, conn, id, "completed", from, status, bounded(message, 512))
 	})
+	if err == nil {
+		logging.Debugf("delegation.job.complete id=%s status=%s code=%s exit=%d", id, status, code, receipt.ExitCode)
+	}
+	return err
 }
 
 func (s *Store) Get(ctx context.Context, id string) (Job, error) {

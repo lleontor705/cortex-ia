@@ -11,7 +11,7 @@
 - **Evidence convention**: `~/.cortex-ia/opencode/contracts/cortex-convention.md` (durable memory, lineage, taxonomy, and recovery)
 - **Codebase design contract**: `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` (shared architecture vocabulary, dependency seams, design comparison, and task-graph boundaries)
 - **Diagnosis loop contract**: `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` (red-capable reproduction, minimization, falsifiable hypotheses, and regression-seam rules)
-- **Agent writing contract**: `~/.cortex-ia/opencode/contracts/agent-writing-contract.md` (context pointers, progressive disclosure, completion criteria, and single-source instruction design)
+- **Agent writing contract**: `~/.cortex-ia/opencode/contracts/agent-writing-contract.md` (4-layer XML anatomy, intent preservation with non-goals, double-blind review, KV-cache prefix stability, context pointers, progressive disclosure, completion criteria, and single-source instruction design)
 
 ---
 

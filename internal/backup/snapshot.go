@@ -7,8 +7,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/lleontor705/cortex-ia/internal/logging"
 )
 
 // Snapshotter creates file snapshots for backup purposes.
@@ -61,10 +64,32 @@ func (s Snapshotter) Create(snapshotDir string, paths []string) (Manifest, error
 		}
 	}
 
+	if manifest.FileCount > 0 {
+		sortedEntries := make([]ManifestEntry, 0, manifest.FileCount)
+		for _, e := range manifest.Entries {
+			if e.Existed {
+				sortedEntries = append(sortedEntries, e)
+			}
+		}
+		sort.Slice(sortedEntries, func(i, j int) bool {
+			return sortedEntries[i].OriginalPath < sortedEntries[j].OriginalPath
+		})
+		var sb strings.Builder
+		for _, e := range sortedEntries {
+			sb.WriteString(e.OriginalPath)
+			sb.WriteByte(':')
+			sb.WriteString(e.SHA256)
+			sb.WriteByte('\n')
+		}
+		composite := sha256.Sum256([]byte(sb.String()))
+		manifest.Checksum = hex.EncodeToString(composite[:])
+	}
+
 	if err := WriteManifest(filepath.Join(snapshotDir, ManifestFilename), manifest); err != nil {
 		return Manifest{}, err
 	}
 
+	logging.Debugf("backup.snapshot dir=%s entries=%d files=%d archive_size=%d", snapshotDir, len(manifest.Entries), manifest.FileCount, manifest.ArchiveSize)
 	return manifest, nil
 }
 
@@ -103,17 +128,14 @@ func (s Snapshotter) snapshotPath(snapshotDir string, sourcePath string) (Manife
 	}
 
 	destination := filepath.Join(snapshotDir, "files", relative)
-	if err := copyFile(cleanSource, destination, info.Mode()); err != nil {
+	digest, err := copyAndHashFile(cleanSource, destination, info.Mode())
+	if err != nil {
 		return ManifestEntry{}, err
 	}
 
 	entry.SnapshotPath = destination
 	entry.Existed = true
 	entry.Mode = uint32(info.Mode())
-	digest, err := fileSHA256(destination)
-	if err != nil {
-		return ManifestEntry{}, err
-	}
 	entry.SHA256 = digest
 	return entry, nil
 }
@@ -131,29 +153,32 @@ func fileSHA256(path string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func copyFile(source string, destination string, mode os.FileMode) error {
+func copyAndHashFile(source string, destination string, mode os.FileMode) (string, error) {
 	input, err := os.Open(source)
 	if err != nil {
-		return fmt.Errorf("open source file %q: %w", source, err)
+		return "", fmt.Errorf("open source file %q: %w", source, err)
 	}
 	defer func() { _ = input.Close() }()
 
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-		return fmt.Errorf("create backup directory for %q: %w", destination, err)
+		return "", fmt.Errorf("create backup directory for %q: %w", destination, err)
 	}
 
 	output, err := os.OpenFile(destination, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode.Perm())
 	if err != nil {
-		return fmt.Errorf("create snapshot file %q: %w", destination, err)
+		return "", fmt.Errorf("create snapshot file %q: %w", destination, err)
 	}
 
-	if _, err := io.Copy(output, input); err != nil {
+	hasher := sha256.New()
+	writer := io.MultiWriter(output, hasher)
+
+	if _, err := io.Copy(writer, input); err != nil {
 		_ = output.Close()
-		return fmt.Errorf("copy %q to %q: %w", source, destination, err)
+		return "", fmt.Errorf("copy %q to %q: %w", source, destination, err)
 	}
 
 	if err := output.Close(); err != nil {
-		return fmt.Errorf("close snapshot file %q: %w", destination, err)
+		return "", fmt.Errorf("close snapshot file %q: %w", destination, err)
 	}
-	return nil
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }

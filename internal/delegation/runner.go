@@ -922,6 +922,9 @@ func workspacePathFingerprint(directory, relativePath string) (string, error) {
 		digest := sha256.Sum256([]byte("mode:" + info.Mode().String()))
 		return hex.EncodeToString(digest[:]), nil
 	}
+	if info.Size() == 0 {
+		return "empty:0", nil
+	}
 	file, err := os.Open(target)
 	if err != nil {
 		return "", err
@@ -981,31 +984,57 @@ func nonGitWorkspacePaths(directory string) ([]string, error) {
 	return paths, nil
 }
 
+func isGitStatusPrefix(raw []byte) bool {
+	if len(raw) < 4 || raw[2] != ' ' {
+		return false
+	}
+	isValidCode := func(b byte) bool {
+		switch b {
+		case ' ', 'M', 'A', 'D', 'R', 'C', 'U', '?', '!':
+			return true
+		default:
+			return false
+		}
+	}
+	return isValidCode(raw[0]) && isValidCode(raw[1])
+}
+
 func changedWorktreePaths(directory string) ([]string, error) {
 	if !isInsideGitWorktree(directory) {
 		return nonGitWorkspacePaths(directory)
 	}
-	tracked, err := gitOutput(directory, "diff", "--name-only", "--no-renames", "-z", "HEAD", "--")
+	out, err := gitOutput(directory, "status", "--porcelain=v1", "--no-renames", "-z", "-u")
 	if err != nil {
-		tracked = nil
+		tracked, diffErr := gitOutput(directory, "diff", "--name-only", "--no-renames", "-z", "HEAD", "--")
+		if diffErr != nil {
+			tracked = nil
+		}
+		untracked, lsErr := gitOutput(directory, "ls-files", "--others", "--exclude-standard", "-z")
+		if lsErr != nil {
+			return nil, err
+		}
+		out = append(tracked, untracked...)
 	}
-	untracked, err := gitOutput(directory, "ls-files", "--others", "--exclude-standard", "-z")
-	if err != nil {
-		return nil, err
-	}
-	combined := append(tracked, untracked...)
 	paths := make([]string, 0)
 	seen := make(map[string]struct{})
-	for _, raw := range bytes.Split(combined, []byte{0}) {
+	for _, raw := range bytes.Split(out, []byte{0}) {
 		if len(raw) == 0 {
 			continue
 		}
-		value := filepath.ToSlash(string(raw))
-		if _, duplicate := seen[value]; duplicate {
+		var pathStr string
+		if isGitStatusPrefix(raw) {
+			pathStr = filepath.ToSlash(string(raw[3:]))
+		} else {
+			pathStr = filepath.ToSlash(string(raw))
+		}
+		if pathStr == "" {
 			continue
 		}
-		seen[value] = struct{}{}
-		paths = append(paths, value)
+		if _, duplicate := seen[pathStr]; duplicate {
+			continue
+		}
+		seen[pathStr] = struct{}{}
+		paths = append(paths, pathStr)
 	}
 	return paths, nil
 }

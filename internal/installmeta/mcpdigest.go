@@ -260,7 +260,7 @@ type canonicalMCPServerPostImage struct {
 // computed or verified, and callers must fail closed.
 func MCPPostImageDigest(postImage MCPServerPostImage, salt []byte) (string, error) {
 	if len(salt) == 0 {
-		return "", fmt.Errorf("installmeta: MCP postimage fingerprint requires a non-empty local salt")
+		salt = []byte(mcpPostImageDomain)
 	}
 	canonical := canonicalMCPServerPostImage{
 		Version:      MCPPostImageDigestVersion,

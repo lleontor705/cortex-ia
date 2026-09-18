@@ -89,3 +89,28 @@ func TestLoadLegacyLock(t *testing.T) {
 		t.Errorf("backup ID = %s", loaded.LastBackupID)
 	}
 }
+
+func TestDeterministicFingerprintSalt(t *testing.T) {
+	home1 := "/path/to/home1"
+	home2 := "/path/to/home2"
+
+	salt1A := DeterministicFingerprintSalt(home1)
+	salt1B := DeterministicFingerprintSalt(home1)
+	if salt1A == "" || salt1A != salt1B {
+		t.Errorf("expected deterministic salt across calls: %s != %s", salt1A, salt1B)
+	}
+
+	salt2 := DeterministicFingerprintSalt(home2)
+	if salt1A == salt2 {
+		t.Errorf("expected different salts for different homes: %s == %s", salt1A, salt2)
+	}
+
+	doc := FingerprintDocument{Salt: salt1A}
+	bytes, err := doc.SaltBytes()
+	if err != nil {
+		t.Fatalf("SaltBytes failed on deterministic salt: %v", err)
+	}
+	if len(bytes) != 32 {
+		t.Errorf("expected 32 bytes, got %d", len(bytes))
+	}
+}

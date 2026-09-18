@@ -30,10 +30,7 @@ func (s *Service) fingerprintContext() (state.FingerprintDocument, bool, []byte,
 		return state.FingerprintDocument{}, false, nil, fmt.Errorf("MCP fingerprint store is unreadable: %w", err)
 	}
 	if !present {
-		saltHex, genErr := state.RandomFingerprintSalt()
-		if genErr != nil {
-			return state.FingerprintDocument{}, false, nil, genErr
-		}
+		saltHex := state.DeterministicFingerprintSalt(s.homeDir)
 		doc = state.FingerprintDocument{SchemaVersion: state.FingerprintSchemaV1, Salt: saltHex}
 	}
 	salt, err := doc.SaltBytes()

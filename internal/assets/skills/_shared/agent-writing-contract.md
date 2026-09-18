@@ -58,6 +58,54 @@ When presenting an interactive decision, choice menu, or approval gate to the us
 - Never silently default, infer, reorder, truncate, or decide on the user's behalf.
 - If the interaction is ambiguous, re-present the complete choice envelope and wait.
 
+## Hierarchical 4-Layer System Prompt Anatomy
+
+System prompts must be organized into four distinct, semantically tagged layers to prevent attention dilution, eliminate ambiguity, and maintain high cognitive fidelity across frontier models:
+
+1. `<identity>`: Concise, authoritative definition of the agent's identity, primary function, and operational scope. Avoid redundant conversational filler.
+2. `<capabilities_and_tools>`: Explicit permissions, permitted tools, strictly prohibited tools, and execution boundaries.
+3. `<workflow_protocol>`: Step-by-step operational procedure with deterministic ordering, state transitions, and checkable completion criteria.
+4. `<hard_invariants>`: Non-negotiable negative boundaries, safety rules, and anti-patterns that must never be bypassed.
+
+Shared operational policies that must remain identical across all roles (`Language Domain Contract`, `Delivery Guarantee`, `Format & Transport Separation`) are grouped under a canonical `<global_contracts>` section to maximize KV-cache reuse.
+
+## Intent-Preserving Delegation Protocol (IPDP) & Non-Goals
+
+Delegation is a sociotechnical transfer of authority and accountability, not merely mechanical task decomposition. To prevent **Cascade Amplification** (where orchestrator ambiguities compound down worker chains):
+- Every minion dispatch envelope MUST define positive requirements along with explicit **negative boundaries (`non_goals`)**: paths not to touch, architectural patterns not to alter, and third-party dependencies not to introduce.
+- Delegated subagents receive narrowed authority (principle of least privilege) and MUST NOT exceed the scope defined in `allowed_files` and `non_goals`.
+
+## Double-Blind Adversarial Verification (Consensus Paradox Defense)
+
+Multi-agent swarms inherently suffer from the **Consensus Paradox**, prioritizing internal sycophancy and architectural agreement over external logical truth. To preserve empirical rigor:
+- Reviewers and evaluators must perform **Double-Blind Verification**: audit strictly against primary empirical artifacts (actual `git diff`, deterministic test suite exit codes, AST cycle checks, and contract pins).
+- A reviewer MUST NEVER receive or rely on the implementer's self-assessed narrative, internal chain-of-thought, or claims of confidence. Self-reported success is advisory evidence only.
+
+## Static-First KV-Cache Preservation
+
+To maximize Transformer KV-cache reuse (achieving up to 90% latency and cost reduction):
+- All invariant role prompts, schemas, and structural instructions must be placed at the very beginning of the prompt as a stable static prefix (`[STATIC_PREFIX_V3]`).
+- Volatile, session-specific variables (`task_id`, diff contents, user instructions, timestamps) must strictly be placed at the tail of the context window or inside the dynamic dispatch envelope.
+- Keys in structured JSON envelopes must be serialized deterministically in sorted order to avoid cache fragmentation.
+
+## Structured ACI Failure Tracing
+
+To prevent context window blowout from verbose compiler errors, stack traces, and linter outputs (Agent-Computer Interface principle):
+- Subagents must extract bounded, structured failure traces rather than dumping raw logs.
+- Failure traces must isolate the offending file, line number, error code, minimal reproduction command, and a focused diagnostic snippet bounded to $\le 25$ lines:
+```xml
+<failure_trace>
+  <target_file>path/to/file.go</target_file>
+  <location>line 42, col 8</location>
+  <error_code>COMPILATION_ERROR</error_code>
+  <minimal_repro>go test -v ./pkg/... -run TestName</minimal_repro>
+  <diagnostic_snippet>
+    cannot use x (variable of type string) as int in argument
+  </diagnostic_snippet>
+</failure_trace>
+```
+
 ## Review gate
 
 Before accepting an instruction change, verify that every new pointer has a real trigger, every normative rule has one source of truth, conditional detail is disclosed only when needed, and completion can be distinguished from premature stopping.
+

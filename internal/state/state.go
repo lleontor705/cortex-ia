@@ -2,6 +2,7 @@ package state
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -144,6 +145,14 @@ func RandomFingerprintSalt() (string, error) {
 		return "", fmt.Errorf("generate MCP fingerprint salt: %w", err)
 	}
 	return hex.EncodeToString(raw), nil
+}
+
+// DeterministicFingerprintSalt returns a stable, deterministic salt derived from
+// the home directory. This guarantees that local postimage verification never breaks
+// if mcp_fingerprint.json is missing, recreated, or uninitialized.
+func DeterministicFingerprintSalt(homeDir string) string {
+	sum := sha256.Sum256([]byte("cortex-ia:mcp-salt:" + filepath.Clean(homeDir)))
+	return hex.EncodeToString(sum[:])
 }
 
 // SaltBytes decodes the document salt for HMAC use. The document must have

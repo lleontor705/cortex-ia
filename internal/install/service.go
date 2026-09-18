@@ -14,6 +14,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/homelock"
+	"github.com/lleontor705/cortex-ia/internal/logging"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/state"
@@ -122,17 +123,23 @@ func (s *Service) lockForMutation(timeout time.Duration) (func(), error) {
 	if timeout <= 0 {
 		timeout = DefaultHomeLockTimeout
 	}
+	logging.Debugf("install.lock.acquire home=%s timeout=%s", s.homeDir, timeout)
 	if err := os.MkdirAll(s.homeDir, 0o755); err != nil {
 		return nil, fmt.Errorf("acquire home lock: create home directory: %w", err)
 	}
 	lock, err := homelock.Acquire(s.homeDir, timeout)
 	if err != nil {
 		if errors.Is(err, homelock.ErrHomeBusy) {
+			logging.Debugf("install.lock.busy home=%s", s.homeDir)
 			return nil, fmt.Errorf("%w: %s", ErrHomeBusy, s.homeDir)
 		}
 		return nil, fmt.Errorf("acquire home lock: %w", err)
 	}
-	release := func() { _ = lock.Release() }
+	logging.Debugf("install.lock.acquired home=%s", s.homeDir)
+	release := func() {
+		logging.Debugf("install.lock.release home=%s", s.homeDir)
+		_ = lock.Release()
+	}
 	return release, nil
 }
 
@@ -179,6 +186,9 @@ func (s *Service) Sync(opts Options) (*InstallReceipt, error) {
 }
 
 func (s *Service) applyServicePlan(opts Options, req pipeline.Request, plan *pipeline.Plan, planner func(pipeline.Request) (*pipeline.Plan, error), op string) (*InstallReceipt, error) {
+	if plan != nil {
+		logging.Debugf("install.applyServicePlan op=%s digest=%s effects=%d conflicts=%d converged=%v", op, plan.Digest, len(plan.Effects), len(plan.Conflicts), plan.Converged)
+	}
 	if opts.ExpectedPlanDigest != "" && (plan.Converged || len(plan.Conflicts) > 0) {
 		return s.applyPlanWithConfirmation(opts, req, plan, planner, op)
 	}
@@ -207,6 +217,11 @@ func (s *Service) applyPlanWithConfirmation(opts Options, req pipeline.Request, 
 	plan, receipt, err := pipeline.ApplyConfirmed(req, planner)
 	outReceipt := newInstallReceipt(plan, receipt)
 	if err == nil {
+		backupID := ""
+		if receipt != nil {
+			backupID = receipt.BackupID
+		}
+		logging.Debugf("install.apply op=%s digest=%s backup_id=%s changed=%d", op, planDigestForReceipt(plan), backupID, len(outReceipt.Changed))
 		postErr := applyPostPipelineEffects(s.homeDir, opts, outReceipt)
 		return outReceipt, postErr
 	}

@@ -199,12 +199,13 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
   }
 
   if (envelope.contract_version !== undefined) {
-    if (envelope.contract_version !== "1.0" ||
+    if ((envelope.contract_version !== "1.0" && envelope.contract_version !== "2.0") ||
         !["discovery", "investigate", "planner", "implement", "reviewer"].includes(envelope.role) ||
         !["workflow", "phase", "objective"].every(key => typeof envelope[key] === "string" && envelope[key].trim()) ||
         !(envelope.task_id === null || (typeof envelope.task_id === "string" && envelope.task_id.trim())) ||
         ![null, "openspec", "cortex", "hybrid"].includes(envelope.spec_plane) ||
-        !["allowed_files", "acceptance_checks", "artifact_refs"].every(key => Array.isArray(envelope[key]) && envelope[key].every((item: unknown) => typeof item === "string"))) {
+        !["allowed_files", "acceptance_checks", "artifact_refs"].every(key => Array.isArray(envelope[key]) && envelope[key].every((item: unknown) => typeof item === "string")) ||
+        (envelope.non_goals !== undefined && (!Array.isArray(envelope.non_goals) || !envelope.non_goals.every((item: unknown) => typeof item === "string")))) {
       throw new Error("SUBAGENT_TRANSPORT_ERROR: invalid common dispatch contract");
     }
     if (envelope.role === "planner") {

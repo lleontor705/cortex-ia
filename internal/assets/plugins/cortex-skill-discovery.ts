@@ -125,6 +125,7 @@ function resolveSkill(name: string, options: SkillDiscoveryOptions = {}): Resolv
   ];
   const repoDirs = options.repoSkillsDirs || [
     path.join(baseDir, ".cortex-ia", "skills"),
+    path.join(baseDir, ".agents", "skills"),
     path.join(baseDir, "skills"),
   ];
   const embeddedDirs = options.embeddedSkillsDirs || [
@@ -156,6 +157,7 @@ function getAllDiscoveredSkills(options: SkillDiscoveryOptions = {}): ResolvedSk
   ];
   const repoDirs = options.repoSkillsDirs || [
     path.join(baseDir, ".cortex-ia", "skills"),
+    path.join(baseDir, ".agents", "skills"),
     path.join(baseDir, "skills"),
   ];
   const embeddedDirs = options.embeddedSkillsDirs || [
