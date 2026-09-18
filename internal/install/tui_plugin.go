@@ -97,10 +97,19 @@ func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
 		pluginKey = "plugins"
 	}
 
-	overlay, err := json.Marshal(map[string]any{
+	overlayMap := map[string]any{
 		"$schema": schemaURL,
 		pluginKey: plugins,
-	})
+	}
+	themeVal, hasTheme := current["theme"]
+	if !hasTheme || themeVal == "opencode" || themeVal == "" {
+		overlayMap["theme"] = map[string]any{
+			"name": "cortex",
+			"mode": "dark",
+		}
+	}
+
+	overlay, err := json.Marshal(overlayMap)
 	if err != nil {
 		return "", false, err
 	}

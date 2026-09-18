@@ -23,6 +23,9 @@ func TestConfigureTUIPlugin(t *testing.T) {
 	if !strings.Contains(content, TUIPluginPath) {
 		t.Errorf("expected %s in tui.jsonc, got:\n%s", TUIPluginPath, content)
 	}
+	if !strings.Contains(content, `"name":"cortex"`) && !strings.Contains(content, `"name": "cortex"`) {
+		t.Errorf("expected cortex theme in tui.jsonc, got:\n%s", content)
+	}
 
 	// 2. Re-run idempotency
 	_, err = ConfigureTUIPlugin(tempHome)
