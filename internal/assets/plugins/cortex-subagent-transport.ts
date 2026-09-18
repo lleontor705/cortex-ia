@@ -210,12 +210,17 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
     if (envelope.role === "planner") {
       const phases: Record<string, string[]> = {
         "decision-map": ["chart", "resolve"],
-        "sdd-lite": ["integrated", "archive", "decompose"],
+        "sdd-lite": ["integrated", "propose", "plan", "tasks", "spec", "design", "archive", "decompose"],
         "sdd-full": ["propose", "spec", "design", "tasks", "archive", "decompose"],
       };
-      if (!phases[envelope.workflow]?.includes(envelope.phase) || envelope.spec_plane === null) {
-        const allowed = phases[envelope.workflow]?.join(", ") ?? "known: decision-map, sdd-lite, sdd-full";
-        throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning workflow (${envelope.workflow}), phase (${envelope.phase}; allowed: [${allowed}]), or specification plane (${envelope.spec_plane}; cannot be null)`);
+      if (!phases[envelope.workflow]) {
+        throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning workflow (${envelope.workflow}; allowed: decision-map, sdd-lite, sdd-full)`);
+      }
+      if (!phases[envelope.workflow].includes(envelope.phase)) {
+        throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning phase for ${envelope.workflow} (${envelope.phase}; allowed: [${phases[envelope.workflow].join(", ")}])`);
+      }
+      if (envelope.spec_plane === null) {
+        throw new Error("SUBAGENT_TRANSPORT_ERROR: specification plane cannot be null for planner");
       }
     }
   }
@@ -228,6 +233,9 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
   // Normalize only after all aliases and routing fields pass validation. Keep
   // caller input immutable; the dispatch hook replaces its outgoing prompt.
   const normalized = { ...envelope, workload_policy: workload };
+  if (normalized.role === "planner" && normalized.workflow === "sdd-lite" && ["propose", "plan", "tasks", "spec", "design"].includes(normalized.phase)) {
+    normalized.phase = "integrated";
+  }
   delete normalized.steps;
   delete normalized.budget;
   if (explicitBudget !== undefined) normalized.max_steps = explicitBudget;

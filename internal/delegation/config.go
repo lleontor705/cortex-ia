@@ -17,6 +17,12 @@ var supportedRoles = map[string]bool{
 	"implement": true, "investigate": true, "planner": true, "reviewer": true,
 }
 
+// IsReadOnlyRole reports whether a delegation role only inspects the repository
+// without mutating workspace files.
+func IsReadOnlyRole(role string) bool {
+	return role == "investigate" || role == "reviewer"
+}
+
 // RoleConfig is deliberately declarative. Cortex owns the executable and
 // argument vector so configuration cannot become an arbitrary shell surface.
 type RoleConfig struct {

@@ -266,7 +266,7 @@ func RunWorker(ctx context.Context, home, id, requestPath string) error {
 		taskID = request.TaskID
 	}
 	go keepAliveAuthorityAndJob(runCtx, store, id, owner, taskID, cancel, watchDone)
-	output, exitCode, runErr := runAGY(runCtx, request, role, timeout)
+	output, exitCode, runErr := runAGY(runCtx, store, request, role, timeout)
 	if errors.Is(runErr, ErrTerminationUnconfirmed) {
 		return errors.Join(runErr, store.MarkTerminationUnconfirmed(context.Background(), id, owner))
 	}
@@ -431,7 +431,7 @@ func buildAGYArgs(request Request, role RoleConfig, printTimeout, workDir string
 	return args
 }
 
-func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.Duration) (result []byte, resultCode int, returnErr error) {
+func runAGY(ctx context.Context, store *Store, request Request, role RoleConfig, timeout time.Duration) (result []byte, resultCode int, returnErr error) {
 	if model := strings.TrimSpace(role.Model); os.Getenv("CORTEX_IA_AGY_AUTH") == "gemini" && model != "" && !strings.HasPrefix(model, "gemini-") {
 		return nil, -1, fmt.Errorf("AGY_AUTH_MODEL_UNSUPPORTED: isolated Gemini authentication requires a gemini- model; configured model is not changed automatically")
 	}
@@ -693,7 +693,11 @@ func runAGY(ctx context.Context, request Request, role RoleConfig, timeout time.
 	if request.Role != "implement" {
 		allowedFiles = nil // Read-only roles must not modify any files
 	}
-	allowErr := validateWorkspaceChanges(request.executionDirectory(), allowedFiles, workspaceBaseline)
+	var toleratedPaths []string
+	if store != nil {
+		toleratedPaths, _ = store.OtherActiveWorkspacePaths(ctx, request.Workspace, request.TaskID)
+	}
+	allowErr := validateWorkspaceChanges(request.executionDirectory(), allowedFiles, workspaceBaseline, toleratedPaths)
 	if allowErr != nil {
 		if err != nil {
 			err = errors.Join(err, allowErr)
@@ -812,7 +816,7 @@ func captureWorkspaceBaseline(directory string) (map[string]string, error) {
 	return baseline, nil
 }
 
-func validateWorkspaceChanges(directory string, allowedFiles []string, baseline map[string]string) error {
+func validateWorkspaceChanges(directory string, allowedFiles []string, baseline map[string]string, toleratedPaths []string) error {
 	changed, err := changedWorktreePaths(directory)
 	if err != nil {
 		return fmt.Errorf("validate current workspace changes in %q: %w", directory, err)
@@ -824,6 +828,14 @@ func validateWorkspaceChanges(directory string, allowedFiles []string, baseline 
 			return pathErr
 		}
 		allowed[clean] = struct{}{}
+	}
+	tolerated := make(map[string]struct{}, len(toleratedPaths))
+	for _, value := range toleratedPaths {
+		clean, pathErr := canonicalLeasePath(value)
+		if pathErr != nil {
+			continue
+		}
+		tolerated[clean] = struct{}{}
 	}
 	after := make(map[string]struct{}, len(changed))
 	for _, value := range changed {
@@ -848,6 +860,9 @@ func validateWorkspaceChanges(directory string, allowedFiles []string, baseline 
 	var violations []string
 	for _, value := range ordered {
 		if _, ok := allowed[value]; ok {
+			continue
+		}
+		if _, ok := tolerated[value]; ok {
 			continue
 		}
 		beforeFingerprint, existedBefore := baseline[value]

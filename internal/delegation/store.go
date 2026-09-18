@@ -601,14 +601,82 @@ func (s *Store) Create(ctx context.Context, input NewJob) (Job, error) {
 	err = s.immediate(ctx, func(conn *sql.Conn) error {
 		var blocker string
 		var blockedStatus Status
-		err := conn.QueryRowContext(ctx, `SELECT j.id,j.status FROM delegation_jobs j WHERE j.workspace=? AND
+		rows, err := conn.QueryContext(ctx, `SELECT j.id, j.status, j.role, COALESCE(j.task_id, ''), COALESCE(j.error_code, '') FROM delegation_jobs j WHERE j.workspace=? AND
 			(j.status IN ('accepted','starting','running','blocked') OR
 			((j.status='lost' OR j.error_code IN ('CANCEL_REQUESTED','TERMINATION_UNCONFIRMED')) AND NOT (j.status='lost' AND `+reconciledJobSQL+`)))
-			ORDER BY j.created_at,j.id LIMIT 1`, job.Workspace).Scan(&blocker, &blockedStatus)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			ORDER BY j.created_at, j.id`, job.Workspace)
+		if err != nil {
 			return err
 		}
-		if err == nil {
+		defer func() { _ = rows.Close() }()
+
+		for rows.Next() {
+			var candidateID string
+			var candidateStatus Status
+			var candidateRole string
+			var candidateTaskID string
+			var candidateErrorCode string
+			if err := rows.Scan(&candidateID, &candidateStatus, &candidateRole, &candidateTaskID, &candidateErrorCode); err != nil {
+				return err
+			}
+
+			if candidateStatus == StatusLost || candidateErrorCode == "CANCEL_REQUESTED" || candidateErrorCode == "TERMINATION_UNCONFIRMED" {
+				blocker = candidateID
+				blockedStatus = candidateStatus
+				break
+			}
+
+			if job.Role == "planner" || candidateRole == "planner" {
+				blocker = candidateID
+				blockedStatus = candidateStatus
+				break
+			}
+
+			if IsReadOnlyRole(job.Role) && IsReadOnlyRole(candidateRole) {
+				continue
+			}
+
+			if (IsReadOnlyRole(job.Role) && candidateRole == "implement") ||
+				(job.Role == "implement" && IsReadOnlyRole(candidateRole)) {
+				continue
+			}
+
+			if job.Role == "implement" && candidateRole == "implement" {
+				if job.TaskID != "" && candidateTaskID == job.TaskID {
+					blocker = candidateID
+					blockedStatus = candidateStatus
+					break
+				}
+				if job.TaskID != "" && candidateTaskID != "" {
+					var overlap int
+					err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_leases l1
+						JOIN work_leases l2 ON l1.path = l2.path
+						WHERE l1.item_id = ? AND l2.item_id = ?
+						  AND l1.expires_at > ? AND l2.expires_at > ?`,
+						job.TaskID, candidateTaskID, now, now).Scan(&overlap)
+					if err != nil {
+						return err
+					}
+					if overlap > 0 {
+						blocker = candidateID
+						blockedStatus = candidateStatus
+						break
+					}
+					continue
+				}
+				blocker = candidateID
+				blockedStatus = candidateStatus
+				break
+			}
+
+			blocker = candidateID
+			blockedStatus = candidateStatus
+			break
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if blocker != "" {
 			action := "wait or request cancellation and await worker acknowledgement"
 			if blockedStatus == StatusLost {
 				action = "inspect the job; explicitly use delegate reconcile " + blocker + " --reason <reason> only if prior-boot termination can be proved"

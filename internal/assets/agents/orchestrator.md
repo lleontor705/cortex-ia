@@ -213,6 +213,34 @@ When dispatching a subagent (`discovery`, `investigate`, `planner`, `implement`,
   - `implement` minions require a concrete, non-empty `allowed_files` array corresponding to leased repository files.
   - Read-only tasks, forensic audits, reproduction verifications, unleased repository inspections, and operational checks (`allowed_files: []`) MUST NEVER be dispatched to the `implement` role. Route them strictly to `investigate` (or `reviewer` if auditing completed code). Dispatching `implement` with an empty file scope is a transport error (`SUBAGENT_TRANSPORT_ERROR`) and will be rejected.
 
+### Planner Dispatch Envelopes (Initiative Planning vs Decomposition)
+When dispatching `planner` to plan an initiative, specify the appropriate workflow and phase:
+- **`sdd-lite` (Integrated Planning)**: For single-domain, moderate-risk initiatives. Planner produces one integrated plan (`plan.md` or pinned snapshot) and materializes the same-board task DAG via `cortex_ia_work_create`.
+  - Canonical phase: `"integrated"` (aliases `"propose"`, `"plan"`, `"tasks"` normalize to `"integrated"`).
+- **`sdd-full` (Phased Planning)**: High-risk, cross-domain, public API, or schema initiatives. Phased sequence: `"propose"` -> `"spec"` -> `"design"` -> `"tasks"`.
+- **`decision-map`**: Architectural decision frontier across sessions. Phases: `"chart"` or `"resolve"`. Creates no board or tasks.
+
+```json
+<minion-dispatch>
+{
+  "contract_version": "1.0",
+  "role": "planner",
+  "workflow": "sdd-lite",
+  "phase": "integrated",
+  "spec_plane": "hybrid",
+  "workload_policy": "flexible",
+  "task_id": null,
+  "objective": "Plan feature as integrated specification and materialize same-board task DAG",
+  "allowed_files": [],
+  "acceptance_checks": [
+    "Integrated plan written with requirements, design, and verification strategy",
+    "Task DAG materialized in cortex-ia work with valid dependencies and allowed_files"
+  ],
+  "artifact_refs": []
+}
+</minion-dispatch>
+```
+
 ### Blocked Task Decomposition Envelope (to planner)
 When routing a blocked task (e.g. `WORKLOAD_SOURCE_BUDGET_EXCEEDED`, `WORKLOAD_TEST_BUDGET_EXCEEDED`, two consecutive review FAIL verdicts, or repeated attempt failure) to `planner` for decomposition via `cortex_ia_work_decompose`, you MUST upgrade the workflow to `sdd-lite` (or `sdd-full`), set `phase: "decompose"`, and supply the session's active `spec_plane`. **A task that fails review twice must NEVER be retried directly as the same monolithic task**; it must be decomposed into coherent subtasks sized by the active workload_policy.
 - **Anti-Decomposition for Pure Tests**: Tasks whose `allowed_files` consist purely of tests, test fixtures, or test scaffolding (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks) MUST NOT be routed for DAG decomposition. Pure-test failures must be addressed by re-dispatching `implement` to fix or simplify the test assertions directly or prune invalid mock assumptions. Never decompose a test into more tests.

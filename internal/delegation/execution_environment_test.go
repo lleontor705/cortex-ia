@@ -63,7 +63,7 @@ func TestExecutionAuthenticationMissing(t *testing.T) {
 		}
 	}
 	t.Setenv("CORTEX_IA_AGY_AUTH", "gemini")
-	_, _, err := runAGY(context.Background(), Request{}, RoleConfig{Model: "claude-sonnet"}, time.Second)
+	_, _, err := runAGY(context.Background(), nil, Request{}, RoleConfig{Model: "claude-sonnet"}, time.Second)
 	if err == nil || !strings.Contains(err.Error(), "AGY_AUTH_MODEL_UNSUPPORTED") {
 		t.Fatalf("expected model rejection: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestExecutionAccountPreservesModelAndPermissions(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Never launch a real AGY process, including system fallback paths.
-	_, _, err := runAGY(ctx, Request{Workspace: home}, role, time.Second)
+	_, _, err := runAGY(ctx, nil, Request{Workspace: home}, role, time.Second)
 	if err == nil || strings.Contains(err.Error(), "AGY_AUTH_") {
 		t.Fatalf("account model must pass authentication checks: %v", err)
 	}

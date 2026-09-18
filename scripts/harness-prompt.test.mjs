@@ -138,3 +138,72 @@ test('dispatchInfo enforces role alignment and boundaries', async () => {
     message: /dispatch role does not match host task target/
   });
 });
+
+test('planner sdd-lite accepts propose, plan, tasks aliases and normalizes to integrated', async () => {
+  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
+  const { dispatchInfo } = mod.exports;
+
+  for (const phase of ['propose', 'plan', 'tasks', 'spec', 'design']) {
+    const prompt = `<minion-dispatch>
+{
+  "contract_version": "1.0",
+  "role": "planner",
+  "workflow": "sdd-lite",
+  "phase": "${phase}",
+  "spec_plane": "hybrid",
+  "workload_policy": "flexible",
+  "task_id": null,
+  "objective": "Plan feature",
+  "allowed_files": [],
+  "acceptance_checks": ["Check 1"],
+  "artifact_refs": []
+}
+</minion-dispatch>`;
+
+    const res = dispatchInfo({ subagent_type: 'planner' }, prompt);
+    const normalized = JSON.parse(res.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
+    assert.equal(normalized.phase, 'integrated', `phase ${phase} should normalize to integrated`);
+    assert.equal(normalized.workflow, 'sdd-lite');
+    assert.equal(normalized.spec_plane, 'hybrid');
+  }
+
+  // Verify spec_plane cannot be null for planner
+  const nullPlanePrompt = `<minion-dispatch>
+{
+  "contract_version": "1.0",
+  "role": "planner",
+  "workflow": "sdd-lite",
+  "phase": "integrated",
+  "spec_plane": null,
+  "workload_policy": "flexible",
+  "task_id": null,
+  "objective": "Plan feature",
+  "allowed_files": [],
+  "acceptance_checks": ["Check 1"],
+  "artifact_refs": []
+}
+</minion-dispatch>`;
+  assert.throws(() => dispatchInfo({ subagent_type: 'planner' }, nullPlanePrompt), {
+    message: /specification plane cannot be null for planner/
+  });
+
+  // Verify invalid phase for decision-map throws descriptive error
+  const invalidPhasePrompt = `<minion-dispatch>
+{
+  "contract_version": "1.0",
+  "role": "planner",
+  "workflow": "decision-map",
+  "phase": "propose",
+  "spec_plane": "hybrid",
+  "workload_policy": "flexible",
+  "task_id": null,
+  "objective": "Chart decision map",
+  "allowed_files": [],
+  "acceptance_checks": ["Check 1"],
+  "artifact_refs": []
+}
+</minion-dispatch>`;
+  assert.throws(() => dispatchInfo({ subagent_type: 'planner' }, invalidPhasePrompt), {
+    message: /invalid planning phase for decision-map/
+  });
+});

@@ -531,6 +531,61 @@ func (s *Store) ValidateDelegationAuthority(ctx context.Context, id string, allo
 	return nil
 }
 
+// OtherActiveWorkspacePaths returns paths in the workspace that are actively leased
+// or recently submitted for review by other tasks.
+func (s *Store) OtherActiveWorkspacePaths(ctx context.Context, workspace, currentTaskID string) ([]string, error) {
+	now := s.timestamp()
+	var paths []string
+	seen := make(map[string]struct{})
+
+	rows, err := s.db.QueryContext(ctx, `SELECT l.path FROM work_leases l
+		JOIN work_items w ON w.id=l.item_id
+		WHERE (?='' OR l.item_id!=?) AND l.expires_at>?
+		AND (w.workspace='' OR lower(replace(w.workspace,'\','/'))=lower(replace(?,'\','/')))`,
+		currentTaskID, currentTaskID, now, workspace)
+	if err == nil {
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var p string
+			if err := rows.Scan(&p); err == nil {
+				if clean, pathErr := canonicalLeasePath(p); pathErr == nil {
+					if _, dup := seen[clean]; !dup {
+						seen[clean] = struct{}{}
+						paths = append(paths, clean)
+					}
+				}
+			}
+		}
+	}
+
+	subRows, err := s.db.QueryContext(ctx, `SELECT s.changed_files_json FROM work_submissions s
+		JOIN work_items w ON w.id=s.item_id
+		WHERE (?='' OR s.item_id!=?) AND w.status='in_review'
+		AND (w.workspace='' OR lower(replace(w.workspace,'\','/'))=lower(replace(?,'\','/')))`,
+		currentTaskID, currentTaskID, workspace)
+	if err == nil {
+		defer func() { _ = subRows.Close() }()
+		for subRows.Next() {
+			var filesJSON string
+			if err := subRows.Scan(&filesJSON); err == nil {
+				var files []string
+				if json.Unmarshal([]byte(filesJSON), &files) == nil {
+					for _, f := range files {
+						if clean, pathErr := canonicalLeasePath(f); pathErr == nil {
+							if _, dup := seen[clean]; !dup {
+								seen[clean] = struct{}{}
+								paths = append(paths, clean)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return paths, nil
+}
+
 func (s *Store) ClaimWork(ctx context.Context, id, owner string, ttl time.Duration) (WorkClaim, error) {
 	result, err := s.ClaimWorkWithLeases(ctx, id, owner, nil, ttl)
 	return result.WorkClaim, err

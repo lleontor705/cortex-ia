@@ -1652,14 +1652,24 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
           }
           if (requestPath) cleanupRequest(requestPath);
           const diagnostic = typeof error?.stderr === "string" ? error.stderr.slice(0, 4096) : String(error?.message ?? "").slice(0, 4096);
+          const isWorkspaceBlocked = /workspace blocked by external job/i.test(diagnostic);
           const reason = error?.code === "ENOENT" || /executable not found/i.test(diagnostic) ? "BINARY_UNAVAILABLE" :
-            /database|sqlite|busy|locked|permission denied|access is denied|acceso denegado/i.test(diagnostic) ? "STATE_UNAVAILABLE" :
+            isWorkspaceBlocked ? "WORKSPACE_BLOCKED" :
+            /database|sqlite|\bbusy\b|\blocked\b|permission denied|access is denied|acceso denegado/i.test(diagnostic) ? "STATE_UNAVAILABLE" :
             stage === "policy" ? "POLICY_INVALID_OR_UNAVAILABLE" : stage === "request" ? "REQUEST_INVALID_OR_IDENTITY_UNAVAILABLE" : "JOB_CREATION_REJECTED";
+          const rawMessage = diagnostic.trim().replace(/^Command failed:[^\n]*\n?/i, "").trim();
+          const message = isWorkspaceBlocked
+            ? (rawMessage || "Workspace is currently exclusive to another external delegation job; wait for it or execute natively")
+            : (rawMessage || "Delegation was not accepted; resolve the reported stage and reason before retrying");
+          const action = isWorkspaceBlocked
+            ? "WAIT_FOR_ACTIVE_JOB_OR_USE_NATIVE_SUBAGENT"
+            : "DIAGNOSE_DELEGATION_ERROR";
           return JSON.stringify({ delegated: false, status: "blocked", error: {
             code: "DELEGATION_PRE_ACCEPTANCE_ERROR", stage, reason_code: reason,
             ...(Number.isSafeInteger(error?.status) ? { exit_code: error.status } : {}),
-            message: "Delegation was not accepted; resolve the reported stage and reason before retrying"
-          }, action: "DIAGNOSE_DELEGATION_ERROR" });
+            message,
+            diagnostic: diagnostic.trim()
+          }, action });
         }
       }
     }),

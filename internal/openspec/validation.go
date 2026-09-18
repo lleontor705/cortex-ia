@@ -98,7 +98,8 @@ func Validate(workspace, target string, opts Options) (Result, error) {
 	r := Result{StructuralOnly: true, SemanticReviewRequired: true, Workflow: opts.Workflow, Phase: opts.Phase, Errors: []Diagnostic{}}
 	phases := map[string]int{"propose": 0, "spec": 1, "design": 2, "tasks": 3}
 	level, fullPhase := phases[opts.Phase]
-	validPair := opts.Workflow == "sdd-full" && fullPhase || opts.Workflow == "sdd-lite" && opts.Phase == "integrated" || opts.Workflow == "decision-map" && (opts.Phase == "chart" || opts.Phase == "resolve")
+	isLite := opts.Workflow == "sdd-lite" && (opts.Phase == "integrated" || opts.Phase == "propose" || opts.Phase == "plan" || opts.Phase == "tasks" || opts.Phase == "spec" || opts.Phase == "design")
+	validPair := opts.Workflow == "sdd-full" && fullPhase || isLite || opts.Workflow == "decision-map" && (opts.Phase == "chart" || opts.Phase == "resolve")
 	if !validPair {
 		return r, fmt.Errorf("unsupported workflow/phase %q/%q", opts.Workflow, opts.Phase)
 	}
