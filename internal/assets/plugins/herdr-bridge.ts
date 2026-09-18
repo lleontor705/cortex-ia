@@ -1870,7 +1870,7 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     work_claim: ["implement"], work_renew: ["implement"],
     file_reserve: ["implement"], work_lease_renew: ["implement"],
     work_release_all: ["implement"], file_release: ["implement"], work_transition: ["implement"],
-    work_approve: ["reviewer"], delegate_start: controllers,
+    work_approve: ["reviewer", "orchestrator"], delegate_start: controllers,
     delegation_cancel: [...controllers, "orchestrator"], delegation_recover: ["orchestrator"], delegation_reconcile: ["orchestrator"],
     doc_convert: roles,
     diagram_render: ["implement"],

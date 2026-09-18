@@ -57,6 +57,27 @@ test('actual bridge initializes every declared tool, including reviewer reads', 
     { agent: 'reviewer', sessionID: 'test' }), /BRIDGE_ROLE_DENIED/);
 });
 
+test('orchestrator is authorized to call work_approve for Tier 2 auto-approval', async () => {
+  const opts = options();
+  const mod = await loadPluginFile(bridgePath, opts);
+  const bridge = await mod.instantiate({ client: {} });
+  await bridge.tool.cortex_ia_work_approve.execute(
+    { task_id: 'task-tier2', verdict: 'PASS', summary: 'Auto-approved low-risk change' },
+    { agent: 'orchestrator', sessionID: 'test-orch' }
+  );
+  assert.ok(opts.calls.some(args => args[0] === 'work' && args[1] === 'approve' && args[2] === 'task-tier2'));
+
+  for (const unauthorized of ['planner', 'investigate', 'implement']) {
+    await assert.rejects(
+      bridge.tool.cortex_ia_work_approve.execute(
+        { task_id: 'task-tier2', verdict: 'PASS' },
+        { agent: unauthorized, sessionID: 'test' }
+      ),
+      /BRIDGE_ROLE_DENIED/
+    );
+  }
+});
+
 test('inline conversion stays read-only and caller arguments cannot authorize output', async () => {
   const opts = options();
   const tools = (await (await loadPluginFile(bridgePath, opts)).instantiate({ client: {} })).tool;
