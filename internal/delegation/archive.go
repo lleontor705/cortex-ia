@@ -51,7 +51,7 @@ func (s *Store) ArchiveChange(ctx context.Context, opts ArchiveOptions) (Archive
 	if opts.Workflow != "sdd-lite" && opts.Workflow != "sdd-full" {
 		return receipt, fmt.Errorf("only SDD Lite/Full initiatives can be archived")
 	}
-	if opts.SpecPlane != "openspec" && opts.SpecPlane != "hybrid" && opts.SpecPlane != "cortex" {
+	if opts.SpecPlane != "openspec" && opts.SpecPlane != "hybrid" && opts.SpecPlane != "cortex" && opts.SpecPlane != "speckit" {
 		return receipt, fmt.Errorf("invalid specification plane")
 	}
 	workspace, err := CanonicalWorkspace(opts.Workspace)
@@ -63,7 +63,10 @@ func (s *Store) ArchiveChange(ctx context.Context, opts ArchiveOptions) (Archive
 	sum := sha256.Sum256(raw)
 	key := hex.EncodeToString(sum[:])
 	source, destination := "", ""
-	if opts.SpecPlane != "cortex" {
+	if opts.SpecPlane == "speckit" {
+		source = filepath.Join(workspace, ".specify", "specs", opts.ChangeID)
+		destination = filepath.Join(workspace, ".specify", "specs", "archive", opts.ChangeID+"-"+key[:12])
+	} else if opts.SpecPlane != "cortex" {
 		source = filepath.Join(workspace, "openspec", "changes", opts.ChangeID)
 		destination = filepath.Join(workspace, "openspec", "changes", "archive", opts.ChangeID+"-"+key[:12])
 	}
@@ -99,11 +102,21 @@ func (s *Store) ArchiveChange(ctx context.Context, opts ArchiveOptions) (Archive
 		}
 		manifest := ""
 		if source != "" {
-			structure, err := validateArchiveStructure(workspace, opts.ChangeID, opts.Workflow)
-			if err != nil {
-				return err
+			var taskIDs []string
+			if opts.SpecPlane == "speckit" {
+				var err error
+				taskIDs, err = validateSpecKitArchiveStructure(source)
+				if err != nil {
+					return err
+				}
+			} else {
+				structure, err := validateArchiveStructure(workspace, opts.ChangeID, opts.Workflow)
+				if err != nil {
+					return err
+				}
+				taskIDs = structure.TaskIDs
 			}
-			for _, id := range structure.TaskIDs {
+			for _, id := range taskIDs {
 				var count int
 				if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM work_items WHERE id=? AND board_id=?`, id, opts.BoardID).Scan(&count); err != nil {
 					return err
@@ -199,8 +212,14 @@ func (s *Store) ArchiveChange(ctx context.Context, opts ArchiveOptions) (Archive
 			return fmt.Errorf("unknown archive state")
 		}
 		if source != "" && !moved {
-			if _, err := validateArchiveStructure(workspace, opts.ChangeID, opts.Workflow); err != nil {
-				return err
+			if opts.SpecPlane == "speckit" {
+				if _, err := validateSpecKitArchiveStructure(source); err != nil {
+					return err
+				}
+			} else {
+				if _, err := validateArchiveStructure(workspace, opts.ChangeID, opts.Workflow); err != nil {
+					return err
+				}
 			}
 			parent := filepath.Dir(destination)
 			if err := os.MkdirAll(parent, 0755); err != nil {
@@ -247,6 +266,41 @@ func validateArchiveStructure(workspace, change, workflow string) (openspec.Resu
 		return result, fmt.Errorf("archive structural validation failed: %s: %s", result.Errors[0].Code, result.Errors[0].Message)
 	}
 	return result, nil
+}
+
+var speckitTaskLine = regexp.MustCompile(`(?m)^(?:[-*] \[[ xX]\]\s+([A-Za-z0-9][A-Za-z0-9_.-]{0,127})|\|\s*([A-Za-z0-9][A-Za-z0-9_.-]{0,127})\s*\|)`)
+
+func validateSpecKitArchiveStructure(source string) ([]string, error) {
+	info, err := os.Lstat(source)
+	if err != nil {
+		return nil, fmt.Errorf("archive SpecKit source: %w", err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("archive SpecKit source must be a directory without symlinks")
+	}
+	tasksPath := filepath.Join(source, "tasks.md")
+	data, err := os.ReadFile(tasksPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read SpecKit tasks.md: %w", err)
+	}
+	var taskIDs []string
+	seen := make(map[string]bool)
+	matches := speckitTaskLine.FindAllStringSubmatch(string(data), -1)
+	for _, m := range matches {
+		id := m[1]
+		if id == "" {
+			id = m[2]
+		}
+		id = strings.TrimSpace(id)
+		if id != "" && !strings.EqualFold(id, "id") && !seen[id] {
+			seen[id] = true
+			taskIDs = append(taskIDs, id)
+		}
+	}
+	return taskIDs, nil
 }
 
 func archiveExists(path string) (bool, error) {

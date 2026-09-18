@@ -2,7 +2,7 @@
 
 **Installed contract:** `~/.cortex-ia/opencode/contracts/cortex-convention.md`
 
-This companion to `cortex-work-protocol.md` is the single convention for durable evidence, memory, lineage, session recovery, and spec-plane contract representation. Cortex-IA remains the operational authority; OpenSpec is the human-reviewable contract when `spec_plane=openspec|hybrid`, and Cortex is the contract plane when `spec_plane=cortex`.
+This companion to `cortex-work-protocol.md` is the single convention for durable evidence, memory, lineage, session recovery, and spec-plane contract representation. Cortex-IA remains the operational authority; OpenSpec is the human-reviewable contract when `spec_plane=openspec|hybrid`, Spec Kit is the human-reviewable contract under `.specify/` when `spec_plane=speckit` (with deterministic CQRS projection from SQLite), and Cortex is the contract plane when `spec_plane=cortex`.
 
 ## Trust and schema discipline
 
@@ -34,7 +34,7 @@ Use this deterministic taxonomy:
 | Incident containment/debt | `bugfix` | `hotfix/<incident>` |
 | Personal preference | `preference`, personal scope | stable preference key |
 
-OpenSpec evidence uses `sdd/{change}/{artifact}` for `explore`, `proposal`, `spec`, `design`, `tasks`, `apply-progress`, `verify-report`, and `archive-report`. In cortex-only, evidence links directly to pinned specification observation IDs. Relate meaningful records only with relations accepted by the active schema.
+OpenSpec evidence uses `sdd/{change}/{artifact}` for `explore`, `proposal`, `spec`, `design`, `tasks`, `apply-progress`, `verify-report`, and `archive-report`. Spec Kit uses `.specify/specs/{change}/` with automatic CQRS state projection to `state.yaml`, `tasks.md`, `evidence.md`, and `.specify/runtime/active-task.json`. In cortex-only, evidence links directly to pinned specification observation IDs. Relate meaningful records only with relations accepted by the active schema.
 
 ## Spec-plane contracts and pinned Cortex references
 

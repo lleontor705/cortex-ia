@@ -154,10 +154,13 @@ func TestReviewOverwriteRequiresExplicitConfirmation(t *testing.T) {
 		t.Fatal("enter must be inert while unauthorized conflicts block")
 	}
 
-	// Authorize overwrite: replans with Overwrite=true.
-	m = pressDrive(t, m, "o")
+	// Authorize overwrite: replans with Overwrite=true (tests uppercase "O" for CapsLock immunity).
+	m = pressDrive(t, m, "O")
 	if len(fake.planCalls) < 2 || !fake.planCalls[len(fake.planCalls)-1].Overwrite {
 		t.Fatalf("expected replan with overwrite, got %+v", fake.planCalls)
+	}
+	if view := m.View(); !strings.Contains(view, "overwrite authorized") {
+		t.Fatalf("expected 'overwrite authorized' hint rendered, got:\n%s", view)
 	}
 
 	// Enter now demands an explicit confirmation.

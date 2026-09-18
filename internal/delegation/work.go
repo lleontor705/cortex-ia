@@ -279,7 +279,14 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 	if err != nil {
 		return WorkItem{}, err
 	}
-	return s.GetWork(ctx, id)
+	item, err := s.GetWork(ctx, id)
+	if err != nil {
+		return WorkItem{}, err
+	}
+	if definition.Contract != nil && definition.Contract.SpecPlane == "speckit" {
+		_ = s.ProjectSpecKitState(ctx, workspace, definition.Contract.ChangeID, boardID)
+	}
+	return item, nil
 }
 
 func (s *Store) ListWork(ctx context.Context) ([]WorkItem, error) {
@@ -891,7 +898,14 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 	if err != nil {
 		return WorkItem{}, err
 	}
-	return s.GetWork(ctx, id)
+	item, err := s.GetWork(ctx, id)
+	if err != nil {
+		return WorkItem{}, err
+	}
+	if item.Contract != nil && item.Contract.SpecPlane == "speckit" {
+		_ = s.ProjectSpecKitState(ctx, item.Workspace, item.Contract.ChangeID, item.BoardID)
+	}
+	return item, nil
 }
 
 func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence string, expectedRevision int64) (WorkApproval, error) {
@@ -999,6 +1013,11 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 		}
 		return nil
 	})
+	if err == nil {
+		if item, getErr := s.GetWork(ctx, id); getErr == nil && item.Contract != nil && item.Contract.SpecPlane == "speckit" {
+			_ = s.ProjectSpecKitState(ctx, item.Workspace, item.Contract.ChangeID, item.BoardID)
+		}
+	}
 	return approval, err
 }
 

@@ -18,7 +18,7 @@ This is the single routing and phase matrix for Cortex-IA. Installed path: `~/.c
 
 ## Planning phases and storage planes
 
-| Workflow / phase | Role | OpenSpec or hybrid artifact | Cortex-only artifact | Exit |
+| Workflow / phase | Role | OpenSpec, SpecKit or hybrid artifact | Cortex-only artifact | Exit |
 |---|---|---|---|---|
 | decision-map / chart or resolve | planner | decision-map.md | Pinned decision snapshot | Decisions and unresolved questions; no tasks |
 | sdd-lite / integrated | planner | plan.md | Pinned integrated contract | Intent, requirements, design, task traceability and checks |
@@ -41,7 +41,7 @@ Use `REQ-{DOMAIN}-{NNN}` requirement headings. ADDED/MODIFIED requirements have 
 
 ## Binding, review and closure
 
-Each new `cortex_ia_work_create` call declares `workflow` (`direct-change`, `fast-tdd`, `hotfix`, `sdd-lite` or `sdd-full`). SDD workflows require a matching `sdd_contract`: `version: 1`, `workflow`, `change_id`, `spec_plane`, `pins` and `requirement_ids`. Each pin contains `transport`, `project`, `locator`, and lowercase SHA-256. Native workspace-file pins are checked against bytes. Local Cortex CLI pins are re-read through a bounded export and compared during runtime checks. Remote MCP pins require independent retrieval and comparison by the controller through the selected transport; runtime does not contact arbitrary remote providers or certify semantic truth. Legacy CLI creation without a declared workflow remains direct-compatible; it does not certify an SDD execution.
+Each new `cortex_ia_work_create` call declares `workflow` (`direct-change`, `fast-tdd`, `hotfix`, `sdd-lite` or `sdd-full`). SDD workflows require a matching `sdd_contract`: `version: 1`, `workflow`, `change_id`, `spec_plane` (`openspec`, `speckit`, `hybrid` or `cortex`), `pins` and `requirement_ids`. Each pin contains `transport`, `project`, `locator`, and lowercase SHA-256. Native workspace-file pins are checked against bytes (including `.specify/specs/<change_id>/*.md` under `speckit`, with automatic CQRS state projection to `.specify/`). Local Cortex CLI pins are re-read through a bounded export and compared during runtime checks. Remote MCP pins require independent retrieval and comparison by the controller through the selected transport; runtime does not contact arbitrary remote providers or certify semantic truth. Legacy CLI creation without a declared workflow remains direct-compatible; it does not certify an SDD execution.
 
 Runtime-generated fingerprints bind the task definition and sorted writable-file contents/deletion markers to review and historical approval. A changed fingerprint rejects stale acceptance. Direct and historical tasks remain compatible without fabricated SDD bindings. Shell access is not an OS sandbox; native mutation-tool admission and external baseline checks are specific safeguards with explicit limits.
 

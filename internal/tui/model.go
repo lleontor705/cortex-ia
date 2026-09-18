@@ -415,8 +415,8 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.plan = nil
 		m.replanning = true
 		return m, planCmd(m.svc, m.reviewOptions())
-	case "o":
-		if m.plan != nil && len(m.plan.Conflicts) > 0 {
+	case "o", "O":
+		if m.plan != nil && (len(m.plan.Conflicts) > 0 || m.overwrite || m.hadConflict) {
 			m.overwrite = !m.overwrite
 			m.plan = nil
 			m.replanning = true

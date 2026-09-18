@@ -61,6 +61,9 @@ func (s *Store) ClaimWorkWithLeases(ctx context.Context, id, owner string, paths
 	if err != nil {
 		return WorkClaimReservation{}, err
 	}
+	if item, getErr := s.GetWork(ctx, id); getErr == nil && item.Contract != nil && item.Contract.SpecPlane == "speckit" {
+		_ = s.ProjectSpecKitState(ctx, item.Workspace, item.Contract.ChangeID, item.BoardID)
+	}
 	return result, nil
 }
 

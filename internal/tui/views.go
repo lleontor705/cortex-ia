@@ -231,7 +231,7 @@ func (m model) viewReview() string {
 		content = m.planSummary(width)
 	}
 	var bottom []string
-	if m.plan != nil && len(m.plan.Conflicts) > 0 {
+	if m.plan != nil && (len(m.plan.Conflicts) > 0 || m.overwrite || m.hadConflict) {
 		hint := "[o] authorize overwrite (destructive, needs confirmed backup)"
 		if m.overwrite {
 			hint = styleWarn.Render("overwrite authorized — enter asks for explicit confirmation")
@@ -401,8 +401,15 @@ func (m model) viewConfirm() string {
 		count := 0
 		digest := ""
 		if m.plan != nil {
-			count = len(m.plan.Conflicts)
 			digest = shortDigest(m.plan.Digest)
+			for _, eff := range m.plan.Effects {
+				if string(eff.Kind) == "overwrite" {
+					count++
+				}
+			}
+			if count == 0 {
+				count = len(m.plan.Conflicts)
+			}
 		}
 		prompt = fmt.Sprintf("Overwrite replaces %d conflicting file(s) after a verified backup (plan %s).", count, digest)
 	case confirmUninstall:
