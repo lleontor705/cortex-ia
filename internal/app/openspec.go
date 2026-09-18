@@ -82,14 +82,11 @@ func runOpenSpecValidation(args []string) error {
 		return err
 	}
 	if jsonOutput {
-		if err := printJSON(result); err != nil {
-			return err
-		}
-	} else {
-		fmt.Printf("OpenSpec %s (%s/%s): structural valid=%v; semantic review required\n", result.ChangeID, result.Workflow, result.Phase, result.Valid)
-		for _, diagnostic := range result.Errors {
-			fmt.Printf("%s:%d %s: %s\n", diagnostic.Path, diagnostic.Line, diagnostic.Code, diagnostic.Message)
-		}
+		return printJSON(result)
+	}
+	fmt.Printf("OpenSpec %s (%s/%s): structural valid=%v; semantic review required\n", result.ChangeID, result.Workflow, result.Phase, result.Valid)
+	for _, diagnostic := range result.Errors {
+		fmt.Printf("%s:%d %s: %s\n", diagnostic.Path, diagnostic.Line, diagnostic.Code, diagnostic.Message)
 	}
 	if !result.Valid {
 		return fmt.Errorf("OpenSpec structural validation failed")

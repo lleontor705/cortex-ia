@@ -44,6 +44,20 @@ type ReviewBinding struct {
 var digestPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var requirementPattern = regexp.MustCompile(`^REQ[-A-Za-z0-9_]{1,95}$`)
 
+func normalizePinTransport(transport string) string {
+	t := strings.ToLower(strings.TrimSpace(transport))
+	switch t {
+	case "workspace_file", "workspace-file", "workspace", "file", "local_file", "local-file", "openspec", "speckit", "fs", "filesystem", "workspace_path", "path":
+		return "workspace_file"
+	case "local_cortex_cli", "local-cortex-cli", "cortex_cli", "cortex-cli", "cortex_local", "cli":
+		return "local_cortex_cli"
+	case "cortex_mcp", "cortex-mcp", "cortex", "mcp":
+		return "cortex_mcp"
+	default:
+		return transport
+	}
+}
+
 func encodeContract(contract *SDDContract) (string, error) {
 	if contract == nil {
 		return "", nil
@@ -65,8 +79,15 @@ func encodeContract(contract *SDDContract) (string, error) {
 		seen[id] = true
 	}
 	seen = map[string]bool{}
-	for _, pin := range normalized.Pins {
-		if !digestPattern.MatchString(pin.SHA256) || strings.TrimSpace(pin.Project) == "" || len(pin.Project) > 512 || strings.TrimSpace(pin.Locator) == "" || len(pin.Locator) > 1024 || strings.ContainsRune(pin.Locator, 0) {
+	for i, pin := range normalized.Pins {
+		pin.Transport = normalizePinTransport(pin.Transport)
+		pin.SHA256 = strings.ToLower(strings.TrimSpace(pin.SHA256))
+		pin.SHA256 = strings.TrimPrefix(pin.SHA256, "sha256:")
+		pin.Locator = filepath.ToSlash(strings.TrimSpace(pin.Locator))
+		pin.Project = strings.TrimSpace(pin.Project)
+		normalized.Pins[i] = pin
+
+		if !digestPattern.MatchString(pin.SHA256) || pin.Project == "" || len(pin.Project) > 512 || pin.Locator == "" || len(pin.Locator) > 1024 || strings.ContainsRune(pin.Locator, 0) {
 			return "", errors.New("invalid SDD contract pin")
 		}
 		switch pin.Transport {
@@ -108,6 +129,12 @@ func decodeContract(raw string) (*SDDContract, error) {
 	}
 	if decoder.Decode(new(any)) != io.EOF {
 		return nil, errors.New("trailing contract JSON")
+	}
+	for i, pin := range contract.Pins {
+		contract.Pins[i].Transport = normalizePinTransport(pin.Transport)
+		contract.Pins[i].SHA256 = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(pin.SHA256)), "sha256:")
+		contract.Pins[i].Locator = filepath.ToSlash(strings.TrimSpace(pin.Locator))
+		contract.Pins[i].Project = strings.TrimSpace(pin.Project)
 	}
 	if _, err := encodeContract(&contract); err != nil {
 		return nil, err
@@ -376,9 +403,15 @@ func verifyWorkspacePins(workspace string, contract *SDDContract, sourcePath, de
 		if pin.Transport != "workspace_file" {
 			continue
 		}
-		pinProject, err := CanonicalWorkspace(pin.Project)
-		if err != nil || pinProject != workspace {
-			return errors.New("workspace pin project mismatch")
+		pinProject := pin.Project
+		if !filepath.IsAbs(pinProject) {
+			pinProject = filepath.Join(workspace, pinProject)
+		}
+		pinProjectCanonical, err := CanonicalWorkspace(pinProject)
+		if err != nil || pinProjectCanonical != workspace {
+			if !strings.EqualFold(strings.TrimSpace(pin.Project), filepath.Base(workspace)) {
+				return errors.New("workspace pin project mismatch")
+			}
 		}
 		locator, err := relocateContractPath(workspace, pin.Locator, sourcePath, destinationPath)
 		if err != nil {

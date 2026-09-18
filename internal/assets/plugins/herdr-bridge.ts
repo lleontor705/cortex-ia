@@ -922,7 +922,18 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
       },
       async execute(args, context) {
         const command = ["openspec", "validate", args.relative_directory, "--workflow", args.workflow, "--phase", args.phase, "--json"];
-        return cortex(command, context.directory);
+        if (context.directory) {
+          command.push("--project", path.resolve(context.directory));
+        }
+        try {
+          return cortex(command, context.directory);
+        } catch (err: any) {
+          const stdout = err?.stdout ? String(err.stdout).trim() : "";
+          if (stdout.startsWith("{") && stdout.endsWith("}")) {
+            return stdout;
+          }
+          throw err;
+        }
       }
     }),
 
@@ -1097,14 +1108,45 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
         dependencies: tool.schema.array(tool.schema.string()).optional(),
         sdd_contract: tool.schema.object({
           version: tool.schema.number(), workflow: tool.schema.enum(["sdd-lite", "sdd-full"]),
-          change_id: tool.schema.string(), spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid"]),
-          pins: tool.schema.array(tool.schema.object({ transport: tool.schema.string(), project: tool.schema.string(), locator: tool.schema.string(), sha256: tool.schema.string() })),
+          change_id: tool.schema.string(), spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid", "speckit"]),
+          pins: tool.schema.array(tool.schema.object({
+            transport: tool.schema.string().describe("Pin transport: 'workspace_file' for workspace files (OpenSpec/SpecKit/Hybrid), 'local_cortex_cli' or 'cortex_mcp' for Cortex observations"),
+            project: tool.schema.string().describe("Workspace root directory or project path"),
+            locator: tool.schema.string().describe("Relative path to specification file (e.g. openspec/changes/<name>/plan.md or specs/...)"),
+            sha256: tool.schema.string().describe("64-character lowercase SHA-256 digest")
+          })),
           requirement_ids: tool.schema.array(tool.schema.string())
         }).optional().describe("Required for SDD tasks: exact contract pins and requirement IDs; omitted only for direct/legacy work")
       },
       async execute(args, context) {
         const sdd = args.workflow === "sdd-lite" || args.workflow === "sdd-full";
         if (sdd ? args.sdd_contract?.workflow !== args.workflow : args.sdd_contract !== undefined) throw new Error("SDD_CONTRACT_REQUIRED: workflow and typed contract must agree; direct workflows cannot carry SDD bindings");
+        if (args.sdd_contract?.pins) {
+          for (const pin of args.sdd_contract.pins) {
+            if (pin.transport) {
+              const t = String(pin.transport).toLowerCase().trim();
+              if (["workspace_file", "workspace-file", "workspace", "file", "local_file", "local-file", "openspec", "speckit", "fs", "filesystem", "workspace_path", "path"].includes(t)) {
+                pin.transport = "workspace_file";
+              } else if (["local_cortex_cli", "local-cortex-cli", "cortex_cli", "cortex-cli", "cortex_local", "cli"].includes(t)) {
+                pin.transport = "local_cortex_cli";
+              } else if (["cortex_mcp", "cortex-mcp", "cortex", "mcp"].includes(t)) {
+                pin.transport = "cortex_mcp";
+              }
+            }
+            if (pin.sha256) {
+              pin.sha256 = String(pin.sha256).toLowerCase().trim().replace(/^sha256:/, "");
+            }
+            if (pin.locator) {
+              pin.locator = String(pin.locator).trim().replace(/\\/g, "/");
+            }
+            if (context.directory && pin.project) {
+              const p = String(pin.project).trim();
+              if (p === "." || !path.isAbsolute(p) || p.toLowerCase() === path.basename(context.directory).toLowerCase()) {
+                pin.project = path.resolve(context.directory);
+              }
+            }
+          }
+        }
         const ownership = await conversationOwnership(context.sessionID, context.directory);
         const command = ["work", "create", "--board", args.board_id, "--id", args.task_id, "--title", args.title,
           "--workflow", args.workflow,

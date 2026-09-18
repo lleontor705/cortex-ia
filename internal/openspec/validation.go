@@ -40,6 +40,7 @@ type Result struct {
 
 var requirementID = regexp.MustCompile(`\bREQ-[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-[0-9]{3}\b`)
 var taskLine = regexp.MustCompile(`^[-*] \[[ xX]\]\s+([A-Za-z0-9][A-Za-z0-9_.-]{0,127})(?:\s|$)`)
+var taskHeading = regexp.MustCompile(`(?i)^###\s+(?:Task:\s+)?([A-Za-z0-9][A-Za-z0-9_.-]{0,127})(?::|\s|$)`)
 var comments = regexp.MustCompile(`(?s)<!--.*?-->`)
 
 // ChangeDirectory only resolves active, workspace-owned change directories.
@@ -191,6 +192,26 @@ func Validate(workspace, target string, opts Options) (Result, error) {
 		}
 		documents["plan.md"] = text
 		taskText, taskPath = text, "plan.md"
+		// If plan.md does not define requirements directly, load companion specs/ if present
+		if !strings.Contains(text, "### Requirement:") {
+			specsDir := filepath.Join(dir, "specs")
+			if info, err := os.Stat(specsDir); err == nil && info.IsDir() {
+				_ = filepath.WalkDir(specsDir, func(path string, entry os.DirEntry, walkErr error) error {
+					if walkErr == nil && !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+						rel, _ := filepath.Rel(dir, path)
+						documents[filepath.ToSlash(rel)] = read(rel)
+					}
+					return nil
+				})
+			}
+		}
+		tasksFile := filepath.Join(dir, "tasks.md")
+		if _, err := os.Stat(tasksFile); err == nil {
+			tasksContent := read("tasks.md")
+			if strings.Contains(tasksContent, "REQ-") {
+				taskText, taskPath = tasksContent, "tasks.md"
+			}
+		}
 	} else {
 		read("proposal.md")
 		if level >= 1 {
@@ -246,9 +267,17 @@ func Validate(workspace, target string, opts Options) (Result, error) {
 }
 
 func hasSection(text, name string) bool {
+	nameLower := strings.ToLower(name)
+	nameRoot := strings.TrimSuffix(nameLower, "s")
 	for _, line := range strings.Split(text, "\n") {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "## "+strings.ToLower(name)) {
-			return true
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## ") {
+			header := strings.TrimSpace(strings.TrimPrefix(trimmed, "## "))
+			header = strings.TrimLeft(header, "0123456789.:- ")
+			headerLower := strings.ToLower(header)
+			if strings.HasPrefix(headerLower, nameLower) || strings.HasPrefix(headerLower, nameRoot) || strings.Contains(headerLower, nameLower) || strings.Contains(headerLower, nameRoot) {
+				return true
+			}
 		}
 	}
 	return false
@@ -369,9 +398,15 @@ func inspectTasks(path, text string, requirements map[string]bool, r *Result, ad
 		if fenced {
 			continue
 		}
+		var taskIDFound string
 		if match := taskLine.FindStringSubmatch(line); match != nil {
+			taskIDFound = match[1]
+		} else if match := taskHeading.FindStringSubmatch(line); match != nil {
+			taskIDFound = match[1]
+		}
+		if taskIDFound != "" {
 			finish()
-			current = match[1]
+			current = taskIDFound
 			refs = false
 			r.Tasks++
 			r.TaskIDs = append(r.TaskIDs, current)
@@ -381,15 +416,21 @@ func inspectTasks(path, text string, requirements map[string]bool, r *Result, ad
 			ids[current] = true
 			continue
 		}
-		if current != "" && strings.HasPrefix(line, "Requirements:") {
-			values := strings.Split(strings.TrimSpace(strings.TrimPrefix(line, "Requirements:")), ",")
+		cleanLine := strings.TrimSpace(strings.TrimLeft(line, "-* "))
+		cleanLine = strings.TrimPrefix(cleanLine, "**")
+		if current != "" && (strings.HasPrefix(cleanLine, "Requirements:") || strings.HasPrefix(cleanLine, "Requirements**:")) {
+			raw := strings.TrimPrefix(cleanLine, "Requirements:")
+			raw = strings.TrimPrefix(raw, "Requirements**:")
+			raw = strings.TrimPrefix(raw, "**")
+			raw = strings.TrimSpace(raw)
+			values := strings.Split(raw, ",")
 			matches := []string{}
 			for _, value := range values {
 				value = strings.TrimSpace(value)
-				if requirementID.FindString(value) != value || value == "" {
+				if reqMatch := requirementID.FindString(value); reqMatch != "" {
+					matches = append(matches, reqMatch)
+				} else if value != "" {
 					add("task_trace_invalid", path, index+1, "Requirements must be a comma-separated list of exact REQ IDs")
-				} else {
-					matches = append(matches, value)
 				}
 			}
 			refs = len(matches) > 0
