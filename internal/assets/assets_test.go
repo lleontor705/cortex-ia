@@ -15,7 +15,7 @@ func TestInventory(t *testing.T) {
 		t.Fatal("Inventory() returned 0 files")
 	}
 
-	foundConfig, foundDoc, foundShared, foundAgent, foundCommand, foundSkill, foundPlugin, foundTUI := false, false, false, false, false, false, false, false
+	foundConfig, foundDoc, foundShared, foundAgent, foundCommand, foundSkill, foundPlugin, foundTUI, foundTheme := false, false, false, false, false, false, false, false, false
 	for _, f := range files {
 		switch f.Kind {
 		case KindConfig:
@@ -34,12 +34,14 @@ func TestInventory(t *testing.T) {
 			foundPlugin = true
 		case KindTUI:
 			foundTUI = true
+		case KindTheme:
+			foundTheme = true
 		}
 	}
 
-	if !foundConfig || !foundDoc || !foundShared || !foundAgent || !foundCommand || !foundSkill || !foundPlugin || !foundTUI {
-		t.Fatalf("inventory missing kinds: config=%v doc=%v shared=%v agent=%v command=%v skill=%v plugin=%v tui=%v",
-			foundConfig, foundDoc, foundShared, foundAgent, foundCommand, foundSkill, foundPlugin, foundTUI)
+	if !foundConfig || !foundDoc || !foundShared || !foundAgent || !foundCommand || !foundSkill || !foundPlugin || !foundTUI || !foundTheme {
+		t.Fatalf("inventory missing kinds: config=%v doc=%v shared=%v agent=%v command=%v skill=%v plugin=%v tui=%v theme=%v",
+			foundConfig, foundDoc, foundShared, foundAgent, foundCommand, foundSkill, foundPlugin, foundTUI, foundTheme)
 	}
 }
 
@@ -127,6 +129,7 @@ func TestClassify(t *testing.T) {
 		{"skills/test/SKILL.md", KindSkill},
 		{"plugins/cortex.ts", KindPlugin},
 		{"tui/status.js", KindTUI},
+		{"themes/cortex.json", KindTheme},
 	}
 
 	for _, tc := range cases {

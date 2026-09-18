@@ -1129,6 +1129,94 @@ function HomeBottomStatus(props: {
   );
 }
 
+function SessionKanbanPanel(props: {
+  snapshot: () => UISnapshot;
+  jobs: () => DelegationJob[];
+  now: () => number;
+  spinner: () => string;
+  pulse: () => string;
+  theme: TuiThemeCurrent;
+}) {
+  const tasks = createMemo(() => props.snapshot().tasks);
+  const readyTasks = createMemo(() => tasks().filter((t) => t.status === "ready"));
+  const inProgressTasks = createMemo(() => tasks().filter((t) => t.status === "in_progress"));
+  const inReviewTasks = createMemo(() => tasks().filter((t) => t.status === "in_review"));
+  const blockedTasks = createMemo(() => tasks().filter((t) => t.status === "blocked"));
+
+  return (
+    <box flexDirection="column" padding={1}>
+      <box flexDirection="row" marginBottom={1}>
+        <text fg={CORTEX_THEME.neonCyan} bold={true}>
+          {`◈ CORTEX · IA KANBAN DECK [${props.pulse()}] `}
+        </text>
+        <text fg={CORTEX_THEME.slateMuted}>
+          {`(${tasks().length} tareas · ${props.jobs().length} workers)`}
+        </text>
+      </box>
+
+      {/* Columnas Kanban */}
+      <box flexDirection="row">
+        {/* Columna: En Curso */}
+        <box flexDirection="column" width={26} marginRight={1}>
+          <text fg={CORTEX_THEME.amberGold} bold={true}>
+            {`⚡ EN CURSO (${inProgressTasks().length})`}
+          </text>
+          <For each={inProgressTasks()}>
+            {(task) => (
+              <box flexDirection="column" marginTop={1}>
+                <text fg={CORTEX_THEME.pureWhite} bold={true}>{`● ${task.task_id}`}</text>
+                <text fg={CORTEX_THEME.slateLight}>{clipped(task.title, 22)}</text>
+                <Show when={task.owner}>
+                  <text fg={CORTEX_THEME.neonCyan}>{`Claim: ${clipped(task.owner!, 14)}`}</text>
+                </Show>
+              </box>
+            )}
+          </For>
+        </box>
+
+        {/* Columna: En Revisión */}
+        <box flexDirection="column" width={26} marginRight={1}>
+          <text fg={CORTEX_THEME.brandPurple} bold={true}>
+            {`⚖ EN REVISIÓN (${inReviewTasks().length})`}
+          </text>
+          <For each={inReviewTasks()}>
+            {(task) => (
+              <box flexDirection="column" marginTop={1}>
+                <text fg={CORTEX_THEME.pureWhite} bold={true}>{`◆ ${task.task_id}`}</text>
+                <text fg={CORTEX_THEME.slateLight}>{clipped(task.title, 22)}</text>
+                <text fg={CORTEX_THEME.amberGold}>esperando reviewer</text>
+              </box>
+            )}
+          </For>
+        </box>
+
+        {/* Columna: Bloqueadas & Listas */}
+        <box flexDirection="column" width={26}>
+          <text fg={CORTEX_THEME.emeraldGreen} bold={true}>
+            {`✓ LISTAS (${readyTasks().length}) / ✕ BLQ (${blockedTasks().length})`}
+          </text>
+          <For each={blockedTasks()}>
+            {(task) => (
+              <box flexDirection="column" marginTop={1}>
+                <text fg={CORTEX_THEME.roseRed} bold={true}>{`✕ ${task.task_id}`}</text>
+                <text fg={CORTEX_THEME.roseRed}>{clipped(task.title, 22)}</text>
+              </box>
+            )}
+          </For>
+          <For each={readyTasks().slice(0, 3)}>
+            {(task) => (
+              <box flexDirection="column" marginTop={1}>
+                <text fg={CORTEX_THEME.skyBlue} bold={true}>{`○ ${task.task_id}`}</text>
+                <text fg={CORTEX_THEME.slateMuted}>{clipped(task.title, 22)}</text>
+              </box>
+            )}
+          </For>
+        </box>
+      </box>
+    </box>
+  );
+}
+
 const CORTEX_LOGO_BRAILLE = [
   "       ⣠⣶⣿⣿⣿⣿⣶⣤⡀       ⢀⣤⣶⣿⣿⣿⣿⣶⣄",
   "    ⢰⣿⣿⠟⠉   ⠙⢿⣿⣷⡀   ⢠⣾⣿⡿⠋   ⠈⠻⣿⣿⡆",
@@ -1290,51 +1378,127 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
     previousAttentionCount = count;
   });
 
+  let previousTaskStatuses = new Map<string, string>();
+  createEffect(() => {
+    const tasks = snapshot().tasks;
+    const toastApi = (api as any).ui?.toast || (api as any).toast;
+    if (toastApi && typeof toastApi.show === "function" && previousTaskStatuses.size > 0) {
+      for (const t of tasks) {
+        const prev = previousTaskStatuses.get(t.task_id);
+        if (prev && prev !== t.status) {
+          let variant = "info";
+          let title = `Cortex-IA: Tarea ${t.task_id}`;
+          if (t.status === "done") {
+            variant = "success";
+            title = `✓ ${t.task_id} Aprobada (PASS)`;
+          } else if (t.status === "blocked") {
+            variant = "error";
+            title = `✕ ${t.task_id} Bloqueada`;
+          } else if (t.status === "in_review") {
+            variant = "warning";
+            title = `⚖ ${t.task_id} En Revisión`;
+          } else if (t.status === "in_progress") {
+            variant = "info";
+            title = `⚡ ${t.task_id} Reclamada`;
+          }
+          try {
+            toastApi.show({
+              title,
+              message: clipped(t.title, 40),
+              variant,
+            });
+          } catch {}
+        }
+      }
+    }
+    const nextMap = new Map<string, string>();
+    for (const t of tasks) nextMap.set(t.task_id, t.status);
+    previousTaskStatuses = nextMap;
+  });
+
   createEffect(readSnapshot);
   const snapshotPoll = setInterval(readSnapshot, SNAPSHOT_POLL_INTERVAL_MS);
   const clock = setInterval(() => setNow(Date.now()), 1000);
   const spinnerTimer = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 90);
   const pulseTimer = setInterval(() => setPulseFrame((p) => (p + 1) % NEURAL_PULSE_FRAMES.length), 350);
 
+  const registeredSlots: Record<string, (ctx: any) => any> = {
+    home_logo() {
+      return <HomeLogo />;
+    },
+    sidebar_content(ctx: any) {
+      return (
+        <SidebarStatus
+          nativeActivity={nativeActivity}
+          scopeReady={scopeReady}
+          snapshot={snapshot}
+          jobs={jobs}
+          snapshotError={snapshotError}
+          now={now}
+          spinner={spinner}
+          pulse={pulse}
+          tasksExpanded={tasksExpanded}
+          delegationsExpanded={delegationsExpanded}
+          attentionExpanded={attentionExpanded}
+          toggleTasks={() => togglePreference(TASKS_EXPANDED_KEY, tasksExpanded, setTasksExpanded)}
+          toggleDelegations={() => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded)}
+          toggleAttention={() => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded)}
+          theme={ctx.theme?.current || ctx.theme}
+        />
+      );
+    },
+    home_bottom(ctx: any) {
+      return (
+        <HomeBottomStatus
+          snapshot={snapshot}
+          jobs={jobs}
+          spinner={spinner}
+          snapshotError={snapshotError}
+          theme={ctx.theme?.current || ctx.theme}
+        />
+      );
+    },
+    // OpenCode v2 Modern Slots
+    "home.footer.status"(ctx: any) {
+      return (
+        <HomeBottomStatus
+          snapshot={snapshot}
+          jobs={jobs}
+          spinner={spinner}
+          snapshotError={snapshotError}
+          theme={ctx.theme?.current || ctx.theme}
+        />
+      );
+    },
+    "session.panel"(ctx: any) {
+      return (
+        <SessionKanbanPanel
+          snapshot={snapshot}
+          jobs={jobs}
+          now={now}
+          spinner={spinner}
+          pulse={pulse}
+          theme={ctx.theme?.current || ctx.theme}
+        />
+      );
+    },
+    session_panel(ctx: any) {
+      return (
+        <SessionKanbanPanel
+          snapshot={snapshot}
+          jobs={jobs}
+          now={now}
+          spinner={spinner}
+          pulse={pulse}
+          theme={ctx.theme?.current || ctx.theme}
+        />
+      );
+    },
+  };
+
   api.slots.register({
     order: 85,
-    slots: {
-      home_logo() {
-        return <HomeLogo />;
-      },
-      sidebar_content(ctx) {
-        return (
-          <SidebarStatus
-            nativeActivity={nativeActivity}
-            scopeReady={scopeReady}
-            snapshot={snapshot}
-            jobs={jobs}
-            snapshotError={snapshotError}
-            now={now}
-            spinner={spinner}
-            pulse={pulse}
-            tasksExpanded={tasksExpanded}
-            delegationsExpanded={delegationsExpanded}
-            attentionExpanded={attentionExpanded}
-            toggleTasks={() => togglePreference(TASKS_EXPANDED_KEY, tasksExpanded, setTasksExpanded)}
-            toggleDelegations={() => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded)}
-            toggleAttention={() => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded)}
-            theme={ctx.theme.current}
-          />
-        );
-      },
-      home_bottom(ctx) {
-        return (
-          <HomeBottomStatus
-            snapshot={snapshot}
-            jobs={jobs}
-            spinner={spinner}
-            snapshotError={snapshotError}
-            theme={ctx.theme.current}
-          />
-        );
-      },
-    },
+    slots: registeredSlots,
   });
 
   api.lifecycle.onDispose(() => {

@@ -16,6 +16,7 @@ type Layout struct {
 	CommandsRoot    string
 	PluginRoot      string
 	TUIPluginRoot   string
+	ThemesRoot      string
 	RootModuleRoot  string
 	ContractRoot    string
 	RoleRoot        string
@@ -38,6 +39,7 @@ func NativeLayout() Layout {
 		SkillsRoot: ".agents/skills", AgentsRoot: path.Join(config, "agents"), CommandsRoot: path.Join(config, "commands"),
 		PluginRoot:     path.Join(config, "plugins"),
 		TUIPluginRoot:  path.Join(config, "tui-plugins"),
+		ThemesRoot:     path.Join(config, "themes"),
 		RootModuleRoot: path.Join(workflow, "root"), ContractRoot: path.Join(workflow, "contracts"), RoleRoot: path.Join(workflow, "roles"),
 		OverlayRoot: path.Join(workflow, "overlays"), QualityRoot: path.Join(workflow, "quality"), ManifestRoot: path.Join(workflow, "manifests"),
 		ModelRoot: path.Join(workflow, "models"), PermissionRoot: path.Join(workflow, "permissions"), CompositionPath: path.Join(workflow, "composition.json"),
@@ -98,6 +100,9 @@ func (l Layout) IsNativePath(relative string) bool {
 		return true
 	}
 	if plugin := strings.TrimPrefix(clean, l.PluginRoot+"/"); plugin != clean && plugin != "" {
+		return true
+	}
+	if theme := strings.TrimPrefix(clean, l.ThemesRoot+"/"); theme != clean && theme != "" {
 		return true
 	}
 	value := strings.TrimPrefix(clean, l.SkillsRoot+"/")

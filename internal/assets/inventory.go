@@ -35,6 +35,8 @@ const (
 	KindPlugin Kind = "plugin"
 	// KindTUI is a TUI-only OpenCode plugin under tui/.
 	KindTUI Kind = "tui"
+	// KindTheme is an OpenCode theme file under themes/.
+	KindTheme Kind = "theme"
 )
 
 // Asset file classification and inventory errors. They are wrapped with
@@ -137,6 +139,8 @@ func Classify(rel string) (Kind, error) {
 		return KindPlugin, nil
 	case "tui":
 		return KindTUI, nil
+	case "themes", "theme":
+		return KindTheme, nil
 	}
 	return "", fmt.Errorf("%w: %q is not a known asset root", ErrUnmappedRoot, rel)
 }

@@ -1569,6 +1569,179 @@ function HomeBottomStatus(props) {
     }
   });
 }
+function SessionKanbanPanel(props) {
+  const tasks = createMemo(() => props.snapshot().tasks);
+  const readyTasks = createMemo(() => tasks().filter((t) => t.status === "ready"));
+  const inProgressTasks = createMemo(() => tasks().filter((t) => t.status === "in_progress"));
+  const inReviewTasks = createMemo(() => tasks().filter((t) => t.status === "in_review"));
+  const blockedTasks = createMemo(() => tasks().filter((t) => t.status === "blocked"));
+  return (() => {
+    var _el$170 = _$createElement("box"), _el$171 = _$createElement("box"), _el$172 = _$createElement("text"), _el$173 = _$createElement("text"), _el$174 = _$createElement("box"), _el$175 = _$createElement("box"), _el$176 = _$createElement("text"), _el$177 = _$createElement("box"), _el$178 = _$createElement("text"), _el$179 = _$createElement("box"), _el$180 = _$createElement("text");
+    _$insertNode(_el$170, _el$171);
+    _$insertNode(_el$170, _el$174);
+    _$setProp(_el$170, "flexDirection", "column");
+    _$setProp(_el$170, "padding", 1);
+    _$insertNode(_el$171, _el$172);
+    _$insertNode(_el$171, _el$173);
+    _$setProp(_el$171, "flexDirection", "row");
+    _$setProp(_el$171, "marginBottom", 1);
+    _$setProp(_el$172, "bold", true);
+    _$insert(_el$172, () => `\u25C8 CORTEX \xB7 IA KANBAN DECK [${props.pulse()}] `);
+    _$insert(_el$173, () => `(${tasks().length} tareas \xB7 ${props.jobs().length} workers)`);
+    _$insertNode(_el$174, _el$175);
+    _$insertNode(_el$174, _el$177);
+    _$insertNode(_el$174, _el$179);
+    _$setProp(_el$174, "flexDirection", "row");
+    _$insertNode(_el$175, _el$176);
+    _$setProp(_el$175, "flexDirection", "column");
+    _$setProp(_el$175, "width", 26);
+    _$setProp(_el$175, "marginRight", 1);
+    _$setProp(_el$176, "bold", true);
+    _$insert(_el$176, () => `\u26A1 EN CURSO (${inProgressTasks().length})`);
+    _$insert(_el$175, _$createComponent(For, {
+      get each() {
+        return inProgressTasks();
+      },
+      children: (task) => (() => {
+        var _el$181 = _$createElement("box"), _el$182 = _$createElement("text"), _el$183 = _$createElement("text");
+        _$insertNode(_el$181, _el$182);
+        _$insertNode(_el$181, _el$183);
+        _$setProp(_el$181, "flexDirection", "column");
+        _$setProp(_el$181, "marginTop", 1);
+        _$setProp(_el$182, "bold", true);
+        _$insert(_el$182, () => `\u25CF ${task.task_id}`);
+        _$insert(_el$183, () => clipped(task.title, 22));
+        _$insert(_el$181, _$createComponent(Show, {
+          get when() {
+            return task.owner;
+          },
+          get children() {
+            var _el$184 = _$createElement("text");
+            _$insert(_el$184, () => `Claim: ${clipped(task.owner, 14)}`);
+            _$effect((_$p) => _$setProp(_el$184, "fg", CORTEX_THEME.neonCyan, _$p));
+            return _el$184;
+          }
+        }), null);
+        _$effect((_p$) => {
+          var _v$74 = CORTEX_THEME.pureWhite, _v$75 = CORTEX_THEME.slateLight;
+          _v$74 !== _p$.e && (_p$.e = _$setProp(_el$182, "fg", _v$74, _p$.e));
+          _v$75 !== _p$.t && (_p$.t = _$setProp(_el$183, "fg", _v$75, _p$.t));
+          return _p$;
+        }, {
+          e: void 0,
+          t: void 0
+        });
+        return _el$181;
+      })()
+    }), null);
+    _$insertNode(_el$177, _el$178);
+    _$setProp(_el$177, "flexDirection", "column");
+    _$setProp(_el$177, "width", 26);
+    _$setProp(_el$177, "marginRight", 1);
+    _$setProp(_el$178, "bold", true);
+    _$insert(_el$178, () => `\u2696 EN REVISI\xD3N (${inReviewTasks().length})`);
+    _$insert(_el$177, _$createComponent(For, {
+      get each() {
+        return inReviewTasks();
+      },
+      children: (task) => (() => {
+        var _el$185 = _$createElement("box"), _el$186 = _$createElement("text"), _el$187 = _$createElement("text"), _el$188 = _$createElement("text");
+        _$insertNode(_el$185, _el$186);
+        _$insertNode(_el$185, _el$187);
+        _$insertNode(_el$185, _el$188);
+        _$setProp(_el$185, "flexDirection", "column");
+        _$setProp(_el$185, "marginTop", 1);
+        _$setProp(_el$186, "bold", true);
+        _$insert(_el$186, () => `\u25C6 ${task.task_id}`);
+        _$insert(_el$187, () => clipped(task.title, 22));
+        _$insertNode(_el$188, _$createTextNode(`esperando reviewer`));
+        _$effect((_p$) => {
+          var _v$76 = CORTEX_THEME.pureWhite, _v$77 = CORTEX_THEME.slateLight, _v$78 = CORTEX_THEME.amberGold;
+          _v$76 !== _p$.e && (_p$.e = _$setProp(_el$186, "fg", _v$76, _p$.e));
+          _v$77 !== _p$.t && (_p$.t = _$setProp(_el$187, "fg", _v$77, _p$.t));
+          _v$78 !== _p$.a && (_p$.a = _$setProp(_el$188, "fg", _v$78, _p$.a));
+          return _p$;
+        }, {
+          e: void 0,
+          t: void 0,
+          a: void 0
+        });
+        return _el$185;
+      })()
+    }), null);
+    _$insertNode(_el$179, _el$180);
+    _$setProp(_el$179, "flexDirection", "column");
+    _$setProp(_el$179, "width", 26);
+    _$setProp(_el$180, "bold", true);
+    _$insert(_el$180, () => `\u2713 LISTAS (${readyTasks().length}) / \u2715 BLQ (${blockedTasks().length})`);
+    _$insert(_el$179, _$createComponent(For, {
+      get each() {
+        return blockedTasks();
+      },
+      children: (task) => (() => {
+        var _el$190 = _$createElement("box"), _el$191 = _$createElement("text"), _el$192 = _$createElement("text");
+        _$insertNode(_el$190, _el$191);
+        _$insertNode(_el$190, _el$192);
+        _$setProp(_el$190, "flexDirection", "column");
+        _$setProp(_el$190, "marginTop", 1);
+        _$setProp(_el$191, "bold", true);
+        _$insert(_el$191, () => `\u2715 ${task.task_id}`);
+        _$insert(_el$192, () => clipped(task.title, 22));
+        _$effect((_p$) => {
+          var _v$79 = CORTEX_THEME.roseRed, _v$80 = CORTEX_THEME.roseRed;
+          _v$79 !== _p$.e && (_p$.e = _$setProp(_el$191, "fg", _v$79, _p$.e));
+          _v$80 !== _p$.t && (_p$.t = _$setProp(_el$192, "fg", _v$80, _p$.t));
+          return _p$;
+        }, {
+          e: void 0,
+          t: void 0
+        });
+        return _el$190;
+      })()
+    }), null);
+    _$insert(_el$179, _$createComponent(For, {
+      get each() {
+        return readyTasks().slice(0, 3);
+      },
+      children: (task) => (() => {
+        var _el$193 = _$createElement("box"), _el$194 = _$createElement("text"), _el$195 = _$createElement("text");
+        _$insertNode(_el$193, _el$194);
+        _$insertNode(_el$193, _el$195);
+        _$setProp(_el$193, "flexDirection", "column");
+        _$setProp(_el$193, "marginTop", 1);
+        _$setProp(_el$194, "bold", true);
+        _$insert(_el$194, () => `\u25CB ${task.task_id}`);
+        _$insert(_el$195, () => clipped(task.title, 22));
+        _$effect((_p$) => {
+          var _v$81 = CORTEX_THEME.skyBlue, _v$82 = CORTEX_THEME.slateMuted;
+          _v$81 !== _p$.e && (_p$.e = _$setProp(_el$194, "fg", _v$81, _p$.e));
+          _v$82 !== _p$.t && (_p$.t = _$setProp(_el$195, "fg", _v$82, _p$.t));
+          return _p$;
+        }, {
+          e: void 0,
+          t: void 0
+        });
+        return _el$193;
+      })()
+    }), null);
+    _$effect((_p$) => {
+      var _v$69 = CORTEX_THEME.neonCyan, _v$70 = CORTEX_THEME.slateMuted, _v$71 = CORTEX_THEME.amberGold, _v$72 = CORTEX_THEME.brandPurple, _v$73 = CORTEX_THEME.emeraldGreen;
+      _v$69 !== _p$.e && (_p$.e = _$setProp(_el$172, "fg", _v$69, _p$.e));
+      _v$70 !== _p$.t && (_p$.t = _$setProp(_el$173, "fg", _v$70, _p$.t));
+      _v$71 !== _p$.a && (_p$.a = _$setProp(_el$176, "fg", _v$71, _p$.a));
+      _v$72 !== _p$.o && (_p$.o = _$setProp(_el$178, "fg", _v$72, _p$.o));
+      _v$73 !== _p$.i && (_p$.i = _$setProp(_el$180, "fg", _v$73, _p$.i));
+      return _p$;
+    }, {
+      e: void 0,
+      t: void 0,
+      a: void 0,
+      o: void 0,
+      i: void 0
+    });
+    return _el$170;
+  })();
+}
 var CORTEX_LOGO_BRAILLE = ["       \u28E0\u28F6\u28FF\u28FF\u28FF\u28FF\u28F6\u28E4\u2840       \u2880\u28E4\u28F6\u28FF\u28FF\u28FF\u28FF\u28F6\u28C4", "    \u28B0\u28FF\u28FF\u281F\u2809   \u2819\u28BF\u28FF\u28F7\u2840   \u28A0\u28FE\u28FF\u287F\u280B   \u2808\u283B\u28FF\u28FF\u2846", "   \u28A0\u28FF\u28FF\u280B  \u2880\u28E4\u28E4\u28C0  \u2839\u28FF\u28FF\u28C4\u28E0\u28FF\u28FF\u280F  \u28C0\u28E4\u28E4\u2840  \u2819\u28FF\u28FF\u2844", "   \u28FE\u28FF\u2803  \u28B0\u28FF\u28FF\u28FF\u28FF\u28F7\u2840 \u2839\u28FF\u28FF\u28FF\u28FF\u280F \u28A0\u28FE\u28FF\u28FF\u28FF\u28FF\u2846  \u2818\u28FF\u28F7", "  \u28B8\u28FF\u285F   \u2838\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u28C6 \u2839\u28FF\u28FF\u280F \u28F0\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u2807   \u28BB\u28FF\u2847", "  \u2818\u28FF\u28E7    \u2808\u281B\u283F\u28FF\u28FF\u28FF\u28FF\u28F7\u28C4\u2819\u280B\u28E0\u28FE\u28FF\u28FF\u28FF\u28FF\u283F\u281B\u2801    \u28FC\u28FF\u2803", "   \u2839\u28FF\u28E7\u2840     \u2808\u2819\u283F\u28FF\u28FF\u28FF\u2846\u28B0\u28FF\u28FF\u28FF\u283F\u280B\u2801     \u2880\u28FC\u28FF\u280F", "    \u2819\u28BF\u28FF\u28E6\u2840   \u2880\u28E0\u28F4\u28FF\u28FF\u28FF\u2847\u28B8\u28FF\u28FF\u28FF\u28E6\u28C4\u2840   \u2880\u28F4\u28FF\u287F\u280B", "      \u2809\u281B\u283F\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u287F\u281B\u2801 \u2808\u281B\u28BF\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u283F\u281B\u2809", "  \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2557  \u2588\u2588\u2557     \u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2557 ", " \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D\u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2557\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557\u255A\u2550\u2550\u2588\u2588\u2554\u2550\u2550\u255D\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D\u255A\u2588\u2588\u2557\u2588\u2588\u2554\u255D     \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557", " \u2588\u2588\u2551     \u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255D   \u2588\u2588\u2551   \u2588\u2588\u2588\u2588\u2588\u2557   \u255A\u2588\u2588\u2588\u2554\u255D\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551", " \u2588\u2588\u2551     \u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557   \u2588\u2588\u2551   \u2588\u2588\u2554\u2550\u2550\u255D   \u2588\u2588\u2554\u2588\u2588\u2557\u255A\u2550\u2550\u2550\u2550\u255D\u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2551", " \u255A\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u255A\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255D\u2588\u2588\u2551  \u2588\u2588\u2551   \u2588\u2588\u2551   \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2554\u255D \u2588\u2588\u2557     \u2588\u2588\u2551\u2588\u2588\u2551  \u2588\u2588\u2551", "  \u255A\u2550\u2550\u2550\u2550\u2550\u255D \u255A\u2550\u2550\u2550\u2550\u2550\u255D \u255A\u2550\u255D  \u255A\u2550\u255D   \u255A\u2550\u255D   \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u255D\u255A\u2550\u255D  \u255A\u2550\u255D     \u255A\u2550\u255D\u255A\u2550\u255D  \u255A\u2550\u255D"];
 function HomeLogo() {
   const dim = useTerminalDimensions();
@@ -1577,34 +1750,34 @@ function HomeLogo() {
     return d.height >= CORTEX_LOGO_BRAILLE.length + 5 && d.width >= 72;
   });
   return (() => {
-    var _el$170 = _$createElement("box");
-    _$setProp(_el$170, "flexDirection", "column");
-    _$setProp(_el$170, "alignItems", "center");
-    _$setProp(_el$170, "marginBottom", 1);
-    _$insert(_el$170, _$createComponent(Show, {
+    var _el$196 = _$createElement("box");
+    _$setProp(_el$196, "flexDirection", "column");
+    _$setProp(_el$196, "alignItems", "center");
+    _$setProp(_el$196, "marginBottom", 1);
+    _$insert(_el$196, _$createComponent(Show, {
       get when() {
         return isLarge();
       },
       get fallback() {
         return (() => {
-          var _el$173 = _$createElement("box"), _el$174 = _$createElement("text"), _el$176 = _$createElement("text");
-          _$insertNode(_el$173, _el$174);
-          _$insertNode(_el$173, _el$176);
-          _$setProp(_el$173, "flexDirection", "column");
-          _$setProp(_el$173, "alignItems", "center");
-          _$insertNode(_el$174, _$createTextNode(`\u25C8 CORTEX \xB7 IA \u25C8`));
-          _$setProp(_el$174, "bold", true);
-          _$insertNode(_el$176, _$createTextNode(`[Adaptive Cognitive Control Plane]`));
+          var _el$199 = _$createElement("box"), _el$200 = _$createElement("text"), _el$202 = _$createElement("text");
+          _$insertNode(_el$199, _el$200);
+          _$insertNode(_el$199, _el$202);
+          _$setProp(_el$199, "flexDirection", "column");
+          _$setProp(_el$199, "alignItems", "center");
+          _$insertNode(_el$200, _$createTextNode(`\u25C8 CORTEX \xB7 IA \u25C8`));
+          _$setProp(_el$200, "bold", true);
+          _$insertNode(_el$202, _$createTextNode(`[Adaptive Cognitive Control Plane]`));
           _$effect((_p$) => {
-            var _v$69 = CORTEX_THEME.neonCyan, _v$70 = CORTEX_THEME.slateMuted;
-            _v$69 !== _p$.e && (_p$.e = _$setProp(_el$174, "fg", _v$69, _p$.e));
-            _v$70 !== _p$.t && (_p$.t = _$setProp(_el$176, "fg", _v$70, _p$.t));
+            var _v$83 = CORTEX_THEME.neonCyan, _v$84 = CORTEX_THEME.slateMuted;
+            _v$83 !== _p$.e && (_p$.e = _$setProp(_el$200, "fg", _v$83, _p$.e));
+            _v$84 !== _p$.t && (_p$.t = _$setProp(_el$202, "fg", _v$84, _p$.t));
             return _p$;
           }, {
             e: void 0,
             t: void 0
           });
-          return _el$173;
+          return _el$199;
         })();
       },
       get children() {
@@ -1613,22 +1786,22 @@ function HomeLogo() {
           children: (line, index) => {
             const color = index() < 4 ? CORTEX_THEME.brandViolet : index() < 9 ? CORTEX_THEME.neonCyan : index() < 12 ? CORTEX_THEME.skyBlue : CORTEX_THEME.brandPurple;
             return (() => {
-              var _el$178 = _$createElement("text");
-              _$setProp(_el$178, "fg", color);
-              _$insert(_el$178, line);
-              return _el$178;
+              var _el$204 = _$createElement("text");
+              _$setProp(_el$204, "fg", color);
+              _$insert(_el$204, line);
+              return _el$204;
             })();
           }
         }), (() => {
-          var _el$171 = _$createElement("text");
-          _$insertNode(_el$171, _$createTextNode(`\u26A1 OpenCode Multi-Agent Control Plane &amp; Task DAG \u26A1`));
-          _$setProp(_el$171, "marginTop", 1);
-          _$effect((_$p) => _$setProp(_el$171, "fg", CORTEX_THEME.slateMuted, _$p));
-          return _el$171;
+          var _el$197 = _$createElement("text");
+          _$insertNode(_el$197, _$createTextNode(`\u26A1 OpenCode Multi-Agent Control Plane &amp; Task DAG \u26A1`));
+          _$setProp(_el$197, "marginTop", 1);
+          _$effect((_$p) => _$setProp(_el$197, "fg", CORTEX_THEME.slateMuted, _$p));
+          return _el$197;
         })()];
       }
     }));
-    return _el$170;
+    return _el$196;
   })();
 }
 function initialize(api, disposeRoot) {
@@ -1705,50 +1878,125 @@ function initialize(api, disposeRoot) {
     }
     previousAttentionCount = count;
   });
+  let previousTaskStatuses = /* @__PURE__ */ new Map();
+  createEffect(() => {
+    const tasks = snapshot().tasks;
+    const toastApi = api.ui?.toast || api.toast;
+    if (toastApi && typeof toastApi.show === "function" && previousTaskStatuses.size > 0) {
+      for (const t of tasks) {
+        const prev = previousTaskStatuses.get(t.task_id);
+        if (prev && prev !== t.status) {
+          let variant = "info";
+          let title = `Cortex-IA: Tarea ${t.task_id}`;
+          if (t.status === "done") {
+            variant = "success";
+            title = `\u2713 ${t.task_id} Aprobada (PASS)`;
+          } else if (t.status === "blocked") {
+            variant = "error";
+            title = `\u2715 ${t.task_id} Bloqueada`;
+          } else if (t.status === "in_review") {
+            variant = "warning";
+            title = `\u2696 ${t.task_id} En Revisi\xF3n`;
+          } else if (t.status === "in_progress") {
+            variant = "info";
+            title = `\u26A1 ${t.task_id} Reclamada`;
+          }
+          try {
+            toastApi.show({
+              title,
+              message: clipped(t.title, 40),
+              variant
+            });
+          } catch {
+          }
+        }
+      }
+    }
+    const nextMap = /* @__PURE__ */ new Map();
+    for (const t of tasks) nextMap.set(t.task_id, t.status);
+    previousTaskStatuses = nextMap;
+  });
   createEffect(readSnapshot);
   const snapshotPoll = setInterval(readSnapshot, SNAPSHOT_POLL_INTERVAL_MS);
   const clock = setInterval(() => setNow(Date.now()), 1e3);
   const spinnerTimer = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 90);
   const pulseTimer = setInterval(() => setPulseFrame((p) => (p + 1) % NEURAL_PULSE_FRAMES.length), 350);
+  const registeredSlots = {
+    home_logo() {
+      return _$createComponent(HomeLogo, {});
+    },
+    sidebar_content(ctx) {
+      return _$createComponent(SidebarStatus, {
+        nativeActivity,
+        scopeReady,
+        snapshot,
+        jobs,
+        snapshotError,
+        now,
+        spinner,
+        pulse,
+        tasksExpanded,
+        delegationsExpanded,
+        attentionExpanded,
+        toggleTasks: () => togglePreference(TASKS_EXPANDED_KEY, tasksExpanded, setTasksExpanded),
+        toggleDelegations: () => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded),
+        toggleAttention: () => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded),
+        get theme() {
+          return ctx.theme?.current || ctx.theme;
+        }
+      });
+    },
+    home_bottom(ctx) {
+      return _$createComponent(HomeBottomStatus, {
+        snapshot,
+        jobs,
+        spinner,
+        snapshotError,
+        get theme() {
+          return ctx.theme?.current || ctx.theme;
+        }
+      });
+    },
+    // OpenCode v2 Modern Slots
+    "home.footer.status"(ctx) {
+      return _$createComponent(HomeBottomStatus, {
+        snapshot,
+        jobs,
+        spinner,
+        snapshotError,
+        get theme() {
+          return ctx.theme?.current || ctx.theme;
+        }
+      });
+    },
+    "session.panel"(ctx) {
+      return _$createComponent(SessionKanbanPanel, {
+        snapshot,
+        jobs,
+        now,
+        spinner,
+        pulse,
+        get theme() {
+          return ctx.theme?.current || ctx.theme;
+        }
+      });
+    },
+    session_panel(ctx) {
+      return _$createComponent(SessionKanbanPanel, {
+        snapshot,
+        jobs,
+        now,
+        spinner,
+        pulse,
+        get theme() {
+          return ctx.theme?.current || ctx.theme;
+        }
+      });
+    }
+  };
   api.slots.register({
     order: 85,
-    slots: {
-      home_logo() {
-        return _$createComponent(HomeLogo, {});
-      },
-      sidebar_content(ctx) {
-        return _$createComponent(SidebarStatus, {
-          nativeActivity,
-          scopeReady,
-          snapshot,
-          jobs,
-          snapshotError,
-          now,
-          spinner,
-          pulse,
-          tasksExpanded,
-          delegationsExpanded,
-          attentionExpanded,
-          toggleTasks: () => togglePreference(TASKS_EXPANDED_KEY, tasksExpanded, setTasksExpanded),
-          toggleDelegations: () => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded),
-          toggleAttention: () => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded),
-          get theme() {
-            return ctx.theme.current;
-          }
-        });
-      },
-      home_bottom(ctx) {
-        return _$createComponent(HomeBottomStatus, {
-          snapshot,
-          jobs,
-          spinner,
-          snapshotError,
-          get theme() {
-            return ctx.theme.current;
-          }
-        });
-      }
-    }
+    slots: registeredSlots
   });
   api.lifecycle.onDispose(() => {
     disposed = true;

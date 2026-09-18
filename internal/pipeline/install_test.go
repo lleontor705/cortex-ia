@@ -53,7 +53,7 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 	}
 
 	// Existence checks across every managed asset kind derived by the plan.
-	sawConfig, sawDoc, sawShared, sawSkill, sawAgent, sawCommand, sawPlugin, sawTUI := false, false, false, false, false, false, false, false
+	sawConfig, sawDoc, sawShared, sawSkill, sawAgent, sawCommand, sawPlugin, sawTUI, sawTheme := false, false, false, false, false, false, false, false, false
 	for _, mapping := range plan.mappings {
 		engineAssertRegular(t, engineJoin(home, mapping.Dest))
 		switch mapping.Kind {
@@ -73,11 +73,13 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 			sawPlugin = true
 		case "tui":
 			sawTUI = true
+		case "theme":
+			sawTheme = true
 		}
 	}
-	if !sawConfig || !sawDoc || !sawShared || !sawSkill || !sawAgent || !sawCommand || !sawPlugin || !sawTUI {
-		t.Fatalf("expected assets of every managed kind, got config=%v doc=%v shared=%v skill=%v agent=%v command=%v plugin=%v tui=%v",
-			sawConfig, sawDoc, sawShared, sawSkill, sawAgent, sawCommand, sawPlugin, sawTUI)
+	if !sawConfig || !sawDoc || !sawShared || !sawSkill || !sawAgent || !sawCommand || !sawPlugin || !sawTUI || !sawTheme {
+		t.Fatalf("expected assets of every managed kind, got config=%v doc=%v shared=%v skill=%v agent=%v command=%v plugin=%v tui=%v theme=%v",
+			sawConfig, sawDoc, sawShared, sawSkill, sawAgent, sawCommand, sawPlugin, sawTUI, sawTheme)
 	}
 
 	// Metadata commits last and agrees.

@@ -27,7 +27,8 @@ func HasManagedKind(kind assets.Kind) bool {
 		assets.KindCommand,
 		assets.KindSkill,
 		assets.KindPlugin,
-		assets.KindTUI:
+		assets.KindTUI,
+		assets.KindTheme:
 		return true
 	default:
 		return false
@@ -59,6 +60,11 @@ func DestinationWithHome(source string, kind assets.Kind, homeDir string) string
 	}
 	if kind == assets.KindTUI {
 		return path.Join(NativeLayout().TUIPluginRoot, strings.TrimPrefix(source, "tui/"))
+	}
+	if kind == assets.KindTheme {
+		p := strings.TrimPrefix(source, "themes/")
+		p = strings.TrimPrefix(p, "theme/")
+		return path.Join(NativeLayout().ThemesRoot, p)
 	}
 	return path.Join(NativeLayout().ConfigRoot, source)
 }
