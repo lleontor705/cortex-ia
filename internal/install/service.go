@@ -305,7 +305,7 @@ func (s *Service) RecoverEffect(opts EffectRecoveryOptions) (*InstallReceipt, er
 			})
 		} else if changed {
 			survivingChanges = true
-			receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/tui.jsonc")
+			receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/"+filepath.Base(tuiPath))
 			effects = append(effects, PostPipelineEffect{
 				Kind: "tui_plugin", Status: EffectStatusChanged, Destination: tuiPath,
 			})

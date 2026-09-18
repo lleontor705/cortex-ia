@@ -358,9 +358,7 @@ func (m *Manager) Add(name string, evidence []OwnershipRecord, probes ...ProbeFu
 		return result, nil
 	}
 
-	overlay, err := json.Marshal(map[string]any{
-		mcpKey: map[string]any{name: preset.Entry},
-	})
+	overlay, err := mcpOverlay(name, preset.Entry, config)
 	if err != nil {
 		return Result{}, fmt.Errorf("encode MCP overlay for %q: %w", name, err)
 	}
@@ -478,9 +476,7 @@ func (m *Manager) AddDesired(desired Desired, evidence []OwnershipRecord, probes
 		return result, nil
 	}
 
-	overlay, err := json.Marshal(map[string]any{
-		mcpKey: map[string]any{desired.Name: entry},
-	})
+	overlay, err := mcpOverlay(desired.Name, entry, config)
 	if err != nil {
 		return Result{}, fmt.Errorf("encode MCP overlay for %q: %w", desired.Name, err)
 	}
@@ -811,7 +807,10 @@ func (m *Manager) Remove(name string, evidence []OwnershipRecord) (Result, error
 	}
 
 	mutation, err := filemerge.MutateJSONFile(path, filemerge.JSONMutation{
-		RemovePaths: [][]string{{mcpKey, name}},
+		RemovePaths: [][]string{
+			{mcpKey, "servers", name},
+			{mcpKey, name},
+		},
 	})
 	if err != nil {
 		return Result{}, fmt.Errorf("remove MCP entry %q: %w", name, err)
@@ -1056,19 +1055,72 @@ func loadConfig(path string) (map[string]any, error) {
 	return config, nil
 }
 
-// mcpEntries extracts the "mcp" object. A "mcp" value of any non-object type
-// is a malformed conflict, never an implicit replacement.
+// mcpOverlay encodes the mutation overlay for adding an MCP entry, placing it
+// under "mcp.servers.<name>" for OpenCode v2 configurations and "mcp.<name>" for
+// legacy v1 configurations.
+func mcpOverlay(name string, entry map[string]any, config map[string]any) ([]byte, error) {
+	if hasMCPServers(config) {
+		return json.Marshal(map[string]any{
+			mcpKey: map[string]any{
+				"servers": map[string]any{name: entry},
+			},
+		})
+	}
+	return json.Marshal(map[string]any{
+		mcpKey: map[string]any{name: entry},
+	})
+}
+
+// hasMCPServers reports whether the configuration uses (or should use) OpenCode v2's
+// "mcp.servers" structure. It defaults to true for new or empty configurations.
+func hasMCPServers(config map[string]any) bool {
+	mcpVal, ok := config[mcpKey]
+	if !ok || mcpVal == nil {
+		return true
+	}
+	mcpMap, ok := mcpVal.(map[string]any)
+	if !ok {
+		return false
+	}
+	if _, hasServers := mcpMap["servers"]; hasServers {
+		return true
+	}
+	return len(mcpMap) == 0
+}
+
+// mcpEntries extracts the MCP entries from the configuration, recognizing both
+// native OpenCode v2 structure ("mcp.servers.<name>") and legacy v1 ("mcp.<name>").
 func mcpEntries(config map[string]any, path string) (map[string]any, error) {
 	value, present := config[mcpKey]
 	if !present || value == nil {
 		return map[string]any{}, nil
 	}
-	entries, isMap := value.(map[string]any)
+	mcpMap, isMap := value.(map[string]any)
 	if !isMap {
 		return nil, &ConflictError{
 			Kind:   ConflictMalformed,
 			Detail: fmt.Sprintf("%q in %q must be a JSON object", mcpKey, path),
 		}
 	}
-	return entries, nil
+	result := make(map[string]any)
+	if serversVal, hasServers := mcpMap["servers"]; hasServers && serversVal != nil {
+		serversMap, ok := serversVal.(map[string]any)
+		if !ok {
+			return nil, &ConflictError{
+				Kind:   ConflictMalformed,
+				Detail: fmt.Sprintf("%q.servers in %q must be a JSON object", mcpKey, path),
+			}
+		}
+		for k, v := range serversMap {
+			result[k] = v
+		}
+	}
+	for k, v := range mcpMap {
+		if k != "servers" && k != "timeout" {
+			if _, exists := result[k]; !exists {
+				result[k] = v
+			}
+		}
+	}
+	return result, nil
 }

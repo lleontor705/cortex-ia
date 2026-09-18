@@ -86,3 +86,75 @@ func TestDesiredValidation(t *testing.T) {
 		t.Error("expected error for invalid MCP name")
 	}
 }
+
+func TestMCPServersV2Structure(t *testing.T) {
+	tempHome := t.TempDir()
+	mgr := New(tempHome)
+	configPath := mgr.ConfigPath()
+
+	// 1. Add preset to fresh home - should write under mcp.servers
+	res, err := mgr.Add("cortex", nil, LocalCommandProbe)
+	if err != nil {
+		t.Fatalf("Add cortex failed: %v", err)
+	}
+	if !res.Changed && !res.Created {
+		t.Errorf("expected file creation/change on Add")
+	}
+
+	// Verify on-disk JSON has mcp.servers.cortex
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		t.Fatalf("loadConfig failed: %v", err)
+	}
+	mcpMap, ok := cfg[mcpKey].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'mcp' object in config")
+	}
+	serversMap, ok := mcpMap["servers"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'mcp.servers' object in config, got: %v", mcpMap)
+	}
+	cortexEntry, ok := serversMap["cortex"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'cortex' entry inside 'mcp.servers'")
+	}
+	if cortexEntry["type"] != "local" {
+		t.Errorf("expected type 'local', got %v", cortexEntry["type"])
+	}
+
+	// 2. Listing should see cortex
+	listing, err := mgr.List([]OwnershipRecord{*res.Ownership})
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	foundManaged := false
+	for _, entry := range listing.Entries {
+		if entry.Name == "cortex" && entry.Status == StatusManaged {
+			foundManaged = true
+			break
+		}
+	}
+	if !foundManaged {
+		t.Errorf("expected cortex to be listed as StatusManaged, got: %+v", listing.Entries)
+	}
+
+	// 3. Remove should delete from mcp.servers
+	remRes, err := mgr.Remove("cortex", []OwnershipRecord{*res.Ownership})
+	if err != nil {
+		t.Fatalf("Remove cortex failed: %v", err)
+	}
+	if !remRes.Changed {
+		t.Errorf("expected config change on Remove")
+	}
+	cfgAfter, err := loadConfig(configPath)
+	if err != nil {
+		t.Fatalf("loadConfig after remove failed: %v", err)
+	}
+	entriesAfter, err := mcpEntries(cfgAfter, configPath)
+	if err != nil {
+		t.Fatalf("mcpEntries after remove failed: %v", err)
+	}
+	if _, stillThere := entriesAfter["cortex"]; stillThere {
+		t.Errorf("cortex should have been removed from mcpEntries")
+	}
+}

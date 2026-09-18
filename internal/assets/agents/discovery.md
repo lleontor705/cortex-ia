@@ -1,98 +1,263 @@
 ---
 description: "Discover project skills, stack, engines, Cortex governance, and architecture into a bounded project profile."
 mode: subagent
-temperature: 0.2
 color: "#26A69A"
-tools:
-  task: false
-  edit: false
-  write: false
-  read: true
-  grep: true
-  glob: true
-  list: true
-  bash: true
-  skill: true
-permission:
-  cortex_*: deny
-  cortex_cortex_*: deny
-  cortex_ia_*: deny
-  cortex_ia_delegate_start: deny
-  cortex_get_rules: allow
-  cortex_cortex_get_rules: allow
-  cortex_get_status: allow
-  cortex_cortex_get_status: allow
-  cortex_get_project_context: allow
-  cortex_cortex_get_project_context: allow
-  cortex_list_skills: allow
-  cortex_cortex_list_skills: allow
-  cortex_get_observation: allow
-  cortex_cortex_get_observation: allow
-  cortex_search: allow
-  cortex_cortex_search: allow
-  cortex_get_code_symbols: allow
-  cortex_cortex_get_code_symbols: allow
-  cortex_get_code_graph: allow
-  cortex_cortex_get_code_graph: allow
-  cortex_analyze_architecture: allow
-  cortex_cortex_analyze_architecture: allow
-  cortex_detect_cycles: allow
-  cortex_cortex_detect_cycles: allow
-  cortex_ia_content_hash: allow
-  cortex_ia_snapshot_read: allow
-  cortex_ia_openspec_validate: allow
-  cortex_ia_board_list: allow
-  cortex_ia_board_status: allow
-  cortex_ia_work_list: allow
-  cortex_ia_work_status: allow
-  cortex_ia_discovery_write: allow
-  cortex_ia_report_error: allow
-  cortex_ia_doc_convert: allow
-  cortex_ia_diagram_validate: allow
-  cortex_ia_diagram_render: allow
-  bash:
-    "*": deny
-    "git status*": allow
-    "git rev-parse*": allow
-    "git remote -v*": allow
-    "git --version*": allow
-    "git branch*": allow
-    "git log*": allow
-    "rg --files*": allow
-    "where.exe *": allow
-    "where *": allow
-    "which *": allow
-    "command -v *": allow
-    "Get-Command *": allow
-    "dotnet --info*": allow
-    "dotnet --version*": allow
-    "msbuild -version*": allow
-    "vswhere *": allow
-    "go version*": allow
-    "golangci-lint --version*": allow
-    "golangci-lint version*": allow
-    "node --version*": allow
-    "npm --version*": allow
-    "pnpm --version*": allow
-    "yarn --version*": allow
-    "bun --version*": allow
-    "deno --version*": allow
-    "java -version*": allow
-    "mvn -version*": allow
-    "gradle -version*": allow
-    "cargo --version*": allow
-    "rustc --version*": allow
-    "python --version*": allow
-    "python3 --version*": allow
-    "py --version*": allow
-    "mysql --version*": allow
-    "mysqlsh --version*": allow
-    "psql --version*": allow
-    "sqlcmd -?*": allow
-    "docker --version*": allow
-    "docker compose version*": allow
-    "make --version*": allow
-    "cmake --version*": allow
+request:
+  body:
+    temperature: 0.2
+permissions:
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: read
+    resource: "*"
+    effect: allow
+  - action: grep
+    resource: "*"
+    effect: allow
+  - action: glob
+    resource: "*"
+    effect: allow
+  - action: skill
+    resource: "*"
+    effect: allow
+  - action: cortex_*
+    resource: "*"
+    effect: deny
+  - action: cortex_cortex_*
+    resource: "*"
+    effect: deny
+  - action: cortex_ia_*
+    resource: "*"
+    effect: deny
+  - action: cortex_ia_delegate_start
+    resource: "*"
+    effect: deny
+  - action: cortex_get_rules
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_rules
+    resource: "*"
+    effect: allow
+  - action: cortex_get_status
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_status
+    resource: "*"
+    effect: allow
+  - action: cortex_get_project_context
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_project_context
+    resource: "*"
+    effect: allow
+  - action: cortex_list_skills
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_list_skills
+    resource: "*"
+    effect: allow
+  - action: cortex_get_observation
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_observation
+    resource: "*"
+    effect: allow
+  - action: cortex_search
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_search
+    resource: "*"
+    effect: allow
+  - action: cortex_get_code_symbols
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_code_symbols
+    resource: "*"
+    effect: allow
+  - action: cortex_get_code_graph
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_code_graph
+    resource: "*"
+    effect: allow
+  - action: cortex_analyze_architecture
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_analyze_architecture
+    resource: "*"
+    effect: allow
+  - action: cortex_detect_cycles
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_detect_cycles
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_content_hash
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_snapshot_read
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_openspec_validate
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_board_list
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_board_status
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_list
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_status
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_discovery_write
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_report_error
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_doc_convert
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_diagram_validate
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_diagram_render
+    resource: "*"
+    effect: allow
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "git status*"
+    effect: allow
+  - action: shell
+    resource: "git rev-parse*"
+    effect: allow
+  - action: shell
+    resource: "git remote -v*"
+    effect: allow
+  - action: shell
+    resource: "git --version*"
+    effect: allow
+  - action: shell
+    resource: "git branch*"
+    effect: allow
+  - action: shell
+    resource: "git log*"
+    effect: allow
+  - action: shell
+    resource: "rg --files*"
+    effect: allow
+  - action: shell
+    resource: "where.exe *"
+    effect: allow
+  - action: shell
+    resource: "where *"
+    effect: allow
+  - action: shell
+    resource: "which *"
+    effect: allow
+  - action: shell
+    resource: "command -v *"
+    effect: allow
+  - action: shell
+    resource: "Get-Command *"
+    effect: allow
+  - action: shell
+    resource: "dotnet --info*"
+    effect: allow
+  - action: shell
+    resource: "dotnet --version*"
+    effect: allow
+  - action: shell
+    resource: "msbuild -version*"
+    effect: allow
+  - action: shell
+    resource: "vswhere *"
+    effect: allow
+  - action: shell
+    resource: "go version*"
+    effect: allow
+  - action: shell
+    resource: "golangci-lint --version*"
+    effect: allow
+  - action: shell
+    resource: "golangci-lint version*"
+    effect: allow
+  - action: shell
+    resource: "node --version*"
+    effect: allow
+  - action: shell
+    resource: "npm --version*"
+    effect: allow
+  - action: shell
+    resource: "pnpm --version*"
+    effect: allow
+  - action: shell
+    resource: "yarn --version*"
+    effect: allow
+  - action: shell
+    resource: "bun --version*"
+    effect: allow
+  - action: shell
+    resource: "deno --version*"
+    effect: allow
+  - action: shell
+    resource: "java -version*"
+    effect: allow
+  - action: shell
+    resource: "mvn -version*"
+    effect: allow
+  - action: shell
+    resource: "gradle -version*"
+    effect: allow
+  - action: shell
+    resource: "cargo --version*"
+    effect: allow
+  - action: shell
+    resource: "rustc --version*"
+    effect: allow
+  - action: shell
+    resource: "python --version*"
+    effect: allow
+  - action: shell
+    resource: "python3 --version*"
+    effect: allow
+  - action: shell
+    resource: "py --version*"
+    effect: allow
+  - action: shell
+    resource: "mysql --version*"
+    effect: allow
+  - action: shell
+    resource: "mysqlsh --version*"
+    effect: allow
+  - action: shell
+    resource: "psql --version*"
+    effect: allow
+  - action: shell
+    resource: "sqlcmd -?*"
+    effect: allow
+  - action: shell
+    resource: "docker --version*"
+    effect: allow
+  - action: shell
+    resource: "docker compose version*"
+    effect: allow
+  - action: shell
+    resource: "make --version*"
+    effect: allow
+  - action: shell
+    resource: "cmake --version*"
+    effect: allow
 ---
 
 # role/discovery [STATIC_PREFIX_V3]

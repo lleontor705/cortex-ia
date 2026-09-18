@@ -21,23 +21,30 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | Command | Purpose |
 |---------|---------|
 | `cortex-ia` (no args) | Launch interactive TUI dashboard |
-| `cortex-ia install` | Install agents + components from selection |
-| `cortex-ia sync` | Reconcile installed state with saved config (local) |
-| `cortex-ia detect` | Detect installed AI agents on the system |
-| `cortex-ia doctor` | Verify installation health (alias: `verify`) |
-| `cortex-ia verify` | Alias for `doctor` |
-| `cortex-ia repair` | Repair a crashed/incomplete installation |
-| `cortex-ia rollback` | Restore files from a backup snapshot |
-| `cortex-ia uninstall` | Remove cortex-ia managed files |
-| `cortex-ia gga` | Guardian Angel pre-commit review config |
-| `cortex-ia profiles` | Manage named preset profiles |
-| `cortex-ia agent-builder` | Build a custom agent adapter |
-| `cortex-ia update` | Self-update to latest release |
-| `cortex-ia config` | View/edit project `.cortex-ia.yaml` |
-| `cortex-ia list` | List installed agents, components, skills |
-| `cortex-ia init` | Initialize cortex-ia in a project |
-| `cortex-ia skill` | Manage skills |
-| `cortex-ia auto-install` | Auto-detect and install |
+| `cortex-ia install` | Install assets + plugins for `opencode`, `agy`, `claude`, or `all` |
+| `cortex-ia sync` | Reconcile an installed home with the current asset set |
+| `cortex-ia herdr` | Manage Herdr workspace multiplexer setup (`install`, `setup`, `status`) |
+| `cortex-ia delegate` | Accept, inspect, wait on, or reconcile external AGY leaf jobs |
+| `cortex-ia snapshot` | Read and verify one bounded local Cortex snapshot (`read`) |
+| `cortex-ia work` | Manage the local task DAG, claims, leases, transitions, approvals |
+| `cortex-ia worktree` | List or validate authoritative Git worktrees (`list`, `validate`) |
+| `cortex-ia board` | Create and manage durable task boards (`create`, `list`, `status`, `archive`, `unarchive`, `delete`, `serve`) |
+| `cortex-ia ledger` | Inspect or update the Dual Ledger (`fact`, `progress`, `status`) |
+| `cortex-ia ui` | Print a bounded read-only TUI snapshot (`snapshot`) |
+| `cortex-ia openspec` | Manage the OpenSpec SDD workspace (`validate`, `list`, `status`, `archive`, `new`) |
+| `cortex-ia web` | Launch the local operations dashboard |
+| `cortex-ia doc` | Convert office/PDF documents to Markdown or inspect metadata (`convert`, `inspect`) |
+| `cortex-ia diagram` | Validate, render, compare, or trace system diagrams (`validate`, `render`, `compare`, `reach`) |
+| `cortex-ia mcp` | Manage MCP entries (`add`, `remove`, `list`) |
+| `cortex-ia report` | Report errors or manage reporting config (`error`/`send`, `config`, `flush`, `status`) |
+| `cortex-ia hook` | Execute Antigravity lifecycle hooks (`pre-tool`, `stop`) |
+| `cortex-ia doctor` | Assess installation health (read-only) |
+| `cortex-ia rollback` | Restore a backup or list available backups (`[backup-id]`, `list`) |
+| `cortex-ia recover` | List or restore pending recovery journals (`[list]`, `<journal-id>`) |
+| `cortex-ia uninstall` | Remove the accredited installation |
+| `cortex-ia update` | Check for / install the latest release (alias: `upgrade`) |
+| `cortex-ia version` | Show version |
+| `cortex-ia help` | Show usage |
 
 ## Go Packages
 
@@ -55,7 +62,6 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | State | `internal/state/` | `state.json` + lockfile persistence |
 | System detect | `internal/system/` | OS/platform/package-manager detection |
 | Config | `internal/config/` | Project `.cortex-ia.yaml` handling |
-| Agent builder | `internal/agentbuilder/` | `agent-builder` subcommand support |
 | OpenCode | `internal/opencode/` | OpenCode model-assignment application |
 | Self-update | `internal/update/` | `cortex-ia update` support |
 | Verify | `internal/verify/` | `doctor` verification logic |
@@ -120,7 +126,7 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | AI agents | 12 |
 | Components | 14 |
 | Skills | ~27 (see `catalog/skills.go`) |
-| CLI subcommands | 18 |
+| CLI subcommands | 24 |
 | TUI screens | 28 |
 | Adapter interface methods | 23 |
 | Build targets | 6 (3 OS × 2 arch) |

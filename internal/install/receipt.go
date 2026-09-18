@@ -210,7 +210,7 @@ func applyPostPipelineEffects(homeDir string, opts Options, receipt *InstallRece
 		} else if changed {
 			survivingChanges = true
 			if receipt != nil {
-				receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/tui.jsonc")
+				receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/"+filepath.Base(tuiPath))
 			}
 			effects = append(effects, PostPipelineEffect{
 				Kind: "tui_plugin", Status: EffectStatusChanged, TransactionCovered: false, Destination: tuiPath,

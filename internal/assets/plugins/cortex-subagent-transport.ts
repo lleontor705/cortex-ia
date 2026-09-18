@@ -1,4 +1,4 @@
-import { type Plugin } from "@opencode-ai/plugin";
+import { Plugin } from "@opencode/plugin";
 import { createHash } from "node:crypto";
 
 /**
@@ -262,7 +262,9 @@ function isCleanup(tool: string, args: Record<string, any> | undefined): boolean
  * for OpenCode subagents. It supplements host system instructions with child scope
  * guidance, advisory budgets, and a configurable emergency ceiling.
  */
-export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
+export const CortexSubagentTransportPlugin = Plugin.define({
+  id: "cortex-subagent-transport",
+  async setup(ctx) {
   const emergencySteps = policyInteger("CORTEX_IA_EMERGENCY_STEPS", 500, 1, 100000);
   const repetitionLimit = policyInteger("CORTEX_IA_REPETITION_LIMIT", 5, 2, 100);
   let disposed = false;
@@ -456,9 +458,202 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
     }
   };
 
-  return {
-    dispose: async () => {
+    const abortController = new AbortController();
+    const { signal } = abortController;
+
+    if (ctx.event?.subscribe) {
+      ;(async () => {
+        try {
+          for await (const event of ctx.event.subscribe({ signal })) {
+            if (disposed || !event) continue;
+            const type = event.type || (event as any).event || "";
+            const info = (event.properties as any)?.info;
+
+            // Register child subagent sessions spawned with a parentID
+            if (type === "session.created" && info?.parentID && info?.id) {
+              register(info); // Creation proves ancestry only; it grants no allowance.
+            } else if (type === "message.part.updated") {
+              const part = (event.properties as any)?.part;
+              metadata(part);
+              if (part?.type === "tool") terminal(part.sessionID, part.callID, part.tool,
+                part.state?.input, part.state?.status, part.state?.status === "error" ? part.state.error : part.state?.output);
+            } else if (type === "session.deleted") {
+              const id = info?.id;
+              if (id) {
+                deleted.add(id);
+              }
+            }
+          }
+        } catch (err: any) {
+          if (err?.name !== "AbortError" && !signal.aborted) {}
+        }
+      })();
+    }
+
+    if (ctx.session?.hook) {
+      ctx.session.hook("context", async (event: any) => {
+        const sessionID = event?.sessionID || event?.sessionId || event?.message?.sessionID;
+        if (!sessionID) return;
+
+        // Preserve host policy, role instructions, and other plugins' system content.
+        if (childSessions.has(sessionID)) {
+          if (Array.isArray(event.system)) {
+            for (let index = event.system.length - 1; index >= 0; index--) {
+              if (event.system[index].startsWith("CORTEX_BUDGET_WARNING:") || event.system[index].startsWith("CORTEX_REPETITION_WARNING:")) {
+                event.system.splice(index, 1);
+              }
+            }
+            if (!event.system.includes(TRANSPORT_ISOLATION_SYSTEM)) event.system.push(TRANSPORT_ISOLATION_SYSTEM);
+            const count = sessionStepCounts.get(sessionID) ?? 0;
+            const budget = sessionStepLimits.get(sessionID) ?? Infinity;
+            if (count >= budget) event.system.push(`CORTEX_BUDGET_WARNING: advisory tool budget ${budget} reached (${count} attempts). Continue when useful; assess remaining scope and report partial progress if needed. This warning does not change task authority.`);
+            const streak = progress.get(sessionID)?.streak ?? 0;
+            if (streak >= repetitionLimit) event.system.push(`CORTEX_REPETITION_WARNING: ${streak} consecutive terminal tools had identical tool, arguments, status and result. This detects observable repetition, not semantic lack of progress; polling can be legitimate. Reassess the approach and report progress.`);
+          } else if (typeof event.system === "string") {
+            if (!event.system.includes(TRANSPORT_ISOLATION_SYSTEM)) {
+              event.system += "\n\n" + TRANSPORT_ISOLATION_SYSTEM;
+            }
+          }
+
+          // OpenCode v2: Proactive Role-based Tool Pruning
+          if (event?.tools && typeof event.tools === "object") {
+            const role = event?.agent || event?.role || (owners.get(sessionID)?.role);
+            if (role) {
+              const roleLower = String(role).toLowerCase();
+              if (roleLower === "orchestrator" || roleLower === "investigate" || roleLower === "reviewer") {
+                delete event.tools["edit"];
+                delete event.tools["write_to_file"];
+                delete event.tools["write"];
+                delete event.tools["apply_patch"];
+                delete event.tools["cortex_ia_work_claim"];
+                delete event.tools["cortex_ia_file_reserve"];
+              }
+              if (roleLower === "implement") {
+                delete event.tools["cortex_ia_work_create"];
+                delete event.tools["cortex_ia_work_approve"];
+                delete event.tools["cortex_ia_board_create"];
+              }
+              if (roleLower === "planner") {
+                delete event.tools["cortex_ia_work_claim"];
+                delete event.tools["cortex_ia_file_reserve"];
+                delete event.tools["cortex_ia_work_approve"];
+              }
+            }
+            if (operationalSessions.has(sessionID)) {
+              delete event.tools["edit"];
+              delete event.tools["write_to_file"];
+              delete event.tools["write"];
+              delete event.tools["apply_patch"];
+            }
+          }
+        }
+      });
+    }
+
+    if (ctx.tool?.hook) {
+      ctx.tool.hook("execute.after", async (event: any) => {
+        if (!disposed) {
+          const sessionID = event.sessionID || event.sessionId;
+          const callID = event.callID || event.callId;
+          const tool = event.tool || event.name;
+          const args = event.args || event.input;
+          const output = event.output ?? event.result;
+          terminal(sessionID, callID, tool, args, "completed", output);
+        }
+      });
+
+      ctx.tool.hook("execute.before", async (event: any) => {
+        const rawTool = (event?.tool || event?.name || "").toLowerCase();
+        const toolName = rawTool;
+        const sessionID = event?.sessionID || event?.sessionId || "";
+        const callID = event?.callID || event?.callId || "";
+        if (!sessionID) return fail();
+        await identify(sessionID);
+        // Async event callbacks can run at the await boundary: recheck before charging.
+        if (disposed || deleted.has(sessionID) || deleted.has(parents.get(sessionID) ?? "") ||
+            owners.get(sessionID)?.invalid || [...(starts.get(parents.get(sessionID) ?? "")?.values() ?? [])]
+              .some(s => s.childID === sessionID && s.invalid)) return fail();
+
+        // Guard: operational subagents cannot execute repository write tools
+        if (operationalSessions.has(sessionID)) {
+          if (["edit", "write_to_file", "write", "apply_patch"].includes(toolName)) {
+            throw new Error("SUBAGENT_TRANSPORT_ERROR: repository write tools are forbidden for operational tasks; operations execute against target systems only");
+          }
+        }
+
+        // Charge all ordinary tools, including nested task dispatches, before dispatch handling.
+        if (sessionID && childSessions.has(sessionID)) {
+          if (!callID || activeCalls.get(sessionID)?.has(callID)) return fail();
+          const historicalPending = restoredPending.get(sessionID)?.has(callID) ?? false;
+          const callKey = createHash("sha256").update(callID).digest("hex");
+          if (progress.get(sessionID)?.seen.has(callKey)) return fail();
+          const count = sessionStepCounts.get(sessionID) ?? 0;
+          const limit = sessionStepLimits.get(sessionID) ?? 0;
+          const ceiling = Number.isFinite(limit) ? emergencySteps : Infinity;
+          const inputArgs = event?.args || event?.input;
+          if (count - (historicalPending ? 1 : 0) >= ceiling) {
+            const cleanup = cleanupCounts.get(sessionID) ?? 0;
+            const cleanupReserved = restoredCleanupPending.get(sessionID)?.has(callID) ?? false;
+            if (cleanup - (cleanupReserved ? 1 : 0) < 5 && isCleanup(toolName, inputArgs)) {
+              cleanupCounts.set(sessionID, cleanup + (cleanupReserved ? 0 : 1));
+              restoredCleanupPending.get(sessionID)?.delete(callID);
+              restoredPending.get(sessionID)?.delete(callID);
+              if (!activeCalls.has(sessionID)) activeCalls.set(sessionID, new Set());
+              activeCalls.get(sessionID)!.add(callID);
+              sessionStepCounts.set(sessionID, count + (historicalPending ? 0 : 1));
+              return;
+            }
+            throw new Error(`AGENT_EMERGENCY_LIMIT: reached ${ceiling} tool attempts. Return a partial receipt and reconcile prior work before an explicitly authorized continuation; task status is unchanged. Up to five cleanup tools remain available.`);
+          }
+          restoredPending.get(sessionID)?.delete(callID);
+          if (!activeCalls.has(sessionID)) activeCalls.set(sessionID, new Set());
+          activeCalls.get(sessionID)!.add(callID);
+          sessionStepCounts.set(sessionID, count + (historicalPending ? 0 : 1));
+        }
+
+        // 1. Task dispatch gate: enforce non-empty prompt and detect contract limits
+        if (toolName === "task" || toolName === "subagent") {
+          const args = ((event?.args || event?.input) || {}) as Record<string, any>;
+          const prompt = args?.prompt || args?.description || "";
+          if (typeof prompt !== "string" || prompt.trim().length === 0) {
+            throw new Error("SUBAGENT_TRANSPORT_ERROR: task dispatch requires a non-empty prompt or envelope");
+          }
+
+          const { limit: stepBudget, operational: isOperational, prompt: normalizedPrompt } = dispatchInfo(args, prompt);
+          if (!sessionID || !callID || starts.get(sessionID)?.has(callID)) {
+            throw new Error("SUBAGENT_TRANSPORT_AMBIGUOUS: task requires a unique parent and callID pair");
+          }
+          if (args.task_id && args.session_id && args.task_id !== args.session_id) return resumeFailure();
+          const resume = args.task_id || args.session_id;
+          if (resume) {
+            if (typeof resume !== "string" || resume === sessionID) return resumeFailure();
+            await identify(resume);
+            if (!owners.has(resume) || parents.get(resume) !== sessionID || deleted.has(resume) ||
+                deleted.has(sessionID) || owners.get(resume)?.invalid) return resumeFailure();
+            if (starts.get(sessionID)?.has(callID)) return fail();
+          }
+          const start: Start = {
+            callID: callID,
+            limit: resume ? sessionStepLimits.get(resume)! : stepBudget,
+            childID: resume || undefined,
+            resume: !!resume,
+            operational: resume ? operationalSessions.has(resume) : isOperational,
+          };
+          if (!starts.has(sessionID)) starts.set(sessionID, new Map());
+          starts.get(sessionID)!.set(callID, start);
+          const normalizedArgs = { ...args, prompt: normalizedPrompt };
+          delete normalizedArgs.steps;
+          delete normalizedArgs.max_steps;
+          delete normalizedArgs.budget;
+          if (event.args) event.args = normalizedArgs;
+          if (event.input) event.input = normalizedArgs;
+        }
+      });
+    }
+
+    const cleanup = async () => {
       disposed = true;
+      abortController.abort();
       childSessions.clear();
       sessionStepCounts.clear();
       sessionStepLimits.clear();
@@ -467,135 +662,11 @@ export const CortexSubagentTransportPlugin: Plugin = async (ctx) => {
       cleanupCounts.clear();
       restorations.clear();
       restoredPending.clear(); restoredCleanupPending.clear(); activeCalls.clear(); progress.clear();
-    },
-
-    event: async ({ event }) => {
-      if (disposed || !event) return;
-      const type = event.type || event.event || "";
-      const info = (event.properties as any)?.info;
-
-      // Register child subagent sessions spawned with a parentID
-      if (type === "session.created" && info?.parentID && info?.id) {
-        register(info); // Creation proves ancestry only; it grants no allowance.
-      } else if (type === "message.part.updated") {
-        const part = (event.properties as any)?.part;
-        metadata(part);
-        if (part?.type === "tool") terminal(part.sessionID, part.callID, part.tool,
-          part.state?.input, part.state?.status, part.state?.status === "error" ? part.state.error : part.state?.output);
-      } else if (type === "session.deleted") {
-        const id = info?.id;
-        if (id) {
-          deleted.add(id);
-        }
-      }
-    },
-
-    "experimental.chat.system.transform": async (input, output) => {
-      if (!input?.sessionID || !output?.system) return;
-      
-      // Preserve host policy, role instructions, and other plugins' system content.
-      if (childSessions.has(input.sessionID)) {
-        for (let index = output.system.length - 1; index >= 0; index--) {
-          if (output.system[index].startsWith("CORTEX_BUDGET_WARNING:") || output.system[index].startsWith("CORTEX_REPETITION_WARNING:")) output.system.splice(index, 1);
-        }
-        if (!output.system.includes(TRANSPORT_ISOLATION_SYSTEM)) output.system.push(TRANSPORT_ISOLATION_SYSTEM);
-        const count = sessionStepCounts.get(input.sessionID) ?? 0;
-        const budget = sessionStepLimits.get(input.sessionID) ?? Infinity;
-        if (count >= budget) output.system.push(`CORTEX_BUDGET_WARNING: advisory tool budget ${budget} reached (${count} attempts). Continue when useful; assess remaining scope and report partial progress if needed. This warning does not change task authority.`);
-        const streak = progress.get(input.sessionID)?.streak ?? 0;
-        if (streak >= repetitionLimit) output.system.push(`CORTEX_REPETITION_WARNING: ${streak} consecutive terminal tools had identical tool, arguments, status and result. This detects observable repetition, not semantic lack of progress; polling can be legitimate. Reassess the approach and report progress.`);
-      }
-    },
-
-    "tool.execute.after": async (input, output) => {
-      if (!disposed) terminal(input.sessionID, input.callID, input.tool, input.args, "completed", output.output);
-    },
-
-    "tool.execute.before": async (input, output) => {
-      const toolName = (input?.tool || "").toLowerCase();
-      const sessionID = input?.sessionID || "";
-      if (!sessionID) return fail();
-      await identify(sessionID);
-      // Async event callbacks can run at the await boundary: recheck before charging.
-      if (disposed || deleted.has(sessionID) || deleted.has(parents.get(sessionID) ?? "") ||
-          owners.get(sessionID)?.invalid || [...(starts.get(parents.get(sessionID) ?? "")?.values() ?? [])]
-            .some(s => s.childID === sessionID && s.invalid)) return fail();
-
-      // Guard: operational subagents cannot execute repository write tools
-      if (operationalSessions.has(sessionID)) {
-        if (["edit", "write_to_file", "write", "apply_patch"].includes(toolName)) {
-          throw new Error("SUBAGENT_TRANSPORT_ERROR: repository write tools are forbidden for operational tasks; operations execute against target systems only");
-        }
-      }
-
-      // Charge all ordinary tools, including nested task dispatches, before dispatch handling.
-      if (sessionID && childSessions.has(sessionID)) {
-        if (!input.callID || activeCalls.get(sessionID)?.has(input.callID)) return fail();
-        const historicalPending = restoredPending.get(sessionID)?.has(input.callID) ?? false;
-        const callKey = createHash("sha256").update(input.callID).digest("hex");
-        if (progress.get(sessionID)?.seen.has(callKey)) return fail();
-        const count = sessionStepCounts.get(sessionID) ?? 0;
-        const limit = sessionStepLimits.get(sessionID) ?? 0;
-        const ceiling = Number.isFinite(limit) ? emergencySteps : Infinity;
-        if (count - (historicalPending ? 1 : 0) >= ceiling) {
-          const cleanup = cleanupCounts.get(sessionID) ?? 0;
-          const cleanupReserved = restoredCleanupPending.get(sessionID)?.has(input.callID) ?? false;
-          if (cleanup - (cleanupReserved ? 1 : 0) < 5 && isCleanup(toolName, output?.args)) {
-            cleanupCounts.set(sessionID, cleanup + (cleanupReserved ? 0 : 1));
-            restoredCleanupPending.get(sessionID)?.delete(input.callID);
-            restoredPending.get(sessionID)?.delete(input.callID);
-            if (!activeCalls.has(sessionID)) activeCalls.set(sessionID, new Set());
-            activeCalls.get(sessionID)!.add(input.callID);
-            sessionStepCounts.set(sessionID, count + (historicalPending ? 0 : 1));
-            return;
-          }
-          throw new Error(`AGENT_EMERGENCY_LIMIT: reached ${ceiling} tool attempts. Return a partial receipt and reconcile prior work before an explicitly authorized continuation; task status is unchanged. Up to five cleanup tools remain available.`);
-        }
-        restoredPending.get(sessionID)?.delete(input.callID);
-        if (!activeCalls.has(sessionID)) activeCalls.set(sessionID, new Set());
-        activeCalls.get(sessionID)!.add(input.callID);
-        sessionStepCounts.set(sessionID, count + (historicalPending ? 0 : 1));
-      }
-
-      // 1. Task dispatch gate: enforce non-empty prompt and detect contract limits
-      if (toolName === "task") {
-        const args = (output?.args || {}) as Record<string, any>;
-        const prompt = args?.prompt || args?.description || "";
-        if (typeof prompt !== "string" || prompt.trim().length === 0) {
-          throw new Error("SUBAGENT_TRANSPORT_ERROR: task dispatch requires a non-empty prompt or envelope");
-        }
-
-        const { limit: stepBudget, operational: isOperational, prompt: normalizedPrompt } = dispatchInfo(args, prompt);
-        if (!sessionID || !input.callID || starts.get(sessionID)?.has(input.callID)) {
-          throw new Error("SUBAGENT_TRANSPORT_AMBIGUOUS: task requires a unique parent and callID pair");
-        }
-        if (args.task_id && args.session_id && args.task_id !== args.session_id) return resumeFailure();
-        const resume = args.task_id || args.session_id;
-        if (resume) {
-          if (typeof resume !== "string" || resume === sessionID) return resumeFailure();
-          await identify(resume);
-          if (!owners.has(resume) || parents.get(resume) !== sessionID || deleted.has(resume) ||
-              deleted.has(sessionID) || owners.get(resume)?.invalid) return resumeFailure();
-          if (starts.get(sessionID)?.has(input.callID)) return fail();
-        }
-        const start: Start = {
-          callID: input.callID,
-          limit: resume ? sessionStepLimits.get(resume)! : stepBudget,
-          childID: resume || undefined,
-          resume: !!resume,
-          operational: resume ? operationalSessions.has(resume) : isOperational,
-        };
-        if (!starts.has(sessionID)) starts.set(sessionID, new Map());
-        starts.get(sessionID)!.set(input.callID, start);
-        const normalizedArgs = { ...args, prompt: normalizedPrompt };
-        delete normalizedArgs.steps;
-        delete normalizedArgs.max_steps;
-        delete normalizedArgs.budget;
-        output.args = normalizedArgs;
-      }
-    }
-  };
-};
+    };
+    (cleanup as any).dispose = cleanup;
+    return cleanup;
+  },
+});
 
 Object.assign(CortexSubagentTransportPlugin, {
   dispatchInfo,

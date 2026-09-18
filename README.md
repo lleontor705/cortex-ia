@@ -123,7 +123,7 @@ go build -o bin/cortex-ia ./cmd/cortex-ia
 
 ## 💻 CLI Command Surface
 
-All commands output structured JSON, support both positional arguments and named flags, provide fast aliases (`show`, `get`), and include universal `--help`.
+Commands that emit machine-readable receipts print JSON to stdout; human diagnostic commands (`doctor`, `rollback`, `recover`, `report status`, `help`, `update`) print plain text. Status queries accept `show`/`get` aliases where noted, and each subcommand group prints its usage with `--help`.
 
 ### 1. Task Boards (`cortex-ia board`)
 | Command | Syntax | Purpose |
@@ -139,32 +139,129 @@ All commands output structured JSON, support both positional arguments and named
 ### 2. Work Items & Leases (`cortex-ia work`)
 | Command | Syntax | Purpose |
 |---|---|---|
-| **Create** | `cortex-ia work create <id> "<title>" --board <board> [--depends <id>]...` | Add task to DAG. Auto-sets `backlog` or `ready` |
+| **Create** | `cortex-ia work create <id> "<title>" [--board <board>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <cmd>] [--file <path>]...` | Add a task to the DAG (`backlog`/`ready`) with its definition |
+| **Revise** | `cortex-ia work revise --plan <file\|@stdin>` | Safely revise an unclaimed task definition |
+| **Review Refresh** | `cortex-ia work review-refresh <id> --revision <n>` | Rebind the review to an observed revision |
+| **Archive** | `cortex-ia work archive --board <id> --change <id> --workflow <sdd-lite\|sdd-full> --spec-plane <openspec\|cortex\|hybrid>` | Close independently approved SDD work |
+| **List** | `cortex-ia work list [--board <board-id>]` | List work items, optionally scoped to one board |
 | **Status** | `cortex-ia work status <id>` *(or `show`, `get`)* | Query task status, revision, claim, and active leases |
-| **Claim** | `cortex-ia work claim <id> --owner <agent-id> [--ttl 15m]` | Atomically acquire task; returns `claim_token` |
+| **Approvals** | `cortex-ia work approvals <id>` | List historical approval records |
+| **Fingerprint** | `cortex-ia work fingerprint <id>` | Compute current fingerprints and compare with the approval |
+| **Claim** | `cortex-ia work claim <id> --owner <owner> [--path <file> ...] [--ttl 15m]` | Atomically acquire a task (and optional leases); returns `claim_token` |
+| **Controller Renew** | `cortex-ia work controller-renew <id> --owner <owner> --authority @stdin` | Renew a live claim and its complete lease set |
 | **Renew** | `cortex-ia work renew <id> --claim-token <tok> [--ttl 15m]` | Extend live claim TTL before expiry |
-| **Lease** | `cortex-ia work lease <id> --claim-token <tok> --path <file> [--ttl 15m]` | Reserve exclusive file lock; returns `lease_token` |
-| **Lease Renew** | `cortex-ia work lease-renew --path <file> --lease-token <tok>` | Extend file lease TTL while editing |
-| **Release** | `cortex-ia work release --path <file> --lease-token <tok>` | Release file lock on task completion |
-| **Transition** | `cortex-ia work transition <id> --claim-token <tok> --to in_review` | Shift state to `in_review`, `in_progress`, or `blocked` |
-| **Approve** | `cortex-ia work approve <id> --reviewer <id> --verdict PASS --evidence "<ref>"` | Record review verdict. `PASS` unlocks next tasks |
-| **Retry** | `cortex-ia work retry <id>` | Clear residual locks and return `blocked` task to `ready` |
-| **Recover** | `cortex-ia work recover` | Sweep expired claims/leases across the workspace |
+| **Lease** | `cortex-ia work lease <id> --claim-token <tok> --path <file> [--ttl 15m]` | Reserve one exclusive file lease; returns `lease_token` |
+| **Reserve** | `cortex-ia work reserve <id> --claim-token <tok> --path <file> [--path <file> ...] [--ttl 15m]` *(or `file-reserve`)* | Reserve one or more files atomically |
+| **Lease Renew** | `cortex-ia work lease-renew --path <file> --lease-token <tok> [--ttl 15m]` | Extend a file lease TTL while editing |
+| **Release** | `cortex-ia work release --path <file> --lease-token <tok>` | Release one file lease |
+| **Release All** | `cortex-ia work release-all <id> --claim-token <tok>` | Release every file lease held by a task |
+| **Transition** | `cortex-ia work transition <id> --claim-token <tok> [--revision <n>] --to <in_review\|in_progress\|blocked>` | Shift task state with an optional submission receipt |
+| **Approve** | `cortex-ia work approve <id> --reviewer <id> --verdict <PASS\|FAIL\|BLOCKED\|INCONCLUSIVE> [--evidence <ref>]` | Record a review verdict; `PASS` unlocks downstream tasks |
+| **Retry** | `cortex-ia work retry <id> [--revision <n>]` | Clear residual locks and return a `blocked` task to `ready` |
+| **Decompose** | `cortex-ia work decompose <id> --revision <n> --plan <file\|@stdin> [--contract-file <file>]` | Replace a blocked task with atomic tasks |
+| **Recover** | `cortex-ia work recover` | Sweep expired claims/leases |
+| **Verify Lease** | `cortex-ia work verify-lease --path <file> [--task <id>] [--owner <owner>]` *(or `check-lease`)* | Verify an active file lease |
 
-### 3. OpenSpec SDD Workspace (`cortex-ia openspec` / `openspec`)
+### 3. OpenSpec SDD Workspace (`cortex-ia openspec`)
 | Command | Syntax | Purpose |
 |---|---|---|
-| **Validate** | `openspec validate [dir]` | Validate `proposal.md`, `specs/`, `design.md`, `tasks.md` |
-| **List** | `openspec list` | List active change proposals in the repository |
-| **Status** | `openspec status [dir]` | Inspect completion status of OpenSpec delta specifications |
+| **Validate** | `cortex-ia openspec validate <change> --workflow <sdd-lite\|sdd-full> --phase <phase> [--json]` | Structurally validate planning artifacts. `--workflow` and `--phase` are **required** |
+| **List** | `cortex-ia openspec list` | List active change proposals in `openspec/changes/` |
+| **Status** | `cortex-ia openspec status [change-name]` | Inspect task progress and status of changes |
+| **Archive** | `cortex-ia openspec archive <change-name> --board <id> --workflow <sdd-lite\|sdd-full> --spec-plane <openspec\|cortex\|hybrid>` | Close independently approved SDD work |
+| **New** | `cortex-ia openspec new <change-name> [domain]` | Scaffold a new OpenSpec change directory |
 
 ### 4. Worker Delegation (`cortex-ia delegate`)
 | Command | Syntax | Purpose |
 |---|---|---|
-| **Create** | `cortex-ia delegate create --request-file <req.json> [--transport direct\|herdr]` | Register background worker job |
+| **Models** | `cortex-ia delegate models [--json]` | List available AGY models |
+| **Policy** | `cortex-ia delegate policy --role <implement\|investigate\|planner\|reviewer>` | Read the validated delegation policy for a role |
+| **Create** | `cortex-ia delegate create --request-file <req.json> --transport <herdr\|direct>` | Accept an external leaf job from a validated request |
 | **Status** | `cortex-ia delegate status <job-id>` | Check job execution lifecycle |
-| **Result** | `cortex-ia delegate result <job-id>` | Retrieve structured output receipt & token metrics |
+| **Query** | `cortex-ia delegate query <job-id>` *(or `view`)* | Coherent job view with status and receipt |
+| **Wait** | `cortex-ia delegate wait <job-id> [--timeout <seconds>]` | Wait for completion with bounded polling |
+| **Result** | `cortex-ia delegate result <job-id>` | Retrieve the structured output receipt |
+| **Cancel** | `cortex-ia delegate cancel <job-id>` | Request cancellation; the worker confirms termination |
 | **Recover** | `cortex-ia delegate recover` | Reconcile lost or expired delegation jobs |
+| **Reconcile** | `cortex-ia delegate reconcile <job-id> --reason <text> [--session-id <id>]` | Prove prior-boot termination of a lost job |
+| **Set Pane** | `cortex-ia delegate set-pane <job-id> <pane-id>` | Bind a job to a Herdr pane |
+
+`cortex-ia delegate worker --job <id> --request-file <path>` is the internal worker entry point used by the bridge; it is not part of the normal operator surface.
+
+### 5. Herdr Multiplexer (`cortex-ia herdr`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Install** | `cortex-ia herdr install` | Install the Herdr workspace multiplexer |
+| **Setup** | `cortex-ia herdr setup` | Configure Herdr integration for live worker panes |
+| **Status** | `cortex-ia herdr status` | Show Herdr status (also the default with no subcommand) |
+
+### 6. Cortex Snapshots (`cortex-ia snapshot`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Read** | `cortex-ia snapshot read --project <project> --id <id> [--expected-sha256 <digest>]` | Read and verify one bounded local Cortex observation |
+
+### 7. Git Worktrees (`cortex-ia worktree`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **List** | `cortex-ia worktree list [--repo <repo-path>]` | List authoritative Git worktrees |
+| **Validate** | `cortex-ia worktree validate <worktree-path> [--repo <repo-path>] [--head <commit>]` | Validate a worktree contract against git porcelain |
+
+`current_workspace` is the only supported execution strategy. `worktree create`, `clean`, `drop`, `delete`, `remove`, and `prune` are retired and fail closed; existing worktrees are preserved.
+
+### 8. Dual Ledger (`cortex-ia ledger`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Fact Add** | `cortex-ia ledger fact add <text> [--board <id>] [--source <src>] [--sync-cortex]` | Record a verified fact (optionally synced to Cortex memory) |
+| **Fact List** | `cortex-ia ledger fact list [--board <board-id>] [--json]` | List verified facts in chronological order |
+| **Progress** | `cortex-ia ledger progress record --summary <text> [--drift] [--action <act>]` | Record an orchestrator progress evaluation |
+| **Status** | `cortex-ia ledger status [--board <board-id>] [--json]` | Display the full dual-ledger report (facts + progress) |
+
+### 9. UI Snapshot (`cortex-ia ui`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Snapshot** | `cortex-ia ui snapshot [--project <path>] [--session-id <id>] [--root-session-id <id>]` | Print a bounded read-only TUI snapshot |
+
+### 10. Documents & Diagrams (`cortex-ia doc` / `cortex-ia diagram`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Doc Convert** | `cortex-ia doc convert <file> [-o <out.md>] [--standalone] [--format <fmt>] [--max-lines <n>] [--ocr <hosted\|reject>] [--json]` | Convert office/PDF documents to Markdown |
+| **Doc Inspect** | `cortex-ia doc inspect <file> [--json]` | Inspect document metadata |
+| **Diagram Validate** | `cortex-ia diagram validate <type> <spec.json> [--quality <standard\|showcase>] [--json]` | Validate diagram topology |
+| **Diagram Render** | `cortex-ia diagram render <type> <spec.json> [output.html] [--quality <standard\|showcase>] [--json]` | Render an interactive diagram HTML file |
+| **Diagram Compare** | `cortex-ia diagram compare <base.json> <head.json> [output.html] [--json]` | Compare two architecture snapshots |
+| **Diagram Reach** | `cortex-ia diagram reach <type> <spec.json> --from <node-id> [--direction <upstream\|downstream\|both>] [--json]` | Trace graph reachability from a node |
+
+### 11. MCP Management (`cortex-ia mcp`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Add (preset)** | `cortex-ia mcp add <name> --preset [--dry-run]` | Register a managed catalog MCP preset |
+| **Add (local)** | `cortex-ia mcp add <name> --local [--env KEY=VALUE]... -- <command> [args...]` | Register a managed custom local MCP server |
+| **Add (remote)** | `cortex-ia mcp add <name> --remote <url> [--header KEY=VALUE]... [--dry-run]` | Register a managed custom remote MCP server |
+| **List** | `cortex-ia mcp list [--json]` | List managed MCP entries and ownership |
+| **Remove** | `cortex-ia mcp remove <name> [--dry-run]` | Deregister a managed MCP entry |
+
+`--preset`, `--local`, and `--remote` are mutually exclusive: exactly one is required per `add`.
+
+### 12. Reporting & Hooks (`cortex-ia report` / `cortex-ia hook`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Report Error** | `cortex-ia report error --code <code> --message <msg> [--details <text\|@stdin>]` *(or `send`)* | Generate and send a signed error report |
+| **Report Config** | `cortex-ia report config [--endpoint <url>] [--secret <key>] [--enable\|--disable]` | Configure the reporting endpoint |
+| **Report Flush** | `cortex-ia report flush` | Retry bounded queued reports |
+| **Report Status** | `cortex-ia report status` | Show the current reporting configuration |
+| **Hook Pre-Tool** | `cortex-ia hook pre-tool` | Execute the Antigravity pre-tool lifecycle hook |
+| **Hook Stop** | `cortex-ia hook stop` | Execute the Antigravity stop lifecycle hook |
+
+### 13. Maintenance & Lifecycle (`install` / `sync` / `doctor` / `rollback` / `recover` / `uninstall` / `update`)
+| Command | Syntax | Purpose |
+|---|---|---|
+| **Install** | `cortex-ia install [--target <list>] [--dry-run] [--overwrite]` | Install assets and plugins (default target: `opencode`) |
+| **Sync** | `cortex-ia sync [--target <list>] [--dry-run] [--overwrite]` | Reconcile the installed home with the current asset set |
+| **Doctor** | `cortex-ia doctor` | Read-only installation health report |
+| **Rollback** | `cortex-ia rollback [backup-id]` / `cortex-ia rollback list` | Restore a backup or list available backups |
+| **Recover** | `cortex-ia recover [list]` / `cortex-ia recover <journal-id>` | List or restore pending recovery journals |
+| **Uninstall** | `cortex-ia uninstall [--target <list>] [--dry-run]` | Remove the accredited installation |
+| **Update** | `cortex-ia update [--check]` *(or `upgrade`)* | Check for / install the latest release |
 
 ---
 

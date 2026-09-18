@@ -1,4 +1,4 @@
-import { type Plugin } from "@opencode-ai/plugin";
+import { Plugin } from "@opencode/plugin";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -176,29 +176,65 @@ function getAllDiscoveredSkills(options: SkillDiscoveryOptions = {}): ResolvedSk
   return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export const CortexSkillDiscoveryPlugin: Plugin = async (ctx) => {
-  const allSkills = getAllDiscoveredSkills({ directory: ctx.directory });
-  const repoOnly = allSkills.filter(s => s.origin === "repository");
+export const CortexSkillDiscoveryPlugin = Plugin.define({
+  id: "cortex-skill-discovery",
+  async setup(ctx) {
+    const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
+    const allSkills = getAllDiscoveredSkills({ directory });
+    const repoOnly = allSkills.filter(s => s.origin === "repository");
 
-  return {
-    "experimental.chat.system.transform": async (_input, output) => {
-      if (repoOnly.length === 0) return;
+    // OpenCode v2 Native Skills Registration
+    if ((ctx as any).skill?.transform) {
+      await (ctx as any).skill.transform((editor: any) => {
+        for (const s of repoOnly) {
+          try {
+            const content = fs.existsSync(s.path) ? fs.readFileSync(s.path, "utf-8") : "";
+            editor.add({
+              id: s.name,
+              name: s.name,
+              description: s.description || "Repository-local custom skill",
+              location: s.path,
+              content,
+              autoinvoke: false,
+            });
+          } catch {}
+        }
+      });
+    }
 
-      const skillSummary = repoOnly
-        .map((s) => `- \`${s.name}\` [${s.origin}, p${s.precedence}]: ${s.description || "Repository skill"} (Path: \`${s.path}\`)`)
-        .join("\n");
+    if (ctx.session?.hook) {
+      await ctx.session.hook("context", async (event: any) => {
+        if (repoOnly.length === 0) return;
 
-      const note = `\n\n### Repository-Local Custom Skills Available:\n${skillSummary}\n` +
-        `The orchestrator and subagents may load these project-specific skills directly from their workspace paths.\n`;
+        const skillSummary = repoOnly
+          .map((s) => `- \`${s.name}\` [${s.origin}, p${s.precedence}]: ${s.description || "Repository skill"} (Path: \`${s.path}\`)`)
+          .join("\n");
 
-      if (output.system.length > 0) {
-        output.system[output.system.length - 1] += note;
-      } else {
-        output.system.push(note);
-      }
-    },
-  };
-};
+        const note = `\n\n### Repository-Local Custom Skills Available:\n${skillSummary}\n` +
+          `The orchestrator and subagents may load these project-specific skills directly from their workspace paths.\n`;
+
+        if (Array.isArray(event.system)) {
+          if (event.system.length > 0) {
+            const last = event.system[event.system.length - 1];
+            if (typeof last === "string") {
+              event.system[event.system.length - 1] += note;
+            } else if (last && typeof last === "object" && "text" in last) {
+              last.text += note;
+            } else {
+              event.system.push({ type: "text", text: note });
+            }
+          } else {
+            event.system.push({ type: "text", text: note });
+          }
+        }
+      });
+    }
+
+    const cleanup = async () => {};
+    (cleanup as any).dispose = cleanup;
+    return cleanup;
+  }
+});
 
 Object.assign(CortexSkillDiscoveryPlugin, {
   canonicalPath,

@@ -42,8 +42,9 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
 2. **Pre-Edit Blast Radius & Observable Boundary:**
    - Establish the observable boundary and verification command before editing.
    - Inspect target symbols with filtered `cortex_get_code_symbols` and bounded source reads. The current `cortex_get_blast_radius` schema accepts observation IDs, not code symbols.
-3. **Minimal Coherent Implementation:**
+3. **Minimal Coherent Implementation & Zero-Noise Comments:**
    - Make the minimum coherent change. Avoid incidental refactors, dependency additions, generated-file edits outside canonical generators, and permission widening.
+   - **Zero-Noise Comments Invariant**: Write clean, self-documenting code. Never add narrative comments explaining WHAT obvious code does (e.g. `// get user`, `// return result`, `// increment count`), changelog/task attribution tags, or commented-out dead code. Comments are reserved strictly for non-obvious *WHY* (design rationale/workarounds) and essential domain invariants.
 4. **Focused Checks & Proportional Verification:**
    - Run focused checks, then proportional regression. Record command, exit code, revision, timestamp, and concise result.
    - For declarative configs (Docker/Compose, YAML, JSON, `.dockerignore`, `.env*`), verify syntax and target values directly using standard parsers or real commands; NEVER invent ad-hoc shell lexers or custom grammar parsers.
@@ -69,7 +70,7 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
 
 ## Output
 
-Return a concise Markdown report and execute the transition tool:
+Return a concise Markdown report and execute the transition tool. **Terse Communication Policy**: Deliver ONLY the structured Implementation Summary and minimal bullet points; omit chat narration of intermediate steps, conversational filler, and redundant diff echoes.
 
 ```markdown
 ### Implementation Summary

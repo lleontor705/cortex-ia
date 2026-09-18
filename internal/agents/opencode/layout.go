@@ -91,7 +91,7 @@ func (l Layout) IsWorkflowPath(relative string) bool {
 // the plugin destination root, so mapping and validation cannot disagree.
 func (l Layout) IsNativePath(relative string) bool {
 	clean := path.Clean(strings.ReplaceAll(relative, "\\", "/"))
-	if clean == path.Join(l.ConfigRoot, "opencode.json") || clean == path.Join(l.ConfigRoot, "opencode.jsonc") || clean == path.Join(l.ConfigRoot, "AGENTS.md") {
+	if clean == path.Join(l.ConfigRoot, "opencode.json") || clean == path.Join(l.ConfigRoot, "opencode.jsonc") || clean == path.Join(l.ConfigRoot, "AGENTS.md") || clean == path.Join(l.ConfigRoot, "cli.json") || clean == path.Join(l.ConfigRoot, "tui.jsonc") || clean == path.Join(l.ConfigRoot, "tui.json") {
 		return true
 	}
 	if nativeMarkdownChild(clean, l.AgentsRoot) || nativeMarkdownChild(clean, l.CommandsRoot) {

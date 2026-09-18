@@ -1,6 +1,6 @@
 # Backups & Rollback
 
-Every install, sync, upgrade, and uninstall in cortex-ia creates a snapshot. You can list them, pin the important ones, prune the rest, and roll back to any of them.
+Every install, sync, and uninstall in cortex-ia creates a snapshot. You can list them and roll back to any of them; older unpinned snapshots are pruned automatically.
 
 ## Where backups live
 
@@ -39,17 +39,16 @@ Two new fields vs older manifests (both `omitempty`, so legacy backups still loa
 ## Commands
 
 ```
-cortex-ia list backups             # list all backups newest-first
-cortex-ia backup pin <id>          # pin a backup (never auto-prune)
-cortex-ia backup unpin <id>        # unpin
-cortex-ia backup prune [--keep N]  # delete oldest unpinned beyond N (default 5)
-cortex-ia rollback                 # restore the most recent backup
-cortex-ia rollback <id>            # restore a specific backup
+cortex-ia rollback list        # list all backups newest-first
+cortex-ia rollback             # restore the most recent backup
+cortex-ia rollback <backup-id> # restore a specific backup
 ```
+
+`rollback list` (alias `--list`) is read-only. A real rollback is destructive and requires an interactive terminal and explicit confirmation; piped or closed input fails closed without writing anything.
 
 ## Retention policy
 
-`Prune` (also called automatically at the end of `install` / `sync`) keeps the **5 most recent unpinned** backups. Pinned backups never count toward the limit and are never deleted by `Prune`. Configurable via `--keep`.
+`Prune` (also called automatically at the end of `install` / `sync`) keeps the **5 most recent unpinned** backups. Pinned backups never count toward the limit and are never deleted by `Prune`.
 
 ## Deduplication
 
@@ -66,31 +65,17 @@ When a sync produces the same content as the previous backup (same checksum), `B
 Recipe to undo an uninstall:
 
 ```bash
-# 1. Uninstall persona + cortex from claude-code (snapshot taken automatically)
-cortex-ia uninstall --component persona --component cortex --agent claude-code
+# 1. Uninstall OpenCode (snapshot taken automatically)
+cortex-ia uninstall --target opencode
 
-# 2. Inspect the snapshot
-cortex-ia list backups | grep uninstall
+# 2. Inspect the snapshots
+cortex-ia rollback list
 
 # 3. Roll back if you change your mind
-cortex-ia rollback --backup 20260426-093015-uninstall
+cortex-ia rollback <backup-id>
 ```
 
-Skip the snapshot only when you're certain you want a one-way uninstall:
-
-```bash
-cortex-ia uninstall --all --no-backup --yes
-```
-
-`--no-backup` is intentionally non-default because the bulk of the time-cost of an uninstall is the cleaner work, not the snapshot — and the snapshot is the only thing that lets you change your mind.
-
-## When to pin
-
-- Before a known-risky upgrade (`cortex-ia upgrade`)
-- Before manually editing one of the managed agent config files
-- When you've reached a known-good state you want to preserve indefinitely
-
-Pinned backups are explicit; you have to `cortex-ia backup unpin` to remove that protection.
+The pre-uninstall snapshot is captured automatically; there is no flag to skip it, so a rollback can always restore the previous state.
 
 ## Implementation pointers
 

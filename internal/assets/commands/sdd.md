@@ -1,7 +1,7 @@
 ---
 description: Plan and execute a right-sized SDD Lite or Full change with preflight alignment and review budget protection
 agent: orchestrator
-subtask: false
+subagent: false
 ---
 
 1. Perform **SDD Preflight**: Establish execution mode (Interactive vs Auto), review budget (<400 lines), and `spec_plane=openspec|cortex|hybrid`; preserve the user's preference beyond any explicitly scoped exception.

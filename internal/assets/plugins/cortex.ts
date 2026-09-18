@@ -32,7 +32,7 @@
  *     redelivers, or fabricates signals from their results.
  */
 
-import type { Plugin } from "@opencode-ai/plugin"
+import { Plugin } from "@opencode/plugin"
 import fs from "fs"
 import os from "os"
 import path from "path"
@@ -700,264 +700,310 @@ function stripPrivateTags(str: string): string {
 
 // ─── Plugin Export ───────────────────────────────────────────────────────────
 
-export const Cortex: Plugin = async (ctx) => {
-  const project = extractProjectName(ctx.directory)
+export const Cortex = Plugin.define({
+  id: "cortex",
+  async setup(ctx) {
+    const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd()
+    const project = extractProjectName(directory)
 
-  const toolCounts = new Map<string, number>()
-  const knownSessions = new Set<string>()
-  const subAgentSessions = new Set<string>()
+    const toolCounts = new Map<string, number>()
+    const knownSessions = new Set<string>()
+    const subAgentSessions = new Set<string>()
 
-  type SessionEnsureResult = {
-    confirmed: boolean
-    classification: Classification
-  }
+    type SessionEnsureResult = {
+      confirmed: boolean
+      classification: Classification
+    }
 
-  // A session counts as known only after the server confirmed it: a 2xx
-  // persisted echo of the exact session identity, or a 409 conflict proven
-  // by reading the exact persisted identity back. A bare 409 body is an
-  // error object and cannot prove which session exists, so it is never
-  // trusted on its own. Failures are classified, never cached, and a later
-  // event retries instead of assuming continuity.
-  async function ensureSession(sessionId: string): Promise<SessionEnsureResult> {
-    if (!sessionId || subAgentSessions.has(sessionId)) {
-      return { confirmed: false, classification: "validation" }
-    }
-    if (knownSessions.has(sessionId)) {
-      return { confirmed: true, classification: "success" }
-    }
-    if (!CORTEX_HTTP_TOKEN && !isTokenlessEligible(await detectCortexMode())) {
-      report("session", "config", "missing CORTEX_HTTP_TOKEN")
-      return { confirmed: false, classification: "config" }
-    }
-    const sent = { id: sessionId, project, directory: ctx.directory }
-    const result = await request("/api/sessions", sent)
-    if (result.ok) {
-      if (persistedSession(sent)(result.body)) {
-        knownSessions.add(sessionId)
+    // A session counts as known only after the server confirmed it: a 2xx
+    // persisted echo of the exact session identity, or a 409 conflict proven
+    // by reading the exact persisted identity back. A bare 409 body is an
+    // error object and cannot prove which session exists, so it is never
+    // trusted on its own. Failures are classified, never cached, and a later
+    // event retries instead of assuming continuity.
+    async function ensureSession(sessionId: string): Promise<SessionEnsureResult> {
+      if (!sessionId || subAgentSessions.has(sessionId)) {
+        return { confirmed: false, classification: "validation" }
+      }
+      if (knownSessions.has(sessionId)) {
         return { confirmed: true, classification: "success" }
       }
-      report("session", "invalid_response")
-      return { confirmed: false, classification: "invalid_response" }
+      if (!CORTEX_HTTP_TOKEN && !isTokenlessEligible(await detectCortexMode())) {
+        report("session", "config", "missing CORTEX_HTTP_TOKEN")
+        return { confirmed: false, classification: "config" }
+      }
+      const sent = { id: sessionId, project, directory }
+      const result = await request("/api/sessions", sent)
+      if (result.ok) {
+        if (persistedSession(sent)(result.body)) {
+          knownSessions.add(sessionId)
+          return { confirmed: true, classification: "success" }
+        }
+        report("session", "invalid_response")
+        return { confirmed: false, classification: "invalid_response" }
+      }
+      if (result.classification === "conflict") {
+        // Contract-proven conflict: confirm the exact existing identity through
+        // the read endpoint before trusting the session.
+        const existing = await request(`/api/sessions/${encodeURIComponent(sessionId)}`)
+        if (existing.ok && persistedSession(sent)(existing.body)) {
+          knownSessions.add(sessionId)
+          return { confirmed: true, classification: "success" }
+        }
+        const classification = existing.ok ? "invalid_response" : existing.classification
+        report("session", classification)
+        return { confirmed: false, classification }
+      }
+      report("session", result.classification)
+      return { confirmed: false, classification: result.classification }
     }
-    if (result.classification === "conflict") {
-      // Contract-proven conflict: confirm the exact existing identity through
-      // the read endpoint before trusting the session.
-      const existing = await request(`/api/sessions/${encodeURIComponent(sessionId)}`)
-      if (existing.ok && persistedSession(sent)(existing.body)) {
-        knownSessions.add(sessionId)
-        return { confirmed: true, classification: "success" }
+
+    // Try to start cortex server if not running. Never attempted without a
+    // configured credential: an unauthenticated plugin sends nothing.
+    if (CORTEX_HTTP_TOKEN) {
+      const running = await isCortexRunning()
+      if (!running) {
+        try {
+          Bun.spawn([CORTEX_BIN, "serve"], {
+            stdout: "ignore",
+            stderr: "ignore",
+            stdin: "ignore",
+          })
+          await new Promise((r) => setTimeout(r, 500))
+        } catch {}
       }
-      const classification = existing.ok ? "invalid_response" : existing.classification
-      report("session", classification)
-      return { confirmed: false, classification }
     }
-    report("session", result.classification)
-    return { confirmed: false, classification: result.classification }
-  }
 
-  // Try to start cortex server if not running. Never attempted without a
-  // configured credential: an unauthenticated plugin sends nothing.
-  if (CORTEX_HTTP_TOKEN) {
-    const running = await isCortexRunning()
-    if (!running) {
-      try {
-        Bun.spawn([CORTEX_BIN, "serve"], {
-          stdout: "ignore",
-          stderr: "ignore",
-          stdin: "ignore",
-        })
-        await new Promise((r) => setTimeout(r, 500))
-      } catch {}
-    }
-  }
+    const abortController = new AbortController()
+    const { signal } = abortController
 
-  return {
-    // ─── Event Listeners ───────────────────────────────────────────
+    if (ctx.event?.subscribe) {
+      ;(async () => {
+        try {
+          for await (const event of ctx.event.subscribe({ signal })) {
+            if (!event) continue
+            if (event.type === "session.created") {
+              const info = (event.properties as any)?.info
+              const sessionId = info?.id
+              const parentID = info?.parentID
+              const title: string = info?.title ?? ""
 
-    event: async ({ event }) => {
-      if (event.type === "session.created") {
-        const info = (event.properties as any)?.info
-        const sessionId = info?.id
-        const parentID = info?.parentID
-        const title: string = info?.title ?? ""
+              const isSubAgent = !!parentID || title.endsWith(" subagent)")
 
-        const isSubAgent = !!parentID || title.endsWith(" subagent)")
-
-        if (sessionId && !isSubAgent) {
-          await ensureSession(sessionId)
-        } else if (sessionId && isSubAgent) {
-          subAgentSessions.add(sessionId)
-        }
-      }
-
-      if (event.type === "session.deleted") {
-        const info = (event.properties as any)?.info
-        const sessionId = info?.id
-        if (sessionId) {
-          if (!subAgentSessions.has(sessionId) && knownSessions.has(sessionId)) {
-            await deliver(
-              "session",
-              `/api/sessions/${encodeURIComponent(sessionId)}/end`,
-              { summary: "" },
-              persistedEndStatus()
-            )
-          }
-          toolCounts.delete(sessionId)
-          knownSessions.delete(sessionId)
-          subAgentSessions.delete(sessionId)
-        }
-      }
-    },
-
-    // ─── User Prompt Capture ──────────────────────────────────────
-
-    "chat.message": async (input, output) => {
-      try {
-        if (subAgentSessions.has(input.sessionID)) return
-
-        const sessionId = input.sessionID
-        const content = output.parts
-          .filter((p) => p.type === "text")
-          .map((p) => (p as any).text ?? "")
-          .join("\n")
-          .trim()
-
-        const fallback = !content && output.message.summary
-          ? `${output.message.summary.title ?? ""}\n${output.message.summary.body ?? ""}`.trim()
-          : ""
-
-        const finalContent = content || fallback
-
-        if (finalContent.length > 10) {
-          // SEC-04: no protected write unless the exact session was
-          // positively confirmed. Failures stay uncached and retryable on a
-          // later host event.
-          const session = await ensureSession(sessionId)
-          if (!session.confirmed) return
-          const redacted = stripPrivateTags(finalContent)
-          const record = truncateUtf8(redacted)
-          await deliver(
-            "prompt",
-            "/api/prompts",
-            {
-              session_id: sessionId,
-              project,
-              ...record,
-            },
-            persistedPrompt({ content: record.content, session_id: sessionId })
-          )
-        }
-      } catch {
-        report("prompt", "unavailable")
-      }
-    },
-
-    // ─── Tool Execution Hook ─────────────────────────────────────
-
-    "tool.execute.after": async (input, output) => {
-      try {
-        const tool = input.tool.toLowerCase()
-
-        const normalizedTool = tool.startsWith("cortex_") ? tool.slice(7) : tool
-
-        // Durable handoffs were already delivered through the MCP channel;
-        // their result is not input to this plugin. Stay neutral: no
-        // interpretation, no redelivery, no fabricated signal.
-        if (tool === "cortex_handoff" || normalizedTool === "cortex_handoff") return
-
-        if (CORTEX_TOOLS.has(tool) || CORTEX_TOOLS.has(normalizedTool)) return
-
-        const sessionId = input.sessionID
-        let sessionConfirmed = false
-        if (sessionId) {
-          const session = await ensureSession(sessionId)
-          sessionConfirmed = session.confirmed
-          toolCounts.set(sessionId, (toolCounts.get(sessionId) ?? 0) + 1)
-        }
-
-        // Passive capture from Task tool output — protected write, so it
-        // requires the same confirmed session.
-        if (input.tool === "Task" && output && sessionId && sessionConfirmed) {
-          const text = typeof output === "string" ? output : JSON.stringify(output)
-          if (text.length > 50) {
-            const redacted = stripPrivateTags(text)
-            const record = truncateUtf8(redacted)
-            const sent = {
-              content: record.content,
-              session_id: sessionId,
-              title: "Passive capture from task",
-              project,
-              type: "passive",
-              scope: "project",
+              if (sessionId && !isSubAgent) {
+                await ensureSession(sessionId)
+              } else if (sessionId && isSubAgent) {
+                subAgentSessions.add(sessionId)
+              }
             }
+
+            if (event.type === "session.deleted") {
+              const info = (event.properties as any)?.info
+              const sessionId = info?.id
+              if (sessionId) {
+                if (!subAgentSessions.has(sessionId) && knownSessions.has(sessionId)) {
+                  await deliver(
+                    "session",
+                    `/api/sessions/${encodeURIComponent(sessionId)}/end`,
+                    { summary: "" },
+                    persistedEndStatus()
+                  )
+                }
+                toolCounts.delete(sessionId)
+                knownSessions.delete(sessionId)
+                subAgentSessions.delete(sessionId)
+              }
+            }
+          }
+        } catch (err: any) {
+          if (err?.name !== "AbortError" && !signal.aborted) {
+            // Stream closed or error
+          }
+        }
+      })()
+    }
+
+    if (ctx.session?.hook) {
+      // ─── User Prompt Capture ──────────────────────────────────────
+      ctx.session.hook("prompt", async (event: any) => {
+        try {
+          const sessionId = event?.sessionID || event?.sessionId || event?.message?.sessionID || event?.message?.sessionId
+          if (!sessionId || subAgentSessions.has(sessionId)) return
+
+          let content = ""
+          if (Array.isArray(event.parts)) {
+            content = event.parts
+              .filter((p: any) => p?.type === "text")
+              .map((p: any) => p?.text ?? "")
+              .join("\n")
+              .trim()
+          } else if (typeof event.prompt === "string") {
+            content = event.prompt.trim()
+          } else if (typeof event.content === "string") {
+            content = event.content.trim()
+          }
+
+          const fallback = !content && event.message?.summary
+            ? `${event.message.summary.title ?? ""}\n${event.message.summary.body ?? ""}`.trim()
+            : ""
+
+          const finalContent = content || fallback
+
+          if (finalContent.length > 10) {
+            // SEC-04: no protected write unless the exact session was
+            // positively confirmed. Failures stay uncached and retryable on a
+            // later host event.
+            const session = await ensureSession(sessionId)
+            if (!session.confirmed) return
+            const redacted = stripPrivateTags(finalContent)
+            const record = truncateUtf8(redacted)
             await deliver(
-              "observation",
-              "/api/observations",
+              "prompt",
+              "/api/prompts",
               {
-                session_id: sent.session_id,
-                title: sent.title,
-                type: sent.type,
-                project: sent.project,
-                scope: sent.scope,
+                session_id: sessionId,
+                project,
                 ...record,
               },
-              persistedObservation(sent)
+              persistedPrompt({ content: record.content, session_id: sessionId })
             )
           }
+        } catch {
+          report("prompt", "unavailable")
         }
-      } catch {
-        report("observation", "unavailable")
-      }
-    },
+      })
 
-    // ─── System Prompt: Always-on memory instructions ──────────
-
-    "experimental.chat.system.transform": async (_input, output) => {
-      const mode = await detectCortexMode()
-      const instructions = buildMemoryInstructions(mode)
-      if (output.system.length > 0) {
-        output.system[output.system.length - 1] += "\n\n" + instructions
-      } else {
-        output.system.push(instructions)
-      }
-    },
-
-    // ─── Compaction Hook ──────────────────────────────────────────
-
-    "experimental.session.compacting": async (input, output) => {
-      try {
-        // SEC-04: returned context is trusted only when a credential is
-        // configured and the exact session was positively confirmed.
-        const session = input.sessionID
-          ? await ensureSession(input.sessionID)
-          : { confirmed: false, classification: "validation" as Classification }
-        if (CORTEX_HTTP_TOKEN && session.confirmed) {
-          const result = await request(
-            `/api/observations?project=${encodeURIComponent(project)}&limit=20`
-          )
-          if (!result.ok) {
-            report("observation", result.classification)
-          } else if (!isObservationSummaryList(result.body)) {
-            report("observation", "invalid_response")
-          } else if (result.body.length > 0) {
-            const ctx = (result.body as any[]).map((o) => `- [${o.type}] ${o.title}`).join("\n")
-            output.context.push(`Recent Cortex memories for ${project}:\n${ctx}`)
+      // ─── System Prompt: Always-on memory instructions ──────────
+      ctx.session.hook("context", async (event: any) => {
+        try {
+          const mode = await detectCortexMode()
+          const instructions = buildMemoryInstructions(mode)
+          if (Array.isArray(event.system)) {
+            if (event.system.length > 0) {
+              event.system[event.system.length - 1] += "\n\n" + instructions
+            } else {
+              event.system.push(instructions)
+            }
+          } else if (typeof event.system === "string") {
+            event.system = event.system ? event.system + "\n\n" + instructions : instructions
           }
-        }
+        } catch {}
+      })
 
-        output.context.push(
-          `CRITICAL INSTRUCTION FOR COMPACTED SUMMARY:\n` +
-          `The agent has access to Cortex persistent memory via MCP tools.\n` +
-          `Include this role-aware instruction at the TOP of the compacted summary:\n\n` +
-          `"If the current role is the root orchestrator, summarize compacted context with cortex_session_summary for project '${project}'. ` +
-          `If the current role is a subagent or external leaf, do not call session lifecycle or summary tools; use cortex_context only when needed."`
-        )
-      } catch {
-        // Non-blocking: a hook failure must never break the host compaction.
-      }
-    },
-  };
-};
+      // ─── Compaction Hook ──────────────────────────────────────────
+      ctx.session.hook("compaction", async (event: any) => {
+        try {
+          // SEC-04: returned context is trusted only when a credential is
+          // configured and the exact session was positively confirmed.
+          const sessionId = event?.sessionID || event?.sessionId || event?.message?.sessionID
+          const session = sessionId
+            ? await ensureSession(sessionId)
+            : { confirmed: false, classification: "validation" as Classification }
+          if (CORTEX_HTTP_TOKEN && session.confirmed) {
+            const result = await request(
+              `/api/observations?project=${encodeURIComponent(project)}&limit=20`
+            )
+            if (!result.ok) {
+              report("observation", result.classification)
+            } else if (!isObservationSummaryList(result.body)) {
+              report("observation", "invalid_response")
+            } else if (result.body.length > 0) {
+              const ctxList = (result.body as any[]).map((o) => `- [${o.type}] ${o.title}`).join("\n")
+              const text = `Recent Cortex memories for ${project}:\n${ctxList}`
+              if (Array.isArray(event.context)) {
+                event.context.push(text)
+              } else if (Array.isArray(event.messages)) {
+                event.messages.push({ role: "system", content: text })
+              }
+            }
+          }
+
+          const instruction =
+            `CRITICAL INSTRUCTION FOR COMPACTED SUMMARY:\n` +
+            `The agent has access to Cortex persistent memory via MCP tools.\n` +
+            `Include this role-aware instruction at the TOP of the compacted summary:\n\n` +
+            `"If the current role is the root orchestrator, summarize compacted context with cortex_session_summary for project '${project}'. ` +
+            `If the current role is a subagent or external leaf, do not call session lifecycle or summary tools; use cortex_context only when needed."`
+
+          if (Array.isArray(event.context)) {
+            event.context.push(instruction)
+          } else if (Array.isArray(event.messages)) {
+            event.messages.push({ role: "system", content: instruction })
+          }
+        } catch {
+          // Non-blocking: a hook failure must never break the host compaction.
+        }
+      })
+    }
+
+    if (ctx.tool?.hook) {
+      // ─── Tool Execution Hook ─────────────────────────────────────
+      ctx.tool.hook("execute.after", async (event: any) => {
+        try {
+          const rawTool = event.tool || event.name || ""
+          const tool = rawTool.toLowerCase()
+
+          const normalizedTool = tool.startsWith("cortex_") ? tool.slice(7) : tool
+
+          // Durable handoffs were already delivered through the MCP channel;
+          // their result is not input to this plugin. Stay neutral: no
+          // interpretation, no redelivery, no fabricated signal.
+          if (tool === "cortex_handoff" || normalizedTool === "cortex_handoff") return
+
+          if (CORTEX_TOOLS.has(tool) || CORTEX_TOOLS.has(normalizedTool)) return
+
+          const sessionId = event.sessionID || event.sessionId
+          let sessionConfirmed = false
+          if (sessionId) {
+            const session = await ensureSession(sessionId)
+            sessionConfirmed = session.confirmed
+            toolCounts.set(sessionId, (toolCounts.get(sessionId) ?? 0) + 1)
+          }
+
+          // Passive capture from task / subagent tool output — protected write, so it
+          // requires the same confirmed session.
+          const output = event.output ?? event.result
+          if ((tool === "task" || tool === "subagent") && output && sessionId && sessionConfirmed) {
+            const text = typeof output === "string" ? output : JSON.stringify(output)
+            if (text.length > 50) {
+              const redacted = stripPrivateTags(text)
+              const record = truncateUtf8(redacted)
+              const sent = {
+                content: record.content,
+                session_id: sessionId,
+                title: "Passive capture from task",
+                project,
+                type: "passive",
+                scope: "project",
+              }
+              await deliver(
+                "observation",
+                "/api/observations",
+                {
+                  session_id: sent.session_id,
+                  title: sent.title,
+                  type: sent.type,
+                  project: sent.project,
+                  scope: sent.scope,
+                  ...record,
+                },
+                persistedObservation(sent)
+              )
+            }
+          }
+        } catch {
+          report("observation", "unavailable")
+        }
+      })
+    }
+
+    return {
+      dispose: () => {
+        abortController.abort()
+      },
+    }
+  },
+})
 
 Object.assign(Cortex, {
   detectCortexMode,

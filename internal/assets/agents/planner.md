@@ -1,69 +1,182 @@
 ---
 description: "Produce grounded SDD proposal, requirements, design, and task DAG contracts."
 mode: subagent
-temperature: 0.2
 color: "#546E7A"
-tools:
-  task: false
-  read: true
-  grep: true
-  glob: true
-  list: true
-  edit: false
-  write: false
-  bash: false
-  skill: true
-permission:
-  cortex_*: deny
-  cortex_cortex_*: deny
-  cortex_ia_*: deny
-  cortex_search: allow
-  cortex_cortex_search: allow
-  cortex_code_map: allow
-  cortex_cortex_code_map: allow
-  cortex_get_code_symbols: allow
-  cortex_cortex_get_code_symbols: allow
-  cortex_get_code_graph: allow
-  cortex_cortex_get_code_graph: allow
-  cortex_get_blast_radius: allow
-  cortex_cortex_get_blast_radius: allow
-  cortex_analyze_architecture: allow
-  cortex_cortex_analyze_architecture: allow
-  cortex_get_rules: allow
-  cortex_cortex_get_rules: allow
-  cortex_get_observation: allow
-  cortex_cortex_get_observation: allow
-  cortex_resolve_query: allow
-  cortex_cortex_resolve_query: allow
-  cortex_context: allow
-  cortex_cortex_context: allow
-  cortex_save: allow
-  cortex_cortex_save: allow
-  cortex_relate: allow
-  cortex_cortex_relate: allow
-  cortex_handoff: allow
-  cortex_cortex_handoff: allow
-  cortex_ia_content_hash: allow
-  cortex_ia_snapshot_read: allow
-  cortex_ia_openspec_validate: allow
-  cortex_ia_openspec_write: allow
-  cortex_ia_change_archive: allow
-  cortex_ia_board_create: allow
-  cortex_ia_board_list: allow
-  cortex_ia_board_status: allow
-  cortex_ia_work_create: allow
-  cortex_ia_work_decompose: allow
-  cortex_ia_work_list: allow
-  cortex_ia_work_status: allow
-  cortex_ia_delegate_start: allow
-  cortex_ia_delegation_status: allow
-  cortex_ia_delegation_wait: allow
-  cortex_ia_delegation_result: allow
-  cortex_ia_delegation_cancel: allow
-  cortex_ia_report_error: allow
-  cortex_ia_doc_convert: allow
-  cortex_ia_diagram_validate: allow
-  cortex_ia_diagram_render: allow
+request:
+  body:
+    temperature: 0.2
+permissions:
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: read
+    resource: "*"
+    effect: allow
+  - action: grep
+    resource: "*"
+    effect: allow
+  - action: glob
+    resource: "*"
+    effect: allow
+  - action: skill
+    resource: "*"
+    effect: allow
+  - action: cortex_*
+    resource: "*"
+    effect: deny
+  - action: cortex_cortex_*
+    resource: "*"
+    effect: deny
+  - action: cortex_ia_*
+    resource: "*"
+    effect: deny
+  - action: cortex_search
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_search
+    resource: "*"
+    effect: allow
+  - action: cortex_code_map
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_code_map
+    resource: "*"
+    effect: allow
+  - action: cortex_get_code_symbols
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_code_symbols
+    resource: "*"
+    effect: allow
+  - action: cortex_get_code_graph
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_code_graph
+    resource: "*"
+    effect: allow
+  - action: cortex_get_blast_radius
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_blast_radius
+    resource: "*"
+    effect: allow
+  - action: cortex_analyze_architecture
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_analyze_architecture
+    resource: "*"
+    effect: allow
+  - action: cortex_get_rules
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_rules
+    resource: "*"
+    effect: allow
+  - action: cortex_get_observation
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_observation
+    resource: "*"
+    effect: allow
+  - action: cortex_resolve_query
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_resolve_query
+    resource: "*"
+    effect: allow
+  - action: cortex_context
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_context
+    resource: "*"
+    effect: allow
+  - action: cortex_save
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_save
+    resource: "*"
+    effect: allow
+  - action: cortex_relate
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_relate
+    resource: "*"
+    effect: allow
+  - action: cortex_handoff
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_handoff
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_content_hash
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_snapshot_read
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_openspec_validate
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_openspec_write
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_change_archive
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_board_create
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_board_list
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_board_status
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_create
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_decompose
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_list
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_status
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_delegate_start
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_delegation_status
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_delegation_wait
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_delegation_result
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_delegation_cancel
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_report_error
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_doc_convert
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_diagram_validate
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_diagram_render
+    resource: "*"
+    effect: allow
 ---
 
 # role/planner [STATIC_PREFIX_V3]

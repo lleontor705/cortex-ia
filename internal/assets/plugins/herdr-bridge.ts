@@ -1,5 +1,71 @@
-import { type Plugin, tool } from "@opencode-ai/plugin";
+import { Plugin } from "@opencode/plugin";
 import { Buffer } from "node:buffer";
+
+function makeSchemaNode(type: string, extra: Record<string, any> = {}): any {
+  const node: any = { type, ...extra };
+  node.describe = (desc: string) => {
+    node.description = desc;
+    return node;
+  };
+  node.optional = () => {
+    node._optional = true;
+    return node;
+  };
+  return node;
+}
+
+function itemsToJSONSchema(item: any): any {
+  if (!item) return { type: "string" };
+  const { _optional, _rawProps, ...rest } = item;
+  if (item._rawProps) {
+    return argsToJSONSchema(item._rawProps);
+  }
+  return rest;
+}
+
+function argsToJSONSchema(argsObj: Record<string, any>): any {
+  const properties: Record<string, any> = {};
+  const required: string[] = [];
+
+  for (const [key, val] of Object.entries(argsObj || {})) {
+    if (!val) continue;
+    const { _optional, _rawProps, ...rest } = val;
+    if (_rawProps) {
+      properties[key] = argsToJSONSchema(_rawProps);
+    } else {
+      properties[key] = rest;
+    }
+    if (!_optional) {
+      required.push(key);
+    }
+  }
+
+  const schema: any = {
+    type: "object",
+    properties,
+  };
+  if (required.length > 0) {
+    schema.required = required;
+  }
+  return schema;
+}
+
+function tool(def: { description: string; args?: Record<string, any>; execute: (args: any, context: any) => Promise<any> }) {
+  return {
+    description: def.description,
+    args: def.args || {},
+    execute: def.execute,
+  };
+}
+
+tool.schema = {
+  string: () => makeSchemaNode("string"),
+  number: () => makeSchemaNode("number"),
+  boolean: () => makeSchemaNode("boolean"),
+  enum: (values: string[]) => makeSchemaNode("string", { enum: values }),
+  array: (items: any) => makeSchemaNode("array", { items: itemsToJSONSchema(items) }),
+  object: (props: Record<string, any>) => makeSchemaNode("object", { _rawProps: props }),
+};
 import { execFileSync, execSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
@@ -750,7 +816,11 @@ function extractCompactReceipt(job: any, res: any, jobID: string): any {
   return compactResult;
 }
 
-export const CortexDelegationBridge: Plugin = async ({ client }) => {
+export const CortexDelegationBridge = Plugin.define({
+  id: "cortex-herdr-bridge",
+  async setup(ctx) {
+    const client = (ctx as any).client || {};
+    const hostDirectory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
   const startMaintenance = (taskID: string, authority: WorkAuthority, directory: string) => {
     const state: NonNullable<WorkAuthority["maintenance"]> = { active: true, lastProgress: Date.now(), progress: new Map() };
     authority.maintenance = state;
@@ -819,88 +889,94 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     }
     throw new Error("OpenCode conversation ancestry is unavailable");
   };
-  return ({
-  dispose: async () => {
-    for (const authority of workAuthority.values()) stopMaintenance(authority, "disposed");
-    workAuthority.clear();
-    saveAuthorityState();
-  },
+  const abortController = new AbortController();
+  const { signal } = abortController;
 
-  event: async ({ event }: { event?: any }) => {
-    if (!event) return;
-    const type = event.type || event.event || "";
-    const sessionID = event.sessionID || event.sessionId || event.properties?.sessionID || event.properties?.info?.id || "";
-    const progress = type === "message.part.updated" ? event.properties?.part : type === "message.updated" ? event.properties?.info : undefined;
-    for (const authority of workAuthority.values()) {
-      const state = authority.maintenance;
-      if (!state?.active) continue;
-      if (type === "server.instance.disposed" ||
-          (["session.idle", "session.deleted", "session.error"].includes(type) && (sessionID === authority.sessionID || !sessionID)) ||
-          (type === "session.status" && sessionID === authority.sessionID && event.properties?.status?.type === "idle")) {
-        stopMaintenance(authority, type); continue;
-      }
-      if (progress?.sessionID === authority.sessionID && typeof progress.id === "string" && progress.id.length <= 256) {
-        if (Date.now() - state.lastProgress >= maintenancePolicy.stale_progress_ms) { stopMaintenance(authority, "stale_progress"); continue; }
-        // Only a changed host message/part advances progress; repeated busy/retry
-        // status and duplicate event delivery cannot maintain an orphan forever.
-        const key = `${type}:${progress.id}`;
-        const encoded = JSON.stringify(progress);
-        if (encoded.length > 1048576) continue;
-        const digest = createHash("sha256").update(encoded).digest("hex");
-        if (state.progress.get(key) !== digest) {
-          state.lastProgress = Date.now();
-          state.progress.set(key, digest);
-          if (state.progress.size > 128) state.progress.delete(state.progress.keys().next().value!);
+  if (ctx.event?.subscribe) {
+    ;(async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ signal })) {
+          if (!event) continue;
+          const type = event.type || (event as any).event || "";
+          const sessionID = event.sessionID || (event as any).sessionId || event.properties?.sessionID || event.properties?.info?.id || "";
+          const progress = type === "message.part.updated" ? event.properties?.part : type === "message.updated" ? event.properties?.info : undefined;
+          for (const authority of workAuthority.values()) {
+            const state = authority.maintenance;
+            if (!state?.active) continue;
+            if (type === "server.instance.disposed" ||
+                (["session.idle", "session.deleted", "session.error"].includes(type) && (sessionID === authority.sessionID || !sessionID)) ||
+                (type === "session.status" && sessionID === authority.sessionID && event.properties?.status?.type === "idle")) {
+              stopMaintenance(authority, type); continue;
+            }
+            if (progress?.sessionID === authority.sessionID && typeof progress.id === "string" && progress.id.length <= 256) {
+              if (Date.now() - state.lastProgress >= maintenancePolicy.stale_progress_ms) { stopMaintenance(authority, "stale_progress"); continue; }
+              // Only a changed host message/part advances progress; repeated busy/retry
+              // status and duplicate event delivery cannot maintain an orphan forever.
+              const key = `${type}:${progress.id}`;
+              const encoded = JSON.stringify(progress);
+              if (encoded.length > 1048576) continue;
+              const digest = createHash("sha256").update(encoded).digest("hex");
+              if (state.progress.get(key) !== digest) {
+                state.lastProgress = Date.now();
+                state.progress.set(key, digest);
+                if (state.progress.size > 128) state.progress.delete(state.progress.keys().next().value!);
+              }
+            }
+          }
+
+          // 1. Detectar inicio de subagente o subtask
+          if (type === "session.created" && event.properties?.info?.parentID) {
+            const role = event.properties?.info?.role || event.properties?.info?.agent || "subagent";
+            subagentStartTimes.set(sessionID, Date.now());
+            activeSubagents.set(sessionID, { id: sessionID, role, startedAt: Date.now() });
+            logDelegation(`🚀 [CORTEX-IA] Subagente iniciado: '${role}' (Session: ${sessionID})`);
+          } else if (type === "subtask.created") {
+            const taskID = event.properties?.id || "subtask";
+            subagentStartTimes.set(taskID, Date.now());
+            activeSubagents.set(taskID, { id: taskID, role: event.properties?.agent || "subtask", startedAt: Date.now() });
+            logDelegation(`🚀 [CORTEX-IA] Tarea en background iniciada: '${taskID}'`);
+          }
+
+          // 2. Detectar finalización de subagente o subtask
+          if (type === "session.idle" || type === "subtask.completed" || type === "session.error") {
+            const trackingID = type === "subtask.completed" ? event.properties?.id || "subtask" : sessionID;
+            const tracked = activeSubagents.get(trackingID);
+            const startTime = subagentStartTimes.get(trackingID);
+            const durationSec = startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
+            const status = type === "session.error" ? "ERROR" : "COMPLETED";
+            const role = tracked?.role || event.properties?.info?.role || event.properties?.info?.agent || "subagent";
+
+            if (startTime) {
+              logDelegation(`✅ [CORTEX-IA] Subagente '${role}' finalizado en ${durationSec}s (Estado: ${status})`);
+              subagentStartTimes.delete(trackingID);
+              activeSubagents.delete(trackingID);
+            }
+          }
         }
+      } catch (err: any) {
+        if (err?.name !== "AbortError" && !signal.aborted) {}
       }
-    }
+    })();
+  }
 
-    // 1. Detectar inicio de subagente o subtask
-    if (type === "session.created" && event.properties?.info?.parentID) {
-      const role = event.properties?.info?.role || event.properties?.info?.agent || "subagent";
-      subagentStartTimes.set(sessionID, Date.now());
-      activeSubagents.set(sessionID, { id: sessionID, role, startedAt: Date.now() });
-      logDelegation(`🚀 [CORTEX-IA] Subagente iniciado: '${role}' (Session: ${sessionID})`);
-    } else if (type === "subtask.created") {
-      const taskID = event.properties?.id || "subtask";
-      subagentStartTimes.set(taskID, Date.now());
-      activeSubagents.set(taskID, { id: taskID, role: event.properties?.agent || "subtask", startedAt: Date.now() });
-      logDelegation(`🚀 [CORTEX-IA] Tarea en background iniciada: '${taskID}'`);
-    }
+  if (ctx.session?.hook) {
+    ctx.session.hook("compaction", async (event: any) => {
+      try {
+        const activeState = cortex(["work", "list"], hostDirectory);
+        if (activeState) {
+          const text = `[CORTEX-IA STATE SNAPSHOT BEFORE COMPACTION]\nActive Work DAG State:\n${activeState}`;
+          if (Array.isArray(event.context)) {
+            event.context.push(text);
+          } else if (Array.isArray(event.messages)) {
+            event.messages.push({ role: "system", content: text });
+          }
+          logDelegation("🧠 [CORTEX-IA] Snapshot de estado DAG inyectado previo a la compactación de sesión.");
+        }
+      } catch {}
+    });
+  }
 
-    // 2. Detectar finalización de subagente o subtask
-    if (type === "session.idle" || type === "subtask.completed" || type === "session.error") {
-      const trackingID = type === "subtask.completed" ? event.properties?.id || "subtask" : sessionID;
-      const tracked = activeSubagents.get(trackingID);
-      const startTime = subagentStartTimes.get(trackingID);
-      const durationSec = startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
-      const status = type === "session.error" ? "ERROR" : "COMPLETED";
-      const role = tracked?.role || event.properties?.info?.role || event.properties?.info?.agent || "subagent";
-      
-      if (startTime) {
-        logDelegation(`✅ [CORTEX-IA] Subagente '${role}' finalizado en ${durationSec}s (Estado: ${status})`);
-        subagentStartTimes.delete(trackingID);
-        activeSubagents.delete(trackingID);
-      }
-    }
-  },
-
-  "experimental.session.compacting": async (_input: any, output: any) => {
-    try {
-      // Inyectar snapshot del DAG y tareas activas antes de la compactación de contexto
-      const activeState = cortex(["work", "list"]);
-      if (activeState && output?.context) {
-        output.context.push({
-          role: "system",
-          content: `[CORTEX-IA STATE SNAPSHOT BEFORE COMPACTION]\nActive Work DAG State:\n${activeState}`
-        });
-        logDelegation("🧠 [CORTEX-IA] Snapshot de estado DAG inyectado previo a la compactación de sesión.");
-      }
-    } catch {}
-  },
-
-  tool: (() => {
-    const bridgeTools = {
+  const bridgeTools = {
     cortex_ia_content_hash: tool({
       description: "Compute lowercase SHA-256 of exact UTF-8 content (at most 1 MiB). No newline/Unicode normalization, persistence, or network access. Returns only sha256 and byte_length.",
       args: { content: tool.schema.string() },
@@ -1942,12 +2018,38 @@ export const CortexDelegationBridge: Plugin = async ({ client }) => {
     };
   }
 
-  return bridgeTools;
-})()
+    if (ctx.tool?.transform) {
+      await ctx.tool.transform((editor: any) => {
+        for (const [name, def] of Object.entries(bridgeTools) as [string, any][]) {
+          const inputSchema = argsToJSONSchema(def.args || {});
+          editor.add({
+            name,
+            description: def.description,
+            input: inputSchema,
+            execute: async (input: any, toolCtx: any) => {
+              const context = {
+                sessionID: toolCtx?.sessionID || toolCtx?.sessionId || toolCtx?.session?.id || (ctx as any).sessionId || "",
+                agent: toolCtx?.agent || toolCtx?.role || toolCtx?.session?.agent || "",
+                directory: toolCtx?.directory || hostDirectory,
+              };
+              const result = await def.execute(input, context);
+              return typeof result === "string" ? { content: result } : result;
+            },
+          });
+        }
+      });
+    }
 
+    const cleanup = async () => {
+      abortController.abort();
+      for (const authority of workAuthority.values()) stopMaintenance(authority, "disposed");
+      workAuthority.clear();
+      saveAuthorityState();
+    };
+    (cleanup as any).dispose = cleanup;
+    return cleanup;
+  },
 });
-
-};
 
 Object.assign(CortexDelegationBridge, {
   cachedProjections,

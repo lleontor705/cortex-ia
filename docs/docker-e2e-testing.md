@@ -32,18 +32,17 @@ The orchestrator builds an image per distro, runs `e2e/e2e_test.sh` inside it, a
 
 `e2e_test.sh` exercises:
 
-1. `cortex-ia version`, `cortex-ia detect`
-2. `cortex-ia install --dry-run --preset full` (no files written)
-3. `cortex-ia install --preset full` against a fake `claude` binary on `PATH`
+1. `cortex-ia version`
+2. `cortex-ia install --dry-run --target opencode` (no files written)
+3. `cortex-ia install --target opencode` against a fake `claude` binary on `PATH`
 4. State file, lockfile, skills directory, convention file presence
 5. Skill count ≥ 19, absolute (not relative) convention refs
 6. `cortex-ia doctor` passes
-7. Idempotency: second `install --preset full` produces the same `installed_agents`
-8. `cortex-ia repair` restores a deleted SKILL.md
-9. `cortex-ia rollback`
-10. `cortex-ia config | grep Agents:`
-11. `cortex-ia list agents|components|backups`
-12. `cortex-ia update`
+7. Idempotency: a second `install` produces the same installation state
+8. `cortex-ia sync` keeps the installed home converged
+9. `cortex-ia rollback` restores a captured snapshot
+10. `cortex-ia recover list` reports pending journals
+11. `cortex-ia update --check` reaches GitHub Releases
 
 ## Adding a check
 
@@ -72,6 +71,6 @@ The marker for `assert_no_duplicate_section` is the cortex-ia prefix: `<!-- cort
 | Symptom | Likely cause |
 |---|---|
 | `cortex-ia not found` | `resolve_binary` failed — confirm the Dockerfile's `go build -o /usr/local/bin/cortex-ia` step ran |
-| `Pattern NOT found: cortex-protocol` | The conventions component didn't run — check that `--preset` includes `conventions` |
+| `Pattern NOT found: cortex-protocol` | The conventions component didn't run during `install` / `sync` |
 | `DUPLICATE section marker` | Idempotency bug — `filemerge.InjectMarkdownSection` got bypassed |
 | pacman keyring errors on Arch | The image's `pacman-key --init && pacman-key --populate archlinux` step regressed |

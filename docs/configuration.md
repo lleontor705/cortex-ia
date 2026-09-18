@@ -4,228 +4,104 @@
 
 ```
 cortex-ia                              # Launch interactive TUI
-cortex-ia install [flags]              # Install ecosystem
-cortex-ia sync [flags]                 # Refresh managed files
-cortex-ia detect                       # Show agents + runtime deps
-cortex-ia config                       # Show current configuration
-cortex-ia list agents|components|backups
-cortex-ia init                         # Create .cortex-ia.yaml
-cortex-ia skill add|list|remove        # Manage community skills
-cortex-ia auto-install [--dry-run]     # Install missing agents
-cortex-ia doctor                       # Run health checks
-cortex-ia repair [--dry-run]           # Re-apply from state
-cortex-ia rollback [--backup ID]       # Restore from backup
-cortex-ia update                       # Check for updates
-cortex-ia uninstall [flags]            # Reverse cortex-ia injections (with snapshot)
-cortex-ia gga --provider <id>          # Switch GGA provider
-cortex-ia profiles list|create|set|apply|delete   # OpenCode SDD profiles
-cortex-ia agent-builder list|create|remove        # AI-generated custom skills
+cortex-ia install [--target <list>] [--dry-run] [--overwrite]
+cortex-ia sync [--target <list>] [--dry-run] [--overwrite]
+cortex-ia uninstall [--target <list>] [--dry-run]
+cortex-ia mcp add <name> (--preset | --local ... -- <cmd> | --remote <url>) [--dry-run]
+cortex-ia mcp list [--json]
+cortex-ia mcp remove <name> [--dry-run]
+cortex-ia doctor                       # Read-only installation health report
+cortex-ia rollback [backup-id]         # Restore a backup
+cortex-ia rollback list                # List available backups
+cortex-ia recover [list]               # List pending recovery journals
+cortex-ia update [--check]             # Check for / install the latest release
 cortex-ia version                      # Show version
 cortex-ia help                         # Show usage
 ```
 
-### Install Flags
+The remaining commands — `herdr`, `delegate`, `snapshot`, `work`, `worktree`, `board`, `ledger`, `ui`, `openspec`, `web`, `doc`, `diagram`, `report`, and `hook` — are part of the operations surface. See [`codebase/reference-map.md`](codebase/reference-map.md) and `cortex-ia help` for their subcommands.
 
-| Flag | Description | Example |
-|------|-------------|---------|
-| `--agent <id>` | Target specific agent (repeatable) | `--agent claude-code --agent opencode` |
-| `--preset <id>` | Installation preset | `--preset minimal` |
-| `--model-preset <id>` | Per-phase model routing | `--model-preset economy` |
-| `--persona <id>` | Communication style | `--persona mentor` |
-| `--local` | Load project .cortex-ia.yaml config | `--local` |
-| `--dry-run` | Preview without making changes | `--dry-run` |
-
-If no `--agent` is specified, cortex-ia auto-detects all installed agents.
-
-If no `--preset` is specified, defaults to `full`.
-
-Valid `--agent` values: `claude-code`, `opencode`, `gemini-cli`, `cursor`, `vscode-copilot`, `codex`, `windsurf`, `antigravity`, `kilocode`, `kimi`, `kiro-ide`, `qwen-code`.
-
-### Uninstall Flags
+### Install and sync flags
 
 | Flag | Description |
 |------|-------------|
-| `--agent <id>` | Uninstall only from a specific agent (repeatable) |
-| `--component <id>` | Uninstall only a specific component (repeatable) |
-| `--all` | Reverse every managed change and clear `state.json` |
+| `--target <list>` | Comma-separated targets: `opencode`, `agy`, `claude`, or `all`. Defaults to `opencode` |
+| `--dry-run` | Preview the plan without writing; no backup is created |
+| `--overwrite` | Replace unmanaged conflicting files (explicit; a verified backup is captured first) |
+
+Install and sync preview the final plan — including every `--overwrite` replacement — and bind the real run to that exact plan digest. If anything drifts between preview and apply, the run aborts with a stale-plan error and nothing is written.
+
+### Uninstall flags
+
+| Flag | Description |
+|------|-------------|
+| `--target <list>` | Comma-separated targets: `opencode`, `agy`, `claude`, or `all`. Defaults to `opencode` |
 | `--dry-run` | Print the planned operations without writing |
-| `--yes`, `-y` | Skip the destructive-action confirmation prompt |
-| `--no-backup` | Skip the pre-uninstall snapshot (not recommended) |
 
-A snapshot tagged `BackupSourceUninstall` is taken before any change so rollback works exactly like an install rollback.
+Uninstall is destructive and requires an interactive terminal and an explicit confirmation. A snapshot tagged `BackupSourceUninstall` is captured before any change, so `cortex-ia rollback` restores the pre-uninstall state. See [`rollback.md`](rollback.md).
 
-### GGA Switcher
+### Managed MCP entries
 
 ```bash
-cortex-ia gga --provider anthropic    # Anthropic API directly
-cortex-ia gga --provider ollama       # Local Ollama (sets API_BASE)
-cortex-ia gga --provider claude       # Route via Claude Code (default)
-cortex-ia gga --list                  # List supported providers
-cortex-ia gga --show                  # Print current ~/.config/gga/config
+# Register a managed catalog preset
+cortex-ia mcp add <name> --preset [--dry-run]
+
+# Register a managed custom local server from an exact command vector
+cortex-ia mcp add <name> --local [--env KEY=VALUE]... -- <command> [args...]
+
+# Register a managed custom remote server endpoint (http/https)
+cortex-ia mcp add <name> --remote <url> [--header KEY=VALUE]... [--dry-run]
+
+cortex-ia mcp list [--json]
+cortex-ia mcp remove <name> [--dry-run]
 ```
 
-Direct-LLM providers (`anthropic`, `openai`, `google`, `ollama`) emit a `MODEL=` line; agent-routed providers (`claude`, `opencode`, `gemini`, `codex`) do not.
+`--preset`, `--local`, and `--remote` are mutually exclusive: exactly one is required per `add`. `--env` and `--header` values reach the config file only and are never printed.
 
-### OpenCode SDD Profiles
+### Updates
 
 ```bash
-# Create a profile that maps every SDD phase to one model
-cortex-ia profiles create cheap:openai/gpt-4o-mini
-
-# Override one phase
-cortex-ia profiles set cheap:sdd-design:anthropic/claude-opus-4
-
-# Write the profile's per-phase models into ~/.config/opencode/opencode.json
-cortex-ia profiles apply cheap
-
-cortex-ia profiles list
-cortex-ia profiles delete cheap
+cortex-ia update          # Check GitHub Releases and install the latest release
+cortex-ia update --check  # Check only, without downloading or applying
 ```
 
-Profile values may be either a Claude alias (`opus` / `sonnet` / `haiku`, expanded to `anthropic/claude-<alias>-N`) or a fully-qualified `provider/model` string. `apply` writes them to the real SDD agent entries in `opencode.json` (`architect`, `decompose`, `team-lead`, `implement`, etc.). The `sdd-apply` phase maps to both `team-lead` and `implement`.
+## Environment Variables
 
-### Agent Builder
+cortex-ia requires no environment variables. Optional:
 
-```bash
-cortex-ia agent-builder create \
-  --engine claude \
-  --purpose "review go diffs against project conventions" \
-  --target claude-code --target opencode \
-  --persona professional
-
-cortex-ia agent-builder list
-cortex-ia agent-builder remove <name>
-```
-
-Supported `--engine` values: `claude-code`, `opencode`, `gemini-cli`, `codex`. The engine binary must be on `PATH`. The default `--timeout` is 120 s; `--dry-run` prints the prompt that would be sent to the engine. The persisted registry lives at `~/.cortex-ia/agentbuilder/registry.json`.
+| Variable | Description |
+|----------|-------------|
+| `CORTEX_IA_HOME` | Override the state root (default `~/.cortex-ia/`). Must resolve to an absolute path; used by automation and tests. |
+| `CORTEX_IA_DEBUG` | Enable debug tracing when set to `1`, `true`, or `yes`. Debug output goes to stderr and a file; stdout stays reserved for command receipts. The `--debug` flag enables the same tracing per invocation. |
+| `CORTEX_IA_AGY_AUTH` | Set to `gemini` to authenticate the external AGY leaf with a Gemini API key instead of the existing AGY account/keyring. |
+| `GEMINI_API_KEY` | Gemini API key used when `CORTEX_IA_AGY_AUTH=gemini`. |
 
 ## Interactive TUI
 
-When run without arguments, cortex-ia launches an 8-screen interactive installer:
-
-1. **Welcome** — Logo, ecosystem overview, press Enter to start
-2. **Detection** — Platform info, runtime dependencies (Node, npx, Git, Go, Cortex, shell), detected agents
-3. **Agents** — Multi-select from detected agents (↑↓ navigate, Space toggle, `a` select all)
-4. **Preset** — Choose full or minimal (↑↓ navigate, Enter select)
-5. **Persona** — Choose communication style: professional, mentor, or minimal
-6. **Review** — Shows selected agents + resolved components + persona
-7. **Installing** — Progress while pipeline runs
-8. **Complete** — Summary with file count, backup ID, and any warnings
-
-Navigation: `Esc` goes back, `q` quits, `Enter` confirms.
-
-## Per-Phase Model Routing
-
-Assign Claude model tiers (opus/sonnet/haiku) to SDD phases for cost/quality optimization:
-
-| Preset | Orchestrator | Architect | Implement | Validate | Finalize |
-|--------|:-:|:-:|:-:|:-:|:-:|
-| **balanced** (default) | opus | opus | sonnet | opus | haiku |
-| **performance** | opus | opus | sonnet | opus | haiku |
-| **economy** | sonnet | sonnet | sonnet | sonnet | haiku |
-
-```bash
-cortex-ia install --model-preset economy
-```
-
-For OpenCode, these assignments are written to each agent's `model` field in `opencode.json`; the orchestrator no longer passes model names as text in delegation prompts.
-
-## Persona System
-
-| Persona | Style |
-|---------|-------|
-| `professional` (default) | Direct, concise, technical terminology |
-| `mentor` | Teaching-oriented, explains trade-offs and patterns |
-| `minimal` | Code only, no explanations unless asked |
-
-```bash
-cortex-ia install --persona mentor
-cortex-ia sync --persona minimal    # Change without full reinstall
-```
-
-Persona is injected via `<!-- cortex-ia:cortex-persona -->` markers in the agent's system prompt.
-
-## Project Configuration (.cortex-ia.yaml)
-
-Create per-repo config to standardize settings across your team:
-
-```bash
-cortex-ia init    # Creates .cortex-ia.yaml with defaults
-```
-
-```yaml
-# .cortex-ia.yaml
-preset: full
-persona: professional
-model-preset: balanced
-agents:
-  - claude-code
-  - opencode
-disabled-components:
-  - mailbox
-custom-skills:
-  - path: ./skills/domain-validator
-```
-
-```bash
-cortex-ia install --local    # Merges project config with global settings
-```
-
-Config lookup: walks up from CWD to root looking for `.cortex-ia.yaml`. Project config overrides global defaults (but CLI flags override both).
-
-## Community Skills
-
-Three-layer skill system:
-
-| Layer | Location | Priority |
-|-------|----------|:--------:|
-| Embedded | Binary (go:embed, 19 skills) | Low (fallback) |
-| Community | `~/.cortex-ia/skills-community/` | Medium |
-| Project | `.cortex-ia.yaml` → `custom-skills` | High (override) |
-
-```bash
-cortex-ia skill add ./my-skill-dir    # Copies SKILL.md to community dir
-cortex-ia skill list                   # Shows installed community skills
-cortex-ia skill remove my-skill        # Removes from community dir
-cortex-ia sync                         # Deploys community skills to shared dir
-```
+When run without arguments, cortex-ia launches the interactive installation dashboard. Navigation: `Esc` goes back, `q` quits, `Enter` confirms.
 
 ## State
 
-cortex-ia persists installation state at `~/.cortex-ia/state.json`:
+cortex-ia persists installation state at `~/.cortex-ia/`:
 
-```json
-{
-  "installed_agents": ["claude-code", "opencode"],
-  "preset": "full",
-  "components": ["cortex", "context7", "conventions", "sdd"],
-  "last_install": "2026-03-31T00:00:00Z",
-  "last_backup_id": "20260331-000000",
-  "version": "0.2.0"
-}
-```
+| File | Purpose |
+|------|---------|
+| `state.json` | Installation metadata — the record `sync` reconciles against |
+| `cortex-ia.lock` | Concrete written-file list with checksums |
+| `install-status.json` | Crash-detection marker (ephemeral) |
 
 ## Health Checks
 
-`cortex-ia doctor` runs 6 checks:
-
-| Check | Severity | What it verifies |
-|-------|:--------:|-----------------|
-| files-exist | Error | All tracked files from lockfile present |
-| cortex-binary | Warning | Cortex MCP binary in PATH |
-| node-npx | Warning | Node.js and npx available for MCP servers |
-| skills-present | Warning | Core skill files in shared dir |
-| convention-present | Warning | Cortex convention file exists |
-| state-lock-consistent | Warning | State and lock files agree on agents/components |
+`cortex-ia doctor` runs a read-only assessment of the installed home: artifact presence and drift, detected coding CLIs, the resolved OpenCode root and selection, managed MCP entries, and any unknown MCPs. It prints a verdict and exits non-zero when the verdict is degraded or blocked.
 
 ## Backup & Restore
 
-### Automatic Backups
+### Automatic backups
 
-Every `install` creates a snapshot via the 2-stage pipeline (Prepare stage):
+Every `install`, `sync`, and `uninstall` creates a snapshot under `~/.cortex-ia/backups/`:
 
 ```
-~/.cortex-ia/backups/20260331-000000/
+~/.cortex-ia/backups/
 ├── manifest.json
 └── files/
     └── (copies of all files that will be modified)
@@ -234,26 +110,25 @@ Every `install` creates a snapshot via the 2-stage pipeline (Prepare stage):
 ### Commands
 
 ```bash
-cortex-ia list backups     # Show available backups
-cortex-ia rollback         # Restore from most recent backup
-cortex-ia rollback --backup 20260331-000000  # Restore specific backup
-cortex-ia repair           # Re-apply current state (no restore, just re-inject)
+cortex-ia rollback list        # list all backups newest-first
+cortex-ia rollback             # restore the most recent backup
+cortex-ia rollback <backup-id> # restore a specific backup
 ```
 
-### Retention & Pinning
+### Retention
 
-Backups now carry two optional fields (omitempty for backwards compatibility):
+Backups carry two optional manifest fields (both `omitempty`, so legacy backups still load):
 
 | Field | Purpose |
 |-------|---------|
-| `pinned` | Excludes the backup from `Prune`. Pin manually for known-good snapshots. |
+| `pinned` | Excludes the backup from pruning. Reserved for internally retained snapshots. |
 | `checksum` | SHA-256 over the snapshot inputs. Used by `IsDuplicate` to skip duplicate backups. |
 
-Default retention is **5 unpinned backups** (`backup.DefaultRetentionCount`). `Prune` runs at the end of `install` / `sync` so the backup directory does not grow without bound.
+Default retention is the **5 most recent unpinned backups** (`backup.DefaultRetentionCount`). Pruning runs at the end of `install` / `sync` so the backup directory does not grow without bound.
 
 ## Dependency Resolution
 
-Uses Kahn's algorithm (topological sort) with parallel group detection:
+The installer resolves components with Kahn's topological sort and parallel group detection:
 
 ```
 Level 0 (parallel): cortex, context7, skills, built-in work control
@@ -263,8 +138,9 @@ Level 2 (after cortex + built-in work control): sdd
 
 ## Idempotency
 
-cortex-ia is fully idempotent:
-- MCP configs: atomic write with content comparison — skips if identical
+cortex-ia is idempotent:
+
+- MCP configs: atomic write with content comparison — skipped when identical
 - System prompts: marker-based injection replaces only managed sections
-- Skills: written via atomic write — no change if content matches
+- Skills: atomic write — no change when content matches
 - Running `install` twice produces zero file changes on the second run

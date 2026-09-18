@@ -196,9 +196,10 @@ func (d Desired) Entry() (map[string]any, error) {
 			return nil, err
 		}
 		entry := map[string]any{
-			"type":    "local",
-			"command": commandVector(d.Command),
-			"enabled": true,
+			"type":     "local",
+			"command":  commandVector(d.Command),
+			"disabled": false,
+			"codemode": false,
 		}
 		if len(env) > 0 {
 			entry["env"] = env
@@ -210,9 +211,10 @@ func (d Desired) Entry() (map[string]any, error) {
 			return nil, err
 		}
 		entry := map[string]any{
-			"type":    "remote",
-			"url":     d.URL,
-			"enabled": true,
+			"type":     "remote",
+			"url":      d.URL,
+			"disabled": false,
+			"codemode": false,
 		}
 		if len(headers) > 0 {
 			entry["headers"] = headers

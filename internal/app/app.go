@@ -211,7 +211,7 @@ type RetiredSurfaceError struct {
 
 func (e RetiredSurfaceError) Error() string {
 	return fmt.Sprintf(
-		"%q was removed from the OpenCode CLI; available commands: install, sync, mcp add|list|remove, herdr, delegate, work, board, ui, doctor, rollback, recover, uninstall, version, help",
+		"%q was removed from the OpenCode CLI; available commands: install, sync, herdr, delegate, snapshot, work, worktree, board, ledger, ui, openspec, web, doc, diagram, mcp, report, hook, doctor, rollback, recover, uninstall, update, version, help",
 		e.Surface,
 	)
 }
@@ -261,21 +261,25 @@ Usage:
                                       Deregister a managed MCP entry
   cortex-ia herdr [install|setup|status]
                                       Manage Herdr workspace multiplexer setup
+  cortex-ia delegate models [--json] | policy --role <role>
+                                      List AGY models or read delegation policy
   cortex-ia delegate create --request-file <path> --transport <herdr|direct>
                                       Accept a validated external leaf job
-  cortex-ia delegate status|result|cancel <job-id>
-                                      Inspect or cancel a delegated leaf job
-  cortex-ia delegate recover         Mark workers with expired leases as lost
+  cortex-ia delegate worker --job <id> --request-file <path>
+                                      Run the internal worker for an accepted job
+  cortex-ia delegate status|query|wait|result|cancel|reconcile|recover|set-pane <job-id>
+                                      Inspect, wait on, or reconcile delegated jobs
   cortex-ia snapshot read --project <project> --id <id> [--expected-sha256 <digest>]
                                       Read and verify one bounded local Cortex snapshot
-  cortex-ia work create|list|status  Manage the local task DAG in Cortex SQLite
-  cortex-ia work claim|renew         Acquire or renew bounded task authority
-  cortex-ia work reserve|lease|lease-renew|release
-                                      Reserve workspace-relative file scopes
-  cortex-ia work transition|approve|retry|recover
-                                      Advance, review, or reconcile task state
-  cortex-ia worktree list|validate|clean|drop|prune
-                                      Inspect and clean auxiliary Git worktrees
+  cortex-ia work create|revise|archive|list|status|approvals|fingerprint
+                                      Define, revise, or inspect the local task DAG
+  cortex-ia work claim|renew|controller-renew|transition|approve|retry
+                                      Acquire or advance bounded task authority
+  cortex-ia work lease|reserve|lease-renew|release|release-all|verify-lease
+                                      Reserve, renew, or verify workspace file scopes
+  cortex-ia work review-refresh|decompose|recover
+                                      Refresh review bindings, decompose, or sweep state
+  cortex-ia worktree list|validate   Inspect authoritative Git worktrees (read-only)
   cortex-ia board create|list|status|archive|unarchive|delete
                                       Group task DAGs into local task boards
   cortex-ia board serve [--addr 127.0.0.1:7331]
@@ -283,19 +287,22 @@ Usage:
   cortex-ia ledger fact|progress|status
                                       Inspect or update the Dual Ledger (facts + progress)
   cortex-ia ui snapshot              Print a bounded read-only TUI snapshot
+  cortex-ia openspec validate|list|status|archive|new
+                                      Manage the OpenSpec SDD workspace
   cortex-ia web [--addr 127.0.0.1:7331] [--board <id>] [--task <id>] [--open] [--daemon]
                                       Launch local Cortex-IA web dashboard in browser
   cortex-ia doc convert|inspect      Convert office/PDF docs to Markdown or inspect metadata
   cortex-ia diagram validate|render|compare|reach
                                      Validate, render, compare, or trace system diagrams
-  cortex-ia report error|config|status Report operational errors with HMAC signature
+  cortex-ia report error|send|config|flush|status
+                                      Report errors or manage reporting configuration
   cortex-ia doctor                   Assess installation health (read-only)
-  cortex-ia rollback [backup-id]     Restore the recorded (or given) backup
-  cortex-ia recover [list]           List pending recovery journals
-                                      (read-only)
+  cortex-ia rollback [backup-id]|list  Restore a backup or list available backups
+  cortex-ia recover [list]           List pending recovery journals (read-only)
   cortex-ia recover <journal-id>     Restore one pending journal; typing its
                                       exact ID confirms the recovery
-  cortex-ia uninstall [--dry-run]    Remove the accredited installation
+  cortex-ia uninstall [--dry-run] [--target <list>]
+                                      Remove the accredited installation
   cortex-ia update [--check]         Check for and install latest release
   cortex-ia version                  Show version
   cortex-ia help                     Show this help

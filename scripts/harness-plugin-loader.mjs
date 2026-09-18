@@ -46,8 +46,8 @@ export function createIsolatedSandbox(options = {}) {
   };
 
   const customRequire = (id) => {
-    if (id === '@opencode-ai/plugin' || id === '@opencode-ai/sdk') {
-      return options.mockPluginSDK || { tool: (def) => def };
+    if (id === '@opencode-ai/plugin' || id === '@opencode-ai/sdk' || id === '@opencode/plugin' || id === '@opencode/sdk') {
+      return options.mockPluginSDK || { Plugin: { define: (def) => def }, tool: (def) => def };
     }
     if (id === 'node:crypto' || id === 'crypto') return crypto;
     if (id === 'node:path' || id === 'path') return path;
@@ -115,11 +115,14 @@ export async function loadPluginSource(tsSource, options = {}) {
     ? sandbox.module.exports
     : sandbox.exports;
 
-  const pluginFn = exported.default || exported.CortexSubagentTransportPlugin || exported.CortexDelegationBridge || exported.CortexSkillDiscoveryPlugin || exported.CortexPlugin || Object.values(exported).find(v => typeof v === 'function');
+  const pluginFn = exported.default || exported.CortexSubagentTransportPlugin || exported.CortexDelegationBridge || exported.CortexSkillDiscoveryPlugin || exported.CortexPlugin || Object.values(exported).find(v => typeof v === 'function' || (v && typeof v.setup === 'function'));
 
   const exportsProxy = new Proxy(exported, {
     get(target, prop, receiver) {
       if (prop in target) return Reflect.get(target, prop, receiver);
+      if (pluginFn && typeof pluginFn === 'object' && prop in pluginFn) {
+        return pluginFn[prop];
+      }
       if (pluginFn && typeof pluginFn === 'function' && prop in pluginFn) {
         return pluginFn[prop];
       }
@@ -131,10 +134,13 @@ export async function loadPluginSource(tsSource, options = {}) {
     exports: exportsProxy,
     pluginFn,
     instantiate: async (context = {}) => {
-      if (typeof pluginFn !== 'function') {
-        throw new Error('No plugin function found in exported module');
+      if (typeof pluginFn === 'function') {
+        return await pluginFn(context);
       }
-      return await pluginFn(context);
+      if (pluginFn && typeof pluginFn.setup === 'function') {
+        return await pluginFn.setup(context);
+      }
+      throw new Error('No plugin function or definition found in exported module');
     },
   };
 }

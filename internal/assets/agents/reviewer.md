@@ -1,69 +1,176 @@
 ---
 description: "Independently verify requirements, security, regressions, and implementation evidence."
 mode: subagent
-temperature: 0.1
 color: "#D32F2F"
-tools:
-  task: false
-  edit: false
-  write: false
-  read: true
-  grep: true
-  glob: true
-  list: true
-  bash: true
-  skill: true
-permission:
-  cortex_*: deny
-  cortex_cortex_*: deny
-  cortex_ia_*: deny
-  cortex_ingest_code: allow
-  cortex_cortex_ingest_code: allow
-  cortex_get_code_symbols: allow
-  cortex_cortex_get_code_symbols: allow
-  cortex_get_code_graph: allow
-  cortex_cortex_get_code_graph: allow
-  cortex_detect_cycles: allow
-  cortex_cortex_detect_cycles: allow
-  cortex_analyze_architecture: allow
-  cortex_cortex_analyze_architecture: allow
-  cortex_get_blast_radius: allow
-  cortex_cortex_get_blast_radius: allow
-  cortex_get_observation: allow
-  cortex_cortex_get_observation: allow
-  cortex_get_rules: allow
-  cortex_cortex_get_rules: allow
-  cortex_save: allow
-  cortex_cortex_save: allow
-  cortex_relate: allow
-  cortex_cortex_relate: allow
-  cortex_ia_content_hash: allow
-  cortex_ia_snapshot_read: allow
-  cortex_ia_openspec_validate: allow
-  cortex_ia_board_list: allow
-  cortex_ia_board_status: allow
-  cortex_ia_work_list: allow
-  cortex_ia_work_status: allow
-  cortex_ia_work_approvals: allow
-  cortex_ia_work_fingerprint: allow
-  cortex_ia_work_approve: allow
-  cortex_ia_delegate_start: allow
-  cortex_ia_delegation_status: allow
-  cortex_ia_delegation_wait: allow
-  cortex_ia_delegation_result: allow
-  cortex_ia_delegation_cancel: allow
-  cortex_ia_report_error: allow
-  cortex_ia_doc_convert: allow
-  cortex_ia_diagram_validate: allow
-  bash:
-    "*": allow
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git show*": allow
-    "go test *": allow
-    "go vet *": allow
-    "golangci-lint run *": allow
+request:
+  body:
+    temperature: 0.1
+permissions:
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: read
+    resource: "*"
+    effect: allow
+  - action: grep
+    resource: "*"
+    effect: allow
+  - action: glob
+    resource: "*"
+    effect: allow
+  - action: skill
+    resource: "*"
+    effect: allow
+  - action: cortex_*
+    resource: "*"
+    effect: deny
+  - action: cortex_cortex_*
+    resource: "*"
+    effect: deny
+  - action: cortex_ia_*
+    resource: "*"
+    effect: deny
+  - action: cortex_ingest_code
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_ingest_code
+    resource: "*"
+    effect: allow
+  - action: cortex_get_code_symbols
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_code_symbols
+    resource: "*"
+    effect: allow
+  - action: cortex_get_code_graph
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_code_graph
+    resource: "*"
+    effect: allow
+  - action: cortex_detect_cycles
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_detect_cycles
+    resource: "*"
+    effect: allow
+  - action: cortex_analyze_architecture
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_analyze_architecture
+    resource: "*"
+    effect: allow
+  - action: cortex_get_blast_radius
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_blast_radius
+    resource: "*"
+    effect: allow
+  - action: cortex_get_observation
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_observation
+    resource: "*"
+    effect: allow
+  - action: cortex_get_rules
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_get_rules
+    resource: "*"
+    effect: allow
+  - action: cortex_save
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_save
+    resource: "*"
+    effect: allow
+  - action: cortex_relate
+    resource: "*"
+    effect: allow
+  - action: cortex_cortex_relate
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_content_hash
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_snapshot_read
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_openspec_validate
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_board_list
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_board_status
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_list
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_status
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_approvals
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_fingerprint
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_work_approve
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_delegate_start
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_delegation_status
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_delegation_wait
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_delegation_result
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_delegation_cancel
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_report_error
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_doc_convert
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_diagram_validate
+    resource: "*"
+    effect: allow
+  - action: shell
+    resource: "*"
+    effect: allow
+  - action: shell
+    resource: "git status*"
+    effect: allow
+  - action: shell
+    resource: "git diff*"
+    effect: allow
+  - action: shell
+    resource: "git log*"
+    effect: allow
+  - action: shell
+    resource: "git show*"
+    effect: allow
+  - action: shell
+    resource: "go test *"
+    effect: allow
+  - action: shell
+    resource: "go vet *"
+    effect: allow
+  - action: shell
+    resource: "golangci-lint run *"
+    effect: allow
 ---
 
 # role/reviewer [STATIC_PREFIX_V3]

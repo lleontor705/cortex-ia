@@ -4,34 +4,21 @@ cortex-ia is TUI-first but every operation also has a CLI flag set, so you can d
 
 ## Recipes
 
-### Fresh install with explicit selection
+### Install with an explicit target
 
 ```bash
-cortex-ia install \
-  --agent claude-code \
-  --agent opencode \
-  --preset full \
-  --persona professional \
-  --model-preset balanced
+cortex-ia install --target opencode,agy
 ```
 
-### Project-level config
-
-Drop a `.cortex-ia.yaml` at the project root and run:
-
-```bash
-cortex-ia install --local
-```
-
-See [`configuration.md`](configuration.md) for the schema.
+`--target` accepts a comma-separated list of `opencode`, `agy`, `claude`, or `all`. It defaults to `opencode`.
 
 ### Dry run (preview without touching disk)
 
 ```bash
-cortex-ia install --dry-run --preset full
+cortex-ia install --dry-run --target opencode
 ```
 
-Returns exit code 0 + a plan to stdout. No files written, no backup created.
+Returns exit code 0 and prints the plan. No files are written and no backup is created.
 
 ### Sync (re-run injectors without changing the selection)
 
@@ -41,35 +28,39 @@ cortex-ia sync
 
 Useful in CI: pull main → `cortex-ia sync` to pick up new SDD skills or convention updates.
 
-### Health check + auto-repair
+### Health check
 
 ```bash
-cortex-ia doctor || cortex-ia repair
+cortex-ia doctor
 ```
 
-`doctor` exits non-zero if any of the 6 checks fail. `repair` re-applies the lockfile.
+`doctor` is a read-only assessment of the installed home (artifact presence and drift, detected coding CLIs, managed MCP entries) and exits non-zero when the verdict is degraded or blocked. Re-run `cortex-ia sync` to reconcile the installed home with the current asset set.
 
 ### Rollback
 
 ```bash
-cortex-ia rollback                          # most recent backup
-cortex-ia rollback 20260425-093015          # specific snapshot
+cortex-ia rollback list             # list available backups
+cortex-ia rollback                  # most recent backup
+cortex-ia rollback 20260425-093015  # specific snapshot
 ```
 
-### Lists for scripting
+A real rollback requires an interactive terminal and explicit confirmation; piped or closed input fails closed without writing.
+
+### Read-only inspection for scripting
 
 ```bash
-cortex-ia list agents       # supported + detected agents
-cortex-ia list components   # available components
-cortex-ia list backups      # snapshots with id, source, file count
+cortex-ia rollback list    # backups with id and label (plain text)
+cortex-ia recover list     # pending recovery journals (plain text)
+cortex-ia delegate models  # available AGY models (plain text)
 ```
 
-All `list` commands print plain text suitable for `awk`/`cut`. JSON output is on the roadmap.
+Commands that emit machine-readable receipts print JSON; use `--json` where a subcommand documents it (for example `cortex-ia mcp list --json`).
 
 ### Update check
 
 ```bash
-cortex-ia update    # checks GitHub Releases; prints current vs latest
+cortex-ia update --check    # checks GitHub Releases; prints current vs latest
+cortex-ia update            # downloads and applies the latest release
 ```
 
 ## Exit codes
@@ -85,8 +76,9 @@ cortex-ia update    # checks GitHub Releases; prints current vs latest
 
 cortex-ia reads no required env vars. Optional:
 
-- `CORTEX_IA_HOME` — override `~/.cortex-ia/` (rarely needed; tests use this)
-- `XDG_CONFIG_HOME` — respected for Linux config-dir resolution where applicable
+- `CORTEX_IA_HOME` — override the `~/.cortex-ia/` state root with an absolute path (rarely needed; tests use this)
+- `CORTEX_IA_DEBUG` — enable debug tracing when set to `1`, `true`, or `yes` (equivalent to the per-invocation `--debug` flag)
+- `CORTEX_IA_AGY_AUTH` — set to `gemini` to authenticate the external AGY leaf with `GEMINI_API_KEY` instead of the existing AGY account/keyring
 
 ## CI examples
 
@@ -96,12 +88,12 @@ GitHub Actions one-liner:
 - name: Install cortex-ia ecosystem
   run: |
     go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
-    cortex-ia install --local --agent claude-code --preset full --persona professional
+    cortex-ia install --target opencode
     cortex-ia doctor
 ```
 
 Docker (see `e2e/Dockerfile.ubuntu`):
 
 ```dockerfile
-RUN cortex-ia install --preset full --persona minimal && cortex-ia doctor
+RUN cortex-ia install --target opencode && cortex-ia doctor
 ```

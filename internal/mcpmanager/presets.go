@@ -59,17 +59,19 @@ var managedPresets = []Preset{
 	{
 		Name: "cortex",
 		Entry: map[string]any{
-			"type":    "local",
-			"command": []any{"cortex", "mcp", "--tools=agent"},
-			"enabled": true,
+			"type":     "local",
+			"command":  []any{"cortex", "mcp", "--tools=agent"},
+			"disabled": false,
+			"codemode": false,
 		},
 	},
 	{
 		Name: "context7",
 		Entry: map[string]any{
-			"type":    "local",
-			"command": []any{"npx", "-y", "@upstash/context7-mcp@4.1.0"},
-			"enabled": true,
+			"type":     "local",
+			"command":  []any{"npx", "-y", "@upstash/context7-mcp@4.1.0"},
+			"disabled": false,
+			"codemode": false,
 		},
 	},
 }
@@ -160,7 +162,7 @@ func SemanticDigest(name string, entry map[string]any) (string, error) {
 // semanticEqual reports whether an observed configuration entry carries
 // exactly the managed preset's value. Comparison happens on canonical
 // encodings so member order and formatting never produce false conflicts.
-// Equality is not ownership: only an OwnershipRecord accredits ownership.
+// It also recognizes equivalent v1/v2 runtime fields (enabled vs disabled/codemode).
 func semanticEqual(observed map[string]any, preset map[string]any) (bool, error) {
 	observedJSON, err := json.Marshal(observed)
 	if err != nil {
@@ -170,7 +172,49 @@ func semanticEqual(observed map[string]any, preset map[string]any) (bool, error)
 	if err != nil {
 		return false, fmt.Errorf("encode managed MCP entry: %w", err)
 	}
-	return string(observedJSON) == string(presetJSON), nil
+	if string(observedJSON) == string(presetJSON) {
+		return true, nil
+	}
+	return isEquivalentEntry(observed, preset), nil
+}
+
+func isEquivalentEntry(observed, preset map[string]any) bool {
+	if observed["type"] != preset["type"] {
+		return false
+	}
+	obsCmd, ok1 := observed["command"].([]any)
+	preCmd, ok2 := preset["command"].([]any)
+	if !ok1 || !ok2 || len(obsCmd) != len(preCmd) {
+		return false
+	}
+	for i := range obsCmd {
+		if obsCmd[i] != preCmd[i] {
+			return false
+		}
+	}
+	obsDisabled := false
+	if d, ok := observed["disabled"].(bool); ok {
+		obsDisabled = d
+	} else if e, ok := observed["enabled"].(bool); ok {
+		obsDisabled = !e
+	}
+	preDisabled := false
+	if d, ok := preset["disabled"].(bool); ok {
+		preDisabled = d
+	} else if e, ok := preset["enabled"].(bool); ok {
+		preDisabled = !e
+	}
+	if obsDisabled != preDisabled {
+		return false
+	}
+	if obsCM, ok := observed["codemode"].(bool); ok {
+		if preCM, ok2 := preset["codemode"].(bool); ok2 {
+			if obsCM != preCM {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // deepCopyEntry clones a JSON-shaped entry so callers of Presets and Lookup

@@ -49,4 +49,28 @@ func TestConfigureTUIPlugin(t *testing.T) {
 	if !strings.Contains(content3, TUIPluginPath) || !strings.Contains(content3, "other-plugin.js") {
 		t.Errorf("expected TUIPluginPath and other-plugin.js, got:\n%s", content3)
 	}
+
+	// 4. Configuration with existing cli.json (OpenCode v2)
+	tempHomeV2 := t.TempDir()
+	cliJSON := `{"$schema": "https://opencode.ai/v2/cli.json", "plugins": ["existing-plugin.js"]}`
+	_ = os.MkdirAll(filepath.Join(tempHomeV2, ".config", "opencode"), 0755)
+	_ = os.WriteFile(filepath.Join(tempHomeV2, ".config", "opencode", "cli.json"), []byte(cliJSON), 0644)
+	cliPath, err := ConfigureTUIPlugin(tempHomeV2)
+	if err != nil {
+		t.Fatalf("ConfigureTUIPlugin failed on cli.json home: %v", err)
+	}
+	if filepath.Base(cliPath) != "cli.json" {
+		t.Errorf("expected cli.json target, got: %s", cliPath)
+	}
+	dataV2, err := os.ReadFile(cliPath)
+	if err != nil {
+		t.Fatalf("failed to read cli.json: %v", err)
+	}
+	contentV2 := string(dataV2)
+	if !strings.Contains(contentV2, "https://opencode.ai/v2/cli.json") {
+		t.Errorf("expected v2 schema in cli.json, got:\n%s", contentV2)
+	}
+	if !strings.Contains(contentV2, TUIPluginPath) || !strings.Contains(contentV2, "existing-plugin.js") {
+		t.Errorf("expected TUIPluginPath and existing-plugin.js in cli.json, got:\n%s", contentV2)
+	}
 }

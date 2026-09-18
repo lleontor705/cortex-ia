@@ -20,8 +20,8 @@ func ConfigureTUIPlugin(homeDir string) (string, error) {
 	return path, err
 }
 
-// ConfigureTUIPluginWithResult ensures OpenCode's tui.jsonc contains the cortex-ia TUI plugin entry
-// and reports whether the file was modified.
+// ConfigureTUIPluginWithResult ensures OpenCode's CLI/TUI config (cli.json, tui.jsonc, or tui.json)
+// contains the cortex-ia TUI plugin entry and reports whether the file was modified.
 func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
 	if homeDir == "" {
 		var err error
@@ -35,16 +35,33 @@ func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
 		return "", false, err
 	}
 	tuiPath := filepath.Join(configDir, "tui.jsonc")
+	if _, err := os.Stat(filepath.Join(configDir, "cli.json")); err == nil {
+		tuiPath = filepath.Join(configDir, "cli.json")
+	} else if _, err := os.Stat(filepath.Join(configDir, "tui.jsonc")); err == nil {
+		tuiPath = filepath.Join(configDir, "tui.jsonc")
+	} else if _, err := os.Stat(filepath.Join(configDir, "tui.json")); err == nil {
+		tuiPath = filepath.Join(configDir, "tui.json")
+	}
+
 	plugins := []any{}
+	current := map[string]any{}
 	if raw, readErr := os.ReadFile(tuiPath); readErr == nil {
-		current, decodeErr := filemerge.DecodeJSONObject(raw)
+		var decodeErr error
+		current, decodeErr = filemerge.DecodeJSONObject(raw)
 		if decodeErr != nil {
 			return "", false, decodeErr
 		}
 		if configured, exists := current["plugin"]; exists {
 			values, ok := configured.([]any)
 			if !ok {
-				return "", false, errors.New("OpenCode tui.jsonc plugin must be an array")
+				return "", false, errors.New("OpenCode config plugin must be an array")
+			}
+			plugins = append(plugins, values...)
+		}
+		if configured, exists := current["plugins"]; exists {
+			values, ok := configured.([]any)
+			if !ok {
+				return "", false, errors.New("OpenCode config plugins must be an array")
 			}
 			plugins = append(plugins, values...)
 		}
@@ -70,9 +87,19 @@ func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
 	if !found {
 		plugins = append(plugins, TUIPluginPath)
 	}
+
+	schemaURL := "https://opencode.ai/tui.json"
+	pluginKey := "plugin"
+	if filepath.Base(tuiPath) == "cli.json" {
+		schemaURL = "https://opencode.ai/v2/cli.json"
+		pluginKey = "plugins"
+	} else if _, exists := current["plugins"]; exists {
+		pluginKey = "plugins"
+	}
+
 	overlay, err := json.Marshal(map[string]any{
-		"$schema": "https://opencode.ai/tui.json",
-		"plugin":  plugins,
+		"$schema": schemaURL,
+		pluginKey: plugins,
 	})
 	if err != nil {
 		return "", false, err

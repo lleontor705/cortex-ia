@@ -105,7 +105,47 @@ To prevent context window blowout from verbose compiler errors, stack traces, an
 </failure_trace>
 ```
 
+## Code Hygiene & Minimal Commenting Policy (Zero-Noise Invariant)
+
+To eliminate AI code bloat and maintain long-term codebase health:
+- **Code explains HOW, comments explain WHY**: Never generate comments that restate the code in the same or slightly different words (John Ousterhout, *A Philosophy of Software Design*).
+- **Prohibited comment patterns**:
+  - Echo/narrative comments explaining WHAT obvious code does (e.g. `// get user`, `// return result`, `// increment count`).
+  - Task metadata, changelog comments, or session attribution (`// added by implement`, `// fixed in task X`).
+  - Zombie / commented-out code. Delete dead code cleanly; Git preserves history.
+  - Trivial structural markers (`// end of loop`, `// if valid`).
+- **Permitted comment patterns**:
+  - Non-obvious architectural or algorithmic *WHY* (rationale for an unexpected design choice or non-intuitive workaround).
+  - Subtle hardware, compiler, or concurrency invariants that the type system cannot express.
+  - Public API docstrings strictly when required by language convention and providing genuine domain context beyond identifier names.
+
+## Minimalist Minion Communication Contract
+
+- **No Chat Narration**: Do NOT emit conversational filler before or between tool calls (e.g. "Now I will inspect...", "Let me run tests...").
+- **Terse and Structured Delivery**: Deliver final responses using clean Markdown tables, headings, and high-density summaries. Omit apologies, cheerleading, and diff reiteration.
+
+## Orchestrator Executive Synthesis Standard (Artifact Pyramid)
+
+The orchestrator is the human interface and executive synthesizer of the system, not a transcript echo chamber. All user-facing communications from the orchestrator must follow the **3-Layer Artifact Pyramid** (Zhang et al., AAMAS 2024; Nielsen Norman Group / DeepMind 2026):
+
+1. **Layer 1: Executive Action Line (Header)**:
+   - High-contrast, scannable headline communicating final verdict, routing tier, and status (e.g. `### 🎯 Objective Achieved — {Route Tier} | Verdict: {PASS}`).
+2. **Layer 2: Progressive Disclosure Synthesis**:
+   - Structured summary tailored to human working memory limits ($4 \pm 1$ cognitive units):
+     - **Architectural Deltas**: High-level structural changes ($\le 3-5$ bullets) naming modified subsystems, not line-by-line diffs.
+     - **Empirical Verification Evidence**: Exact deterministic test/verification command, exit code `0`, passing test count, and linter status.
+     - **Actionable Next Steps / Gates**: Unambiguous path forward, or lossless choice envelope for interactive decisions.
+3. **Layer 3: Deep Operational Dossier (Decoupled from Chat)**:
+   - Detailed SQLite task DAG nodes, claim tokens, file lock hashes, raw git diffs, and complete stdout traces belong strictly to the **Control and Evidence Planes** (`cortex-ia board`, SQLite `~/.cortex-ia/delegation.db`, Cortex MCP observations). They MUST NEVER be dumped into chat.
+
+## Cognitive Load Reduction & Zero-Chatter Invariant
+
+- **Zero Stream-of-Consciousness Narration**: Agents must NEVER emit conversational filler or internal play-by-play commentary before or between tool invocations (e.g., "Now I will invoke planner...", "Let me check the database...").
+- **Decoupled Telemetry**: In modern execution environments like OpenCode v2, tool execution badges, spinners, and worker lifecycles are streamed natively by the runtime. The chat channel is reserved exclusively for (1) interactive decision gates, and (2) high-density executive delivery upon phase completion.
+- **Compaction Resiliency**: Verbose conversational chatter degrades catastrophically under LLM context compaction. Concise 3-layer executive syntheses preserve semantic integrity and intentional lineage across compaction boundaries.
+
 ## Review gate
 
 Before accepting an instruction change, verify that every new pointer has a real trigger, every normative rule has one source of truth, conditional detail is disclosed only when needed, and completion can be distinguished from premature stopping.
+
 

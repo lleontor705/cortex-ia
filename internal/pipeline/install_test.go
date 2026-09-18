@@ -120,15 +120,19 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 	if !ok {
 		t.Fatal("installed config must carry the mcp object")
 	}
+	servers := mcp
+	if s, ok := mcp["servers"].(map[string]any); ok {
+		servers = s
+	}
 	for _, name := range []string{"cortex"} {
-		if _, ok := mcp[name].(map[string]any); !ok {
+		if _, ok := servers[name].(map[string]any); !ok {
 			t.Errorf("managed MCP %q must be configured", name)
 		}
 	}
-	if _, present := mcp["context7"]; present {
+	if _, present := servers["context7"]; present {
 		t.Error("unselected context7 must not be configured")
 	}
-	if _, present := mcp["forgespec"]; present {
+	if _, present := servers["forgespec"]; present {
 		t.Error("retired forgespec MCP must not be configured")
 	}
 }
