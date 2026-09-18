@@ -132,9 +132,9 @@ Before modifying code or executing mutating shell commands, execute these steps 
   - **`strict`**: If source logic lines exceed the hard cap (<= 350 LOC in Go/Rust/Java/C#, <= 250 LOC in TS/Python with weighted deletions), **transitioning to `in_review` is strictly forbidden**. You MUST transition to `blocked` with `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if test fixtures exceed 600 LOC).
   - **`flexible` (default)**: If lines exceed the standard guideline (<= 700 LOC in Go/Rust/Java/C#, <= 500 LOC in TS/Python, <= 1200 LOC in tests), record `workload_status: "EXCEEDED_ADVISORY"` in the implementation summary and transition to `in_review`.
   - **`unbounded`**: Churn threshold checks are bypassed.
-- Follow the canonical completion order: verify -> sanitized evidence -> `cortex_ia_work_transition({ to: "in_review" })` (file leases are auto-released on transition) -> independent reviewer -> `cortex_ia_work_approve`.
+- Follow the canonical completion order: verify -> sanitized evidence -> `cortex_ia_work_transition({ to: "in_review" })` (file leases are auto-released on transition) -> reviewer approval (independent reviewer, or orchestrator auto-approval on low-risk direct changes) -> `cortex_ia_work_approve`.
 - The implementation claim remains until review so self-approval remains detectable; approval releases it.
-- Only reviewer `PASS` can produce `done`. On implementation FAIL or BLOCKED, transition to `blocked` to release authority and log evidence.
+- Only an approved `PASS` verdict (from an independent reviewer or orchestrator auto-approval on low-risk direct changes) can produce `done`. On implementation FAIL or BLOCKED, transition to `blocked` to release authority and log evidence.
 
 ## 2. Hard Security & Shell Boundaries
 - **Pre-approved:** Git diff/status, package managers within scope, test runners, linters, compilers, diagnostic queries.

@@ -6,7 +6,7 @@ This is the single routing and phase matrix for Cortex-IA. Installed path: `~/.c
 |---|---|---|
 | direct-answer / direct-doc | Orchestrator answers from supplied evidence; investigate reads files | Evidence-backed response; filesystem mutations route to a bounded task |
 | discovery | Native discovery | Scoped discovery profile, observed capabilities and limitations |
-| direct-change | Orchestrator creates one task; implement then reviewer | Live claim/leases, proportional checks, independent approval |
+| direct-change | Orchestrator creates one task in default; implement; reviewer only if risk warrants | Live claim/leases, proportional checks, independent or orchestrator auto-approval on low risk |
 | fast-tdd | Implement with fast-tdd, then reviewer | Causal RED, same oracle GREEN, independent approval |
 | hotfix | Implement with hotfix-triage, then reviewer | Containment, regression evidence and explicit structural follow-up |
 | spike | Investigate with authorized spike-prototype scratch scope | Reproducible conclusion and cleanup, then choose the next route |
