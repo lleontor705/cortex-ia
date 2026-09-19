@@ -1,4 +1,22 @@
-import { Plugin } from "@opencode/plugin";
+// Universal Plugin helper ensuring full compatibility with OpenCode v1 (1.18.x) and v2 (2.x)
+export const Plugin = {
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; v1?: (ctx: any) => Promise<any> | any }>(def: T): any => {
+    const fn: any = async (ctx: any) => {
+      if (typeof def.v1 === "function") {
+        return await def.v1(ctx);
+      }
+      if (typeof def.setup === "function") {
+        const res = await def.setup(ctx);
+        if (res && typeof res === "object") return res;
+      }
+      return {};
+    };
+    fn.id = def.id;
+    fn.setup = def.setup;
+    return fn;
+  },
+};
+
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -101,6 +119,90 @@ function relativeTarget(directory: string, target: string): string {
   return relative.replaceAll(path.sep, "/");
 }
 
+async function verifyLeasesForTool(
+  toolName: string,
+  rawArgs: any,
+  sessionID: string,
+  directory: string
+) {
+  if (toolName === "cortex_ia_doc_convert" && !(rawArgs as any)?.output_path) return;
+  if (!["edit", "write_to_file", "write", "apply_patch", "cortex_ia_doc_convert", "cortex_ia_diagram_render"].includes(toolName)) return;
+
+  if (typeof sessionID !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(sessionID)) throw new Error("LEASE_CHECK_FAILED: host session identity is required");
+  const rawTargets = targetFiles(toolName, (rawArgs || {}) as Record<string, any>);
+  // Every target must be contained and leased, including logs, scratch files,
+  // and control directories. Path names never confer mutation authority.
+  const targets = [...new Set(rawTargets.map(target => relativeTarget(directory, target)))].sort();
+  const cortex = firstCortexIA(directory);
+
+  try {
+    let raw: string | undefined;
+    let lastExecErr: any;
+    const pathArgs = targets.length === 1
+      ? ["--path", targets[0]]
+      : targets.flatMap(t => ["--path", t]);
+    const cliArgs = ["work", "verify-lease", "--project", path.resolve(directory), "--session-id", sessionID, ...pathArgs];
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        raw = execFileSync(cortex, cliArgs, {
+          cwd: directory,
+          encoding: "utf8",
+          maxBuffer: 64 * 1024,
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 15000,
+          windowsHide: true,
+        });
+        break;
+      } catch (execErr: any) {
+        lastExecErr = execErr;
+        if (execErr?.code === "ETIMEDOUT" && attempt === 1) {
+          continue;
+        }
+        throw execErr;
+      }
+    }
+    if (!raw && lastExecErr) throw lastExecErr;
+    const result = JSON.parse(raw!);
+    if (result.valid !== true) {
+      throw new Error(result.reason || "lease verification rejected by cortex-ia");
+    }
+    if (result.owner !== `opencode-session:${sessionID}`) {
+      throw new Error(`claim owner mismatch for targets: expected 'opencode-session:${sessionID}', got '${result.owner}'`);
+    }
+    if (typeof result.task_id !== "string" || !result.task_id) {
+      throw new Error("missing task identity in lease verification response");
+    }
+    const expiresAt = Date.parse(result.expires_at);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      throw new Error("lease for targets has expired");
+    }
+  } catch (err: any) {
+    let reason = "";
+    if (err?.stdout) {
+      try {
+        const parsed = JSON.parse(typeof err.stdout === "string" ? err.stdout : err.stdout.toString("utf8"));
+        if (typeof parsed?.reason === "string" && parsed.reason) {
+          reason = parsed.reason;
+        }
+      } catch {}
+    }
+    if (!reason && err?.stderr) {
+      const stderrStr = (typeof err.stderr === "string" ? err.stderr : err.stderr.toString("utf8")).trim();
+      if (stderrStr) {
+        reason = stderrStr.replace(/^lease verification failed:\s*/i, "");
+      }
+    }
+    if (!reason && typeof err?.message === "string" && err.message && !err.message.includes("Command failed")) {
+      reason = err.message;
+    }
+    const targetsStr = targets.join(", ");
+    const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";
+    const recoveryGuidance = `\n[RECOVERY GUIDANCE] Run cortex_ia_work_claim({ task_id, paths: ['${targets.join("', '")}'] }) to acquire claim and lease before editing, or cortex_ia_work_lease_renew if expired. If authority was lost, run cortex_ia_work_recover.`;
+    throw new Error(`LEASE_REQUIRED${suffix} (target: '${targetsStr}')${recoveryGuidance}`);
+  }
+}
+
 /**
  * Fail-closed admission for native file tools. Typed planning/discovery tools
  * have separate policy. This hook does not sandbox shell writes or make the
@@ -108,87 +210,12 @@ function relativeTarget(directory: string, target: string): string {
  */
 export const CortexLeaseGuardPlugin = Plugin.define({
   id: "cortex-lease-guard",
-  async setup(ctx) {
+  async setup(ctx: any) {
     await ctx.tool.hook("execute.before", async (event: any) => {
       const toolName = (event?.tool || "").toLowerCase();
-      if (toolName === "cortex_ia_doc_convert" && !(event?.input as any)?.output_path) return;
-      if (!["edit", "write_to_file", "write", "apply_patch", "cortex_ia_doc_convert", "cortex_ia_diagram_render"].includes(toolName)) return;
-
       const sessionID = event?.sessionID || event?.sessionId || (ctx as any)?.session?.id || "";
-      if (typeof sessionID !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(sessionID)) throw new Error("LEASE_CHECK_FAILED: host session identity is required");
       const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
-      const rawTargets = targetFiles(toolName, (event?.input || {}) as Record<string, any>);
-      // Every target must be contained and leased, including logs, scratch files,
-      // and control directories. Path names never confer mutation authority.
-      const targets = [...new Set(rawTargets.map(target => relativeTarget(directory, target)))].sort();
-      const cortex = firstCortexIA(directory);
-
-      try {
-        let raw: string | undefined;
-        let lastExecErr: any;
-        const pathArgs = targets.length === 1
-          ? ["--path", targets[0]]
-          : targets.flatMap(t => ["--path", t]);
-        const cliArgs = ["work", "verify-lease", "--project", path.resolve(directory), "--session-id", sessionID, ...pathArgs];
-
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          try {
-            raw = execFileSync(cortex, cliArgs, {
-              cwd: directory,
-              encoding: "utf8",
-              maxBuffer: 64 * 1024,
-              stdio: ["ignore", "pipe", "pipe"],
-              timeout: 15000,
-              windowsHide: true,
-            });
-            break;
-          } catch (execErr: any) {
-            lastExecErr = execErr;
-            if (execErr?.code === "ETIMEDOUT" && attempt === 1) {
-              continue;
-            }
-            throw execErr;
-          }
-        }
-        if (!raw && lastExecErr) throw lastExecErr;
-        const result = JSON.parse(raw!);
-        if (result.valid !== true) {
-          throw new Error(result.reason || "lease verification rejected by cortex-ia");
-        }
-        if (result.owner !== `opencode-session:${sessionID}`) {
-          throw new Error(`claim owner mismatch for targets: expected 'opencode-session:${sessionID}', got '${result.owner}'`);
-        }
-        if (typeof result.task_id !== "string" || !result.task_id) {
-          throw new Error("missing task identity in lease verification response");
-        }
-        const expiresAt = Date.parse(result.expires_at);
-        if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-          throw new Error("lease for targets has expired");
-        }
-      } catch (err: any) {
-        let reason = "";
-        if (err?.stdout) {
-          try {
-            const parsed = JSON.parse(typeof err.stdout === "string" ? err.stdout : err.stdout.toString("utf8"));
-            if (typeof parsed?.reason === "string" && parsed.reason) {
-              reason = parsed.reason;
-            }
-          } catch {}
-        }
-        if (!reason && err?.stderr) {
-          const stderrStr = (typeof err.stderr === "string" ? err.stderr : err.stderr.toString("utf8")).trim();
-          if (stderrStr) {
-            reason = stderrStr.replace(/^lease verification failed:\s*/i, "");
-          }
-        }
-        if (!reason && typeof err?.message === "string" && err.message && !err.message.includes("Command failed")) {
-          reason = err.message;
-        }
-        const targetsStr = targets.join(", ");
-        const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";
-        const recoveryGuidance = `\n[RECOVERY GUIDANCE] Run cortex_ia_work_claim({ task_id, paths: ['${targets.join("', '")}'] }) to acquire claim and lease before editing, or cortex_ia_work_lease_renew if expired. If authority was lost, run cortex_ia_work_recover.`;
-        throw new Error(`LEASE_REQUIRED${suffix} (target: '${targetsStr}')${recoveryGuidance}`);
-      }
+      await verifyLeasesForTool(toolName, event?.input, sessionID, directory);
     });
 
     // OpenCode v2: Shell Fencing and Environment Injection
@@ -214,6 +241,17 @@ export const CortexLeaseGuardPlugin = Plugin.define({
     (cleanup as any).dispose = cleanup;
     return cleanup;
   },
+  async v1(ctx: any) {
+    const directory = ctx?.directory || process.cwd();
+    return {
+      "tool.execute.before": async (input: any, output: any) => {
+        const toolName = (input?.tool || "").toLowerCase();
+        const sessionID = input?.sessionID || "";
+        await verifyLeasesForTool(toolName, output?.args, sessionID, directory);
+      },
+    };
+  },
 });
 
 export default CortexLeaseGuardPlugin;
+

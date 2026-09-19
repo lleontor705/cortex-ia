@@ -1,4 +1,18 @@
-import { Plugin } from "@opencode/plugin";
+// Universal Plugin helper ensuring full compatibility with OpenCode v1 (1.18.x) and v2 (2.x)
+export const Plugin = {
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any }>(def: T): any => {
+    const fn: any = async (ctx: any) => {
+      if (typeof def.setup === "function") {
+        return await def.setup(ctx);
+      }
+      return {};
+    };
+    fn.id = def.id;
+    fn.setup = def.setup;
+    return fn;
+  },
+};
+
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
