@@ -216,6 +216,44 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
   }
 
   if (envelope.contract_version !== undefined) {
+    if (typeof envelope.contract_version === "number") {
+      envelope.contract_version = (envelope.contract_version as number).toFixed(1);
+    } else if (typeof envelope.contract_version === "string") {
+      if (envelope.contract_version === "1") envelope.contract_version = "1.0";
+      if (envelope.contract_version === "2") envelope.contract_version = "2.0";
+    }
+    if (envelope.role === undefined && hostTarget !== undefined) {
+      envelope.role = hostTarget;
+    }
+    if (envelope.task_id === undefined || (typeof envelope.task_id === "string" && !envelope.task_id.trim())) {
+      envelope.task_id = null;
+    }
+    if (envelope.spec_plane === undefined || envelope.spec_plane === "") {
+      envelope.spec_plane = null;
+    }
+    if (!envelope.workflow || typeof envelope.workflow !== "string" || !envelope.workflow.trim()) {
+      envelope.workflow = envelope.role || hostTarget || "investigate";
+    }
+    if (!envelope.phase || typeof envelope.phase !== "string" || !envelope.phase.trim()) {
+      envelope.phase = envelope.role === "investigate" ? "diagnose"
+        : envelope.role === "reviewer" ? "verify"
+        : envelope.role === "discovery" ? "profile"
+        : envelope.role === "planner" ? "integrated"
+        : "execute";
+    }
+    if (!Array.isArray(envelope.allowed_files)) {
+      envelope.allowed_files = [];
+    }
+    if (!Array.isArray(envelope.acceptance_checks)) {
+      envelope.acceptance_checks = [];
+    }
+    if (!Array.isArray(envelope.artifact_refs)) {
+      envelope.artifact_refs = [];
+    }
+    if (envelope.non_goals !== undefined && !Array.isArray(envelope.non_goals)) {
+      envelope.non_goals = [];
+    }
+
     if ((envelope.contract_version !== "1.0" && envelope.contract_version !== "2.0") ||
         !["discovery", "investigate", "planner", "implement", "reviewer"].includes(envelope.role) ||
         !["workflow", "phase", "objective"].every(key => typeof envelope[key] === "string" && envelope[key].trim()) ||

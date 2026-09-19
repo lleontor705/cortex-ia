@@ -261,6 +261,51 @@ For planner decomposition of blocked tasks:
 </minion-dispatch>
 ```
 
+For investigative audits and read-only gap analyses:
+```json
+<minion-dispatch>
+{
+  "contract_version": "2.0",
+  "role": "investigate",
+  "workflow": "investigate",
+  "phase": "diagnose",
+  "spec_plane": null,
+  "workload_policy": "flexible",
+  "task_id": null,
+  "objective": "Audit application modules and identify missing screens or features",
+  "allowed_files": [],
+  "non_goals": [
+    "Do not modify repository files",
+    "Do not claim task execution"
+  ],
+  "acceptance_checks": [],
+  "artifact_refs": [],
+  "max_steps": 50
+}
+</minion-dispatch>
+```
+
+For discovery profiling of projects:
+```json
+<minion-dispatch>
+{
+  "contract_version": "2.0",
+  "role": "discovery",
+  "workflow": "discovery",
+  "phase": "profile",
+  "spec_plane": null,
+  "workload_policy": "flexible",
+  "task_id": null,
+  "objective": "Profile repository stack, architecture, and dependencies into discovery.md",
+  "allowed_files": [".cortex-ia/discovery.md"],
+  "non_goals": ["Do not edit source code"],
+  "acceptance_checks": [],
+  "artifact_refs": [],
+  "max_steps": 60
+}
+</minion-dispatch>
+```
+
 ### Subagent Delegation Visibility (OpenCode v2 Native Streaming)
 OpenCode v2's TUI and event bus stream subagent execution badges and spinners natively. In interactive turns, do not emit conversational narrative before delegating. When intermediate logging is necessary across multi-turn asynchronous background workflows, emit at most a single concise status line per dispatch/join, reserving the human conversational feed for final executive synthesis.
 
