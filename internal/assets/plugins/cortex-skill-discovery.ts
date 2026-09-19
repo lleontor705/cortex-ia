@@ -1,7 +1,9 @@
 // OpenCode v2 Plugin helper ensuring default export is a valid plugin definition object
 export const Plugin = {
-  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any }>(def: T): T => {
-    return def;
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any }>(def: T): T & ((ctx: any) => Promise<any> | any) => {
+    const fn = ((ctx: any) => def.setup ? def.setup(ctx) : undefined) as any;
+    Object.assign(fn, def);
+    return fn;
   },
 };
 
@@ -208,36 +210,43 @@ export const CortexSkillDiscoveryPlugin = Plugin.define({
       });
     }
 
-    if (ctx.session?.hook) {
-      await ctx.session.hook("context", async (event: any) => {
-        if (repoOnly.length === 0) return;
+    const contextHook = async (contextOrEvent: any, maybeEvent?: any) => {
+      const event = maybeEvent !== undefined ? { ...contextOrEvent, ...maybeEvent } : contextOrEvent;
+      if (repoOnly.length === 0) return;
 
-        const skillSummary = repoOnly
-          .map((s) => `- \`${s.name}\` [${s.origin}, p${s.precedence}]: ${s.description || "Repository skill"} (Path: \`${s.path}\`)`)
-          .join("\n");
+      const skillSummary = repoOnly
+        .map((s) => `- \`${s.name}\` [${s.origin}, p${s.precedence}]: ${s.description || "Repository skill"} (Path: \`${s.path}\`)`)
+        .join("\n");
 
-        const note = `\n\n### Repository-Local Custom Skills Available:\n${skillSummary}\n` +
-          `The orchestrator and subagents may load these project-specific skills directly from their workspace paths.\n`;
+      const note = `\n\n### Repository-Local Custom Skills Available:\n${skillSummary}\n` +
+        `The orchestrator and subagents may load these project-specific skills directly from their workspace paths.\n`;
 
-        if (Array.isArray(event.system)) {
-          if (event.system.length > 0) {
-            const last = event.system[event.system.length - 1];
-            if (typeof last === "string") {
-              event.system[event.system.length - 1] += note;
-            } else if (last && typeof last === "object" && "text" in last) {
-              last.text += note;
-            } else {
-              event.system.push({ type: "text", text: note });
-            }
+      if (Array.isArray(event.system)) {
+        if (event.system.length > 0) {
+          const last = event.system[event.system.length - 1];
+          if (typeof last === "string") {
+            event.system[event.system.length - 1] += note;
+          } else if (last && typeof last === "object" && "text" in last) {
+            last.text += note;
           } else {
             event.system.push({ type: "text", text: note });
           }
+        } else {
+          event.system.push({ type: "text", text: note });
         }
-      });
+      }
+      if (maybeEvent && maybeEvent.system && event.system) {
+        maybeEvent.system = event.system;
+      }
+    };
+
+    if (ctx.session?.hook) {
+      await ctx.session.hook("context", contextHook);
     }
 
     const cleanup = async () => {};
     (cleanup as any).dispose = cleanup;
+    (cleanup as any)["experimental.chat.system.transform"] = contextHook;
     return cleanup;
   }
 });

@@ -1,7 +1,9 @@
 // OpenCode v2 Plugin helper ensuring default export is a valid plugin definition object
 export const Plugin = {
-  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any }>(def: T): T => {
-    return def;
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any }>(def: T): T & ((ctx: any) => Promise<any> | any) => {
+    const fn = ((ctx: any) => def.setup ? def.setup(ctx) : undefined) as any;
+    Object.assign(fn, def);
+    return fn;
   },
 };
 
@@ -195,30 +197,37 @@ export const CortexTaskLatchPlugin = Plugin.define({
     }
 
     const controller = new AbortController();
-    void (async () => {
-      try {
-        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-          const type = (event as any).type || (event as any).event || "";
-          const props = (event as any).properties as any, id = props?.sessionID || props?.info?.id || (event as any).sessionID;
-          if (type === "session.error" || type === "session.deleted") {
-            const item = pending.get(id);
-            if (item) latch(item.parent, { ...item, reason: "BACKGROUND_SESSION_FAILED" });
-            pending.delete(id);
-          }
-          if (type === "session.deleted") {
-            failed.delete(id);
-            for (const [child, item] of pending) if (item.parent === id) pending.delete(child);
-            for (const key of retries.keys()) if (key.startsWith(id + ":")) retries.delete(key);
-          }
-        }
-      } catch {}
-    })();
+    const processEvent = async (event: any) => {
+      const type = (event as any).type || (event as any).event || "";
+      const props = (event as any).properties as any, id = props?.sessionID || props?.info?.id || (event as any).sessionID;
+      if (type === "session.error" || type === "session.deleted") {
+        const item = pending.get(id);
+        if (item) latch(item.parent, { ...item, reason: "BACKGROUND_SESSION_FAILED" });
+        pending.delete(id);
+      }
+      if (type === "session.deleted") {
+        failed.delete(id);
+        for (const [child, item] of pending) if (item.parent === id) pending.delete(child);
+        for (const key of retries.keys()) if (key.startsWith(id + ":")) retries.delete(key);
+      }
+    };
 
-    await ctx.tool.hook("execute.before", async (event: any) => {
+    if (ctx.event?.subscribe) {
+      void (async () => {
+        try {
+          for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+            await processEvent(event);
+          }
+        } catch {}
+      })();
+    }
+
+    const executeBefore = async (contextOrEvent: any, maybeEvent?: any) => {
+      const event = maybeEvent !== undefined ? { ...contextOrEvent, ...maybeEvent } : contextOrEvent;
       const tool = (event?.tool || "").toLowerCase();
       const sessionID = event?.sessionID || event?.sessionId || "";
       const callID = event?.callID || event?.callId || "";
-      const args = (event?.input || {}) as Record<string, any>;
+      const args = (event?.args || event?.input || {}) as Record<string, any>;
 
       if (UNLATCH.has(tool)) throw new Error("CORTEX_UNLATCH_UNAVAILABLE: Unlatch tools do not exist");
       if (RECOVERY.has(tool)) {
@@ -240,14 +249,15 @@ export const CortexTaskLatchPlugin = Plugin.define({
       if (!previous) return;
       const diagnosis = readonly && (role !== previous.role || digest !== previous.objective);
       if (!diagnosis) throw new Error("CORTEX_DISPATCH_LATCHED: " + guidance(previous));
-    });
+    };
 
-    await ctx.tool.hook("execute.after", async (event: any) => {
+    const executeAfter = async (contextOrEvent: any, maybeEvent?: any) => {
+      const event = maybeEvent !== undefined ? { ...contextOrEvent, ...maybeEvent } : contextOrEvent;
       const tool = (event?.tool || "").toLowerCase();
       const sessionID = event?.sessionID || event?.sessionId || "";
       const callID = event?.callID || event?.callId || "";
       const key = sessionID + ":" + callID;
-      const args = (event?.input || {}) as Record<string, any>;
+      const args = (event?.args || event?.input || {}) as Record<string, any>;
       const output = event?.result ?? event?.output;
 
       if (tool === "cortex_ia_work_retry") {
@@ -289,14 +299,26 @@ export const CortexTaskLatchPlugin = Plugin.define({
         } catch { /* Reporting availability cannot release the failed-attempt latch. */ }
       }
       throw new Error("CORTEX_SUBAGENT_EMPTY_RESULT: " + reason + "; supported continuation requires orchestrator reconciliation. " + guidance(failure));
-    });
+    };
 
-    return () => {
+    if (ctx.tool?.hook) {
+      await ctx.tool.hook("execute.before", executeBefore);
+      await ctx.tool.hook("execute.after", executeAfter);
+    }
+
+    const cleanup = () => {
       controller.abort();
       failed.clear();
       pending.clear();
       retries.clear();
     };
+    (cleanup as any).dispose = cleanup;
+    (cleanup as any)["tool.execute.before"] = executeBefore;
+    (cleanup as any)["tool.execute.after"] = executeAfter;
+    (cleanup as any).event = async (raw: any) => {
+      await processEvent(raw?.event || raw);
+    };
+    return cleanup;
   }
 });
 
