@@ -562,13 +562,15 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       const info = await lookup(signal => readSessionInfo(id, signal));
       if (info.id !== id || info.parentID !== parent || info.revert) return resumeFailure();
       const [parentHistory, childHistory] = await Promise.all([history(parent), history(id)]);
+      const links = parentHistory.flatMap(message => message.info.role === "assistant" ? message.parts : []).filter(part =>
+        part.type === "tool" && (part.tool === "task" || part.name === "task") && part.state?.metadata?.sessionId === id);
       const isResumePart = (part: any) =>
         Boolean(
           (part.state?.input?.session_id && part.state.input.session_id === id) ||
           (part.state?.input?.task_id && part.state.input.task_id === id)
         );
-      if (links.some(part => !part.callID || part.state.metadata.parentSessionId !== parent ||
-          !["running", "completed", "error"].includes(part.state.status) || !part.state.input ||
+      if (links.some(part => !part.callID || part.state?.metadata?.parentSessionId !== parent ||
+          !["running", "completed", "error"].includes(part.state?.status) || !part.state?.input ||
           (part.state.input.session_id && part.state.input.session_id !== id))) return resumeFailure();
       const originals = links.filter(part => !isResumePart(part));
       if (originals.length !== 1) return resumeFailure();
