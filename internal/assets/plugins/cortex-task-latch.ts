@@ -1,9 +1,10 @@
-// OpenCode v2 Plugin helper ensuring default export is a valid plugin definition object
+// OpenCode Plugin helper ensuring default export is a valid plugin definition object for v1 and v2
 export const Plugin = {
-  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any }>(def: T): T & ((ctx: any) => Promise<any> | any) => {
-    const fn = ((ctx: any) => def.setup ? def.setup(ctx) : undefined) as any;
-    Object.assign(fn, def);
-    return fn;
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; server?: (ctx: any) => Promise<any> | any }>(def: T): T => {
+    if (!def.server && def.setup) {
+      def.server = def.setup;
+    }
+    return def;
   },
 };
 
@@ -154,10 +155,8 @@ function failureReason(output: any): string | undefined {
 }
 
 /** Guards repeated dispatch after observed failure. It does not grant work authority. */
-export const CortexTaskLatchPlugin = Plugin.define({
-  id: "cortex-task-latch",
-  async setup(ctx) {
-    const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
+export const CortexTaskLatchPlugin = async (ctx: any) => {
+  const directory = (ctx as any)?.location?.directory || (ctx as any)?.directory || process.cwd();
     const failed = new Map<string, Map<string, Failure>>(), pending = new Map<string, Pending>();
     const retries = new Map<string, string>();
     const capacity = 256;
@@ -319,7 +318,12 @@ export const CortexTaskLatchPlugin = Plugin.define({
       await processEvent(raw?.event || raw);
     };
     return cleanup;
-  }
-});
+};
 
-export default CortexTaskLatchPlugin;
+export const CortexTaskLatchPluginDefinition = {
+  id: "cortex-task-latch",
+  setup: CortexTaskLatchPlugin,
+  server: CortexTaskLatchPlugin,
+};
+
+export default CortexTaskLatchPluginDefinition;

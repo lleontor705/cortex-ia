@@ -1,6 +1,9 @@
-// OpenCode v2 Plugin helper ensuring default export is a valid plugin definition object
+// OpenCode Plugin helper ensuring default export is a valid plugin definition object for v1 and v2
 export const Plugin = {
-  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; v1?: (ctx: any) => Promise<any> | any }>(def: T): T => {
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; v1?: (ctx: any) => Promise<any> | any; server?: (ctx: any) => Promise<any> | any }>(def: T): T => {
+    if (!def.server && def.setup) {
+      def.server = def.setup;
+    }
     return def;
   },
 };

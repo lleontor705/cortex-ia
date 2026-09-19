@@ -1,9 +1,10 @@
-// OpenCode v2 Plugin helper ensuring default export is a valid plugin definition object
+// OpenCode Plugin helper ensuring default export is a valid plugin definition object for v1 and v2
 export const Plugin = {
-  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any }>(def: T): T & ((ctx: any) => Promise<any> | any) => {
-    const fn = ((ctx: any) => def.setup ? def.setup(ctx) : undefined) as any;
-    Object.assign(fn, def);
-    return fn;
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; server?: (ctx: any) => Promise<any> | any }>(def: T): T => {
+    if (!def.server && def.setup) {
+      def.server = def.setup;
+    }
+    return def;
   },
 };
 
@@ -184,72 +185,77 @@ function getAllDiscoveredSkills(options: SkillDiscoveryOptions = {}): ResolvedSk
   return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export const CortexSkillDiscoveryPlugin = Plugin.define({
-  id: "cortex-skill-discovery",
-  async setup(ctx) {
-    const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
-    const allSkills = getAllDiscoveredSkills({ directory });
-    const repoOnly = allSkills.filter(s => s.origin === "repository");
+export const CortexSkillDiscoveryPlugin = async (ctx: any) => {
+  const directory = (ctx as any)?.location?.directory || (ctx as any)?.directory || process.cwd();
+  const allSkills = getAllDiscoveredSkills({ directory });
+  const repoOnly = allSkills.filter(s => s.origin === "repository");
 
-    // OpenCode v2 Native Skills Registration
-    if ((ctx as any).skill?.transform) {
-      await (ctx as any).skill.transform((editor: any) => {
-        for (const s of repoOnly) {
-          try {
-            const content = fs.existsSync(s.path) ? fs.readFileSync(s.path, "utf-8") : "";
-            editor.add({
-              id: s.name,
-              name: s.name,
-              description: s.description || "Repository-local custom skill",
-              location: s.path,
-              content,
-              autoinvoke: false,
-            });
-          } catch {}
-        }
-      });
-    }
+  // OpenCode v2 Native Skills Registration
+  if ((ctx as any)?.skill?.transform) {
+    await (ctx as any).skill.transform((editor: any) => {
+      for (const s of repoOnly) {
+        try {
+          const content = fs.existsSync(s.path) ? fs.readFileSync(s.path, "utf-8") : "";
+          editor.add({
+            id: s.name,
+            name: s.name,
+            description: s.description || "Repository-local custom skill",
+            location: s.path,
+            content,
+            autoinvoke: false,
+          });
+        } catch {}
+      }
+    });
+  }
 
-    const contextHook = async (contextOrEvent: any, maybeEvent?: any) => {
-      const event = maybeEvent !== undefined ? { ...contextOrEvent, ...maybeEvent } : contextOrEvent;
-      if (repoOnly.length === 0) return;
+  const contextHook = async (contextOrEvent: any, maybeEvent?: any) => {
+    const event = maybeEvent !== undefined ? { ...contextOrEvent, ...maybeEvent } : contextOrEvent;
+    if (repoOnly.length === 0) return;
 
-      const skillSummary = repoOnly
-        .map((s) => `- \`${s.name}\` [${s.origin}, p${s.precedence}]: ${s.description || "Repository skill"} (Path: \`${s.path}\`)`)
-        .join("\n");
+    const skillSummary = repoOnly
+      .map((s) => `- \`${s.name}\` [${s.origin}, p${s.precedence}]: ${s.description || "Repository skill"} (Path: \`${s.path}\`)`)
+      .join("\n");
 
-      const note = `\n\n### Repository-Local Custom Skills Available:\n${skillSummary}\n` +
-        `The orchestrator and subagents may load these project-specific skills directly from their workspace paths.\n`;
+    const note = `\n\n### Repository-Local Custom Skills Available:\n${skillSummary}\n` +
+      `The orchestrator and subagents may load these project-specific skills directly from their workspace paths.\n`;
 
-      if (Array.isArray(event.system)) {
-        if (event.system.length > 0) {
-          const last = event.system[event.system.length - 1];
-          if (typeof last === "string") {
-            event.system[event.system.length - 1] += note;
-          } else if (last && typeof last === "object" && "text" in last) {
-            last.text += note;
-          } else {
-            event.system.push({ type: "text", text: note });
-          }
+    if (Array.isArray(event.system)) {
+      if (event.system.length > 0) {
+        const last = event.system[event.system.length - 1];
+        if (typeof last === "string") {
+          event.system[event.system.length - 1] += note;
+        } else if (last && typeof last === "object" && "text" in last) {
+          last.text += note;
         } else {
           event.system.push({ type: "text", text: note });
         }
+      } else {
+        event.system.push({ type: "text", text: note });
       }
-      if (maybeEvent && maybeEvent.system && event.system) {
-        maybeEvent.system = event.system;
-      }
-    };
-
-    if (ctx.session?.hook) {
-      await ctx.session.hook("context", contextHook);
     }
+    if (maybeEvent && maybeEvent.system && event.system) {
+      maybeEvent.system = event.system;
+    }
+  };
 
-    const cleanup = async () => {};
-    (cleanup as any).dispose = cleanup;
-    (cleanup as any)["experimental.chat.system.transform"] = contextHook;
-    return cleanup;
+  if ((ctx as any)?.session?.hook) {
+    await (ctx as any).session.hook("context", contextHook);
   }
-});
+
+  const cleanup = async () => {};
+  (cleanup as any).dispose = cleanup;
+  (cleanup as any)["experimental.chat.system.transform"] = contextHook;
+  return cleanup;
+};
+
+export {
+  canonicalPath,
+  discoverInventory,
+  resolveLocator,
+  resolveSkill,
+  getAllDiscoveredSkills,
+};
 
 Object.assign(CortexSkillDiscoveryPlugin, {
   canonicalPath,
@@ -259,4 +265,15 @@ Object.assign(CortexSkillDiscoveryPlugin, {
   getAllDiscoveredSkills,
 });
 
-export default CortexSkillDiscoveryPlugin;
+export const CortexSkillDiscoveryPluginDefinition = {
+  id: "cortex-skill-discovery",
+  setup: CortexSkillDiscoveryPlugin,
+  server: CortexSkillDiscoveryPlugin,
+  canonicalPath,
+  discoverInventory,
+  resolveLocator,
+  resolveSkill,
+  getAllDiscoveredSkills,
+};
+
+export default CortexSkillDiscoveryPluginDefinition;

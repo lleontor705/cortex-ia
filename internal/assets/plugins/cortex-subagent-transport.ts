@@ -1,9 +1,10 @@
-// OpenCode v2 Plugin helper ensuring default export is a valid plugin definition object
+// OpenCode Plugin helper ensuring default export is a valid plugin definition object for v1 and v2
 export const Plugin = {
-  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any }>(def: T): T & ((ctx: any) => Promise<any> | any) => {
-    const fn = ((ctx: any) => def.setup ? def.setup(ctx) : undefined) as any;
-    Object.assign(fn, def);
-    return fn;
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; server?: (ctx: any) => Promise<any> | any }>(def: T): T => {
+    if (!def.server && def.setup) {
+      def.server = def.setup;
+    }
+    return def;
   },
 };
 
@@ -278,9 +279,7 @@ function isCleanup(tool: string, args: Record<string, any> | undefined): boolean
  * for OpenCode subagents. It supplements host system instructions with child scope
  * guidance, advisory budgets, and a configurable emergency ceiling.
  */
-export const CortexSubagentTransportPlugin = Plugin.define({
-  id: "cortex-subagent-transport",
-  async setup(ctx) {
+export const CortexSubagentTransportPlugin = async (ctx: any) => {
   const emergencySteps = policyInteger("CORTEX_IA_EMERGENCY_STEPS", 500, 1, 100000);
   const repetitionLimit = policyInteger("CORTEX_IA_REPETITION_LIMIT", 5, 2, 100);
   let disposed = false;
@@ -811,11 +810,19 @@ export const CortexSubagentTransportPlugin = Plugin.define({
       await processEvent(raw?.event || raw);
     };
     return cleanup;
-  },
-});
+};
+
+export { dispatchInfo };
 
 Object.assign(CortexSubagentTransportPlugin, {
   dispatchInfo,
 });
 
-export default CortexSubagentTransportPlugin;
+export const CortexSubagentTransportPluginDefinition = {
+  id: "cortex-subagent-transport",
+  setup: CortexSubagentTransportPlugin,
+  server: CortexSubagentTransportPlugin,
+  dispatchInfo,
+};
+
+export default CortexSubagentTransportPluginDefinition;
