@@ -433,7 +433,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
   };
   const metadata = (part: any) => {
     const toolName = part?.tool || part?.name;
-    if (part?.type !== "tool" || toolName !== "task") return;
+    if (part?.type !== "tool" || (toolName !== "task" && toolName !== "subagent")) return;
     const dispatches = starts.get(part.sessionID);
     if (!dispatches) return;
     // v1.18.29: normal session/tools uses callID; handleSubtask uses part.id.
@@ -442,19 +442,21 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
     const matches = [...dispatches.values()].filter(s => s.callID === partCallID || s.callID === part.id);
     if (!matches.length) return;
     const data = part.state?.metadata;
-    if (!data?.sessionId) return;
+    const childId = data?.sessionID || data?.sessionId;
+    if (!childId) return;
     const identity = JSON.stringify([part.messageID, part.id, partCallID]);
-    const conflict = matches.length !== 1 || !["running", "completed", "error"].includes(part.state?.status) || typeof data.sessionId !== "string" ||
-      data.parentSessionId !== part.sessionID || !part.id || !part.messageID || !partCallID;
+    const parentMatches = !data.parentSessionId || data.parentSessionId === part.sessionID;
+    const conflict = matches.length !== 1 || !["running", "completed", "error"].includes(part.state?.status) || typeof childId !== "string" ||
+      !parentMatches || !part.id || !part.messageID || !partCallID;
     for (const s of matches) {
-      const owner = owners.get(data.sessionId);
+      const owner = owners.get(childId);
       if (owner && owner !== s && !s.resume) owner.invalid = true;
       if (conflict || (owner && owner !== s && !s.resume) ||
-          (s.part && s.part !== identity) || (s.childID && s.childID !== data.sessionId)) s.invalid = true;
+          (s.part && s.part !== identity) || (s.childID && s.childID !== childId)) s.invalid = true;
       if (!s.invalid) {
         s.part = identity;
-        s.childID = data.sessionId;
-        if (s.operational) operationalSessions.add(data.sessionId);
+        s.childID = childId;
+        if (s.operational) operationalSessions.add(childId);
       }
     }
   };
@@ -563,13 +565,17 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       if (info.id !== id || info.parentID !== parent || info.revert) return resumeFailure();
       const [parentHistory, childHistory] = await Promise.all([history(parent), history(id)]);
       const links = parentHistory.flatMap(message => message.info.role === "assistant" ? message.parts : []).filter(part =>
-        part.type === "tool" && (part.tool === "task" || part.name === "task") && part.state?.metadata?.sessionId === id);
+        part.type === "tool" &&
+        (part.tool === "task" || part.name === "task" || part.tool === "subagent" || part.name === "subagent") &&
+        (part.state?.metadata?.sessionId === id || part.state?.metadata?.sessionID === id));
       const isResumePart = (part: any) =>
         Boolean(
           (part.state?.input?.session_id && part.state.input.session_id === id) ||
           (part.state?.input?.task_id && part.state.input.task_id === id)
         );
-      if (links.some(part => !part.callID || part.state?.metadata?.parentSessionId !== parent ||
+      if (links.some(part => !part.callID ||
+          (part.state?.metadata?.parentSessionId && part.state.metadata.parentSessionId !== parent) ||
+          (part.sessionID && part.sessionID !== parent) ||
           !["running", "completed", "error"].includes(part.state?.status) || !part.state?.input ||
           (part.state.input.session_id && part.state.input.session_id !== id))) return resumeFailure();
       const originals = links.filter(part => !isResumePart(part));
