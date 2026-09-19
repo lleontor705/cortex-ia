@@ -306,6 +306,32 @@ For discovery profiling of projects:
 </minion-dispatch>
 ```
 
+For reviewer independent verification:
+```json
+<minion-dispatch>
+{
+  "contract_version": "2.0",
+  "role": "reviewer",
+  "workflow": "review",
+  "phase": "verify",
+  "spec_plane": null,
+  "workload_policy": "flexible",
+  "task_id": "<task_id>",
+  "objective": "Independently inspect diffs, execute acceptance checks, and render approval verdict",
+  "allowed_files": [],
+  "non_goals": [
+    "Do not edit source code",
+    "Do not claim task execution"
+  ],
+  "acceptance_checks": [
+    "go test -v ./..."
+  ],
+  "artifact_refs": [],
+  "max_steps": 50
+}
+</minion-dispatch>
+```
+
 ### Subagent Delegation Visibility (OpenCode v2 Native Streaming)
 OpenCode v2's TUI and event bus stream subagent execution badges and spinners natively. In interactive turns, do not emit conversational narrative before delegating. When intermediate logging is necessary across multi-turn asynchronous background workflows, emit at most a single concise status line per dispatch/join, reserving the human conversational feed for final executive synthesis.
 

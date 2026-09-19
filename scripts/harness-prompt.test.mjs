@@ -207,3 +207,34 @@ test('planner sdd-lite accepts propose, plan, tasks aliases and normalizes to in
     message: /invalid planning phase for decision-map/
   });
 });
+
+test('dispatchInfo normalizes investigate envelope with description fallback and spec_plane none', async () => {
+  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
+  const { dispatchInfo } = mod.exports;
+
+  // Emulates OpenCode task call where model provides description instead of objective and spec_plane "none"
+  const prompt = `<minion-dispatch>
+{
+  "contract_version": "2.0",
+  "role": "investigate",
+  "workflow": "investigate",
+  "phase": "diagnose",
+  "spec_plane": "none",
+  "task_id": null,
+  "description": "Mapear arquitectura inventario actual",
+  "allowed_files": [],
+  "non_goals": ["Do not modify repository files"]
+}
+</minion-dispatch>`;
+
+  const res = dispatchInfo({ agent: 'investigate', description: 'Mapear arquitectura inventario actual' }, prompt);
+  assert.equal(res.limit, 50);
+  assert.equal(res.operational, false);
+  const normalized = JSON.parse(res.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
+  assert.equal(normalized.contract_version, '2.0');
+  assert.equal(normalized.role, 'investigate');
+  assert.equal(normalized.objective, 'Mapear arquitectura inventario actual');
+  assert.equal(normalized.spec_plane, null);
+  assert.deepEqual(normalized.non_goals, ['Do not modify repository files']);
+});
+

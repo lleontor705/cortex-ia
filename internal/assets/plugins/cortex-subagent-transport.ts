@@ -219,20 +219,45 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
     if (typeof envelope.contract_version === "number") {
       envelope.contract_version = (envelope.contract_version as number).toFixed(1);
     } else if (typeof envelope.contract_version === "string") {
-      if (envelope.contract_version === "1") envelope.contract_version = "1.0";
-      if (envelope.contract_version === "2") envelope.contract_version = "2.0";
+      const clean = envelope.contract_version.trim().toLowerCase().replace(/^v/, "");
+      if (clean === "1" || clean.startsWith("1.")) envelope.contract_version = "1.0";
+      else if (clean === "2" || clean.startsWith("2.")) envelope.contract_version = "2.0";
+    }
+    if (typeof envelope.role === "string") {
+      envelope.role = envelope.role.trim().toLowerCase();
     }
     if (envelope.role === undefined && hostTarget !== undefined) {
-      envelope.role = hostTarget;
+      envelope.role = typeof hostTarget === "string" ? hostTarget.trim().toLowerCase() : hostTarget;
     }
-    if (envelope.task_id === undefined || (typeof envelope.task_id === "string" && !envelope.task_id.trim())) {
+    if (
+      envelope.task_id === undefined ||
+      envelope.task_id === "none" ||
+      envelope.task_id === "null" ||
+      envelope.task_id === "N/A" ||
+      (typeof envelope.task_id === "string" && !envelope.task_id.trim())
+    ) {
       envelope.task_id = null;
+    } else if (typeof envelope.task_id === "number") {
+      envelope.task_id = String(envelope.task_id);
+    } else if (typeof envelope.task_id === "string") {
+      envelope.task_id = envelope.task_id.trim();
     }
-    if (envelope.spec_plane === undefined || envelope.spec_plane === "") {
+    if (
+      envelope.spec_plane === undefined ||
+      envelope.spec_plane === "" ||
+      envelope.spec_plane === "none" ||
+      envelope.spec_plane === "null" ||
+      envelope.spec_plane === "undefined" ||
+      envelope.spec_plane === false
+    ) {
       envelope.spec_plane = null;
+    } else if (typeof envelope.spec_plane === "string") {
+      envelope.spec_plane = envelope.spec_plane.trim().toLowerCase();
     }
     if (!envelope.workflow || typeof envelope.workflow !== "string" || !envelope.workflow.trim()) {
-      envelope.workflow = envelope.role || hostTarget || "investigate";
+      envelope.workflow = envelope.role === "planner" ? "sdd-lite" : (envelope.role || hostTarget || "investigate");
+    } else {
+      envelope.workflow = envelope.workflow.trim().toLowerCase();
     }
     if (!envelope.phase || typeof envelope.phase !== "string" || !envelope.phase.trim()) {
       envelope.phase = envelope.role === "investigate" ? "diagnose"
@@ -240,29 +265,72 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
         : envelope.role === "discovery" ? "profile"
         : envelope.role === "planner" ? "integrated"
         : "execute";
-    }
-    if (!Array.isArray(envelope.allowed_files)) {
-      envelope.allowed_files = [];
-    }
-    if (!Array.isArray(envelope.acceptance_checks)) {
-      envelope.acceptance_checks = [];
-    }
-    if (!Array.isArray(envelope.artifact_refs)) {
-      envelope.artifact_refs = [];
-    }
-    if (envelope.non_goals !== undefined && !Array.isArray(envelope.non_goals)) {
-      envelope.non_goals = [];
+    } else {
+      envelope.phase = envelope.phase.trim().toLowerCase();
     }
 
-    if ((envelope.contract_version !== "1.0" && envelope.contract_version !== "2.0") ||
-        !["discovery", "investigate", "planner", "implement", "reviewer"].includes(envelope.role) ||
-        !["workflow", "phase", "objective"].every(key => typeof envelope[key] === "string" && envelope[key].trim()) ||
-        !(envelope.task_id === null || (typeof envelope.task_id === "string" && envelope.task_id.trim())) ||
-        ![null, "openspec", "cortex", "hybrid"].includes(envelope.spec_plane) ||
-        !["allowed_files", "acceptance_checks", "artifact_refs"].every(key => Array.isArray(envelope[key]) && envelope[key].every((item: unknown) => typeof item === "string")) ||
-        (envelope.non_goals !== undefined && (!Array.isArray(envelope.non_goals) || !envelope.non_goals.every((item: unknown) => typeof item === "string")))) {
-      throw new Error("SUBAGENT_TRANSPORT_ERROR: invalid common dispatch contract");
+    if (!envelope.objective || typeof envelope.objective !== "string" || !envelope.objective.trim()) {
+      const candidate = envelope.description ?? envelope.task ?? envelope.goal ?? args.description ?? args.objective ?? args.task ?? args.goal;
+      if (typeof candidate === "string" && candidate.trim()) {
+        envelope.objective = candidate.trim();
+      } else {
+        const promptWithoutEnvelope = prompt.replace(/<minion-(?:dispatch|contract)>[\s\S]*?<\/minion-(?:dispatch|contract)>/g, "").trim();
+        envelope.objective = promptWithoutEnvelope ? promptWithoutEnvelope.slice(0, 200).trim() : `Execute ${envelope.role || hostTarget || "unspecified"} objective`;
+      }
+    } else {
+      envelope.objective = envelope.objective.trim();
     }
+
+    const toStringArray = (val: unknown): string[] => {
+      if (Array.isArray(val)) {
+        return val
+          .map(item => (typeof item === "string" ? item.trim() : String(item ?? "").trim()))
+          .filter(item => item.length > 0);
+      }
+      if (typeof val === "string" && val.trim()) {
+        return [val.trim()];
+      }
+      return [];
+    };
+
+    envelope.allowed_files = toStringArray(envelope.allowed_files);
+    envelope.acceptance_checks = toStringArray(envelope.acceptance_checks);
+    envelope.artifact_refs = toStringArray(envelope.artifact_refs);
+    if (envelope.non_goals !== undefined) {
+      envelope.non_goals = toStringArray(envelope.non_goals);
+    }
+
+    const contractErrors: string[] = [];
+    if (envelope.contract_version !== "1.0" && envelope.contract_version !== "2.0") {
+      contractErrors.push(`unsupported contract_version '${envelope.contract_version}' (must be '1.0' or '2.0')`);
+    }
+    if (!["discovery", "investigate", "planner", "implement", "reviewer"].includes(envelope.role)) {
+      contractErrors.push(`unrecognized role '${envelope.role}' (allowed: discovery, investigate, planner, implement, reviewer)`);
+    }
+    for (const key of ["workflow", "phase", "objective"]) {
+      if (typeof envelope[key] !== "string" || !envelope[key].trim()) {
+        contractErrors.push(`field '${key}' must be a non-empty string (got ${JSON.stringify(envelope[key])})`);
+      }
+    }
+    if (!(envelope.task_id === null || (typeof envelope.task_id === "string" && envelope.task_id.trim()))) {
+      contractErrors.push(`task_id must be null or non-empty string (got ${JSON.stringify(envelope.task_id)})`);
+    }
+    if (![null, "openspec", "cortex", "hybrid"].includes(envelope.spec_plane)) {
+      contractErrors.push(`spec_plane '${envelope.spec_plane}' is invalid (allowed: null, openspec, cortex, hybrid)`);
+    }
+    for (const key of ["allowed_files", "acceptance_checks", "artifact_refs"]) {
+      if (!Array.isArray(envelope[key]) || !envelope[key].every((item: unknown) => typeof item === "string")) {
+        contractErrors.push(`field '${key}' must be an array of strings`);
+      }
+    }
+    if (envelope.non_goals !== undefined && (!Array.isArray(envelope.non_goals) || !envelope.non_goals.every((item: unknown) => typeof item === "string"))) {
+      contractErrors.push(`field 'non_goals' must be an array of strings`);
+    }
+
+    if (contractErrors.length > 0) {
+      throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid common dispatch contract: ${contractErrors.join("; ")}`);
+    }
+
     if (envelope.role === "planner") {
       const phases: Record<string, string[]> = {
         "decision-map": ["chart", "resolve"],
