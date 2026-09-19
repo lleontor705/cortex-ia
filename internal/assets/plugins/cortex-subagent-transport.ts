@@ -317,18 +317,20 @@ export const CortexSubagentTransportPlugin = Plugin.define({
     }
   };
   const metadata = (part: any) => {
-    if (part?.type !== "tool" || part.tool !== "task") return;
+    const toolName = part?.tool || part?.name;
+    if (part?.type !== "tool" || toolName !== "task") return;
     const dispatches = starts.get(part.sessionID);
     if (!dispatches) return;
     // v1.18.29: normal session/tools uses callID; handleSubtask uses part.id.
     // Both are exact identities, never a parent-only fallback. Collisions fail closed.
-    const matches = [...dispatches.values()].filter(s => s.callID === part.callID || s.callID === part.id);
+    const partCallID = part.callID || part.id;
+    const matches = [...dispatches.values()].filter(s => s.callID === partCallID || s.callID === part.id);
     if (!matches.length) return;
     const data = part.state?.metadata;
     if (!data?.sessionId) return;
-    const identity = JSON.stringify([part.messageID, part.id, part.callID]);
+    const identity = JSON.stringify([part.messageID, part.id, partCallID]);
     const conflict = matches.length !== 1 || !["running", "completed", "error"].includes(part.state?.status) || typeof data.sessionId !== "string" ||
-      data.parentSessionId !== part.sessionID || !part.id || !part.messageID || !part.callID;
+      data.parentSessionId !== part.sessionID || !part.id || !part.messageID || !partCallID;
     for (const s of matches) {
       const owner = owners.get(data.sessionId);
       if (owner && owner !== s && !s.resume) owner.invalid = true;
@@ -349,17 +351,81 @@ export const CortexSubagentTransportPlugin = Plugin.define({
     try {
       const result = await Promise.race([Promise.resolve().then(() => read(abort.signal)),
         new Promise<never>((_, reject) => { timer = setTimeout(() => { abort.abort(); reject(new Error("identity lookup timeout")); }, 1000); })]);
-      if (result?.error || !result?.data) return fail();
-      return result.data;
+      const data = result?.data !== undefined ? result.data : result;
+      if (result?.error || data === undefined || data === null) return fail();
+      return data;
     } catch { return fail(); } finally { clearTimeout(timer); }
   };
   const resumeFailure = () => {
     throw new Error("SUBAGENT_TRANSPORT_AMBIGUOUS: cannot verify complete resume identity and budget; explicitly dispatch a fresh bounded task without task_id/session_id after reconciling prior work");
   };
+
+  const readSessionInfo = async (id: string, signal: AbortSignal) => {
+    if (ctx.session?.get) {
+      return await ctx.session.get({ sessionID: id, path: { id } } as any, { signal } as any);
+    }
+    if ((ctx as any).client?.session?.get) {
+      return await (ctx as any).client.session.get({ path: { id }, sessionID: id, signal });
+    }
+    throw new Error("No session get API available");
+  };
+
+  const readSessionMessages = async (id: string, signal: AbortSignal, limit = 1000) => {
+    if (ctx.session?.messages) {
+      return await (ctx.session as any).messages({ sessionID: id, path: { id }, query: { limit }, signal });
+    }
+    if (ctx.session?.context) {
+      return await ctx.session.context({ sessionID: id } as any, { signal } as any);
+    }
+    if ((ctx as any).client?.session?.messages) {
+      return await (ctx as any).client.session.messages({ path: { id }, query: { limit }, signal });
+    }
+    if ((ctx as any).client?.session?.context) {
+      return await (ctx as any).client.session.context({ sessionID: id, signal });
+    }
+    throw new Error("No session messages API available");
+  };
+
+  const normalizeMessages = (raw: any, sessionID: string) => {
+    const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+    return list.map((msg: any, mIdx: number) => {
+      const msgId = msg.info?.id || msg.id || `msg_${mIdx}`;
+      const msgSessionId = msg.info?.sessionID || msg.sessionID || sessionID;
+      const role = msg.info?.role || msg.type || msg.role || "";
+      const rawParts = Array.isArray(msg.parts)
+        ? msg.parts
+        : (Array.isArray(msg.content) ? msg.content : []);
+      const parts = rawParts.map((part: any, pIdx: number) => {
+        const partId = part.id || `${msgId}_part_${pIdx}`;
+        const callID = part.callID || part.id || partId;
+        const toolName = part.tool || part.name || "";
+        return {
+          id: partId,
+          callID,
+          tool: toolName,
+          name: toolName,
+          type: part.type,
+          sessionID: part.sessionID || msgSessionId,
+          messageID: part.messageID || msgId,
+          state: part.state
+        };
+      });
+      return {
+        info: {
+          id: msgId,
+          sessionID: msgSessionId,
+          role
+        },
+        parts
+      };
+    });
+  };
+
   // The host returns at most limit messages, with no implicit lower cap. Asking
   // for one extra proves completeness without relying on SDK cursor support.
   const history = async (id: string) => {
-    const messages = await lookup(signal => ctx.client.session.messages({ path: { id }, query: { limit: 1001 }, signal }));
+    const raw = await lookup(signal => readSessionMessages(id, signal, 1001));
+    const messages = normalizeMessages(raw, id);
     if (!Array.isArray(messages) || messages.length > 1000 || JSON.stringify(messages).length > 4 * 1024 * 1024) return resumeFailure();
     let count = 0;
     const ids = new Set<string>();
@@ -378,11 +444,11 @@ export const CortexSubagentTransportPlugin = Plugin.define({
     const pending = restorations.get(id);
     if (pending) return pending;
     const run = (async () => {
-      const info = await lookup(signal => ctx.client.session.get({ path: { id }, signal }));
+      const info = await lookup(signal => readSessionInfo(id, signal));
       if (info.id !== id || info.parentID !== parent || info.revert) return resumeFailure();
       const [parentHistory, childHistory] = await Promise.all([history(parent), history(id)]);
       const links = parentHistory.flatMap(message => message.info.role === "assistant" ? message.parts : []).filter(part =>
-        part.type === "tool" && part.tool === "task" && part.state?.metadata?.sessionId === id);
+        part.type === "tool" && (part.tool === "task" || part.name === "task") && part.state?.metadata?.sessionId === id);
       if (links.some(part => !part.callID || part.state.metadata.parentSessionId !== parent ||
           !["running", "completed", "error"].includes(part.state.status) || !part.state.input ||
           (part.state.input.task_id && part.state.input.task_id !== id) ||
@@ -434,7 +500,7 @@ export const CortexSubagentTransportPlugin = Plugin.define({
   const identify = async (id: string) => {
     if (disposed || deleted.has(id)) return fail();
     if (!parents.has(id)) {
-      const info = await lookup(signal => ctx.client.session.get({ path: { id }, signal }));
+      const info = await lookup(signal => readSessionInfo(id, signal));
       if (disposed || info.id !== id || deleted.has(id)) return fail();
       register(info);
       if (!info.parentID && !childSessions.has(id)) return; // SDK-proven root, not an unknown child.
@@ -442,7 +508,8 @@ export const CortexSubagentTransportPlugin = Plugin.define({
     const parent = parents.get(id);
     if (!parent || deleted.has(id) || deleted.has(parent)) return fail();
     if (!owners.has(id)) {
-      const messages = await lookup(signal => ctx.client.session.messages({ path: { id: parent }, query: { limit: 100 }, signal }));
+      const raw = await lookup(signal => readSessionMessages(parent, signal, 100));
+      const messages = normalizeMessages(raw, parent);
       if (!Array.isArray(messages)) return fail();
       for (const message of messages) for (const part of message.parts ?? []) metadata(part);
     }
@@ -473,18 +540,47 @@ export const CortexSubagentTransportPlugin = Plugin.define({
           for await (const event of ctx.event.subscribe({ signal })) {
             if (disposed || !event) continue;
             const type = event.type || (event as any).event || "";
-            const info = (event.properties as any)?.info;
+            const sessionData = (event as any).data || (event as any).properties?.info || (event as any).properties || {};
+            const sessionID = sessionData.sessionID || sessionData.id;
+            const parentID = sessionData.parentID;
 
             // Register child subagent sessions spawned with a parentID
-            if (type === "session.created" && info?.parentID && info?.id) {
-              register(info); // Creation proves ancestry only; it grants no allowance.
+            if (type === "session.created" && parentID && sessionID) {
+              register({ id: sessionID, parentID }); // Creation proves ancestry only; it grants no allowance.
             } else if (type === "message.part.updated") {
               const part = (event.properties as any)?.part;
-              metadata(part);
-              if (part?.type === "tool") terminal(part.sessionID, part.callID, part.tool,
-                part.state?.input, part.state?.status, part.state?.status === "error" ? part.state.error : part.state?.output);
+              if (part) {
+                metadata(part);
+                if (part.type === "tool") terminal(part.sessionID, part.callID || part.id, part.tool || part.name,
+                  part.state?.input, part.state?.status, part.state?.status === "error" ? part.state.error : part.state?.output);
+              }
+            } else if (type === "session.message.content.updated" || type === "message.updated") {
+              const content = (event as any).data?.content || (event as any).data?.part || (event as any).properties?.part;
+              if (content) {
+                const parts = Array.isArray(content) ? content : [content];
+                for (const part of parts) {
+                  const partCallID = part.callID || part.id;
+                  const toolName = part.tool || part.name;
+                  const sid = (event as any).data?.sessionID || part.sessionID;
+                  const normalizedPart = {
+                    id: part.id || partCallID,
+                    callID: partCallID,
+                    tool: toolName,
+                    name: toolName,
+                    type: part.type,
+                    sessionID: sid,
+                    messageID: (event as any).data?.messageID || part.messageID,
+                    state: part.state
+                  };
+                  metadata(normalizedPart);
+                  if (part.type === "tool" && sid && partCallID) {
+                    terminal(sid, partCallID, toolName,
+                      part.state?.input, part.state?.status, part.state?.status === "error" ? part.state.error : (part.state?.content || part.state?.output));
+                  }
+                }
+              }
             } else if (type === "session.deleted") {
-              const id = info?.id;
+              const id = sessionData.sessionID || sessionData.id;
               if (id) {
                 deleted.add(id);
               }

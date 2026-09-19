@@ -884,8 +884,14 @@ export const CortexDelegationBridge = Plugin.define({
     let parent = "";
     while (seen.size < 64 && /^[A-Za-z0-9_-]{1,256}$/.test(current) && !seen.has(current)) {
       seen.add(current);
-      const result = await client.session.get({ path: { id: current }, query: { directory } });
-      const session = result.data;
+      let session: any;
+      if (ctx.session?.get) {
+        const res = await ctx.session.get({ sessionID: current, path: { id: current } } as any);
+        session = res?.data ?? res;
+      } else if (client.session?.get) {
+        const res = await client.session.get({ path: { id: current }, query: { directory } });
+        session = res?.data ?? res;
+      }
       if (!session || session.id !== current) break;
       if (current === sessionID) parent = session.parentID || "";
       if (!session.parentID) {
