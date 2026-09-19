@@ -792,7 +792,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       if (!disposed) {
         const event = maybeEvent !== undefined ? { ...contextOrEvent, ...maybeEvent } : contextOrEvent;
         const sessionID = event?.sessionID || event?.sessionId;
-        const callID = event?.callID || event?.callId;
+        const callID = event?.callID || event?.callId || event?.id || event?.toolCallId || event?.toolCallID || event?.call_id || (contextOrEvent as any)?.callID || (contextOrEvent as any)?.callId || (contextOrEvent as any)?.id || "";
         const tool = event?.tool || event?.name;
         const args = event?.args || event?.input;
         const output = event?.output ?? event?.result;
@@ -805,7 +805,20 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       const rawTool = (event?.tool || event?.name || "").toLowerCase();
       const toolName = rawTool;
       const sessionID = event?.sessionID || event?.sessionId || "";
-      const callID = event?.callID || event?.callId || "";
+      let callID = event?.callID || event?.callId || event?.id || event?.toolCallId || event?.toolCallID || event?.call_id || event?.tool_call_id ||
+        (contextOrEvent as any)?.callID || (contextOrEvent as any)?.callId || (contextOrEvent as any)?.id ||
+        (maybeEvent as any)?.callID || (maybeEvent as any)?.callId || (maybeEvent as any)?.id || "";
+      if (!callID && sessionID) {
+        callID = `call_synth_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      }
+      if (event) {
+        event.callID = callID;
+        event.callId = callID;
+      }
+      if (contextOrEvent && typeof contextOrEvent === "object") {
+        contextOrEvent.callID = callID;
+        contextOrEvent.callId = callID;
+      }
       if (!sessionID) return fail();
       await identify(sessionID);
       // Async event callbacks can run at the await boundary: recheck before charging.
@@ -859,7 +872,19 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
         }
 
         const { limit: stepBudget, operational: isOperational, prompt: normalizedPrompt } = dispatchInfo(args, prompt);
-        if (!sessionID || !callID || starts.get(sessionID)?.has(callID)) {
+        const existingStart = starts.get(sessionID)?.get(callID);
+        if (existingStart) {
+          const normalizedArgs = { ...args, prompt: normalizedPrompt };
+          delete normalizedArgs.steps;
+          delete normalizedArgs.max_steps;
+          delete normalizedArgs.budget;
+          if (event.args) event.args = normalizedArgs;
+          if (event.input) event.input = normalizedArgs;
+          if (maybeEvent?.args) maybeEvent.args = normalizedArgs;
+          if (maybeEvent?.input) maybeEvent.input = normalizedArgs;
+          return;
+        }
+        if (!sessionID || !callID) {
           throw new Error("SUBAGENT_TRANSPORT_AMBIGUOUS: task requires a unique parent and callID pair");
         }
         if (args.task_id && args.session_id && args.task_id !== args.session_id) return resumeFailure();

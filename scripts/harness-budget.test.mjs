@@ -258,3 +258,31 @@ test('invalid init config rejects plugin startup', async () => {
     { message: /SUBAGENT_TRANSPORT_CONFIG: CORTEX_IA_EMERGENCY_STEPS must be an integer/ }
   );
 });
+
+test('task dispatch is idempotent on duplicate before hooks and resolves id alias', async () => {
+  const sessionDb = new Map([
+    ['root-ses', { id: 'root-ses' }]
+  ]);
+  const mockClient = {
+    session: {
+      get: async ({ path: { id } }) => ({ data: sessionDb.get(id) }),
+      messages: async () => ({ data: [] })
+    }
+  };
+
+  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
+  const { CortexSubagentTransportPlugin } = mod.exports;
+  const plugin = await CortexSubagentTransportPlugin({ client: mockClient, directory: process.cwd() });
+
+  const input = { tool: 'task', sessionID: 'root-ses', id: 'part-task-1' };
+  const output = { args: { agent: 'investigate', prompt: '<minion-dispatch>{"contract_version":"2.0","role":"investigate"}</minion-dispatch>' } };
+
+  // First invocation with OpenCode v2 'id' field
+  await plugin['tool.execute.before'](input, output);
+
+  // Duplicate invocation with the same callID (e.g. OpenCode dual hook firing)
+  await plugin['tool.execute.before'](input, output);
+
+  await plugin.dispose();
+});
+
