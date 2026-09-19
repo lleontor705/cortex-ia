@@ -505,16 +505,33 @@ export const CortexSubagentTransportPlugin = Plugin.define({
         if (childSessions.has(sessionID)) {
           if (Array.isArray(event.system)) {
             for (let index = event.system.length - 1; index >= 0; index--) {
-              if (event.system[index].startsWith("CORTEX_BUDGET_WARNING:") || event.system[index].startsWith("CORTEX_REPETITION_WARNING:")) {
+              const item = event.system[index];
+              const str = typeof item === "string" ? item : (item && typeof item === "object" && typeof item.text === "string" ? item.text : "");
+              if (str.startsWith("CORTEX_BUDGET_WARNING:") || str.startsWith("CORTEX_REPETITION_WARNING:")) {
                 event.system.splice(index, 1);
               }
             }
-            if (!event.system.includes(TRANSPORT_ISOLATION_SYSTEM)) event.system.push(TRANSPORT_ISOLATION_SYSTEM);
+            const hasText = (t: string) => event.system.some((item: any) => typeof item === "string" ? item.includes(t) : (item && typeof item === "object" && typeof item.text === "string" && item.text.includes(t)));
+            const appendSystem = (t: string) => {
+              if (event.system.length > 0) {
+                const last = event.system[event.system.length - 1];
+                if (typeof last === "string") {
+                  event.system[event.system.length - 1] += "\n\n" + t;
+                } else if (last && typeof last === "object" && "text" in last) {
+                  last.text += "\n\n" + t;
+                } else {
+                  event.system.push({ type: "text", text: t });
+                }
+              } else {
+                event.system.push({ type: "text", text: t });
+              }
+            };
+            if (!hasText(TRANSPORT_ISOLATION_SYSTEM)) appendSystem(TRANSPORT_ISOLATION_SYSTEM);
             const count = sessionStepCounts.get(sessionID) ?? 0;
             const budget = sessionStepLimits.get(sessionID) ?? Infinity;
-            if (count >= budget) event.system.push(`CORTEX_BUDGET_WARNING: advisory tool budget ${budget} reached (${count} attempts). Continue when useful; assess remaining scope and report partial progress if needed. This warning does not change task authority.`);
+            if (count >= budget) appendSystem(`CORTEX_BUDGET_WARNING: advisory tool budget ${budget} reached (${count} attempts). Continue when useful; assess remaining scope and report partial progress if needed. This warning does not change task authority.`);
             const streak = progress.get(sessionID)?.streak ?? 0;
-            if (streak >= repetitionLimit) event.system.push(`CORTEX_REPETITION_WARNING: ${streak} consecutive terminal tools had identical tool, arguments, status and result. This detects observable repetition, not semantic lack of progress; polling can be legitimate. Reassess the approach and report progress.`);
+            if (streak >= repetitionLimit) appendSystem(`CORTEX_REPETITION_WARNING: ${streak} consecutive terminal tools had identical tool, arguments, status and result. This detects observable repetition, not semantic lack of progress; polling can be legitimate. Reassess the approach and report progress.`);
           } else if (typeof event.system === "string") {
             if (!event.system.includes(TRANSPORT_ISOLATION_SYSTEM)) {
               event.system += "\n\n" + TRANSPORT_ISOLATION_SYSTEM;

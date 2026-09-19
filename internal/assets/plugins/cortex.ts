@@ -886,12 +886,19 @@ export const Cortex = Plugin.define({
           const instructions = buildMemoryInstructions(mode)
           if (Array.isArray(event.system)) {
             if (event.system.length > 0) {
-              event.system[event.system.length - 1] += "\n\n" + instructions
+              const last = event.system[event.system.length - 1];
+              if (typeof last === "string") {
+                event.system[event.system.length - 1] += "\n\n" + instructions;
+              } else if (last && typeof last === "object" && "text" in last) {
+                last.text += "\n\n" + instructions;
+              } else {
+                event.system.push({ type: "text", text: instructions });
+              }
             } else {
-              event.system.push(instructions)
+              event.system.push({ type: "text", text: instructions });
             }
           } else if (typeof event.system === "string") {
-            event.system = event.system ? event.system + "\n\n" + instructions : instructions
+            event.system = event.system ? event.system + "\n\n" + instructions : instructions;
           }
         } catch {}
       })
