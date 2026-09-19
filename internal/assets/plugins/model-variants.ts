@@ -5,18 +5,10 @@
  * on startup, saving an atomic cache to ~/.cortex/cache/model-variants.json.
  */
 
-// Universal Plugin helper ensuring full compatibility with OpenCode v1 (1.18.x) and v2 (2.x)
+// OpenCode v2 Plugin helper ensuring default export is a valid plugin definition object
 export const Plugin = {
-  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any }>(def: T): any => {
-    const fn: any = async (ctx: any) => {
-      if (typeof def.setup === "function") {
-        return await def.setup(ctx);
-      }
-      return {};
-    };
-    fn.id = def.id;
-    fn.setup = def.setup;
-    return fn;
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any }>(def: T): T => {
+    return def;
   },
 };
 
