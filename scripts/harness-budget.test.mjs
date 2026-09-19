@@ -275,9 +275,9 @@ test('task dispatch is idempotent on duplicate before hooks and resolves id alia
   const plugin = await CortexSubagentTransportPlugin({ client: mockClient, directory: process.cwd() });
 
   const input = { tool: 'task', sessionID: 'root-ses', id: 'part-task-1' };
-  const output = { args: { agent: 'investigate', prompt: '<minion-dispatch>{"contract_version":"2.0","role":"investigate"}</minion-dispatch>' } };
+  const output = { args: { agent: 'investigate', task_id: 'inv-serial-barcode-mapping', prompt: '<minion-dispatch>{"contract_version":"2.0","role":"investigate","task_id":"inv-serial-barcode-mapping"}</minion-dispatch>' } };
 
-  // First invocation with OpenCode v2 'id' field
+  // First invocation with OpenCode v2 'id' field and work task_id in args
   await plugin['tool.execute.before'](input, output);
 
   // Duplicate invocation with the same callID (e.g. OpenCode dual hook firing)

@@ -562,13 +562,15 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       const info = await lookup(signal => readSessionInfo(id, signal));
       if (info.id !== id || info.parentID !== parent || info.revert) return resumeFailure();
       const [parentHistory, childHistory] = await Promise.all([history(parent), history(id)]);
-      const links = parentHistory.flatMap(message => message.info.role === "assistant" ? message.parts : []).filter(part =>
-        part.type === "tool" && (part.tool === "task" || part.name === "task") && part.state?.metadata?.sessionId === id);
+      const isResumePart = (part: any) =>
+        Boolean(
+          (part.state?.input?.session_id && part.state.input.session_id === id) ||
+          (part.state?.input?.task_id && part.state.input.task_id === id)
+        );
       if (links.some(part => !part.callID || part.state.metadata.parentSessionId !== parent ||
           !["running", "completed", "error"].includes(part.state.status) || !part.state.input ||
-          (part.state.input.task_id && part.state.input.task_id !== id) ||
           (part.state.input.session_id && part.state.input.session_id !== id))) return resumeFailure();
-      const originals = links.filter(part => !part.state.input.task_id && !part.state.input.session_id);
+      const originals = links.filter(part => !isResumePart(part));
       if (originals.length !== 1) return resumeFailure();
       const original = originals[0];
       const prompt = original.state.input.prompt || original.state.input.description;
@@ -887,8 +889,11 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
         if (!sessionID || !callID) {
           throw new Error("SUBAGENT_TRANSPORT_AMBIGUOUS: task requires a unique parent and callID pair");
         }
-        if (args.task_id && args.session_id && args.task_id !== args.session_id) return resumeFailure();
-        const resume = args.task_id || args.session_id;
+        const resume = (args.session_id && typeof args.session_id === "string")
+          ? args.session_id
+          : (args.task_id && typeof args.task_id === "string" && (owners.has(args.task_id) || args.task_id.startsWith("ses_")))
+            ? args.task_id
+            : undefined;
         if (resume) {
           if (typeof resume !== "string" || resume === sessionID) return resumeFailure();
           await identify(resume);
