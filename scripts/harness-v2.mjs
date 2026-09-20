@@ -139,7 +139,7 @@ async function runSuite() {
   // Suite 1: Plugin Syntax & Structure Verification
   console.log("📦 Suite 1: Plugin Discovery & Structural Integrity");
   const pluginFiles = fs.readdirSync(pluginsDir).filter(f => f.endsWith(".ts"));
-  assert(pluginFiles.length >= 9, `Found ${pluginFiles.length} TypeScript plugins (expected at least 9)`);
+  assert(pluginFiles.length >= 8, `Found ${pluginFiles.length} TypeScript plugins (expected at least 8)`);
 
   for (const file of pluginFiles) {
     const filePath = path.join(pluginsDir, file);
@@ -211,6 +211,10 @@ async function runSuite() {
   assert(themeContent.version === 2, "Theme conforms to OpenCode v2 format (version: 2)");
   assert(themeContent.base && typeof themeContent.base === "object", "Theme defines complete base token tree");
   assert(Array.isArray(themeContent.base.categorical) && themeContent.base.categorical.length >= 4, "Theme defines categorical hue sequence");
+  assert(typeof themeContent.base.scrollbar?.base === "string", "Theme defines scrollbar.base required by OpenCode v2");
+  assert(themeContent.base.text?.feedback?.error?.base && themeContent.base.text?.feedback?.success?.base, "Theme defines text feedback tokens required by OpenCode v2");
+  assert(themeContent.base.background?.feedback?.error?.base && themeContent.base.background?.feedback?.success?.base, "Theme defines background feedback tokens required by OpenCode v2");
+  assert(themeContent.base.diff?.highlight?.added && themeContent.base.diff?.lineNumber?.text, "Theme defines diff highlight and lineNumber tokens required by OpenCode v2");
 
   const requiredHues = ["gray", "purple", "cyan", "blue", "green", "yellow", "orange", "red"];
   const requiredAliases = ["accent", "interactive", "neutral"];

@@ -51,7 +51,6 @@ A real rollback requires an interactive terminal and explicit confirmation; pipe
 ```bash
 cortex-ia rollback list    # backups with id and label (plain text)
 cortex-ia recover list     # pending recovery journals (plain text)
-cortex-ia delegate models  # available AGY models (plain text)
 ```
 
 Commands that emit machine-readable receipts print JSON; use `--json` where a subcommand documents it (for example `cortex-ia mcp list --json`).

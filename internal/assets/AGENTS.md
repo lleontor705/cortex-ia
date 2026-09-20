@@ -102,21 +102,13 @@ flowchart TD
 | **`investigate`** | `subagent/controller` | Repository diagnostics, red-capable reproduction, root-cause analysis, read-only workflow retrospective | One optional read-only AGY leaf | `read`, `grep`, `glob`, `list`, read-only `bash`, `cortex_*`, `cortex_ia_*`, delegation read/wait tools; no edits or nested `task` |
 | **`planner`** | `subagent/controller` | Decision maps, selected-plane contracts, vertical-slice DAGs, and blocked-task replacement plans | One optional plan-only AGY leaf | repository reads, selected-plane contract writes, `cortex_ia_board_create`, `cortex_ia_work_create`, `cortex_ia_work_decompose`, `cortex_*`, `cortex_ia_*`; no claims or nested `task` |
 | **`implement`** | `subagent/controller` | Claims one task, leases paths, executes, verifies, transitions to review | One AGY leaf after durable authority and explicit workspace-strategy validation | edits plus hidden-token `cortex_ia_work_claim|lease|renew|release|transition`, `cortex_ia_file_reserve|file_release`, `cortex_*`, `cortex_ia_*`; no nested `task` |
-| **`reviewer`** | `subagent/controller` | Independent verification and approval | One optional read-only AGY audit leaf | repository reads, tests, `cortex_ia_work_status`, `cortex_ia_work_approve`, `cortex_*`, `cortex_ia_*`; no edits, claims, leases, or nested `task` |
+| **`reviewer`** | `subagent/controller` | Independent verification and approval | Native execution | repository reads, tests, `cortex_ia_work_status`, `cortex_ia_work_approve`, `cortex_*`, `cortex_ia_*`; no edits, claims, leases, or nested `task` |
 
-The orchestrator always routes through a native controller and never launches an external executor directly. Discovery is always native and cannot delegate. Cortex-IA is the only process bridge and local task authority. External leaves receive no work-control CLI, Cortex MCP, session lifecycle, authority tokens, or nested-delegation capability; their SQLite job state is operational evidence only.
+The orchestrator always routes through a native controller. Discovery is always native. Cortex-IA is the only process bridge and local task authority.
 
 ### Effective Execution Mode Contract
 
-The value returned by `cortex_ia_delegate_start` is authoritative. Agents MUST NOT derive the effective mode from installer selections, `use_herdr`, CLI availability, or pane visibility.
-
-| Mode | Agent behavior |
-|---|---|
-| `native` | No external job was accepted; the native role controller executes the objective. |
-| `direct_cli` | Cortex accepted and launched AGY directly; the controller only supervises, validates, and retains control-plane authority. |
-| `herdr_multiplexed` | Cortex accepted and launched AGY through Herdr; controller behavior is identical to `direct_cli`, with the pane serving only as presentation and multiplexing. |
-
-After `delegated=true` plus `job_id`, no controller may perform the same objective concurrently or fall back natively because of failure, timeout, cancellation, a missing pane, or `lost`. It MUST reconcile the durable job first and may retry only explicitly under fresh authority. `use_herdr=true` is only a preference; Cortex may return `direct_cli` after a safe pre-acceptance fallback. When `cortex_ia_delegate_start` is not exposed in the host's active tool inventory (e.g. Antigravity or native-only sessions), `native` mode is implicitly active. Controllers proceed directly with local execution using available tools and must not halt or report a delegation admission error.
+All role controllers execute in `native` mode under the Cortex-IA Work Authority. OpenCode subagents proceed directly with local execution using their available tools, acquired claims, and file leases without external delegation.
 
 ---
 
@@ -469,3 +461,21 @@ cortex doctor
 cortex setup opencode
 cortex setup claude-code
 ```
+
+### I. OpenCode v2 (`opencode2`) Knowledge & Search Index
+
+When researching, developing, or debugging capabilities for **OpenCode v2 (`opencode2`)**, use this canonical index:
+
+#### 1. Official Documentation Mapping
+- **[Core Architecture & Config](https://opencode.ai/v2/docs/)**: Runtime architecture, Daemon/Server model, File hierarchy (`.config/opencode/` vs `.opencode/`), Precedence & merging rules, `opencode.jsonc` schema, Permissions array format (`[{ action, resource, effect }]`).
+- **[CLI & TUI Navigation](https://opencode.ai/v2/docs/cli/)**: Global CLI commands, TUI navigation (`opencode2`), `cli.json` configuration, Theme switching (`/themes`), Keybindings, Terminal Truecolor requirement (`COLORTERM=truecolor`).
+- **[Build & Plugin Extensions](https://opencode.ai/v2/docs/build/)**: Plugin architecture (`@opencode/plugin`), Tool hooks (`ctx.tool.hook`), Transforms (`ctx.tool.transform`), Event subscriptions (`ctx.event`), Context extensions (`ctx.agent`, `ctx.provider`, `ctx.model`, `ctx.mcp`, `ctx.command`), Custom tools.
+- **[API & Server Engine](https://opencode.ai/v2/docs/api/)**: OpenAPI 3.1.0 specification, Background service daemon, HTTP `/api/*` endpoints, WebSocket event streaming, Session compaction, Snapshot management.
+
+#### 2. Live CLI Inspection Helpers (`opencode2`)
+- `opencode2 debug paths`: Print active filesystem locations (`home`, `data`, `cache`, `config`, `state`, `log`, `db`).
+- `opencode2 debug config`: Print all resolved configuration sources and the fully merged active configuration tree.
+- `opencode2 models`: List all active AI models and provider connectivity.
+- `opencode2 --print-logs`: Stream real-time diagnostic server logs to stderr.
+- `opencode2 stats`: Output shareable usage statistics.
+

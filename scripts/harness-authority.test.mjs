@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadPluginFile, loadPluginSource } from './harness-plugin-loader.mjs';
 
-const bridgePath = 'internal/assets/plugins/herdr-bridge.ts';
+const bridgePath = 'internal/assets/plugins/cortex-work.ts';
 const guardPath = 'internal/assets/plugins/cortex-lease-guard.ts';
 const root = path.resolve('/isolated/harness');
 const home = path.resolve('/isolated/home');

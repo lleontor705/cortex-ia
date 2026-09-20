@@ -11,7 +11,7 @@ const context = { agent: 'implement', sessionID: 'submission-test', directory: '
 async function harness() {
   const calls = [];
   let failure = false;
-  const mod = await loadPluginFile('internal/assets/plugins/herdr-bridge.ts', {
+  const mod = await loadPluginFile('internal/assets/plugins/cortex-work.ts', {
     env: { HOME: home, USERPROFILE: home },
     mockPluginSDK: { tool: Object.assign(x => x, { schema }) },
     fs: { existsSync: p => p === executable, readFileSync: () => '', mkdirSync: () => {}, writeFileSync: () => {} },

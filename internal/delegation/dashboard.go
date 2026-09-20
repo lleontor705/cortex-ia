@@ -165,7 +165,6 @@ type ConversationDashboard struct {
 	Counts             map[string]int          `json:"counts"`
 }
 
-
 // DashboardForConversation reads every population in one SQLite snapshot and at
 // one instant. Empty identities are an empty view, never an administrative fallback.
 func (s *Store) DashboardForConversation(ctx context.Context, workspace, requestedSessionID, rootSessionID string) (ConversationDashboard, error) {

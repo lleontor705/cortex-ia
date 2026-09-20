@@ -18,18 +18,7 @@
 
 ## Execution Modes
 
-The delegation bridge returns the effective mode. That return value is authoritative for every controller and subagent:
-
-| Mode | Required behavior |
-|---|---|
-| `native` | No external job was accepted; the native OpenCode role controller executes the objective. |
-| `direct_cli` | Cortex-IA accepted and launched AGY directly; the native controller supervises and independently verifies it. |
-| `herdr_multiplexed` | Cortex-IA accepted and launched AGY through Herdr; Herdr changes presentation/transport, not authority. |
-
-- Never infer the effective mode from TUI preferences, `use_herdr`, installed binaries, or pane visibility.
-- After `delegated=true` plus `job_id`, never execute the same objective natively in parallel or fall back automatically after failure, timeout, cancellation, pane loss, or `lost`. Reconcile the durable job and retry explicitly under fresh authority.
-- Installer semantics are fixed: delegation disabled means `native`; delegation enabled plus Herdr disabled may produce `direct_cli`; delegation enabled plus Herdr enabled may produce `herdr_multiplexed` or a safe pre-acceptance `direct_cli` fallback.
-- When `cortex_ia_delegate_start` is unavailable in the host tool inventory (e.g. Antigravity or native-only sessions), `native` mode is implicitly active. Controllers proceed directly with local execution using available tools without halting.
+All role controllers execute in `native` mode under the Cortex-IA Work Authority. OpenCode subagents proceed directly with local execution using their available tools, acquired claims, and file leases.
 
 ## Task Boards and Work Authority
 
@@ -87,6 +76,45 @@ The delegation bridge returns the effective mode. That return value is authorita
 - `internal/agents/opencode` declares the OpenCode native layout (`layout.go`) and the pure asset mapping (`assetmap.go`): every destination is `path.Join(config root, source)`, validated against the single layout declaration, failing closed on unsafe paths, off-surface destinations, and collisions (including case-insensitive ones on Windows/macOS).
 - `internal/components/filemerge` owns JSONC decode/merge and atomic writes; reuse it instead of writing ad-hoc merge code.
 - Skills, prompts, commands, and plugins under `internal/assets/` are runtime source files embedded by `go:embed`; changing them requires rebuilding the binary. Shared skill contracts under `internal/assets/skills/_shared/` support installed agent instructions and must stay aligned with role files.
+
+## OpenCode v2 (`opencode2`) Knowledge & Search Index
+
+When researching, developing, or debugging capabilities for **OpenCode v2 (`opencode2`)**, use this canonical index to locate authoritative specifications, official documentation, and local inspection commands.
+
+### 1. Official Documentation Mapping
+
+| Topic & URL | Scope & Key Concepts | When to Consult |
+| :--- | :--- | :--- |
+| **[Core Docs](https://opencode.ai/v2/docs/)** | Core runtime architecture, Daemon/Server model, File hierarchy (`.config/opencode/` vs `.opencode/`), Precedence & merging rules, `opencode.jsonc` schema, Permissions array format (`[{ action, resource, effect }]`). | When designing configuration templates, setting permissions, or understanding directory precedence. |
+| **[CLI & TUI](https://opencode.ai/v2/docs/cli/)** | Global CLI commands, TUI navigation (`opencode2`), `cli.json` configuration, Theme switching (`/themes`), Keybindings, Terminal Truecolor requirement (`COLORTERM=truecolor`). | When configuring user TUI preferences, themes, keybindings, or troubleshooting TUI rendering. |
+| **[Build & Plugins](https://opencode.ai/v2/docs/build/)** | Plugin architecture (`@opencode/plugin`), Tool hooks (`ctx.tool.hook`), Transforms (`ctx.tool.transform`), Event subscriptions (`ctx.event`), Context extensions (`ctx.agent`, `ctx.provider`, `ctx.model`, `ctx.mcp`, `ctx.command`), Custom tools. | When authoring plugins, guards, telemetry interceptors, or runtime middleware. |
+| **[API & Server](https://opencode.ai/v2/docs/api/)** | OpenAPI 3.1.0 specification, Background service daemon, HTTP `/api/*` endpoints, WebSocket event streaming, Session compaction, Snapshot management. | When interacting directly with the local OpenCode daemon via HTTP or building client bridges. |
+
+### 2. Live CLI Inspection Helpers (`opencode2`)
+
+Use the native binary (`opencode2`) directly to inspect live runtime state:
+
+- `opencode2 debug paths`: Print active filesystem locations (`home`, `data`, `cache`, `config`, `state`, `log`, `db`).
+- `opencode2 debug config`: Print all resolved configuration sources and the fully merged active configuration tree.
+- `opencode2 models`: List all active AI models and provider connectivity.
+- `opencode2 --print-logs`: Stream real-time diagnostic server logs to stderr.
+- `opencode2 stats`: Output shareable usage statistics.
+
+### 3. Project Skills & Developer Helpers
+
+Project-level skills are located in `.agents/skills/` (ready for use in this repository without asset embedding):
+
+- **`opencode-theme-dev`** (`.agents/skills/opencode-theme-dev/SKILL.md`):
+  - Author and migrate v2 themes (`base`, `dark`, `light`, 9-step `hue` scales, `categorical`).
+  - Validation helper: `node scripts/validate-theme.mjs <theme.json>` (checks all 16 required tokens).
+  - Reference: `.agents/skills/opencode-theme-dev/references/theme-token-spec.md`.
+- **`opencode-plugin-dev`** (`.agents/skills/opencode-plugin-dev/SKILL.md`):
+  - Develop native plugins using `@opencode/plugin` and the universal dual-mode wrapper (`Plugin.define`).
+  - Reference: `.agents/skills/opencode-plugin-dev/references/plugin-api-reference.md`.
+  - Examples: `.agents/skills/opencode-plugin-dev/examples/tool-guard-plugin.ts`.
+- **`opencode-installer-dev`** (`.agents/skills/opencode-installer-dev/SKILL.md`):
+  - Best practices for configuration installers and environment orchestrators targeting `opencode2`.
+  - Reference: `.agents/skills/opencode-installer-dev/references/opencode-v2-precedence.md`.
 
 ## Security and Persistence Invariants
 

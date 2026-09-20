@@ -27,6 +27,20 @@
         "base": "$hue.neutral.100",
         "$focused": "$hue.accent.200",
         "$disabled": "$hue.neutral.500"
+      },
+      "feedback": {
+        "error": {
+          "base": "$hue.red.300"
+        },
+        "warning": {
+          "base": "$hue.yellow.300"
+        },
+        "success": {
+          "base": "$hue.green.300"
+        },
+        "info": {
+          "base": "$hue.cyan.300"
+        }
       }
     },
     "background": {
@@ -57,6 +71,20 @@
         "base": "$background.raised.base",
         "$focused": "$background.raised.high",
         "$disabled": "$background.base"
+      },
+      "feedback": {
+        "error": {
+          "base": "$hue.red.900"
+        },
+        "warning": {
+          "base": "$hue.yellow.900"
+        },
+        "success": {
+          "base": "$hue.green.900"
+        },
+        "info": {
+          "base": "$hue.cyan.900"
+        }
       }
     },
     "border": {
@@ -64,18 +92,30 @@
       "active": "$hue.accent.400"
     },
     "scrollbar": {
-      "thumb": "$hue.neutral.600",
-      "track": "transparent"
+      "base": "$hue.neutral.600"
     },
     "diff": {
       "text": {
         "added": "$hue.green.300",
         "removed": "$hue.red.300",
-        "context": "$text.muted"
+        "context": "$text.muted",
+        "hunkHeader": "$hue.neutral.400"
       },
       "background": {
         "added": "$hue.green.900",
-        "removed": "$hue.red.900"
+        "removed": "$hue.red.900",
+        "context": "$background.raised.base"
+      },
+      "highlight": {
+        "added": "$hue.green.400",
+        "removed": "$hue.red.400"
+      },
+      "lineNumber": {
+        "text": "$hue.neutral.400",
+        "background": {
+          "added": "$hue.green.900",
+          "removed": "$hue.red.900"
+        }
       }
     },
     "syntax": {

@@ -104,6 +104,6 @@ Write-Host @"
   Quick Start:
     cortex-ia          # Launch Interactive TUI & Management Console
     cortex-ia web      # Launch Web Console (http://127.0.0.1:7331)
-    cortex-ia herdr    # Diagnose Herdr and AGY multiplexing
+    cortex-ia doctor   # Diagnose installation health
 
 "@ -ForegroundColor Green

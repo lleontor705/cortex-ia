@@ -70,7 +70,7 @@ Every delegation decision balances role permissions, uncertainty, output volume,
 
 ## 3. Typed tools and token custody
 
-Native controllers use the typed `cortex_ia_board_*`, `cortex_ia_work_*`, `cortex_ia_delegate_start`, and `cortex_ia_delegation_*` tools exposed by the active OpenCode bridge. The current tool schema is authoritative: never invent a missing tool or argument.
+Native controllers use the typed `cortex_ia_board_*` and `cortex_ia_work_*` tools exposed by the active OpenCode bridge. The current tool schema is authoritative: never invent a missing tool or argument.
 
 | Tool group | Permitted use |
 |---|---|
@@ -84,7 +84,6 @@ Native controllers use the typed `cortex_ia_board_*`, `cortex_ia_work_*`, `corte
 | `cortex_ia_work_claim|renew|lease_renew|release_all|transition` | Implementer only; claims task, optionally reserves initial `paths: [...]`, renews leases, and transitions state |
 | `cortex_ia_file_reserve|cortex_ia_file_release` | Implementer only; single-file or batch reservation (`path` or `paths: [...]`) and single-file release |
 | `cortex_ia_work_approve` | Independent reviewer, or orchestrator auto-approval on low-risk direct changes |
-| `cortex_ia_delegate_start` and `cortex_ia_delegation_status|wait|result|cancel|recover` | The native controller supervising its one external leaf |
 
 The bridge retains claim and lease tokens in process memory and sends them to the CLI over stdin. Tokens must never appear in prompts, argv, receipts, logs, files, Cortex observations, or chat. Human operators may use the literal-token CLI form only in a protected terminal when explicitly necessary.
 
@@ -112,23 +111,11 @@ Recovery only reconciles expired authority. It does not recreate claims or lease
 
 When subagent dispatch terminates empty, corrupt, or aborted, task latching prevents ungrounded re-dispatch loops. Latching is a protective safety invariant, not a missing capability: unlatch tools do not exist, and leaf subagents are barred from attempting recovery or retry bypasses. Supported continuation requires the orchestrator to reconcile prior work and durable task state in SQLite (`cortex-ia work status` / `cortex-ia work recover`) before initiating a fresh authorized attempt under a new attempt counter; expired claim/lease tokens are never reused or inherited. If task identity is unknown, continuation capability is unavailable until the orchestrator investigates and identifies the durable task.
 
-External AGY implementation requires `current_workspace` as the single supported workspace strategy; requests specifying `isolated_worktree` fail closed with an actionable retirement error. An external AGY leaf is exclusive for its execution window, never concurrent with native edits, and must preserve every pre-existing unleased change relative to the pre-run baseline. Native OpenCode implement controllers may share the current workspace in parallel under disjoint live per-file reservations (`cortex_ia_file_reserve`).
+Native OpenCode implement controllers execute in the current workspace under disjoint live per-file reservations (`cortex_ia_file_reserve`). Requests specifying `isolated_worktree` fail closed with an actionable retirement error.
 
-## 5. Delegation modes
+## 5. Native Execution Mode
 
-External execution uses AGY's existing account/keyring authentication by default (`CORTEX_IA_AGY_AUTH` unset or `account`), without requiring an API key, forcing provider settings or restricting the configured model to Gemini. The runner keeps a temporary HOME/USERPROFILE/AppData/XDG and an allowlisted environment in every mode; it does not copy user profiles, MCP configuration or keyring credentials. Account availability depends on AGY and the host keyring; a temporary home does not create a login. Optional `CORTEX_IA_AGY_AUTH=gemini` requires a bounded `GEMINI_API_KEY`, writes only the documented Gemini provider setting, and rejects non-Gemini model selections with `AGY_AUTH_MODEL_UNSUPPORTED`; missing explicit Gemini credentials return `AGY_AUTH_REQUIRED`. The selected model and permission preference are preserved. This process environment boundary is not an OS, network or workspace sandbox. See the vendor's installation/authentication documentation when configuring authentication.
-
-Native role controllers (`planner`, `investigate`, `implement`, and `reviewer`) invoke `cortex_ia_delegate_start` once before their execution objective so the bridge resolves the current role configuration. Continue locally only when `execution_mode=native` and no error is present. A blocked/error result or `delegated=false` alone never authorizes local fallback; report its code and recovery action. The bridge reads `cortex-delegation.json`; role prompts never infer or override that configuration. The returned mode selects the authoritative execution path. The orchestrator dispatches the native controller and never calls the gate on its behalf. When `cortex_ia_delegate_start` is not exposed in the host's active tool inventory (for example, in native-only host environments such as Antigravity, or in host sessions where the bridge plugin is unmounted), the controller operates directly in implicit `native` mode (`execution_mode: "native"`). It proceeds immediately with local execution using its available tools without halting or raising a delegation gate error.
-
-The `execution_mode` returned by `cortex_ia_delegate_start` is authoritative:
-
-| Mode | Meaning | Controller behavior |
-|---|---|---|
-| `native` | No external job was accepted. | Execute natively and do not poll delegation tools. |
-| `direct_cli` | Cortex-IA accepted and launched AGY directly. | Supervise the durable job and independently verify its receipt. |
-| `herdr_multiplexed` | Cortex-IA accepted and launched AGY through Herdr. | Behave exactly as in `direct_cli`; Herdr changes transport and presentation only. |
-
-`use_herdr` is a preference, not an execution fact. A safe pre-acceptance fallback may return `direct_cli`. After `delegated=true` plus `job_id`, never execute the same objective natively in parallel. If the delegated job reaches a terminal failure, timeout, cancellation, or `lost` state, the controller must reconcile the durable job in SQLite; then return the failure evidence for an explicit retry or revised dispatch under fresh authority. Reconciliation alone does not authorize automatic native fallback. Model quota or rate-limit exhaustion is a transient infrastructure failure. Reconcile the accepted job and its effects, then obtain an explicit retry decision under fresh authority; it never authorizes automatic native fallback.
+All role controllers (`planner`, `investigate`, `implement`, and `reviewer`) execute natively within OpenCode using their assigned toolsets and authority boundaries under Cortex-IA Work Authority. External AGY delegation has been retired.
 
 ## 6. Native background dispatch & parallel waves
 
@@ -149,11 +136,11 @@ When multiple board tasks reach `ready` with mutually disjoint `allowed_files`, 
 Reader and writer admission is advisory capacity control, not authority. Default limits are four readers and up to three concurrent writers when task claims, leases, effects, and isolation prove independence. Optional native background tools may be used only when present in the effective tool inventory.
 
 
-## 7. Herdr and reconciliation
+## 7. Herdr integration
 
-Official Herdr integrations report OpenCode lifecycle/session identity and AGY session identity. The Cortex bridge owns job-to-pane mapping, launch, wait, result, cancellation, cleanup, and UI events. No Herdr plugin may mutate task authority or infer job success from `idle`, `done`, pane closure, or visibility.
+Official Herdr integrations report OpenCode lifecycle and session identity. The Cortex bridge coordinates UI and workspace views. No Herdr plugin may mutate task authority or infer job success from `idle`, `done`, pane closure, or visibility.
 
-A closed or missing pane is evidence of transport loss, not a task verdict. Query the durable delegation job; use cancellation/recovery when applicable; then reconcile the owning work task. Delegation recovery changes only expired active jobs to `lost` and never recreates work authority.
+A closed or missing pane is evidence of transport loss, not a task verdict. Reconcile the owning work task when transport fails.
 
 ## 8. Completion receipt
 
@@ -168,10 +155,9 @@ A controller reports `PASS` only with executable evidence: command, exit code, r
 ## 9. Incident & Error Reporting Protocol
 
 Controllers and orchestrators record structured operational error reports when encountering unrecoverable blockers or failure states:
-- Command: `cortex-ia report error --code <code> --message <msg> [--details <details>] [--task <id>] [--job <id>] [--source <source>]`
+- Command: `cortex-ia report error --code <code> --message <msg> [--details <details>] [--task <id>] [--source <source>]`
 - Standard Taxonomy:
   - `ERR_TASK_BLOCKED`: Unmet dependencies, CAS revision mismatch, or maximum retry exhaustion.
-  - `ERR_DELEGATION_FAILURE`: Delegated leaf process crash, non-zero exit code, or TTL expiration.
   - `ERR_VERIFICATION_FAIL`: Verification oracle or reviewer returned FAIL with reproducible failure details.
   - `ERR_INVARIANT_VIOLATION`: Dirty worktree, file lease collision, or expired claim authority token.
 All reports are recorded in the local SQLite operational events ledger (`~/.cortex-ia/delegation.db`) for local audit, retrospective review, and diagnostics.

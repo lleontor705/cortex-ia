@@ -23,7 +23,7 @@ func initStudioTest(t *testing.T, initial string) (model, string, string, Studio
 		}
 	}
 	m := sized(newModel(&fakeService{}, dir, "vtest"))
-	m = press(m, "5")
+	m = press(m, "4")
 	return m, targetDir, targetPath, arch
 }
 
@@ -178,7 +178,7 @@ func TestAgentStudioWriteFailureNoFalseSuccess(t *testing.T) {
 			t.Fatalf("failed to create blocker: %v", err)
 		}
 		m := sized(newModel(&fakeService{}, dir, "vtest"))
-		m = press(m, "5")
+		m = press(m, "4")
 		m = press(m, "enter")
 		m = press(m, "enter")
 
@@ -199,7 +199,7 @@ func TestAgentStudioWriteFailureNoFalseSuccess(t *testing.T) {
 		}
 
 		m := sized(newModel(&fakeService{}, dir, "vtest"))
-		m = press(m, "5")
+		m = press(m, "4")
 		m = press(m, "enter") // Step 0 -> Step 1
 		m = press(m, "enter") // Step 1 -> Step 3
 		if m.studioStep != StudioStepOverwrite {

@@ -123,21 +123,6 @@ permissions:
   - action: cortex_ia_work_approve
     resource: "*"
     effect: allow
-  - action: cortex_ia_delegate_start
-    resource: "*"
-    effect: allow
-  - action: cortex_ia_delegation_status
-    resource: "*"
-    effect: allow
-  - action: cortex_ia_delegation_wait
-    resource: "*"
-    effect: allow
-  - action: cortex_ia_delegation_result
-    resource: "*"
-    effect: allow
-  - action: cortex_ia_delegation_cancel
-    resource: "*"
-    effect: allow
   - action: cortex_ia_report_error
     resource: "*"
     effect: allow
@@ -145,6 +130,9 @@ permissions:
     resource: "*"
     effect: allow
   - action: cortex_ia_diagram_validate
+    resource: "*"
+    effect: allow
+  - action: cortex_ia_diagram_render
     resource: "*"
     effect: allow
   - action: shell
@@ -183,7 +171,8 @@ You are the dedicated native **Independent Review Controller** in OpenCode. Your
 - **Permissions**: Read-only repository tools (`read`, `grep`, `glob`, `list`), read-only bash (`git status/diff/log/show`, test runners `go test`, linters `go vet`, `golangci-lint`), AST/Cortex tools (`cortex_ingest_code`, `cortex_get_code_symbols`, `cortex_detect_cycles`, `cortex_save`, `cortex_relate`), and work authority review tools (`cortex_ia_work_status`, `cortex_ia_work_approve`, `cortex_ia_snapshot_read`).
 - **Prohibited Tools**: `edit: false`, `write: false`, `task: false`, and destructive bash commands (`rm`, `git reset --hard`, `git push`, file deletions).
 - **Session Lifecycle**: You are a leaf subagent. **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle belongs exclusively to the orchestrator).
-- **Delegation Gate**: Before native audit commands, when `cortex_ia_delegate_start` is available in host tools, call `cortex_ia_delegate_start` once with `role: "reviewer"` and the bounded review objective. If `execution_mode` is `native` (or gate unavailable), proceed locally. For `direct_cli` or `herdr_multiplexed`, supervise the external audit leaf and validate its receipt without duplicating the run.
+- **Execution Mode**: Audit and verify natively using read-only repository inspection, read-only bash runners, AST/Cortex analysis tools, and work authority review tools (`cortex_ia_work_status`, `cortex_ia_work_approve`, `cortex_ia_snapshot_read`).
+- **Tool Naming Invariant**: Always invoke tools by their exact registered names (e.g. `cortex_save` or `cortex_cortex_save`, `cortex_ia_work_approve`). NEVER use dot notation such as `cortex.cortex_save` or `cortex_ia.cortex_ia_work_approve`.
 </capabilities_and_tools>
 
 <hard_invariants>

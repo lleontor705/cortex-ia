@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { loadPluginFile } from './harness-plugin-loader.mjs';
 
 test('bridge deepFreeze and nested mutation protection', async () => {
-  const bridge = await loadPluginFile('internal/assets/plugins/herdr-bridge.ts', {
+  const bridge = await loadPluginFile('internal/assets/plugins/cortex-work.ts', {
     allowChildProcess: true,
   });
   const { processWorkStatusResponse, deepFreeze } = bridge.exports;
@@ -42,7 +42,7 @@ test('bridge deepFreeze and nested mutation protection', async () => {
 });
 
 test('response ordering discards older revisions', async () => {
-  const bridge = await loadPluginFile('internal/assets/plugins/herdr-bridge.ts', {
+  const bridge = await loadPluginFile('internal/assets/plugins/cortex-work.ts', {
     allowChildProcess: true,
   });
   const { processWorkStatusResponse } = bridge.exports;
@@ -82,7 +82,7 @@ test('response ordering discards older revisions', async () => {
 });
 
 test('response task and session mismatch rejected', async () => {
-  const bridge = await loadPluginFile('internal/assets/plugins/herdr-bridge.ts', {
+  const bridge = await loadPluginFile('internal/assets/plugins/cortex-work.ts', {
     allowChildProcess: true,
   });
   const { processWorkStatusResponse } = bridge.exports;
@@ -112,7 +112,7 @@ test('response task and session mismatch rejected', async () => {
 });
 
 test('failed retrieval replaces cached readiness with unknown authority', async () => {
-  const bridge = await loadPluginFile('internal/assets/plugins/herdr-bridge.ts', {
+  const bridge = await loadPluginFile('internal/assets/plugins/cortex-work.ts', {
     allowChildProcess: true,
   });
   const { processWorkStatusResponse, handleWorkStatusFailure, cachedProjections } = bridge.exports;
@@ -134,7 +134,7 @@ test('failed retrieval replaces cached readiness with unknown authority', async 
 });
 
 test('model-selected privileged role escalation is rejected', async () => {
-  const bridge = await loadPluginFile('internal/assets/plugins/herdr-bridge.ts', {
+  const bridge = await loadPluginFile('internal/assets/plugins/cortex-work.ts', {
     allowChildProcess: true,
     env: { CORTEX_BIN: 'mock' },
   });

@@ -131,7 +131,7 @@ func Status() error {
 
 	herdrPath, err := ResolveHerdr()
 	if err != nil {
-		fmt.Println("❌ Herdr: NO instalado (ejecuta 'cortex-ia herdr install')")
+		fmt.Println("❌ Herdr: NO instalado")
 	} else {
 		fmt.Printf("✅ Herdr: Instalado en %s\n", herdrPath)
 	}

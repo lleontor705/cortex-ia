@@ -12,7 +12,7 @@ const workDir = path.resolve('/isolated/work');
 
 async function harness() {
   const files = new Map();
-  const mod = await loadPluginFile('internal/assets/plugins/herdr-bridge.ts', {
+  const mod = await loadPluginFile('internal/assets/plugins/cortex-work.ts', {
     env: { HOME: home, USERPROFILE: home },
     mockPluginSDK: { tool: Object.assign(x => x, { schema }) },
     fs: {

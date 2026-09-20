@@ -403,15 +403,50 @@ const READ_ONLY_TOOLS = new Set([
   "mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key"
 ]);
 
-const AUTHORITY_PLANE_TOOL = /^cortex_ia_(?:work|file|delegate|board)_/;
+const STRICT_AUTHORITY_TOOLS = new Set([
+  "cortex_ia_work_claim",
+  "cortex_ia_work_renew",
+  "cortex_ia_file_reserve",
+  "cortex_ia_work_lease_renew",
+  "cortex_ia_work_release_all",
+  "cortex_ia_file_release",
+  "cortex_ia_work_transition",
+  "cortex_ia_work_approve",
+  "cortex_ia_work_decompose",
+  "cortex_ia_work_create",
+  "cortex_ia_board_create",
+  "cortex_ia_work_retry",
+  "cortex_ia_work_recover",
+]);
+
+const SPEC_AND_PLANNING_TOOLS = new Set([
+  "cortex_ia_openspec_write",
+  "cortex_ia_openspec_validate",
+  "cortex_ia_discovery_write",
+  "cortex_ia_change_archive",
+  "cortex_ia_doc_convert",
+  "cortex_ia_diagram_validate",
+  "cortex_ia_diagram_render",
+  "cortex_ia_report_error",
+  "cortex_ia_content_hash",
+  "cortex_ia_snapshot_read",
+  "cortex_ia_work_review_refresh",
+  "cortex_ia_work_approvals",
+  "cortex_ia_work_fingerprint",
+  "cortex_ia_work_status",
+  "cortex_ia_work_list",
+  "cortex_ia_board_status",
+  "cortex_ia_board_list",
+]);
+
 const MEMORY_PLANE_TOOL = /^cortex_(?!ia_)/;
 
-// A repeated before-hook is only safe to absorb on the memory/read plane; a replayed
+// A repeated before-hook is only safe to absorb on the memory/read/spec plane; a replayed
 // claim or lease call is a genuine double-execution. Unknown tools keep strict behavior.
 function toolPlane(tool: string): "authority" | "memory" | "unknown" {
   const name = (tool.includes(".") ? tool.split(".").pop()! : tool).toLowerCase();
-  if (AUTHORITY_PLANE_TOOL.test(name)) return "authority";
-  if (MEMORY_PLANE_TOOL.test(name) || READ_ONLY_TOOLS.has(name)) return "memory";
+  if (STRICT_AUTHORITY_TOOLS.has(name)) return "authority";
+  if (SPEC_AND_PLANNING_TOOLS.has(name) || MEMORY_PLANE_TOOL.test(name) || READ_ONLY_TOOLS.has(name)) return "memory";
   return "unknown";
 }
 
@@ -1104,8 +1139,10 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       restoredPending.clear(); restoredCleanupPending.clear(); activeCalls.clear(); progress.clear();
     };
     (cleanup as any).dispose = cleanup;
-    (cleanup as any)["tool.execute.before"] = executeBefore;
-    (cleanup as any)["tool.execute.after"] = executeAfter;
+    if (!ctx.tool?.hook) {
+      (cleanup as any)["tool.execute.before"] = executeBefore;
+      (cleanup as any)["tool.execute.after"] = executeAfter;
+    }
     (cleanup as any)["experimental.chat.system.transform"] = contextHook;
     (cleanup as any).event = async (raw: any) => {
       await processEvent(raw?.event || raw);

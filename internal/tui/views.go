@@ -27,7 +27,6 @@ var (
 
 var homeDescriptions = []string{
 	"Deploy or reconcile skills, agents, commands & MCPs",
-	"Configure external CLI leaves (AGY) and Herdr multiplexing",
 	"Inspect and configure managed OpenCode MCP server presets",
 	"Open interactive local web dashboard (http://127.0.0.1:7331)",
 	"Create custom subagents with Cortex-IA safety guardrails",
@@ -134,12 +133,6 @@ func (m model) View() string {
 	switch m.screen {
 	case screenHome:
 		body = m.viewHome()
-	case screenWizardHerdr:
-		body = m.viewWizardHerdr()
-	case screenWizardDelegation:
-		body = m.viewWizardDelegation()
-	case screenWizardRoles:
-		body = m.viewWizardRoles()
 	case screenReview:
 		body = m.viewReview()
 	case screenRunning:
@@ -152,8 +145,6 @@ func (m model) View() string {
 		body = m.viewWeb()
 	case screenAgentStudio:
 		body = m.viewAgentStudio()
-	case screenDelegation:
-		body = m.viewDelegation()
 	}
 	if m.confirm.kind != confirmNone {
 		body = body + "\n" + m.viewConfirm()
@@ -190,7 +181,7 @@ func (m model) viewHome() string {
 		}
 		lines = append(lines, truncate(prefix+text+desc, width))
 	}
-	lines = append(lines, "", m.footer("↑/↓ move · 1-8/enter select · q quit"))
+	lines = append(lines, "", m.footer("↑/↓ move · 1-7/enter select · q quit"))
 	return strings.Join(lines, "\n")
 }
 
@@ -205,7 +196,7 @@ func (m model) viewReview() string {
 	} else if m.planErr != nil {
 		top = append(top, styleFail.Render("✖ plan error: "+m.planErr.Error()))
 	}
-	top = append(top, "MCP selection (space toggles, replans, d delegation):")
+	top = append(top, "MCP selection (space toggles, replans):")
 	states := []bool{m.opts.Cortex, m.opts.Context7}
 	for i, name := range managedNames {
 		mark := " "
@@ -472,4 +463,40 @@ func (m model) viewWeb() string {
 	lines = append(lines, actionText)
 	lines = append(lines, "", m.footer("enter / o abrir navegador · b / esc volver al menú inicio · q salir"))
 	return strings.Join(lines, "\n")
+}
+
+// cursorOffset computes a content offset so that cursorLine is within the visible viewport budget.
+func cursorOffset(cursorLine, totalLines, budget, topLen, bottomLen int) int {
+	if budget <= 0 || totalLines <= 0 {
+		return 0
+	}
+	for topLen+bottomLen >= budget && topLen > 1 {
+		topLen--
+	}
+	contentBudget := budget - topLen - bottomLen
+	if contentBudget <= 0 {
+		return 0
+	}
+	if totalLines <= contentBudget {
+		return 0
+	}
+	keep := contentBudget - 1
+	if keep < 1 {
+		keep = 1
+	}
+	offset := 0
+	if cursorLine >= keep {
+		offset = cursorLine - keep + 1
+	}
+	maxOffset := totalLines - keep
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return offset
 }

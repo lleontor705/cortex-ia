@@ -216,7 +216,7 @@ func (m model) updateAgentStudio(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.studioStep == StudioStepSelect || m.studioStep == StudioStepResult {
 			m.screen = screenHome
-			m.cursor = 4
+			m.cursor = 3
 			return m, homeTick()
 		}
 		m.studioStep--
@@ -282,7 +282,7 @@ func (m model) updateAgentStudio(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.studioStep = StudioStepResult
 		case StudioStepResult:
 			m.screen = screenHome
-			m.cursor = 4
+			m.cursor = 3
 			return m, homeTick()
 		case StudioStepOverwrite:
 			// Explicit 'y' required to proceed with overwrite, or 'n'/'esc' to cancel.

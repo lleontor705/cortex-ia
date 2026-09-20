@@ -62,7 +62,7 @@ go build -o bin/cortex-ia.exe ./cmd/cortex-ia
 
 ```bash
 cortex-ia version
-cortex-ia herdr status
+cortex-ia doctor
 ```
 
 ## First Run

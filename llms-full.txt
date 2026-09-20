@@ -1,4 +1,4 @@
-﻿# cortex-ia — Full System Context
+# cortex-ia — Full System Context
 
 cortex-ia is the deterministic multi-agent control plane, transactional OpenCode installer, and Herdr process multiplexer.
 
@@ -61,11 +61,6 @@ internal/assets/             go:embed runtime assets (AGENTS.md, agents, command
 - `cortex-ia work approve <id> --reviewer <id> --verdict <PASS|FAIL> [--evidence <ref>]`
 - `cortex-ia work retry <id>`
 - `cortex-ia work recover`
-- `cortex-ia delegate create --request-file <req.json> [--transport direct|herdr]`
-- `cortex-ia delegate worker --job <id> --request-file <req.json>`
-- `cortex-ia delegate status <id>`
-- `cortex-ia delegate result <id>`
-- `cortex-ia delegate recover`
 - `cortex-ia openspec validate [dir]`
 - `cortex-ia openspec list`
 - `cortex-ia openspec status [dir]`

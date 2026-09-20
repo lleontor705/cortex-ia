@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { createIsolatedSandbox, transpileTS } from './harness-plugin-loader.mjs';
 
-const source = transpileTS(fs.readFileSync('internal/assets/plugins/herdr-bridge.ts', 'utf8'));
+const source = transpileTS(fs.readFileSync('internal/assets/plugins/cortex-work.ts', 'utf8'));
 const schema = new Proxy(() => schema, { get: () => schema });
 const context = { agent: 'implement', sessionID: 'controller', directory: '/isolated/work' };
 async function harness() {

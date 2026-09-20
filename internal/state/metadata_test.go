@@ -29,7 +29,7 @@ func TestMetadataV2Lifecycle(t *testing.T) {
 		UpdatedAt: now,
 		Artifacts: []ArtifactV2{
 			{
-				Path:      ".config/opencode/plugins/herdr-bridge.ts",
+				Path:      ".config/opencode/plugins/cortex-work.ts",
 				Kind:      KindOther,
 				Origin:    "embedded",
 				Ownership: OwnershipManaged,
@@ -73,7 +73,7 @@ func TestLockV2Lifecycle(t *testing.T) {
 		GeneratedAt:   time.Now().UTC(),
 		Artifacts: []ArtifactV2{
 			{
-				Path:      ".config/opencode/plugins/herdr-bridge.ts",
+				Path:      ".config/opencode/plugins/cortex-work.ts",
 				Kind:      KindOther,
 				Origin:    "embedded",
 				Ownership: OwnershipManaged,

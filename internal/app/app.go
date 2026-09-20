@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/herdr"
 	"github.com/lleontor705/cortex-ia/internal/logging"
 	"github.com/lleontor705/cortex-ia/internal/tui"
 )
@@ -48,12 +47,6 @@ func runCLI(args []string) error {
 
 	case "sync":
 		return runSync(rest)
-
-	case "herdr":
-		return runHerdr(rest)
-
-	case "delegate":
-		return runDelegate(rest)
 
 	case "snapshot":
 		return runCortexSnapshot(rest)
@@ -188,6 +181,8 @@ var retiredCommands = map[string]bool{
 	"auto-install":   true,
 	"profiles":       true,
 	"profile":        true,
+	"delegate":       true,
+	"herdr":          true,
 }
 
 // retiredFlagPrefixes are removed legacy flags. Any argument starting with
@@ -211,7 +206,7 @@ type RetiredSurfaceError struct {
 
 func (e RetiredSurfaceError) Error() string {
 	return fmt.Sprintf(
-		"%q was removed from the OpenCode CLI; available commands: install, sync, herdr, delegate, snapshot, work, worktree, board, ledger, ui, openspec, web, doc, diagram, mcp, report, hook, doctor, rollback, recover, uninstall, update, version, help",
+		"%q was removed from the OpenCode CLI; available commands: install, sync, snapshot, work, worktree, board, ledger, ui, openspec, web, doc, diagram, mcp, report, hook, doctor, rollback, recover, uninstall, update, version, help",
 		e.Surface,
 	)
 }
@@ -259,16 +254,6 @@ Usage:
                                       (--json prints a sanitized JSON report)
   cortex-ia mcp remove <name> [--dry-run]
                                       Deregister a managed MCP entry
-  cortex-ia herdr [install|setup|status]
-                                      Manage Herdr workspace multiplexer setup
-  cortex-ia delegate models [--json] | policy --role <role>
-                                      List AGY models or read delegation policy
-  cortex-ia delegate create --request-file <path> --transport <herdr|direct>
-                                      Accept a validated external leaf job
-  cortex-ia delegate worker --job <id> --request-file <path>
-                                      Run the internal worker for an accepted job
-  cortex-ia delegate status|query|wait|result|cancel|reconcile|recover|set-pane <job-id>
-                                      Inspect, wait on, or reconcile delegated jobs
   cortex-ia snapshot read --project <project> --id <id> [--expected-sha256 <digest>]
                                       Read and verify one bounded local Cortex snapshot
   cortex-ia work create|revise|archive|list|status|approvals|fingerprint
@@ -336,25 +321,7 @@ overwrite via --overwrite — require an interactive terminal and an explicit
 confirmation. Piped or closed input always fails closed without writing
 anything.
 
-The CLI configures OpenCode, owns local task/lease control, and can supervise an optional AGY execution leaf.
+The CLI configures OpenCode and owns local task/lease control under Cortex-IA Work Authority.
 Former platform adapters, persona, profile, and model-routing flags remain removed.
 `, Version, presetNames())
-}
-
-func runHerdr(args []string) error {
-	if len(args) == 0 {
-		return herdr.Status()
-	}
-
-	sub := strings.ToLower(args[0])
-	switch sub {
-	case "install":
-		return herdr.Install()
-	case "setup":
-		return herdr.Setup()
-	case "status":
-		return herdr.Status()
-	default:
-		return fmt.Errorf("unknown herdr subcommand: %s (valid: install, setup, status)", args[0])
-	}
 }

@@ -315,6 +315,7 @@ Format for \`cortex_save\`:
 - **scope**: \`project\` (default) | \`personal\`
 - **topic_key** (optional): stable key for evolving topics (e.g. \`auth/jwt-rotation\`)
 - **content**: What was done, Why it was done, Affected files, and Lessons learned.
+- **Naming Rule**: Always invoke \`cortex_save\` (or \`cortex_cortex_save\`) directly. NEVER use dot notation like \`cortex.cortex_save\`.
 
 ### 3. CODEBASE INTELLIGENCE & BLAST RADIUS
 - Before refactoring or renaming symbols, use filtered \`cortex_get_code_symbols(project, kind, file_path)\` plus bounded source reads. \`cortex_get_blast_radius\` accepts a numeric observation ID and is a cognitive graph tool, not a code-symbol impact oracle.
@@ -374,6 +375,7 @@ Format for \`cortex_save\`:
 - **scope**: \`project\` (default) | \`personal\`
 - **topic_key** (optional, recommended): stable key like \`architecture/auth-model\`
 - **content**: What was done, Why, Where (files affected), and Gotchas.
+- **Naming Rule**: Always invoke \`cortex_save\` (or \`cortex_cortex_save\`) directly. NEVER use dot notation like \`cortex.cortex_save\`.
 
 ### 4. KNOWLEDGE GRAPH & RELATIONS
 - After saving related observations, call \`cortex_relate\` (references, relates_to, follows, supersedes, contradicts).
@@ -959,7 +961,7 @@ export const Cortex = Plugin.define({
           const rawTool = event.tool || event.name || ""
           const tool = rawTool.toLowerCase()
 
-          const normalizedTool = tool.startsWith("cortex_") ? tool.slice(7) : tool
+          const normalizedTool = tool.startsWith("cortex_") ? tool.slice(7) : tool.startsWith("cortex.") ? tool.slice(7) : tool
 
           // Durable handoffs were already delivered through the MCP channel;
           // their result is not input to this plugin. Stay neutral: no

@@ -16,12 +16,7 @@ import (
 func openReview(t *testing.T, svc ServiceAPI) model {
 	t.Helper()
 	m := sized(newModel(svc, "/home/test", "vtest"))
-	m = press(m, "enter")         // Home -> screenWizardHerdr
-	m = press(m, "enter")         // screenWizardHerdr -> screenWizardDelegation
-	m = pressDrive(t, m, "enter") // screenWizardDelegation -> screenReview (draining planCmd)
-	if m.screen == screenWizardRoles {
-		m = pressDrive(t, m, "enter")
-	}
+	m = pressDrive(t, m, "enter") // Home -> screenReview (draining planCmd)
 	if m.screen != screenReview {
 		t.Fatalf("expected review screen, got %v", m.screen)
 	}

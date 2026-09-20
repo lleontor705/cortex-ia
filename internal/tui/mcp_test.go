@@ -13,8 +13,7 @@ import (
 func openMCP(t *testing.T, svc ServiceAPI) model {
 	t.Helper()
 	m := sized(newModel(svc, "/home/test", "vtest"))
-	m = press(m, "down") // cursor 1: Configure Delegation
-	m = press(m, "down") // cursor 2: Manage MCPs
+	m = press(m, "down") // cursor 1: Manage MCPs
 	m = pressDrive(t, m, "enter")
 	if m.screen != screenMCP {
 		t.Fatalf("expected MCP screen, got %v", m.screen)

@@ -23,16 +23,12 @@ type screen int
 
 const (
 	screenHome screen = iota
-	screenWizardHerdr
-	screenWizardDelegation
-	screenWizardRoles
 	screenReview
 	screenRunning
 	screenResult
 	screenMCP
 	screenWeb
 	screenAgentStudio
-	screenDelegation
 )
 
 // confirmKind identifies which destructive intent a confirmation modal guards.
@@ -49,7 +45,6 @@ const (
 // homeEntries are the fixed Home menu actions, in display order.
 var homeEntries = []string{
 	"Install / Sync",
-	"Configure Delegation",
 	"Manage MCPs",
 	"CortexIA Web Console",
 	"Agent Studio (Create Sub-agent)",
@@ -138,11 +133,6 @@ type model struct {
 	studioArchIdx   int
 	studioResultMsg string
 
-	// Standalone Delegation screen state
-	delegationCursor   int
-	delegationSavedMsg string
-	availableModels    []delegation.AGYModel
-
 	// Web Console state
 	webReady    bool
 	webURL      string
@@ -163,15 +153,17 @@ type webErrMsg struct {
 
 // newModel builds the model bound to a service implementation.
 func newModel(svc ServiceAPI, homeDir, version string) model {
-	cfg, _ := delegation.Load(filepath.Join(homeDir, ".config", "opencode"))
+	cfg, err := delegation.Load(filepath.Join(homeDir, ".config", "opencode"))
+	if err != nil {
+		cfg = delegation.NormalConfig()
+	}
 	m := model{
-		svc:             svc,
-		homeDir:         homeDir,
-		version:         version,
-		screen:          screenHome,
-		opts:            install.DefaultOptions(),
-		delegationCfg:   cfg,
-		availableModels: delegation.KnownAGYModels,
+		svc:           svc,
+		homeDir:       homeDir,
+		version:       version,
+		screen:        screenHome,
+		opts:          install.DefaultOptions(),
+		delegationCfg: cfg,
 	}
 	m.opts.DelegationConfig = &m.delegationCfg
 	return m
@@ -232,12 +224,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.screen {
 		case screenHome:
 			return m.updateHome(msg)
-		case screenWizardHerdr:
-			return m.updateWizardHerdr(msg)
-		case screenWizardDelegation:
-			return m.updateWizardDelegation(msg)
-		case screenWizardRoles:
-			return m.updateWizardRoles(msg)
 		case screenReview:
 			return m.updateReview(msg)
 		case screenRunning:
@@ -250,8 +236,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateWeb(msg)
 		case screenAgentStudio:
 			return m.updateAgentStudio(msg)
-		case screenDelegation:
-			return m.updateDelegation(msg)
 		}
 	}
 	return m, nil
@@ -278,8 +262,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.selectHomeEntry(5)
 	case "7":
 		return m.selectHomeEntry(6)
-	case "8":
-		return m.selectHomeEntry(7)
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
@@ -297,12 +279,9 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 	m.cursor = index
 	switch index {
-	case 0: // Install / Sync → Wizard Step 1 (Herdr)
-		m.screen = screenWizardHerdr
+	case 0: // Install / Sync → Direct to Review / Plan
+		m.screen = screenReview
 		m.wizardCursor = 0
-		if !m.delegationCfg.UseHerdr {
-			m.wizardCursor = 1
-		}
 		m.opts = install.DefaultOptions()
 		m.opts.Version = m.version
 		m.opts.DelegationConfig = &m.delegationCfg
@@ -318,22 +297,13 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.planErr = nil
 		m.replanning = false
 		m.mcpCursor = 0
-		return m, nil
-	case 1: // Configure Delegation
-		m.screen = screenDelegation
-		m.delegationCursor = 0
-		m.delegationSavedMsg = ""
-		if loaded, err := delegation.Load(filepath.Join(m.homeDir, ".config", "opencode")); err == nil {
-			m.delegationCfg = loaded
-		}
-		m.opts.DelegationConfig = &m.delegationCfg
-		return m, nil
-	case 2: // Manage MCPs
+		return m, planCmd(m.svc, m.reviewOptions())
+	case 1: // Manage MCPs
 		m.screen = screenMCP
 		m.mcpReport = nil
 		m.mcpErr = nil
 		return m, mcpListCmd(m.svc)
-	case 3: // CortexIA Web Console
+	case 2: // CortexIA Web Console
 		m.screen = screenWeb
 		if m.webReady {
 			return m, nil
@@ -341,18 +311,18 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.webStarting = true
 		m.webErr = nil
 		return m, startWebCmd(m.homeDir)
-	case 4: // Agent Studio (Create Sub-agent)
+	case 3: // Agent Studio (Create Sub-agent)
 		m.screen = screenAgentStudio
 		m.studioStep = 0
 		m.studioArchIdx = 0
 		m.studioResultMsg = ""
 		return m, nil
-	case 5: // Doctor / Recovery
+	case 4: // Doctor / Recovery
 		return m.startRunning("Doctor", []string{"Inspect state", "Compare digests", "Assess MCPs", "Report"}, doctorCmd(m.svc))
-	case 6: // Uninstall (destructive: explicit confirmation first)
+	case 5: // Uninstall (destructive: explicit confirmation first)
 		m.confirm = confirmState{kind: confirmUninstall}
 		return m, nil
-	case 7: // Quit
+	case 6: // Quit
 		m.quitting = true
 		return m, tea.Quit
 	}
@@ -366,7 +336,7 @@ func (m model) updateWeb(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "esc", "b", "B":
 		m.screen = screenHome
-		m.cursor = 3
+		m.cursor = 2
 		return m, homeTick()
 	case "o", "O", "enter", " ":
 		if m.webReady && m.webURL != "" {
@@ -422,15 +392,10 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.replanning = true
 			return m, planCmd(m.svc, m.reviewOptions())
 		}
-	case "b", "B", "d", "D":
-		if m.delegationCfg.DelegationEnabled {
-			m.screen = screenWizardRoles
-			m.wizardCursor = 0
-		} else {
-			m.screen = screenWizardDelegation
-			m.wizardCursor = 1
-		}
-		return m, nil
+	case "b", "B":
+		m.screen = screenHome
+		m.cursor = 0
+		return m, homeTick()
 	case "enter":
 		if m.replanning || m.planErr != nil || m.plan == nil {
 			return m, nil
@@ -553,7 +518,7 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "esc", "m":
 		m.screen = screenHome
-		m.cursor = 2 // back on the Manage MCPs entry that opened this screen
+		m.cursor = 1 // back on the Manage MCPs entry that opened this screen
 		return m, homeTick()
 	case "up", "k":
 		if m.cursor > 0 {

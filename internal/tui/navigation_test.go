@@ -12,7 +12,7 @@ import (
 func TestHomeMenuEntries(t *testing.T) {
 	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
 	view := m.View()
-	for _, want := range []string{"Install / Sync", "Configure Delegation", "Manage MCPs", "Agent Studio (Create Sub-agent)", "Doctor / Recovery", "Uninstall", "Quit"} {
+	for _, want := range []string{"Install / Sync", "Manage MCPs", "Agent Studio (Create Sub-agent)", "Doctor / Recovery", "Uninstall", "Quit"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("home view missing entry %q:\n%s", want, view)
 		}
@@ -25,14 +25,14 @@ func TestHomeMenuEntries(t *testing.T) {
 // TestScreenSet pins the conceptual screen set.
 func TestScreenSet(t *testing.T) {
 	got := map[screen]bool{}
-	for _, s := range []screen{screenHome, screenWizardHerdr, screenWizardDelegation, screenWizardRoles, screenReview, screenRunning, screenResult, screenMCP, screenWeb, screenAgentStudio, screenDelegation} {
+	for _, s := range []screen{screenHome, screenReview, screenRunning, screenResult, screenMCP, screenWeb, screenAgentStudio} {
 		if got[s] {
 			t.Fatalf("duplicate screen constant %v", s)
 		}
 		got[s] = true
 	}
-	if len(got) != 11 {
-		t.Fatalf("expected exactly eleven screens, got %d", len(got))
+	if len(got) != 7 {
+		t.Fatalf("expected exactly seven screens, got %d", len(got))
 	}
 }
 
@@ -41,38 +41,7 @@ func TestScreenSet(t *testing.T) {
 func TestNavigationWalksAllScreens(t *testing.T) {
 	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
 
-	// Home → Wizard Step 1 (Herdr).
-	m = press(m, "enter")
-	if m.screen != screenWizardHerdr {
-		t.Fatalf("expected wizard step 1 (Herdr), got %v", m.screen)
-	}
-	herdrView := m.View()
-	if !strings.Contains(herdrView, "Paso 1 de 3") {
-		t.Fatalf("expected wizard step 1 view header, got:\n%s", herdrView)
-	}
-
-	// Step 1 → Step 2 (Delegation).
-	m = press(m, "enter")
-	if m.screen != screenWizardDelegation {
-		t.Fatalf("expected wizard step 2 (Delegation), got %v", m.screen)
-	}
-	delView := m.View()
-	if !strings.Contains(delView, "Paso 2 de 3") {
-		t.Fatalf("expected wizard step 2 view header, got:\n%s", delView)
-	}
-
-	// Select "Sí, configurar delegación" (option 1 / cursor 0) → Step 3 (Roles).
-	m = press(m, "1")
-	m = press(m, "enter")
-	if m.screen != screenWizardRoles {
-		t.Fatalf("expected wizard step 3 (Roles), got %v", m.screen)
-	}
-	rolesView := m.View()
-	if !strings.Contains(rolesView, "Paso 3 de 3") {
-		t.Fatalf("expected wizard step 3 view header, got:\n%s", rolesView)
-	}
-
-	// Step 3 → Review.
+	// Home → Review (draining planCmd).
 	m = pressDrive(t, m, "enter")
 	if m.screen != screenReview {
 		t.Fatalf("expected review screen, got %v", m.screen)
@@ -81,43 +50,14 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 		t.Fatal("expected plan to be recorded from the real returned command")
 	}
 
-	// Review → Back to Step 3.
+	// Review → Back to Home.
 	m = press(m, "b")
-	if m.screen != screenWizardRoles {
-		t.Fatalf("expected 'b' to return to wizard roles, got %v", m.screen)
-	}
-
-	// Step 3 → Back to Step 2.
-	m = press(m, "b")
-	if m.screen != screenWizardDelegation {
-		t.Fatalf("expected 'b' to return to wizard delegation, got %v", m.screen)
-	}
-
-	// Step 2 → Back to Step 1.
-	m = press(m, "b")
-	if m.screen != screenWizardHerdr {
-		t.Fatalf("expected 'b' to return to wizard herdr, got %v", m.screen)
-	}
-
-	// Step 1 → Home.
-	m = press(m, "esc")
 	if m.screen != screenHome {
-		t.Fatalf("expected esc to return home, got %v", m.screen)
-	}
-
-	// Home → Configure Delegation → Home.
-	m = press(m, "down") // cursor 1: Configure Delegation
-	m = press(m, "enter")
-	if m.screen != screenDelegation {
-		t.Fatalf("expected screenDelegation, got %v", m.screen)
-	}
-	m = press(m, "esc")
-	if m.screen != screenHome {
-		t.Fatalf("expected esc to return home from delegation, got %v", m.screen)
+		t.Fatalf("expected 'b' to return to home, got %v", m.screen)
 	}
 
 	// Home → MCP Manager.
-	m = press(m, "down") // cursor was 1; now cursor 2: Manage MCPs
+	m = press(m, "down") // cursor 1: Manage MCPs
 	m = pressDrive(t, m, "enter")
 	if m.screen != screenMCP {
 		t.Fatalf("expected MCP screen, got %v", m.screen)
@@ -175,13 +115,12 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Uninstall opens a confirmation overlay, not the running screen.
-	// (Result returns Home with cursor 0; Uninstall is entry 6.)
+	// (Result returns Home with cursor 0; Uninstall is entry 5.)
 	m = press(m, "down")
 	m = press(m, "down")
 	m = press(m, "down")
 	m = press(m, "down")
-	m = press(m, "down")
-	m = press(m, "down") // cursor 6: Uninstall
+	m = press(m, "down") // cursor 5: Uninstall
 	m = press(m, "enter")
 	if m.confirm.kind != confirmUninstall || m.screen != screenHome {
 		t.Fatalf("expected uninstall confirmation on home, got screen=%v confirm=%v", m.screen, m.confirm.kind)
@@ -192,7 +131,7 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Quit entry quits.
-	m = press(m, "down") // cursor 7: Quit (cursor stayed on 6 after cancel)
+	m = press(m, "down") // cursor 6: Quit (cursor stayed on 5 after cancel)
 	updated, cmd = m.Update(key("enter"))
 	if cmd == nil || !updated.(model).quitting {
 		t.Fatal("expected Quit entry to quit")
@@ -223,57 +162,51 @@ func TestQuitKeyQuitsFromHome(t *testing.T) {
 	}
 }
 
-// TestHomeNumericHotkeys verifies keys 1-8 jump directly to actions from Home.
+// TestHomeNumericHotkeys verifies keys 1-7 jump directly to actions from Home.
 func TestHomeNumericHotkeys(t *testing.T) {
 	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
 
-	// Key '1' opens Wizard Step 1 (Herdr).
-	m1 := press(m, "1")
-	if m1.screen != screenWizardHerdr {
-		t.Fatalf("key 1 should open Wizard Step 1, got %v", m1.screen)
+	// Key '1' opens Review directly.
+	m1 := pressDrive(t, m, "1")
+	if m1.screen != screenReview {
+		t.Fatalf("key 1 should open Review directly, got %v", m1.screen)
 	}
 
-	// Key '2' opens Configure Delegation.
-	m2 := press(m, "2")
-	if m2.screen != screenDelegation {
-		t.Fatalf("key 2 should open Configure Delegation, got %v", m2.screen)
+	// Key '2' opens MCP.
+	m2 := pressDrive(t, m, "2")
+	if m2.screen != screenMCP {
+		t.Fatalf("key 2 should open MCP, got %v", m2.screen)
 	}
 
-	// Key '3' opens MCP.
-	m3 := pressDrive(t, m, "3")
-	if m3.screen != screenMCP {
-		t.Fatalf("key 3 should open MCP, got %v", m3.screen)
+	// Key '3' opens Web Console.
+	m3 := press(m, "3")
+	if m3.screen != screenWeb {
+		t.Fatalf("key 3 should open Web Console, got %v", m3.screen)
 	}
 
-	// Key '4' opens Web Console.
+	// Key '4' opens Agent Studio.
 	m4 := press(m, "4")
-	if m4.screen != screenWeb {
-		t.Fatalf("key 4 should open Web Console, got %v", m4.screen)
+	if m4.screen != screenAgentStudio {
+		t.Fatalf("key 4 should open Agent Studio, got %v", m4.screen)
 	}
 
-	// Key '5' opens Agent Studio.
-	m5 := press(m, "5")
-	if m5.screen != screenAgentStudio {
-		t.Fatalf("key 5 should open Agent Studio, got %v", m5.screen)
+	// Key '5' starts Doctor (running).
+	updated, _ := m.Update(key("5"))
+	m5 := updated.(model)
+	if m5.screen != screenRunning || m5.running.title != "Doctor" {
+		t.Fatalf("key 5 should start Doctor, got %v %q", m5.screen, m5.running.title)
 	}
 
-	// Key '6' starts Doctor (running).
-	updated, _ := m.Update(key("6"))
-	m6 := updated.(model)
-	if m6.screen != screenRunning || m6.running.title != "Doctor" {
-		t.Fatalf("key 6 should start Doctor, got %v %q", m6.screen, m6.running.title)
+	// Key '6' opens Uninstall confirmation.
+	m6 := press(m, "6")
+	if m6.confirm.kind != confirmUninstall {
+		t.Fatalf("key 6 should trigger uninstall confirmation, got %v", m6.confirm.kind)
 	}
 
-	// Key '7' opens Uninstall confirmation.
-	m7 := press(m, "7")
-	if m7.confirm.kind != confirmUninstall {
-		t.Fatalf("key 7 should trigger uninstall confirmation, got %v", m7.confirm.kind)
-	}
-
-	// Key '8' quits.
-	updated8, cmd8 := m.Update(key("8"))
-	if cmd8 == nil || !updated8.(model).quitting {
-		t.Fatal("key 8 should quit")
+	// Key '7' quits.
+	updated7, cmd7 := m.Update(key("7"))
+	if cmd7 == nil || !updated7.(model).quitting {
+		t.Fatal("key 7 should quit")
 	}
 }
 

@@ -23,8 +23,6 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | `cortex-ia` (no args) | Launch interactive TUI dashboard |
 | `cortex-ia install` | Install assets + plugins for `opencode`, `agy`, `claude`, or `all` |
 | `cortex-ia sync` | Reconcile an installed home with the current asset set |
-| `cortex-ia herdr` | Manage Herdr workspace multiplexer setup (`install`, `setup`, `status`) |
-| `cortex-ia delegate` | Accept, inspect, wait on, or reconcile external AGY leaf jobs |
 | `cortex-ia snapshot` | Read and verify one bounded local Cortex snapshot (`read`) |
 | `cortex-ia work` | Manage the local task DAG, claims, leases, transitions, approvals |
 | `cortex-ia worktree` | List or validate authoritative Git worktrees (`list`, `validate`) |

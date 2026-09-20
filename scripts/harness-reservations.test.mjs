@@ -11,7 +11,7 @@ const context = { agent: 'implement', sessionID: 'reservation-test', directory: 
 async function harness(external = false) {
   const calls = [];
   let failClaim = false;
-  const mod = await loadPluginFile('internal/assets/plugins/herdr-bridge.ts', {
+  const mod = await loadPluginFile('internal/assets/plugins/cortex-work.ts', {
     env: { HOME: home, USERPROFILE: home },
     mockPluginSDK: { tool: Object.assign(x => x, { schema }) },
     fs: { existsSync: p => p === executable, readFileSync: () => '', mkdirSync: () => {}, writeFileSync: () => {} },
@@ -61,20 +61,11 @@ test('failed atomic claim does not retain a phantom claim in the bridge', async 
   assert.equal(h.calls.filter(x => x.args[1] === 'claim').length, 2);
 });
 
-test('native preference consults policy and cannot override external execution', async () => {
-  for (const external of [false, true]) {
-    const h = await harness(external);
-    const result = JSON.parse(await h.tools.cortex_ia_delegate_start.execute({
-      role: 'implement', objective: 'bounded objective', prefer_native: true,
-    }, context));
-    assert.ok(h.calls.some(x => x.args[0] === 'delegate' && x.args[1] === 'policy'));
-    if (external) {
-      assert.equal(result.status, 'blocked');
-      assert.equal(result.error.code, 'DELEGATION_POLICY_CONFLICT');
-      assert.equal(result.execution_mode, undefined);
-    } else {
-      assert.equal(result.execution_mode, 'native');
-      assert.equal(result.reason, 'role_native');
-    }
-  }
+test('external delegation tools are not exposed on the bridge', async () => {
+  const h = await harness();
+  assert.equal(h.tools.cortex_ia_delegate_start, undefined);
+  assert.equal(h.tools.cortex_ia_delegation_status, undefined);
+  assert.equal(h.tools.cortex_ia_delegation_wait, undefined);
+  assert.equal(h.tools.cortex_ia_delegation_result, undefined);
+  assert.equal(h.tools.cortex_ia_delegation_cancel, undefined);
 });

@@ -86,35 +86,26 @@ When a reviewer records a `PASS` approval via `work approve`:
 
 ---
 
-## 3. Real-Time Worker Streaming (`internal/delegation/runner.go`)
+## 3. Native Subagent Execution Model
 
-When an external leaf worker (e.g. `agy`) is launched in a Herdr pane or background process:
+Controllers execute natively within OpenCode under Cortex-IA Work Authority. The bridge coordinates task leases and work state directly with the SQLite control plane:
 
 ```mermaid
 sequenceDiagram
-    participant OpenCode as OpenCode Implement Minion
-    participant Bridge as herdr-bridge.ts
-    participant CLI as cortex-ia delegate worker
-    participant Engine as agy CLI
-    participant Pane as Herdr Terminal Pane
+    participant OpenCode as OpenCode Role Controller
+    participant Bridge as cortex-work.ts
+    participant WorkEngine as Cortex-IA Work Engine
+    participant SQLite as SQLite Control Plane
 
-    OpenCode->>Bridge: cortex_ia_delegate_start(role, task_id, allowed_files)
-    Bridge->>CLI: Spawns in dedicated Herdr pane
-    CLI->>Pane: Renders Header Banner (Role, Dir, Objective)
-    CLI->>Engine: agy --output-format stream-json --print <prompt>
-    
-    loop Real-time NDJSON Stream
-        Engine->>CLI: {"event":"step_update","step_type":"tool",...}
-        CLI->>Pane: ⚡ [investigate] Executing tool (params)
-        Engine->>CLI: {"event":"step_update","step_type":"agent_response",...}
-        CLI->>Pane: Streams response text live
-    end
-
-    Engine->>CLI: {"event":"result","result":{...}}
-    CLI->>CLI: Stores structured receipt in SQLite
-    CLI->>Pane: ✅ Completed in Xs (exit code 0, Token summary)
-    OpenCode->>Bridge: Polls cortex_ia_delegation_result()
-    Bridge->>OpenCode: Returns structured typed receipt
+    OpenCode->>Bridge: cortex_ia_work_claim(task_id, paths)
+    Bridge->>WorkEngine: Acquire claim and file leases
+    WorkEngine->>SQLite: Store SHA-256 token hash & active leases
+    WorkEngine-->>Bridge: Return claim_token & lease_tokens (in-memory)
+    Bridge-->>OpenCode: Claim granted
+    OpenCode->>OpenCode: Executes edits natively & runs tests
+    OpenCode->>Bridge: cortex_ia_work_transition(to: "in_review")
+    Bridge->>WorkEngine: Release leases & transition task
+    WorkEngine->>SQLite: Update status to in_review
 ```
 
 ---

@@ -11,12 +11,7 @@ import (
 )
 
 func driveFromHomeToReview(t *testing.T, m model) model {
-	m = press(m, "enter")         // Home -> Wizard Step 1
-	m = press(m, "enter")         // Step 1 -> Step 2
-	m = pressDrive(t, m, "enter") // Step 2 (cursor=1: normal) -> Review (plan)
-	if m.screen == screenWizardRoles {
-		m = pressDrive(t, m, "enter")
-	}
+	m = pressDrive(t, m, "enter") // Home -> Review (plan)
 	if m.screen != screenReview {
 		t.Fatalf("expected review screen, got %v", m.screen)
 	}
@@ -330,8 +325,7 @@ func TestUninstallRequiresConfirmationFromHome(t *testing.T) {
 	m = press(m, "down")
 	m = press(m, "down")
 	m = press(m, "down")
-	m = press(m, "down")
-	m = press(m, "down") // cursor 6: Uninstall
+	m = press(m, "down") // cursor 5: Uninstall
 	m = press(m, "enter")
 	if m.confirm.kind != confirmUninstall || fake.uninstallCals != 0 {
 		t.Fatalf("uninstall must wait for confirmation, got confirm=%v calls=%d", m.confirm.kind, fake.uninstallCals)

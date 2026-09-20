@@ -171,36 +171,12 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 | **Archive** | `cortex-ia openspec archive <change-name> --board <id> --workflow <sdd-lite\|sdd-full> --spec-plane <openspec\|cortex\|hybrid>` | Close independently approved SDD work |
 | **New** | `cortex-ia openspec new <change-name> [domain]` | Scaffold a new OpenSpec change directory |
 
-### 4. Worker Delegation (`cortex-ia delegate`)
-| Command | Syntax | Purpose |
-|---|---|---|
-| **Models** | `cortex-ia delegate models [--json]` | List available AGY models |
-| **Policy** | `cortex-ia delegate policy --role <implement\|investigate\|planner\|reviewer>` | Read the validated delegation policy for a role |
-| **Create** | `cortex-ia delegate create --request-file <req.json> --transport <herdr\|direct>` | Accept an external leaf job from a validated request |
-| **Status** | `cortex-ia delegate status <job-id>` | Check job execution lifecycle |
-| **Query** | `cortex-ia delegate query <job-id>` *(or `view`)* | Coherent job view with status and receipt |
-| **Wait** | `cortex-ia delegate wait <job-id> [--timeout <seconds>]` | Wait for completion with bounded polling |
-| **Result** | `cortex-ia delegate result <job-id>` | Retrieve the structured output receipt |
-| **Cancel** | `cortex-ia delegate cancel <job-id>` | Request cancellation; the worker confirms termination |
-| **Recover** | `cortex-ia delegate recover` | Reconcile lost or expired delegation jobs |
-| **Reconcile** | `cortex-ia delegate reconcile <job-id> --reason <text> [--session-id <id>]` | Prove prior-boot termination of a lost job |
-| **Set Pane** | `cortex-ia delegate set-pane <job-id> <pane-id>` | Bind a job to a Herdr pane |
-
-`cortex-ia delegate worker --job <id> --request-file <path>` is the internal worker entry point used by the bridge; it is not part of the normal operator surface.
-
-### 5. Herdr Multiplexer (`cortex-ia herdr`)
-| Command | Syntax | Purpose |
-|---|---|---|
-| **Install** | `cortex-ia herdr install` | Install the Herdr workspace multiplexer |
-| **Setup** | `cortex-ia herdr setup` | Configure Herdr integration for live worker panes |
-| **Status** | `cortex-ia herdr status` | Show Herdr status (also the default with no subcommand) |
-
-### 6. Cortex Snapshots (`cortex-ia snapshot`)
+### 4. Cortex Snapshots (`cortex-ia snapshot`)
 | Command | Syntax | Purpose |
 |---|---|---|
 | **Read** | `cortex-ia snapshot read --project <project> --id <id> [--expected-sha256 <digest>]` | Read and verify one bounded local Cortex observation |
 
-### 7. Git Worktrees (`cortex-ia worktree`)
+### 5. Git Worktrees (`cortex-ia worktree`)
 | Command | Syntax | Purpose |
 |---|---|---|
 | **List** | `cortex-ia worktree list [--repo <repo-path>]` | List authoritative Git worktrees |
@@ -208,7 +184,7 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 
 `current_workspace` is the only supported execution strategy. `worktree create`, `clean`, `drop`, `delete`, `remove`, and `prune` are retired and fail closed; existing worktrees are preserved.
 
-### 8. Dual Ledger (`cortex-ia ledger`)
+### 6. Dual Ledger (`cortex-ia ledger`)
 | Command | Syntax | Purpose |
 |---|---|---|
 | **Fact Add** | `cortex-ia ledger fact add <text> [--board <id>] [--source <src>] [--sync-cortex]` | Record a verified fact (optionally synced to Cortex memory) |
@@ -216,12 +192,12 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 | **Progress** | `cortex-ia ledger progress record --summary <text> [--drift] [--action <act>]` | Record an orchestrator progress evaluation |
 | **Status** | `cortex-ia ledger status [--board <board-id>] [--json]` | Display the full dual-ledger report (facts + progress) |
 
-### 9. UI Snapshot (`cortex-ia ui`)
+### 7. UI Snapshot (`cortex-ia ui`)
 | Command | Syntax | Purpose |
 |---|---|---|
 | **Snapshot** | `cortex-ia ui snapshot [--project <path>] [--session-id <id>] [--root-session-id <id>]` | Print a bounded read-only TUI snapshot |
 
-### 10. Documents & Diagrams (`cortex-ia doc` / `cortex-ia diagram`)
+### 8. Documents & Diagrams (`cortex-ia doc` / `cortex-ia diagram`)
 | Command | Syntax | Purpose |
 |---|---|---|
 | **Doc Convert** | `cortex-ia doc convert <file> [-o <out.md>] [--standalone] [--format <fmt>] [--max-lines <n>] [--ocr <hosted\|reject>] [--json]` | Convert office/PDF documents to Markdown |
@@ -231,7 +207,7 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 | **Diagram Compare** | `cortex-ia diagram compare <base.json> <head.json> [output.html] [--json]` | Compare two architecture snapshots |
 | **Diagram Reach** | `cortex-ia diagram reach <type> <spec.json> --from <node-id> [--direction <upstream\|downstream\|both>] [--json]` | Trace graph reachability from a node |
 
-### 11. MCP Management (`cortex-ia mcp`)
+### 9. MCP Management (`cortex-ia mcp`)
 | Command | Syntax | Purpose |
 |---|---|---|
 | **Add (preset)** | `cortex-ia mcp add <name> --preset [--dry-run]` | Register a managed catalog MCP preset |
@@ -242,7 +218,7 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 
 `--preset`, `--local`, and `--remote` are mutually exclusive: exactly one is required per `add`.
 
-### 12. Reporting & Hooks (`cortex-ia report` / `cortex-ia hook`)
+### 10. Reporting & Hooks (`cortex-ia report` / `cortex-ia hook`)
 | Command | Syntax | Purpose |
 |---|---|---|
 | **Report Error** | `cortex-ia report error --code <code> --message <msg> [--details <text\|@stdin>]` *(or `send`)* | Generate and send a signed error report |
@@ -252,7 +228,7 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 | **Hook Pre-Tool** | `cortex-ia hook pre-tool` | Execute the Antigravity pre-tool lifecycle hook |
 | **Hook Stop** | `cortex-ia hook stop` | Execute the Antigravity stop lifecycle hook |
 
-### 13. Maintenance & Lifecycle (`install` / `sync` / `doctor` / `rollback` / `recover` / `uninstall` / `update`)
+### 11. Maintenance & Lifecycle (`install` / `sync` / `doctor` / `rollback` / `recover` / `uninstall` / `update`)
 | Command | Syntax | Purpose |
 |---|---|---|
 | **Install** | `cortex-ia install [--target <list>] [--dry-run] [--overwrite]` | Install assets and plugins (default target: `opencode`) |
@@ -289,41 +265,6 @@ Cortex-IA matches user requests to the smallest, safest workflow using a three-t
 | **Tier 1: Fast Path** | `direct-answer`, `discovery`, `investigate`, `spike`, `hotfix`, `fast-tdd`, `ops-task` | Direct execution without task DAG overhead. Specialized for Q&A, onboarding, root-cause diagnosis, or fast unit TDD. | Single-turn dispatch via `orchestrator ➔ subagent ➔ orchestrator`. |
 | **Tier 2: Bounded Unitary Task** | `direct-change` | Single-domain, low-risk changes with fast verification. Uses `board_id: "default"`. | Claim task ➔ exclusive file lease ➔ edit & test ➔ `cortex_ia_work_transition` ➔ independent review gate. |
 | **Tier 3: Coordinated SDD** | `sdd-lite`, `sdd-full` | High-complexity, multi-file features or cross-domain architectural changes. | Stable initiative board ➔ OpenSpec delta specs ➔ DAG decomposition (≤350 LOC) ➔ parallel implementation minions ➔ adversarial review. |
-
----
-
-## 📺 Live Real-Time Worker Streaming
-
-When tasks are delegated to external workers, Cortex-IA streams human-readable action summaries and live model reasoning directly into the Herdr terminal pane:
-
-```text
-======================================================================
-🚀 [CORTEX-IA] DELEGATED INVESTIGATE WORKER
-----------------------------------------------------------------------
-🆔 Role:       investigate
-⚙️  CLI:        agy
-📂 Directory:  D:\lleontor705\iatask
-📋 Objective:  Inspect database migrations and verify WAL mode
-----------------------------------------------------------------------
-⚡ Initializing worker session...
-⠋ [investigate] Worker processing task via agy... (2s elapsed)
-⏱️  [Checkpoint: 1.5s]
-⚡ [investigate] Read: store.go (view_file)
-   ↳ Done (0.04s) ➔ 512 lines read
-⚡ [investigate] Grep: modernc.org/sqlite (grep_search)
-   ↳ Done (0.08s) ➔ 4 matches found
-⚡ [investigate] Exec: go test ./internal/delegation/... (run_command)
-   ↳ Done (1.64s) ➔ ok (coverage: 50.5%)
-
-### Investigation Summary
-- Database WAL journal mode is strictly enforced.
-- Single-connection mutex prevents database locking under high concurrency.
-
-----------------------------------------------------------------------
-✅ [CORTEX-IA] Delegated investigate task completed in 8.4s (exit code 0)
-📊 Token Usage:   29,747 (in: 28,565, out: 1,182, think: 343)
-======================================================================
-```
 
 ---
 
