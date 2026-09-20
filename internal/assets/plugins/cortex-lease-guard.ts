@@ -251,6 +251,8 @@ export const CortexLeaseGuardPlugin = Plugin.define({
           throw new Error("CORTEX_SECURITY_SHIELD: Destructive shell command intercepted by CortexLeaseGuard");
         }
       });
+    }
+
     return cleanup;
   },
   async v1(ctx: any) {

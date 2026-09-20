@@ -285,30 +285,103 @@ function operationalCounts(snapshot: UISnapshot, snapshotError: string): Operati
 
 let lastKnownSessionID: string | undefined;
 
-function currentSessionID(api: any): string | undefined {
-  const route = api.route?.current || (typeof api.ui?.router?.current === "function" ? api.ui.router.current() : undefined);
-  const id =
-    route?.name === "session"
-      ? route.params?.sessionID || route.params?.session_id || route.params?.sessionId || route.sessionID || route.session_id || route.sessionId
-      : route?.sessionID || route?.session_id || route?.sessionId || route?.params?.sessionID || route?.params?.session_id || route?.params?.sessionId;
-  if (typeof id === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(id)) {
-    lastKnownSessionID = id;
-    return id;
-  }
-  if (api.ui?.tabs && typeof api.ui.tabs.list === "function") {
+function extractSessionID(val: any): string | undefined {
+  if (!val) return undefined;
+  if (typeof val === "function") {
     try {
-      const tabs = api.ui.tabs.list();
-      if (Array.isArray(tabs) && tabs.length > 0 && typeof tabs[0] === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(tabs[0])) {
-        lastKnownSessionID = tabs[0];
-        return tabs[0];
+      const res = val();
+      const extracted = extractSessionID(res);
+      if (extracted) return extracted;
+    } catch {}
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (/^[A-Za-z0-9_-]{1,256}$/.test(trimmed)) return trimmed;
+    const match = trimmed.match(/(?:^|\/|#)session(?:s)?\/([A-Za-z0-9_-]{1,256})/);
+    if (match) return match[1];
+  }
+  if (typeof val === "object") {
+    const candidates = [
+      val.sessionID,
+      val.sessionId,
+      val.session_id,
+      val.params?.sessionID,
+      val.params?.sessionId,
+      val.params?.session_id,
+      val.params?.id,
+      val.type === "session" ? val.id : undefined,
+      val.name === "session" ? val.id : undefined,
+      val.session?.id,
+      val.session?.sessionID,
+    ];
+    for (const c of candidates) {
+      const extracted = extractSessionID(c);
+      if (extracted) return extracted;
+    }
+    if (typeof val.path === "string") {
+      const extracted = extractSessionID(val.path);
+      if (extracted) return extracted;
+    }
+  }
+  return undefined;
+}
+
+function currentSessionID(api: any, explicit?: any): string | undefined {
+  const fromExplicit = extractSessionID(explicit);
+  if (fromExplicit) {
+    lastKnownSessionID = fromExplicit;
+    return fromExplicit;
+  }
+  const route = api.route?.current || (typeof api.ui?.router?.current === "function" ? api.ui.router.current() : undefined);
+  const routeId = extractSessionID(route);
+  if (routeId) {
+    lastKnownSessionID = routeId;
+    return routeId;
+  }
+  if (api.ui?.tabs) {
+    try {
+      if (typeof api.ui.tabs.current === "function") {
+        const curTabId = extractSessionID(api.ui.tabs.current());
+        if (curTabId) {
+          lastKnownSessionID = curTabId;
+          return curTabId;
+        }
+      }
+      if (typeof api.ui.tabs.active === "function") {
+        const activeTabId = extractSessionID(api.ui.tabs.active());
+        if (activeTabId) {
+          lastKnownSessionID = activeTabId;
+          return activeTabId;
+        }
+      }
+      if (typeof api.ui.tabs.list === "function") {
+        const tabs = api.ui.tabs.list();
+        if (Array.isArray(tabs) && tabs.length > 0) {
+          const active = tabs.find((t: any) => t && (t.active === true || t.selected === true || t.current === true));
+          const activeId = extractSessionID(active);
+          if (activeId) {
+            lastKnownSessionID = activeId;
+            return activeId;
+          }
+          const firstId = extractSessionID(tabs[0]);
+          if (firstId) {
+            lastKnownSessionID = firstId;
+            return firstId;
+          }
+        }
       }
     } catch {}
+  }
+  const sessionApiId = extractSessionID(api.session) || extractSessionID(api.state?.session) || extractSessionID(api.data?.session);
+  if (sessionApiId) {
+    lastKnownSessionID = sessionApiId;
+    return sessionApiId;
   }
   return lastKnownSessionID;
 }
 
-function nativeSessionActivity(api: any): NativeActivity | undefined {
-  const id = currentSessionID(api);
+function nativeSessionActivity(api: any, explicit?: any): NativeActivity | undefined {
+  const id = currentSessionID(api, explicit);
   if (!id) return undefined;
   const session = api.state?.session?.get?.(id) || api.data?.session?.get?.(id);
   if (session && session.id !== id) return "unknown";
@@ -317,8 +390,8 @@ function nativeSessionActivity(api: any): NativeActivity | undefined {
   return status === "busy" || status === "idle" || status === "retry" ? status : "unknown";
 }
 
-function conversationScope(api: any) {
-  const sessionID = currentSessionID(api);
+function conversationScope(api: any, explicit?: any) {
+  const sessionID = currentSessionID(api, explicit);
   const session = sessionID ? (api.state?.session?.get?.(sessionID) || api.data?.session?.get?.(sessionID)) : undefined;
   const project =
     api.state?.path?.directory ||
@@ -1318,8 +1391,16 @@ function HomeLogo() {
 }
 
 function initialize(api: any, disposeRoot: () => void): () => void {
-  const nativeActivity = createMemo(() => nativeSessionActivity(api));
-  const scopeReady = createMemo(() => Boolean(conversationScope(api)?.project));
+  const [activeSessionOverride, setActiveSessionOverride] = createSignal<string | undefined>();
+  const updateActiveSession = (val: any) => {
+    const id = extractSessionID(val);
+    if (id && id !== activeSessionOverride()) {
+      setActiveSessionOverride(id);
+    }
+  };
+
+  const nativeActivity = createMemo(() => nativeSessionActivity(api, activeSessionOverride()));
+  const scopeReady = createMemo(() => Boolean(conversationScope(api, activeSessionOverride())?.project));
   const [snapshot, setSnapshot] = createSignal<UISnapshot>(EMPTY_SNAPSHOT);
   const [snapshotError, setSnapshotError] = createSignal("");
   const [now, setNow] = createSignal(Date.now());
@@ -1365,7 +1446,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
 
   const readSnapshot = (): void => {
     if (disposed) return;
-    const scope = conversationScope(api);
+    const scope = conversationScope(api, activeSessionOverride());
     const key = JSON.stringify(scope) || "";
     if (key !== activeKey) {
       activeKey = key;
@@ -1391,7 +1472,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
       { encoding: "utf8", maxBuffer: 512 * 1024, timeout: 7500, windowsHide: true },
       (error, stdout) => {
         if (pendingGeneration === requestGeneration) pendingGeneration = undefined;
-        if (disposed || requestGeneration !== generation || JSON.stringify(conversationScope(api)) !== key) return;
+        if (disposed || requestGeneration !== generation || JSON.stringify(conversationScope(api, activeSessionOverride())) !== key) return;
         if (error) {
           setSnapshot(EMPTY_SNAPSHOT);
           setSnapshotError(error.message);
@@ -1476,7 +1557,10 @@ function initialize(api: any, disposeRoot: () => void): () => void {
     previousTaskStatuses = nextMap;
   });
 
-  createEffect(readSnapshot);
+  createEffect(() => {
+    activeSessionOverride();
+    readSnapshot();
+  });
   const snapshotPoll = setInterval(readSnapshot, SNAPSHOT_POLL_INTERVAL_MS);
   const clock = setInterval(() => setNow(Date.now()), 1000);
   const spinnerTimer = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 90);
@@ -1497,10 +1581,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
     api.ui.slot({
       append: "sidebar.content",
       render: (ctx: any) => {
-        const slotSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
-        if (slotSession && /^[A-Za-z0-9_-]{1,256}$/.test(slotSession)) {
-          lastKnownSessionID = slotSession;
-        }
+        updateActiveSession(ctx);
         return (
           <SidebarStatus
             nativeActivity={nativeActivity}
@@ -1525,24 +1606,24 @@ function initialize(api: any, disposeRoot: () => void): () => void {
 
     api.ui.slot({
       append: "home.footer.status",
-      render: (ctx: any) => (
-        <HomeBottomStatus
-          snapshot={snapshot}
-          jobs={jobs}
-          spinner={spinner}
-          snapshotError={snapshotError}
-          theme={ctx?.theme?.current || ctx?.theme || api.theme}
-        />
-      ),
+      render: (ctx: any) => {
+        updateActiveSession(ctx);
+        return (
+          <HomeBottomStatus
+            snapshot={snapshot}
+            jobs={jobs}
+            spinner={spinner}
+            snapshotError={snapshotError}
+            theme={ctx?.theme?.current || ctx?.theme || api.theme}
+          />
+        );
+      },
     });
 
     api.ui.slot({
       append: "session.panel",
       render: (panel: any) => {
-        const panelSession = panel?.session_id || panel?.sessionId || panel?.sessionID;
-        if (panelSession && /^[A-Za-z0-9_-]{1,256}$/.test(panelSession)) {
-          lastKnownSessionID = panelSession;
-        }
+        updateActiveSession(panel);
         return (
           <Show when={!panel?.name || panel?.name === "cortex.dashboard" || panel?.name === "session.panel" || panel?.name === "cortex.board" || panel?.name === "cortex"}>
             <SessionKanbanPanel
@@ -1589,10 +1670,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
       return <HomeLogo />;
     },
     sidebar_content(ctx: any) {
-      const slotSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
-      if (slotSession && /^[A-Za-z0-9_-]{1,256}$/.test(slotSession)) {
-        lastKnownSessionID = slotSession;
-      }
+      updateActiveSession(ctx);
       return (
         <SidebarStatus
           nativeActivity={nativeActivity}
@@ -1614,6 +1692,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
       );
     },
     home_bottom(ctx: any) {
+      updateActiveSession(ctx);
       return (
         <HomeBottomStatus
           snapshot={snapshot}
@@ -1625,6 +1704,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
       );
     },
     "home.footer.status"(ctx: any) {
+      updateActiveSession(ctx);
       return (
         <HomeBottomStatus
           snapshot={snapshot}
@@ -1636,10 +1716,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
       );
     },
     "session.panel"(ctx: any) {
-      const panelSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
-      if (panelSession && /^[A-Za-z0-9_-]{1,256}$/.test(panelSession)) {
-        lastKnownSessionID = panelSession;
-      }
+      updateActiveSession(ctx);
       return (
         <SessionKanbanPanel
           snapshot={snapshot}
@@ -1652,10 +1729,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
       );
     },
     session_panel(ctx: any) {
-      const panelSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
-      if (panelSession && /^[A-Za-z0-9_-]{1,256}$/.test(panelSession)) {
-        lastKnownSessionID = panelSession;
-      }
+      updateActiveSession(ctx);
       return (
         <SessionKanbanPanel
           snapshot={snapshot}

@@ -68,15 +68,27 @@ func TestDashboardForConversation_WorkspaceScope(t *testing.T) {
 		t.Errorf("expected 2 tasks in list, got %d", len(dashGlobal.Tasks))
 	}
 
-	// 2. Query with a different session ID (e.g. ses_worker): must still see workspace tasks
-	dashWorker, err := store.DashboardForConversation(ctx, tempDir, "ses_worker", "ses_worker")
+	// 2. Query with a worker subagent whose root session is ses_planner: must see tasks
+	dashWorker, err := store.DashboardForConversation(ctx, tempDir, "ses_worker", "ses_planner")
 	if err != nil {
 		t.Fatalf("DashboardForConversation worker session failed: %v", err)
 	}
 	if dashWorker.Summary["total_tasks"] != 2 {
-		t.Errorf("expected 2 total tasks for worker session, got %d", dashWorker.Summary["total_tasks"])
+		t.Errorf("expected 2 total tasks for worker session under ses_planner, got %d", dashWorker.Summary["total_tasks"])
 	}
 	if len(dashWorker.Tasks) != 2 {
-		t.Errorf("expected 2 tasks in list, got %d", len(dashWorker.Tasks))
+		t.Errorf("expected 2 tasks in list for worker session under ses_planner, got %d", len(dashWorker.Tasks))
+	}
+
+	// 3. Query with an isolated new session: must NOT see tasks from ses_planner
+	dashOther, err := store.DashboardForConversation(ctx, tempDir, "ses_other", "ses_other")
+	if err != nil {
+		t.Fatalf("DashboardForConversation isolated session failed: %v", err)
+	}
+	if dashOther.Summary["total_tasks"] != 0 {
+		t.Errorf("expected 0 total tasks for isolated session, got %d", dashOther.Summary["total_tasks"])
+	}
+	if len(dashOther.Tasks) != 0 {
+		t.Errorf("expected 0 tasks in list for isolated session, got %d", len(dashOther.Tasks))
 	}
 }

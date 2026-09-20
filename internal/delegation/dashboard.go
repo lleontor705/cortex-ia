@@ -230,15 +230,29 @@ func (s *Store) DashboardForConversation(ctx context.Context, workspace, request
 	if err != nil {
 		return ConversationDashboard{}, err
 	}
+	cteBaseArgs := []any{string(encodedKeys), string(encodedKeys), string(encodedKeys)}
 	taskPredicate := `(workspace IN (SELECT value FROM json_each(?))
 		OR (workspace = '' AND (
 			id IN (SELECT task_id FROM delegation_jobs WHERE workspace IN (SELECT value FROM json_each(?)))
 			OR board_id IN (SELECT DISTINCT board_id FROM work_items WHERE workspace IN (SELECT value FROM json_each(?)))
 		)))`
+	if rootSessionID != "global" {
+		taskPredicate += ` AND (
+			opencode_root_session_id = ?
+			OR opencode_root_session_id = ''
+			OR id IN (SELECT item_id FROM work_claims WHERE owner = 'opencode-session:' || ? OR owner = 'opencode-session:' || ?)
+			OR id IN (SELECT task_id FROM delegation_jobs WHERE opencode_root_session_id = ? AND task_id <> '')
+		)`
+		cteBaseArgs = append(cteBaseArgs, rootSessionID, requestedSessionID, rootSessionID, rootSessionID)
+	}
 	jobPredicate := `workspace IN (SELECT value FROM json_each(?))`
+	cteBaseArgs = append(cteBaseArgs, string(encodedKeys))
+	if rootSessionID != "global" {
+		jobPredicate += ` AND (opencode_root_session_id = ? OR opencode_root_session_id = '')`
+		cteBaseArgs = append(cteBaseArgs, rootSessionID)
+	}
 	cte := `WITH tasks AS (SELECT * FROM work_items WHERE ` + taskPredicate + `
 		AND NOT EXISTS (SELECT 1 FROM work_decomposition_steps d WHERE d.parent_id=work_items.id)), jobs AS (SELECT * FROM delegation_jobs WHERE ` + jobPredicate + `) `
-	cteBaseArgs := []any{string(encodedKeys), string(encodedKeys), string(encodedKeys), string(encodedKeys)}
 	read := func(query string, dest any, extra ...any) error {
 		args := append(append([]any{}, cteBaseArgs...), extra...)
 		var raw string
