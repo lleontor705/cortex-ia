@@ -168,6 +168,8 @@ export function auditWorkload(
   };
 }
 
+const verifiedPermLeaseCache = new Map<string, number>();
+
 export const CortexPermissionFencePlugin = Plugin.define({
   id: "cortex-permission-fence",
   async setup(ctx) {
@@ -199,6 +201,10 @@ export const CortexPermissionFencePlugin = Plugin.define({
         // Zero-Prompt Auto-Approval for verified active file leases
         if (MUTATING_TOOLS.has(toolName) && targetPath) {
           const sessionID = event?.sessionID || (ctx as any)?.session?.id;
+          const cacheKey = `${sessionID}:${targetPath}`;
+          if (verifiedPermLeaseCache.get(cacheKey) && verifiedPermLeaseCache.get(cacheKey)! > Date.now()) {
+            return { effect: "allow", reason: "Verified active lease (cached)" };
+          }
           const cortex = firstCortexIA(directory);
           if (cortex && sessionID) {
             try {
@@ -213,6 +219,7 @@ export const CortexPermissionFencePlugin = Plugin.define({
               });
               const result = JSON.parse(raw);
               if (result?.valid === true && result?.owner === `opencode-session:${sessionID}`) {
+                verifiedPermLeaseCache.set(cacheKey, Date.now() + 30_000);
                 return { effect: "allow", reason: "Verified active lease" };
               }
             } catch {}
@@ -224,44 +231,51 @@ export const CortexPermissionFencePlugin = Plugin.define({
     }
 
     // 2. Dynamic Tool Registration: cortex_ia_workload_audit & cortex_ia_work_watch
+    const auditInput = {
+      type: "object",
+      properties: {
+        policy: {
+          type: "string",
+          enum: ["strict", "flexible", "unbounded"],
+          description: "Workload policy threshold to evaluate against.",
+        },
+        baseRef: {
+          type: "string",
+          description: "Git reference to compare against (defaults to HEAD).",
+        },
+      },
+    };
+
+    const watchInput = {
+      type: "object",
+      properties: {
+        board: {
+          type: "string",
+          description: "Board ID to query (defaults to 'default').",
+        },
+      },
+    };
+
     const auditTool = {
       name: "cortex_ia_workload_audit",
       description: "Audit uncommitted git diff lines against the Cortex-IA workload budget (strict <=350 LOC, flexible <=700 LOC) before transitioning to review.",
-      parameters: {
-        type: "object",
-        properties: {
-          policy: {
-            type: "string",
-            enum: ["strict", "flexible", "unbounded"],
-            description: "Workload policy threshold to evaluate against.",
-          },
-          baseRef: {
-            type: "string",
-            description: "Git reference to compare against (defaults to HEAD).",
-          },
-        },
-      },
+      input: auditInput,
+      parameters: auditInput,
       execute: async (args: any) => {
-        return auditWorkload(directory, args?.policy || "flexible", args?.baseRef || "HEAD");
+        const res = auditWorkload(directory, args?.policy || "flexible", args?.baseRef || "HEAD");
+        return { content: JSON.stringify(res, null, 2) };
       },
     };
 
     const watchTool = {
       name: "cortex_ia_work_watch",
       description: "Check the live Cortex-IA task authority, active board state, claims, and remaining lease TTL.",
-      parameters: {
-        type: "object",
-        properties: {
-          board: {
-            type: "string",
-            description: "Board ID to query (defaults to 'default').",
-          },
-        },
-      },
+      input: watchInput,
+      parameters: watchInput,
       execute: async (args: any) => {
         const cortex = firstCortexIA(directory);
         if (!cortex) {
-          return { error: "cortex-ia binary not found" };
+          return { content: JSON.stringify({ error: "cortex-ia binary not found" }) };
         }
         try {
           const board = args?.board || "default";
@@ -273,21 +287,33 @@ export const CortexPermissionFencePlugin = Plugin.define({
             timeout: 10000,
             windowsHide: true,
           });
-          return JSON.parse(raw);
+          return { content: raw.trim() };
         } catch (err: any) {
-          return { error: err?.message || "failed to query cortex-ia work status" };
+          return { content: JSON.stringify({ error: err?.message || "failed to query cortex-ia work status" }) };
         }
       },
     };
 
-    if (typeof (ctx as any).tool?.register === "function") {
+    if (typeof (ctx as any).tool?.transform === "function") {
+      await (ctx as any).tool.transform((editor: any) => {
+        if (editor && typeof editor.add === "function") {
+          editor.add({
+            name: auditTool.name,
+            description: auditTool.description,
+            input: auditTool.input,
+            execute: async (input: any) => auditTool.execute(input),
+          });
+          editor.add({
+            name: watchTool.name,
+            description: watchTool.description,
+            input: watchTool.input,
+            execute: async (input: any) => watchTool.execute(input),
+          });
+        }
+      });
+    } else if (typeof (ctx as any).tool?.register === "function") {
       (ctx as any).tool.register(auditTool);
       (ctx as any).tool.register(watchTool);
-    } else if (typeof (ctx as any).tool?.transform === "function") {
-      await (ctx as any).tool.transform(async (tools: any[]) => {
-        if (!Array.isArray(tools)) return tools;
-        return [...tools, auditTool, watchTool];
-      });
     }
 
     const cleanup = async () => {};

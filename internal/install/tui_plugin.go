@@ -11,17 +11,19 @@ import (
 
 const (
 	TUIPluginPath       = "./tui-plugins/cortex-ia-tui.js"
+	TUIPluginDirV2      = "./tui-plugins/cortex-ia"
 	LegacyTUIPluginPath = "./plugins/cortex-ia-tui.js"
 )
 
-// ConfigureTUIPlugin ensures OpenCode's tui.jsonc contains the cortex-ia TUI plugin entry.
+// ConfigureTUIPlugin ensures OpenCode's configuration contains the cortex-ia TUI plugin entry.
 func ConfigureTUIPlugin(homeDir string) (string, error) {
 	path, _, err := ConfigureTUIPluginWithResult(homeDir)
 	return path, err
 }
 
 // ConfigureTUIPluginWithResult ensures OpenCode's CLI/TUI config (cli.json, tui.jsonc, or tui.json)
-// contains the cortex-ia TUI plugin entry and reports whether the file was modified.
+// contains the cortex-ia TUI plugin entry, ensures the OpenCode v2 bridge directory exists,
+// and reports whether the file was modified.
 func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
 	if homeDir == "" {
 		var err error
@@ -34,63 +36,125 @@ func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return "", false, err
 	}
-	tuiPath := filepath.Join(configDir, "tui.jsonc")
-	if _, err := os.Stat(filepath.Join(configDir, "cli.json")); err == nil {
-		tuiPath = filepath.Join(configDir, "cli.json")
-	} else if _, err := os.Stat(filepath.Join(configDir, "tui.jsonc")); err == nil {
-		tuiPath = filepath.Join(configDir, "tui.jsonc")
-	} else if _, err := os.Stat(filepath.Join(configDir, "tui.json")); err == nil {
-		tuiPath = filepath.Join(configDir, "tui.json")
+
+	cliPath := filepath.Join(configDir, "cli.json")
+	tuiCPath := filepath.Join(configDir, "tui.jsonc")
+	tuiPath := filepath.Join(configDir, "tui.json")
+
+	var primaryPath string
+	var secondaryPaths []string
+
+	if _, err := os.Stat(cliPath); err == nil {
+		primaryPath = cliPath
+		if _, err := os.Stat(tuiCPath); err == nil {
+			secondaryPaths = append(secondaryPaths, tuiCPath)
+		}
+		if _, err := os.Stat(tuiPath); err == nil {
+			secondaryPaths = append(secondaryPaths, tuiPath)
+		}
+	} else if _, err := os.Stat(tuiCPath); err == nil {
+		primaryPath = tuiCPath
+		if _, err := os.Stat(tuiPath); err == nil {
+			secondaryPaths = append(secondaryPaths, tuiPath)
+		}
+	} else if _, err := os.Stat(tuiPath); err == nil {
+		primaryPath = tuiPath
+	} else {
+		primaryPath = tuiCPath
 	}
 
+	primaryChanged, err := configureSingleTUIFile(primaryPath)
+	if err != nil {
+		return "", false, err
+	}
+	anyChanged := primaryChanged
+
+	for _, sec := range secondaryPaths {
+		secChanged, secErr := configureSingleTUIFile(sec)
+		if secErr == nil && secChanged {
+			anyChanged = true
+		}
+	}
+
+	_ = ensureTUIBridge(configDir)
+	_ = CleanupLegacyFlatFiles(homeDir)
+	return primaryPath, anyChanged, nil
+}
+
+func ensureTUIBridge(configDir string) error {
+	bridgeDir := filepath.Join(configDir, "tui-plugins", "cortex-ia")
+	if err := os.MkdirAll(bridgeDir, 0o755); err != nil {
+		return err
+	}
+	bridgeFile := filepath.Join(bridgeDir, "tui.js")
+	bridgeContent := []byte("// OpenCode v2 directory bridge for cortex-ia TUI plugin\nexport * from \"../cortex-ia-tui.js\";\nexport { default } from \"../cortex-ia-tui.js\";\n")
+	existing, err := os.ReadFile(bridgeFile)
+	if err == nil && string(existing) == string(bridgeContent) {
+		return nil
+	}
+	return os.WriteFile(bridgeFile, bridgeContent, 0o644)
+}
+
+func configureSingleTUIFile(tuiPath string) (bool, error) {
 	plugins := []any{}
 	current := map[string]any{}
+	isCLI := filepath.Base(tuiPath) == "cli.json"
+	targetPlugin := TUIPluginPath
+	if isCLI {
+		targetPlugin = TUIPluginDirV2
+	}
+
 	if raw, readErr := os.ReadFile(tuiPath); readErr == nil {
 		var decodeErr error
 		current, decodeErr = filemerge.DecodeJSONObject(raw)
 		if decodeErr != nil {
-			return "", false, decodeErr
+			return false, decodeErr
 		}
 		if configured, exists := current["plugin"]; exists {
 			values, ok := configured.([]any)
 			if !ok {
-				return "", false, errors.New("OpenCode config plugin must be an array")
+				return false, errors.New("OpenCode config plugin must be an array")
 			}
 			plugins = append(plugins, values...)
 		}
 		if configured, exists := current["plugins"]; exists {
 			values, ok := configured.([]any)
 			if !ok {
-				return "", false, errors.New("OpenCode config plugins must be an array")
+				return false, errors.New("OpenCode config plugins must be an array")
 			}
 			plugins = append(plugins, values...)
 		}
 	} else if !os.IsNotExist(readErr) {
-		return "", false, readErr
+		return false, readErr
 	}
 
 	filtered := make([]any, 0, len(plugins))
 	for _, configured := range plugins {
-		if value, ok := configured.(string); ok && value == LegacyTUIPluginPath {
-			continue
+		if value, ok := configured.(string); ok {
+			if value == LegacyTUIPluginPath {
+				continue
+			}
+			if isCLI && value == TUIPluginPath {
+				continue
+			}
 		}
 		filtered = append(filtered, configured)
 	}
 	plugins = filtered
 	found := false
 	for _, configured := range plugins {
-		if value, ok := configured.(string); ok && value == TUIPluginPath {
+		if value, ok := configured.(string); ok && value == targetPlugin {
 			found = true
 			break
 		}
 	}
 	if !found {
-		plugins = append(plugins, TUIPluginPath)
+		plugins = append(plugins, targetPlugin)
 	}
 
 	schemaURL := "https://opencode.ai/tui.json"
 	pluginKey := "plugin"
-	if filepath.Base(tuiPath) == "cli.json" {
+	if isCLI {
 		schemaURL = "https://opencode.ai/v2/cli.json"
 		pluginKey = "plugins"
 	} else if _, exists := current["plugins"]; exists {
@@ -111,14 +175,13 @@ func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
 
 	overlay, err := json.Marshal(overlayMap)
 	if err != nil {
-		return "", false, err
+		return false, err
 	}
 	mutated, err := filemerge.MutateJSONFile(tuiPath, filemerge.JSONMutation{Overlay: overlay})
 	if err != nil {
-		return "", false, err
+		return false, err
 	}
-	_ = CleanupLegacyFlatFiles(homeDir)
-	return tuiPath, mutated.Changed || mutated.Created, nil
+	return mutated.Changed || mutated.Created, nil
 }
 
 // CleanupLegacyFlatFiles cleans up orphaned flat files like cortex-authority-state-*.json,

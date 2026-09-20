@@ -58,7 +58,14 @@ function resolveCortexExecutable(directory?: string): string | null {
 const ROLES = new Set(["discovery", "investigate", "planner", "implement", "reviewer"]);
 const RECOVERY = new Set(["cortex_recover", "cortex_ia_recover", "cortex_ia_work_recover", "cortex_ia_work_retry"]);
 const UNLATCH = new Set(["unlatch", "cortex_unlatch", "cortex_ia_unlatch", "cortex_work_unlatch"]);
-interface Failure { role: string; taskId?: string; reason?: string; objective?: string }
+interface Failure {
+  role: string;
+  taskId?: string;
+  reason?: string;
+  objective?: string;
+  attempts?: number;
+  tripped?: boolean;
+}
 interface Pending extends Failure { parent: string }
 
 function record(value: unknown): Record<string, any> | undefined {
@@ -122,36 +129,44 @@ function validateNoDuplicateKeys(jsonString: string): void {
   }
 }
 
+function dispatchMeta(args: Record<string, any>): { taskId?: string; role?: string } {
+  const prompt = args.prompt;
+  if (typeof prompt !== "string") return {};
+  const matches = [...prompt.matchAll(/<minion-(dispatch|contract)>([\s\S]*?)<\/minion-\1>/g)];
+  if (!matches.length) return {};
+  try {
+    const raw = matches[0][2];
+    validateNoDuplicateKeys(raw);
+    const envelope = record(raw);
+    if (!envelope) return {};
+    const declaredRole = typeof envelope.role === "string" ? envelope.role.toLowerCase() : undefined;
+    const directRole = (args.subagent || args.subagent_type || args.agent)?.toString().toLowerCase();
+    if (declaredRole && directRole && declaredRole !== directRole) {
+      throw new Error("role mismatch");
+    }
+    const taskId = typeof envelope.task_id === "string" && envelope.task_id.trim() ? envelope.task_id.trim() : undefined;
+    return { taskId, role: declaredRole || directRole };
+  } catch (err: any) {
+    if (err?.message === "role mismatch") {
+      throw new Error("CORTEX_DISPATCH_IDENTITY_INVALID: conflicting envelope role vs argument");
+    }
+    return {};
+  }
+}
+
 // Host task_id identifies a resumed session, never a durable Cortex work item.
 function workIdentity(args: Record<string, any>): string | undefined {
-  const prompt = args.prompt;
-  if (prompt === undefined) return undefined;
-  if (typeof prompt !== "string" || prompt.length > 256 * 1024) throw new Error("CORTEX_DISPATCH_IDENTITY_INVALID: bounded prompt required");
-  const matches = [...prompt.matchAll(/<minion-(dispatch|contract)>([\s\S]*?)<\/minion-\1>/g)];
-  if (matches.length > 1 || (prompt.match(/<minion-(?:dispatch|contract)/g) || []).length !== matches.length ||
-      (prompt.match(/<\/minion-(?:dispatch|contract)>/g) || []).length !== matches.length) {
-    throw new Error("CORTEX_DISPATCH_IDENTITY_INVALID: ambiguous envelope");
-  }
-  if (!matches.length) return undefined;
-  let envelope: Record<string, any>;
-  try {
-    validateNoDuplicateKeys(matches[0][2]);
-    envelope = record(matches[0][2])!;
-    if (!envelope || (envelope.role !== undefined && envelope.role !== (args.subagent_type || args.subagent || args.agent)) ||
-        (envelope.task_id !== undefined && envelope.task_id !== null &&
-        (typeof envelope.task_id !== "string" || !envelope.task_id.trim() || envelope.task_id.length > 128))) throw new Error();
-  } catch { throw new Error("CORTEX_DISPATCH_IDENTITY_INVALID: malformed, duplicate or conflicting envelope"); }
-  return envelope.task_id ?? undefined;
+  return dispatchMeta(args).taskId;
 }
 
 function failureReason(output: any): string | undefined {
   const value = output?.result ?? output?.output, receipt = record(value);
   if (output?.error || output?.metadata?.error || receipt?.error ||
-      ["failed", "aborted", "cancelled", "timed_out", "blocked"].includes(receipt?.status) ||
-      ["failed", "blocked"].includes(receipt?.phase_status)) return "FAILED_TERMINAL_RESULT";
+      ["failed", "aborted", "cancelled", "timed_out"].includes(receipt?.status) ||
+      ["failed"].includes(receipt?.phase_status)) return "FAILED_TERMINAL_RESULT";
   if (value == null || (typeof value === "string" && !value.trim())) return "EMPTY_RESULT";
-  // Nonempty legacy text remains compatible; response length cannot prove corruption.
-  if (typeof value === "string" && /^[{[]/.test(value.trim()) && !receipt) return "MALFORMED_RECEIPT";
+  // Nonempty textual and markdown responses are valid outputs, not malformed receipts.
+  return undefined;
 }
 
 /** Guards repeated dispatch after observed failure. It does not grant work authority. */
@@ -164,13 +179,29 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
     const objective = (role: string, prompt: unknown) => createHash("sha256").update(JSON.stringify([role, prompt ?? null])).digest("hex");
     const failureKey = (failure: Failure) => failure.taskId ? "task:" + failure.taskId : "objective:" + failure.objective;
 
-    function latch(parent: string, failure: Failure): void {
+    const MAX_CIRCUIT_ATTEMPTS = 4;
+
+    function latch(parent: string, failure: Failure): { failure: Failure; tripped: boolean } {
       const key = failureKey(failure);
-      const existing = failed.get(parent);
+      let existingSession = failed.get(parent);
+      if (!existingSession) {
+        existingSession = new Map();
+        failed.set(parent, existingSession);
+      }
+      const prev = existingSession.get(key);
+      const attempts = (prev?.attempts || 0) + 1;
+      const tripped = attempts >= MAX_CIRCUIT_ATTEMPTS;
+
+      failure.attempts = attempts;
+      failure.tripped = tripped;
+
       const count = [...failed.values()].reduce((total, items) => total + items.size, 0);
-      if (!existing?.has(key) && count >= capacity) { saturated = true; return; }
-      if (!existing) failed.set(parent, new Map());
-      failed.get(parent)!.set(key, failure);
+      if (!existingSession.has(key) && count >= capacity) {
+        saturated = true;
+        return { failure, tripped: true };
+      }
+      existingSession.set(key, failure);
+      return { failure, tripped };
     }
 
     function boundedSet<T>(map: Map<string, T>, key: string, value: T): void {
@@ -192,7 +223,7 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
     function guidance(f: Failure): string {
       return f.taskId
         ? `Task ${f.taskId}. Supported continuation: Orchestrator must reconcile durable state and retry without reusing expired tokens.`
-        : "Task identity is unknown; continuation capability is unavailable without an identified task. Reconcile before starting a fresh session.";
+        : `Diagnostic objective (${f.role || "subagent"}): subagent encountered ${f.reason || "failure"}. Orchestrator can retry or continue natively.`;
     }
 
     const controller = new AbortController();
@@ -236,18 +267,24 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
         if (tool === "cortex_ia_work_retry" && callID && typeof taskId === "string") boundedSet(retries, sessionID + ":" + callID, taskId);
       }
       if (tool !== "task" && tool !== "subagent") return;
-      const role = args.subagent || args.subagent_type || args.agent;
-      if (typeof role !== "string" || !ROLES.has(role.toLowerCase())) return;
-      const taskId = workIdentity(args);
+      const meta = dispatchMeta(args);
+      const rawRole = meta.role || args.subagent || args.subagent_type || args.agent;
+      if (typeof rawRole !== "string") return;
+      const role = rawRole.toLowerCase();
+      if (!ROLES.has(role)) return;
+      const taskId = meta.taskId;
       const digest = objective(role, args.prompt);
       const failures = failed.get(sessionID);
-      const readonly = ["investigate", "reviewer"].includes(role.toLowerCase());
+      const readonly = ["investigate", "reviewer", "discovery", "planner"].includes(role);
+      if (readonly) {
+        // Read-only inspection and diagnostic roles NEVER hard-latch
+        return;
+      }
       if (saturated && !readonly) throw new Error("CORTEX_LATCH_CAPACITY: explicit reconciliation required; no failures were released");
-      const previous = failures?.get(failureKey({ role, taskId, objective: digest })) ||
-        (!taskId && !readonly ? failures?.values().next().value : undefined);
-      if (!previous) return;
-      const diagnosis = readonly && (role !== previous.role || digest !== previous.objective);
-      if (!diagnosis) throw new Error("CORTEX_DISPATCH_LATCHED: " + guidance(previous));
+      const key = failureKey({ role, taskId, objective: digest });
+      const previous = failures?.get(key);
+      if (!previous || !previous.tripped) return;
+      throw new Error("CORTEX_CIRCUIT_OPEN: " + guidance(previous));
     };
 
     const executeAfter = async (contextOrEvent: any, maybeEvent?: any) => {
@@ -274,9 +311,12 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
       // Recovery counts alone cannot establish that this failed objective is ready.
       if (tool !== "task" && tool !== "subagent" && tool !== "background_output") return;
       const background = tool === "background_output" ? pending.get(args.task_id) : undefined;
-      const role = background?.role || args.subagent || args.subagent_type || args.agent;
-      if (typeof role !== "string" || !ROLES.has(role.toLowerCase())) return;
-      const parent = background?.parent || sessionID, taskId = background ? background.taskId : workIdentity(args);
+      const meta = dispatchMeta(args);
+      const rawRole = background?.role || meta.role || args.subagent || args.subagent_type || args.agent;
+      if (typeof rawRole !== "string") return;
+      const role = rawRole.toLowerCase();
+      if (!ROLES.has(role)) return;
+      const parent = background?.parent || sessionID, taskId = background ? background.taskId : meta.taskId;
       const receipt = record(output), reason = failureReason(event);
       const identity = receipt?.session_id || receipt?.sessionID || receipt?.task_id || event?.metadata?.sessionId;
       if (!reason && (["accepted", "starting", "running", "pending"].includes(receipt?.status) ||
@@ -285,19 +325,32 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
         return;
       }
       if (background) pending.delete(args.task_id);
-      if (!reason) return;
-      const failure = { role, taskId: typeof taskId === "string" ? taskId : undefined, reason, objective: background?.objective || objective(role, args.prompt) };
-      latch(parent, failure);
-      const executable = failure.taskId && resolveCortexExecutable(directory);
-      if (executable) {
-        try {
-          execFileSync(executable, ["report", "error", "--code", "ERR_SUBAGENT_EMPTY_OUTPUT",
-            "--task", failure.taskId!, "--message", "Subagent terminal failure: " + reason,
-            "--details", JSON.stringify({ role, task_id: failure.taskId, reason }), "--source", "task-latch-plugin"],
-            { cwd: directory, stdio: "ignore", windowsHide: true, timeout: 3000 });
-        } catch { /* Reporting availability cannot release the failed-attempt latch. */ }
+      if (!reason) {
+        const successKey = failureKey({ role, taskId, objective: background?.objective || objective(role, args.prompt) });
+        failed.get(parent)?.delete(successKey);
+        return;
       }
-      throw new Error("CORTEX_SUBAGENT_EMPTY_RESULT: " + reason + "; supported continuation requires orchestrator reconciliation. " + guidance(failure));
+      const readonly = ["investigate", "reviewer", "discovery", "planner"].includes(role.toLowerCase());
+      if (readonly) {
+        // Read-only subagents never throw latch exceptions in executeAfter.
+        console.warn(`[CORTEX_TASK_LATCH] Read-only subagent '${role}' ended with reason '${reason}'. Latch exception suppressed.`);
+        return;
+      }
+      const failure = { role, taskId: typeof taskId === "string" ? taskId : undefined, reason, objective: background?.objective || objective(role, args.prompt) };
+      const { tripped, failure: recorded } = latch(parent, failure);
+      if (tripped) {
+        const executable = recorded.taskId && resolveCortexExecutable(directory);
+        if (executable) {
+          try {
+            execFileSync(executable, ["report", "error", "--code", "ERR_SUBAGENT_CIRCUIT_OPEN",
+              "--task", recorded.taskId!, "--message", `Subagent circuit tripped after ${recorded.attempts} failures: ${reason}`,
+              "--details", JSON.stringify({ role, task_id: recorded.taskId, reason, attempts: recorded.attempts }), "--source", "task-latch-plugin"],
+              { cwd: directory, stdio: "ignore", windowsHide: true, timeout: 3000 });
+          } catch { /* Reporting availability cannot release the failed-attempt latch. */ }
+        }
+        throw new Error(`CORTEX_CIRCUIT_OPEN: Repeated terminal failure (${recorded.attempts} attempts: ${reason}); circuit breaker tripped. Supported continuation requires orchestrator reconciliation. ${guidance(recorded)}`);
+      }
+      throw new Error(`SUBAGENT_ATTEMPT_FAILED: Attempt ${recorded.attempts} for role '${role}' encountered ${reason}. Circuit breaker allows self-healing retry (${MAX_CIRCUIT_ATTEMPTS - recorded.attempts} remaining) before latching.`);
     };
 
     if (ctx.tool?.hook) {

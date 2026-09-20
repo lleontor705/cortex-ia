@@ -235,35 +235,82 @@ function operationalCounts(snapshot, snapshotError) {
     attention: snapshot.counts.attention + (snapshotError ? 1 : 0)
   };
 }
+var lastKnownSessionID;
 function currentSessionID(api) {
-  const route = api.route.current;
-  const id = route.name === "session" ? route.params?.sessionID : void 0;
-  return typeof id === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(id) ? id : void 0;
+  const route = api.route?.current || (typeof api.ui?.router?.current === "function" ? api.ui.router.current() : void 0);
+  const id = route?.name === "session" ? route.params?.sessionID || route.params?.session_id || route.params?.sessionId || route.sessionID || route.session_id || route.sessionId : route?.sessionID || route?.session_id || route?.sessionId || route?.params?.sessionID || route?.params?.session_id || route?.params?.sessionId;
+  if (typeof id === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(id)) {
+    lastKnownSessionID = id;
+    return id;
+  }
+  if (api.ui?.tabs && typeof api.ui.tabs.list === "function") {
+    try {
+      const tabs = api.ui.tabs.list();
+      if (Array.isArray(tabs) && tabs.length > 0 && typeof tabs[0] === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(tabs[0])) {
+        lastKnownSessionID = tabs[0];
+        return tabs[0];
+      }
+    } catch {
+    }
+  }
+  return lastKnownSessionID;
 }
 function nativeSessionActivity(api) {
   const id = currentSessionID(api);
   if (!id) return void 0;
-  if (api.state.session.get(id)?.id !== id) return "unknown";
-  const status = api.state.session.status(id)?.type;
+  const session = api.state?.session?.get?.(id) || api.data?.session?.get?.(id);
+  if (session && session.id !== id) return "unknown";
+  const statusObj = api.state?.session?.status?.(id) || api.data?.session?.status?.(id);
+  const status = typeof statusObj === "string" ? statusObj : statusObj?.type;
   return status === "busy" || status === "idle" || status === "retry" ? status : "unknown";
 }
 function conversationScope(api) {
   const sessionID = currentSessionID(api);
-  if (!sessionID) return void 0;
+  const session = sessionID ? api.state?.session?.get?.(sessionID) || api.data?.session?.get?.(sessionID) : void 0;
+  const project = api.state?.path?.directory || session?.directory || api.location?.directory || (typeof api.data?.location?.default === "function" ? api.data.location.default()?.directory : void 0) || process.cwd();
+  if (!sessionID) {
+    return {
+      sessionID: "global",
+      rootSessionID: "global",
+      project
+    };
+  }
   let current = sessionID;
   const seen = /* @__PURE__ */ new Set();
   while (seen.size < 64 && /^[A-Za-z0-9_-]{1,256}$/.test(current) && !seen.has(current)) {
     seen.add(current);
-    const session = api.state.session.get(current);
-    if (!session || session.id !== current) return void 0;
-    if (!session.parentID) return {
+    const currSession = api.state?.session?.get?.(current) || api.data?.session?.get?.(current);
+    if (!currSession || currSession.id !== current) {
+      if (api.data?.session?.root && typeof api.data.session.root === "function") {
+        try {
+          const root = api.data.session.root(sessionID);
+          if (root) return {
+            sessionID,
+            rootSessionID: root,
+            project
+          };
+        } catch {
+        }
+      }
+      return {
+        sessionID,
+        rootSessionID: current,
+        project
+      };
+    }
+    const parent = currSession.parentID || currSession.parentId;
+    if (!parent) return {
       sessionID,
       rootSessionID: current,
-      project: api.state.path.directory
+      project
     };
-    current = session.parentID;
+    current = parent;
   }
-  return void 0;
+  return {
+    sessionID,
+    rootSessionID: sessionID,
+    project
+  };
 }
 function CortexCockpitHeader(props) {
   const projectName = createMemo(() => {
@@ -1812,9 +1859,20 @@ function initialize(api, disposeRoot) {
   const [now, setNow] = createSignal(Date.now());
   const [frame, setFrame] = createSignal(0);
   const [pulseFrame, setPulseFrame] = createSignal(0);
-  const [tasksExpanded, setTasksExpanded] = createSignal(api.kv.get(TASKS_EXPANDED_KEY, true) !== false);
-  const [delegationsExpanded, setDelegationsExpanded] = createSignal(api.kv.get(DELEGATIONS_EXPANDED_KEY, true) !== false);
-  const [attentionExpanded, setAttentionExpanded] = createSignal(api.kv.get(ATTENTION_EXPANDED_KEY, true) !== false);
+  const getPref = (key, fallback) => {
+    if (api.kv && typeof api.kv.get === "function") {
+      return api.kv.get(key, fallback) !== false;
+    }
+    return fallback;
+  };
+  const setPref = (key, val) => {
+    if (api.kv && typeof api.kv.set === "function") {
+      api.kv.set(key, val);
+    }
+  };
+  const [tasksExpanded, setTasksExpanded] = createSignal(getPref(TASKS_EXPANDED_KEY, true));
+  const [delegationsExpanded, setDelegationsExpanded] = createSignal(getPref(DELEGATIONS_EXPANDED_KEY, true));
+  const [attentionExpanded, setAttentionExpanded] = createSignal(getPref(ATTENTION_EXPANDED_KEY, true));
   const spinner = createMemo(() => SPINNER_FRAMES[frame() % SPINNER_FRAMES.length]);
   const pulse = createMemo(() => NEURAL_PULSE_FRAMES[pulseFrame() % NEURAL_PULSE_FRAMES.length]);
   const jobs = createMemo(() => snapshot().delegations.map((job, sequence) => ({
@@ -1829,7 +1887,7 @@ function initialize(api, disposeRoot) {
   const togglePreference = (key, value, setter) => {
     const next = !value();
     setter(next);
-    api.kv.set(key, next);
+    setPref(key, next);
   };
   const readSnapshot = () => {
     if (disposed) return;
@@ -1874,7 +1932,7 @@ function initialize(api, disposeRoot) {
     const count = operationalCounts(snapshot(), snapshotError()).attention;
     if (count > previousAttentionCount) {
       setAttentionExpanded(true);
-      api.kv.set(ATTENTION_EXPANDED_KEY, true);
+      setPref(ATTENTION_EXPANDED_KEY, true);
     }
     previousAttentionCount = count;
   });
@@ -1882,7 +1940,7 @@ function initialize(api, disposeRoot) {
   createEffect(() => {
     const tasks = snapshot().tasks;
     const toastApi = api.ui?.toast || api.toast;
-    if (toastApi && typeof toastApi.show === "function" && previousTaskStatuses.size > 0) {
+    if (toastApi && previousTaskStatuses.size > 0) {
       for (const t of tasks) {
         const prev = previousTaskStatuses.get(t.task_id);
         if (prev && prev !== t.status) {
@@ -1902,11 +1960,19 @@ function initialize(api, disposeRoot) {
             title = `\u26A1 ${t.task_id} Reclamada`;
           }
           try {
-            toastApi.show({
-              title,
-              message: clipped(t.title, 40),
-              variant
-            });
+            if (typeof toastApi.show === "function") {
+              toastApi.show({
+                title,
+                message: clipped(t.title, 40),
+                variant
+              });
+            } else if (typeof toastApi === "function") {
+              toastApi({
+                title,
+                message: clipped(t.title, 40),
+                variant
+              });
+            }
           } catch {
           }
         }
@@ -1921,11 +1987,115 @@ function initialize(api, disposeRoot) {
   const clock = setInterval(() => setNow(Date.now()), 1e3);
   const spinnerTimer = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 90);
   const pulseTimer = setInterval(() => setPulseFrame((p) => (p + 1) % NEURAL_PULSE_FRAMES.length), 350);
+  const cleanup = () => {
+    if (disposed) return;
+    disposed = true;
+    clearInterval(snapshotPoll);
+    clearInterval(clock);
+    clearInterval(spinnerTimer);
+    clearInterval(pulseTimer);
+    disposeRoot();
+  };
+  if (api.ui && typeof api.ui.slot === "function") {
+    api.ui.slot({
+      append: "sidebar.content",
+      render: (ctx) => {
+        const slotSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
+        if (slotSession && /^[A-Za-z0-9_-]{1,256}$/.test(slotSession)) {
+          lastKnownSessionID = slotSession;
+        }
+        return _$createComponent(SidebarStatus, {
+          nativeActivity,
+          scopeReady,
+          snapshot,
+          jobs,
+          snapshotError,
+          now,
+          spinner,
+          pulse,
+          tasksExpanded,
+          delegationsExpanded,
+          attentionExpanded,
+          toggleTasks: () => togglePreference(TASKS_EXPANDED_KEY, tasksExpanded, setTasksExpanded),
+          toggleDelegations: () => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded),
+          toggleAttention: () => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded),
+          get theme() {
+            return ctx?.theme?.current || ctx?.theme || api.theme;
+          }
+        });
+      }
+    });
+    api.ui.slot({
+      append: "home.footer.status",
+      render: (ctx) => _$createComponent(HomeBottomStatus, {
+        snapshot,
+        jobs,
+        spinner,
+        snapshotError,
+        get theme() {
+          return ctx?.theme?.current || ctx?.theme || api.theme;
+        }
+      })
+    });
+    api.ui.slot({
+      append: "session.panel",
+      render: (panel) => {
+        const panelSession = panel?.session_id || panel?.sessionId || panel?.sessionID;
+        if (panelSession && /^[A-Za-z0-9_-]{1,256}$/.test(panelSession)) {
+          lastKnownSessionID = panelSession;
+        }
+        return _$createComponent(Show, {
+          get when() {
+            return !panel?.name || panel?.name === "cortex.dashboard" || panel?.name === "session.panel" || panel?.name === "cortex.board" || panel?.name === "cortex";
+          },
+          get children() {
+            return _$createComponent(SessionKanbanPanel, {
+              snapshot,
+              jobs,
+              now,
+              spinner,
+              pulse,
+              get theme() {
+                return panel?.theme?.current || panel?.theme || api.theme;
+              }
+            });
+          }
+        });
+      }
+    });
+    if (api.keymap && typeof api.keymap.layer === "function") {
+      api.ui.slot({
+        append: "app",
+        render: () => {
+          api.keymap.layer(() => ({
+            mode: "global",
+            commands: [{
+              id: "cortex.board",
+              title: "Cortex Board & Delegation",
+              slash: {
+                name: "cortex"
+              },
+              run: () => {
+                if (api.ui?.panel?.open) {
+                  api.ui.panel.open("cortex.board");
+                }
+              }
+            }]
+          }));
+          return null;
+        }
+      });
+    }
+  }
   const registeredSlots = {
     home_logo() {
       return _$createComponent(HomeLogo, {});
     },
     sidebar_content(ctx) {
+      const slotSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
+      if (slotSession && /^[A-Za-z0-9_-]{1,256}$/.test(slotSession)) {
+        lastKnownSessionID = slotSession;
+      }
       return _$createComponent(SidebarStatus, {
         nativeActivity,
         scopeReady,
@@ -1942,7 +2112,7 @@ function initialize(api, disposeRoot) {
         toggleDelegations: () => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded),
         toggleAttention: () => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded),
         get theme() {
-          return ctx.theme?.current || ctx.theme;
+          return ctx?.theme?.current || ctx?.theme || api.theme;
         }
       });
     },
@@ -1953,11 +2123,10 @@ function initialize(api, disposeRoot) {
         spinner,
         snapshotError,
         get theme() {
-          return ctx.theme?.current || ctx.theme;
+          return ctx?.theme?.current || ctx?.theme || api.theme;
         }
       });
     },
-    // OpenCode v2 Modern Slots
     "home.footer.status"(ctx) {
       return _$createComponent(HomeBottomStatus, {
         snapshot,
@@ -1965,11 +2134,15 @@ function initialize(api, disposeRoot) {
         spinner,
         snapshotError,
         get theme() {
-          return ctx.theme?.current || ctx.theme;
+          return ctx?.theme?.current || ctx?.theme || api.theme;
         }
       });
     },
     "session.panel"(ctx) {
+      const panelSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
+      if (panelSession && /^[A-Za-z0-9_-]{1,256}$/.test(panelSession)) {
+        lastKnownSessionID = panelSession;
+      }
       return _$createComponent(SessionKanbanPanel, {
         snapshot,
         jobs,
@@ -1977,11 +2150,15 @@ function initialize(api, disposeRoot) {
         spinner,
         pulse,
         get theme() {
-          return ctx.theme?.current || ctx.theme;
+          return ctx?.theme?.current || ctx?.theme || api.theme;
         }
       });
     },
     session_panel(ctx) {
+      const panelSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
+      if (panelSession && /^[A-Za-z0-9_-]{1,256}$/.test(panelSession)) {
+        lastKnownSessionID = panelSession;
+      }
       return _$createComponent(SessionKanbanPanel, {
         snapshot,
         jobs,
@@ -1989,33 +2166,45 @@ function initialize(api, disposeRoot) {
         spinner,
         pulse,
         get theme() {
-          return ctx.theme?.current || ctx.theme;
+          return ctx?.theme?.current || ctx?.theme || api.theme;
         }
       });
     }
   };
-  api.slots.register({
-    order: 85,
-    slots: registeredSlots
-  });
-  api.lifecycle.onDispose(() => {
-    disposed = true;
-    clearInterval(snapshotPoll);
-    clearInterval(clock);
-    clearInterval(spinnerTimer);
-    clearInterval(pulseTimer);
-    disposeRoot();
-  });
+  if (api.slots && typeof api.slots.register === "function") {
+    api.slots.register({
+      order: 85,
+      slots: registeredSlots
+    });
+  }
+  if (api.lifecycle && typeof api.lifecycle.onDispose === "function") {
+    api.lifecycle.onDispose(cleanup);
+  }
+  return cleanup;
 }
+var Plugin = {
+  define: (def) => {
+    if (!def.server && def.setup) {
+      def.server = def.setup;
+    }
+    return def;
+  }
+};
 var tui = async (api) => {
   createRoot((disposeRoot) => initialize(api, disposeRoot));
 };
-var plugin = {
-  id: "cortex-ia.delegation-status",
-  tui
+var setup = (context) => {
+  return createRoot((disposeRoot) => initialize(context, disposeRoot));
 };
-var cortex_ia_tui_default = plugin;
+var CortexTUIPluginDefinition = Plugin.define({
+  id: "cortex-ia.delegation-status",
+  setup,
+  tui
+});
+var cortex_ia_tui_default = CortexTUIPluginDefinition;
 export {
+  CortexTUIPluginDefinition,
+  Plugin,
   SidebarStatus,
   cortex_ia_tui_default as default
 };

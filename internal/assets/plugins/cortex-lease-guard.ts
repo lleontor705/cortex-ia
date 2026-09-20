@@ -110,6 +110,8 @@ function relativeTarget(directory: string, target: string): string {
   return relative.replaceAll(path.sep, "/");
 }
 
+const verifiedLeaseCache = new Map<string, number>();
+
 async function verifyLeasesForTool(
   toolName: string,
   rawArgs: any,
@@ -124,6 +126,14 @@ async function verifyLeasesForTool(
   // Every target must be contained and leased, including logs, scratch files,
   // and control directories. Path names never confer mutation authority.
   const targets = [...new Set(rawTargets.map(target => relativeTarget(directory, target)))].sort();
+  if (!targets.length) return;
+
+  const cacheKey = `${sessionID}:${targets.join(";")}`;
+  const cachedExpiresAt = verifiedLeaseCache.get(cacheKey);
+  if (cachedExpiresAt !== undefined && cachedExpiresAt > Date.now()) {
+    return;
+  }
+
   const cortex = firstCortexIA(directory);
 
   try {
@@ -168,6 +178,10 @@ async function verifyLeasesForTool(
     if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
       throw new Error("lease for targets has expired");
     }
+    const cacheTtl = Math.min(expiresAt - 5000, Date.now() + 30_000);
+    if (cacheTtl > Date.now()) {
+      verifiedLeaseCache.set(cacheKey, cacheTtl);
+    }
   } catch (err: any) {
     let reason = "";
     if (err?.stdout) {
@@ -189,7 +203,7 @@ async function verifyLeasesForTool(
     }
     const targetsStr = targets.join(", ");
     const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";
-    const recoveryGuidance = `\n[RECOVERY GUIDANCE] Run cortex_ia_work_claim({ task_id, paths: ['${targets.join("', '")}'] }) to acquire claim and lease before editing, or cortex_ia_work_lease_renew if expired. If authority was lost, run cortex_ia_work_recover.`;
+    const recoveryGuidance = `\n[RECOVERY GUIDANCE] If you already own an active task claim, run cortex_ia_file_reserve({ task_id, paths: ['${targets.join("', '")}'] }) to reserve this path. If starting work on a task, run cortex_ia_work_claim({ task_id, paths: ['${targets.join("', '")}'] }). If lease expired, run cortex_ia_work_lease_renew({ task_id }). If authority was lost, run cortex_ia_work_recover.`;
     throw new Error(`LEASE_REQUIRED${suffix} (target: '${targetsStr}')${recoveryGuidance}`);
   }
 }

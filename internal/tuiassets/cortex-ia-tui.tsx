@@ -283,33 +283,72 @@ function operationalCounts(snapshot: UISnapshot, snapshotError: string): Operati
   };
 }
 
-function currentSessionID(api: TuiPluginApi): string | undefined {
-  const route = api.route.current;
-  const id = route.name === "session" ? route.params?.sessionID : undefined;
-  return typeof id === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(id) ? id : undefined;
+let lastKnownSessionID: string | undefined;
+
+function currentSessionID(api: any): string | undefined {
+  const route = api.route?.current || (typeof api.ui?.router?.current === "function" ? api.ui.router.current() : undefined);
+  const id =
+    route?.name === "session"
+      ? route.params?.sessionID || route.params?.session_id || route.params?.sessionId || route.sessionID || route.session_id || route.sessionId
+      : route?.sessionID || route?.session_id || route?.sessionId || route?.params?.sessionID || route?.params?.session_id || route?.params?.sessionId;
+  if (typeof id === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(id)) {
+    lastKnownSessionID = id;
+    return id;
+  }
+  if (api.ui?.tabs && typeof api.ui.tabs.list === "function") {
+    try {
+      const tabs = api.ui.tabs.list();
+      if (Array.isArray(tabs) && tabs.length > 0 && typeof tabs[0] === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(tabs[0])) {
+        lastKnownSessionID = tabs[0];
+        return tabs[0];
+      }
+    } catch {}
+  }
+  return lastKnownSessionID;
 }
 
-function nativeSessionActivity(api: TuiPluginApi): NativeActivity | undefined {
+function nativeSessionActivity(api: any): NativeActivity | undefined {
   const id = currentSessionID(api);
   if (!id) return undefined;
-  if (api.state.session.get(id)?.id !== id) return "unknown";
-  const status = api.state.session.status(id)?.type;
+  const session = api.state?.session?.get?.(id) || api.data?.session?.get?.(id);
+  if (session && session.id !== id) return "unknown";
+  const statusObj = api.state?.session?.status?.(id) || api.data?.session?.status?.(id);
+  const status = typeof statusObj === "string" ? statusObj : statusObj?.type;
   return status === "busy" || status === "idle" || status === "retry" ? status : "unknown";
 }
 
-function conversationScope(api: TuiPluginApi) {
+function conversationScope(api: any) {
   const sessionID = currentSessionID(api);
-  if (!sessionID) return undefined;
+  const session = sessionID ? (api.state?.session?.get?.(sessionID) || api.data?.session?.get?.(sessionID)) : undefined;
+  const project =
+    api.state?.path?.directory ||
+    session?.directory ||
+    api.location?.directory ||
+    (typeof api.data?.location?.default === "function" ? api.data.location.default()?.directory : undefined) ||
+    process.cwd();
+
+  if (!sessionID) {
+    return { sessionID: "global", rootSessionID: "global", project };
+  }
   let current = sessionID;
   const seen = new Set<string>();
   while (seen.size < 64 && /^[A-Za-z0-9_-]{1,256}$/.test(current) && !seen.has(current)) {
     seen.add(current);
-    const session = api.state.session.get(current);
-    if (!session || session.id !== current) return undefined;
-    if (!session.parentID) return { sessionID, rootSessionID: current, project: api.state.path.directory };
-    current = session.parentID;
+    const currSession = api.state?.session?.get?.(current) || api.data?.session?.get?.(current);
+    if (!currSession || currSession.id !== current) {
+      if (api.data?.session?.root && typeof api.data.session.root === "function") {
+        try {
+          const root = api.data.session.root(sessionID);
+          if (root) return { sessionID, rootSessionID: root, project };
+        } catch {}
+      }
+      return { sessionID, rootSessionID: current, project };
+    }
+    const parent = currSession.parentID || currSession.parentId;
+    if (!parent) return { sessionID, rootSessionID: current, project };
+    current = parent;
   }
-  return undefined;
+  return { sessionID, rootSessionID: sessionID, project };
 }
 
 function CortexCockpitHeader(props: {
@@ -1278,7 +1317,7 @@ function HomeLogo() {
   );
 }
 
-function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
+function initialize(api: any, disposeRoot: () => void): () => void {
   const nativeActivity = createMemo(() => nativeSessionActivity(api));
   const scopeReady = createMemo(() => Boolean(conversationScope(api)?.project));
   const [snapshot, setSnapshot] = createSignal<UISnapshot>(EMPTY_SNAPSHOT);
@@ -1287,12 +1326,25 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
   const [frame, setFrame] = createSignal(0);
   const [pulseFrame, setPulseFrame] = createSignal(0);
 
-  const [tasksExpanded, setTasksExpanded] = createSignal(api.kv.get<boolean>(TASKS_EXPANDED_KEY, true) !== false);
+  const getPref = (key: string, fallback: boolean): boolean => {
+    if (api.kv && typeof api.kv.get === "function") {
+      return api.kv.get(key, fallback) !== false;
+    }
+    return fallback;
+  };
+
+  const setPref = (key: string, val: boolean): void => {
+    if (api.kv && typeof api.kv.set === "function") {
+      api.kv.set(key, val);
+    }
+  };
+
+  const [tasksExpanded, setTasksExpanded] = createSignal(getPref(TASKS_EXPANDED_KEY, true));
   const [delegationsExpanded, setDelegationsExpanded] = createSignal(
-    api.kv.get<boolean>(DELEGATIONS_EXPANDED_KEY, true) !== false
+    getPref(DELEGATIONS_EXPANDED_KEY, true)
   );
   const [attentionExpanded, setAttentionExpanded] = createSignal(
-    api.kv.get<boolean>(ATTENTION_EXPANDED_KEY, true) !== false
+    getPref(ATTENTION_EXPANDED_KEY, true)
   );
 
   const spinner = createMemo(() => SPINNER_FRAMES[frame() % SPINNER_FRAMES.length]);
@@ -1308,7 +1360,7 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
   const togglePreference = (key: string, value: () => boolean, setter: (next: boolean) => void): void => {
     const next = !value();
     setter(next);
-    api.kv.set(key, next);
+    setPref(key, next);
   };
 
   const readSnapshot = (): void => {
@@ -1373,7 +1425,7 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
     const count = operationalCounts(snapshot(), snapshotError()).attention;
     if (count > previousAttentionCount) {
       setAttentionExpanded(true);
-      api.kv.set(ATTENTION_EXPANDED_KEY, true);
+      setPref(ATTENTION_EXPANDED_KEY, true);
     }
     previousAttentionCount = count;
   });
@@ -1382,7 +1434,7 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
   createEffect(() => {
     const tasks = snapshot().tasks;
     const toastApi = (api as any).ui?.toast || (api as any).toast;
-    if (toastApi && typeof toastApi.show === "function" && previousTaskStatuses.size > 0) {
+    if (toastApi && previousTaskStatuses.size > 0) {
       for (const t of tasks) {
         const prev = previousTaskStatuses.get(t.task_id);
         if (prev && prev !== t.status) {
@@ -1402,11 +1454,19 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
             title = `⚡ ${t.task_id} Reclamada`;
           }
           try {
-            toastApi.show({
-              title,
-              message: clipped(t.title, 40),
-              variant,
-            });
+            if (typeof toastApi.show === "function") {
+              toastApi.show({
+                title,
+                message: clipped(t.title, 40),
+                variant,
+              });
+            } else if (typeof toastApi === "function") {
+              toastApi({
+                title,
+                message: clipped(t.title, 40),
+                variant,
+              });
+            }
           } catch {}
         }
       }
@@ -1422,11 +1482,117 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
   const spinnerTimer = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 90);
   const pulseTimer = setInterval(() => setPulseFrame((p) => (p + 1) % NEURAL_PULSE_FRAMES.length), 350);
 
+  const cleanup = () => {
+    if (disposed) return;
+    disposed = true;
+    clearInterval(snapshotPoll);
+    clearInterval(clock);
+    clearInterval(spinnerTimer);
+    clearInterval(pulseTimer);
+    disposeRoot();
+  };
+
+  // OpenCode v2 Slot Registration (context.ui.slot)
+  if (api.ui && typeof api.ui.slot === "function") {
+    api.ui.slot({
+      append: "sidebar.content",
+      render: (ctx: any) => {
+        const slotSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
+        if (slotSession && /^[A-Za-z0-9_-]{1,256}$/.test(slotSession)) {
+          lastKnownSessionID = slotSession;
+        }
+        return (
+          <SidebarStatus
+            nativeActivity={nativeActivity}
+            scopeReady={scopeReady}
+            snapshot={snapshot}
+            jobs={jobs}
+            snapshotError={snapshotError}
+            now={now}
+            spinner={spinner}
+            pulse={pulse}
+            tasksExpanded={tasksExpanded}
+            delegationsExpanded={delegationsExpanded}
+            attentionExpanded={attentionExpanded}
+            toggleTasks={() => togglePreference(TASKS_EXPANDED_KEY, tasksExpanded, setTasksExpanded)}
+            toggleDelegations={() => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded)}
+            toggleAttention={() => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded)}
+            theme={ctx?.theme?.current || ctx?.theme || api.theme}
+          />
+        );
+      },
+    });
+
+    api.ui.slot({
+      append: "home.footer.status",
+      render: (ctx: any) => (
+        <HomeBottomStatus
+          snapshot={snapshot}
+          jobs={jobs}
+          spinner={spinner}
+          snapshotError={snapshotError}
+          theme={ctx?.theme?.current || ctx?.theme || api.theme}
+        />
+      ),
+    });
+
+    api.ui.slot({
+      append: "session.panel",
+      render: (panel: any) => {
+        const panelSession = panel?.session_id || panel?.sessionId || panel?.sessionID;
+        if (panelSession && /^[A-Za-z0-9_-]{1,256}$/.test(panelSession)) {
+          lastKnownSessionID = panelSession;
+        }
+        return (
+          <Show when={!panel?.name || panel?.name === "cortex.dashboard" || panel?.name === "session.panel" || panel?.name === "cortex.board" || panel?.name === "cortex"}>
+            <SessionKanbanPanel
+              snapshot={snapshot}
+              jobs={jobs}
+              now={now}
+              spinner={spinner}
+              pulse={pulse}
+              theme={panel?.theme?.current || panel?.theme || api.theme}
+            />
+          </Show>
+        );
+      },
+    });
+
+    if (api.keymap && typeof api.keymap.layer === "function") {
+      api.ui.slot({
+        append: "app",
+        render: () => {
+          api.keymap.layer(() => ({
+            mode: "global",
+            commands: [
+              {
+                id: "cortex.board",
+                title: "Cortex Board & Delegation",
+                slash: { name: "cortex" },
+                run: () => {
+                  if (api.ui?.panel?.open) {
+                    api.ui.panel.open("cortex.board");
+                  }
+                },
+              },
+            ],
+          }));
+          return null;
+        },
+      });
+    }
+  }
+
+  // OpenCode v1 Slot Registration (api.slots.register)
   const registeredSlots: Record<string, (ctx: any) => any> = {
     home_logo() {
       return <HomeLogo />;
     },
     sidebar_content(ctx: any) {
+      const slotSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
+      if (slotSession && /^[A-Za-z0-9_-]{1,256}$/.test(slotSession)) {
+        lastKnownSessionID = slotSession;
+      }
       return (
         <SidebarStatus
           nativeActivity={nativeActivity}
@@ -1443,7 +1609,7 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
           toggleTasks={() => togglePreference(TASKS_EXPANDED_KEY, tasksExpanded, setTasksExpanded)}
           toggleDelegations={() => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded)}
           toggleAttention={() => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded)}
-          theme={ctx.theme?.current || ctx.theme}
+          theme={ctx?.theme?.current || ctx?.theme || api.theme}
         />
       );
     },
@@ -1454,11 +1620,10 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
           jobs={jobs}
           spinner={spinner}
           snapshotError={snapshotError}
-          theme={ctx.theme?.current || ctx.theme}
+          theme={ctx?.theme?.current || ctx?.theme || api.theme}
         />
       );
     },
-    // OpenCode v2 Modern Slots
     "home.footer.status"(ctx: any) {
       return (
         <HomeBottomStatus
@@ -1466,11 +1631,15 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
           jobs={jobs}
           spinner={spinner}
           snapshotError={snapshotError}
-          theme={ctx.theme?.current || ctx.theme}
+          theme={ctx?.theme?.current || ctx?.theme || api.theme}
         />
       );
     },
     "session.panel"(ctx: any) {
+      const panelSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
+      if (panelSession && /^[A-Za-z0-9_-]{1,256}$/.test(panelSession)) {
+        lastKnownSessionID = panelSession;
+      }
       return (
         <SessionKanbanPanel
           snapshot={snapshot}
@@ -1478,11 +1647,15 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
           now={now}
           spinner={spinner}
           pulse={pulse}
-          theme={ctx.theme?.current || ctx.theme}
+          theme={ctx?.theme?.current || ctx?.theme || api.theme}
         />
       );
     },
     session_panel(ctx: any) {
+      const panelSession = ctx?.session_id || ctx?.sessionId || ctx?.sessionID;
+      if (panelSession && /^[A-Za-z0-9_-]{1,256}$/.test(panelSession)) {
+        lastKnownSessionID = panelSession;
+      }
       return (
         <SessionKanbanPanel
           snapshot={snapshot}
@@ -1490,30 +1663,47 @@ function initialize(api: TuiPluginApi, disposeRoot: () => void): void {
           now={now}
           spinner={spinner}
           pulse={pulse}
-          theme={ctx.theme?.current || ctx.theme}
+          theme={ctx?.theme?.current || ctx?.theme || api.theme}
         />
       );
     },
   };
 
-  api.slots.register({
-    order: 85,
-    slots: registeredSlots,
-  });
+  if (api.slots && typeof api.slots.register === "function") {
+    api.slots.register({
+      order: 85,
+      slots: registeredSlots,
+    });
+  }
 
-  api.lifecycle.onDispose(() => {
-    disposed = true;
-    clearInterval(snapshotPoll);
-    clearInterval(clock);
-    clearInterval(spinnerTimer);
-    clearInterval(pulseTimer);
-    disposeRoot();
-  });
+  if (api.lifecycle && typeof api.lifecycle.onDispose === "function") {
+    api.lifecycle.onDispose(cleanup);
+  }
+
+  return cleanup;
 }
 
-const tui: TuiPlugin = async (api) => {
+export const Plugin = {
+  define: <T extends { id: string; setup?: (ctx: any) => any; tui?: (api: any) => any; server?: (ctx: any) => any }>(def: T): T => {
+    if (!def.server && def.setup) {
+      def.server = def.setup;
+    }
+    return def;
+  },
+};
+
+const tui: TuiPlugin = async (api: any) => {
   createRoot((disposeRoot) => initialize(api, disposeRoot));
 };
 
-const plugin: TuiPluginModule = { id: "cortex-ia.delegation-status", tui };
-export default plugin;
+const setup = (context: any) => {
+  return createRoot((disposeRoot) => initialize(context, disposeRoot));
+};
+
+export const CortexTUIPluginDefinition = Plugin.define({
+  id: "cortex-ia.delegation-status",
+  setup,
+  tui,
+});
+
+export default CortexTUIPluginDefinition;

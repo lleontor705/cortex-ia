@@ -167,6 +167,31 @@ test('planner sdd-lite accepts propose, plan, tasks aliases and normalizes to in
     assert.equal(normalized.spec_plane, 'hybrid');
   }
 
+  // Verify sdd-full accepts plan and integrated aliases and normalizes to propose
+  for (const phase of ['plan', 'integrated']) {
+    const prompt = `<minion-dispatch>
+{
+  "contract_version": "2.0",
+  "role": "planner",
+  "workflow": "sdd-full",
+  "phase": "${phase}",
+  "spec_plane": "hybrid",
+  "workload_policy": "flexible",
+  "task_id": null,
+  "objective": "Plan multitenancy-hardening SDD initiative",
+  "allowed_files": [],
+  "acceptance_checks": ["Check 1"],
+  "artifact_refs": []
+}
+</minion-dispatch>`;
+
+    const res = dispatchInfo({ subagent_type: 'planner' }, prompt);
+    const normalized = JSON.parse(res.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
+    assert.equal(normalized.phase, 'propose', `phase ${phase} should normalize to propose in sdd-full`);
+    assert.equal(normalized.workflow, 'sdd-full');
+    assert.equal(normalized.spec_plane, 'hybrid');
+  }
+
   // Verify spec_plane cannot be null for planner
   const nullPlanePrompt = `<minion-dispatch>
 {
@@ -236,5 +261,35 @@ test('dispatchInfo normalizes investigate envelope with description fallback and
   assert.equal(normalized.objective, 'Mapear arquitectura inventario actual');
   assert.equal(normalized.spec_plane, null);
   assert.deepEqual(normalized.non_goals, ['Do not modify repository files']);
+});
+
+test('namespaced read-only tools pass through fast-path under transport ambiguity', async () => {
+  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
+  const PluginFn = mod.exports.CortexSubagentTransportPlugin;
+
+  const mockCtx = {
+    client: {
+      session: {
+        get: async () => ({ data: { id: 'child-ambiguous', parentID: 'root-ambiguous' } }),
+        messages: async () => ({ data: [] })
+      }
+    }
+  };
+
+  const hooks = await PluginFn(mockCtx);
+  try {
+    // Both un-namespaced and MCP-namespaced read-only tools should succeed without throwing SUBAGENT_TRANSPORT_AMBIGUOUS
+    for (const tool of ['cortex.cortex_search', 'cortex_search', 'cortex_ia.cortex_ia_board_list', 'cortex_ia_board_list', 'glob', 'read']) {
+      await assert.doesNotReject(async () => {
+        await hooks['tool.execute.before']({
+          tool,
+          sessionID: 'child-ambiguous',
+          callID: `call-${tool.replace(/[^a-zA-Z0-9]/g, '_')}`
+        });
+      }, `Read-only tool '${tool}' should not throw under transport ambiguity`);
+    }
+  } finally {
+    await hooks.dispose();
+  }
 });
 

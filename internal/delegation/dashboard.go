@@ -165,19 +165,6 @@ type ConversationDashboard struct {
 	Counts             map[string]int          `json:"counts"`
 }
 
-// conversationPredicate applies durable ownership before any ordering or limit.
-// Stored workspace keys are canonicalized at creation; jobs never confer task ownership.
-const conversationPredicate = `workspace = ? AND opencode_root_session_id = ?
-	AND length(opencode_session_id) BETWEEN 1 AND 256
-	AND length(opencode_root_session_id) BETWEEN 1 AND 256
-	AND length(opencode_parent_session_id) <= 256
-	AND opencode_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
-	AND opencode_root_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
-	AND opencode_parent_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
-	AND instr(opencode_session_id,char(0))=0 AND instr(opencode_root_session_id,char(0))=0
-	AND instr(opencode_parent_session_id,char(0))=0
-	AND ((opencode_session_id=opencode_root_session_id AND opencode_parent_session_id='')
-	OR (opencode_session_id<>opencode_root_session_id AND opencode_parent_session_id<>'' AND opencode_parent_session_id<>opencode_session_id))`
 
 // DashboardForConversation reads every population in one SQLite snapshot and at
 // one instant. Empty identities are an empty view, never an administrative fallback.
@@ -185,6 +172,12 @@ func (s *Store) DashboardForConversation(ctx context.Context, workspace, request
 	workspace, err := CanonicalWorkspace(workspace)
 	if err != nil || workspace == "" {
 		return ConversationDashboard{}, fmt.Errorf("valid dashboard project root is required")
+	}
+	if requestedSessionID == "" {
+		requestedSessionID = "global"
+	}
+	if rootSessionID == "" {
+		rootSessionID = "global"
 	}
 	for _, id := range []string{requestedSessionID, rootSessionID} {
 		if err := (ConversationOwnership{OpenCodeSessionID: id, OpenCodeRootSessionID: id}).Validate(); err != nil {
@@ -209,13 +202,11 @@ func (s *Store) DashboardForConversation(ctx context.Context, workspace, request
 	if err = tx.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&schema); err != nil {
 		return ConversationDashboard{}, err
 	}
-	if requestedSessionID == "" || rootSessionID == "" {
-		return d, tx.Commit()
-	}
-	// Older jobs stored the supplied path verbatim. Match their canonical keys
-	// before pagination without mutating rows or assigning missing ownership.
+
+	// Match canonical keys across work items and delegation jobs before pagination
+	// without mutating rows or assigning missing ownership.
 	workspaceKeys := []string{workspace}
-	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT workspace FROM delegation_jobs WHERE opencode_root_session_id=?`, rootSessionID)
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT workspace FROM work_items WHERE workspace <> '' UNION SELECT DISTINCT workspace FROM delegation_jobs WHERE workspace <> ''`)
 	if err != nil {
 		return ConversationDashboard{}, err
 	}
@@ -240,27 +231,17 @@ func (s *Store) DashboardForConversation(ctx context.Context, workspace, request
 	if err != nil {
 		return ConversationDashboard{}, err
 	}
-	jobPredicate := strings.Replace(conversationPredicate, "workspace = ?", "workspace IN (SELECT value FROM json_each(?))", 1)
-	taskPredicate := `workspace IN (SELECT value FROM json_each(?))
-		AND (
-			(opencode_root_session_id = ? AND length(opencode_session_id) BETWEEN 1 AND 256
-				AND length(opencode_root_session_id) BETWEEN 1 AND 256
-				AND length(opencode_parent_session_id) <= 256
-				AND opencode_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
-				AND opencode_root_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
-				AND opencode_parent_session_id NOT GLOB '*[^A-Za-z0-9_-]*'
-				AND instr(opencode_session_id,char(0))=0 AND instr(opencode_root_session_id,char(0))=0
-				AND instr(opencode_parent_session_id,char(0))=0
-				AND ((opencode_session_id=opencode_root_session_id AND opencode_parent_session_id='')
-				OR (opencode_session_id<>opencode_root_session_id AND opencode_parent_session_id<>'' AND opencode_parent_session_id<>opencode_session_id)))
-			OR (opencode_root_session_id = '')
-			OR id IN (SELECT item_id FROM work_claims WHERE owner = 'opencode-session:' || ? OR owner = 'opencode-session:' || ?)
-			OR id IN (SELECT task_id FROM delegation_jobs WHERE opencode_root_session_id = ? AND task_id <> '')
-		)`
+	taskPredicate := `(workspace IN (SELECT value FROM json_each(?))
+		OR (workspace = '' AND (
+			id IN (SELECT task_id FROM delegation_jobs WHERE workspace IN (SELECT value FROM json_each(?)))
+			OR board_id IN (SELECT DISTINCT board_id FROM work_items WHERE workspace IN (SELECT value FROM json_each(?)))
+		)))`
+	jobPredicate := `workspace IN (SELECT value FROM json_each(?))`
 	cte := `WITH tasks AS (SELECT * FROM work_items WHERE ` + taskPredicate + `
 		AND NOT EXISTS (SELECT 1 FROM work_decomposition_steps d WHERE d.parent_id=work_items.id)), jobs AS (SELECT * FROM delegation_jobs WHERE ` + jobPredicate + `) `
+	cteBaseArgs := []any{string(encodedKeys), string(encodedKeys), string(encodedKeys), string(encodedKeys)}
 	read := func(query string, dest any, extra ...any) error {
-		args := append([]any{string(encodedKeys), rootSessionID, requestedSessionID, rootSessionID, rootSessionID, string(encodedKeys), rootSessionID}, extra...)
+		args := append(append([]any{}, cteBaseArgs...), extra...)
 		var raw string
 		if err := tx.QueryRowContext(ctx, cte+query, args...).Scan(&raw); err != nil {
 			return err
@@ -305,13 +286,17 @@ func (s *Store) DashboardForConversation(ctx context.Context, workspace, request
 				WHEN 'ready' THEN 4
 				WHEN 'backlog' THEN 5
 				WHEN 'done' THEN 6
-				ELSE 7 END, updated_at DESC, id ASC LIMIT 20) t`, &d.Tasks); err != nil {
+				ELSE 7 END,
+				CASE WHEN ? <> 'global' AND opencode_root_session_id = ? THEN 0 ELSE 1 END,
+				updated_at DESC, id ASC LIMIT 20) t`, &d.Tasks, rootSessionID, rootSessionID); err != nil {
 		return ConversationDashboard{}, err
 	}
 	if err = read(`SELECT json_group_array(json_object('job_id',id,'role',role,'task_id',task_id,'workspace',workspace,'status',status,'transport',transport,'attempt',attempt,
 		'error_code',error_code,'error_message',substr(error_message,1,160),'created_at',created_at,'updated_at',updated_at,
 		'opencode_session_id',opencode_session_id,'opencode_root_session_id',opencode_root_session_id,'opencode_parent_session_id',opencode_parent_session_id))
-		FROM (SELECT * FROM jobs ORDER BY updated_at DESC,id ASC LIMIT 20)`, &d.Delegations); err != nil {
+		FROM (SELECT * FROM jobs
+			ORDER BY CASE WHEN ? <> 'global' AND opencode_root_session_id = ? THEN 0 ELSE 1 END,
+				updated_at DESC, id ASC LIMIT 20)`, &d.Delegations, rootSessionID, rootSessionID); err != nil {
 		return ConversationDashboard{}, err
 	}
 	// UTC RFC3339Nano storage: removing Z preserves strict fractional ordering,

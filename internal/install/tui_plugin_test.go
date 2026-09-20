@@ -73,7 +73,34 @@ func TestConfigureTUIPlugin(t *testing.T) {
 	if !strings.Contains(contentV2, "https://opencode.ai/v2/cli.json") {
 		t.Errorf("expected v2 schema in cli.json, got:\n%s", contentV2)
 	}
-	if !strings.Contains(contentV2, TUIPluginPath) || !strings.Contains(contentV2, "existing-plugin.js") {
-		t.Errorf("expected TUIPluginPath and existing-plugin.js in cli.json, got:\n%s", contentV2)
+	if !strings.Contains(contentV2, TUIPluginDirV2) || !strings.Contains(contentV2, "existing-plugin.js") {
+		t.Errorf("expected TUIPluginDirV2 and existing-plugin.js in cli.json, got:\n%s", contentV2)
+	}
+	bridgeFile := filepath.Join(tempHomeV2, ".config", "opencode", "tui-plugins", "cortex-ia", "tui.js")
+	if _, err := os.Stat(bridgeFile); err != nil {
+		t.Errorf("expected bridge file at %s, got error: %v", bridgeFile, err)
+	}
+
+	// 5. Dual configuration when both cli.json and tui.jsonc exist
+	tempHomeDual := t.TempDir()
+	dualConfigDir := filepath.Join(tempHomeDual, ".config", "opencode")
+	_ = os.MkdirAll(dualConfigDir, 0755)
+	_ = os.WriteFile(filepath.Join(dualConfigDir, "cli.json"), []byte(`{"$schema": "https://opencode.ai/v2/cli.json", "plugins": []}`), 0644)
+	_ = os.WriteFile(filepath.Join(dualConfigDir, "tui.jsonc"), []byte(`{"$schema": "https://opencode.ai/tui.json", "plugin": []}`), 0644)
+
+	dualPath, err := ConfigureTUIPlugin(tempHomeDual)
+	if err != nil {
+		t.Fatalf("ConfigureTUIPlugin failed on dual home: %v", err)
+	}
+	if filepath.Base(dualPath) != "cli.json" {
+		t.Errorf("expected primary to be cli.json, got: %s", dualPath)
+	}
+	cliData, err := os.ReadFile(filepath.Join(dualConfigDir, "cli.json"))
+	if err != nil || !strings.Contains(string(cliData), TUIPluginDirV2) {
+		t.Errorf("expected TUIPluginDirV2 in cli.json, got error: %v, content: %s", err, string(cliData))
+	}
+	tuiData, err := os.ReadFile(filepath.Join(dualConfigDir, "tui.jsonc"))
+	if err != nil || !strings.Contains(string(tuiData), TUIPluginPath) {
+		t.Errorf("expected TUIPluginPath in tui.jsonc, got error: %v, content: %s", err, string(tuiData))
 	}
 }

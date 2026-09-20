@@ -1047,11 +1047,12 @@ export const CortexDelegationBridge = Plugin.define({
       async execute(args, context) {
         const relative = args.relative_path.replaceAll("\\", "/");
         const clean = path.posix.normalize(relative);
-        if (!clean.startsWith("openspec/changes/") || !clean.endsWith(".md") || clean.includes("/../")) {
+        const normalized = clean.startsWith("openspec/changes/") ? clean : path.posix.join("openspec/changes", clean);
+        if (!normalized.startsWith("openspec/changes/") || !normalized.endsWith(".md") || normalized.includes("/../")) {
           throw new Error("OpenSpec writes must target a Markdown file under openspec/changes/");
         }
         const root = path.resolve(context.directory);
-        const target = path.resolve(root, ...clean.split("/"));
+        const target = path.resolve(root, ...normalized.split("/"));
         const allowedRoot = path.resolve(root, "openspec", "changes") + path.sep;
         const comparableTarget = process.platform === "win32" || process.platform === "darwin" ? target.toLowerCase() : target;
         const comparableRoot = process.platform === "win32" || process.platform === "darwin" ? allowedRoot.toLowerCase() : allowedRoot;
@@ -2048,7 +2049,10 @@ export const CortexDelegationBridge = Plugin.define({
                 directory: toolCtx?.directory || hostDirectory,
               };
               const result = await def.execute(input, context);
-              return typeof result === "string" ? { content: result } : result;
+              if (result && typeof result === "object" && "content" in result) {
+                return result;
+              }
+              return { content: typeof result === "string" ? result : JSON.stringify(result, null, 2) };
             },
           });
         }

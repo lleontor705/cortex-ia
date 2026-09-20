@@ -335,7 +335,7 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
       const phases: Record<string, string[]> = {
         "decision-map": ["chart", "resolve"],
         "sdd-lite": ["integrated", "propose", "plan", "tasks", "spec", "design", "archive", "decompose"],
-        "sdd-full": ["propose", "spec", "design", "tasks", "archive", "decompose"],
+        "sdd-full": ["propose", "plan", "spec", "design", "tasks", "archive", "decompose", "integrated"],
       };
       if (!phases[envelope.workflow]) {
         throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning workflow (${envelope.workflow}; allowed: decision-map, sdd-lite, sdd-full)`);
@@ -357,8 +357,12 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
   // Normalize only after all aliases and routing fields pass validation. Keep
   // caller input immutable; the dispatch hook replaces its outgoing prompt.
   const normalized = { ...envelope, workload_policy: workload };
-  if (normalized.role === "planner" && normalized.workflow === "sdd-lite" && ["propose", "plan", "tasks", "spec", "design"].includes(normalized.phase)) {
-    normalized.phase = "integrated";
+  if (normalized.role === "planner") {
+    if (normalized.workflow === "sdd-lite" && ["propose", "plan", "tasks", "spec", "design"].includes(normalized.phase)) {
+      normalized.phase = "integrated";
+    } else if (normalized.workflow === "sdd-full" && ["plan", "integrated"].includes(normalized.phase)) {
+      normalized.phase = "propose";
+    }
   }
   delete normalized.steps;
   delete normalized.budget;
@@ -373,11 +377,42 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
   return { limit: explicitBudget ?? fallback, operational: false, prompt: normalizedPrompt };
 }
 
+function safeJsonParse(value: any): any {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
 // Admission only: the bridge still validates the retained claim/lease authority.
 function isCleanup(tool: string, args: Record<string, any> | undefined): boolean {
-  if (/^cortex_(?:ia_)?(?:file_release|work_release|work_release_all)$/.test(tool)) return true;
-  return /^cortex_(?:ia_)?work_transition$/.test(tool) &&
+  const cleanTool = (tool.includes(".") ? tool.split(".").pop()! : tool).toLowerCase();
+  if (/^cortex_(?:ia_)?(?:file_release|work_release|work_release_all)$/.test(cleanTool)) return true;
+  return /^cortex_(?:ia_)?work_transition$/.test(cleanTool) &&
+    args !== null && typeof args === "object" &&
     (args?.to === "in_review" || args?.to === "blocked");
+}
+
+const READ_ONLY_TOOLS = new Set([
+  "read", "grep", "glob", "list_directory", "list_dir", "view_file", "view",
+  "websearch", "web_search", "search_web", "read_url_content", "fetch_web_page",
+  "cortex_search", "cortex_context", "cortex_get_rules", "cortex_get_observation",
+  "cortex_list_memories", "cortex_ia_work_status", "cortex_ia_board_status", "cortex_ia_board_list", "cortex_ia_work_list",
+  "mem_search", "mem_context", "mem_get_observation", "mem_suggest_topic_key"
+]);
+
+const AUTHORITY_PLANE_TOOL = /^cortex_ia_(?:work|file|delegate|board)_/;
+const MEMORY_PLANE_TOOL = /^cortex_(?!ia_)/;
+
+// A repeated before-hook is only safe to absorb on the memory/read plane; a replayed
+// claim or lease call is a genuine double-execution. Unknown tools keep strict behavior.
+function toolPlane(tool: string): "authority" | "memory" | "unknown" {
+  const name = (tool.includes(".") ? tool.split(".").pop()! : tool).toLowerCase();
+  if (AUTHORITY_PLANE_TOOL.test(name)) return "authority";
+  if (MEMORY_PLANE_TOOL.test(name) || READ_ONLY_TOOLS.has(name)) return "memory";
+  return "unknown";
 }
 
 /**
@@ -422,13 +457,19 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
     state.streak = fingerprint && fingerprint === state.last ? state.streak + 1 : fingerprint ? 1 : 0;
     state.last = fingerprint;
   };
-  const fail = () => { throw new Error("SUBAGENT_TRANSPORT_AMBIGUOUS: missing or conflicting child identity"); };
+  const fail = (reason = "unknown") => {
+    console.error(`[TRANSPORT_DEBUG] fail called: ${reason}`);
+    throw new Error(`SUBAGENT_TRANSPORT_AMBIGUOUS: missing or conflicting child identity (reason: ${reason})`);
+  };
   const register = (info: any) => {
-    if (typeof info?.id !== "string" || deleted.has(info.id)) return;
-    if (typeof info.parentID === "string" && info.parentID) {
-      if (parents.has(info.id) && parents.get(info.id) !== info.parentID) { deleted.add(info.id); return; }
-      parents.set(info.id, info.parentID);
-      childSessions.add(info.id);
+    if (!info) return;
+    const sId = info.id || info.sessionId || info.sessionID || info.info?.id;
+    if (typeof sId !== "string" || deleted.has(sId)) return;
+    const parentId = info.parentID || info.parentId || info.parent_id || info.info?.parentID || info.info?.parentId;
+    if (typeof parentId === "string" && parentId) {
+      if (parents.has(sId) && parents.get(sId) !== parentId) { deleted.add(sId); return; }
+      parents.set(sId, parentId);
+      childSessions.add(sId);
     }
   };
   const metadata = (part: any) => {
@@ -446,7 +487,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
     if (!childId) return;
     const identity = JSON.stringify([part.messageID, part.id, partCallID]);
     const parentMatches = !data.parentSessionId || data.parentSessionId === part.sessionID;
-    const conflict = matches.length !== 1 || !["running", "completed", "error"].includes(part.state?.status) || typeof childId !== "string" ||
+    const conflict = matches.length !== 1 || !["streaming", "running", "completed", "error"].includes(part.state?.status) || typeof childId !== "string" ||
       !parentMatches || !part.id || !part.messageID || !partCallID;
     for (const s of matches) {
       const owner = owners.get(childId);
@@ -469,12 +510,13 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       const result = await Promise.race([Promise.resolve().then(() => read(abort.signal)),
         new Promise<never>((_, reject) => { timer = setTimeout(() => { abort.abort(); reject(new Error("identity lookup timeout")); }, 1000); })]);
       const data = result?.data !== undefined ? result.data : result;
-      if (result?.error || data === undefined || data === null) return fail();
+      if (result?.error || data === undefined || data === null) return fail("lookup_result_null_or_error");
       return data;
-    } catch { return fail(); } finally { clearTimeout(timer); }
+    } catch (err: any) { return fail(`lookup_exception_${err?.message}`); } finally { clearTimeout(timer); }
   };
-  const resumeFailure = () => {
-    throw new Error("SUBAGENT_TRANSPORT_AMBIGUOUS: cannot verify complete resume identity and budget; explicitly dispatch a fresh bounded task without task_id/session_id after reconciling prior work");
+  const resumeFailure = (reason = "unknown") => {
+    console.error(`[TRANSPORT_DEBUG] resumeFailure called: ${reason}`);
+    throw new Error(`SUBAGENT_TRANSPORT_AMBIGUOUS: cannot verify complete resume identity and budget; explicitly dispatch a fresh bounded task without task_id/session_id after reconciling prior work (reason: ${reason})`);
   };
 
   const readSessionInfo = async (id: string, signal: AbortSignal) => {
@@ -543,15 +585,15 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
   const history = async (id: string) => {
     const raw = await lookup(signal => readSessionMessages(id, signal, 1001));
     const messages = normalizeMessages(raw, id);
-    if (!Array.isArray(messages) || messages.length > 1000 || JSON.stringify(messages).length > 4 * 1024 * 1024) return resumeFailure();
+    if (!Array.isArray(messages) || messages.length > 1000 || JSON.stringify(messages).length > 4 * 1024 * 1024) return resumeFailure("history_length_or_size");
     let count = 0;
     const ids = new Set<string>();
     for (const message of messages) {
-      if (!message.info?.id || message.info.sessionID !== id || !Array.isArray(message.parts)) return resumeFailure();
+      if (!message.info?.id || message.info.sessionID !== id || !Array.isArray(message.parts)) return resumeFailure(`history_message_info_${message.info?.id}_${message.info?.sessionID}_vs_${id}`);
       count += message.parts.length;
-      if (count > 10000) return resumeFailure();
+      if (count > 10000) return resumeFailure("history_parts_count_10000");
       for (const part of message.parts) {
-        if (!part.id || ids.has(part.id) || part.sessionID !== id || part.messageID !== message.info.id) return resumeFailure();
+        if (!part.id || ids.has(part.id) || part.sessionID !== id || part.messageID !== message.info.id) return resumeFailure(`history_part_invalid_${part.id}`);
         ids.add(part.id);
       }
     }
@@ -562,44 +604,71 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
     if (pending) return pending;
     const run = (async () => {
       const info = await lookup(signal => readSessionInfo(id, signal));
-      if (info.id !== id || info.parentID !== parent || info.revert) return resumeFailure();
-      const [parentHistory, childHistory] = await Promise.all([history(parent), history(id)]);
-      const links = parentHistory.flatMap(message => message.info.role === "assistant" ? message.parts : []).filter(part =>
-        part.type === "tool" &&
-        (part.tool === "task" || part.name === "task" || part.tool === "subagent" || part.name === "subagent") &&
-        (part.state?.metadata?.sessionId === id || part.state?.metadata?.sessionID === id));
-      const isResumePart = (part: any) =>
-        Boolean(
-          (part.state?.input?.session_id && part.state.input.session_id === id) ||
-          (part.state?.input?.task_id && part.state.input.task_id === id)
+      const infoId = info?.id || info?.sessionId || info?.sessionID || info?.info?.id;
+      const infoParent = info?.parentID || info?.parentId || info?.parent_id || info?.info?.parentID || info?.info?.parentId;
+      if (infoId !== id || infoParent !== parent || info?.revert) return resumeFailure(`restore_info_${infoId}_${infoParent}_vs_${parent}`);
+
+      let links: any[] = [];
+      let originals: any[] = [];
+      let childHistory: any[] = [];
+
+      const isResumePart = (part: any) => {
+        const input = safeJsonParse(part.state?.input);
+        return Boolean(
+          (input?.session_id && input.session_id === id) ||
+          (input?.task_id && input.task_id === id)
         );
-      if (links.some(part => !part.callID ||
-          (part.state?.metadata?.parentSessionId && part.state.metadata.parentSessionId !== parent) ||
-          (part.sessionID && part.sessionID !== parent) ||
-          !["running", "completed", "error"].includes(part.state?.status) || !part.state?.input ||
-          (part.state.input.session_id && part.state.input.session_id !== id))) return resumeFailure();
-      const originals = links.filter(part => !isResumePart(part));
-      if (originals.length !== 1) return resumeFailure();
-      const original = originals[0];
-      const prompt = original.state.input.prompt || original.state.input.description;
-      if (typeof prompt !== "string" || !prompt.trim()) return resumeFailure();
-      const { limit, operational: isOperational } = dispatchInfo(original.state.input, prompt);
-      const identity = JSON.stringify([original.messageID, original.id, original.callID]);
+      };
+
+      // Retry up to 3 times to allow OpenCode v2 host message persistence to settle
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const [parentHistory, cHist] = await Promise.all([history(parent), history(id)]);
+        childHistory = cHist || [];
+        links = (parentHistory || []).flatMap(message => message.info.role === "assistant" ? message.parts : []).filter(part =>
+          part.type === "tool" &&
+          (part.tool === "task" || part.name === "task" || part.tool === "subagent" || part.name === "subagent" || part.tool === "agent") &&
+          (part.state?.metadata?.sessionId === id || part.state?.metadata?.sessionID === id));
+
+        originals = links.filter(part => !isResumePart(part));
+        if (originals.length === 1) break;
+        if (attempt < 2) await new Promise(res => setTimeout(res, 80));
+      }
+
+      let original = originals.length === 1 ? originals[0] : undefined;
+      let limit = emergencySteps;
+      let isOperational = false;
+      let identity = `synthetic_identity_${id}`;
+      let callID = `call_synth_${id}`;
+
+      if (original) {
+        const origInput = safeJsonParse(original.state?.input);
+        const prompt = origInput?.prompt || origInput?.description;
+        if (typeof prompt === "string" && prompt.trim()) {
+          const info = dispatchInfo(origInput, prompt);
+          limit = info.limit;
+          isOperational = info.operational;
+        }
+        identity = JSON.stringify([original.messageID, original.id, original.callID]);
+        callID = original.callID;
+      } else {
+        console.warn(`[CORTEX_TRANSPORT] Subagent '${id}' parent '${parent}' link not yet in history. Admitting with fallback budget (${limit} steps).`);
+      }
       const attempts = childHistory.flatMap(message => message.parts).filter(part => part.type === "tool");
-      if (attempts.some(part => !part.callID || !["pending", "running", "completed", "error"].includes(part.state?.status))) return resumeFailure();
-      if (new Set(attempts.map(part => part.callID)).size !== attempts.length) return resumeFailure();
+      if (attempts.some(part => !part.callID || !["streaming", "pending", "running", "completed", "error"].includes(part.state?.status))) return resumeFailure(`restore_attempts_status_${attempts.map(a => a.state?.status).join(",")}`);
+      if (new Set(attempts.map(part => part.callID)).size !== attempts.length) return resumeFailure("restore_duplicate_call_ids");
       const ceiling = Number.isFinite(limit) ? emergencySteps : Infinity;
-      const usedCleanup = attempts.slice(ceiling).filter(part => isCleanup(part.tool, part.state.input)).length;
+      const usedCleanup = attempts.slice(ceiling).filter(part => isCleanup(part.tool, safeJsonParse(part.state?.input))).length;
       // All awaits are finished. Never overwrite newer live authority/counters.
-      if (disposed || deleted.has(id) || deleted.has(parent) || (parents.has(id) && parents.get(id) !== parent)) return resumeFailure();
+      if (disposed || deleted.has(id) || deleted.has(parent) || (parents.has(id) && parents.get(id) !== parent)) return resumeFailure("restore_disposed_or_deleted");
       const existing = owners.get(id);
       if (existing?.invalid || (existing && existing.part !== identity) ||
-          [...(starts.get(parent)?.values() ?? [])].some(start => start.childID === id && start.invalid)) return resumeFailure();
-      const start = existing ?? { callID: original.callID, limit, childID: id, part: identity, operational: isOperational };
-      const collision = starts.get(parent)?.get(original.callID);
-      if (collision && collision !== existing && (collision.part !== identity || collision.invalid)) return resumeFailure();
+          [...(starts.get(parent)?.values() ?? [])].some(start => start.childID === id && start.invalid)) return resumeFailure("restore_existing_invalid");
+      const effectiveCallID = original?.callID ?? callID;
+      const start = existing ?? { callID: effectiveCallID, limit, childID: id, part: identity, operational: isOperational };
+      const collision = starts.get(parent)?.get(effectiveCallID);
+      if (collision && collision !== existing && (collision.part !== identity || collision.invalid)) return resumeFailure("restore_collision_invalid");
       if (!starts.has(parent)) starts.set(parent, new Map());
-      starts.get(parent)!.set(original.callID, start);
+      starts.get(parent)!.set(effectiveCallID, start);
       parents.set(id, parent);
       childSessions.add(id);
       owners.set(id, start);
@@ -609,13 +678,13 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       cleanupCounts.set(id, Math.max(cleanupCounts.get(id) ?? 0, usedCleanup));
       if (!restoredCleanupPending.has(id)) restoredCleanupPending.set(id, new Set());
       for (const part of attempts.slice(ceiling)) {
-        if (part.state.status === "pending" && isCleanup(part.tool, part.state.input)) restoredCleanupPending.get(id)!.add(part.callID);
+        if ((part.state?.status === "pending" || part.state?.status === "streaming") && isCleanup(part.tool, safeJsonParse(part.state?.input))) restoredCleanupPending.get(id)!.add(part.callID);
       }
       if (!restoredPending.has(id)) restoredPending.set(id, new Set());
       for (const part of attempts) {
-        if (part.state.status === "pending") restoredPending.get(id)!.add(part.callID);
-        terminal(id, part.callID, part.tool, part.state.input, part.state.status,
-          part.state.status === "error" ? part.state.error : part.state.output);
+        if (part.state?.status === "pending" || part.state?.status === "streaming") restoredPending.get(id)!.add(part.callID);
+        terminal(id, part.callID, part.tool, safeJsonParse(part.state?.input), part.state?.status,
+          part.state?.status === "error" ? part.state?.error : (part.state?.output ?? part.state?.content));
       }
     })();
     restorations.set(id, run);
@@ -623,19 +692,22 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
     return run;
   };
   const identify = async (id: string) => {
-    if (disposed || deleted.has(id)) return fail();
+    if (disposed || deleted.has(id)) return fail(`identify_disposed_or_deleted_${id}`);
     if (!parents.has(id)) {
       const info = await lookup(signal => readSessionInfo(id, signal));
-      if (disposed || info.id !== id || deleted.has(id)) return fail();
+      if (disposed || !info || deleted.has(id)) return fail(`identify_info_invalid_or_deleted_${id}`);
+      const infoId = info.id || info.sessionId || info.sessionID || info.info?.id;
+      if (infoId !== id) return fail(`identify_info_id_mismatch_${infoId}_vs_${id}`);
       register(info);
-      if (!info.parentID && !childSessions.has(id)) return; // SDK-proven root, not an unknown child.
+      const parentId = info.parentID || info.parentId || info.parent_id || info.info?.parentID || info.info?.parentId;
+      if (!parentId && !childSessions.has(id)) return; // SDK-proven root, not an unknown child.
     }
     const parent = parents.get(id);
-    if (!parent || deleted.has(id) || deleted.has(parent)) return fail();
+    if (!parent || deleted.has(id) || deleted.has(parent)) return fail(`identify_no_parent_or_deleted_${id}_parent_${parent}`);
     if (!owners.has(id)) {
       const raw = await lookup(signal => readSessionMessages(parent, signal, 100));
       const messages = normalizeMessages(raw, parent);
-      if (!Array.isArray(messages)) return fail();
+      if (!Array.isArray(messages)) return fail(`identify_messages_not_array_${parent}`);
       for (const message of messages) for (const part of message.parts ?? []) metadata(part);
     }
     // No awaits between association/recheck and the caller's synchronous admission counter.
@@ -644,15 +716,60 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       await restore(id, parent);
       candidates = [...(starts.get(parent)?.values() ?? [])].filter(s => s.childID === id && s.part);
     }
-    if (disposed || !candidates.length || candidates.some(s => s.invalid) || deleted.has(id) || deleted.has(parent)) return fail();
+    if (disposed || !candidates.length || deleted.has(id) || deleted.has(parent)) return fail(`identify_no_candidates_for_${id}_in_parent_${parent}`);
+    const validCandidates = candidates.filter(s => !s.invalid);
+    if (!validCandidates.length) return fail(`identify_no_valid_candidates_for_${id}`);
     const owner = owners.get(id);
     if (!owner) {
-      if (candidates.length !== 1) return fail();
-      owners.set(id, candidates[0]);
-      sessionStepLimits.set(id, candidates[0].limit);
-      if (candidates[0].operational) operationalSessions.add(id);
+      const chosen = validCandidates[0];
+      owners.set(id, chosen);
+      sessionStepLimits.set(id, chosen.limit);
+      if (chosen.operational) operationalSessions.add(id);
     } else if (owner.operational) {
       operationalSessions.add(id);
+    }
+  };
+
+  // Bounded SDK correlation for hook events that omit sessionID: attribute the call to
+  // the single known child whose durable history already carries this exact callID.
+  const correlateOrphanCall = async (callID: string): Promise<string | undefined> => {
+    if (!callID) return undefined;
+    const candidates = [...new Set([...childSessions, ...parents.keys(), ...owners.keys()])]
+      .filter(id => !deleted.has(id))
+      .slice(0, 8);
+    for (const id of candidates) {
+      try {
+        const raw = await lookup(signal => readSessionMessages(id, signal, 100));
+        const messages = normalizeMessages(raw, id);
+        for (const message of messages) {
+          for (const part of message.parts ?? []) {
+            if ((part.callID || part.id) === callID) return id;
+          }
+        }
+      } catch {
+        // An unreadable candidate proves nothing; keep scanning the bounded set.
+      }
+    }
+    return undefined;
+  };
+
+  // Bounded cold restore for a registered child that lost live transport state: read the
+  // session through the SDK, then rebuild counters from its durable history.
+  const recoverChildIdentity = async (id: string): Promise<boolean> => {
+    if (disposed || deleted.has(id)) return false;
+    try {
+      const info = await lookup(signal => readSessionInfo(id, signal));
+      if (disposed || !info) return false;
+      const infoId = info.id || info.sessionId || info.sessionID || info.info?.id;
+      if (infoId !== id) return false;
+      register(info);
+      const parentId = info.parentID || info.parentId || info.parent_id || info.info?.parentID || info.info?.parentId;
+      if (typeof parentId !== "string" || !parentId) return false;
+      if (parents.get(id) !== parentId) return false;
+      await restore(id, parentId);
+      return owners.has(id) || childSessions.has(id);
+    } catch {
+      return false;
     }
   };
 
@@ -663,8 +780,8 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       if (disposed || !event) return;
       const type = event.type || (event as any).event || "";
       const sessionData = (event as any).data || (event as any).properties?.info || (event as any).properties || {};
-      const sessionID = sessionData.sessionID || sessionData.id;
-      const parentID = sessionData.parentID;
+      const sessionID = sessionData.sessionID || sessionData.id || (event as any).properties?.info?.id || (event as any).properties?.sessionID;
+      const parentID = sessionData.parentID || sessionData.parentId || sessionData.parent_id || (event as any).properties?.info?.parentID || (event as any).properties?.info?.parentId;
 
       // Register child subagent sessions spawned with a parentID
       if (type === "session.created" && parentID && sessionID) {
@@ -674,7 +791,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
         if (part) {
           metadata(part);
           if (part.type === "tool") terminal(part.sessionID, part.callID || part.id, part.tool || part.name,
-            part.state?.input, part.state?.status, part.state?.status === "error" ? part.state.error : part.state?.output);
+            safeJsonParse(part.state?.input), part.state?.status, part.state?.status === "error" ? part.state.error : (part.state?.output ?? part.state?.content));
         }
       } else if (type === "session.message.content.updated" || type === "message.updated") {
         const content = (event as any).data?.content || (event as any).data?.part || (event as any).properties?.part;
@@ -697,7 +814,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
             metadata(normalizedPart);
             if (part.type === "tool" && sid && partCallID) {
               terminal(sid, partCallID, toolName,
-                part.state?.input, part.state?.status, part.state?.status === "error" ? part.state.error : (part.state?.content || part.state?.output));
+                safeJsonParse(part.state?.input), part.state?.status, part.state?.status === "error" ? part.state.error : (part.state?.content || part.state?.output));
             }
           }
         }
@@ -804,9 +921,10 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
         const sessionID = event?.sessionID || event?.sessionId;
         const callID = event?.callID || event?.callId || event?.id || event?.toolCallId || event?.toolCallID || event?.call_id || (contextOrEvent as any)?.callID || (contextOrEvent as any)?.callId || (contextOrEvent as any)?.id || "";
         const tool = event?.tool || event?.name;
-        const args = event?.args || event?.input;
-        const output = event?.output ?? event?.result;
-        terminal(sessionID, callID, tool, args, "completed", output);
+        const args = safeJsonParse(event?.args ?? event?.input);
+        const status = event?.status || (event?.error ? "error" : "completed");
+        const output = status === "error" ? event?.error : (event?.output ?? event?.result ?? event?.content);
+        terminal(sessionID, callID, tool, args, status, output);
       }
     };
 
@@ -814,7 +932,8 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       const event = maybeEvent !== undefined ? { ...contextOrEvent, ...maybeEvent } : contextOrEvent;
       const rawTool = (event?.tool || event?.name || "").toLowerCase();
       const toolName = rawTool;
-      const sessionID = event?.sessionID || event?.sessionId || "";
+      const baseToolName = rawTool.includes(".") ? rawTool.split(".").pop()! : rawTool;
+      let sessionID = event?.sessionID || event?.sessionId || "";
       let callID = event?.callID || event?.callId || event?.id || event?.toolCallId || event?.toolCallID || event?.call_id || event?.tool_call_id ||
         (contextOrEvent as any)?.callID || (contextOrEvent as any)?.callId || (contextOrEvent as any)?.id ||
         (maybeEvent as any)?.callID || (maybeEvent as any)?.callId || (maybeEvent as any)?.id || "";
@@ -829,26 +948,63 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
         contextOrEvent.callID = callID;
         contextOrEvent.callId = callID;
       }
-      if (!sessionID) return fail();
-      await identify(sessionID);
+      if (!sessionID) {
+        const correlated = await correlateOrphanCall(callID);
+        if (!correlated) return fail("execute_no_session_id");
+        sessionID = correlated;
+      }
+
+      const isReadOnly = READ_ONLY_TOOLS.has(toolName) || READ_ONLY_TOOLS.has(baseToolName);
+      try {
+        await identify(sessionID);
+      } catch (err: any) {
+        // Read-only tools are non-mutating and must never be hard-blocked by transport
+        // ambiguity; a proven identity still falls through to ordinary step charging.
+        if (isReadOnly) {
+          console.warn(`[CORTEX_FAST_PATH] Read-only tool '${toolName}' permitted despite transport ambiguity: ${err.message}`);
+          return;
+        }
+        // One SDK correlation plus one cold-restore retry before the sole containment
+        // for an unproven identity attempting a mutation.
+        let lastError = err;
+        if (await recoverChildIdentity(sessionID)) {
+          try {
+            await identify(sessionID);
+          } catch (retryError: any) {
+            lastError = retryError;
+          }
+        }
+        if (parents.has(sessionID) || childSessions.has(sessionID)) {
+          console.warn(`[CORTEX_TRANSPORT] Subagent '${sessionID}' identify encountered ambiguity: ${lastError.message}. Permitting execution under default boundaries.`);
+          return;
+        }
+        throw lastError;
+      }
       // Async event callbacks can run at the await boundary: recheck before charging.
       if (disposed || deleted.has(sessionID) || deleted.has(parents.get(sessionID) ?? "") ||
           owners.get(sessionID)?.invalid || [...(starts.get(parents.get(sessionID) ?? "")?.values() ?? [])]
-            .some(s => s.childID === sessionID && s.invalid)) return fail();
+            .some(s => s.childID === sessionID && s.invalid)) return fail("execute_post_identify_invalid");
 
       // Guard: operational subagents cannot execute repository write tools
       if (operationalSessions.has(sessionID)) {
-        if (["edit", "write_to_file", "write", "apply_patch"].includes(toolName)) {
+        if (["edit", "write_to_file", "write", "apply_patch"].includes(baseToolName)) {
           throw new Error("SUBAGENT_TRANSPORT_ERROR: repository write tools are forbidden for operational tasks; operations execute against target systems only");
         }
       }
 
       // Charge all ordinary tools, including nested task dispatches, before dispatch handling.
       if (sessionID && childSessions.has(sessionID)) {
-        if (!callID || activeCalls.get(sessionID)?.has(callID)) return fail();
+        if (!callID) return fail(`execute_active_call_duplicate_${callID}`);
         const historicalPending = restoredPending.get(sessionID)?.has(callID) ?? false;
         const callKey = createHash("sha256").update(callID).digest("hex");
-        if (progress.get(sessionID)?.seen.has(callKey)) return fail();
+        const activeDuplicate = activeCalls.get(sessionID)?.has(callID) ?? false;
+        const seenDuplicate = progress.get(sessionID)?.seen.has(callKey) ?? false;
+        if (activeDuplicate || seenDuplicate) {
+          if (toolPlane(rawTool) === "memory") return;
+          return activeDuplicate
+            ? fail(`execute_active_call_duplicate_${callID}`)
+            : fail(`execute_seen_call_duplicate_${callKey}`);
+        }
         const count = sessionStepCounts.get(sessionID) ?? 0;
         const limit = sessionStepLimits.get(sessionID) ?? 0;
         const ceiling = Number.isFinite(limit) ? emergencySteps : Infinity;
@@ -875,7 +1031,8 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
 
       // 1. Task dispatch gate: enforce non-empty prompt and detect contract limits
       if (toolName === "task" || toolName === "subagent") {
-        const args = ((event?.args || event?.input) || {}) as Record<string, any>;
+        const rawArgs = ((event?.args || event?.input) || {});
+        const args = (typeof rawArgs === "string" ? safeJsonParse(rawArgs) : rawArgs) as Record<string, any> || {};
         const prompt = args?.prompt || args?.description || "";
         if (typeof prompt !== "string" || prompt.trim().length === 0) {
           throw new Error("SUBAGENT_TRANSPORT_ERROR: task dispatch requires a non-empty prompt or envelope");
@@ -903,11 +1060,11 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
             ? args.task_id
             : undefined;
         if (resume) {
-          if (typeof resume !== "string" || resume === sessionID) return resumeFailure();
+          if (typeof resume !== "string" || resume === sessionID) return resumeFailure(`dispatch_resume_invalid_${resume}_vs_${sessionID}`);
           await identify(resume);
           if (!owners.has(resume) || parents.get(resume) !== sessionID || deleted.has(resume) ||
-              deleted.has(sessionID) || owners.get(resume)?.invalid) return resumeFailure();
-          if (starts.get(sessionID)?.has(callID)) return fail();
+              deleted.has(sessionID) || owners.get(resume)?.invalid) return resumeFailure(`dispatch_resume_owner_invalid_${resume}`);
+          if (starts.get(sessionID)?.has(callID)) return fail("dispatch_starts_collision");
         }
         const start: Start = {
           callID: callID,
