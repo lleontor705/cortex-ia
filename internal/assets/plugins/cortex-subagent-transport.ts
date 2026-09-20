@@ -441,8 +441,8 @@ const SPEC_AND_PLANNING_TOOLS = new Set([
 
 const MEMORY_PLANE_TOOL = /^cortex_(?!ia_)/;
 
-// A repeated before-hook is only safe to absorb on the memory/read/spec plane; a replayed
-// claim or lease call is a genuine double-execution. Unknown tools keep strict behavior.
+// A repeated before-hook is safe to absorb while a call is actively in-flight across all planes.
+// Once a call has completed (terminal), replaying authority tools fails closed while memory/spec tools remain idempotent.
 function toolPlane(tool: string): "authority" | "memory" | "unknown" {
   const name = (tool.includes(".") ? tool.split(".").pop()! : tool).toLowerCase();
   if (STRICT_AUTHORITY_TOOLS.has(name)) return "authority";
@@ -1029,16 +1029,19 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
 
       // Charge all ordinary tools, including nested task dispatches, before dispatch handling.
       if (sessionID && childSessions.has(sessionID)) {
-        if (!callID) return fail(`execute_active_call_duplicate_${callID}`);
+        if (!callID) return fail("execute_missing_call_id");
         const historicalPending = restoredPending.get(sessionID)?.has(callID) ?? false;
         const callKey = createHash("sha256").update(callID).digest("hex");
         const activeDuplicate = activeCalls.get(sessionID)?.has(callID) ?? false;
         const seenDuplicate = progress.get(sessionID)?.seen.has(callKey) ?? false;
-        if (activeDuplicate || seenDuplicate) {
+        if (activeDuplicate) {
+          // Re-entrant or duplicate before-hook dispatch while the call is in-flight:
+          // idempotent no-op so we do not double-charge or fail during runtime pipeline dispatch.
+          return;
+        }
+        if (seenDuplicate) {
           if (toolPlane(rawTool) === "memory") return;
-          return activeDuplicate
-            ? fail(`execute_active_call_duplicate_${callID}`)
-            : fail(`execute_seen_call_duplicate_${callKey}`);
+          return fail(`execute_seen_call_duplicate_${callKey}`);
         }
         const count = sessionStepCounts.get(sessionID) ?? 0;
         const limit = sessionStepLimits.get(sessionID) ?? 0;

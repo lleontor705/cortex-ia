@@ -70,12 +70,23 @@ test('duplicate callID is an idempotent no-op on the memory plane and fails clos
       { tool: 'cortex_ia_work_claim', sessionID: 'child-1', callID: 'call-auth-dup' },
       { args: { task_id: 'synthetic-task' } }
     );
+    await assert.doesNotReject(async () => {
+      await plugin['tool.execute.before'](
+        { tool: 'cortex_ia.cortex_ia_work_claim', sessionID: 'child-1', callID: 'call-auth-dup' },
+        { args: { task_id: 'synthetic-task' } }
+      );
+    }, 'duplicate active authority-plane before-hook must be idempotent');
+
+    await plugin['tool.execute.after'](
+      { tool: 'cortex_ia_work_claim', sessionID: 'child-1', callID: 'call-auth-dup', args: { task_id: 'synthetic-task' } },
+      { title: 'Claimed', output: 'ok', metadata: {} }
+    );
     await assert.rejects(async () => {
       await plugin['tool.execute.before'](
         { tool: 'cortex_ia.cortex_ia_work_claim', sessionID: 'child-1', callID: 'call-auth-dup' },
         { args: { task_id: 'synthetic-task' } }
       );
-    }, { message: /execute_active_call_duplicate/ }, 'duplicate authority-plane before-hook must still fail closed');
+    }, { message: /execute_seen_call_duplicate/ }, 'replayed authority-plane tool after completion must fail closed');
   } finally {
     await plugin.dispose();
   }
