@@ -98,13 +98,13 @@
       "text": {
         "added": "$hue.green.300",
         "removed": "$hue.red.300",
-        "context": "$text.muted",
+        "context": "$hue.neutral.400",
         "hunkHeader": "$hue.neutral.400"
       },
       "background": {
         "added": "$hue.green.900",
         "removed": "$hue.red.900",
-        "context": "$background.raised.base"
+        "context": "$hue.neutral.900"
       },
       "highlight": {
         "added": "$hue.green.400",
@@ -130,20 +130,20 @@
       "punctuation": "$hue.neutral.400"
     },
     "markdown": {
-      "text": "$text.base",
+      "text": "$hue.neutral.100",
       "heading": "$hue.cyan.300",
       "link": "$hue.interactive.300",
       "linkText": "$hue.cyan.300",
       "code": "$hue.accent.300",
-      "codeBlock": "$background.raised.base",
+      "codeBlock": "$hue.neutral.900",
       "blockQuote": "$hue.neutral.400",
       "emphasis": "$hue.yellow.300",
       "strong": "$hue.accent.300",
-      "horizontalRule": "$border.base",
-      "listItem": "$text.base",
+      "horizontalRule": "$hue.neutral.700",
+      "listItem": "$hue.neutral.100",
       "listEnumeration": "$hue.cyan.400",
       "image": "$hue.blue.400",
-      "imageText": "$text.muted"
+      "imageText": "$hue.neutral.400"
     },
     "@dialog": {
       "background": {

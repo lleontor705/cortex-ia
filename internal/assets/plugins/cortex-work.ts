@@ -1,12 +1,10 @@
 // OpenCode Plugin helper ensuring default export is a valid plugin definition object for v1 and v2
 export const Plugin = {
-  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; server?: (ctx: any) => Promise<any> | any }>(def: T): T & ((ctx: any) => Promise<any> | any) => {
-    const fn = (ctx: any) => (def.setup ? def.setup(ctx) : def.server ? def.server(ctx) : undefined);
-    Object.assign(fn, def);
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; server?: (ctx: any) => Promise<any> | any }>(def: T): T => {
     if (!def.server && def.setup) {
-      (fn as any).server = def.setup;
+      def.server = def.setup;
     }
-    return fn as any;
+    return def;
   },
 };
 

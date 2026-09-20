@@ -57,11 +57,12 @@ export const CortexSnapshotPlugin = Plugin.define({
       });
     }
 
-    return {
-      tool: {
-        cortex_ia_snapshot_read: toolDef,
-      },
+    const cleanup = async () => {};
+    (cleanup as any).dispose = cleanup;
+    (cleanup as any).tool = {
+      cortex_ia_snapshot_read: toolDef,
     };
+    return cleanup;
   }
 });
 

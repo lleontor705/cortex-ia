@@ -1015,11 +1015,11 @@ export const Cortex = Plugin.define({
       })
     }
 
-    return {
-      dispose: () => {
-        abortController.abort()
-      },
-    }
+    const cleanup = () => {
+      abortController.abort();
+    };
+    (cleanup as any).dispose = cleanup;
+    return cleanup;
   },
 })
 

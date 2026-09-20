@@ -130,16 +130,28 @@ if (!base.diff?.lineNumber?.text) errors.push("Missing 'base.diff.lineNumber.tex
 if (!base.diff?.lineNumber?.background?.added) errors.push("Missing 'base.diff.lineNumber.background.added'");
 if (!base.diff?.lineNumber?.background?.removed) errors.push("Missing 'base.diff.lineNumber.background.removed'");
 
-// Syntax tokens (9 keys)
+// Syntax tokens (9 keys) - OpenCode v2 strictly requires hex (#hex) or direct $hue.<hue>.<step>
+const validHuePattern = /^#(?:[0-9a-fA-F]{3,8})$|^\$hue\.(gray|red|orange|yellow|green|cyan|blue|purple|accent|interactive|neutral)\.(100|200|300|400|500|600|700|800|900)$/;
+
 const syntaxKeys = ["comment", "keyword", "function", "variable", "string", "number", "type", "operator", "punctuation"];
 for (const k of syntaxKeys) {
-  if (!base.syntax?.[k]) errors.push(`Missing syntax token 'base.syntax.${k}'`);
+  const val = base.syntax?.[k];
+  if (!val) {
+    errors.push(`Missing syntax token 'base.syntax.${k}'`);
+  } else if (!validHuePattern.test(val)) {
+    errors.push(`Invalid syntax token 'base.syntax.${k}' = "${val}". OpenCode v2 requires a hex color (#hex) or direct hue step ($hue.<hue>.<step>), got "${val}"`);
+  }
 }
 
-// Markdown tokens (14 keys)
+// Markdown tokens (14 keys) - OpenCode v2 strictly requires hex (#hex) or direct $hue.<hue>.<step>
 const mdKeys = ["text", "heading", "link", "linkText", "code", "blockQuote", "emphasis", "strong", "horizontalRule", "listItem", "listEnumeration", "image", "imageText", "codeBlock"];
 for (const k of mdKeys) {
-  if (!base.markdown?.[k]) errors.push(`Missing markdown token 'base.markdown.${k}'`);
+  const val = base.markdown?.[k];
+  if (!val) {
+    errors.push(`Missing markdown token 'base.markdown.${k}'`);
+  } else if (!validHuePattern.test(val)) {
+    errors.push(`Invalid markdown token 'base.markdown.${k}' = "${val}". OpenCode v2 requires a hex color (#hex) or direct hue step ($hue.<hue>.<step>), got "${val}"`);
+  }
 }
 
 // Summary Output

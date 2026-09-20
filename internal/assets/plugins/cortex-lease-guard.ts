@@ -1,17 +1,10 @@
 // OpenCode Plugin helper ensuring default export is a valid plugin definition object for v1 and v2
 export const Plugin = {
-  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; v1?: (ctx: any) => Promise<any> | any; server?: (ctx: any) => Promise<any> | any }>(def: T): T & ((ctx: any) => Promise<any> | any) => {
-    const fn = (ctx: any) => {
-      if (!ctx?.tool?.hook && def.v1) {
-        return def.v1(ctx);
-      }
-      return def.setup ? def.setup(ctx) : def.server ? def.server(ctx) : undefined;
-    };
-    Object.assign(fn, def);
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; v1?: (ctx: any) => Promise<any> | any; server?: (ctx: any) => Promise<any> | any }>(def: T): T => {
     if (!def.server && def.setup) {
-      (fn as any).server = def.setup;
+      def.server = def.setup;
     }
-    return fn as any;
+    return def;
   },
 };
 
@@ -223,22 +216,23 @@ async function verifyLeasesForTool(
 export const CortexLeaseGuardPlugin = Plugin.define({
   id: "cortex-lease-guard",
   async setup(ctx: any) {
-    if (!ctx?.tool?.hook) {
+    const cleanup = async () => {};
+    (cleanup as any).dispose = cleanup;
+    (cleanup as any)["tool.execute.before"] = async (input: any, output: any) => {
+      const toolName = (input?.tool || "").toLowerCase();
+      const sessionID = input?.sessionID || "";
       const directory = ctx?.directory || (ctx as any)?.location?.directory || process.cwd();
-      return {
-        "tool.execute.before": async (input: any, output: any) => {
-          const toolName = (input?.tool || "").toLowerCase();
-          const sessionID = input?.sessionID || "";
-          await verifyLeasesForTool(toolName, output?.args, sessionID, directory);
-        },
-      };
+      await verifyLeasesForTool(toolName, output?.args, sessionID, directory);
+    };
+
+    if (ctx?.tool?.hook) {
+      await ctx.tool.hook("execute.before", async (event: any) => {
+        const toolName = (event?.tool || "").toLowerCase();
+        const sessionID = event?.sessionID || event?.sessionId || (ctx as any)?.session?.id || "";
+        const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
+        await verifyLeasesForTool(toolName, event?.input, sessionID, directory);
+      });
     }
-    await ctx.tool.hook("execute.before", async (event: any) => {
-      const toolName = (event?.tool || "").toLowerCase();
-      const sessionID = event?.sessionID || event?.sessionId || (ctx as any)?.session?.id || "";
-      const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
-      await verifyLeasesForTool(toolName, event?.input, sessionID, directory);
-    });
 
     // OpenCode v2: Shell Fencing and Environment Injection
     if ((ctx as any).shell?.hook) {
@@ -257,10 +251,6 @@ export const CortexLeaseGuardPlugin = Plugin.define({
           throw new Error("CORTEX_SECURITY_SHIELD: Destructive shell command intercepted by CortexLeaseGuard");
         }
       });
-    }
-
-    const cleanup = async () => {};
-    (cleanup as any).dispose = cleanup;
     return cleanup;
   },
   async v1(ctx: any) {

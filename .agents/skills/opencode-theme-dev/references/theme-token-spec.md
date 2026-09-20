@@ -121,20 +121,20 @@ This document provides the full token schema and reference values for authoring 
       "punctuation": "$hue.neutral.400"
     },
     "markdown": {
-      "text": "$text.base",
+      "text": "$hue.neutral.100",
       "heading": "$hue.cyan.300",
       "link": "$hue.interactive.300",
       "linkText": "$hue.cyan.300",
       "code": "$hue.accent.300",
-      "codeBlock": "$background.raised.base",
+      "codeBlock": "$hue.neutral.900",
       "blockQuote": "$hue.neutral.400",
       "emphasis": "$hue.yellow.300",
       "strong": "$hue.accent.300",
-      "horizontalRule": "$border.base",
-      "listItem": "$text.base",
+      "horizontalRule": "$hue.neutral.700",
+      "listItem": "$hue.neutral.100",
       "listEnumeration": "$hue.cyan.400",
       "image": "$hue.blue.400",
-      "imageText": "$text.muted"
+      "imageText": "$hue.neutral.400"
     },
     "@dialog": {
       "background": {
@@ -191,3 +191,14 @@ This document provides the full token schema and reference values for authoring 
   }
 }
 ```
+
+## Strict Schema Rules (ArkType / OpenCode v2)
+
+1. **Syntax & Markdown Values (`j` schema)**:
+   - Values under `base.syntax.*` and `base.markdown.*` **MUST** be either a raw hex string (`#rrggbb`) or a direct hue reference (`$hue.<hue>.<step>`).
+   - **DO NOT** use semantic references like `"$text.base"`, `"$background.raised.base"`, `"$border.base"`, or `"$text.muted"` in `syntax` or `markdown`. The parser validates them with rule `j = R([U, Jh(["$hue.", z, ".", p])])` before semantic token resolution occurs; any non-hue alias will fail with:
+     `Invalid theme: <name> "$text.base" is an invalid value`.
+
+2. **Action & Formfield Fallbacks**:
+   - Interactive tokens under `action` and `formfield` will auto-fallback to `.base` if state variants (`$hovered`, `$pressed`, `$focused`, `$disabled`) are omitted, but specifying them explicitly guarantees high contrast across all terminal types.
+
