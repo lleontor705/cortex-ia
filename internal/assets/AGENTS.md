@@ -423,11 +423,8 @@ Never save ephemeral SQLite claim tokens, file lease states, diff hashes, or rou
 2. **One Authoritative Board per Initiative**:
    - The board ID created by `planner`/`orchestrator` represents the initiative. Never spawn derivative successor boards (`-v2`, `-v3`, `-run2`). Blocked tasks must be decomposed in place with `cortex_ia_work_decompose`.
 3. **Close (Orchestrator Only, MANDATORY before final turn)**: Call `cortex_session_summary` with:
-   - `## Goal`: Intent of the session
-   - `## Discoveries`: Gotchas and technical findings
-   - `## Accomplished`: Completed deliverables
-   - `## Next Steps`: Remaining follow-up items
-   - `## Relevant Files`: Paths modified or created
+   - `project`: `"<project_name>"` (e.g. `"ats-inventory"` or `"cortex-ia"`)
+   - `content`: Single Markdown string containing all sections (`## Goal`, `## Discoveries`, `## Accomplished`, `## Next Steps`, `## Relevant Files`). Never pass `goal` or `discoveries` as separate top-level parameters.
 4. **Compaction Recovery**: When context reset/compaction occurs:
    - Call `cortex_session_summary` with the compacted text immediately.
    - Call `cortex_context` to restore session continuity.

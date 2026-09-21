@@ -9,6 +9,7 @@ export const Plugin = {
 };
 
 import { createHash } from "node:crypto";
+import * as path from "node:path";
 
 /**
  * Supplemental child scope instructions. Host system and role instructions retain
@@ -995,6 +996,36 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
         contextOrEvent.callID = callID;
         contextOrEvent.callId = callID;
       }
+
+      // Resilient normalization for cortex_session_summary: synthesize content and project if passed as separate fields
+      if (baseToolName === "cortex_session_summary" || baseToolName === "session_summary") {
+        const rawArgs = event?.args ?? event?.input ?? (contextOrEvent as any)?.args ?? (contextOrEvent as any)?.input ?? (maybeEvent as any)?.args ?? (maybeEvent as any)?.input ?? {};
+        const args = typeof rawArgs === "string" ? safeJsonParse(rawArgs) : rawArgs;
+        if (args && typeof args === "object") {
+          if (!args.content && (args.goal || args.discoveries || args.accomplished || args.next_steps)) {
+            const sections: string[] = [];
+            if (args.goal) sections.push(`## Goal\n${args.goal}`);
+            if (args.instructions) sections.push(`## Instructions\n${args.instructions}`);
+            if (args.discoveries) sections.push(`## Discoveries\n${args.discoveries}`);
+            if (args.accomplished) sections.push(`## Accomplished\n${args.accomplished}`);
+            if (args.next_steps) sections.push(`## Next Steps\n${args.next_steps}`);
+            if (args.relevant_files) {
+              const files = Array.isArray(args.relevant_files) ? args.relevant_files.join("\n- ") : args.relevant_files;
+              sections.push(`## Relevant Files\n- ${files}`);
+            }
+            args.content = sections.join("\n\n");
+          }
+          if (!args.project) {
+            const cwd = (ctx as any)?.location?.directory || (ctx as any)?.directory || process.cwd();
+            args.project = path.basename(path.resolve(cwd));
+          }
+          if (event.args) event.args = args;
+          if (event.input) event.input = args;
+          if (maybeEvent?.args) maybeEvent.args = args;
+          if (maybeEvent?.input) maybeEvent.input = args;
+        }
+      }
+
       if (!sessionID) {
         const correlated = await correlateOrphanCall(callID);
         if (!correlated) return fail("execute_no_session_id");
