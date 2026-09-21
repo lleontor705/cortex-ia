@@ -212,6 +212,9 @@ Classify every request into the smallest safe execution tier:
 
 ## 2. Minion Dispatch Envelopes (Intent-Preserving Protocol)
 
+> [!IMPORTANT]
+> **Allowed Files Constraint**: When dispatching `role: "implement"`, `allowed_files` MUST be a non-empty array populated with the exact target files from `cortex_ia_work_status`. NEVER pass `allowed_files: []` to `implement` (even for verification or cycle-closing steps); doing so fails closed with `SUBAGENT_TRANSPORT_ERROR`. If a step requires zero file modifications, route it to `role: "reviewer"` or `role: "investigate"`.
+
 When dispatching subagents, use the canonical `<minion-dispatch>` contract:
 
 ```json
