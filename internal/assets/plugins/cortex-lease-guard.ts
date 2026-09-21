@@ -178,7 +178,7 @@ async function verifyLeasesForTool(
     if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
       throw new Error("lease for targets has expired");
     }
-    const cacheTtl = Math.min(expiresAt - 5000, Date.now() + 30_000);
+    const cacheTtl = Math.min(expiresAt - 5000, Date.now() + 300_000);
     if (cacheTtl > Date.now()) {
       verifiedLeaseCache.set(cacheKey, cacheTtl);
     }
@@ -218,12 +218,6 @@ export const CortexLeaseGuardPlugin = Plugin.define({
   async setup(ctx: any) {
     const cleanup = async () => {};
     (cleanup as any).dispose = cleanup;
-    (cleanup as any)["tool.execute.before"] = async (input: any, output: any) => {
-      const toolName = (input?.tool || "").toLowerCase();
-      const sessionID = input?.sessionID || "";
-      const directory = ctx?.directory || (ctx as any)?.location?.directory || process.cwd();
-      await verifyLeasesForTool(toolName, output?.args, sessionID, directory);
-    };
 
     if (ctx?.tool?.hook) {
       await ctx.tool.hook("execute.before", async (event: any) => {
@@ -232,6 +226,13 @@ export const CortexLeaseGuardPlugin = Plugin.define({
         const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
         await verifyLeasesForTool(toolName, event?.input, sessionID, directory);
       });
+    } else {
+      (cleanup as any)["tool.execute.before"] = async (input: any, output: any) => {
+        const toolName = (input?.tool || "").toLowerCase();
+        const sessionID = input?.sessionID || "";
+        const directory = ctx?.directory || (ctx as any)?.location?.directory || process.cwd();
+        await verifyLeasesForTool(toolName, output?.args, sessionID, directory);
+      };
     }
 
     // OpenCode v2: Shell Fencing and Environment Injection

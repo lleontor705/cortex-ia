@@ -12,6 +12,15 @@ permissions:
   - action: edit
     resource: "*"
     effect: deny
+  - action: write
+    resource: "*"
+    effect: deny
+  - action: write_to_file
+    resource: "*"
+    effect: deny
+  - action: apply_patch
+    resource: "*"
+    effect: deny
   - action: read
     resource: "*"
     effect: allow

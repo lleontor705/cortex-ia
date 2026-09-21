@@ -728,6 +728,11 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
   };
   const identify = async (id: string) => {
     if (disposed || deleted.has(id)) return fail(`identify_disposed_or_deleted_${id}`);
+    const existingOwner = owners.get(id);
+    if (existingOwner) {
+      if (existingOwner.invalid) return fail(`identify_owner_invalid_${id}`);
+      return;
+    }
     if (!parents.has(id)) {
       const info = await lookup(signal => readSessionInfo(id, signal));
       if (disposed || !info || deleted.has(id)) return fail(`identify_info_invalid_or_deleted_${id}`);

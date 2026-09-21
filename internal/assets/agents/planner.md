@@ -12,6 +12,21 @@ permissions:
   - action: edit
     resource: "*"
     effect: deny
+  - action: write
+    resource: "*"
+    effect: deny
+  - action: write_to_file
+    resource: "*"
+    effect: deny
+  - action: apply_patch
+    resource: "*"
+    effect: deny
+  - action: cortex_ia_work_claim
+    resource: "*"
+    effect: deny
+  - action: cortex_ia_file_reserve
+    resource: "*"
+    effect: deny
   - action: shell
     resource: "*"
     effect: deny
