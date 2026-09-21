@@ -260,13 +260,18 @@ Audit the actual `git diff` of the allowed files across the three mandatory lens
 
 ### Phase 5: Authoritative Approval & Immediate Exit Gate (Budget: <= 2 steps)
 If Phases 1, 2, 3, and 4 ALL PASS without blockers:
-1. **MANDATORY APPROVAL**: Execute `cortex_ia_work_approve` immediately with:
-   - `board_id`: `"<board_id>"`
+1. **MANDATORY APPROVAL**: Execute `cortex_ia_work_approve` sequentially (**one task at a time**, never in a parallel batch in the same turn) with:
    - `task_id`: `"<task_id>"`
    - `verdict`: `"PASS"`
+   - `revision`: `<current_task_revision>` (MANDATORY for SDD tasks with review bindings; read from `cortex_ia_work_status` or `cortex_ia_work_fingerprint`)
+   - `evidence`: `"<concise_evidence_summary>"` (Required for PASS; cite verification commands and exit codes)
    - `summary`: `"Independent review verified: pins match, zero cycle regressions, test suite passed, zero security/token leaks."`
    - `findings`: `[]`
-2. **Closed-Loop Memory**: On PASS, record durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`, `topic_key: "architecture/<module>"` and link via `cortex_relate` when a meaningful relationship exists). NEVER use `cortex_save_rule` for review findings, task completions, or worktree maintenance.
+2. **Closed-Loop Memory**: On PASS, record durable architectural decisions in Cortex using exact tool names:
+   - Call `cortex_save` (never use prefix `cortex.`) with `type: "decision"`, `topic_key: "architecture/<module>"`.
+   - When linking observations with `cortex_relate`, extract the observation ID from the `cortex_save` response (`observation_ref.local_id` or `id`) and pass it as `from_id` along with `to_id`, `relation_type: "follows"`, and `reasoning`.
+   - To query prior observations, use `cortex_search` (never `cortex.cortex_search`).
+   - NEVER use `cortex_save_rule` for review findings, task completions, or worktree maintenance.
 3. **Human-Facing Review Report**:
    Deliver a structured Markdown review summary to the operator:
    - **Verdict**: `PASS` (or `FAIL` with specific blockers)

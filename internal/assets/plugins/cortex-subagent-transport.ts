@@ -480,11 +480,18 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
     if (!childSessions.has(id) || !callID || !["completed", "error"].includes(status)) return;
     let state = progress.get(id);
     if (!state) { state = { seen: new Set(), streak: 0 }; progress.set(id, state); }
-    const callKey = createHash("sha256").update(callID).digest("hex");
+    const baseTool = tool && tool.includes(".") ? tool.split(".").pop()! : (tool || "");
+    const parsedArgs = typeof args === "string" ? safeJsonParse(args) : args;
+    const targetId = typeof parsedArgs === "object" && parsedArgs !== null
+      ? (parsedArgs.task_id || parsedArgs.taskId || parsedArgs.board_id || parsedArgs.boardId || parsedArgs.path || parsedArgs.title || "")
+      : "";
+    const callDiscriminator = targetId ? `${callID}:${baseTool}:${targetId}` : (baseTool ? `${callID}:${baseTool}` : callID);
+    const callKey = createHash("sha256").update(callDiscriminator).digest("hex");
     if (state.seen.has(callKey)) return;
     state.seen.add(callKey);
     // Bound recent-event deduplication memory even for unlimited planner sessions.
     if (state.seen.size > 10000) state.seen.delete(state.seen.values().next().value!);
+    activeCalls.get(id)?.delete(callDiscriminator);
     activeCalls.get(id)?.delete(callID);
     restoredPending.get(id)?.delete(callID);
     restoredCleanupPending.get(id)?.delete(callID);
@@ -1035,9 +1042,15 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       // Charge all ordinary tools, including nested task dispatches, before dispatch handling.
       if (sessionID && childSessions.has(sessionID)) {
         if (!callID) return fail("execute_missing_call_id");
+        const inputArgs = event?.args || event?.input;
+        const parsedInput = typeof inputArgs === "string" ? safeJsonParse(inputArgs) : inputArgs;
+        const targetId = typeof parsedInput === "object" && parsedInput !== null
+          ? (parsedInput.task_id || parsedInput.taskId || parsedInput.board_id || parsedInput.boardId || parsedInput.path || parsedInput.title || "")
+          : "";
+        const callDiscriminator = targetId ? `${callID}:${baseToolName}:${targetId}` : (baseToolName ? `${callID}:${baseToolName}` : callID);
         const historicalPending = restoredPending.get(sessionID)?.has(callID) ?? false;
-        const callKey = createHash("sha256").update(callID).digest("hex");
-        const activeDuplicate = activeCalls.get(sessionID)?.has(callID) ?? false;
+        const callKey = createHash("sha256").update(callDiscriminator).digest("hex");
+        const activeDuplicate = (activeCalls.get(sessionID)?.has(callDiscriminator) || activeCalls.get(sessionID)?.has(callID)) ?? false;
         const seenDuplicate = progress.get(sessionID)?.seen.has(callKey) ?? false;
         if (activeDuplicate) {
           // Re-entrant or duplicate before-hook dispatch while the call is in-flight:
@@ -1051,7 +1064,6 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
         const count = sessionStepCounts.get(sessionID) ?? 0;
         const limit = sessionStepLimits.get(sessionID) ?? 0;
         const ceiling = Number.isFinite(limit) ? emergencySteps : Infinity;
-        const inputArgs = event?.args || event?.input;
         if (count - (historicalPending ? 1 : 0) >= ceiling) {
           const cleanup = cleanupCounts.get(sessionID) ?? 0;
           const cleanupReserved = restoredCleanupPending.get(sessionID)?.has(callID) ?? false;
@@ -1060,6 +1072,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
             restoredCleanupPending.get(sessionID)?.delete(callID);
             restoredPending.get(sessionID)?.delete(callID);
             if (!activeCalls.has(sessionID)) activeCalls.set(sessionID, new Set());
+            activeCalls.get(sessionID)!.add(callDiscriminator);
             activeCalls.get(sessionID)!.add(callID);
             sessionStepCounts.set(sessionID, count + (historicalPending ? 0 : 1));
             return;
@@ -1068,6 +1081,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
         }
         restoredPending.get(sessionID)?.delete(callID);
         if (!activeCalls.has(sessionID)) activeCalls.set(sessionID, new Set());
+        activeCalls.get(sessionID)!.add(callDiscriminator);
         activeCalls.get(sessionID)!.add(callID);
         sessionStepCounts.set(sessionID, count + (historicalPending ? 0 : 1));
       }
