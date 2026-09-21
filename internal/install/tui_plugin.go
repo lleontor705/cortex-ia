@@ -88,11 +88,25 @@ func ensureTUIBridge(configDir string) error {
 	}
 	bridgeFile := filepath.Join(bridgeDir, "tui.js")
 	bridgeContent := []byte("// OpenCode v2 directory bridge for cortex-ia TUI plugin\nexport * from \"../cortex-ia-tui.js\";\nexport { default } from \"../cortex-ia-tui.js\";\n")
-	existing, err := os.ReadFile(bridgeFile)
-	if err == nil && string(existing) == string(bridgeContent) {
+	if err := writeFileIfChanged(bridgeFile, bridgeContent); err != nil {
+		return err
+	}
+	// OpenCode v2 imports the "./tui" export of the configured package, so the bridge
+	// directory must expose a module manifest or the cli.json entry resolves to nothing.
+	manifestFile := filepath.Join(bridgeDir, "package.json")
+	manifestContent := []byte("{\n  \"name\": \"cortex-ia-tui\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"exports\": {\n    \".\": \"./tui.js\",\n    \"./tui\": \"./tui.js\"\n  }\n}\n")
+	return writeFileIfChanged(manifestFile, manifestContent)
+}
+
+func writeFileIfChanged(path string, content []byte) error {
+	existing, err := os.ReadFile(path)
+	if err == nil && string(existing) == string(content) {
 		return nil
 	}
-	return os.WriteFile(bridgeFile, bridgeContent, 0o644)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return os.WriteFile(path, content, 0o644)
 }
 
 func configureSingleTUIFile(tuiPath string) (bool, error) {

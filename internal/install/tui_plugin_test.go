@@ -80,6 +80,13 @@ func TestConfigureTUIPlugin(t *testing.T) {
 	if _, err := os.Stat(bridgeFile); err != nil {
 		t.Errorf("expected bridge file at %s, got error: %v", bridgeFile, err)
 	}
+	manifestFile := filepath.Join(tempHomeV2, ".config", "opencode", "tui-plugins", "cortex-ia", "package.json")
+	manifest, err := os.ReadFile(manifestFile)
+	if err != nil {
+		t.Errorf("expected bridge manifest at %s, got error: %v", manifestFile, err)
+	} else if !strings.Contains(string(manifest), `"./tui": "./tui.js"`) {
+		t.Errorf("expected ./tui export in bridge manifest, got:\n%s", string(manifest))
+	}
 
 	// 5. Dual configuration when both cli.json and tui.jsonc exist
 	tempHomeDual := t.TempDir()
