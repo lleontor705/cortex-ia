@@ -14,9 +14,10 @@ import {
   createMemo,
   createRoot,
   createSignal,
+  untrack,
 } from "solid-js";
 import { useTerminalDimensions } from "@opentui/solid";
-import type { BoxRenderable } from "@opentui/core";
+import type { BoxRenderable, ColorInput } from "@opentui/core";
 
 const SNAPSHOT_POLL_INTERVAL_MS = 2500;
 const SNAPSHOT_STALE_MS = 10_000;
@@ -27,6 +28,10 @@ const NEURAL_PULSE_FRAMES = ["◈", "◇", "◆", "◇"];
 const TASKS_EXPANDED_KEY = "cortex.sidebar.tasks.expanded";
 const DELEGATIONS_EXPANDED_KEY = "cortex.sidebar.delegations.expanded";
 const ATTENTION_EXPANDED_KEY = "cortex.sidebar.attention.expanded";
+const ETA_HISTORY_KEY = "cortex.dashboard.eta.completions";
+const ETA_HISTORY_LIMIT = 12;
+const ETA_INTERVAL_WINDOW = 8;
+const ETA_MIN_SAMPLES = 2;
 
 // Modern Cyberpunk & Neural Color Palette for Cortex-IA
 const CORTEX_THEME = {
@@ -45,6 +50,90 @@ const CORTEX_THEME = {
   slateLight: "#cbd5e1",
   pureWhite: "#ffffff",
 };
+
+type CortexPalette = {
+  text: ColorInput;
+  textMuted: ColorInput;
+  textSoft: ColorInput;
+  accent: ColorInput;
+  accentAlt: ColorInput;
+  primary: ColorInput;
+  sky: ColorInput;
+  success: ColorInput;
+  warning: ColorInput;
+  error: ColorInput;
+  info: ColorInput;
+  border: ColorInput;
+  panel: ColorInput;
+};
+
+type PalettePath = readonly (string | number)[];
+
+// Hue steps mirror the shipped cortex scale exactly (emeraldGreen=green.500,
+// amberGold=yellow.500, roseRed=red.500, neonCyan=cyan.500, border=neutral.700),
+// so a hue-aware theme reproduces today's dark palette while light themes get the
+// matching light steps. Semantic and legacy flat tokens cover hue-less themes.
+const PALETTE_SOURCES: Record<keyof CortexPalette, readonly PalettePath[]> = {
+  text: [["text", "base"], ["text"]],
+  textMuted: [["hue", "neutral", 500], ["textMuted"], ["text", "muted"]],
+  textSoft: [["hue", "neutral", 300]],
+  accent: [["hue", "purple", 400], ["accent"], ["text", "action", "primary", "base"]],
+  accentAlt: [["hue", "purple", 500], ["secondary"]],
+  primary: [["hue", "blue", 500], ["primary"]],
+  sky: [["hue", "blue", 400], ["info"]],
+  success: [["hue", "green", 500], ["success"], ["text", "feedback", "success", "base"]],
+  warning: [["hue", "yellow", 500], ["warning"], ["text", "feedback", "warning", "base"]],
+  error: [["hue", "red", 500], ["error"], ["text", "feedback", "error", "base"]],
+  info: [["hue", "cyan", 500], ["info"], ["text", "feedback", "info", "base"]],
+  border: [["hue", "neutral", 700], ["border", "base"], ["border"], ["borderSubtle"]],
+  panel: [["hue", "neutral", 800], ["background", "raised", "high"], ["backgroundPanel"]],
+};
+
+const PALETTE_FALLBACK: Record<keyof CortexPalette, string> = {
+  text: CORTEX_THEME.pureWhite,
+  textMuted: CORTEX_THEME.slateMuted,
+  textSoft: CORTEX_THEME.slateLight,
+  accent: CORTEX_THEME.brandPurple,
+  accentAlt: CORTEX_THEME.brandViolet,
+  primary: CORTEX_THEME.brandIndigo,
+  sky: CORTEX_THEME.skyBlue,
+  success: CORTEX_THEME.emeraldGreen,
+  warning: CORTEX_THEME.amberGold,
+  error: CORTEX_THEME.roseRed,
+  info: CORTEX_THEME.neonCyan,
+  border: CORTEX_THEME.slateBorder,
+  panel: CORTEX_THEME.slateCard,
+};
+
+function readColor(source: unknown, path: PalettePath): ColorInput | undefined {
+  let node: unknown = source;
+  for (const key of path) {
+    if (typeof node !== "object" || node === null) return undefined;
+    node = (node as Record<string | number, unknown>)[key];
+  }
+  if (typeof node === "string") return node;
+  if (typeof node === "object" && node !== null) {
+    const candidate = node as { r?: unknown; g?: unknown; b?: unknown };
+    if (typeof candidate.r === "number" && typeof candidate.g === "number" && typeof candidate.b === "number") {
+      return node as ColorInput;
+    }
+  }
+  return undefined;
+}
+
+function resolvePalette(theme?: TuiThemeCurrent): CortexPalette {
+  const source = theme as unknown as Record<string, unknown> | undefined;
+  const palette = {} as CortexPalette;
+  for (const role of Object.keys(PALETTE_SOURCES) as (keyof CortexPalette)[]) {
+    let resolved: ColorInput | undefined;
+    for (const path of PALETTE_SOURCES[role]) {
+      resolved = readColor(source, path);
+      if (resolved !== undefined) break;
+    }
+    palette[role] = resolved ?? PALETTE_FALLBACK[role];
+  }
+  return palette;
+}
 
 type DelegationEvent = {
   timestamp?: string;
@@ -126,6 +215,18 @@ type AttentionItem = { id: string; title: string; detail: string };
 type OperationalCounts = { active: number; review: number; attention: number };
 type NativeActivity = "busy" | "idle" | "retry" | "unknown";
 type SidebarLayout = { compact: boolean; textLimit: number; gaugeWidth: number };
+type SidebarMetrics = {
+  elapsed?: string;
+  tokensUsed?: number;
+  tokenLimit?: number;
+  cost?: number;
+};
+type Tier1Eta = {
+  remaining: number;
+  backlog: number;
+  samples: number;
+  estimateMs?: number;
+};
 
 function sidebarLayout(width: number): SidebarLayout {
   const measured = Number.isFinite(width) && width > 0 ? Math.floor(width) : 0;
@@ -229,34 +330,123 @@ function formatDuration(ms: number): string {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
-function roleChip(role: string): { icon: string; color: string; tag: string } {
-  const r = (role || "").toLowerCase();
-  if (r.includes("orch")) return { icon: "🧠", color: CORTEX_THEME.brandIndigo, tag: "ORCH" };
-  if (r.includes("impl")) return { icon: "⚡", color: CORTEX_THEME.amberGold, tag: "IMPL" };
-  if (r.includes("rev")) return { icon: "⚖️", color: CORTEX_THEME.brandPurple, tag: "REVW" };
-  if (r.includes("inv")) return { icon: "🔍", color: CORTEX_THEME.skyBlue, tag: "INVS" };
-  if (r.includes("plan")) return { icon: "📋", color: CORTEX_THEME.neonCyan, tag: "PLAN" };
-  if (r.includes("disc")) return { icon: "🧭", color: CORTEX_THEME.emeraldGreen, tag: "DISC" };
-  return { icon: "🤖", color: CORTEX_THEME.slateMuted, tag: r.slice(0, 4).toUpperCase() || "WORK" };
+function formatTokens(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return String(Math.round(value));
 }
 
-function taskStatusChip(status: string): { icon: string; color: string; tag: string } {
+function formatCost(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0.00";
+  return value >= 0.01 ? value.toFixed(2) : value.toFixed(4);
+}
+
+function sessionRecord(api: any, sessionID?: string): any {
+  if (!sessionID) return undefined;
+  return api.state?.session?.get?.(sessionID) || api.data?.session?.get?.(sessionID);
+}
+
+function sessionStartTime(api: any, sessionID?: string): number | undefined {
+  const created = sessionRecord(api, sessionID)?.time?.created;
+  if (typeof created !== "number" || !Number.isFinite(created) || created <= 0) return undefined;
+  // Older payloads report epoch seconds; the TUI clock works in milliseconds.
+  return created < 1_000_000_000_000 ? created * 1000 : created;
+}
+
+function sessionCostUsd(api: any, sessionID?: string): number | undefined {
+  const cost = sessionRecord(api, sessionID)?.cost;
+  return typeof cost === "number" && Number.isFinite(cost) && cost > 0 ? cost : undefined;
+}
+
+function sessionContextLimit(api: any, sessionID?: string): number | undefined {
+  const model = sessionRecord(api, sessionID)?.model;
+  if (!model?.id || !model?.providerID) return undefined;
+  const providers = api.state?.provider || api.data?.provider;
+  if (!Array.isArray(providers)) return undefined;
+  const limit = providers.find((p: any) => p?.id === model.providerID)?.models?.[model.id]?.limit?.context;
+  return typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? limit : undefined;
+}
+
+function sessionMessages(api: any, sessionID?: string): readonly any[] | undefined {
+  if (!sessionID) return undefined;
+  for (const source of [api.state?.session, api.data?.session, api.session]) {
+    if (!source || typeof source.messages !== "function") continue;
+    try {
+      const messages = source.messages(sessionID);
+      if (Array.isArray(messages)) return messages;
+    } catch {}
+  }
+  return undefined;
+}
+
+// Context window fill comes from the newest assistant message usage, never from the
+// cumulative session totals, which grow with every turn of the conversation.
+function contextTokensUsed(messages: readonly any[] | undefined): number | undefined {
+  if (!messages) return undefined;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const info = messages[i]?.info || messages[i];
+    if (info?.role !== "assistant") continue;
+    const tokens = info?.tokens;
+    if (!tokens) return undefined;
+    const used =
+      (tokens.input || 0) +
+      (tokens.cache?.read || 0) +
+      (tokens.cache?.write || 0) +
+      (tokens.output || 0) +
+      (tokens.reasoning || 0);
+    return used > 0 ? used : undefined;
+  }
+  return undefined;
+}
+
+function loadEtaHistory(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0)
+    .slice(-ETA_HISTORY_LIMIT);
+}
+
+function meanCompletionInterval(stamps: readonly number[]): number | undefined {
+  if (stamps.length < ETA_MIN_SAMPLES) return undefined;
+  const intervals: number[] = [];
+  for (let i = 1; i < stamps.length; i += 1) {
+    const delta = stamps[i] - stamps[i - 1];
+    if (delta > 0) intervals.push(delta);
+  }
+  if (intervals.length === 0) return undefined;
+  const recent = intervals.slice(-ETA_INTERVAL_WINDOW);
+  return recent.reduce((sum, value) => sum + value, 0) / recent.length;
+}
+
+function roleChip(role: string, palette: CortexPalette): { icon: string; color: ColorInput; tag: string } {
+  const r = (role || "").toLowerCase();
+  if (r.includes("orch")) return { icon: "🧠", color: palette.primary, tag: "ORCH" };
+  if (r.includes("impl")) return { icon: "⚡", color: palette.warning, tag: "IMPL" };
+  if (r.includes("rev")) return { icon: "⚖️", color: palette.accent, tag: "REVW" };
+  if (r.includes("inv")) return { icon: "🔍", color: palette.sky, tag: "INVS" };
+  if (r.includes("plan")) return { icon: "📋", color: palette.info, tag: "PLAN" };
+  if (r.includes("disc")) return { icon: "🧭", color: palette.success, tag: "DISC" };
+  return { icon: "🤖", color: palette.textMuted, tag: r.slice(0, 4).toUpperCase() || "WORK" };
+}
+
+function taskStatusChip(status: string, palette: CortexPalette): { icon: string; color: ColorInput; tag: string } {
   switch (status) {
     case "done":
-      return { icon: "✓", color: CORTEX_THEME.emeraldGreen, tag: "DONE" };
+      return { icon: "✓", color: palette.success, tag: "DONE" };
     case "in_progress":
-      return { icon: "⚡", color: CORTEX_THEME.amberGold, tag: "PROG" };
+      return { icon: "⚡", color: palette.warning, tag: "PROG" };
     case "in_review":
-      return { icon: "◆", color: CORTEX_THEME.brandPurple, tag: "REVW" };
+      return { icon: "◆", color: palette.accent, tag: "REVW" };
     case "ready":
-      return { icon: "▶", color: CORTEX_THEME.skyBlue, tag: "RDY " };
+      return { icon: "▶", color: palette.sky, tag: "RDY " };
     case "blocked":
-      return { icon: "✕", color: CORTEX_THEME.roseRed, tag: "BLCK" };
+      return { icon: "✕", color: palette.error, tag: "BLCK" };
     case "superseded":
-      return { icon: "↷", color: CORTEX_THEME.slateMuted, tag: "SPRS" };
+      return { icon: "↷", color: palette.textMuted, tag: "SPRS" };
     case "backlog":
     default:
-      return { icon: "○", color: CORTEX_THEME.slateMuted, tag: "WAIT" };
+      return { icon: "○", color: palette.textMuted, tag: "WAIT" };
   }
 }
 
@@ -428,47 +618,52 @@ function CortexCockpitHeader(props: {
   isExecuting: () => boolean;
   nativeActivity: () => NativeActivity | undefined;
   projectRoot?: string;
+  sessionElapsed?: () => string | undefined;
   textLimit: number;
   spinner: () => string;
   pulse: () => string;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
 }) {
   const projectName = createMemo(() => {
     if (!props.projectRoot) return "";
     return path.basename(props.projectRoot);
   });
+  const palette = resolvePalette(props.theme);
 
   return (
     <box
       flexDirection="column"
       borderStyle="rounded"
-      borderColor={props.isExecuting() ? CORTEX_THEME.amberGold : CORTEX_THEME.brandIndigo}
+      borderColor={props.isExecuting() ? palette.warning : palette.primary}
+      title={props.isExecuting() ? `🧠 CORTEX·IA v2.0 [${props.spinner()} ACTIVO]` : "🧠 CORTEX·IA v2.0 [● STANDBY]"}
+      titleColor={palette.accent}
+      titleAlignment="left"
+      backgroundColor={palette.panel}
       paddingLeft={1}
       paddingRight={1}
     >
-      {/* Brand Title + Pulse Badge */}
-      <box flexDirection="row">
-        <text fg={CORTEX_THEME.brandViolet}>🧠 </text>
-        <text fg={CORTEX_THEME.pureWhite}>CORTEX·IA</text>
-        <text fg={CORTEX_THEME.slateMuted}> v2.0</text>
-        <Show
-          when={props.isExecuting()}
-          fallback={<text fg={CORTEX_THEME.emeraldGreen}> [● STANDBY]</text>}
-        >
-          <text fg={CORTEX_THEME.amberGold}>{` [${props.spinner()} ACTIVO]`}</text>
-        </Show>
-        <text fg={CORTEX_THEME.neonCyan} onMouseDown={() => openWebConsole()} selectable={false}>
-          {" [🌐 Web]"}
-        </text>
-      </box>
-
       {/* Project Root on its own dedicated line to prevent word wrapping */}
       <Show when={projectName()}>
         <box flexDirection="row" marginTop={0}>
-          <text fg={CORTEX_THEME.skyBlue}>📁 </text>
-          <text fg={CORTEX_THEME.skyBlue}>{clipped(projectName(), Math.max(6, props.textLimit - 4))}</text>
+          <text fg={palette.sky}>📁 </text>
+          <text fg={palette.sky}>{clipped(projectName(), Math.max(6, props.textLimit - 4))}</text>
         </box>
       </Show>
+
+      <Show when={props.sessionElapsed?.()}>
+        {(elapsed: () => string) => (
+          <box flexDirection="row" marginTop={0}>
+            <text fg={palette.info}>{"⏱ "}</text>
+            <text fg={palette.sky}>{clipped(`Sesión ${elapsed()}`, Math.max(8, props.textLimit))}</text>
+          </box>
+        )}
+      </Show>
+
+      <box flexDirection="row" marginTop={0}>
+        <text fg={palette.info} onMouseDown={() => openWebConsole()} selectable={false}>
+          {"[🌐 Web]"}
+        </text>
+      </box>
     </box>
   );
 }
@@ -479,13 +674,14 @@ function OperationalKPIHud(props: {
   doneTasks: number;
   attentionCount: number;
   spinner: () => string;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
 }) {
   const isAllZero = () =>
     props.activeExecutions === 0 &&
     props.inReview === 0 &&
     props.doneTasks === 0 &&
     props.attentionCount === 0;
+  const palette = resolvePalette(props.theme);
 
   return (
     <box flexDirection="column" marginTop={1}>
@@ -493,25 +689,25 @@ function OperationalKPIHud(props: {
         when={!isAllZero()}
         fallback={
           <box flexDirection="row">
-            <text fg={CORTEX_THEME.slateMuted}>○ 0 curso · 0 revw · 0 done · 0 alrt</text>
+            <text fg={palette.textMuted}>○ 0 curso · 0 revw · 0 done · 0 alrt</text>
           </box>
         }
       >
         {/* Row 1 */}
         <box flexDirection="row">
-          <text fg={props.activeExecutions > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
+          <text fg={props.activeExecutions > 0 ? palette.warning : palette.textMuted}>
             {`[${props.activeExecutions > 0 ? props.spinner() : "●"} ${props.activeExecutions} CURSO] `}
           </text>
-          <text fg={props.inReview > 0 ? CORTEX_THEME.brandPurple : CORTEX_THEME.slateMuted}>
+          <text fg={props.inReview > 0 ? palette.accent : palette.textMuted}>
             {`[◆ ${props.inReview} REVW]`}
           </text>
         </box>
         {/* Row 2 */}
         <box flexDirection="row" marginTop={0}>
-          <text fg={props.doneTasks > 0 ? CORTEX_THEME.emeraldGreen : CORTEX_THEME.slateMuted}>
+          <text fg={props.doneTasks > 0 ? palette.success : palette.textMuted}>
             {`[✓ ${props.doneTasks} DONE] `}
           </text>
-          <text fg={props.attentionCount > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted}>
+          <text fg={props.attentionCount > 0 ? palette.error : palette.textMuted}>
             {`[${props.attentionCount > 0 ? "✕" : "○"} ${props.attentionCount} ALRT]`}
           </text>
         </box>
@@ -529,26 +725,27 @@ function Section(props: {
   compact?: boolean;
   expanded: () => boolean;
   onToggle: () => void;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
   children: unknown;
 }) {
   const displayTitle = createMemo(() => (props.compact && props.shortTitle ? props.shortTitle : props.title));
   const displayBadge = createMemo(() => (props.compact && props.shortBadge ? props.shortBadge : props.badge));
+  const palette = resolvePalette(props.theme);
 
   return (
     <box flexDirection="column" marginTop={1}>
       <box flexDirection="row" onMouseDown={props.onToggle}>
-        <text fg={props.expanded() ? CORTEX_THEME.neonCyan : CORTEX_THEME.slateMuted} selectable={false}>
+        <text fg={props.expanded() ? palette.info : palette.textMuted} selectable={false}>
           {props.expanded() ? "▼ " : "▶ "}
         </text>
         <Show when={props.icon}>
-          <text fg={CORTEX_THEME.brandViolet}>{`${props.icon} `}</text>
+          <text fg={palette.accentAlt}>{`${props.icon} `}</text>
         </Show>
-        <text fg={CORTEX_THEME.pureWhite} selectable={false}>
+        <text fg={palette.text} selectable={false}>
           {displayTitle()}
         </text>
         <Show when={displayBadge()}>
-          <text fg={CORTEX_THEME.skyBlue}>{` [${displayBadge()}]`}</text>
+          <text fg={palette.sky}>{` [${displayBadge()}]`}</text>
         </Show>
       </box>
       <Show when={props.expanded()}>{props.children}</Show>
@@ -565,7 +762,7 @@ function MultiColorProgressBar(props: {
   width?: number;
   compact: boolean;
   textLimit: number;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
 }) {
   const w = createMemo(() => Math.max(3, Math.min(props.width || 14, props.textLimit - (props.compact ? 8 : 14))));
   const total = createMemo(() => Math.max(props.total, 1));
@@ -578,29 +775,30 @@ function MultiColorProgressBar(props: {
   const waiting = createMemo(() =>
     Math.max(0, props.total - props.done - props.inReview - props.inProgress - (props.blocked || 0))
   );
+  const palette = resolvePalette(props.theme);
 
   return (
     <box flexDirection="column" marginTop={1}>
       <box flexDirection="row">
-        <text fg={CORTEX_THEME.neonCyan}>{props.compact ? "D:" : "DAG: "}</text>
-        <text fg={CORTEX_THEME.emeraldGreen}>{"█".repeat(doneW())}</text>
-        <text fg={CORTEX_THEME.brandPurple}>{"▓".repeat(revW())}</text>
-        <text fg={CORTEX_THEME.amberGold}>{"▒".repeat(progW())}</text>
+        <text fg={palette.info}>{props.compact ? "D:" : "DAG: "}</text>
+        <text fg={palette.success}>{"█".repeat(doneW())}</text>
+        <text fg={palette.accent}>{"▓".repeat(revW())}</text>
+        <text fg={palette.warning}>{"▒".repeat(progW())}</text>
         <Show when={blckW() > 0}>
-          <text fg={CORTEX_THEME.roseRed}>{"▓".repeat(blckW())}</text>
+          <text fg={palette.error}>{"▓".repeat(blckW())}</text>
         </Show>
-        <text fg={CORTEX_THEME.slateBorder}>{"░".repeat(emptyW())}</text>
-        <text fg={CORTEX_THEME.pureWhite}>{` ${pct()}%`}</text>
-        <text fg={CORTEX_THEME.slateMuted}>{props.compact ? "" : ` (${props.done}/${props.total})`}</text>
+        <text fg={palette.border}>{"░".repeat(emptyW())}</text>
+        <text fg={palette.text}>{` ${pct()}%`}</text>
+        <text fg={palette.textMuted}>{props.compact ? "" : ` (${props.done}/${props.total})`}</text>
       </box>
       <box flexDirection="row">
-        <text fg={CORTEX_THEME.emeraldGreen}>{`✓${props.done} `}</text>
-        <text fg={CORTEX_THEME.brandPurple}>{`◆${props.inReview} `}</text>
-        <text fg={CORTEX_THEME.amberGold}>{`●${props.inProgress} `}</text>
+        <text fg={palette.success}>{`✓${props.done} `}</text>
+        <text fg={palette.accent}>{`◆${props.inReview} `}</text>
+        <text fg={palette.warning}>{`●${props.inProgress} `}</text>
         <Show when={(props.blocked || 0) > 0}>
-          <text fg={CORTEX_THEME.roseRed}>{`✕${props.blocked} `}</text>
+          <text fg={palette.error}>{`✕${props.blocked} `}</text>
         </Show>
-        <text fg={CORTEX_THEME.slateMuted}>{`○${waiting()}`}</text>
+        <text fg={palette.textMuted}>{`○${waiting()}`}</text>
       </box>
     </box>
   );
@@ -612,7 +810,7 @@ function ActiveTaskHero(props: {
   now: () => number;
   spinner: () => string;
   textLimit: number;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
 }) {
   const elapsed = createMemo(() => {
     const updated = Date.parse(props.task.updated_at);
@@ -627,6 +825,7 @@ function ActiveTaskHero(props: {
     const diff = exp - props.now();
     return diff > 0 ? formatDuration(diff) : "expirado";
   });
+  const palette = resolvePalette(props.theme);
 
   return (
     <box
@@ -635,26 +834,25 @@ function ActiveTaskHero(props: {
       paddingLeft={1}
       paddingRight={1}
       borderStyle="rounded"
-      borderColor={CORTEX_THEME.amberGold}
+      borderColor={palette.warning}
+      title={clipped(`${props.spinner()} ⚡ TAREA EN EJECUCIÓN`, props.textLimit)}
+      titleColor={palette.warning}
+      titleAlignment="left"
+      backgroundColor={palette.panel}
     >
-      {/* Header Tag */}
-      <box flexDirection="row">
-        <text fg={CORTEX_THEME.amberGold}>{clipped(`${props.spinner()} ⚡ TAREA EN EJECUCIÓN`, props.textLimit)}</text>
-      </box>
-
       {/* Task ID & Title */}
       <box flexDirection="row">
-        <text fg={CORTEX_THEME.skyBlue}>🎯 </text>
-        <text fg={CORTEX_THEME.pureWhite}>{clipped(`${props.task.task_id} · ${props.task.title}`, props.textLimit - 3)}</text>
+        <text fg={palette.sky}>🎯 </text>
+        <text fg={palette.text}>{clipped(`${props.task.task_id} · ${props.task.title}`, props.textLimit - 3)}</text>
       </box>
 
       {/* Metrics Row: Elapsed + Lease */}
       <box flexDirection="row">
-        <text fg={CORTEX_THEME.slateMuted}>  ⏱ </text>
-        <text fg={CORTEX_THEME.amberGold}>{`+${elapsed()} `}</text>
+        <text fg={palette.textMuted}>  ⏱ </text>
+        <text fg={palette.warning}>{`+${elapsed()} `}</text>
         <Show when={ttlRemaining()}>
           {(ttl: () => string) => (
-            <text fg={ttl() === "expirado" ? CORTEX_THEME.roseRed : CORTEX_THEME.skyBlue}>
+            <text fg={ttl() === "expirado" ? palette.error : palette.sky}>
               {`│ 🛡 TTL: ${ttl()}${props.task.lease_count ? ` (${props.task.lease_count} lk)` : ""}`}
             </text>
           )}
@@ -666,13 +864,13 @@ function ActiveTaskHero(props: {
         <Show
           when={props.activeDelegation}
           fallback={
-            <text fg={CORTEX_THEME.brandPurple}>
+            <text fg={palette.accent}>
               {clipped(`  📋 Tarea durable${props.task.owner ? ` (${props.task.owner})` : ""}`, props.textLimit)}
             </text>
           }
         >
           {(del: () => DelegationJob) => (
-            <text fg={CORTEX_THEME.neonCyan}>
+            <text fg={palette.info}>
               {`  🤖 AGY ${del().transport || "direct"}${del().pane_id ? ` · ${del().pane_id}` : ""}${del().attempt ? ` · int #${del().attempt}` : ""}`}
             </text>
           )}
@@ -685,7 +883,7 @@ function ActiveTaskHero(props: {
         marginTop={0}
         onMouseDown={() => openWebConsole(props.task.board_id, props.task.task_id)}
       >
-        <text fg={CORTEX_THEME.neonCyan} selectable={false}>
+        <text fg={palette.info} selectable={false}>
           {"  [ 🌐 Ver detalle en Web ]"}
         </text>
       </box>
@@ -696,15 +894,16 @@ function ActiveTaskHero(props: {
 function TaskRows(props: {
   tasks: DashboardTask[];
   spinner: () => string;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
   compact?: boolean;
   textLimit: number;
 }) {
+  const palette = resolvePalette(props.theme);
   return (
-    <Show when={props.tasks.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  ○ Sin tareas en cola</text>}>
+    <Show when={props.tasks.length > 0} fallback={<text fg={palette.textMuted}>  ○ Sin tareas en cola</text>}>
       <For each={props.tasks.slice(0, MAX_VISIBLE_ROWS)}>
         {(task) => {
-          const chip = taskStatusChip(task.status);
+          const chip = taskStatusChip(task.status, palette);
           const isProg = task.status === "in_progress";
           return (
             <box flexDirection="column" marginTop={0}>
@@ -713,11 +912,11 @@ function TaskRows(props: {
                   {`  ${isProg ? props.spinner() : chip.icon} `}
                 </text>
                 <text fg={chip.color}>{`[${chip.tag}] `}</text>
-                <text fg={isProg ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight}>
+                <text fg={isProg ? palette.text : palette.textSoft}>
                   {clipped(task.task_id, Math.max(8, props.textLimit - 14))}
                 </text>
                 <text
-                  fg={CORTEX_THEME.neonCyan}
+                  fg={palette.info}
                   onMouseDown={() => openWebConsole(task.board_id, task.task_id)}
                   selectable={false}
                 >
@@ -725,7 +924,7 @@ function TaskRows(props: {
                 </text>
               </box>
               <box flexDirection="row">
-                <text fg={CORTEX_THEME.slateMuted}>
+                <text fg={palette.textMuted}>
                   {`     ${clipped(task.title, Math.max(8, props.textLimit - 5))}${task.owner ? ` · ${clipped(task.owner, 6)}` : ""}${task.lease_count ? ` · 🛡 ${task.lease_count}lk` : ""}`}
                 </text>
               </box>
@@ -741,26 +940,27 @@ function DelegationRows(props: {
   jobs: DelegationJob[];
   spinner: () => string;
   now: () => number;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
   compact?: boolean;
   textLimit: number;
 }) {
+  const palette = resolvePalette(props.theme);
   return (
-    <Show when={props.jobs.length > 0} fallback={<text fg={CORTEX_THEME.slateMuted}>  ○ Sin workers activos</text>}>
+    <Show when={props.jobs.length > 0} fallback={<text fg={palette.textMuted}>  ○ Sin workers activos</text>}>
       <For each={props.jobs.slice(0, MAX_VISIBLE_ROWS)}>
         {(job) => {
           const isRunning = ["running", "starting", "accepted"].includes(job.status);
-          const chip = roleChip(job.role || "");
+          const chip = roleChip(job.role || "", palette);
           const elapsed = createMemo(() => {
             if (!isRunning || !job.updated_at) return "";
             const t = Date.parse(job.updated_at);
             return Number.isFinite(t) ? ` +${formatDuration(props.now() - t)}` : "";
           });
           const statusCol = isRunning
-            ? CORTEX_THEME.amberGold
+            ? palette.warning
             : job.status === "succeeded"
-            ? CORTEX_THEME.emeraldGreen
-            : CORTEX_THEME.roseRed;
+            ? palette.success
+            : palette.error;
 
           return (
             <box flexDirection="column" marginTop={0}>
@@ -769,13 +969,13 @@ function DelegationRows(props: {
                   {`  ${isRunning ? props.spinner() : job.status === "succeeded" ? "✓" : "✕"} `}
                 </text>
                 <text fg={chip.color}>{`${chip.icon} [${chip.tag}] `}</text>
-                <text fg={isRunning ? CORTEX_THEME.pureWhite : CORTEX_THEME.slateLight}>
+                <text fg={isRunning ? palette.text : palette.textSoft}>
                   {clipped(job.role || "worker", Math.max(6, props.textLimit - 12))}
                 </text>
                 <text fg={statusCol}>{elapsed()}</text>
               </box>
               <box flexDirection="row">
-                <text fg={CORTEX_THEME.slateMuted}>
+                <text fg={palette.textMuted}>
                   {clipped(`     ${shortID(job.job_id)} · ${job.transport || "direct"}${job.pane_id ? ` · ${job.pane_id}` : ""}${job.attempt ? ` · int #${job.attempt}` : ""}`, props.textLimit)}
                 </text>
               </box>
@@ -787,17 +987,18 @@ function DelegationRows(props: {
   );
 }
 
-function AttentionRows(props: { items: AttentionItem[]; theme: TuiThemeCurrent; compact?: boolean; textLimit: number }) {
+function AttentionRows(props: { items: AttentionItem[]; theme?: TuiThemeCurrent; compact?: boolean; textLimit: number }) {
+  const palette = resolvePalette(props.theme);
   return (
-    <Show when={props.items.length > 0} fallback={<text fg={CORTEX_THEME.emeraldGreen}>  ✓ Sin alertas pendientes</text>}>
+    <Show when={props.items.length > 0} fallback={<text fg={palette.success}>  ✓ Sin alertas pendientes</text>}>
       <For each={props.items.slice(0, MAX_VISIBLE_ROWS)}>
         {(item) => (
           <box flexDirection="column">
             <box flexDirection="row">
-              <text fg={CORTEX_THEME.roseRed}>{`  ✕ `}</text>
-              <text fg={CORTEX_THEME.pureWhite}>{clipped(item.title, Math.max(8, props.textLimit - 4))}</text>
+              <text fg={palette.error}>{`  ✕ `}</text>
+              <text fg={palette.text}>{clipped(item.title, Math.max(8, props.textLimit - 4))}</text>
             </box>
-              <text fg={CORTEX_THEME.slateMuted}>{`     ${clipped(item.detail, Math.max(8, props.textLimit - 5))}`}</text>
+              <text fg={palette.textMuted}>{`     ${clipped(item.detail, Math.max(8, props.textLimit - 5))}`}</text>
           </box>
         )}
       </For>
@@ -809,12 +1010,14 @@ function OperationalBottomDashboard(props: {
   snapshot: UISnapshot;
   jobs: DelegationJob[];
   stale: boolean;
+  eta: () => Tier1Eta;
   now: () => number;
   spinner: () => string;
   pulse: () => string;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
   layout: SidebarLayout;
 }) {
+  const palette = resolvePalette(props.theme);
   const succeededJobs = createMemo(
     () => props.jobs.filter((j) => j.status === "succeeded").length
   );
@@ -831,6 +1034,24 @@ function OperationalBottomDashboard(props: {
     props.snapshot.tasks.reduce((sum, t) => sum + (t.lease_count || 0), 0)
   );
   const blockedTasks = createMemo(() => props.snapshot.summary.blocked || 0);
+
+  const etaLabel = createMemo(() => {
+    const eta = props.eta();
+    const suffix = eta.backlog > 0 ? ` · ${eta.backlog} backlog` : "";
+    if (props.layout.compact) {
+      const shortSuffix = eta.backlog > 0 ? ` +${eta.backlog}b` : "";
+      if (eta.remaining === 0) return `⏳ listo${shortSuffix}`;
+      if (eta.estimateMs === undefined) return `⏳ est… (${eta.remaining})${shortSuffix}`;
+      return `⏳ ${formatDuration(eta.estimateMs)} (${eta.remaining})${shortSuffix}`;
+    }
+    if (eta.remaining === 0) return `⏳ ETA: tablero completo${suffix}`;
+    if (eta.estimateMs === undefined) return `⏳ ETA: estimando (${eta.remaining} pend)${suffix}`;
+    return `⏳ ETA: ${formatDuration(eta.estimateMs)} · ${eta.remaining} pend${suffix}`;
+  });
+
+  const etaColor = createMemo(() =>
+    props.eta().remaining === 0 ? palette.success : palette.sky
+  );
 
   const successRate = createMemo(() => {
     const closed = succeededJobs() + failedJobs();
@@ -856,11 +1077,11 @@ function OperationalBottomDashboard(props: {
 
   const healthColor = createMemo(() => {
     const rate = successRate();
-    if (rate === undefined) return CORTEX_THEME.slateMuted;
-    if (rate >= 90) return CORTEX_THEME.emeraldGreen;
-    if (rate >= 70) return CORTEX_THEME.neonCyan;
-    if (rate >= 50) return CORTEX_THEME.amberGold;
-    return CORTEX_THEME.roseRed;
+    if (rate === undefined) return palette.textMuted;
+    if (rate >= 90) return palette.success;
+    if (rate >= 70) return palette.info;
+    if (rate >= 50) return palette.warning;
+    return palette.error;
   });
 
   const hasMetrics = createMemo(
@@ -874,15 +1095,28 @@ function OperationalBottomDashboard(props: {
       paddingLeft={1}
       paddingRight={1}
       borderStyle="rounded"
-      borderColor={failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.brandIndigo}
+      borderColor={failedJobs() > 0 ? palette.error : palette.primary}
+      title={props.layout.compact ? "🧠 CONTROL" : "🧠 CONTROL MATRIX ◈"}
+      titleColor={palette.accent}
+      titleAlignment="left"
+      backgroundColor={palette.panel}
     >
-      {/* Panel Header */}
+      {/* Synapse Pulse / Status Line */}
       <box flexDirection="row">
-        <text fg={CORTEX_THEME.brandViolet}>🧠 </text>
-        <text fg={CORTEX_THEME.pureWhite}>{props.layout.compact ? "CONTROL " : "CONTROL MATRIX "}</text>
-        <text fg={CORTEX_THEME.neonCyan}>◈</text>
+        <Show
+          when={activeJobs() > 0}
+          fallback={
+            <text fg={palette.success}>
+              {`  ${props.pulse()} SYNAPSE: SINCRONIZADO`}
+            </text>
+          }
+        >
+          <text fg={palette.warning}>
+            {`  ${props.spinner()} SYNAPSE: MOTOR ACTIVO`}
+          </text>
+        </Show>
         <text
-          fg={CORTEX_THEME.neonCyan}
+          fg={palette.info}
           onMouseDown={() => openWebConsole(props.snapshot.tasks[0]?.board_id)}
           selectable={false}
         >
@@ -890,28 +1124,12 @@ function OperationalBottomDashboard(props: {
         </text>
       </box>
 
-      {/* Synapse Pulse / Status Line */}
-      <box flexDirection="row">
-        <Show
-          when={activeJobs() > 0}
-          fallback={
-            <text fg={CORTEX_THEME.emeraldGreen}>
-              {`  ${props.pulse()} SYNAPSE: SINCRONIZADO`}
-            </text>
-          }
-        >
-          <text fg={CORTEX_THEME.amberGold}>
-            {`  ${props.spinner()} SYNAPSE: MOTOR ACTIVO`}
-          </text>
-        </Show>
-      </box>
-
       {/* Grid: Pills only when metrics exist, otherwise clean standby indicator */}
       <Show
         when={hasMetrics()}
         fallback={
           <box flexDirection="row">
-            <text fg={CORTEX_THEME.slateMuted}>  Standby · 0 ejecuciones</text>
+            <text fg={palette.textMuted}>  Standby · 0 ejecuciones</text>
           </box>
         }
       >
@@ -919,31 +1137,31 @@ function OperationalBottomDashboard(props: {
           when={!props.layout.compact}
           fallback={
             <box flexDirection="row">
-              <text fg={succeededJobs() > 0 ? CORTEX_THEME.emeraldGreen : CORTEX_THEME.slateMuted}>{`✓${succeededJobs()} `}</text>
-              <text fg={failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted}>{`✕${failedJobs()} `}</text>
-              <text fg={activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>{`●${activeJobs()} `}</text>
-              <text fg={totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted}>{`🛡${totalLeases()}`}</text>
+              <text fg={succeededJobs() > 0 ? palette.success : palette.textMuted}>{`✓${succeededJobs()} `}</text>
+              <text fg={failedJobs() > 0 ? palette.error : palette.textMuted}>{`✕${failedJobs()} `}</text>
+              <text fg={activeJobs() > 0 ? palette.warning : palette.textMuted}>{`●${activeJobs()} `}</text>
+              <text fg={totalLeases() > 0 ? palette.sky : palette.textMuted}>{`🛡${totalLeases()}`}</text>
               <Show when={blockedTasks() > 0}>
-                <text fg={CORTEX_THEME.roseRed}>{` ✕${blockedTasks()}b`}</text>
+                <text fg={palette.error}>{` ✕${blockedTasks()}b`}</text>
               </Show>
             </box>
           }
         >
           <box flexDirection="row">
-            <text fg={CORTEX_THEME.emeraldGreen}>{`[ ✓ ${succeededJobs()} ÉXITO ] `}</text>
-            <text fg={failedJobs() > 0 ? CORTEX_THEME.roseRed : CORTEX_THEME.slateMuted}>
+            <text fg={palette.success}>{`[ ✓ ${succeededJobs()} ÉXITO ] `}</text>
+            <text fg={failedJobs() > 0 ? palette.error : palette.textMuted}>
               {`[ ✕ ${failedJobs()} FALLO ]`}
             </text>
           </box>
           <box flexDirection="row">
-            <text fg={activeJobs() > 0 ? CORTEX_THEME.amberGold : CORTEX_THEME.slateMuted}>
+            <text fg={activeJobs() > 0 ? palette.warning : palette.textMuted}>
               {`[ ${activeJobs() > 0 ? props.spinner() : "●"} ${activeJobs()} CURSO ] `}
             </text>
-            <text fg={totalLeases() > 0 ? CORTEX_THEME.skyBlue : CORTEX_THEME.slateMuted}>
+            <text fg={totalLeases() > 0 ? palette.sky : palette.textMuted}>
               {`[ 🛡 ${totalLeases()} LOCKS ] `}
             </text>
             <Show when={blockedTasks() > 0}>
-              <text fg={CORTEX_THEME.roseRed}>{`[ ✕ ${blockedTasks()} BLCK ]`}</text>
+              <text fg={palette.error}>{`[ ✕ ${blockedTasks()} BLCK ]`}</text>
             </Show>
           </box>
         </Show>
@@ -951,35 +1169,41 @@ function OperationalBottomDashboard(props: {
 
       {/* Micro Medidor de Salud Operativa */}
       <box flexDirection="row">
-        <text fg={CORTEX_THEME.slateMuted}>Salud: </text>
+        <text fg={palette.textMuted}>Salud: </text>
         <Show
           when={successRate() !== undefined}
-          fallback={<text fg={CORTEX_THEME.slateMuted}>○ standby</text>}
+          fallback={<text fg={palette.textMuted}>○ standby</text>}
         >
           <text fg={healthColor()}>{healthBars().filled}</text>
-          <text fg={CORTEX_THEME.slateBorder}>{healthBars().empty}</text>
+          <text fg={palette.border}>{healthBars().empty}</text>
           <text fg={healthColor()}>{` ${successRate()}%`}</text>
         </Show>
       </box>
 
       {/* Autoridad SQLite y DAG */}
       <box flexDirection="row">
-        <text fg={CORTEX_THEME.slateMuted}>
+        <text fg={palette.textMuted}>
           {props.layout.compact ? "Autoridad: SQLite" : `📋 DAG: ${doneTasks()}/${totalTasks()} · Autoridad: SQLite`}
         </text>
       </box>
+
+      <Show when={totalTasks() > 0}>
+        <box flexDirection="row">
+          <text fg={etaColor()}>{etaLabel()}</text>
+        </box>
+      </Show>
 
       {/* Frescura de Datos / Telemetría */}
       <box flexDirection="row">
         <Show
           when={props.stale}
           fallback={
-            <text fg={CORTEX_THEME.emeraldGreen}>
+            <text fg={palette.success}>
               {props.layout.compact ? "🟢 En vivo" : `🟢 En vivo · Sync hace ${syncAgeSec()}s`}
             </text>
           }
         >
-          <text fg={CORTEX_THEME.amberGold}>
+          <text fg={palette.warning}>
             {props.layout.compact ? "🟡 Desfasado" : `🟡 Snapshot desfasado (+${syncAgeSec()}s)`}
           </text>
         </Show>
@@ -994,6 +1218,8 @@ export function SidebarStatus(props: {
   snapshot: () => UISnapshot;
   jobs: () => DelegationJob[];
   snapshotError: () => string;
+  sessionElapsed: () => string | undefined;
+  eta: () => Tier1Eta;
   now: () => number;
   spinner: () => string;
   pulse: () => string;
@@ -1003,10 +1229,11 @@ export function SidebarStatus(props: {
   toggleTasks: () => void;
   toggleDelegations: () => void;
   toggleAttention: () => void;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
 }) {
   const [rootWidth, setRootWidth] = createSignal(0);
   const layout = createMemo(() => sidebarLayout(rootWidth()));
+  const palette = resolvePalette(props.theme);
   const attention = createMemo(() => attentionItems(props.snapshot(), props.snapshotError()));
   const counts = createMemo(() => operationalCounts(props.snapshot(), props.snapshotError()));
   const stale = createMemo(() => {
@@ -1057,6 +1284,7 @@ export function SidebarStatus(props: {
         isExecuting={isExecuting}
         nativeActivity={props.nativeActivity}
         projectRoot={props.snapshot().project_root}
+        sessionElapsed={props.sessionElapsed}
         textLimit={layout().textLimit}
         spinner={props.spinner}
         pulse={props.pulse}
@@ -1064,23 +1292,23 @@ export function SidebarStatus(props: {
       />
 
       <Show when={!props.scopeReady()}>
-        <text fg={CORTEX_THEME.amberGold} marginTop={1}>Conversación no disponible · esperando metadatos</text>
+        <text fg={palette.warning} marginTop={1}>Conversación no disponible · esperando metadatos</text>
       </Show>
 
       <Show when={props.scopeReady() && !props.snapshot().generated_at && !props.snapshotError()}>
-        <text fg={CORTEX_THEME.slateMuted} marginTop={1}>Cargando estado de la conversación…</text>
+        <text fg={palette.textMuted} marginTop={1}>Cargando estado de la conversación…</text>
       </Show>
 
       <Show when={props.snapshotError()}>
-        <text fg={CORTEX_THEME.roseRed} marginTop={1}>No se pudo actualizar · datos no confirmados</text>
+        <text fg={palette.error} marginTop={1}>No se pudo actualizar · datos no confirmados</text>
       </Show>
       <box flexDirection="row" marginTop={0}>
         <text fg={
           props.nativeActivity() === "busy"
-            ? CORTEX_THEME.amberGold
+            ? palette.warning
             : props.nativeActivity() === "idle"
-            ? CORTEX_THEME.emeraldGreen
-            : CORTEX_THEME.slateMuted
+            ? palette.success
+            : palette.textMuted
         }>
           {props.nativeActivity() === "busy"
             ? `${props.spinner()} OpenCode: ocupado`
@@ -1180,6 +1408,7 @@ export function SidebarStatus(props: {
           snapshot={props.snapshot()}
           jobs={props.jobs()}
           stale={stale()}
+          eta={props.eta}
           now={props.now}
           spinner={props.spinner}
           pulse={props.pulse}
@@ -1191,35 +1420,107 @@ export function SidebarStatus(props: {
   );
 }
 
+function SidebarFooterMetrics(props: { metrics: () => SidebarMetrics; theme?: TuiThemeCurrent }) {
+  const dimensions = useTerminalDimensions();
+  const contextPct = createMemo(() => {
+    const metrics = props.metrics();
+    if (metrics.tokensUsed === undefined || metrics.tokenLimit === undefined) return undefined;
+    return Math.min(100, Math.max(0, Math.round((metrics.tokensUsed / metrics.tokenLimit) * 100)));
+  });
+
+  // The sidebar strip is narrower than the terminal, so narrow terminals get fewer gauge segments.
+  const gaugeSegments = createMemo(() => (dimensions().width < 96 ? 6 : 10));
+  const contextGauge = createMemo(() => {
+    const pct = contextPct();
+    if (pct === undefined) return undefined;
+    const segments = gaugeSegments();
+    const filled = Math.max(0, Math.min(segments, Math.round((pct / 100) * segments)));
+    return { filled: "█".repeat(filled), empty: "░".repeat(segments - filled) };
+  });
+
+  const palette = resolvePalette(props.theme);
+
+  const contextColor = createMemo(() => {
+    const pct = contextPct();
+    if (pct === undefined) return palette.textMuted;
+    if (pct >= 85) return palette.error;
+    if (pct >= 60) return palette.warning;
+    return palette.success;
+  });
+
+  const visible = createMemo(() => {
+    const metrics = props.metrics();
+    return Boolean(metrics.elapsed) || metrics.tokensUsed !== undefined || metrics.cost !== undefined;
+  });
+
+  return (
+    <Show when={visible()}>
+      <box flexDirection="row" paddingLeft={1} paddingRight={1}>
+        <Show when={props.metrics().elapsed}>
+          {(elapsed: () => string) => (
+            <box flexDirection="row">
+              <text fg={palette.info}>{"⏱ "}</text>
+              <text fg={palette.sky}>{elapsed()}</text>
+            </box>
+          )}
+        </Show>
+        <Show when={props.metrics().tokensUsed !== undefined}>
+          <text fg={palette.border}>{" │ "}</text>
+          <Show
+            when={contextGauge()}
+            fallback={<text fg={palette.sky}>{`◆ ${formatTokens(props.metrics().tokensUsed!)} tok`}</text>}
+          >
+            {(gauge: () => { filled: string; empty: string }) => (
+              <box flexDirection="row">
+                <text fg={contextColor()}>{"◆ "}</text>
+                <text fg={contextColor()}>{gauge().filled}</text>
+                <text fg={palette.border}>{gauge().empty}</text>
+                <text fg={contextColor()}>{` ${contextPct()}%`}</text>
+                <text fg={palette.border}>{" · "}</text>
+                <text fg={palette.sky}>{formatTokens(props.metrics().tokensUsed!)}</text>
+              </box>
+            )}
+          </Show>
+        </Show>
+        <Show when={props.metrics().cost !== undefined}>
+          <text fg={palette.border}>{" │ "}</text>
+          <text fg={palette.warning}>{`$ ${formatCost(props.metrics().cost!)}`}</text>
+        </Show>
+      </box>
+    </Show>
+  );
+}
+
 function HomeBottomStatus(props: {
   snapshot: () => UISnapshot;
   jobs: () => DelegationJob[];
   spinner: () => string;
   snapshotError: () => string;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
 }) {
   const activeTask = createMemo(() => props.snapshot().tasks.find((t) => t.status === "in_progress"));
   const counts = createMemo(() => operationalCounts(props.snapshot(), props.snapshotError()));
   const visible = createMemo(() => counts().active > 0 || counts().review > 0 || counts().attention > 0);
+  const palette = resolvePalette(props.theme);
 
   return (
     <Show when={visible()}>
       <box paddingLeft={1} paddingRight={1} flexDirection="row">
-        <text fg={CORTEX_THEME.brandViolet}>🧠 </text>
-        <text fg={CORTEX_THEME.pureWhite}>CORTEX</text>
-        <text fg={CORTEX_THEME.neonCyan}>·</text>
-        <text fg={CORTEX_THEME.skyBlue}>IA </text>
-        <text fg={CORTEX_THEME.slateBorder}>│ </text>
+        <text fg={palette.accentAlt}>🧠 </text>
+        <text fg={palette.text}>CORTEX</text>
+        <text fg={palette.info}>·</text>
+        <text fg={palette.sky}>IA </text>
+        <text fg={palette.border}>│ </text>
         <Show
           when={activeTask()}
           fallback={
             <box flexDirection="row">
-              <text fg={CORTEX_THEME.amberGold}>{`● ${counts().active} en curso`}</text>
-              <text fg={CORTEX_THEME.slateBorder}> · </text>
-              <text fg={CORTEX_THEME.brandPurple}>{`◆ ${counts().review} rev`}</text>
+              <text fg={palette.warning}>{`● ${counts().active} en curso`}</text>
+              <text fg={palette.border}> · </text>
+              <text fg={palette.accent}>{`◆ ${counts().review} rev`}</text>
               <Show when={counts().attention > 0}>
-                <text fg={CORTEX_THEME.slateBorder}> · </text>
-                <text fg={CORTEX_THEME.roseRed}>{`✕ ${counts().attention} alert`}</text>
+                <text fg={palette.border}> · </text>
+                <text fg={palette.error}>{`✕ ${counts().attention} alert`}</text>
               </Show>
             </box>
           }
@@ -1229,10 +1530,10 @@ function HomeBottomStatus(props: {
               flexDirection="row"
               onMouseDown={() => openWebConsole(task().board_id, task().task_id)}
             >
-              <text fg={CORTEX_THEME.amberGold}>{`[${props.spinner()} ${task().task_id}] `}</text>
-              <text fg={CORTEX_THEME.pureWhite}>{clipped(task().title, 20)}</text>
-              <text fg={CORTEX_THEME.slateMuted}>{` · ${counts().active} activos`}</text>
-              <text fg={CORTEX_THEME.neonCyan}>{" [🌐]"}</text>
+              <text fg={palette.warning}>{`[${props.spinner()} ${task().task_id}] `}</text>
+              <text fg={palette.text}>{clipped(task().title, 20)}</text>
+              <text fg={palette.textMuted}>{` · ${counts().active} activos`}</text>
+              <text fg={palette.info}>{" [🌐]"}</text>
             </box>
           )}
         </Show>
@@ -1247,21 +1548,22 @@ function SessionKanbanPanel(props: {
   now: () => number;
   spinner: () => string;
   pulse: () => string;
-  theme: TuiThemeCurrent;
+  theme?: TuiThemeCurrent;
 }) {
   const tasks = createMemo(() => props.snapshot().tasks);
   const readyTasks = createMemo(() => tasks().filter((t) => t.status === "ready"));
   const inProgressTasks = createMemo(() => tasks().filter((t) => t.status === "in_progress"));
   const inReviewTasks = createMemo(() => tasks().filter((t) => t.status === "in_review"));
   const blockedTasks = createMemo(() => tasks().filter((t) => t.status === "blocked"));
+  const palette = resolvePalette(props.theme);
 
   return (
     <box flexDirection="column" padding={1}>
       <box flexDirection="row" marginBottom={1}>
-        <text fg={CORTEX_THEME.neonCyan} bold={true}>
+        <text fg={palette.info} bold={true}>
           {`◈ CORTEX · IA KANBAN DECK [${props.pulse()}] `}
         </text>
-        <text fg={CORTEX_THEME.slateMuted}>
+        <text fg={palette.textMuted}>
           {`(${tasks().length} tareas · ${props.jobs().length} workers)`}
         </text>
       </box>
@@ -1270,16 +1572,16 @@ function SessionKanbanPanel(props: {
       <box flexDirection="row">
         {/* Columna: En Curso */}
         <box flexDirection="column" width={26} marginRight={1}>
-          <text fg={CORTEX_THEME.amberGold} bold={true}>
+          <text fg={palette.warning} bold={true}>
             {`⚡ EN CURSO (${inProgressTasks().length})`}
           </text>
           <For each={inProgressTasks()}>
             {(task) => (
               <box flexDirection="column" marginTop={1}>
-                <text fg={CORTEX_THEME.pureWhite} bold={true}>{`● ${task.task_id}`}</text>
-                <text fg={CORTEX_THEME.slateLight}>{clipped(task.title, 22)}</text>
+                <text fg={palette.text} bold={true}>{`● ${task.task_id}`}</text>
+                <text fg={palette.textSoft}>{clipped(task.title, 22)}</text>
                 <Show when={task.owner}>
-                  <text fg={CORTEX_THEME.neonCyan}>{`Claim: ${clipped(task.owner!, 14)}`}</text>
+                  <text fg={palette.info}>{`Claim: ${clipped(task.owner!, 14)}`}</text>
                 </Show>
               </box>
             )}
@@ -1288,15 +1590,15 @@ function SessionKanbanPanel(props: {
 
         {/* Columna: En Revisión */}
         <box flexDirection="column" width={26} marginRight={1}>
-          <text fg={CORTEX_THEME.brandPurple} bold={true}>
+          <text fg={palette.accent} bold={true}>
             {`⚖ EN REVISIÓN (${inReviewTasks().length})`}
           </text>
           <For each={inReviewTasks()}>
             {(task) => (
               <box flexDirection="column" marginTop={1}>
-                <text fg={CORTEX_THEME.pureWhite} bold={true}>{`◆ ${task.task_id}`}</text>
-                <text fg={CORTEX_THEME.slateLight}>{clipped(task.title, 22)}</text>
-                <text fg={CORTEX_THEME.amberGold}>esperando reviewer</text>
+                <text fg={palette.text} bold={true}>{`◆ ${task.task_id}`}</text>
+                <text fg={palette.textSoft}>{clipped(task.title, 22)}</text>
+                <text fg={palette.warning}>esperando reviewer</text>
               </box>
             )}
           </For>
@@ -1304,22 +1606,22 @@ function SessionKanbanPanel(props: {
 
         {/* Columna: Bloqueadas & Listas */}
         <box flexDirection="column" width={26}>
-          <text fg={CORTEX_THEME.emeraldGreen} bold={true}>
+          <text fg={palette.success} bold={true}>
             {`✓ LISTAS (${readyTasks().length}) / ✕ BLQ (${blockedTasks().length})`}
           </text>
           <For each={blockedTasks()}>
             {(task) => (
               <box flexDirection="column" marginTop={1}>
-                <text fg={CORTEX_THEME.roseRed} bold={true}>{`✕ ${task.task_id}`}</text>
-                <text fg={CORTEX_THEME.roseRed}>{clipped(task.title, 22)}</text>
+                <text fg={palette.error} bold={true}>{`✕ ${task.task_id}`}</text>
+                <text fg={palette.error}>{clipped(task.title, 22)}</text>
               </box>
             )}
           </For>
           <For each={readyTasks().slice(0, 3)}>
             {(task) => (
               <box flexDirection="column" marginTop={1}>
-                <text fg={CORTEX_THEME.skyBlue} bold={true}>{`○ ${task.task_id}`}</text>
-                <text fg={CORTEX_THEME.slateMuted}>{clipped(task.title, 22)}</text>
+                <text fg={palette.sky} bold={true}>{`○ ${task.task_id}`}</text>
+                <text fg={palette.textMuted}>{clipped(task.title, 22)}</text>
               </box>
             )}
           </For>
@@ -1347,8 +1649,9 @@ const CORTEX_LOGO_BRAILLE = [
   "  ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝     ╚═╝╚═╝  ╚═╝",
 ];
 
-function HomeLogo() {
+function HomeLogo(props: { theme?: TuiThemeCurrent }) {
   const dim = useTerminalDimensions();
+  const palette = resolvePalette(props.theme);
   const isLarge = createMemo(() => {
     const d = dim();
     return d.height >= CORTEX_LOGO_BRAILLE.length + 5 && d.width >= 72;
@@ -1360,10 +1663,10 @@ function HomeLogo() {
         when={isLarge()}
         fallback={
           <box flexDirection="column" alignItems="center">
-            <text fg={CORTEX_THEME.neonCyan} bold={true}>
+            <text fg={palette.info} bold={true}>
               {"◈ CORTEX · IA ◈"}
             </text>
-            <text fg={CORTEX_THEME.slateMuted}>
+            <text fg={palette.textMuted}>
               {"[Adaptive Cognitive Control Plane]"}
             </text>
           </box>
@@ -1373,16 +1676,16 @@ function HomeLogo() {
           {(line, index) => {
             const color =
               index() < 4
-                ? CORTEX_THEME.brandViolet
+                ? palette.accentAlt
                 : index() < 9
-                ? CORTEX_THEME.neonCyan
+                ? palette.info
                 : index() < 12
-                ? CORTEX_THEME.skyBlue
-                : CORTEX_THEME.brandPurple;
+                ? palette.sky
+                : palette.accent;
             return <text fg={color}>{line}</text>;
           }}
         </For>
-        <text fg={CORTEX_THEME.slateMuted} marginTop={1}>
+        <text fg={palette.textMuted} marginTop={1}>
           {"⚡ OpenCode Multi-Agent Control Plane & Task DAG ⚡"}
         </text>
       </Show>
@@ -1431,6 +1734,60 @@ function initialize(api: any, disposeRoot: () => void): () => void {
   const spinner = createMemo(() => SPINNER_FRAMES[frame() % SPINNER_FRAMES.length]);
   const pulse = createMemo(() => NEURAL_PULSE_FRAMES[pulseFrame() % NEURAL_PULSE_FRAMES.length]);
   const jobs = createMemo(() => snapshot().delegations.map((job, sequence) => ({ ...job, sequence })));
+
+  const sessionElapsed = createMemo(() => {
+    const scope = conversationScope(api, activeSessionOverride());
+    const started = sessionStartTime(api, scope?.rootSessionID) ?? sessionStartTime(api, scope?.sessionID);
+    if (started === undefined) return undefined;
+    const diff = now() - started;
+    return diff > 0 ? formatDuration(diff) : undefined;
+  });
+
+  const sidebarMetrics = createMemo<SidebarMetrics>(() => {
+    const scope = conversationScope(api, activeSessionOverride());
+    const sessionID = scope?.sessionID;
+    return {
+      elapsed: sessionElapsed(),
+      tokensUsed: contextTokensUsed(sessionMessages(api, sessionID)),
+      tokenLimit: sessionContextLimit(api, sessionID),
+      cost: sessionCostUsd(api, sessionID),
+    };
+  });
+
+  const [completionHistory, setCompletionHistory] = createSignal<number[]>(
+    loadEtaHistory(api.kv && typeof api.kv.get === "function" ? api.kv.get(ETA_HISTORY_KEY, []) : [])
+  );
+
+  let previousDoneCount: number | undefined;
+  createEffect(() => {
+    const current = snapshot();
+    if (!current.generated_at) {
+      previousDoneCount = undefined;
+      return;
+    }
+    const done = current.summary?.done || 0;
+    if (previousDoneCount !== undefined && done > previousDoneCount) {
+      const next = [...untrack(completionHistory), Date.now()].slice(-ETA_HISTORY_LIMIT);
+      setCompletionHistory(next);
+      if (api.kv && typeof api.kv.set === "function") {
+        api.kv.set(ETA_HISTORY_KEY, next);
+      }
+    }
+    previousDoneCount = done;
+  });
+
+  const boardEta = createMemo<Tier1Eta>(() => {
+    const summary = snapshot().summary;
+    const remaining = (summary.ready || 0) + (summary.in_progress || 0) + (summary.in_review || 0);
+    const history = completionHistory();
+    const mean = meanCompletionInterval(history);
+    return {
+      remaining,
+      backlog: summary.backlog || 0,
+      samples: history.length,
+      estimateMs: mean === undefined ? undefined : mean * remaining,
+    };
+  });
 
   let disposed = false;
   let generation = 0;
@@ -1589,6 +1946,8 @@ function initialize(api: any, disposeRoot: () => void): () => void {
             snapshot={snapshot}
             jobs={jobs}
             snapshotError={snapshotError}
+            sessionElapsed={sessionElapsed}
+            eta={boardEta}
             now={now}
             spinner={spinner}
             pulse={pulse}
@@ -1598,6 +1957,25 @@ function initialize(api: any, disposeRoot: () => void): () => void {
             toggleTasks={() => togglePreference(TASKS_EXPANDED_KEY, tasksExpanded, setTasksExpanded)}
             toggleDelegations={() => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded)}
             toggleAttention={() => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded)}
+            theme={ctx?.theme?.current || ctx?.theme || api.theme}
+          />
+        );
+      },
+    });
+
+    // OpenCode v2 has no v1 home_logo slot; the banner prepends the home footer surface instead.
+    api.ui.slot({
+      prepend: "home.footer",
+      render: (ctx: any) => <HomeLogo theme={ctx?.theme?.current || ctx?.theme || api.theme} />,
+    });
+
+    api.ui.slot({
+      append: "sidebar.footer",
+      render: (ctx: any) => {
+        updateActiveSession(ctx);
+        return (
+          <SidebarFooterMetrics
+            metrics={sidebarMetrics}
             theme={ctx?.theme?.current || ctx?.theme || api.theme}
           />
         );
@@ -1666,8 +2044,8 @@ function initialize(api: any, disposeRoot: () => void): () => void {
 
   // OpenCode v1 Slot Registration (api.slots.register)
   const registeredSlots: Record<string, (ctx: any) => any> = {
-    home_logo() {
-      return <HomeLogo />;
+    home_logo(ctx: any) {
+      return <HomeLogo theme={ctx?.theme?.current || ctx?.theme || api.theme} />;
     },
     sidebar_content(ctx: any) {
       updateActiveSession(ctx);
@@ -1678,6 +2056,8 @@ function initialize(api: any, disposeRoot: () => void): () => void {
           snapshot={snapshot}
           jobs={jobs}
           snapshotError={snapshotError}
+          sessionElapsed={sessionElapsed}
+          eta={boardEta}
           now={now}
           spinner={spinner}
           pulse={pulse}
