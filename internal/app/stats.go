@@ -10,17 +10,17 @@ import (
 )
 
 type statsJSONOutput struct {
-	DBPath             string              `json:"db_path"`
-	Sessions           int                 `json:"sessions"`
-	Messages           int                 `json:"messages"`
-	Tokens             int64               `json:"tokens"`
-	ActiveDays         int                 `json:"active_days"`
-	PeakHour           int                 `json:"peak_hour"`
-	PeakHourMessages   int                 `json:"peak_hour_messages"`
-	FavoriteModel      string              `json:"favorite_model"`
-	FavoriteModelShare float64             `json:"favorite_model_share"`
-	FirstDay           string              `json:"first_day"`
-	LastDay            string              `json:"last_day"`
+	DBPath             string               `json:"db_path"`
+	Sessions           int                  `json:"sessions"`
+	Messages           int                  `json:"messages"`
+	Tokens             int64                `json:"tokens"`
+	ActiveDays         int                  `json:"active_days"`
+	PeakHour           int                  `json:"peak_hour"`
+	PeakHourMessages   int                  `json:"peak_hour_messages"`
+	FavoriteModel      string               `json:"favorite_model"`
+	FavoriteModelShare float64              `json:"favorite_model_share"`
+	FirstDay           string               `json:"first_day"`
+	LastDay            string               `json:"last_day"`
 	TopModels          []ocstats.ModelUsage `json:"top_models"`
 }
 
