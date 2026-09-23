@@ -2,8 +2,8 @@
 
 ## Project Contract
 
-- `cortex-ia` is the local bridge and control plane for the OpenCode ecosystem. It installs the native OpenCode asset set, manages MCP configuration, owns durable task authority in SQLite, and may supervise one external AGY execution leaf directly or through Herdr.
-- OpenCode native agents remain the controllers. External CLIs are bounded executors, never coordinators: they receive no Cortex session lifecycle, `cortex-ia work` claim/lease tokens, approval authority, or nested-delegation capability.
+- `cortex-ia` is the local bridge and control plane for the OpenCode ecosystem. It installs the native OpenCode asset set, manages MCP configuration, and owns durable task authority in SQLite. Execution is native-only: there is no external execution leaf, and nothing is supervised through Herdr.
+- OpenCode native agents are the only controllers and executors. The external AGY execution path is removed: no external CLI receives a Cortex session lifecycle, `cortex-ia work` claim/lease tokens, approval authority, or nested-delegation capability.
 - The selected specification plane owns SDD contracts: OpenSpec for `openspec|hybrid`, pinned Cortex observations for `cortex`. Cortex MCP also owns durable evidence, memories, AST knowledge, and relationships. Neither replaces SQLite task authority. The canonical phase matrix is `internal/assets/skills/_shared/workflow-map.md`.
 - ForgeSpec and the external task-board MCP are retired. Do not restore their plugin, protocol, tools, or runtime dependency. Task boards are built into this binary through `cortex-ia board`.
 - The product targets OpenCode only. Do not reintroduce platform adapters, personas, profiles, model routing, or SDD compiler/registry surfaces; retired commands and flags fail closed in `internal/app/app.go`.
@@ -14,7 +14,7 @@
 - This is a Go CLI/TUI. The root `package.json` only installs Husky; `npm test` intentionally fails and is not the test runner. `web/package.json` is the isolated Preact/Vite toolchain for CortexIA Web.
 - Build with `go build -o bin/cortex-ia ./cmd/cortex-ia`; run with `go run ./cmd/cortex-ia`. No arguments launch the Bubble Tea TUI; arguments use the hand-written dispatcher in `internal/app/`.
 - Build frontend assets with `npm --prefix web run build` before the Go build whenever `web/src/` changes. Vite writes only compiled assets to `internal/cortexiaweb/static/`; commit both source and generated output so Go builds do not require Node.
-- Important built-in surfaces are `install`, `sync`, `mcp`, `herdr`, `delegate`, `work`, `board`, `doctor`, `rollback`, `recover`, and `uninstall`. Keep lifecycle and ownership policy out of the dispatcher.
+- Important built-in surfaces are `install`, `sync`, `mcp`, `model`, `work`, `board`, `openspec`, `web`, `doctor`, `rollback`, `recover`, and `uninstall`. `cortex-ia model list|get|set|unset|doctor` is global-config-only in v1; `model doctor` surfaces markdown-frontmatter model pins as WARNING findings and never silently rewrites them. `model catalog` is a read-only receipt of provider/model/variant identifiers only. Keep lifecycle and ownership policy out of the dispatcher.
 
 ## Execution Modes
 
@@ -33,18 +33,18 @@ All role controllers execute in `native` mode under the Cortex-IA Work Authority
 
 | Role | Allowed work-control behavior |
 |---|---|
-| `orchestrator` | Create/query boards and DAGs, recover expired attempts, retry reconciled blockers, dispatch native role controllers. Never claim tasks, lease files, edit product code, or launch AGY directly. |
+| `orchestrator` | Create/query boards and DAGs, recover expired attempts, retry reconciled blockers, dispatch native role controllers. Never claim tasks, lease files, or edit product code. |
 | `discovery` | Project onboarding: inspect skills, stack, engines, and architecture into `./.cortex-ia/discovery.md`. Never mutate work state. |
 | `investigate` | Read-only `board list|status` and `work list|status`; diagnose and save bounded evidence. Never mutate work state. |
 | `planner` | Write OpenSpec planning artifacts, create the initiative board, and materialize its same-board dependency DAG. Never claim implementation work. |
-| `implement` | Own exactly one ready task claim, lease every writable path, renew authority, supervise at most one optional AGY leaf, verify, then transition to `in_review`. Stop writing immediately if authority expires. |
+| `implement` | Own exactly one ready task claim, lease every writable path, renew authority, verify, then transition to `in_review`. Stop writing immediately if authority expires. |
 | `reviewer` | Independently inspect and rerun checks; its only work-state mutation is `work approve`. Never edit, claim, lease, or self-approve as the active implementation owner. |
-| external AGY leaf | Execute only the validated envelope in the current workspace under exclusive lease and baseline validation, and return a bounded receipt. No control-plane, Cortex MCP, or delegation authority. |
+
+All roles execute natively; there is no external execution leaf, and no role may hand work to an external CLI.
 
 - Only the orchestrator owns `cortex_session_start`, summaries, and session end. All dispatched roles are ephemeral subagents within that session.
-- A native controller may supervise no more than one external leaf for its bounded objective. The leaf cannot spawn another agent or CLI.
 - Parallel native writers may share one workspace without Git worktrees only when each controller owns a distinct live task claim and reserves each writable file individually with `cortex_ia_file_reserve` before editing that file. Acquire multiple files in deterministic sorted order, release each with `cortex_ia_file_release`, clean partial acquisition immediately on conflict, and stop writing on conflict or expiry. Mailbox/resource locks do not replace file reservations.
-- External AGY implementation requires `current_workspace` as the single supported workspace strategy (`isolated_worktree` is retired). A current-workspace external AGY leaf remains exclusive for its execution window, forbids concurrent native edits, and must preserve pre-existing unleased changes against a pre-run baseline.
+- `current_workspace` is the single supported implementation workspace strategy; `isolated_worktree` requests fail closed as retired.
 - Implementation minions require a non-empty `allowed_files` list corresponding to leased repository paths. Read-only tasks, forensic audits, and unleased inspections (`allowed_files: []`) must route to `investigate` or `reviewer`. Verification commands in tasks and task DAGs must be raw, executable commands without comments or parenthetical explanations.
 - Reviewer Proportionality & Anti-Overengineering: Reviewers audit against actual repository diffs and declared acceptance criteria; NEVER fail or block tasks on synthetic test helpers or hypothetical inputs uncalled in the codebase. Declarative configs (Docker, Compose, YAML, `.dockerignore`) use standard parsers or CLI checks, never custom lexers. Pure-test tasks must not undergo DAG decomposition upon failure.
 - Zero-Noise Comments & Clean Code Policy: Implementers MUST NOT write narrative echo comments explaining what obvious code does, inline changelogs, or commented-out dead code. Comments explain non-obvious *WHY* or critical invariants only. Chat communication must remain terse, minimal, and surgical without conversational filler or intermediate narration.
@@ -70,8 +70,8 @@ All role controllers execute in `native` mode under the Cortex-IA Work Authority
 - `internal/backup` owns snapshots, manifests, verification, dedup, and retention pruning.
 - `internal/mcpmanager` owns the managed MCP catalog (`presets.go`), desired-entry validation, qualification, and conflict errors for the `mcp add/list/remove` surface.
 - `internal/state` and `internal/installmeta` own installation metadata, lock, agreement checks, and MCP digests under `~/.cortex-ia/`.
-- `internal/delegation` owns the SQLite schema/migrations, AGY job lifecycle, task boards, DAG state, claims, TTL file leases, approvals, recovery, and structured receipts. Use `BEGIN IMMEDIATE` for multi-step authority transitions and fail closed on unknown future schema versions.
-- `internal/herdr` owns optional Herdr installation/setup and pane transport. Herdr never owns task state or approval.
+- `internal/delegation` owns the SQLite schema/migrations, task boards, DAG state, claims, TTL file leases, approvals, recovery, and structured receipts, plus the legacy read-only delegation-job projection served to the web console. Use `BEGIN IMMEDIATE` for multi-step authority transitions and fail closed on unknown future schema versions.
+- `internal/herdr` retains optional Herdr setup and detection helpers for diagnostics; its only production consumer is the web console status display. Herdr never owns task state or approval.
 - `internal/cortexiaweb` owns the Preact operations console compiled by Vite, embedded by `go:embed`, and served through its loopback-only HTTP/API server. It shows task-board sessions, work/claim/lease state, delegation jobs/transports, and the append-only activity stream. It may create boards/tasks but must not expose claim, lease, transition, retry, recovery, or approval mutations. Preserve CSP, request limits, server timeouts, auto-refresh, and the non-loopback rejection.
 - `internal/agents/opencode` declares the OpenCode native layout (`layout.go`) and the pure asset mapping (`assetmap.go`): every destination is `path.Join(config root, source)`, validated against the single layout declaration, failing closed on unsafe paths, off-surface destinations, and collisions (including case-insensitive ones on Windows/macOS).
 - `internal/components/filemerge` owns JSONC decode/merge and atomic writes; reuse it instead of writing ad-hoc merge code.
@@ -119,7 +119,7 @@ Project-level skills are located in `.agents/skills/` (ready for use in this rep
 ## Security and Persistence Invariants
 
 - SQLite uses `STRICT` tables, WAL, foreign keys, `busy_timeout`, a migration ledger, bounded values, and hashed authority tokens. Never store plaintext claim/lease tokens, secrets, full prompts, or unbounded stdout.
-- AGY execution uses argv without a shell, an explicitly selected workspace strategy (`current_workspace`), a temporary home, bounded output, timeouts, and structured receipts. `current_workspace` requires exclusive execution plus baseline/allowlist validation; `isolated_worktree` is retired. Do not enable unsafe permission bypasses by default.
+- External CLI execution is retired: there is no argv-based worker, temporary home, workspace-baseline acceptance, or external permission-skip path. All role controllers execute natively through OpenCode tools under work authority, and `isolated_worktree` requests fail closed. Do not enable unsafe permission bypasses by default.
 - The embedded board server accepts only `localhost` or loopback IP addresses. Do not add CORS, remote binding, external assets, CDN dependencies, or browser endpoints that bypass work-control authority.
 - Install/sync/uninstall ownership remains accreditation-based. Preserve verified backups, stale-plan detection, atomic writes, rollback on apply failure, and fail-closed behavior for unmanaged drift.
 - Tests and smokes must use temporary homes. Never aim pipeline, delegation, board, or TUI verification at the developer's real OpenCode or Cortex state.

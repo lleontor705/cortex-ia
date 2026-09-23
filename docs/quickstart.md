@@ -31,7 +31,7 @@ cortex-ia install
 
 This transactionally installs the embedded asset set under `~/.config/opencode/`:
 - `AGENTS.md` system prompt and 6 native roles (`orchestrator`, `discovery`, `investigate`, `planner`, `implement`, `reviewer`).
-- SDD slash commands, skills, and Herdr delegation bridge plugin.
+- SDD slash commands, skills, and OpenCode plugins (the retired Herdr delegation bridge is no longer installed).
 - Registers the **Cortex** knowledge graph MCP server.
 
 ---
@@ -65,5 +65,9 @@ cortex-ia work create auth-1.2 "Add refresh token rotation" --board my-feature -
 openspec validate
 ```
 
-### C. Check Multi-Agent Delegation
-When OpenCode delegates tasks, watch them stream in real time in your Herdr terminal panes!
+### C. Watch Work State Natively
+Every role controller executes natively inside OpenCode under Cortex-IA work authority; external delegation is retired. Watch boards, claims, leases, and review transitions in the local operations console:
+
+```bash
+cortex-ia web --open
+```

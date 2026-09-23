@@ -65,11 +65,11 @@ func runWork(args []string) error {
 	switch sub {
 	case "create":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]...", nil)
+			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]... [--workload-policy <strict|flexible|unbounded>]", nil)
 		}
-		opts, positionals, err := workOptions(args[1:], map[string]bool{"--id": false, "--title": false, "--depends": true, "--board": false, "--objective": false, "--acceptance": false, "--verify": false, "--file": true, "--project": false, "--opencode-session-id": false, "--opencode-root-session-id": false, "--opencode-parent-session-id": false, "--contract-file": false, "--workflow": false})
+		opts, positionals, err := workOptions(args[1:], map[string]bool{"--id": false, "--title": false, "--depends": true, "--board": false, "--objective": false, "--acceptance": false, "--verify": false, "--file": true, "--project": false, "--opencode-session-id": false, "--opencode-root-session-id": false, "--opencode-parent-session-id": false, "--contract-file": false, "--workflow": false, "--workload-policy": false})
 		if err != nil {
-			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]...", err)
+			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]... [--workload-policy <strict|flexible|unbounded>]", err)
 		}
 		id := oneOption(opts, "--id")
 		title := oneOption(opts, "--title")
@@ -121,6 +121,7 @@ func runWork(args []string) error {
 		}
 		item, err := store.CreateWorkInBoardWithDefinition(ctx, boardID, id, title, depends, delegation.WorkDefinition{
 			Project: oneOption(opts, "--project"), Contract: contract,
+			WorkloadPolicy: delegation.WorkloadPolicy(oneOption(opts, "--workload-policy")),
 			ConversationOwnership: delegation.ConversationOwnership{
 				OpenCodeSessionID:       oneOption(opts, "--opencode-session-id"),
 				OpenCodeRootSessionID:   oneOption(opts, "--opencode-root-session-id"),

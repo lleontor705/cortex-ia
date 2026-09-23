@@ -36,7 +36,7 @@ Execute independent tasks concurrently instead of forcing sequential execution. 
 - Each controller claims a distinct `task_id`.
 - Controllers reserve their disjoint paths atomically via `cortex_ia_work_claim({ task_id, paths: allowed_files })` or `cortex_ia_file_reserve`.
 - Because file sets are disjoint, per-file reservations succeed without collision.
-- If delegating an external AGY leaf, execution remains exclusive during its execution window under pre-run baseline verification; `isolated_worktree` is retired.
+- There is no external execution leaf: every parallel writer is a native `implement` controller editing the shared workspace under its own claim and disjoint per-file leases; `isolated_worktree` is retired.
 
 ---
 
@@ -97,6 +97,6 @@ task({ subagent_type: "implement", prompt: envelopeTask2, background: true });
 |---|---|
 | Multiple tasks `ready` with disjoint `allowed_files` | Launch parallel background subagents (`parallel-dispatch`) |
 | Tasks share any file in `allowed_files` | Execute sequentially in dependency/sorted order |
-| Task uses external AGY leaf | Use exclusive `current_workspace` window with baseline checks; `isolated_worktree` is retired |
+| Task requests `isolated_worktree` or external execution | Fail closed; only native `current_workspace` controllers are supported |
 | Worker fails or hits collision | Worker transitions to `blocked`; other parallel tasks continue unaffected |
 | Reviewer returns `FAIL` | Task transitions to `blocked` for targeted retry; healthy tasks proceed |

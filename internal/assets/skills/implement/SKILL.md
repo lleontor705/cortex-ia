@@ -28,7 +28,7 @@ If a `task_id` is present, run the canonical implementer lifecycle: claim the re
 
 If a file-changing dispatch has no task, return the missing-authority condition to orchestrator for bounded task creation before writing. Native edit/write/apply_patch requires a live task claim and session-owned leases; do not fabricate tokens or switch tools to bypass the guard. Typed planning/discovery writes belong to those roles, not implementation.
 
-When delegating to an external AGY leaf, require `workspace_strategy=current_workspace` with exclusive locking and pre-run baseline verification; `isolated_worktree` is retired.
+There is no external execution leaf: every implementer edits the shared `current_workspace` directly under its own live claim and per-file leases; `isolated_worktree` is retired.
 
 ## Execution
 

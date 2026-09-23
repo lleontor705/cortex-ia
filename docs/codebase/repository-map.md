@@ -64,7 +64,7 @@ Directory-by-directory map of the active `cortex-ia` codebase.
 ## 3. Supported Platforms & Future Roadmap
 
 - **Active Platform**: **OpenCode** (`~/.config/opencode/`)
-- **Future Targets**: **Google Antigravity** (`~/.gemini/antigravity/`), **Claude CLI** (`~/.claude/`)
+- **Future Targets**: **Google Antigravity** (`~/.gemini/antigravity/`; no committed support, evaluation only), **Claude CLI** (`~/.claude/`)
 
 ## 4. Project-Level Files
 

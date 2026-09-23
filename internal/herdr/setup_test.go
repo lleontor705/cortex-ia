@@ -53,9 +53,7 @@ func TestFirstRegular(t *testing.T) {
 }
 
 func TestResolveBinaries(t *testing.T) {
-	// Should not panic or crash
 	_, _ = ResolveHerdr()
-	_, _ = ResolveAGY()
 }
 
 func TestStatus(t *testing.T) {

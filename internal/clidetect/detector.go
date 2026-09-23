@@ -16,7 +16,6 @@ type CLIID string
 
 const (
 	CLIOpenCode CLIID = "opencode"
-	CLIAGY      CLIID = "agy"
 	CLIClaude   CLIID = "claude"
 )
 
@@ -39,7 +38,6 @@ func DetectAll(homeDir string) []CLIInfo {
 	}
 	return []CLIInfo{
 		DetectOpenCode(homeDir),
-		DetectAGY(homeDir),
 		DetectClaude(homeDir),
 	}
 }
@@ -74,45 +72,6 @@ func DetectOpenCode(homeDir string) CLIInfo {
 	}
 
 	bin, err := resolveBinary("opencode", candidates)
-	if err == nil {
-		info.BinaryPath = bin
-		info.Found = true
-		info.Version = queryVersion(bin, "--version")
-	} else {
-		info.Error = err.Error()
-	}
-
-	return info
-}
-
-// DetectAGY detects the Google Antigravity (AGY) CLI installation and configuration.
-func DetectAGY(homeDir string) CLIInfo {
-	info := CLIInfo{
-		ID:          CLIAGY,
-		DisplayName: "Antigravity CLI (AGY)",
-		ConfigDir:   filepath.Join(homeDir, ".gemini"),
-	}
-	if st, err := os.Stat(info.ConfigDir); err == nil && st.IsDir() {
-		info.ConfigFound = true
-	}
-
-	candidates := []string{}
-	if runtime.GOOS == "windows" {
-		local := os.Getenv("LOCALAPPDATA")
-		candidates = append(candidates,
-			filepath.Join(local, "agy", "bin", "agy.exe"),
-			filepath.Join(homeDir, "AppData", "Local", "agy", "bin", "agy.exe"),
-			filepath.Join(homeDir, ".agy", "bin", "agy.exe"),
-		)
-	} else {
-		candidates = append(candidates,
-			filepath.Join(homeDir, ".agy", "bin", "agy"),
-			"/usr/local/bin/agy",
-			"/usr/bin/agy",
-		)
-	}
-
-	bin, err := resolveBinary("agy", candidates)
 	if err == nil {
 		info.BinaryPath = bin
 		info.Found = true

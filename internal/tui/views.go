@@ -2,11 +2,14 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lleontor705/cortex-ia/internal/delegation"
+	"github.com/lleontor705/cortex-ia/internal/install"
+	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
 
@@ -30,9 +33,11 @@ var homeDescriptions = []string{
 	"Inspect and configure managed OpenCode MCP server presets",
 	"Open interactive local web dashboard (http://127.0.0.1:7331)",
 	"Create custom subagents with Cortex-IA safety guardrails",
+	"Resumen de uso de OpenCode: tokens, heatmap y ranking de modelos",
 	"Assess installation health, digests & recovery journals",
 	"Remove accredited cortex-ia installation with backup",
 	"Exit cortex-ia",
+	"Modelo y esfuerzo por agente con vista previa dry-run",
 }
 
 var mcpDescriptions = map[string]string{
@@ -145,6 +150,10 @@ func (m model) View() string {
 		body = m.viewWeb()
 	case screenAgentStudio:
 		body = m.viewAgentStudio()
+	case screenStats:
+		body = m.stats.view(m.contentWidth())
+	case screenModels:
+		body = m.models.view(m.contentWidth())
 	}
 	if m.confirm.kind != confirmNone {
 		body = body + "\n" + m.viewConfirm()
@@ -181,7 +190,7 @@ func (m model) viewHome() string {
 		}
 		lines = append(lines, truncate(prefix+text+desc, width))
 	}
-	lines = append(lines, "", m.footer("↑/↓ move · 1-7/enter select · q quit"))
+	lines = append(lines, "", m.footer("↑/↓ move · 1-9/enter select · q quit"))
 	return strings.Join(lines, "\n")
 }
 
@@ -196,7 +205,7 @@ func (m model) viewReview() string {
 	} else if m.planErr != nil {
 		top = append(top, styleFail.Render("✖ plan error: "+m.planErr.Error()))
 	}
-	top = append(top, "MCP selection (space toggles, replans):")
+	top = append(top, "Selection (space toggles, replans):")
 	states := []bool{m.opts.Cortex, m.opts.Context7}
 	for i, name := range managedNames {
 		mark := " "
@@ -215,6 +224,18 @@ func (m model) viewReview() string {
 		}
 		top = append(top, truncate(prefix+text+desc, width))
 	}
+	themeMark := " "
+	if m.opts.ApplyTheme {
+		themeMark = "x"
+	}
+	themePrefix := "  "
+	themeText := fmt.Sprintf("[%s] apply cortex theme", themeMark)
+	themeDesc := " · " + styleDim.Render("opt-in; your theme is left untouched unless you select this")
+	if m.mcpCursor == themeRowIndex {
+		themePrefix = "> "
+		themeText = styleSelected.Render(themeText)
+	}
+	top = append(top, truncate(themePrefix+themeText+themeDesc, width))
 	top = append(top, "")
 
 	var content []string
@@ -222,19 +243,62 @@ func (m model) viewReview() string {
 		content = m.planSummary(width)
 	}
 	var bottom []string
-	if m.plan != nil && (len(m.plan.Conflicts) > 0 || m.overwrite || m.hadConflict) {
-		hint := "[o] authorize overwrite (destructive, needs confirmed backup)"
-		if m.overwrite {
-			hint = styleWarn.Render("overwrite authorized — enter asks for explicit confirmation")
-		} else {
-			hint = styleWarn.Render(hint)
+	if m.plan != nil {
+		clearable, blocked := conflictBreakdown(m.plan.Conflicts)
+		switch {
+		case len(blocked) > 0 && clearable == 0:
+			bottom = append(bottom, styleConflict.Render("manual resolution required: "+strings.Join(blocked, ", ")+" (overwrite cannot clear)"))
+		case clearable > 0 && !m.overwrite:
+			bottom = append(bottom, styleWarn.Render("[o] authorize overwrite (destructive, needs confirmed backup)"))
+		case clearable > 0 || m.overwrite:
+			bottom = append(bottom, styleWarn.Render("overwrite authorized — enter asks for explicit confirmation"))
+		default:
+			bottom = append(bottom, styleDim.Render("no blocking conflicts"))
 		}
-		bottom = append(bottom, hint)
-	} else if m.plan != nil {
-		bottom = append(bottom, styleDim.Render("no blocking conflicts"))
+	}
+	if m.reviewStatus != "" {
+		bottom = append(bottom, styleWarn.Render(m.reviewStatus))
+	}
+	if m.cortexStatus != "" {
+		bottom = append(bottom, styleSubtitle.Render(truncate(m.cortexStatus, width)))
 	}
 	bottom = append(bottom, m.footer("enter run · b back to wizard · o overwrite · pgup/pgdn scroll · esc home"))
 	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), m.reviewScroll, "pgup/pgdn"), "\n")
+}
+
+// conflictBreakdown separates conflicts an explicit overwrite authorization
+// can clear from kinds that always need manual repair, returning the distinct
+// blocked kinds in stable order for deterministic rendering.
+func conflictBreakdown(conflicts []pipeline.Conflict) (clearable int, blocked []string) {
+	seen := make(map[string]struct{}, len(conflicts))
+	for _, conflict := range conflicts {
+		if conflict.OverwriteAuthorized {
+			clearable++
+			continue
+		}
+		kind := string(conflict.Kind)
+		if _, ok := seen[kind]; ok {
+			continue
+		}
+		seen[kind] = struct{}{}
+		blocked = append(blocked, kind)
+	}
+	sort.Strings(blocked)
+	return clearable, blocked
+}
+
+// conflictNotice explains why a plan carrying conflicts cannot run yet,
+// naming the kinds an overwrite authorization would never clear.
+func conflictNotice(conflicts []pipeline.Conflict) string {
+	clearable, blocked := conflictBreakdown(conflicts)
+	switch {
+	case len(blocked) > 0 && clearable == 0:
+		return "cannot run: resolve " + strings.Join(blocked, ", ") + " manually (overwrite cannot clear)"
+	case len(blocked) > 0:
+		return "cannot run: authorize overwrite with [o]; " + strings.Join(blocked, ", ") + " still need manual repair"
+	default:
+		return "cannot run: press [o] to authorize overwrite"
+	}
 }
 
 // planSummary renders the plan effects and conflicts read-only.
@@ -412,6 +476,9 @@ func (m model) viewConfirm() string {
 	case confirmRollback:
 		title = "Confirm rollback"
 		prompt = "Rollback restores the recorded backup, undoing managed changes made after it."
+	case confirmCortexInstall:
+		title = "Confirm cortex install"
+		prompt = fmt.Sprintf("The %q binary is not on PATH. Install it now with 'go install %s'? This runs the Go toolchain and may take a few minutes; declining is safe and keeps the manual command.", install.CortexBinaryName, install.CortexModulePath)
 	default:
 		return ""
 	}

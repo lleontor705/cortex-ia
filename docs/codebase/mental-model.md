@@ -62,7 +62,7 @@ How `cortex-ia` works end-to-end: a user executes an interactive TUI or CLI comm
 ## 3. Platform Support Strategy
 
 1. **OpenCode (Primary Active)**: Full native SDD asset set and MCP management under `~/.config/opencode/`.
-2. **Google Antigravity (Planned)**: Native rules, skills, and sidecar integration under `~/.gemini/antigravity/`.
+2. **Google Antigravity**: No committed support; any future evaluation stays native-only with no external execution under `~/.gemini/antigravity/`.
 3. **Claude CLI (Planned)**: Native prompts and tool definitions under `~/.claude/`.
 
 ---

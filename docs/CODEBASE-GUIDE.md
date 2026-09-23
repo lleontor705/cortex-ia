@@ -24,6 +24,6 @@ If you read only one page: [mental-model.md](codebase/mental-model.md).
 ## 2. Platform Support Status
 
 - **OpenCode**: Fully supported active native target (`~/.config/opencode/`).
-- **Google Antigravity**: Upcoming roadmap platform (`~/.gemini/antigravity/`).
+- **Google Antigravity**: No committed support; any future evaluation stays native-only with no external execution (`~/.gemini/antigravity/`).
 - **Claude CLI**: Upcoming roadmap platform (`~/.claude/`).
 

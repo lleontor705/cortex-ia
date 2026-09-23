@@ -59,7 +59,7 @@ func parseRunFlags(args []string, command string, allowOverwrite bool) (runFlags
 				i++
 				flags.Target = args[i]
 			} else {
-				return flags, fmt.Errorf("flag --target requires an argument (e.g. --target opencode,agy)")
+				return flags, fmt.Errorf("flag --target requires an argument (e.g. --target opencode,claude)")
 			}
 		default:
 			if strings.HasPrefix(arg, "-") {
@@ -132,15 +132,6 @@ func runInstall(args []string) error {
 			if err := previewAndApply("install", flags, opts, service.Install); err != nil {
 				return err
 			}
-		case targets.TargetAGY:
-			res, err := targets.InstallAGY(service.HomeDir(), flags.DryRun)
-			if err != nil {
-				return fmt.Errorf("install AGY target: %w", err)
-			}
-			fmt.Printf("Antigravity target: %s\n", res.Message)
-			for _, ch := range res.Changes {
-				fmt.Printf("  %s\n", ch)
-			}
 		case targets.TargetClaude:
 			res, err := targets.InstallClaude(service.HomeDir(), flags.DryRun)
 			if err != nil {
@@ -183,15 +174,6 @@ func runSync(args []string) error {
 		case targets.TargetOpenCode:
 			if err := previewAndApply("sync", flags, opts, service.Sync); err != nil {
 				return err
-			}
-		case targets.TargetAGY:
-			res, err := targets.InstallAGY(service.HomeDir(), flags.DryRun)
-			if err != nil {
-				return fmt.Errorf("sync AGY target: %w", err)
-			}
-			fmt.Printf("Antigravity target: %s\n", res.Message)
-			for _, ch := range res.Changes {
-				fmt.Printf("  %s\n", ch)
 			}
 		case targets.TargetClaude:
 			res, err := targets.InstallClaude(service.HomeDir(), flags.DryRun)
@@ -1005,12 +987,6 @@ func runUninstall(args []string) error {
 				fmt.Printf("  Backup: %s\n", receipt.BackupID)
 			}
 			fmt.Printf("  State removed: %v  Complete: %v\n", receipt.StateRemoved, receipt.Complete)
-		case targets.TargetAGY:
-			res, err := targets.UninstallAGY(service.HomeDir(), flags.DryRun)
-			if err != nil {
-				return fmt.Errorf("uninstall AGY target: %w", err)
-			}
-			fmt.Printf("Antigravity target: %s\n", res.Message)
 		case targets.TargetClaude:
 			res, err := targets.UninstallClaude(service.HomeDir(), flags.DryRun)
 			if err != nil {

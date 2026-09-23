@@ -139,7 +139,16 @@ func DownloadArtifactBytes(ctx context.Context, client *http.Client, urlStr stri
 	return data, nil
 }
 
+// DownloadAndVerifyRelease keeps the public signature for direct callers and
+// verifies against the running version with no persisted floor.
 func DownloadAndVerifyRelease(ctx context.Context, client *http.Client, repo, currentVersion string, rel *Release) ([]byte, *ManifestArtifact, error) {
+	return downloadAndVerifyReleaseWithFloor(ctx, client, repo, currentVersion, rel, "")
+}
+
+// downloadAndVerifyReleaseWithFloor carries the persisted anti-replay floor
+// through the same verification chain, so an already-applied release is
+// rejected before any network fetch.
+func downloadAndVerifyReleaseWithFloor(ctx context.Context, client *http.Client, repo, currentVersion string, rel *Release, appliedFloor string) ([]byte, *ManifestArtifact, error) {
 	if err := RequireTrust(); err != nil {
 		return nil, nil, err
 	}
@@ -149,7 +158,7 @@ func DownloadAndVerifyRelease(ctx context.Context, client *http.Client, repo, cu
 	if IsDevOrUnknown(currentVersion) {
 		return nil, nil, fmt.Errorf("%w: current version is %q", ErrDevUnknownVersion, currentVersion)
 	}
-	if err := VerifyVersionFloor(currentVersion, rel.TagName, ""); err != nil {
+	if err := VerifyVersionFloor(currentVersion, rel.TagName, appliedFloor); err != nil {
 		return nil, nil, err
 	}
 

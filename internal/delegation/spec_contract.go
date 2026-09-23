@@ -165,7 +165,9 @@ func hashJSON(value any) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// fingerprintFile rejects symlinks, including parent components, and bounds reads.
+// fingerprintFile rejects symlinks, including parent components, and streams the full
+// content into the digest. The result is fixed-width, so the binding persisted in
+// binding_json stays far below its 64 KiB column cap no matter how large the file is.
 // It does not sandbox other processes or close the check-to-write race.
 func fingerprintFile(workspace, relative string) (string, error) {
 	clean, err := canonicalLeasePath(relative)
@@ -198,16 +200,9 @@ func fingerprintFile(workspace, relative string) (string, error) {
 	if !info.Mode().IsRegular() {
 		return "", errors.New("fingerprint requires explicit regular files")
 	}
-	if info.Size() > 16*1024*1024 {
-		return "", errors.New("fingerprint file exceeds 16 MiB")
-	}
 	h := sha256.New()
-	n, err := io.Copy(h, io.LimitReader(f, 16*1024*1024+1))
-	if err != nil {
+	if _, err := io.Copy(h, f); err != nil {
 		return "", err
-	}
-	if n > 16*1024*1024 {
-		return "", errors.New("fingerprint file exceeds 16 MiB")
 	}
 	return "file:" + hex.EncodeToString(h.Sum(nil)), nil
 }
@@ -228,15 +223,15 @@ func currentReviewBindingAt(ctx context.Context, conn *sql.Conn, id, sourcePath,
 	if err != nil {
 		return "", err
 	}
+	var files []string
+	if err = json.Unmarshal([]byte(filesJSON), &files); err != nil {
+		return "", err
+	}
 	if contract == nil {
-		return "", nil
+		return directReviewBindingAt(ctx, conn, id, board, workspace, title, objective, acceptance, verification, files, sourcePath, destinationPath)
 	}
 	contractJSON, err = encodeContract(contract)
 	if err != nil {
-		return "", err
-	}
-	var files []string
-	if err = json.Unmarshal([]byte(filesJSON), &files); err != nil {
 		return "", err
 	}
 	if len(files) == 0 || len(files) > 128 || objective == "" || acceptance == "" || verification == "" {
@@ -247,11 +242,7 @@ func currentReviewBindingAt(ctx context.Context, conn *sql.Conn, id, sourcePath,
 		return "", err
 	}
 	sort.Strings(files)
-	type fileDigest struct {
-		Path   string `json:"path"`
-		Digest string `json:"digest"`
-	}
-	entries := make([]fileDigest, 0, len(files))
+	entries := make([]WorkFileDigest, 0, len(files))
 	for _, file := range files {
 		mapped, e := relocateContractPath(workspace, file, sourcePath, destinationPath)
 		if e != nil {
@@ -261,7 +252,7 @@ func currentReviewBindingAt(ctx context.Context, conn *sql.Conn, id, sourcePath,
 		if e != nil {
 			return "", fmt.Errorf("fingerprint %s: %w", file, e)
 		}
-		entries = append(entries, fileDigest{file, digest})
+		entries = append(entries, WorkFileDigest{Path: file, Digest: digest})
 	}
 	if err := verifyWorkspacePins(workspace, contract, sourcePath, destinationPath); err != nil {
 		return "", err
@@ -276,6 +267,40 @@ func currentReviewBindingAt(ctx context.Context, conn *sql.Conn, id, sourcePath,
 	sort.Strings(dependencies)
 	definitionDigest := hashJSON([]any{id, board, workspace, title, objective, acceptance, verification, files, dependencies, contractJSON})
 	data, err := json.Marshal(ReviewBinding{FingerprintVersion: 1, Contract: contract, DefinitionSHA256: definitionDigest, ChangeSHA256: hashJSON(entries)})
+	return string(data), err
+}
+
+// directReviewBindingAt binds a contract-less (direct) task to its own definition and
+// file fingerprints only. It carries no contract pins, so the archive gate can tell a
+// genuinely re-reviewed direct task apart from an unbound one without inventing pins.
+func directReviewBindingAt(ctx context.Context, conn *sql.Conn, id, board, workspace, title, objective, acceptance, verification string, files []string, sourcePath, destinationPath string) (string, error) {
+	if len(files) > 128 {
+		return "", errors.New("direct review requires a bounded file scope")
+	}
+	canonical, err := CanonicalWorkspace(workspace)
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(files)
+	entries := make([]WorkFileDigest, 0, len(files))
+	for _, file := range files {
+		mapped, e := relocateContractPath(canonical, file, sourcePath, destinationPath)
+		if e != nil {
+			return "", e
+		}
+		digest, e := fingerprintFile(canonical, mapped)
+		if e != nil {
+			return "", fmt.Errorf("fingerprint %s: %w", file, e)
+		}
+		entries = append(entries, WorkFileDigest{Path: file, Digest: digest})
+	}
+	dependencies, err := workDependencyIDs(ctx, conn, id)
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(dependencies)
+	definitionDigest := hashJSON([]any{id, board, canonical, title, objective, acceptance, verification, files, dependencies, ""})
+	data, err := json.Marshal(ReviewBinding{FingerprintVersion: 1, DefinitionSHA256: definitionDigest, ChangeSHA256: hashJSON(entries)})
 	return string(data), err
 }
 
@@ -361,10 +386,10 @@ func (s *Store) validateArchiveBoardAt(ctx context.Context, conn *sql.Conn, boar
 		if e != nil {
 			return result, e
 		}
-		if contract == nil {
-			return result, errors.New("archive board contains an unbound legacy/direct task")
+		if contract != nil && (contract.ChangeID != changeID || contract.Workflow != workflow || contract.SpecPlane != plane) {
+			return result, errors.New("archive board contract or workspace mismatch")
 		}
-		if contract.ChangeID != changeID || contract.Workflow != workflow || contract.SpecPlane != plane || t.workspace != canonical {
+		if t.workspace != canonical {
 			return result, errors.New("archive board contract or workspace mismatch")
 		}
 		var replacementCount int
@@ -385,7 +410,13 @@ func (s *Store) validateArchiveBoardAt(ctx context.Context, conn *sql.Conn, boar
 		if e = conn.QueryRowContext(ctx, `SELECT binding_json FROM work_approvals WHERE item_id=? AND verdict='PASS' ORDER BY id DESC LIMIT 1`, t.id).Scan(&approved); e != nil {
 			return result, errors.New("archive requires durable PASS binding")
 		}
-		if approved == "" || approved != current {
+		if approved == "" || current == "" {
+			if contract == nil {
+				return result, errors.New("archive board contains an unbound legacy/direct task")
+			}
+			return result, fmt.Errorf("archive task %s changed after approval; fresh review required", t.id)
+		}
+		if approved != current {
 			return result, fmt.Errorf("archive task %s changed after approval; fresh review required", t.id)
 		}
 		result.TaskIDs = append(result.TaskIDs, t.id)
@@ -466,7 +497,9 @@ func (s *Store) RefreshWorkReview(ctx context.Context, id string, expectedRevisi
 		if err := conn.QueryRowContext(ctx, `SELECT implementation_owner,binding_json,attempt FROM work_approvals WHERE item_id=? AND verdict='PASS' ORDER BY id DESC LIMIT 1`, id).Scan(&owner, &priorBinding, &attempt); err != nil {
 			return err
 		}
-		if owner == "" || priorBinding == "" {
+		// A direct task has no pins to verify, so its prior typed approval is only required
+		// to exist; its identity comes from the fingerprints-only binding below.
+		if contract != nil && (owner == "" || priorBinding == "") {
 			return errors.New("review refresh requires a prior typed SDD approval with implementation identity")
 		}
 		binding, err := currentReviewBinding(ctx, conn, id)

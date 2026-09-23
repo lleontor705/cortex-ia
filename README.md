@@ -14,7 +14,7 @@
 
 ## ⚡ What is Cortex-IA?
 
-**Cortex-IA** is the enterprise-grade, deterministic **Multi-Agent Control Plane & Orchestration Engine** designed for autonomous software development with **OpenCode** and **Herdr**. 
+**Cortex-IA** is the enterprise-grade, deterministic **Multi-Agent Control Plane & Orchestration Engine** designed for autonomous software development with **OpenCode**. 
 
 Built as a single portable Go binary, Cortex-IA solves the fundamental challenges of multi-agent coding: **race conditions**, **conflicting file edits**, **hallucinated task readiness**, **unmonitored background tasks**, and **unstructured coordination**.
 
@@ -23,9 +23,9 @@ Built as a single portable Go binary, Cortex-IA solves the fundamental challenge
 │                                   CORTEX-IA ECOSYSTEM                                       │
 │                                                                                             │
 │  ┌──────────────────────────┐   ┌─────────────────────────────┐   ┌─────────────────────────┐  │
-│  │     OpenCode Agents      │   │   CORTEX-IA Control Plane   │   │  Herdr Multiplexing     │  │
-│  │ (Orchestrator, Discovery,│──▶│  (SQLite ACID DAG, Leases,  │──▶│  (Live Stream Terminals,│  │
-│  │  Investigate, Planner,   │   │   CAS Revisions, OpenSpec)  │   │   NDJSON Telemetry)     │  │
+│  │     OpenCode Agents      │   │   CORTEX-IA Control Plane   │   │  Cortex-IA Web Console  │  │
+│  │ (Orchestrator, Discovery,│──▶│  (SQLite ACID DAG, Leases,  │──▶│  (Loopback SSE Kanban,  │  │
+│  │  Investigate, Planner,   │   │   CAS Revisions, OpenSpec)  │   │   Audit Log & Intake)   │  │
 │  │   Implement, Reviewer)   │   │                             │   │                         │  │
 │  └──────────────────────────┘   └─────────────────────────────┘   └─────────────────────────┘  │
 │                                             │                                                │
@@ -50,8 +50,6 @@ Built as a single portable Go binary, Cortex-IA solves the fundamental challenge
   Implementers cannot self-approve. An independent reviewer agent must verify test suites and recorded evidence before marking any task complete.
 - 🧹 **Zero Raw JSON Chat Hygiene & Typed Tool Authority**  
   Eliminates token bloat and hallucinated text parsing. Structured receipts are passed directly via typed tool calls (`cortex_ia_work_transition` and `cortex_ia_work_approve`) stored atomically in SQLite, while chat displays clean, readable Markdown summaries.
-- 📺 **Live Real-time Terminal Telemetry in Herdr Panes (`delegate worker`)**  
-  Watch external worker agents think and act in real-time. Features live action humanization, sub-second tool execution telemetry, animated activity spinners, and streamed textual reasoning.
 - 📐 **Native OpenSpec SDD Integration (`cortex-ia openspec`)**  
   Built-in support for Specification-Driven Development proposals, RFC 2119 delta specifications, and task decompositions bounded to ≤350 LOC.
 - 📊 **Real-time Web Operations Dashboard (`cortex-ia web`)**  
@@ -70,7 +68,7 @@ Built as a single portable Go binary, Cortex-IA solves the fundamental challenge
 | **Nature** | Standardized MCP Server (32 tools: `cortex_*`) | Standalone native Go binary (`cortex-ia.exe`) |
 | **System Plane** | **Epistemic & Evidence Plane** | **Operational Control Plane** |
 | **Storage** | Knowledge Graph & AST Symbol DB | ACID Transactional SQLite (`~/.cortex-ia/delegation.db`) |
-| **Primary Focus** | • AST code symbols & call graphs<br>• Blast radius impact analysis<br>• Durable bug gotchas & ADR memories<br>• Cross-session project context | • Task DAG & CAS revision state machines<br>• Atomic claim tokens & exclusive file leases<br>• Herdr terminal multiplexing & live NDJSON streaming<br>• OpenSpec SDD validator & Web dashboard |
+| **Primary Focus** | • AST code symbols & call graphs<br>• Blast radius impact analysis<br>• Durable bug gotchas & ADR memories<br>• Cross-session project context | • Task DAG & CAS revision state machines<br>• Atomic claim tokens & exclusive file leases<br>• Native-only role controllers & typed tool receipts<br>• OpenSpec SDD validator & Web dashboard |
 | **Authority Rule** | **Informative & Advisory Only.** Stored observations never authorize code writes or mark tasks complete. | **Single Source of Truth.** Task readiness, leases, transitions, and approvals exist strictly in SQLite via `cortex-ia work`. |
 
 ---
@@ -218,15 +216,15 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 
 `--preset`, `--local`, and `--remote` are mutually exclusive: exactly one is required per `add`.
 
-### 10. Reporting & Hooks (`cortex-ia report` / `cortex-ia hook`)
+### 10. Reporting (`cortex-ia report`)
 | Command | Syntax | Purpose |
 |---|---|---|
 | **Report Error** | `cortex-ia report error --code <code> --message <msg> [--details <text\|@stdin>]` *(or `send`)* | Generate and send a signed error report |
 | **Report Config** | `cortex-ia report config [--endpoint <url>] [--secret <key>] [--enable\|--disable]` | Configure the reporting endpoint |
 | **Report Flush** | `cortex-ia report flush` | Retry bounded queued reports |
 | **Report Status** | `cortex-ia report status` | Show the current reporting configuration |
-| **Hook Pre-Tool** | `cortex-ia hook pre-tool` | Execute the Antigravity pre-tool lifecycle hook |
-| **Hook Stop** | `cortex-ia hook stop` | Execute the Antigravity stop lifecycle hook |
+
+The former `cortex-ia hook` subcommand is retired and fails closed with a retired-surface error.
 
 ### 11. Maintenance & Lifecycle (`install` / `sync` / `doctor` / `rollback` / `recover` / `uninstall` / `update`)
 | Command | Syntax | Purpose |

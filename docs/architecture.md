@@ -1,6 +1,6 @@
 # Architecture Deep-Dive
 
-**Cortex-IA** is the deterministic multi-agent control plane, transactional installer, and local process bridge for **OpenCode** and **Herdr**.
+**Cortex-IA** is the deterministic multi-agent control plane, transactional installer, and local process bridge for the **OpenCode** ecosystem.
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -9,7 +9,7 @@
 │  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
 │  │ 1. PRESENTATION PLANE                                                                 │  │
 │  │    • Interactive TUI (BubbleTea wizard)        • Embedded Web Console (SSE / REST)   │  │
-│  │    • Multiplexed Herdr Terminal Panes          • Universal CLI Dispatcher            │  │
+│  │    • Optional Herdr Diagnostics (Web)          • Universal CLI Dispatcher            │  │
 │  └───────────────────────────────────────────────────────────────────────────────────────┘  │
 │                                            │                                                │
 │                                            ▼                                                │
@@ -43,10 +43,10 @@
 ```text
 cmd/cortex-ia/               Entry point main(): release versioning + app bootstrap
 internal/
-├── app/                     CLI command routers (board, work, delegate, openspec, mcp, web)
-├── delegation/              ACID SQLite engine: DAG, claims, leases, reviews, worker runner
+├── app/                     CLI command routers (board, work, openspec, mcp, web)
+├── delegation/              ACID SQLite engine: DAG, claims, leases, reviews, approvals
 ├── cortexiaweb/             Embedded HTTP web server with SSE live event stream
-├── herdr/                   Herdr workspace discovery, pane splitting & multiplexing
+├── herdr/                   Optional Herdr setup/detection helpers (diagnostics only)
 ├── agents/opencode/         OpenCode configuration layout & safe asset path mapping
 ├── components/filemerge/    Safe JSONC three-way merger with comment preservation
 ├── mcpmanager/              Managed MCP server catalog (cortex, context7)

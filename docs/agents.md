@@ -1,6 +1,6 @@
 # Agent Topology & Coordination Contracts
 
-**Cortex-IA** embeds an enterprise multi-agent topology tailored for **OpenCode** and **Herdr**.
+**Cortex-IA** embeds an enterprise multi-agent topology tailored for **OpenCode**. Execution is native-only: there is no external execution leaf, and every role controller runs inside OpenCode under Cortex-IA work authority.
 
 <p align="center">
   <img src="assets/multi-agent-orchestration.svg" alt="Multi-Agent Orchestration" width="100%" />
@@ -14,10 +14,12 @@
 |---|---|---|---|
 | **`orchestrator`** | Primary / Interactive Coordinator | Request intake, startup alignment, Cortex session management, DAG dispatch, and final receipt synthesis. | `discovery`, `investigate`, `planner`, `implement`, `reviewer` |
 | **`discovery`** | Subagent / Discovery Controller | Project onboarding, skills inventory, environment readiness, engine requirements, and maintains `.cortex-ia/discovery.md`. | None (strictly native) |
-| **`investigate`** | Subagent / Read-Only Controller | Diagnostic audits, root-cause identification, exploratory spikes, and AST blast radius inspection. | Optional leaf worker (`agy` plan mode) |
-| **`planner`** | Subagent / Spec Controller | OpenSpec delta specifications (RFC 2119), Given/When/Then scenarios, and task DAG decomposition (≤350 LOC). | Optional leaf worker (`agy` plan mode) |
-| **`implement`** | Subagent / Mutating Controller | Single task claim, exclusive file leases, TDD oracle execution, and review transition. | Optional leaf worker (`agy` current_workspace) |
-| **`reviewer`** | Subagent / Adversarial Gate | Independent test verification, mutation checks, invariant auditing, and `PASS` gate approval. | Optional read-only leaf worker |
+| **`investigate`** | Subagent / Read-Only Controller | Diagnostic audits, root-cause identification, exploratory spikes, and AST blast radius inspection. | None (native-only) |
+| **`planner`** | Subagent / Spec Controller | OpenSpec delta specifications (RFC 2119), Given/When/Then scenarios, and task DAG decomposition (≤350 LOC). | None (native-only) |
+| **`implement`** | Subagent / Mutating Controller | Single task claim, exclusive file leases, TDD oracle execution, and review transition. | None (native-only) |
+| **`reviewer`** | Subagent / Adversarial Gate | Independent test verification, mutation checks, invariant auditing, and `PASS` gate approval. | None (native-only) |
+
+The external `agy` execution leaf and its `delegate` / `herdr` delegation bridge are retired. Every role controller is native: no external CLI receives work-control tokens, approvals, session lifecycle, or MCP authority. `internal/herdr` remains in the tree as an optional diagnostics-only helper whose sole production consumer is the web console status display.
 
 ---
 

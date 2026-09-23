@@ -78,7 +78,7 @@ flowchart TD
    - **`hybrid`**: *(Recommended)* OpenSpec for shared markdown specifications in the repo + Cortex for debugging memory and root-cause lineage.
    - Carry the selected `spec_plane` in every phase dispatch. A one-time exception is scoped to that change, never a replacement for the user's general preference.
 3. **External Implement Workspace Strategy**:
-   - **`current_workspace`**: Single supported implementation workspace strategy; `isolated_worktree` is retired. Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_ia_file_reserve` calls made before editing each file. An external AGY leaf remains exclusive during its execution window; its native controller must not edit concurrently, and Cortex-IA compares the final workspace against a pre-run baseline.
+   - **`current_workspace`**: Single supported implementation workspace strategy; `isolated_worktree` is retired. Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_ia_file_reserve` calls made before editing each file. There is no external execution leaf: every controller edits the shared workspace directly under its own claim and per-file leases.
 4. **Workload Policy (Task Line Budget)**:
    - **`strict`**: Micro-task DAG architecture. Source logic <= 350 LOC (Go/Rust/Java/C#) or <= 250 LOC (TS/Python, deletions 0.2x); test/fixtures <= 600 LOC. Exceeding thresholds triggers mandatory `WORKLOAD_SOURCE_BUDGET_EXCEEDED` block and atomic DAG decomposition into stacked units (<= 250 LOC).
    - **`flexible`**: *(Recommended / Default)* Standard development units. Source logic <= 700 LOC (Go/Rust/Java/C#) or <= 500 LOC (TS/Python); test/fixtures <= 1200 LOC. Exceeding thresholds emits a non-blocking advisory (`WORKLOAD_ADVISORY`), allowing transition to `in_review` unless reviewer objects on architectural grounds.
@@ -99,16 +99,16 @@ flowchart TD
 |---|---|---|---|---|
 | **`orchestrator`** | `primary` | Request triage, routing, Cortex session lifecycle, DAG dispatch, final synthesis | Native `discovery`, `investigate`, `planner`, `implement`, `reviewer` controllers | Work reads/recovery and bootstrap only under `cortex-work-protocol.md`; auto-approval via `cortex_ia_work_approve` allowed solely for low-risk Tier 2 direct changes; no decomposition, claims, discovery writes, shell, or edits |
 | **`discovery`** | `subagent/controller` | Project onboarding profile: skills, stack, engines, Cortex governance, architecture | None; always native | repository/machine reads, bounded version probes, Cortex queries, `cortex_ia_discovery_write`; no builds, installs, ingestion, product edits, or nested `task` |
-| **`investigate`** | `subagent/controller` | Repository diagnostics, red-capable reproduction, root-cause analysis, read-only workflow retrospective | One optional read-only AGY leaf | `read`, `grep`, `glob`, `list`, read-only `bash`, `cortex_*`, `cortex_ia_*`, delegation read/wait tools; no edits or nested `task` |
-| **`planner`** | `subagent/controller` | Decision maps, selected-plane contracts, vertical-slice DAGs, and blocked-task replacement plans | One optional plan-only AGY leaf | repository reads, selected-plane contract writes, `cortex_ia_board_create`, `cortex_ia_work_create`, `cortex_ia_work_decompose`, `cortex_*`, `cortex_ia_*`; no claims or nested `task` |
-| **`implement`** | `subagent/controller` | Claims one task, leases paths, executes, verifies, transitions to review | One AGY leaf after durable authority and explicit workspace-strategy validation | edits plus hidden-token `cortex_ia_work_claim|lease|renew|release|transition`, `cortex_ia_file_reserve|file_release`, `cortex_*`, `cortex_ia_*`; no nested `task` |
+| **`investigate`** | `subagent/controller` | Repository diagnostics, red-capable reproduction, root-cause analysis, read-only workflow retrospective | None; always native | `read`, `grep`, `glob`, `list`, read-only `bash`, `cortex_*`, `cortex_ia_*`; no edits or nested `task` |
+| **`planner`** | `subagent/controller` | Decision maps, selected-plane contracts, vertical-slice DAGs, and blocked-task replacement plans | None; always native | repository reads, selected-plane contract writes, `cortex_ia_board_create`, `cortex_ia_work_create`, `cortex_ia_work_decompose`, `cortex_*`, `cortex_ia_*`; no claims or nested `task` |
+| **`implement`** | `subagent/controller` | Claims one task, leases paths, executes, verifies, transitions to review | None; always native | edits plus hidden-token `cortex_ia_work_claim|lease|renew|release|transition`, `cortex_ia_file_reserve|file_release`, `cortex_*`, `cortex_ia_*`; no nested `task` |
 | **`reviewer`** | `subagent/controller` | Independent verification and approval | Native execution | repository reads, tests, `cortex_ia_work_status`, `cortex_ia_work_approve`, `cortex_*`, `cortex_ia_*`; no edits, claims, leases, or nested `task` |
 
 The orchestrator always routes through a native controller. Discovery is always native. Cortex-IA is the only process bridge and local task authority.
 
 ### Effective Execution Mode Contract
 
-All role controllers execute in `native` mode under the Cortex-IA Work Authority. OpenCode subagents proceed directly with local execution using their available tools, acquired claims, and file leases without external delegation.
+All role controllers execute in `native` mode under the Cortex-IA Work Authority. OpenCode subagents proceed directly with local execution using their available tools, acquired claims, and file leases without external delegation. There is no external execution leaf: no external CLI receives work-control, approval, session, or MCP authority. Herdr integration remains optional and diagnostics-only; its only production consumer is the web console status display, and it never owns task state or approval.
 
 ---
 
@@ -236,7 +236,7 @@ sequenceDiagram
   - Parameterize DB scripts via environment variables; never embed credentials or secrets.
   - Unapproved destructive operations (`DROP TABLE`, `TRUNCATE`, bulk `DELETE`) on shared tables are strictly prohibited without pre-captured verified backups and exact rollbacks. Synthetic test data must be cleaned up via rollback or teardown.
 - **AST & Code-Intelligence Noninterference (`REQ-PRIV-007`)**: AST structures, doc summaries (`DocSummary`), graph relations, and reasoning (`Reasoning`) are structural codebase components and must NEVER be redacted or mutated by privacy/sanitize routines.
-- **Transient Quota Exhaustion Fallback**: When external delegation fails due to model quota exhaustion (`QUOTA_EXCEEDED` / "usage limit has been reached"), the controller/orchestrator reconciles the job and may fall back immediately to native execution under fresh local authority without marking the task permanently blocked.
+- **Transient Quota Exhaustion Fallback**: When a model hits a transient quota limit (`QUOTA_EXCEEDED` / "usage limit has been reached"), the controller/orchestrator reconciles durable task state and resumes under fresh local authority instead of marking the task permanently blocked.
 - **Stacked Work Units**:
   1. *Layer 1 (Contracts)*: Types, interfaces, schemas, and test scaffolding.
   2. *Layer 2 (Core)*: Domain business logic and internal algorithmic engines.

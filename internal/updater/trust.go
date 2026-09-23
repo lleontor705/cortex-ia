@@ -2,8 +2,11 @@ package updater
 
 import (
 	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -33,12 +36,66 @@ type TrustedKey struct {
 	MaxVersion string // inclusive ceiling, canonical vX.Y.Z (empty means unbounded upper)
 }
 
+// ErrTrustBundleInvalid is returned when a packaged build-time trust bundle cannot be
+// decoded or violates the trust store invariants.
+var ErrTrustBundleInvalid = errors.New("trust bundle invalid")
+
+// productionTrustBundle is the sole ldflags injection target for the packaged release
+// trust store: -X .../internal/updater.productionTrustBundle=<base64(JSON []TrustedKey)>.
+// It stays unset in local builds, which keeps the updater fail-closed.
+var productionTrustBundle string
+
 var (
-	// ProductionTrustedKeys is explicitly empty to fail closed until trusted keys are packaged.
+	// ProductionTrustedKeys is empty unless a valid build-time trust bundle is packaged.
 	ProductionTrustedKeys = []TrustedKey{}
 	currentTrustedKeys    = ProductionTrustedKeys
 	trustMu               sync.Mutex
 )
+
+func init() {
+	// A malformed bundle must never partially activate trust: decodeTrustBundle rejects it
+	// before publication, so the store stays empty and RequireTrust keeps failing closed.
+	_ = applyTrustBundle(productionTrustBundle)
+}
+
+// applyTrustBundle decodes a packaged bundle and publishes it as the production trust store.
+// Rejected bundles leave the active store untouched.
+func applyTrustBundle(encoded string) error {
+	keys, err := decodeTrustBundle(encoded)
+	if err != nil {
+		return err
+	}
+	ProductionTrustedKeys = keys
+	trustMu.Lock()
+	currentTrustedKeys = keys
+	trustMu.Unlock()
+	return nil
+}
+
+// decodeTrustBundle decodes the base64-encoded JSON array of TrustedKey records injected
+// at build time. An unset bundle yields an empty store without error; malformed payloads
+// and invariant violations return ErrTrustBundleInvalid.
+func decodeTrustBundle(encoded string) ([]TrustedKey, error) {
+	trimmed := strings.TrimSpace(encoded)
+	if trimmed == "" {
+		return []TrustedKey{}, nil
+	}
+
+	raw, err := base64.StdEncoding.DecodeString(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("%w: base64 decode failed: %v", ErrTrustBundleInvalid, err)
+	}
+
+	var keys []TrustedKey
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		return nil, fmt.Errorf("%w: JSON decode failed: %v", ErrTrustBundleInvalid, err)
+	}
+
+	if err := ValidateTrustStore(keys); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrTrustBundleInvalid, err)
+	}
+	return keys, nil
+}
 
 // RequireTrust verifies that trusted release keys are packaged.
 // It fails closed immediately if no trusted keys exist.

@@ -93,7 +93,7 @@ func Setup() error {
 		return err
 	}
 	logging.Debugf("herdr.setup.binary path=%s", herdrPath)
-	for _, integration := range []string{"opencode", "antigravity-cli"} {
+	for _, integration := range []string{"opencode"} {
 		fmt.Printf("🔗 Instalando integración %s en Herdr...\n", integration)
 		out, err := exec.Command(herdrPath, "integration", "install", integration).CombinedOutput()
 		if err != nil {
@@ -113,12 +113,6 @@ func Setup() error {
 	}
 	fmt.Printf("✅ Estado visual de delegación registrado en OpenCode: %s\n", tuiPath)
 
-	if _, err := ResolveAGY(); err == nil {
-		fmt.Println("✅ Antigravity CLI ('agy') detectado y listo para delegación en Herdr.")
-	} else {
-		fmt.Println("ℹ️ Antigravity CLI ('agy') no detectado en PATH.")
-	}
-
 	fmt.Println("\n🎉 ¡Entorno Herdr + Cortex-IA listo!")
 	fmt.Println("👉 Para usarlo con delegación: ejecuta 'herdr' y dentro abre tu orquestador.")
 	fmt.Println("👉 Si ejecutas OpenCode fuera de Herdr: funcionará automáticamente en modo nativo.")
@@ -134,13 +128,6 @@ func Status() error {
 		fmt.Println("❌ Herdr: NO instalado")
 	} else {
 		fmt.Printf("✅ Herdr: Instalado en %s\n", herdrPath)
-	}
-
-	agyPath, err := ResolveAGY()
-	if err != nil {
-		fmt.Println("⚠️ Antigravity CLI (agy): NO encontrado en PATH")
-	} else {
-		fmt.Printf("✅ Antigravity CLI: %s\n", agyPath)
 	}
 
 	if HerdrActiveSession() {
@@ -174,25 +161,6 @@ func ResolveHerdr() (string, error) {
 		"/usr/local/bin/herdr", "/usr/bin/herdr",
 	}
 	return firstRegular(candidates, "herdr")
-}
-
-func ResolveAGY() (string, error) {
-	if found, err := exec.LookPath("agy"); err == nil {
-		return found, nil
-	}
-	home, _ := os.UserHomeDir()
-	local := os.Getenv("LOCALAPPDATA")
-	if local == "" && home != "" {
-		local = filepath.Join(home, "AppData", "Local")
-	}
-	return firstRegular([]string{
-		filepath.Join(local, "agy", "bin", "agy.exe"),
-		filepath.Join(home, ".agy", "bin", "agy"),
-		filepath.Join(home, ".local", "bin", "agy"),
-		filepath.Join(home, ".cargo", "bin", "agy"),
-		"/opt/homebrew/bin/agy",
-		"/usr/local/bin/agy", "/usr/bin/agy",
-	}, "agy")
 }
 
 func firstRegular(candidates []string, name string) (string, error) {

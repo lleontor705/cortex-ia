@@ -30,6 +30,12 @@ permissions:
   - action: read
     resource: "*"
     effect: allow
+  - action: read
+    resource: "*.env"
+    effect: deny
+  - action: read
+    resource: "*.env.*"
+    effect: deny
   - action: grep
     resource: "*"
     effect: allow
@@ -152,7 +158,7 @@ permissions:
     effect: allow
   - action: shell
     resource: "*"
-    effect: allow
+    effect: deny
   - action: shell
     resource: "git status*"
     effect: allow
@@ -166,13 +172,46 @@ permissions:
     resource: "git show*"
     effect: allow
   - action: shell
+    resource: "git rev-parse*"
+    effect: allow
+  - action: shell
     resource: "go test *"
     effect: allow
   - action: shell
     resource: "go vet *"
     effect: allow
   - action: shell
+    resource: "go build *"
+    effect: allow
+  - action: shell
     resource: "golangci-lint run *"
+    effect: allow
+  - action: shell
+    resource: "sqlcmd *"
+    effect: allow
+  - action: shell
+    resource: "psql *"
+    effect: allow
+  - action: shell
+    resource: "mysql *"
+    effect: allow
+  - action: shell
+    resource: "cortex doctor*"
+    effect: allow
+  - action: shell
+    resource: "cortex search *"
+    effect: allow
+  - action: shell
+    resource: "npm run *"
+    effect: allow
+  - action: shell
+    resource: "npm --prefix web run *"
+    effect: allow
+  - action: shell
+    resource: "node scripts/*"
+    effect: allow
+  - action: shell
+    resource: "git branch*"
     effect: allow
 ---
 

@@ -58,6 +58,6 @@ cortex-ia mcp list
 
 `cortex-ia` is architected to bring the same SDD and MCP stack to additional platforms in the future:
 1. **OpenCode**: Primary active native target (`~/.config/opencode`).
-2. **Google Antigravity**: Next target on roadmap (`~/.gemini/antigravity`).
+2. **Google Antigravity**: No committed support; any future evaluation stays native-only with no external execution (`~/.gemini/antigravity`).
 3. **Claude CLI**: Next target on roadmap (`~/.claude`).
 

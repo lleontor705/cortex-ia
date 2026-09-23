@@ -2342,6 +2342,176 @@ function HomeLogo(props) {
     return _el$181;
   })();
 }
+function formatLargeTokens(value) {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
+  if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (value >= 1e3) return `${(value / 1e3).toFixed(1)}k`;
+  return String(Math.round(value));
+}
+function formatInteger(n) {
+  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+function openStatsView() {
+  try {
+    if (process.platform === "win32") {
+      spawn("cmd.exe", ["/c", "start", "Cortex Stats", cortexExecutable(), "stats"], {
+        detached: true,
+        stdio: "ignore"
+      }).unref();
+    } else {
+      spawn(cortexExecutable(), ["stats"], {
+        detached: true,
+        stdio: "ignore"
+      }).unref();
+    }
+  } catch {
+  }
+}
+function HomeStatsWidget(props) {
+  const palette = resolvePalette(props.theme);
+  const data = props.stats;
+  const dim = useTerminalDimensions();
+  return _$createComponent(Show, {
+    get when() {
+      return data();
+    },
+    children: (s) => {
+      const isNarrow = () => dim().width < 80;
+      return (() => {
+        var _el$188 = _$createElement("box"), _el$189 = _$createElement("box"), _el$190 = _$createElement("box"), _el$191 = _$createElement("text"), _el$192 = _$createElement("text"), _el$195 = _$createElement("box"), _el$196 = _$createElement("text"), _el$197 = _$createElement("text"), _el$199 = _$createElement("text"), _el$200 = _$createElement("text"), _el$202 = _$createElement("text"), _el$206 = _$createElement("box"), _el$207 = _$createElement("text"), _el$208 = _$createElement("text"), _el$210 = _$createElement("text"), _el$214 = _$createElement("text");
+        _$insertNode(_el$188, _el$189);
+        _$insertNode(_el$188, _el$195);
+        _$insertNode(_el$188, _el$206);
+        _$setProp(_el$188, "flexDirection", "column");
+        _$setProp(_el$188, "borderStyle", "rounded");
+        _$setProp(_el$188, "paddingLeft", 1);
+        _$setProp(_el$188, "paddingRight", 1);
+        _$setProp(_el$188, "marginTop", 1);
+        _$setProp(_el$188, "marginBottom", 1);
+        _$setProp(_el$188, "width", "100%");
+        _$setProp(_el$188, "onMouseDown", () => openStatsView());
+        _$insertNode(_el$189, _el$190);
+        _$setProp(_el$189, "flexDirection", "row");
+        _$setProp(_el$189, "justifyContent", "space-between");
+        _$insertNode(_el$190, _el$191);
+        _$insertNode(_el$190, _el$192);
+        _$setProp(_el$190, "flexDirection", "row");
+        _$insert(_el$191, () => `${GLYPH.brand} CORTEX \xB7 IA `);
+        _$insertNode(_el$192, _$createTextNode(`Estad\xEDsticas de Uso`));
+        _$insert(_el$189, _$createComponent(Show, {
+          get when() {
+            return _$memo(() => !!s().first_day)() && s().last_day;
+          },
+          get children() {
+            var _el$194 = _$createElement("text");
+            _$insert(_el$194, () => `${s().first_day} \u2192 ${s().last_day}`);
+            _$effect((_$p) => _$setProp(_el$194, "fg", palette.textMuted, _$p));
+            return _el$194;
+          }
+        }), null);
+        _$insertNode(_el$195, _el$196);
+        _$insertNode(_el$195, _el$197);
+        _$insertNode(_el$195, _el$199);
+        _$insertNode(_el$195, _el$200);
+        _$insertNode(_el$195, _el$202);
+        _$setProp(_el$195, "flexDirection", "row");
+        _$setProp(_el$195, "marginTop", 0);
+        _$insert(_el$196, () => `\u25CF ${formatInteger(s().sessions)} sesiones`);
+        _$insertNode(_el$197, _$createTextNode(`\u2502`));
+        _$insert(_el$199, () => `\u2709 ${formatInteger(s().messages)} mensajes`);
+        _$insertNode(_el$200, _$createTextNode(`\u2502`));
+        _$insert(_el$202, () => `\u25C6 ${formatLargeTokens(s().tokens)} tokens`);
+        _$insert(_el$195, _$createComponent(Show, {
+          get when() {
+            return !isNarrow();
+          },
+          get children() {
+            return [(() => {
+              var _el$203 = _$createElement("text");
+              _$insertNode(_el$203, _$createTextNode(`\u2502`));
+              _$effect((_$p) => _$setProp(_el$203, "fg", palette.border, _$p));
+              return _el$203;
+            })(), (() => {
+              var _el$205 = _$createElement("text");
+              _$insert(_el$205, () => `\u{1F4C5} ${s().active_days} d\xEDas activos`);
+              _$effect((_$p) => _$setProp(_el$205, "fg", palette.warning, _$p));
+              return _el$205;
+            })()];
+          }
+        }), null);
+        _$insertNode(_el$206, _el$207);
+        _$insertNode(_el$206, _el$208);
+        _$insertNode(_el$206, _el$210);
+        _$insertNode(_el$206, _el$214);
+        _$setProp(_el$206, "flexDirection", "row");
+        _$setProp(_el$206, "marginTop", 0);
+        _$insert(_el$207, () => `\u2605 Top: ${s().favorite_model || "-"} (${(s().favorite_model_share ?? 0).toFixed(1)}%)`);
+        _$insertNode(_el$208, _$createTextNode(`\u2502`));
+        _$insert(_el$210, () => `\u26A1 Pico: ${String(s().peak_hour).padStart(2, "0")}:00`);
+        _$insert(_el$206, _$createComponent(Show, {
+          get when() {
+            return isNarrow();
+          },
+          get children() {
+            return [(() => {
+              var _el$211 = _$createElement("text");
+              _$insertNode(_el$211, _$createTextNode(`\u2502`));
+              _$effect((_$p) => _$setProp(_el$211, "fg", palette.border, _$p));
+              return _el$211;
+            })(), (() => {
+              var _el$213 = _$createElement("text");
+              _$insert(_el$213, () => `\u{1F4C5} ${s().active_days}d`);
+              _$effect((_$p) => _$setProp(_el$213, "fg", palette.warning, _$p));
+              return _el$213;
+            })()];
+          }
+        }), _el$214);
+        _$insertNode(_el$214, _$createTextNode(` \xB7 [:cortex-stats para panel interactivo]`));
+        _$effect((_p$) => {
+          var _v$91 = palette.border, _v$92 = palette.accent, _v$93 = TextAttributes.BOLD, _v$94 = palette.text, _v$95 = TextAttributes.BOLD, _v$96 = isNarrow() ? 1 : 2, _v$97 = palette.sky, _v$98 = palette.border, _v$99 = palette.info, _v$100 = palette.border, _v$101 = palette.success, _v$102 = TextAttributes.BOLD, _v$103 = isNarrow() ? 1 : 2, _v$104 = palette.accentAlt, _v$105 = palette.border, _v$106 = palette.sky, _v$107 = palette.textMuted;
+          _v$91 !== _p$.e && (_p$.e = _$setProp(_el$188, "borderColor", _v$91, _p$.e));
+          _v$92 !== _p$.t && (_p$.t = _$setProp(_el$191, "fg", _v$92, _p$.t));
+          _v$93 !== _p$.a && (_p$.a = _$setProp(_el$191, "attributes", _v$93, _p$.a));
+          _v$94 !== _p$.o && (_p$.o = _$setProp(_el$192, "fg", _v$94, _p$.o));
+          _v$95 !== _p$.i && (_p$.i = _$setProp(_el$192, "attributes", _v$95, _p$.i));
+          _v$96 !== _p$.n && (_p$.n = _$setProp(_el$195, "gap", _v$96, _p$.n));
+          _v$97 !== _p$.s && (_p$.s = _$setProp(_el$196, "fg", _v$97, _p$.s));
+          _v$98 !== _p$.h && (_p$.h = _$setProp(_el$197, "fg", _v$98, _p$.h));
+          _v$99 !== _p$.r && (_p$.r = _$setProp(_el$199, "fg", _v$99, _p$.r));
+          _v$100 !== _p$.d && (_p$.d = _$setProp(_el$200, "fg", _v$100, _p$.d));
+          _v$101 !== _p$.l && (_p$.l = _$setProp(_el$202, "fg", _v$101, _p$.l));
+          _v$102 !== _p$.u && (_p$.u = _$setProp(_el$202, "attributes", _v$102, _p$.u));
+          _v$103 !== _p$.c && (_p$.c = _$setProp(_el$206, "gap", _v$103, _p$.c));
+          _v$104 !== _p$.w && (_p$.w = _$setProp(_el$207, "fg", _v$104, _p$.w));
+          _v$105 !== _p$.m && (_p$.m = _$setProp(_el$208, "fg", _v$105, _p$.m));
+          _v$106 !== _p$.f && (_p$.f = _$setProp(_el$210, "fg", _v$106, _p$.f));
+          _v$107 !== _p$.y && (_p$.y = _$setProp(_el$214, "fg", _v$107, _p$.y));
+          return _p$;
+        }, {
+          e: void 0,
+          t: void 0,
+          a: void 0,
+          o: void 0,
+          i: void 0,
+          n: void 0,
+          s: void 0,
+          h: void 0,
+          r: void 0,
+          d: void 0,
+          l: void 0,
+          u: void 0,
+          c: void 0,
+          w: void 0,
+          m: void 0,
+          f: void 0,
+          y: void 0
+        });
+        return _el$188;
+      })();
+    }
+  });
+}
 function initialize(api, disposeRoot) {
   const [activeSessionOverride, setActiveSessionOverride] = createSignal();
   const updateActiveSession = (val) => {
@@ -2576,10 +2746,38 @@ function initialize(api, disposeRoot) {
   const clock = setInterval(() => setNow(Date.now()), 1e3);
   const spinnerTimer = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 90);
   const pulseTimer = setInterval(() => setPulseFrame((p) => (p + 1) % NEURAL_PULSE_FRAMES.length), 350);
+  const [usageStats, setUsageStats] = createSignal(null);
+  const [statsLoading, setStatsLoading] = createSignal(false);
+  let pendingStats = false;
+  const readUsageStats = () => {
+    if (disposed || pendingStats) return;
+    pendingStats = true;
+    setStatsLoading(true);
+    execFile(cortexExecutable(), ["stats", "--json"], {
+      encoding: "utf8",
+      maxBuffer: 512 * 1024,
+      timeout: 5e3,
+      windowsHide: true
+    }, (error, stdout) => {
+      pendingStats = false;
+      setStatsLoading(false);
+      if (disposed || error) return;
+      try {
+        const parsed = JSON.parse(stdout);
+        if (typeof parsed?.sessions === "number" && typeof parsed?.messages === "number") {
+          setUsageStats(parsed);
+        }
+      } catch {
+      }
+    });
+  };
+  readUsageStats();
+  const statsPoll = setInterval(readUsageStats, 6e4);
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
     clearInterval(snapshotPoll);
+    clearInterval(statsPoll);
     clearInterval(clock);
     clearInterval(spinnerTimer);
     clearInterval(pulseTimer);
@@ -2617,11 +2815,24 @@ function initialize(api, disposeRoot) {
     });
     api.ui.slot({
       prepend: "home.footer",
-      render: (ctx) => _$createComponent(HomeLogo, {
-        get theme() {
-          return ctx?.theme?.current || ctx?.theme || api.theme;
-        }
-      })
+      render: (ctx) => (() => {
+        var _el$216 = _$createElement("box");
+        _$setProp(_el$216, "flexDirection", "column");
+        _$setProp(_el$216, "width", "100%");
+        _$insert(_el$216, _$createComponent(HomeLogo, {
+          get theme() {
+            return ctx?.theme?.current || ctx?.theme || api.theme;
+          }
+        }), null);
+        _$insert(_el$216, _$createComponent(HomeStatsWidget, {
+          stats: usageStats,
+          loading: statsLoading,
+          get theme() {
+            return ctx?.theme?.current || ctx?.theme || api.theme;
+          }
+        }), null);
+        return _el$216;
+      })()
     });
     api.ui.slot({
       append: "sidebar.footer",
@@ -2686,6 +2897,26 @@ function initialize(api, disposeRoot) {
         run: () => {
           if (!api.ui?.panel?.open) return false;
           api.ui.panel.open("cortex.board");
+          return true;
+        }
+      }, {
+        name: ":cortex-stats",
+        title: "Cortex Usage Stats",
+        desc: "Open Cortex usage statistics dashboard",
+        category: "Cortex",
+        nargs: "0",
+        run: () => {
+          openStatsView();
+          return true;
+        }
+      }, {
+        name: ":stats",
+        title: "Usage Stats",
+        desc: "Open Cortex usage statistics dashboard",
+        category: "Cortex",
+        nargs: "0",
+        run: () => {
+          openStatsView();
           return true;
         }
       }]
@@ -2753,15 +2984,28 @@ function initialize(api, disposeRoot) {
     },
     home_bottom(ctx) {
       updateActiveSession(ctx);
-      return _$createComponent(HomeBottomStatus, {
-        snapshot,
-        jobs,
-        spinner,
-        snapshotError,
-        get theme() {
-          return ctx?.theme?.current || ctx?.theme || api.theme;
-        }
-      });
+      return (() => {
+        var _el$217 = _$createElement("box");
+        _$setProp(_el$217, "flexDirection", "column");
+        _$setProp(_el$217, "width", "100%");
+        _$insert(_el$217, _$createComponent(HomeStatsWidget, {
+          stats: usageStats,
+          loading: statsLoading,
+          get theme() {
+            return ctx?.theme?.current || ctx?.theme || api.theme;
+          }
+        }), null);
+        _$insert(_el$217, _$createComponent(HomeBottomStatus, {
+          snapshot,
+          jobs,
+          spinner,
+          snapshotError,
+          get theme() {
+            return ctx?.theme?.current || ctx?.theme || api.theme;
+          }
+        }), null);
+        return _el$217;
+      })();
     },
     "home.footer.status"(ctx) {
       updateActiveSession(ctx);

@@ -31,23 +31,23 @@ type Theme struct {
 var darkTheme = Theme{
 	Primary:   lipgloss.Color("#7C3AED"),
 	Secondary: lipgloss.Color("#06B6D4"),
-	Success:   lipgloss.Color("#22C55E"),
+	Success:   lipgloss.Color("#10B981"),
 	Warning:   lipgloss.Color("#F59E0B"),
-	Error:     lipgloss.Color("#EF4444"),
-	Muted:     lipgloss.Color("#6B7280"),
-	White:     lipgloss.Color("#F9FAFB"),
-	BgColor:   lipgloss.Color("#1E1E2E"),
+	Error:     lipgloss.Color("#F43F5E"),
+	Muted:     lipgloss.Color("#64748B"),
+	White:     lipgloss.Color("#F8FAFC"),
+	BgColor:   lipgloss.Color("#0A0E17"),
 }
 
 var lightTheme = Theme{
 	Primary:   lipgloss.Color("#6D28D9"),
 	Secondary: lipgloss.Color("#0891B2"),
-	Success:   lipgloss.Color("#16A34A"),
+	Success:   lipgloss.Color("#059669"),
 	Warning:   lipgloss.Color("#D97706"),
-	Error:     lipgloss.Color("#DC2626"),
-	Muted:     lipgloss.Color("#6B7280"),
-	White:     lipgloss.Color("#1F2937"),
-	BgColor:   lipgloss.Color("#F9FAFB"),
+	Error:     lipgloss.Color("#E11D48"),
+	Muted:     lipgloss.Color("#64748B"),
+	White:     lipgloss.Color("#1E293B"),
+	BgColor:   lipgloss.Color("#F8FAFC"),
 }
 
 // ActiveTheme tracks the currently active theme.

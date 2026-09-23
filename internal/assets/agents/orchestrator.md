@@ -8,13 +8,13 @@ request:
 permissions:
   - action: read
     resource: "*"
-    effect: allow
+    effect: deny
   - action: grep
     resource: "*"
-    effect: allow
+    effect: deny
   - action: glob
     resource: "*"
-    effect: allow
+    effect: deny
   - action: edit
     resource: "*"
     effect: deny

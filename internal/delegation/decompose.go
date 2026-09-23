@@ -48,7 +48,8 @@ func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision i
 		var ownership ConversationOwnership
 		var status WorkStatus
 		var revision int64
-		if err := conn.QueryRowContext(ctx, `SELECT board_id,workspace,status,revision,opencode_session_id,opencode_root_session_id,opencode_parent_session_id FROM work_items WHERE id=?`, id).Scan(&boardID, &workspace, &status, &revision, &ownership.OpenCodeSessionID, &ownership.OpenCodeRootSessionID, &ownership.OpenCodeParentSessionID); errors.Is(err, sql.ErrNoRows) {
+		var parentPolicy WorkloadPolicy
+		if err := conn.QueryRowContext(ctx, `SELECT board_id,workspace,status,revision,opencode_session_id,opencode_root_session_id,opencode_parent_session_id,workload_policy FROM work_items WHERE id=?`, id).Scan(&boardID, &workspace, &status, &revision, &ownership.OpenCodeSessionID, &ownership.OpenCodeRootSessionID, &ownership.OpenCodeParentSessionID, &parentPolicy); errors.Is(err, sql.ErrNoRows) {
 			return ErrWorkNotFound
 		} else if err != nil {
 			return err
@@ -121,7 +122,7 @@ func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision i
 			if index == 0 && unresolved == 0 {
 				childStatus = WorkReady
 			}
-			if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id,workspace,opencode_session_id,opencode_root_session_id,opencode_parent_session_id) VALUES(?,?,?,?,?,?,?,?,?,?)`, step.ID, step.Title, childStatus, now, now, boardID, workspace, ownership.OpenCodeSessionID, ownership.OpenCodeRootSessionID, ownership.OpenCodeParentSessionID); err != nil {
+			if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id,workspace,opencode_session_id,opencode_root_session_id,opencode_parent_session_id,workload_policy) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, step.ID, step.Title, childStatus, now, now, boardID, workspace, ownership.OpenCodeSessionID, ownership.OpenCodeRootSessionID, ownership.OpenCodeParentSessionID, string(parentPolicy)); err != nil {
 				return fmt.Errorf("create decomposition task %q: %w", step.ID, err)
 			}
 			if _, err := conn.ExecContext(ctx, `INSERT INTO work_definitions(item_id,objective,acceptance_criteria,verification,allowed_files_json,contract_json) VALUES(?,?,?,?,?,?)`, step.ID, step.Objective, step.Acceptance, step.Verification, step.allowedFilesJSON, contractJSON); err != nil {

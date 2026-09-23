@@ -15,26 +15,50 @@ const (
 	LegacyTUIPluginPath = "./plugins/cortex-ia-tui.js"
 )
 
-// ConfigureTUIPlugin ensures OpenCode's configuration contains the cortex-ia TUI plugin entry.
+// ThemeApplyOutcome reports how the optional cortex theme was resolved by one
+// configuration pass.
+type ThemeApplyOutcome string
+
+const (
+	// ThemeOutcomeApplied reports the cortex theme entry was written or refreshed.
+	ThemeOutcomeApplied ThemeApplyOutcome = "applied"
+	// ThemeOutcomeSkipped reports the theme key was left untouched because the
+	// user never opted in.
+	ThemeOutcomeSkipped ThemeApplyOutcome = "skipped-not-requested"
+	// ThemeOutcomeError reports the requested theme could not be written.
+	ThemeOutcomeError ThemeApplyOutcome = "error"
+)
+
+// ConfigureTUIPlugin ensures OpenCode's configuration contains the cortex-ia TUI
+// plugin entry. It never applies the theme: callers that want it must ask for it
+// explicitly through ConfigureTUIPluginWithResult.
 func ConfigureTUIPlugin(homeDir string) (string, error) {
-	path, _, err := ConfigureTUIPluginWithResult(homeDir)
+	path, _, _, err := ConfigureTUIPluginWithResult(homeDir, false)
 	return path, err
 }
 
 // ConfigureTUIPluginWithResult ensures OpenCode's CLI/TUI config (cli.json, tui.jsonc, or tui.json)
 // contains the cortex-ia TUI plugin entry, ensures the OpenCode v2 bridge directory exists,
-// and reports whether the file was modified.
-func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
+// and reports whether the file was modified. applyTheme is the explicit opt-in
+// for the bundled cortex theme; without it the theme key is neither read nor
+// rewritten, and the outcome reports that the theme was skipped.
+func ConfigureTUIPluginWithResult(homeDir string, applyTheme bool) (string, bool, ThemeApplyOutcome, error) {
+	// A pass that fails before writing reports the theme as skipped when nobody
+	// asked for it, and as an error when a requested theme could not be written.
+	failureOutcome := ThemeOutcomeSkipped
+	if applyTheme {
+		failureOutcome = ThemeOutcomeError
+	}
 	if homeDir == "" {
 		var err error
 		homeDir, err = os.UserHomeDir()
 		if err != nil {
-			return "", false, err
+			return "", false, failureOutcome, err
 		}
 	}
 	configDir := filepath.Join(homeDir, ".config", "opencode")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		return "", false, err
+		return "", false, failureOutcome, err
 	}
 
 	cliPath := filepath.Join(configDir, "cli.json")
@@ -63,14 +87,14 @@ func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
 		primaryPath = tuiCPath
 	}
 
-	primaryChanged, err := configureSingleTUIFile(primaryPath)
+	primaryChanged, err := configureSingleTUIFile(primaryPath, applyTheme)
 	if err != nil {
-		return "", false, err
+		return "", false, failureOutcome, err
 	}
 	anyChanged := primaryChanged
 
 	for _, sec := range secondaryPaths {
-		secChanged, secErr := configureSingleTUIFile(sec)
+		secChanged, secErr := configureSingleTUIFile(sec, applyTheme)
 		if secErr == nil && secChanged {
 			anyChanged = true
 		}
@@ -78,7 +102,10 @@ func ConfigureTUIPluginWithResult(homeDir string) (string, bool, error) {
 
 	_ = ensureTUIBridge(configDir)
 	_ = CleanupLegacyFlatFiles(homeDir)
-	return primaryPath, anyChanged, nil
+	if applyTheme {
+		return primaryPath, anyChanged, ThemeOutcomeApplied, nil
+	}
+	return primaryPath, anyChanged, ThemeOutcomeSkipped, nil
 }
 
 func ensureTUIBridge(configDir string) error {
@@ -109,7 +136,7 @@ func writeFileIfChanged(path string, content []byte) error {
 	return os.WriteFile(path, content, 0o644)
 }
 
-func configureSingleTUIFile(tuiPath string) (bool, error) {
+func configureSingleTUIFile(tuiPath string, applyTheme bool) (bool, error) {
 	plugins := []any{}
 	current := map[string]any{}
 	isCLI := filepath.Base(tuiPath) == "cli.json"
@@ -179,12 +206,8 @@ func configureSingleTUIFile(tuiPath string) (bool, error) {
 		"$schema": schemaURL,
 		pluginKey: plugins,
 	}
-	themeVal, hasTheme := current["theme"]
-	if !hasTheme || themeVal == "opencode" || themeVal == "" {
-		overlayMap["theme"] = map[string]any{
-			"name": "cortex",
-			"mode": "dark",
-		}
+	if applyTheme {
+		overlayMap["theme"] = cortexThemeOverlay(current)
 	}
 
 	overlay, err := json.Marshal(overlayMap)
@@ -196,6 +219,25 @@ func configureSingleTUIFile(tuiPath string) (bool, error) {
 		return false, err
 	}
 	return mutated.Changed || mutated.Created, nil
+}
+
+// cortexThemeOverlay builds the opted-in cortex theme entry. An explicit
+// light/dark preference is preserved because it encodes the user's terminal
+// contrast choice, which is unrelated to the theme name. Anything else —
+// including a theme name left behind by an earlier install — is refreshed to
+// the cortex theme, since a stale name is what silently prevented the cortex
+// theme from ever loading.
+func cortexThemeOverlay(current map[string]any) map[string]any {
+	mode := "dark"
+	if existing, ok := current["theme"].(map[string]any); ok {
+		if value, ok := existing["mode"].(string); ok && (value == "light" || value == "dark") {
+			mode = value
+		}
+	}
+	return map[string]any{
+		"name": "cortex",
+		"mode": mode,
+	}
 }
 
 // CleanupLegacyFlatFiles cleans up orphaned flat files like cortex-authority-state-*.json,

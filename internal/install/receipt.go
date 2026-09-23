@@ -52,7 +52,16 @@ type InstallReceipt struct {
 	PostPipelineEffects []PostPipelineEffect `json:"post_pipeline_effects,omitempty"`
 	// PartialSuccess reports that verified earlier effects survive a later failure.
 	PartialSuccess bool `json:"partial_success,omitempty"`
+	// ThemeOutcome records how the opt-in cortex theme was resolved: applied,
+	// skipped-not-requested, or error. Empty means the TUI effect never ran.
+	ThemeOutcome ThemeApplyOutcome `json:"theme_outcome,omitempty"`
 }
+
+// ThemeOutcomePlanned reports that a dry-run preview was asked to apply the
+// cortex theme. It is distinct from ThemeOutcomeApplied precisely because a
+// preview never reads or writes the theme key, so callers cannot mistake it for
+// an executed write.
+const ThemeOutcomePlanned ThemeApplyOutcome = "planned"
 
 // PostPipelineEffectStatus represents the outcome of an individual post-pipeline effect.
 type PostPipelineEffectStatus string
@@ -146,12 +155,27 @@ func flaggedUnqualified(name string, warnings []string) bool {
 	return false
 }
 
+// recordDryRunThemeIntent mirrors the theme outcome a real run would report
+// while keeping the preview side-effect free. A requested theme stays visibly
+// unexecuted as "planned"; an unrequested or skipped plugin stays skipped.
+func recordDryRunThemeIntent(opts Options, receipt *InstallReceipt) {
+	if receipt == nil {
+		return
+	}
+	if opts.ApplyTheme && !opts.SkipTUIPlugin {
+		receipt.ThemeOutcome = ThemeOutcomePlanned
+		return
+	}
+	receipt.ThemeOutcome = ThemeOutcomeSkipped
+}
+
 // applyPostPipelineEffects executes the post-pipeline separate effects in order:
 // 1. Environment configuration
 // 2. TUI plugin registration
 // 3. Delegation bridge configuration
 func applyPostPipelineEffects(homeDir string, opts Options, receipt *InstallReceipt) error {
 	if opts.DryRun {
+		recordDryRunThemeIntent(opts, receipt)
 		return nil
 	}
 	var effects []PostPipelineEffect
@@ -190,6 +214,9 @@ func applyPostPipelineEffects(homeDir string, opts Options, receipt *InstallRece
 
 	// 2. TUI Plugin
 	if opts.SkipTUIPlugin {
+		if receipt != nil {
+			receipt.ThemeOutcome = ThemeOutcomeSkipped
+		}
 		effects = append(effects, PostPipelineEffect{
 			Kind: "tui_plugin", Status: EffectStatusNotRequested, TransactionCovered: false,
 		})
@@ -198,7 +225,10 @@ func applyPostPipelineEffects(homeDir string, opts Options, receipt *InstallRece
 			Kind: "tui_plugin", Status: EffectStatusNotAttempted, TransactionCovered: false,
 		})
 	} else {
-		tuiPath, changed, err := ConfigureTUIPluginWithResult(homeDir)
+		tuiPath, changed, themeOutcome, err := ConfigureTUIPluginWithResult(homeDir, opts.ApplyTheme)
+		if receipt != nil {
+			receipt.ThemeOutcome = themeOutcome
+		}
 		if err != nil {
 			stopped = true
 			if firstErr == nil {

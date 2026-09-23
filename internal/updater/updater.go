@@ -20,6 +20,12 @@ const (
 	UserAgent   = "cortex-ia-updater"
 )
 
+// ErrNonCanonicalVersion reports that a version involved in an update check is
+// not a canonical vMAJOR.MINOR.PATCH release. CheckLatest refuses to announce an
+// update for such builds so the check surface cannot advertise a release that
+// ApplyUpdate would reject via its own canonical parsing.
+var ErrNonCanonicalVersion = errors.New("non-canonical version cannot participate in update checks")
+
 // ReleaseAsset represents an asset attached to a GitHub release.
 type ReleaseAsset struct {
 	Name        string `json:"name"`
@@ -41,6 +47,13 @@ type Release struct {
 type Client struct {
 	Repo       string
 	HTTPClient *http.Client
+	// AppliedFloor is the highest version already applied on this machine. It
+	// is read from persisted state by the caller and enforced before download.
+	AppliedFloor string
+	// StateHome is the Cortex-IA state root used to load the persisted floor
+	// and to record the floor after a successful apply. Empty disables state
+	// I/O entirely so library callers and tests never touch a real home.
+	StateHome string
 }
 
 // New creates a new updater client for the specified GitHub repository.
@@ -58,6 +71,8 @@ func New(repo string) *Client {
 
 // CheckLatest queries the GitHub Releases API for the newest published release.
 // It returns the Release, a boolean indicating if an update is available, and any error.
+// A current or candidate version that is not canonical yields hasUpdate false with
+// ErrNonCanonicalVersion; dev/unknown current versions report no update without error.
 func (c *Client) CheckLatest(ctx context.Context, currentVersion string) (*Release, bool, error) {
 	if err := RequireTrust(); err != nil {
 		return nil, false, err
@@ -88,7 +103,7 @@ func (c *Client) CheckLatest(ctx context.Context, currentVersion string) (*Relea
 
 	hasUpdate, err := CheckUpdateCandidate(currentVersion, rel.TagName)
 	if err != nil {
-		hasUpdate = IsNewer(currentVersion, rel.TagName)
+		return &rel, false, fmt.Errorf("%w: %w", ErrNonCanonicalVersion, err)
 	}
 	return &rel, hasUpdate, nil
 }
@@ -198,7 +213,7 @@ func (c *Client) ApplyUpdateToTarget(ctx context.Context, currentVersion string,
 		return fmt.Errorf("%w: current version is %q", ErrDevUnknownVersion, currentVersion)
 	}
 
-	archiveBytes, art, err := DownloadAndVerifyRelease(ctx, c.HTTPClient, c.Repo, currentVersion, rel)
+	archiveBytes, art, err := downloadAndVerifyReleaseWithFloor(ctx, c.HTTPClient, c.Repo, currentVersion, rel, c.effectiveAppliedFloor())
 	if err != nil {
 		return err
 	}
@@ -220,7 +235,34 @@ func (c *Client) ApplyUpdateToTarget(ctx context.Context, currentVersion string,
 		targetPath = execPath
 	}
 
-	return ReplaceExecutable(targetPath, binaryBytes, "")
+	if err := ReplaceExecutable(targetPath, binaryBytes, ""); err != nil {
+		return err
+	}
+
+	if c.StateHome != "" {
+		if err := RecordAppliedFloor(c.StateHome, rel.TagName, targetPath); err != nil {
+			// The binary is already replaced; surface the write failure instead
+			// of losing the anti-replay floor silently.
+			return fmt.Errorf("binary replaced but update state could not be persisted: %w", err)
+		}
+	}
+	return nil
+}
+
+// effectiveAppliedFloor prefers the caller-supplied floor and falls back to
+// persisted state when the client is bound to a state home.
+func (c *Client) effectiveAppliedFloor() string {
+	if floor := strings.TrimSpace(c.AppliedFloor); floor != "" {
+		return c.AppliedFloor
+	}
+	if c.StateHome == "" {
+		return ""
+	}
+	state, err := LoadUpdateState(c.StateHome)
+	if err != nil {
+		return ""
+	}
+	return state.AppliedFloor
 }
 
 func extractFromZip(data []byte, targetName string) ([]byte, error) {

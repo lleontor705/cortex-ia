@@ -15,6 +15,12 @@ permissions:
   - action: read
     resource: "*"
     effect: allow
+  - action: read
+    resource: "*.env"
+    effect: deny
+  - action: read
+    resource: "*.env.*"
+    effect: deny
   - action: grep
     resource: "*"
     effect: allow
@@ -133,35 +139,71 @@ permissions:
     resource: "*"
     effect: allow
   - action: shell
-    resource: "git status*"
-    effect: allow
+    resource: "git reset*"
+    effect: deny
   - action: shell
-    resource: "git diff*"
-    effect: allow
+    resource: "git push*"
+    effect: deny
   - action: shell
-    resource: "git log*"
-    effect: allow
+    resource: "git clean*"
+    effect: deny
   - action: shell
-    resource: "git show*"
-    effect: allow
+    resource: "rm *"
+    effect: deny
   - action: shell
-    resource: "go test *"
-    effect: allow
+    resource: "del *"
+    effect: deny
   - action: shell
-    resource: "go vet *"
-    effect: allow
+    resource: "Remove-Item *"
+    effect: deny
   - action: shell
-    resource: "golangci-lint run *"
-    effect: allow
+    resource: "*.env"
+    effect: deny
   - action: shell
-    resource: "npm run test*"
-    effect: allow
+    resource: "*.env.*"
+    effect: deny
   - action: shell
-    resource: "npm run lint*"
-    effect: allow
+    resource: "sqlite3 *"
+    effect: deny
   - action: shell
-    resource: "npm run build*"
-    effect: allow
+    resource: "* delegation.db*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia work approve*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia work transition*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia work recover*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia rollback*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia uninstall*"
+    effect: deny
+  - action: shell
+    resource: "npm install*"
+    effect: deny
+  - action: shell
+    resource: "npm --prefix web install*"
+    effect: deny
+  - action: shell
+    resource: "npm uninstall*"
+    effect: deny
+  - action: shell
+    resource: "go install*"
+    effect: deny
+  - action: shell
+    resource: "curl *"
+    effect: deny
+  - action: shell
+    resource: "Invoke-WebRequest *"
+    effect: deny
+  - action: shell
+    resource: "wget *"
+    effect: deny
 ---
 
 # role/implement [STATIC_PREFIX_V3]

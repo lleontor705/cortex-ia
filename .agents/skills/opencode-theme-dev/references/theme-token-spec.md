@@ -8,140 +8,6 @@ This document provides the full token schema and reference values for authoring 
 {
   "$schema": "https://opencode.ai/theme.json",
   "version": 2,
-  "base": {
-    "categorical": ["accent", "purple", "cyan", "blue", "green", "yellow", "orange"],
-    "text": {
-      "base": "$hue.neutral.100",
-      "muted": "$hue.neutral.400",
-      "action": {
-        "primary": {
-          "base": "$hue.accent.300",
-          "$hovered": "$hue.accent.200",
-          "$disabled": "$hue.neutral.600"
-        },
-        "secondary": {
-          "base": "$hue.neutral.200",
-          "$hovered": "$hue.neutral.100",
-          "$disabled": "$hue.neutral.600"
-        },
-        "destructive": {
-          "base": "$hue.red.300",
-          "$hovered": "$hue.red.200",
-          "$disabled": "$hue.neutral.600"
-        }
-      },
-      "formfield": {
-        "base": "$hue.neutral.100",
-        "$focused": "$hue.accent.200",
-        "$disabled": "$hue.neutral.500"
-      },
-      "feedback": {
-        "error": { "base": "$hue.red.300" },
-        "warning": { "base": "$hue.yellow.300" },
-        "success": { "base": "$hue.green.300" },
-        "info": { "base": "$hue.cyan.300" }
-      }
-    },
-    "background": {
-      "base": "#0a0e17",
-      "raised": {
-        "base": "#111927",
-        "high": "#1e293b",
-        "max": "#334155"
-      },
-      "action": {
-        "primary": {
-          "base": "$hue.accent.600",
-          "$hovered": "$hue.accent.500",
-          "$pressed": "$hue.accent.700"
-        },
-        "secondary": {
-          "base": "$background.raised.base",
-          "$hovered": "$background.raised.high",
-          "$pressed": "$background.raised.max"
-        },
-        "destructive": {
-          "base": "$hue.red.700",
-          "$hovered": "$hue.red.600",
-          "$pressed": "$hue.red.800"
-        }
-      },
-      "formfield": {
-        "base": "$background.raised.base",
-        "$focused": "$background.raised.high",
-        "$disabled": "$background.base"
-      },
-      "feedback": {
-        "error": { "base": "$hue.red.900" },
-        "warning": { "base": "$hue.yellow.900" },
-        "success": { "base": "$hue.green.900" },
-        "info": { "base": "$hue.cyan.900" }
-      }
-    },
-    "border": {
-      "base": "$hue.neutral.700",
-      "active": "$hue.accent.400"
-    },
-    "scrollbar": {
-      "base": "$hue.neutral.600"
-    },
-    "diff": {
-      "text": {
-        "added": "$hue.green.300",
-        "removed": "$hue.red.300",
-        "context": "$text.muted",
-        "hunkHeader": "$hue.neutral.400"
-      },
-      "background": {
-        "added": "$hue.green.900",
-        "removed": "$hue.red.900",
-        "context": "$background.raised.base"
-      },
-      "highlight": {
-        "added": "$hue.green.400",
-        "removed": "$hue.red.400"
-      },
-      "lineNumber": {
-        "text": "$hue.neutral.400",
-        "background": {
-          "added": "$hue.green.900",
-          "removed": "$hue.red.900"
-        }
-      }
-    },
-    "syntax": {
-      "comment": "$hue.neutral.500",
-      "keyword": "$hue.purple.300",
-      "function": "$hue.cyan.300",
-      "variable": "$hue.neutral.200",
-      "string": "$hue.green.300",
-      "number": "$hue.yellow.300",
-      "type": "$hue.blue.300",
-      "operator": "$hue.cyan.400",
-      "punctuation": "$hue.neutral.400"
-    },
-    "markdown": {
-      "text": "$hue.neutral.100",
-      "heading": "$hue.cyan.300",
-      "link": "$hue.interactive.300",
-      "linkText": "$hue.cyan.300",
-      "code": "$hue.accent.300",
-      "codeBlock": "$hue.neutral.900",
-      "blockQuote": "$hue.neutral.400",
-      "emphasis": "$hue.yellow.300",
-      "strong": "$hue.accent.300",
-      "horizontalRule": "$hue.neutral.700",
-      "listItem": "$hue.neutral.100",
-      "listEnumeration": "$hue.cyan.400",
-      "image": "$hue.blue.400",
-      "imageText": "$hue.neutral.400"
-    },
-    "@dialog": {
-      "background": {
-        "base": "$background.raised.base"
-      }
-    }
-  },
   "dark": {
     "hue": {
       "gray": {
@@ -187,18 +53,145 @@ This document provides the full token schema and reference values for authoring 
       "accent": "$hue.purple",
       "interactive": "$hue.cyan",
       "neutral": "$hue.gray"
+    },
+    "categorical": ["accent", "purple", "cyan", "blue", "green", "yellow", "orange"],
+    "text": {
+      "default": "$hue.neutral.100",
+      "subdued": "$hue.neutral.400",
+      "action": {
+        "primary": {
+          "default": "$hue.accent.300",
+          "$hovered": "$hue.accent.200",
+          "$disabled": "$hue.neutral.600"
+        },
+        "secondary": {
+          "default": "$hue.neutral.200",
+          "$hovered": "$hue.neutral.100",
+          "$disabled": "$hue.neutral.600"
+        },
+        "destructive": {
+          "default": "$hue.red.300",
+          "$hovered": "$hue.red.200",
+          "$disabled": "$hue.neutral.600"
+        }
+      },
+      "formfield": {
+        "default": "$hue.neutral.100",
+        "$focused": "$hue.accent.200",
+        "$disabled": "$hue.neutral.500"
+      },
+      "status": {
+        "running": "$hue.interactive.300",
+        "question": "$hue.accent.300",
+        "permission": "$hue.accent.300",
+        "unread": "$hue.accent.300"
+      },
+      "feedback": {
+        "error": { "default": "$hue.red.300", "subdued": "$hue.red.400" },
+        "warning": { "default": "$hue.yellow.300", "subdued": "$hue.yellow.400" },
+        "success": { "default": "$hue.green.300", "subdued": "$hue.green.400" },
+        "info": { "default": "$hue.cyan.300", "subdued": "$hue.cyan.400" }
+      }
+    },
+    "background": {
+      "default": "#0a0e17",
+      "raised": {
+        "base": "#111927",
+        "high": "#1e293b",
+        "max": "#334155"
+      },
+      "action": {
+        "primary": {
+          "default": "$hue.accent.600",
+          "$hovered": "$hue.accent.500",
+          "$pressed": "$hue.accent.700"
+        },
+        "secondary": {
+          "default": "$background.raised.base",
+          "$hovered": "$background.raised.high",
+          "$pressed": "$background.raised.max"
+        },
+        "destructive": {
+          "default": "$hue.red.700",
+          "$hovered": "$hue.red.600",
+          "$pressed": "$hue.red.800"
+        }
+      },
+      "formfield": {
+        "default": "$background.raised.base",
+        "$focused": "$background.raised.high",
+        "$disabled": "$background.default"
+      },
+      "feedback": {
+        "error": { "default": "$hue.red.900" },
+        "warning": { "default": "$hue.yellow.900" },
+        "success": { "default": "$hue.green.900" },
+        "info": { "default": "$hue.cyan.900" }
+      }
+    },
+    "border": {
+      "default": "$hue.neutral.700"
+    },
+    "scrollbar": {
+      "default": "$hue.neutral.600"
+    },
+    "diff": {
+      "text": {
+        "added": "$hue.green.300",
+        "removed": "$hue.red.300",
+        "context": "$text.subdued",
+        "hunkHeader": "$hue.neutral.400"
+      },
+      "background": {
+        "added": "$hue.green.900",
+        "removed": "$hue.red.900",
+        "context": "$hue.neutral.900"
+      },
+      "highlight": {
+        "added": "$hue.green.400",
+        "removed": "$hue.red.400"
+      },
+      "lineNumber": {
+        "text": "$hue.neutral.400",
+        "background": {
+          "added": "$hue.green.900",
+          "removed": "$hue.red.900"
+        }
+      }
+    },
+    "syntax": {
+      "comment": "$hue.neutral.500",
+      "keyword": "$hue.purple.300",
+      "function": "$hue.cyan.300",
+      "variable": "$hue.neutral.200",
+      "string": "$hue.green.300",
+      "number": "$hue.yellow.300",
+      "type": "$hue.blue.300",
+      "operator": "$hue.cyan.400",
+      "punctuation": "$hue.neutral.400"
+    },
+    "markdown": {
+      "text": "$hue.neutral.100",
+      "heading": "$hue.cyan.300",
+      "link": "$hue.interactive.300",
+      "linkText": "$hue.cyan.300",
+      "code": "$hue.accent.300",
+      "codeBlock": "$hue.neutral.900",
+      "blockQuote": "$hue.neutral.400",
+      "emphasis": "$hue.yellow.300",
+      "strong": "$hue.accent.300",
+      "horizontalRule": "$hue.neutral.700",
+      "listItem": "$hue.neutral.100",
+      "listEnumeration": "$hue.cyan.400",
+      "image": "$hue.blue.400",
+      "imageText": "$hue.neutral.400"
+    },
+    "@context:elevated": {
+      "background": { "default": "$background.raised.base" }
+    },
+    "@context:overlay": {
+      "background": { "default": "$background.raised.high" }
     }
   }
 }
 ```
-
-## Strict Schema Rules (ArkType / OpenCode v2)
-
-1. **Syntax & Markdown Values (`j` schema)**:
-   - Values under `base.syntax.*` and `base.markdown.*` **MUST** be either a raw hex string (`#rrggbb`) or a direct hue reference (`$hue.<hue>.<step>`).
-   - **DO NOT** use semantic references like `"$text.base"`, `"$background.raised.base"`, `"$border.base"`, or `"$text.muted"` in `syntax` or `markdown`. The parser validates them with rule `j = R([U, Jh(["$hue.", z, ".", p])])` before semantic token resolution occurs; any non-hue alias will fail with:
-     `Invalid theme: <name> "$text.base" is an invalid value`.
-
-2. **Action & Formfield Fallbacks**:
-   - Interactive tokens under `action` and `formfield` will auto-fallback to `.base` if state variants (`$hovered`, `$pressed`, `$focused`, `$disabled`) are omitted, but specifying them explicitly guarantees high contrast across all terminal types.
-

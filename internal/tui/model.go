@@ -29,7 +29,19 @@ const (
 	screenMCP
 	screenWeb
 	screenAgentStudio
+	screenStats
+	screenModels
 )
+
+// productionBootScreen is the surface shipped to users: launched with zero
+// arguments the TUI opens the usage stats panel from the first frame
+// (REQ-US-002).
+const productionBootScreen = screenStats
+
+// bootScreen is the effective boot surface consulted by newModel. The legacy
+// Home-first navigation suite pins it to screenHome from its own test setup;
+// boot oracles exercise production by resetting it to productionBootScreen.
+var bootScreen = productionBootScreen
 
 // confirmKind identifies which destructive intent a confirmation modal guards.
 type confirmKind int
@@ -40,6 +52,7 @@ const (
 	confirmUninstall
 	confirmMCPRemove
 	confirmRollback
+	confirmCortexInstall
 )
 
 // homeEntries are the fixed Home menu actions, in display order.
@@ -48,13 +61,22 @@ var homeEntries = []string{
 	"Manage MCPs",
 	"CortexIA Web Console",
 	"Agent Studio (Create Sub-agent)",
+	"Estadísticas de uso",
 	"Doctor / Recovery",
 	"Uninstall",
 	"Quit",
+	"Configuración de modelos",
 }
+
+// statsEntryIndex is the Home cursor position of the usage stats entry.
+const statsEntryIndex = 4
 
 // managedNames lists the managed MCP presets in toggle order.
 var managedNames = []string{"cortex", "context7"}
+
+// themeRowIndex is the Review toggle row for the opt-in cortex theme; it
+// follows the managed MCP rows so the cursor range is one past them.
+var themeRowIndex = len(managedNames)
 
 // confirmState is the active confirmation overlay. arg carries the MCP name
 // or backup ID the confirmed action applies to.
@@ -100,13 +122,21 @@ type model struct {
 	mcpCursor int // Review MCP toggle index
 
 	// Review state.
-	installMode string          // "install" or "sync", derived from the plan
-	opts        install.Options // current selection for install/sync
-	plan        *pipeline.Plan  // latest read-only plan
-	planErr     error
-	overwrite   bool // explicit overwrite authorization
-	hadConflict bool // the initial plan carried conflicts
-	replanning  bool
+	installMode  string          // "install" or "sync", derived from the plan
+	opts         install.Options // current selection for install/sync
+	plan         *pipeline.Plan  // latest read-only plan
+	planErr      error
+	reviewStatus string // transient feedback when Review input cannot proceed
+	overwrite    bool   // explicit overwrite authorization
+	hadConflict  bool   // the initial plan carried conflicts
+	replanning   bool
+	// cortexPrompted records that the missing-cortex consent was already
+	// offered for this Review entry, so replans never re-prompt.
+	cortexPrompted bool
+	// cortexInstalling is true while the automatic install runs.
+	cortexInstalling bool
+	// cortexStatus is the transient feedback line for the cortex preflight.
+	cortexStatus string
 
 	// MCP Manager state.
 	mcpReport *install.MCPListReport
@@ -139,6 +169,12 @@ type model struct {
 	webErr      error
 	webStarting bool
 
+	// Usage stats state
+	stats statsState
+
+	// Models configuration state
+	models modelsState
+
 	// Animation state
 	logoFrame int
 }
@@ -161,7 +197,9 @@ func newModel(svc ServiceAPI, homeDir, version string) model {
 		svc:           svc,
 		homeDir:       homeDir,
 		version:       version,
-		screen:        screenHome,
+		screen:        bootScreen,
+		stats:         newStatsState(),
+		models:        newModelsState(homeDir),
 		opts:          install.DefaultOptions(),
 		delegationCfg: cfg,
 	}
@@ -170,6 +208,12 @@ func newModel(svc ServiceAPI, homeDir, version string) model {
 }
 
 func (m model) Init() tea.Cmd {
+	if m.screen == screenStats {
+		return statsLoadCmd()
+	}
+	if m.screen == screenModels {
+		return modelsLoadCmd(m.homeDir)
+	}
 	return homeTick()
 }
 
@@ -194,6 +238,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case planMsg:
 		return m.onPlan(msg)
+	case cortexInstallMsg:
+		return m.onCortexInstall(msg)
 	case installMsg:
 		return m.onInstallDone(msg)
 	case doctorMsg:
@@ -206,6 +252,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onMCPList(msg)
 	case mcpMutateMsg:
 		return m.onMCPMutateDone(msg)
+	case statsLoadedMsg:
+		if m.screen == screenStats {
+			m.stats = m.stats.onLoaded(msg)
+		}
+		return m, nil
+	case modelsLoadedMsg:
+		if m.screen == screenModels {
+			m.models = m.models.onLoaded(msg)
+		}
+		return m, nil
+	case modelsMutatedMsg:
+		if m.screen == screenModels {
+			m.models = m.models.onMutated(msg)
+		}
+		return m, nil
 	case webReadyMsg:
 		m.webReady = true
 		m.webURL = msg.url
@@ -236,6 +297,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateWeb(msg)
 		case screenAgentStudio:
 			return m.updateAgentStudio(msg)
+		case screenStats:
+			return m.updateStats(msg)
+		case screenModels:
+			return m.updateModels(msg)
 		}
 	}
 	return m, nil
@@ -262,6 +327,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.selectHomeEntry(5)
 	case "7":
 		return m.selectHomeEntry(6)
+	case "8":
+		return m.selectHomeEntry(7)
+	case "9":
+		return m.selectHomeEntry(8)
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
@@ -270,6 +339,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(homeEntries)-1 {
 			m.cursor++
 		}
+	case "m", "M":
+		return m.openModels()
 	case "enter":
 		return m.selectHomeEntry(m.cursor)
 	}
@@ -295,7 +366,11 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.installMode = ""
 		m.plan = nil
 		m.planErr = nil
+		m.reviewStatus = ""
 		m.replanning = false
+		m.cortexPrompted = false
+		m.cortexInstalling = false
+		m.cortexStatus = ""
 		m.mcpCursor = 0
 		return m, planCmd(m.svc, m.reviewOptions())
 	case 1: // Manage MCPs
@@ -317,14 +392,20 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.studioArchIdx = 0
 		m.studioResultMsg = ""
 		return m, nil
-	case 4: // Doctor / Recovery
+	case 4: // Estadísticas de uso
+		m.screen = screenStats
+		m.stats = newStatsState()
+		return m, statsLoadCmd()
+	case 5: // Doctor / Recovery
 		return m.startRunning("Doctor", []string{"Inspect state", "Compare digests", "Assess MCPs", "Report"}, doctorCmd(m.svc))
-	case 5: // Uninstall (destructive: explicit confirmation first)
+	case 6: // Uninstall (destructive: explicit confirmation first)
 		m.confirm = confirmState{kind: confirmUninstall}
 		return m, nil
-	case 6: // Quit
+	case 7: // Quit
 		m.quitting = true
 		return m, tea.Quit
+	case 8: // Configuración de modelos
+		return m.openModels()
 	}
 	return m, nil
 }
@@ -366,7 +447,7 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mcpCursor--
 		}
 	case "down", "j":
-		if m.mcpCursor < len(managedNames)-1 {
+		if m.mcpCursor < themeRowIndex {
 			m.mcpCursor++
 		}
 	case "pgup":
@@ -381,14 +462,23 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.opts.Cortex = !m.opts.Cortex
 		case 1:
 			m.opts.Context7 = !m.opts.Context7
+		case themeRowIndex:
+			m.opts.ApplyTheme = !m.opts.ApplyTheme
 		}
 		m.plan = nil
+		m.reviewStatus = ""
 		m.replanning = true
 		return m, planCmd(m.svc, m.reviewOptions())
 	case "o", "O":
 		if m.plan != nil && (len(m.plan.Conflicts) > 0 || m.overwrite || m.hadConflict) {
 			m.overwrite = !m.overwrite
+			if !m.overwrite {
+				// Deauthorizing drops the sticky hint so a conflict-free replan
+				// never keeps advertising an overwrite the user withdrew.
+				m.hadConflict = false
+			}
 			m.plan = nil
+			m.reviewStatus = ""
 			m.replanning = true
 			return m, planCmd(m.svc, m.reviewOptions())
 		}
@@ -397,11 +487,26 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		return m, homeTick()
 	case "enter":
-		if m.replanning || m.planErr != nil || m.plan == nil {
+		if m.replanning {
+			m.reviewStatus = "cannot run: the plan is still being computed"
+			return m, nil
+		}
+		if m.cortexInstalling {
+			m.reviewStatus = "cannot run: cortex installation is in progress"
+			return m, nil
+		}
+		if m.planErr != nil {
+			m.reviewStatus = "cannot run: fix the plan error above"
+			return m, nil
+		}
+		if m.plan == nil {
+			m.reviewStatus = "cannot run: no plan loaded"
 			return m, nil
 		}
 		if len(m.plan.Conflicts) > 0 {
-			return m, nil // blocking conflicts remain; nothing runs
+			// Blocking conflicts remain; surface why instead of swallowing the key.
+			m.reviewStatus = conflictNotice(m.plan.Conflicts)
+			return m, nil
 		}
 		if m.hadConflict && m.overwrite {
 			m.confirm = confirmState{kind: confirmOverwrite}
@@ -429,6 +534,7 @@ func (m model) onPlan(msg planMsg) (tea.Model, tea.Cmd) {
 	m.planErr = msg.err
 	m.plan = msg.plan
 	m.reviewScroll = 0
+	m.reviewStatus = ""
 	if msg.plan != nil {
 		if m.plan.MetadataPresence == state.PresenceV2 {
 			m.installMode = "sync"
@@ -438,6 +544,10 @@ func (m model) onPlan(msg planMsg) (tea.Model, tea.Cmd) {
 		if len(msg.plan.Conflicts) > 0 && !m.overwrite {
 			m.hadConflict = true
 		}
+	}
+	if msg.cortexMissing && m.opts.Cortex && !m.cortexPrompted {
+		m.cortexPrompted = true
+		m.confirm = confirmState{kind: confirmCortexInstall}
 	}
 	return m, nil
 }
@@ -585,17 +695,19 @@ func (m model) selectedEntry() (mcpmanager.EntryReport, bool) {
 func (m model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.confirm = confirmState{}
-		return m, nil
+		return m.declineConfirm(), nil
 	case "n", "N":
-		m.confirm = confirmState{}
-		return m, nil
+		return m.declineConfirm(), nil
 	case "y", "Y":
 		kind, arg := m.confirm.kind, m.confirm.arg
 		m.confirm = confirmState{}
 		switch kind {
 		case confirmOverwrite:
 			return m.startRunning(m.installModeTitle(), installPhases, installRunCmd(m.svc, m.installMode, m.confirmedOptions()))
+		case confirmCortexInstall:
+			m.cortexInstalling = true
+			m.cortexStatus = "installing cortex with 'go install " + install.CortexModulePath + "'…"
+			return m, cortexInstallCmd()
 		case confirmUninstall:
 			return m.startRunning("Uninstall", uninstallPhases, uninstallCmd(m.svc))
 		case confirmMCPRemove:
@@ -605,4 +717,61 @@ func (m model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// declineConfirm closes the overlay and records the manual remedy when the
+// user declines the optional cortex install; every other confirmation is a
+// silent cancel.
+func (m model) declineConfirm() model {
+	if m.confirm.kind == confirmCortexInstall {
+		m.cortexStatus = "cortex installation skipped — run manually: " + install.CortexManualCommand
+	}
+	m.confirm = confirmState{}
+	return m
+}
+
+// --- Usage stats ---
+
+// updateStats delegates key handling to the self-contained stats state and
+// applies the screen-level action it requests.
+func (m model) updateStats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var action statsAction
+	m.stats, action = m.stats.update(msg)
+	switch action {
+	case statsActionHome:
+		m.screen = screenHome
+		m.cursor = statsEntryIndex
+		return m, homeTick()
+	case statsActionQuit:
+		m.quitting = true
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+// --- Models configuration ---
+
+// openModels enters the models configuration screen and loads the registry
+// through the service seam.
+func (m model) openModels() (tea.Model, tea.Cmd) {
+	m.screen = screenModels
+	m.models = newModelsState(m.homeDir)
+	return m, modelsLoadCmd(m.homeDir)
+}
+
+// updateModels delegates key handling to the self-contained models state and
+// applies the screen-level action it requests.
+func (m model) updateModels(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var action modelsAction
+	var cmd tea.Cmd
+	m.models, action, cmd = m.models.update(msg)
+	switch action {
+	case modelsActionHome:
+		m.screen = screenHome
+		return m, homeTick()
+	case modelsActionQuit:
+		m.quitting = true
+		return m, tea.Quit
+	}
+	return m, cmd
 }

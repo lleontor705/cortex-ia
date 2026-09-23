@@ -13,7 +13,6 @@ type TargetID string
 
 const (
 	TargetOpenCode TargetID = "opencode"
-	TargetAGY      TargetID = "agy"
 	TargetClaude   TargetID = "claude"
 	TargetAll      TargetID = "all"
 )
@@ -29,7 +28,7 @@ type TargetResult struct {
 // ParseTargets parses target arguments into a validated list of TargetIDs.
 func ParseTargets(input string) ([]TargetID, error) {
 	if strings.TrimSpace(input) == "" || strings.ToLower(input) == "all" {
-		return []TargetID{TargetOpenCode, TargetAGY, TargetClaude}, nil
+		return []TargetID{TargetOpenCode, TargetClaude}, nil
 	}
 
 	parts := strings.Split(input, ",")
@@ -39,15 +38,15 @@ func ParseTargets(input string) ([]TargetID, error) {
 	for _, p := range parts {
 		cleaned := TargetID(strings.ToLower(strings.TrimSpace(p)))
 		switch cleaned {
-		case TargetOpenCode, TargetAGY, TargetClaude:
+		case TargetOpenCode, TargetClaude:
 			if !seen[cleaned] {
 				seen[cleaned] = true
 				result = append(result, cleaned)
 			}
 		case TargetAll:
-			return []TargetID{TargetOpenCode, TargetAGY, TargetClaude}, nil
+			return []TargetID{TargetOpenCode, TargetClaude}, nil
 		default:
-			return nil, fmt.Errorf("unknown target %q (valid: opencode, agy, claude, all)", p)
+			return nil, fmt.Errorf("unknown target %q (valid: opencode, claude, all)", p)
 		}
 	}
 	return result, nil

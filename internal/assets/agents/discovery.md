@@ -24,6 +24,12 @@ permissions:
   - action: read
     resource: "*"
     effect: allow
+  - action: read
+    resource: "*.env"
+    effect: deny
+  - action: read
+    resource: "*.env.*"
+    effect: deny
   - action: grep
     resource: "*"
     effect: allow

@@ -15,18 +15,12 @@ func TestDetectAll_TempHome(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	geminiConfig := filepath.Join(tempHome, ".gemini")
-	if err := os.MkdirAll(geminiConfig, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
 	results := DetectAll(tempHome)
-	if len(results) != 3 {
-		t.Fatalf("expected 3 results, got %d", len(results))
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
 	}
 
 	foundOpenCode := false
-	foundAGY := false
 	foundClaude := false
 
 	for _, info := range results {
@@ -36,11 +30,6 @@ func TestDetectAll_TempHome(t *testing.T) {
 			if !info.ConfigFound {
 				t.Errorf("expected opencode config to be found")
 			}
-		case CLIAGY:
-			foundAGY = true
-			if !info.ConfigFound {
-				t.Errorf("expected agy config to be found")
-			}
 		case CLIClaude:
 			foundClaude = true
 			if info.ConfigFound {
@@ -49,7 +38,7 @@ func TestDetectAll_TempHome(t *testing.T) {
 		}
 	}
 
-	if !foundOpenCode || !foundAGY || !foundClaude {
+	if !foundOpenCode || !foundClaude {
 		t.Errorf("missing expected CLIs in DetectAll results")
 	}
 }

@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -120,10 +122,14 @@ jobs:
         id: tag
         env:
           EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "version=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          elif [ "$REF_TYPE" = "tag" ]; then
+            echo "version=$REF_NAME" >> "$GITHUB_OUTPUT"
           else
             latest=$(git tag --sort=-v:refname | head -n 1)
             if [ -z "$latest" ]; then
@@ -132,6 +138,28 @@ jobs:
             IFS='.' read -r major minor patch <<< "${latest#v}"
             patch=$((patch + 1))
             echo "version=v${major}.${minor}.${patch}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Both inputs are mandatory: without the bundle the shipped binary would trust no key,
+      # and without the private key the manifest cannot be signed. This runs before any tag
+      # is created or published, so a misconfigured release never ships unsigned artifacts.
+      - name: Require release secrets
+        env:
+          CORTEX_IA_RELEASE_SIGNING_KEY: ${{ secrets.CORTEX_IA_RELEASE_SIGNING_KEY }}
+          CORTEX_IA_TRUST_BUNDLE: ${{ vars.CORTEX_IA_TRUST_BUNDLE }}
+          CORTEX_IA_RELEASE_KEY_ID: ${{ vars.CORTEX_IA_RELEASE_KEY_ID }}
+        run: |
+          if [ -z "${CORTEX_IA_RELEASE_SIGNING_KEY:-}" ]; then
+            echo "::error::CORTEX_IA_RELEASE_SIGNING_KEY is not configured; refusing to publish an unsigned release"
+            exit 1
+          fi
+          if [ -z "${CORTEX_IA_TRUST_BUNDLE:-}" ]; then
+            echo "::error::CORTEX_IA_TRUST_BUNDLE is not configured; refusing to publish a build with no trusted key"
+            exit 1
+          fi
+          if [ -z "${CORTEX_IA_RELEASE_KEY_ID:-}" ]; then
+            echo "::error::CORTEX_IA_RELEASE_KEY_ID is not configured; refusing to sign without a key id"
+            exit 1
           fi
 
       - name: Create and push tag
@@ -163,3 +191,26 @@ jobs:
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
           CORTEX_REPORT_ENDPOINT: ${{ vars.CORTEX_REPORT_ENDPOINT || 'https://cortex-report-hub-production.up.railway.app/api/v1/reports' }}
           CORTEX_REPORT_SECRET: ${{ secrets.CORTEX_REPORT_SECRET }}
+          CORTEX_IA_TRUST_BUNDLE: ${{ vars.CORTEX_IA_TRUST_BUNDLE }}
+
+      - name: Generate and sign release manifest
+        env:
+          CORTEX_IA_RELEASE_SIGNING_KEY: ${{ secrets.CORTEX_IA_RELEASE_SIGNING_KEY }}
+          RELEASE_TAG: ${{ steps.tag.outputs.version }}
+          RELEASE_KEY_ID: ${{ vars.CORTEX_IA_RELEASE_KEY_ID }}
+        run: |
+          go run ./tools/genmanifest \
+            -tag "$RELEASE_TAG" \
+            -dist dist \
+            -out dist \
+            -key-id "$RELEASE_KEY_ID"
+
+      - name: Publish manifest and signature
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.version }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            dist/release-manifest.json \
+            dist/release-manifest.sig \
+            --clobber

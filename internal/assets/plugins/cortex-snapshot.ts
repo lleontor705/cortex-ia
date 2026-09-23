@@ -47,7 +47,7 @@ export const CortexSnapshotPlugin = Plugin.define({
         if (bytes.length > 1048576 || bytes.toString("utf8") !== snapshot.content || snapshot.byte_length !== bytes.length) throw new Error("Invalid snapshot content or byte length");
         const digest = createHash("sha256").update(bytes).digest("hex");
         if (snapshot.sha256 !== digest || (args.expected_sha256 !== undefined && args.expected_sha256 !== digest)) throw new Error("Snapshot digest mismatch");
-        return JSON.stringify(snapshot);
+        return { content: JSON.stringify(snapshot) };
       }
     };
 

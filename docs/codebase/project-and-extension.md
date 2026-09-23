@@ -2,7 +2,7 @@
 
 ← [Codebase Guide](../CODEBASE-GUIDE.md)
 
-How to extend `cortex-ia`: adding new skills, agents, commands, plugins, or MCP presets for **OpenCode**, and the expansion architecture for future platforms (**Google Antigravity** and **Claude CLI**).
+How to extend `cortex-ia`: adding new skills, agents, commands, plugins, or MCP presets for **OpenCode**, and how future platform evaluation (**Google Antigravity**, **Claude CLI**) stays native-only with no external execution.
 
 ---
 
@@ -58,11 +58,11 @@ To register a new managed preset available in `cortex-ia mcp add <name> --preset
 
 ## 4. Platform Expansion Roadmap
 
-`cortex-ia` will introduce additional platforms natively:
+Additional platforms are evaluated as native-only targets, with no external execution:
 
 1. **Google Antigravity**:
    - Location: `~/.gemini/antigravity/`
-   - Maps native rules, custom skills, and sidecars without legacy adapter baggage.
+   - No committed support; any future evaluation stays native-only with no external execution.
 2. **Claude CLI**:
    - Location: `~/.claude/`
    - Maps native prompt files and stdio MCP servers.

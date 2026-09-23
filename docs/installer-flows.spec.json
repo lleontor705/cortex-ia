@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "cortex-ia Installer Flows",
+    "subtitle": "Install, sync, doctor, recover, uninstall/rollback, conflict authorization model and invariants",
+    "locale": "en",
+    "quality_profile": "standard"
+  },
+  "steps": [
+    {
+      "id": "entry",
+      "label": "CLI dispatch",
+      "type": "entry",
+      "description": "install | sync | doctor | recover | rollback | uninstall (internal/app/app.go)"
+    },
+    {
+      "id": "options",
+      "label": "Options",
+      "type": "step",
+      "description": "Cortex / Context7 / ApplyTheme / overwrite toggles; each toggle re-plans (internal/install/service.go:Options)"
+    },
+    {
+      "id": "plan",
+      "label": "Plan",
+      "type": "step",
+      "description": "PlanInstall / PlanSync derive effects and bind planDigest (internal/pipeline/engine.go:PlanInstall, PlanSync)"
+    },
+    {
+      "id": "review",
+      "label": "Review",
+      "type": "decision",
+      "description": "Clearable vs non-clearable conflicts; overwrite authorization; Enter feedback (internal/install/service.go:applyPlanWithConfirmation)"
+    },
+    {
+      "id": "preflight",
+      "label": "Cortex preflight",
+      "type": "step",
+      "description": "Missing binary -> automatic argv-only go install with GOBIN/GOPATH fallback; failure is a non-fatal warning (internal/install/cortex_check.go:EnsureCortexBinary)"
+    },
+    {
+      "id": "confirm",
+      "label": "Confirm",
+      "type": "decision",
+      "description": "ExpectedPlanDigest binding; drift rejects as PlanDriftError (internal/pipeline/engine.go:checkPlanDrift)"
+    },
+    {
+      "id": "apply",
+      "label": "Apply",
+      "type": "step",
+      "description": "Verified backup -> journaled apply -> rollback-on-fail with preimages (internal/pipeline/apply.go:ApplyConfirmed, internal/pipeline/journal.go)"
+    },
+    {
+      "id": "post",
+      "label": "Post effects",
+      "type": "step",
+      "description": "TUI plugin registration + opt-in theme overlay; ThemeOutcome applied | skipped-not-requested | planned | error (internal/install/receipt.go:applyPostPipelineEffects)"
+    },
+    {
+      "id": "receipt",
+      "label": "Receipt",
+      "type": "terminal",
+      "description": "Warnings plus backupID for recovery (internal/install/receipt.go:newInstallReceipt)"
+    },
+    {
+      "id": "c_overwrite",
+      "label": "Overwritable conflict",
+      "type": "conflict",
+      "description": "unmanaged-existing / unmanaged-drift: explicit overwrite converts to EffectOverwrite (internal/pipeline/engine.go:ConflictUnmanagedExisting)"
+    },
+    {
+      "id": "c_manual",
+      "label": "Manual-only conflict",
+      "type": "conflict",
+      "description": "malformed-config / mcp-conflict: overwrite never clears; resolve manually then re-plan (internal/pipeline/engine.go:ConflictMalformedConfig, ConflictMCP)"
+    },
+    {
+      "id": "c_staledrift",
+      "label": "Never auto-deleted",
+      "type": "conflict",
+      "description": "stale-drift: stale owned artifact modified after install is never deleted (internal/pipeline/engine.go:ConflictStaleDrift)"
+    },
+    {
+      "id": "sync",
+      "label": "Sync",
+      "type": "flow",
+      "description": "Stale accredited -> delete; stale-drift -> conflict (internal/install/service.go:Sync)"
+    },
+    {
+      "id": "doctor",
+      "label": "Doctor (read-only)",
+      "type": "flow",
+      "description": "Inspects state, journals and cortex suggest-only with no mutation (internal/install/doctor.go:Doctor)"
+    },
+    {
+      "id": "recover",
+      "label": "Recover",
+      "type": "flow",
+      "description": "Journal restore with explicit confirmation; RecoverEffect retries post-effects, reported NotAttempted when skipped (internal/install/rollback.go:Recover, internal/install/service.go:RecoverEffect)"
+    },
+    {
+      "id": "uninstall_rollback",
+      "label": "Uninstall / Rollback",
+      "type": "flow",
+      "description": "Fail-closed on unaccredited content (internal/install/uninstall.go:Uninstall, internal/install/rollback.go:Rollback)"
+    }
+  ],
+  "connections": [
+    { "from": "entry", "to": "options", "label": "install", "style": "primary" },
+    { "from": "entry", "to": "sync", "label": "sync" },
+    { "from": "entry", "to": "doctor", "label": "doctor" },
+    { "from": "entry", "to": "recover", "label": "recover" },
+    { "from": "entry", "to": "uninstall_rollback", "label": "rollback | uninstall" },
+    { "from": "options", "to": "plan", "label": "re-plan per toggle" },
+    { "from": "plan", "to": "review", "label": "planDigest" },
+    { "from": "review", "to": "preflight", "label": "no blockers" },
+    { "from": "review", "to": "c_overwrite", "label": "clearable" },
+    { "from": "review", "to": "c_manual", "label": "non-clearable" },
+    { "from": "review", "to": "c_staledrift", "label": "sync finding" },
+    { "from": "c_overwrite", "to": "confirm", "label": "authorized overwrite" },
+    { "from": "c_manual", "to": "plan", "label": "fix source, re-plan" },
+    { "from": "c_staledrift", "to": "sync", "label": "surfaced by sync" },
+    { "from": "preflight", "to": "confirm", "label": "warn on failure" },
+    { "from": "confirm", "to": "apply", "label": "digest match" },
+    { "from": "apply", "to": "post", "label": "transaction committed" },
+    { "from": "post", "to": "receipt", "label": "warnings, backupID" },
+    { "from": "sync", "to": "plan", "label": "PlanSync" },
+    { "from": "doctor", "to": "receipt", "label": "read-only report" },
+    { "from": "recover", "to": "apply", "label": "journal restore" },
+    { "from": "recover", "to": "post", "label": "RecoverEffect retry" },
+    { "from": "uninstall_rollback", "to": "receipt", "label": "unaccredited = fail-closed" }
+  ],
+  "boundaries": [
+    {
+      "id": "main-flow",
+      "label": "Main install flow",
+      "type": "domain",
+      "wraps": ["options", "plan", "review", "preflight", "confirm", "apply", "post", "receipt"]
+    },
+    {
+      "id": "conflict-model",
+      "label": "Conflict authorization model",
+      "type": "domain",
+      "wraps": ["c_overwrite", "c_manual", "c_staledrift"]
+    },
+    {
+      "id": "secondary-flows",
+      "label": "Secondary flows",
+      "type": "domain",
+      "wraps": ["sync", "doctor", "recover", "uninstall_rollback"]
+    }
+  ],
+  "cards": [
+    {
+      "id": "inv-digest",
+      "title": "Digest binding",
+      "description": "Confirmation is bound to ExpectedPlanDigest; any drift rejects before backup or write (PlanDriftError, ErrPlanDrift)."
+    },
+    {
+      "id": "inv-nonfatal",
+      "title": "Non-fatal degrade",
+      "description": "Cortex binary preflight failure is a warning: install proceeds with degraded optional capability."
+    },
+    {
+      "id": "inv-theme",
+      "title": "Opt-in theme",
+      "description": "The cortex theme overlay is only applied when explicitly requested; default outcome is skipped-not-requested."
+    },
+    {
+      "id": "inv-argv",
+      "title": "argv-only exec",
+      "description": "Cortex install runs an argv list without a shell; no interpolated command strings."
+    },
+    {
+      "id": "inv-backup",
+      "title": "Backup / rollback",
+      "description": "Apply captures a verified backup and journal preimages; failed apply restores from them."
+    },
+    {
+      "id": "inv-failclosed",
+      "title": "Fail-closed ownership",
+      "description": "Unaccredited or unmanaged content blocks mutation; ownership is proven by recorded evidence, never assumed."
+    }
+  ]
+}

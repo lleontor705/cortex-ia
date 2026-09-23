@@ -46,11 +46,11 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	if !loaded.UseHerdr {
 		t.Error("expected loaded config to have use_herdr=true")
 	}
-	if loaded.Roles["implement"].CLI != "agy" {
-		t.Errorf("expected implement CLI to be agy, got %s", loaded.Roles["implement"].CLI)
+	if loaded.Roles["implement"].CLI != "native" {
+		t.Errorf("expected implement CLI to be native, got %s", loaded.Roles["implement"].CLI)
 	}
-	if loaded.Roles["reviewer"].CLI != "agy" {
-		t.Errorf("expected reviewer CLI to be agy, got %s", loaded.Roles["reviewer"].CLI)
+	if loaded.Roles["reviewer"].CLI != "native" {
+		t.Errorf("expected reviewer CLI to be native, got %s", loaded.Roles["reviewer"].CLI)
 	}
 }
 
@@ -123,32 +123,5 @@ func TestConfigValidationTimeoutUnboundedAndTerminal(t *testing.T) {
 	cfg.HerdrSettings.Presentation = "invalid"
 	if err := cfg.Validate(); err == nil {
 		t.Error("expected error for presentation 'invalid', got nil")
-	}
-}
-
-func TestSupportsEffort(t *testing.T) {
-	cases := []struct {
-		model    string
-		expected bool
-	}{
-		{"", false},
-		{"   ", false},
-		{"claude-opus-4-6-thinking", false},
-		{"claude-sonnet-4-6", false},
-		{"anthropic/claude-opus-4-6-thinking", false},
-		{"anthropic/claude-3-5-sonnet", false},
-		{"CLAUDE-3-5-SONNET", false},
-		{"gemini-3.8-flash-high", true},
-		{"gemini-3.7-flash-medium", true},
-		{"gpt-oss-120b-medium", true},
-		{"o1-preview", true},
-		{"o3-mini", true},
-	}
-
-	for _, tc := range cases {
-		got := supportsEffort(tc.model)
-		if got != tc.expected {
-			t.Errorf("supportsEffort(%q) = %v; want %v", tc.model, got, tc.expected)
-		}
 	}
 }

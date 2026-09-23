@@ -50,7 +50,49 @@ func TestEffectRecovery(t *testing.T) {
 		}
 	})
 
-	// 2. Fresh and stale preimages
+	// 2. Stopped retries report every remaining effect as not_attempted
+	t.Run("StoppedEffectsNotAttempted", func(t *testing.T) {
+		home := t.TempDir()
+		s, err := New(home)
+		if err != nil {
+			t.Fatalf("New failed: %v", err)
+		}
+		if _, err := s.Install(Options{SkipTUIPlugin: true}); err != nil {
+			t.Fatalf("setup install failed: %v", err)
+		}
+		runnerCleanup := SetWindowsEnvRunnerForTesting(func(cmd string, args ...string) ([]byte, error) {
+			return nil, errors.New("simulated environment failure")
+		})
+		defer runnerCleanup()
+		unixCleanup := SetUnixEnvRunnerForTesting(func(home string) (bool, error) {
+			return false, errors.New("simulated environment failure")
+		})
+		defer unixCleanup()
+
+		cfg := delegation.NormalConfig()
+		rec, err := s.RecoverEffect(EffectRecoveryOptions{
+			RetryEnvironment: true,
+			RetryTUIPlugin:   true,
+			DelegationConfig: &cfg,
+		})
+		if err == nil {
+			t.Fatal("expected error on environment failure, got nil")
+		}
+		if len(rec.PostPipelineEffects) != 3 {
+			t.Fatalf("expected 3 reported effects, got: %d", len(rec.PostPipelineEffects))
+		}
+		if rec.PostPipelineEffects[0].Status != EffectStatusFailed {
+			t.Errorf("expected environment failed, got: %s", rec.PostPipelineEffects[0].Status)
+		}
+		if rec.PostPipelineEffects[1].Status != EffectStatusNotAttempted {
+			t.Errorf("expected tui_plugin not_attempted, got: %s", rec.PostPipelineEffects[1].Status)
+		}
+		if rec.PostPipelineEffects[2].Status != EffectStatusNotAttempted {
+			t.Errorf("expected delegation_config not_attempted, got: %s", rec.PostPipelineEffects[2].Status)
+		}
+	})
+
+	// 3. Fresh and stale preimages
 	t.Run("PreimageValidation", func(t *testing.T) {
 		home := t.TempDir()
 		s, err := New(home)

@@ -1,10 +1,10 @@
 ---
 name: opencode-theme-dev
-description: Author, migrate, inspect, and validate themes for OpenCode v2 (opencode2) according to the official v2 specification and Zod schema.
+description: Author, migrate, inspect, and validate themes for OpenCode v2 (opencode2) according to the official v2 specification and schema.
 license: MIT
 metadata:
   author: lleontor705
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # OpenCode v2 Theme Development Skill
@@ -15,57 +15,65 @@ This skill provides comprehensive architectural guidelines, schema definitions, 
 
 ## 1. OpenCode v2 Theme Architecture
 
-In OpenCode v2, themes follow a structured specification that decouples shared semantic token trees from mode-specific color scales:
+In OpenCode v2, themes follow a structured specification where semantic tokens and hue palettes are defined directly inside each mode (`dark` and/or `light`):
 
 ```
 theme.json
 ├── $schema: "https://opencode.ai/theme.json"
-├── base: { ... }               <-- Shared semantic token tree (REQUIRED)
+├── version: 2                  <-- MUST be 2
+├── dark: { ... }               <-- Dark mode definitions (REQUIRED if no light)
+│   ├── hue: { ... }            <-- 8 base hues + 3 aliases + 9 contrast steps (100-900)
 │   ├── categorical: [...]      <-- Ordered list of hues for agents/items
-│   ├── text: { ... }           <-- Base, muted, actions, formfields, feedback
-│   ├── background: { ... }     <-- Base, raised (base, high, max), actions, formfields, feedback
-│   ├── border: { ... }         <-- Border base
-│   ├── scrollbar: { ... }      <-- Scrollbar base
-│   ├── diff: { ... }           <-- Text, background, highlight, lineNumber
+│   ├── text: { ... }           <-- default, subdued, action, formfield, status, feedback
+│   ├── background: { ... }     <-- default, raised (base, high, max), action, formfield, feedback
+│   ├── border: { default }     <-- Border default color
+│   ├── scrollbar: { default }  <-- Scrollbar default color
+│   ├── diff: { ... }           <-- text, background, highlight, lineNumber
 │   ├── syntax: { ... }         <-- 9 syntax highlighting tokens
 │   ├── markdown: { ... }       <-- 14 markdown structural tokens
-│   └── @dialog: { ... }        <-- Optional dialog surface overrides
-├── dark: { ... }               <-- Dark mode hue palette & overrides (REQUIRED if no light)
-│   └── hue: { ... }            <-- 8 base hues + 3 aliases + 9 contrast steps (100-900)
-└── light: { ... }              <-- Light mode hue palette & overrides (REQUIRED if no dark)
-    └── hue: { ... }
+│   ├── @context:elevated: { }  <-- Optional elevated surface overrides
+│   └── @context:overlay: { }   <-- Optional overlay surface overrides
+└── light: { ... }              <-- Light mode definitions (REQUIRED if no dark)
+    └── (same token structure as dark)
 ```
+
+> [!NOTE]
+> OpenCode v2 does **not** recognize a top-level `"base"` block. Semantic tokens must be located directly inside the `"dark"` and/or `"light"` mode objects.
 
 ### Precedence and Discovery Locations
 OpenCode resolves themes in the following order (later paths override earlier ones):
-1. **Built-in themes**: Embedded in the `opencode2` binary (`tokyonight`, `catppuccin`, `nord`, etc.).
+1. **Built-in themes**: Embedded in the `opencode2` binary (`opencode`, `tokyonight`, `catppuccin`, `nord`, etc.).
 2. **Global user themes**: `~/.config/opencode/themes/<name>.json`
 3. **Project root themes**: `<workspace-root>/.opencode/themes/<name>.json`
 4. **Current directory themes**: `./.opencode/themes/<name>.json`
 
-The filename without `.json` becomes the theme name. For example, `cortex.json` is selected with `"name": "cortex"`.
+The filename without `.json` becomes the theme name. For example, `cortex.json` is selected in `cli.json` with:
+```json
+"theme": { "mode": "dark", "name": "cortex" }
+```
 
 ---
 
-## 2. Mandatory Contract Invariants (The 16 Required Tokens)
+## 2. Mandatory Contract Invariants
 
-OpenCode v2 validates themes using a strict internal Zod schema (`F5`). Omitting any of the following 16 tokens will cause the theme to fail schema validation and silently fall back to the default theme:
+OpenCode v2 validates themes using its internal schema (`ae`). Any invalid value or missing required property will cause the theme to fail schema validation and silently fall back to the built-in default theme:
 
-| Path in `base` | Required Sub-keys | Failure Mode if Missing |
+| Component | Token Keys | Requirement |
 | :--- | :--- | :--- |
-| `text.feedback` | `error.base`, `warning.base`, `success.base`, `info.base` | Crash/Fallback on alert notifications |
-| `background.feedback` | `error.base`, `warning.base`, `success.base`, `info.base` | Crash/Fallback on banners & callouts |
-| `scrollbar` | `base` (Note: v1 `thumb`/`track` is invalid in v2) | Scrollbar rendering fails |
-| `diff.text` | `added`, `removed`, `context`, `hunkHeader` | Diff review screen failure |
-| `diff.background` | `added`, `removed`, `context` | Diff background fill failure |
-| `diff.highlight` | `added`, `removed` | Inline word-diff failure |
-| `diff.lineNumber` | `text`, `background.added`, `background.removed` | Gutter numbering failure |
+| `text` | `default`, `subdued`, `action`, `formfield`, `status`, `feedback` | `default` (not `base`), `subdued` (not `muted`) |
+| `background` | `default`, `raised` (`base`, `high`, `max`), `action`, `formfield`, `feedback` | `default` (not `base`) |
+| `border` | `default` | Color hex or reference |
+| `scrollbar` | `default` | Color hex or reference |
+| `diff.text` | `added`, `removed`, `context`, `hunkHeader` | Diff text colors |
+| `diff.background` | `added`, `removed`, `context` | Diff background fill |
+| `diff.highlight` | `added`, `removed` | Inline word-diff |
+| `diff.lineNumber` | `text`, `background.added`, `background.removed` | Gutter numbering |
 
 ---
 
 ## 3. Hues and Contrast Scale Rules
 
-Every mode (`dark` and/or `light`) must define the **8 base hues** and **3 aliases**:
+Every mode (`dark` and/or `light`) defines the **8 base hues** and **3 aliases**:
 - **Base Hues**: `gray`, `purple`, `cyan`, `blue`, `green`, `yellow`, `orange`, `red`.
 - **Aliases**:
   - `accent`: Must point to `$hue.<hue-name>` (e.g. `"$hue.purple"`).
@@ -121,6 +129,6 @@ For themes to render accurately:
 
 Use the validation script located in `scripts/validate-theme.mjs`:
 ```bash
-node scripts/validate-theme.mjs ~/.config/opencode/themes/cortex.json
+node scripts/validate-theme.mjs internal/assets/themes/cortex.json
 ```
 If the theme passes with 0 errors, it is guaranteed to load cleanly in `opencode2`.

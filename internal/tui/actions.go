@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,6 +12,16 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 )
+
+// cortexBinaryMissing and ensureCortexBinary are isolation seams: TUI tests
+// never probe the host toolchain nor execute a real install.
+var (
+	cortexBinaryMissing = install.CortexBinaryMissing
+	ensureCortexBinary  = install.EnsureCortexBinary
+)
+
+// cortexInstallTimeout bounds the automatic install the TUI dispatches.
+const cortexInstallTimeout = 5 * time.Minute
 
 // Phase sets shown by the Running screen per operation kind.
 var (
@@ -39,6 +50,12 @@ type (
 	planMsg struct {
 		plan *pipeline.Plan
 		err  error
+		// cortexMissing records the plan-time probe so the Review screen can
+		// offer the one-key cortex install consent without blocking Update.
+		cortexMissing bool
+	}
+	cortexInstallMsg struct {
+		result install.CortexInstallResult
 	}
 	installMsg struct {
 		receipt *install.InstallReceipt
@@ -96,7 +113,17 @@ func (m model) confirmedOptions() install.Options {
 func planCmd(svc ServiceAPI, opts install.Options) tea.Cmd {
 	return func() tea.Msg {
 		plan, err := svc.Plan(opts)
-		return planMsg{plan: plan, err: err}
+		return planMsg{plan: plan, err: err, cortexMissing: cortexBinaryMissing()}
+	}
+}
+
+// cortexInstallCmd installs the cortex executable under a bounded context and
+// reports the typed outcome. The TUI never shells out itself.
+func cortexInstallCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), cortexInstallTimeout)
+		defer cancel()
+		return cortexInstallMsg{result: ensureCortexBinary(ctx)}
 	}
 }
 
@@ -156,6 +183,26 @@ func installRunCmd(svc ServiceAPI, mode string, opts install.Options) tea.Cmd {
 }
 
 // --- Result assembly ---
+
+// onCortexInstall records the automatic install outcome and re-plans so the
+// Review screen keeps a fresh ExpectedPlanDigest for the next confirmation.
+func (m model) onCortexInstall(msg cortexInstallMsg) (tea.Model, tea.Cmd) {
+	if m.screen != screenReview {
+		return m, nil
+	}
+	m.cortexInstalling = false
+	switch msg.result.Outcome {
+	case install.CortexInstalled:
+		m.cortexStatus = "cortex installed at " + msg.result.Path
+	case install.CortexFailed:
+		m.cortexStatus = "automatic cortex install failed: " + msg.result.Detail + " — run manually: " + msg.result.Manual
+	default:
+		m.cortexStatus = "cortex already available at " + msg.result.Path
+	}
+	m.plan = nil
+	m.replanning = true
+	return m, planCmd(m.svc, m.reviewOptions())
+}
 
 // onInstallDone renders install/sync receipts. PASS derives from the
 // receipt, never from a nil error alone: the service must succeed AND

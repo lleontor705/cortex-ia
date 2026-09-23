@@ -10,7 +10,8 @@ import (
 func TestConfigureTUIPlugin(t *testing.T) {
 	tempHome := t.TempDir()
 
-	// 1. Fresh configuration
+	// 1. Fresh configuration: the plugin is registered and the theme key stays
+	// absent because the caller did not opt in.
 	tuiPath, err := ConfigureTUIPlugin(tempHome)
 	if err != nil {
 		t.Fatalf("ConfigureTUIPlugin failed on fresh home: %v", err)
@@ -23,8 +24,8 @@ func TestConfigureTUIPlugin(t *testing.T) {
 	if !strings.Contains(content, TUIPluginPath) {
 		t.Errorf("expected %s in tui.jsonc, got:\n%s", TUIPluginPath, content)
 	}
-	if !strings.Contains(content, `"name":"cortex"`) && !strings.Contains(content, `"name": "cortex"`) {
-		t.Errorf("expected cortex theme in tui.jsonc, got:\n%s", content)
+	if strings.Contains(content, "theme") {
+		t.Errorf("default install must not write the theme key, got:\n%s", content)
 	}
 
 	// 2. Re-run idempotency
@@ -110,4 +111,81 @@ func TestConfigureTUIPlugin(t *testing.T) {
 	if err != nil || !strings.Contains(string(tuiData), TUIPluginPath) {
 		t.Errorf("expected TUIPluginPath in tui.jsonc, got error: %v, content: %s", err, string(tuiData))
 	}
+
+	// 6. Opt-in applies the cortex theme with the default dark mode
+	themeHome := t.TempDir()
+	themePath, _, outcome, err := ConfigureTUIPluginWithResult(themeHome, true)
+	if err != nil {
+		t.Fatalf("opt-in configure failed: %v", err)
+	}
+	if outcome != ThemeOutcomeApplied {
+		t.Errorf("expected theme outcome %q, got %q", ThemeOutcomeApplied, outcome)
+	}
+	themeData, err := os.ReadFile(themePath)
+	if err != nil {
+		t.Fatalf("failed to read opted-in config: %v", err)
+	}
+	compactApplied := compactJSON(string(themeData))
+	if !strings.Contains(compactApplied, `"name":"cortex"`) || !strings.Contains(compactApplied, `"mode":"dark"`) {
+		t.Errorf("expected cortex theme with dark mode, got:\n%s", string(themeData))
+	}
+
+	// 7. Opt-in refreshes a stale theme name while keeping an explicit mode
+	staleHome := t.TempDir()
+	staleDir := filepath.Join(staleHome, ".config", "opencode")
+	if err := os.MkdirAll(staleDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	staleConfig := `{"theme": {"name": "gruvbox", "mode": "light"}}`
+	if err := os.WriteFile(filepath.Join(staleDir, "tui.jsonc"), []byte(staleConfig), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	stalePath, _, staleOutcome, err := ConfigureTUIPluginWithResult(staleHome, true)
+	if err != nil {
+		t.Fatalf("stale theme refresh failed: %v", err)
+	}
+	if staleOutcome != ThemeOutcomeApplied {
+		t.Errorf("expected theme outcome %q, got %q", ThemeOutcomeApplied, staleOutcome)
+	}
+	staleData, err := os.ReadFile(stalePath)
+	if err != nil {
+		t.Fatalf("failed to read refreshed config: %v", err)
+	}
+	compactStale := compactJSON(string(staleData))
+	if !strings.Contains(compactStale, `"name":"cortex"`) {
+		t.Errorf("expected the stale theme name refreshed to cortex, got:\n%s", string(staleData))
+	}
+	if !strings.Contains(compactStale, `"mode":"light"`) {
+		t.Errorf("expected the explicit light mode preserved, got:\n%s", string(staleData))
+	}
+
+	// 8. Opt-out leaves an existing non-default theme exactly as it is
+	keepHome := t.TempDir()
+	keepDir := filepath.Join(keepHome, ".config", "opencode")
+	if err := os.MkdirAll(keepDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(keepDir, "tui.jsonc"), []byte(staleConfig), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	keepPath, _, keepOutcome, err := ConfigureTUIPluginWithResult(keepHome, false)
+	if err != nil {
+		t.Fatalf("opt-out configure failed: %v", err)
+	}
+	if keepOutcome != ThemeOutcomeSkipped {
+		t.Errorf("expected theme outcome %q, got %q", ThemeOutcomeSkipped, keepOutcome)
+	}
+	keepData, err := os.ReadFile(keepPath)
+	if err != nil {
+		t.Fatalf("failed to read untouched config: %v", err)
+	}
+	if compact := compactJSON(string(keepData)); !strings.Contains(compact, `"name":"gruvbox"`) || strings.Contains(compact, `"name":"cortex"`) {
+		t.Errorf("opt-out must not rewrite the user theme, got:\n%s", string(keepData))
+	}
+}
+
+// compactJSON strips insignificant whitespace so assertions hold regardless of
+// how the merge writes the object.
+func compactJSON(s string) string {
+	return strings.ReplaceAll(s, " ", "")
 }

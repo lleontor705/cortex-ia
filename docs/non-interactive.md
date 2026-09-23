@@ -7,10 +7,10 @@ cortex-ia is TUI-first but every operation also has a CLI flag set, so you can d
 ### Install with an explicit target
 
 ```bash
-cortex-ia install --target opencode,agy
+cortex-ia install --target opencode,claude
 ```
 
-`--target` accepts a comma-separated list of `opencode`, `agy`, `claude`, or `all`. It defaults to `opencode`.
+`--target` accepts a comma-separated list of `opencode`, `claude`, or `all`. It defaults to `opencode`.
 
 ### Dry run (preview without touching disk)
 
@@ -77,7 +77,8 @@ cortex-ia reads no required env vars. Optional:
 
 - `CORTEX_IA_HOME` — override the `~/.cortex-ia/` state root with an absolute path (rarely needed; tests use this)
 - `CORTEX_IA_DEBUG` — enable debug tracing when set to `1`, `true`, or `yes` (equivalent to the per-invocation `--debug` flag)
-- `CORTEX_IA_AGY_AUTH` — set to `gemini` to authenticate the external AGY leaf with `GEMINI_API_KEY` instead of the existing AGY account/keyring
+
+The former `CORTEX_IA_AGY_AUTH` / `GEMINI_API_KEY` variables authenticated the retired external AGY leaf and are dead: execution is native-only.
 
 ## CI examples
 

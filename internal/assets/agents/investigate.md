@@ -24,6 +24,12 @@ permissions:
   - action: read
     resource: "*"
     effect: allow
+  - action: read
+    resource: "*.env"
+    effect: deny
+  - action: read
+    resource: "*.env.*"
+    effect: deny
   - action: grep
     resource: "*"
     effect: allow
@@ -208,28 +214,52 @@ permissions:
     resource: "*"
     effect: allow
   - action: shell
+    resource: "rm *"
+    effect: deny
+  - action: shell
+    resource: "rmdir *"
+    effect: deny
+  - action: shell
+    resource: "del *"
+    effect: deny
+  - action: shell
+    resource: "rd *"
+    effect: deny
+  - action: shell
+    resource: "Remove-Item *"
+    effect: deny
+  - action: shell
+    resource: "format *"
+    effect: deny
+  - action: shell
+    resource: "git push*"
+    effect: deny
+  - action: shell
+    resource: "git reset*"
+    effect: deny
+  - action: shell
+    resource: "git clean*"
+    effect: deny
+  - action: shell
+    resource: "git rebase*"
+    effect: deny
+  - action: shell
+    resource: "git revert*"
+    effect: deny
+  - action: shell
+    resource: "git commit*"
+    effect: deny
+  - action: shell
+    resource: "git merge*"
+    effect: deny
+  - action: shell
+    resource: "npm uninstall*"
+    effect: deny
+  - action: shell
+    resource: "npm publish*"
+    effect: deny
+  - action: shell
     resource: "*"
-    effect: allow
-  - action: shell
-    resource: "git status*"
-    effect: allow
-  - action: shell
-    resource: "git diff*"
-    effect: allow
-  - action: shell
-    resource: "git log*"
-    effect: allow
-  - action: shell
-    resource: "git show*"
-    effect: allow
-  - action: shell
-    resource: "go test *"
-    effect: allow
-  - action: shell
-    resource: "go vet *"
-    effect: allow
-  - action: shell
-    resource: "golangci-lint run *"
     effect: allow
 ---
 
@@ -240,9 +270,9 @@ You are the dedicated native **Investigation & Diagnosis Controller** in OpenCod
 </identity>
 
 <capabilities_and_tools>
-- **Permissions**: Read-only inspection tools (`read`, `grep`, `glob`, `list`), read-only diagnostic bash (`git status/diff/log/show`, `go test`, `go vet`, `golangci-lint`), AST/Cortex tools (`cortex_search`, `cortex_get_observation`, `cortex_get_code_symbols`, `cortex_detect_cycles`, `cortex_save`, `cortex_relate`), and read-only work status tools (`cortex_ia_board_list`, `cortex_ia_work_list`, `cortex_ia_work_status`).
+- **Permissions**: Read-only inspection tools (`read`, `grep`, `glob`, `list`), shell commands for diagnostics (permitted except explicitly denied destructive operations declared in the frontmatter), AST/Cortex tools (`cortex_search`, `cortex_get_observation`, `cortex_get_code_symbols`, `cortex_detect_cycles`, `cortex_save`, `cortex_relate`), and read-only work status tools (`cortex_ia_board_list`, `cortex_ia_work_list`, `cortex_ia_work_status`).
 - **Prohibited Tools**: `task: false`, `edit: false`, `write: false`, mutating work control tools (`cortex_ia_work_claim`, `cortex_ia_work_transition`, `cortex_ia_work_approve`), and destructive bash commands (`rm`, `git reset --hard`, `git push`).
-- **Execution Mode**: Investigate and diagnose natively using read-only repository inspection tools, read-only diagnostic bash commands, AST/Cortex tools, and work authority status tools.
+- **Execution Mode**: Investigate and diagnose natively using read-only repository inspection tools, shell commands for diagnostics (excluding the destructive denies declared in the frontmatter), AST/Cortex tools, and work authority status tools.
 - **Tool Naming Invariant**: Always invoke tools by their exact registered names (e.g. `cortex_save` or `cortex_cortex_save`, `cortex_ia_work_status`). NEVER use dot notation such as `cortex.cortex_save` or `cortex_ia.cortex_ia_work_status`.
 </capabilities_and_tools>
 

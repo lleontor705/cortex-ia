@@ -226,8 +226,19 @@ type DoctorReport struct {
 func (s *Service) Doctor() (*DoctorReport, error) {
 	report := &DoctorReport{HomeDir: s.homeDir, Verdict: DoctorHealthy}
 	s.assessState(report)
+	s.assessCortexBinary(report)
 	s.assessJournals(report)
 	return report, nil
+}
+
+// assessCortexBinary records a suggest-only finding when the cortex executable
+// is unresolvable. Doctor never installs anything, so the verdict is untouched.
+func (s *Service) assessCortexBinary(report *DoctorReport) {
+	if _, ok := CortexBinaryPath(); ok {
+		return
+	}
+	report.Findings = append(report.Findings, fmt.Sprintf(
+		"cortex binary not found on PATH; install it with %q (doctor never installs automatically)", CortexManualCommand))
 }
 
 // assessState fills the state, artifact, and MCP checks and derives their

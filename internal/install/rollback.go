@@ -13,6 +13,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
+	"github.com/lleontor705/cortex-ia/internal/modelmgr"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
@@ -26,6 +27,13 @@ var ErrRollbackDrift = errors.New("rollback: current installation no longer matc
 // only to strip managed entries during the rollback preflight's semantic
 // comparison, which never mutates the document.
 const configMCPKey = "mcp"
+
+// configAgentsKey and configModelMember mirror the model manager's config
+// member names for the same preflight comparison.
+const (
+	configAgentsKey   = "agents"
+	configModelMember = "model"
+)
 
 // RollbackReceipt is the typed outcome of a rollback.
 type RollbackReceipt struct {
@@ -171,10 +179,15 @@ func (s *Service) rollbackPreflight(manifest backup.Manifest, meta state.Metadat
 
 	// The restore only touches manifest entries, so every entry must be a
 	// known, home-contained target: a managed artifact, an MCP config
-	// candidate, or the v2 state and lock files. Anything else fails closed.
-	known := make(map[string]bool, len(meta.Artifacts)+4)
+	// candidate, the v2 state and lock files, or the local fingerprint
+	// sidecar. The sidecar is a target every mutating service transaction
+	// declares (MCP and agent-model mutations both journal it), so a
+	// restore that captured it must be allowed to rewrite it. Anything else
+	// fails closed.
+	known := make(map[string]bool, len(meta.Artifacts)+5)
 	known[filepath.Clean(state.StatePath(s.homeDir))] = true
 	known[filepath.Clean(state.LockPath(s.homeDir))] = true
+	known[filepath.Clean(state.FingerprintPath(s.homeDir))] = true
 	for _, candidate := range s.mcpConfigCandidatesAbs() {
 		known[filepath.Clean(candidate)] = true
 	}
@@ -218,12 +231,32 @@ func (s *Service) rollbackPreflight(manifest backup.Manifest, meta state.Metadat
 		}
 	}
 
+	// Every agent-model entry recorded as managed must still be accredited
+	// in the effective config: a removed or hand-edited reference is drift.
+	modelListing, err := modelmgr.New(s.homeDir).List(modelOwnershipEvidence(meta))
+	if err != nil {
+		return fmt.Errorf("rollback: assess agent-model ownership: %w", err)
+	}
+	accredited := make(map[string]bool, len(modelListing.Agents))
+	for _, entry := range modelListing.Agents {
+		accredited[entry.Agent] = entry.Managed
+	}
+	for _, model := range meta.AgentModels {
+		if model.Ownership != state.OwnershipManaged {
+			continue
+		}
+		if !accredited[model.Agent] {
+			return fmt.Errorf("%w: managed agent-model entry %q is not accredited anymore", ErrRollbackDrift, model.Agent)
+		}
+	}
+
 	// Both config candidates the restore will rewrite must differ from
 	// their captured preimage only by managed entries and the settings
-	// template the installer legitimately merges. Managed names and
-	// template values are stripped from both sides, so legitimate MCP churn
-	// and template merges cancel out while any unrelated user change (or a
-	// foreign entry added after the backup) aborts the restore.
+	// template the installer legitimately merges. Managed MCP names,
+	// managed agent-model members, and template values are stripped from
+	// both sides, so legitimate churn and template merges cancel out while
+	// any unrelated user change (or a foreign entry added after the backup)
+	// aborts the restore.
 	managedNames := make([]string, 0, len(meta.MCPs))
 	for _, mcp := range meta.MCPs {
 		if mcp.Ownership == state.OwnershipManaged {
@@ -240,6 +273,10 @@ func (s *Service) rollbackPreflight(manifest backup.Manifest, meta state.Metadat
 			continue
 		}
 		rel := homeRelative(s.homeDir, clean)
+		configRel, relErr := filepath.Rel(meta.OpencodeRoot, clean)
+		if relErr != nil {
+			return fmt.Errorf("rollback: resolve config path for %q: %w", rel, relErr)
+		}
 		exists, _, err := fileDigest(clean)
 		if err != nil {
 			return fmt.Errorf("%w: inspect %q: %v", ErrRollbackDrift, rel, err)
@@ -259,6 +296,7 @@ func (s *Service) rollbackPreflight(manifest backup.Manifest, meta state.Metadat
 			return fmt.Errorf("%w: decode %q: %v", ErrRollbackDrift, rel, err)
 		}
 		stripManagedEntries(current, managedNames)
+		stripManagedAgentModels(current, meta.AgentModels, filepath.ToSlash(configRel))
 		stripTemplateValues(current, template)
 		want := map[string]any{}
 		if entry.Existed {
@@ -271,6 +309,7 @@ func (s *Service) rollbackPreflight(manifest backup.Manifest, meta state.Metadat
 				return fmt.Errorf("%w: decode preimage of %q: %v", ErrRollbackDrift, rel, err)
 			}
 			stripManagedEntries(want, managedNames)
+			stripManagedAgentModels(want, meta.AgentModels, filepath.ToSlash(configRel))
 			stripTemplateValues(want, template)
 		}
 		if !semanticDocumentsEqual(current, want) {
@@ -307,6 +346,35 @@ func stripManagedEntries(document map[string]any, managedNames []string) {
 	}
 	if len(entries) == 0 {
 		delete(document, configMCPKey)
+	}
+}
+
+// stripManagedAgentModels removes the model member of every managed
+// agent-model record whose config path is the document being compared, then
+// prunes an agent object or agents object the removal empties, so documents
+// differing only by managed agent-model churn compare equal. Restricting the
+// strip to the recorded config path keeps a user's own agents entry in the
+// sibling candidate from being masked.
+func stripManagedAgentModels(document map[string]any, records []state.AgentModelV2, configRel string) {
+	agents, isMap := document[configAgentsKey].(map[string]any)
+	if !isMap {
+		return
+	}
+	for _, record := range records {
+		if record.Ownership != state.OwnershipManaged || record.ConfigPath != configRel {
+			continue
+		}
+		entry, entryIsMap := agents[record.Agent].(map[string]any)
+		if !entryIsMap {
+			continue
+		}
+		delete(entry, configModelMember)
+		if len(entry) == 0 {
+			delete(agents, record.Agent)
+		}
+	}
+	if len(agents) == 0 {
+		delete(document, configAgentsKey)
 	}
 }
 

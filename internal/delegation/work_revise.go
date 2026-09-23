@@ -48,6 +48,10 @@ func DecodeWorkRevisionPlan(r io.Reader) (WorkRevisionPlan, error) {
 
 // ReviseWorkDefinition atomically replaces the bounded definition of an unclaimed
 // ready/backlog task after read-only validation of the replacement contract pins.
+// A done task is accepted only for a pin-only re-bind: its frozen definition stays
+// byte-identical and only the SDD contract pins move to reconciled on-disk digests.
+// Without that path a completed task can never follow legitimate planning pin drift,
+// which blocks RefreshWorkReview and therefore archive.
 func (s *Store) ReviseWorkDefinition(ctx context.Context, plan WorkRevisionPlan) (WorkItem, error) {
 	normalized, allowedJSON, contractJSON, workspace, err := normalizeWorkRevisionPlan(ctx, plan)
 	if err != nil {
@@ -83,7 +87,8 @@ func (s *Store) ReviseWorkDefinition(ctx context.Context, plan WorkRevisionPlan)
 		if live.Revision != normalized.ExpectedRevision {
 			return fmt.Errorf("%w: task is at revision %d, not %d", ErrWorkConflict, live.Revision, normalized.ExpectedRevision)
 		}
-		if WorkStatus(live.Status) != normalized.ExpectedStatus || (live.Status != string(WorkReady) && live.Status != string(WorkBacklog)) {
+		liveStatus := WorkStatus(live.Status)
+		if liveStatus != normalized.ExpectedStatus || (liveStatus != WorkReady && liveStatus != WorkBacklog && liveStatus != WorkDone) {
 			return fmt.Errorf("%w: task %s is %s, not revisable", ErrWorkConflict, normalized.TaskID, live.Status)
 		}
 
@@ -124,6 +129,11 @@ func (s *Store) ReviseWorkDefinition(ctx context.Context, plan WorkRevisionPlan)
 		if err := validateRevisionContractIdentity(normalized, oldContract); err != nil {
 			return err
 		}
+		if liveStatus == WorkDone {
+			if err := validatePinOnlyRebind(live.Title, objective, acceptance, verification, filesJSON, oldContract, normalized, allowedJSON); err != nil {
+				return err
+			}
+		}
 		if err := requireOpenSDDChange(ctx, conn, normalized.BoardID, normalized.Definition.Contract); err != nil {
 			return err
 		}
@@ -133,7 +143,7 @@ func (s *Store) ReviseWorkDefinition(ctx context.Context, plan WorkRevisionPlan)
 		if _, err := conn.ExecContext(ctx, `UPDATE work_definitions SET objective=?,acceptance_criteria=?,verification=?,allowed_files_json=?,contract_json=? WHERE item_id=?`, normalized.Definition.Objective, normalized.Definition.Acceptance, normalized.Definition.Verification, allowedJSON, contractJSON, normalized.TaskID); err != nil {
 			return err
 		}
-		result, err := conn.ExecContext(ctx, `UPDATE work_items SET title=?,revision=revision+1,updated_at=? WHERE id=? AND revision=? AND status IN('ready','backlog')`, normalized.Definition.Title, now, normalized.TaskID, normalized.ExpectedRevision)
+		result, err := conn.ExecContext(ctx, `UPDATE work_items SET title=?,revision=revision+1,updated_at=? WHERE id=? AND revision=? AND status=?`, normalized.Definition.Title, now, normalized.TaskID, normalized.ExpectedRevision, live.Status)
 		if err != nil {
 			return err
 		}
@@ -141,8 +151,12 @@ func (s *Store) ReviseWorkDefinition(ctx context.Context, plan WorkRevisionPlan)
 		if changed != 1 {
 			return fmt.Errorf("%w: stale revision", ErrWorkConflict)
 		}
-		detail, _ := json.Marshal(map[string]string{"old": oldHash, "new": newHash})
-		return s.addWorkEvent(ctx, conn, normalized.TaskID, "definition_revised", live.Status, live.Status, string(detail))
+		eventKind, oldDigest, newDigest := "definition_revised", oldHash, newHash
+		if liveStatus == WorkDone {
+			eventKind, oldDigest, newDigest = "contract_rebind", hashJSON(oldContractJSON), hashJSON(contractJSON)
+		}
+		detail, _ := json.Marshal(map[string]string{"old": oldDigest, "new": newDigest})
+		return s.addWorkEvent(ctx, conn, normalized.TaskID, eventKind, live.Status, live.Status, string(detail))
 	})
 	if err != nil {
 		return WorkItem{}, err
@@ -165,8 +179,8 @@ func normalizeWorkRevisionPlan(ctx context.Context, plan WorkRevisionPlan) (Work
 	if plan.Version != 1 || plan.TaskID == "" || plan.BoardID == "" || plan.Project == "" || plan.ExpectedRevision <= 0 {
 		return WorkRevisionPlan{}, "", "", "", errors.New("revision plan requires version, identity, project and positive revision")
 	}
-	if plan.ExpectedStatus != WorkReady && plan.ExpectedStatus != WorkBacklog {
-		return WorkRevisionPlan{}, "", "", "", errors.New("revision plan expected status must be ready or backlog")
+	if plan.ExpectedStatus != WorkReady && plan.ExpectedStatus != WorkBacklog && plan.ExpectedStatus != WorkDone {
+		return WorkRevisionPlan{}, "", "", "", errors.New("revision plan expected status must be ready, backlog, or done")
 	}
 	if plan.Definition.Title == "" || len(plan.Definition.Title) > 512 || plan.Definition.Objective == "" || plan.Definition.Acceptance == "" || plan.Definition.Verification == "" {
 		return WorkRevisionPlan{}, "", "", "", errors.New("revision definition requires bounded title, objective, acceptance and verification")
@@ -242,4 +256,28 @@ func sameStringSet(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// A completed task can only be re-bound to reconciled specification pins. Everything
+// outside the pins stays byte-identical so a pin refresh cannot smuggle in a scope
+// change that was never independently reviewed; any real redefinition must go through
+// fresh planning and a new task. Pin digests are already verified against the on-disk
+// locators before this runs, so an accepted re-bind always points at real content.
+func validatePinOnlyRebind(liveTitle, liveObjective, liveAcceptance, liveVerification, liveAllowedJSON string, liveContract *SDDContract, plan WorkRevisionPlan, allowedJSON string) error {
+	if plan.Definition.Title != liveTitle ||
+		plan.Definition.Objective != liveObjective ||
+		plan.Definition.Acceptance != liveAcceptance ||
+		plan.Definition.Verification != liveVerification ||
+		allowedJSON != liveAllowedJSON {
+		return errors.New("done task accepts contract pins only; full redefinition requires a new task")
+	}
+	next := plan.Definition.Contract
+	if liveContract == nil || next == nil {
+		return errors.New("done task rebind requires an existing SDD contract")
+	}
+	if liveContract.Workflow != next.Workflow || liveContract.ChangeID != next.ChangeID ||
+		liveContract.SpecPlane != next.SpecPlane || !sameStringSet(liveContract.RequirementIDs, next.RequirementIDs) {
+		return errors.New("done task accepts contract pins only; SDD identity is frozen")
+	}
+	return nil
 }

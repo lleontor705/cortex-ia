@@ -106,6 +106,22 @@ type MCPV2 struct {
 	Ownership      Ownership `json:"ownership"`
 }
 
+// AgentModelV2 records one managed OpenCode agent-model entry. It mirrors
+// MCPV2: only non-secret semantic identity and a sanitized digest are
+// persisted, so no configuration value beyond the model reference can reach
+// the state or lock file.
+type AgentModelV2 struct {
+	Agent string `json:"agent"`
+	// ConfigPath is the agent config file relative to the OpenCode root.
+	ConfigPath string `json:"config_path"`
+	// SemanticDigest is the versioned agent-model digest defined by
+	// internal/installmeta ("amdv<version>:<hex64>") over the agent-model
+	// identity only. It is exactly the encoding the model manager records, so
+	// state, lock, and ownership evidence can never disagree on one entry.
+	SemanticDigest string    `json:"semantic_digest"`
+	Ownership      Ownership `json:"ownership"`
+}
+
 // NewMCPV2 builds a sanitized MCP record from the canonical secret-free
 // identity defined by internal/installmeta. The semantic digest is computed
 // by the shared leaf, never locally: state and the OpenCode MCP manager use
@@ -122,6 +138,26 @@ func NewMCPV2(identity installmeta.MCPServerIdentity, configPath string, ownersh
 	}
 	return MCPV2{
 		Name:           identity.Name,
+		ConfigPath:     normalizeRelPath(configPath),
+		SemanticDigest: digest,
+		Ownership:      ownership,
+	}, nil
+}
+
+// NewAgentModelV2 builds a managed agent-model record from the canonical
+// identity defined by internal/installmeta. The semantic digest is computed by
+// the shared leaf, never locally: state, lock, and the model manager use
+// exactly one versioned encoding.
+func NewAgentModelV2(identity installmeta.AgentModelIdentity, configPath string, ownership Ownership) (AgentModelV2, error) {
+	if strings.TrimSpace(identity.Agent) == "" {
+		return AgentModelV2{}, &ValidationError{Field: "agent_models.agent", Reason: "empty"}
+	}
+	digest, err := installmeta.AgentModelIdentityDigest(identity)
+	if err != nil {
+		return AgentModelV2{}, fmt.Errorf("state: digest agent model identity %q: %w", identity.Agent, err)
+	}
+	return AgentModelV2{
+		Agent:          identity.Agent,
 		ConfigPath:     normalizeRelPath(configPath),
 		SemanticDigest: digest,
 		Ownership:      ownership,
@@ -157,6 +193,7 @@ type MetadataV2 struct {
 	Selection     SelectionV2          `json:"selection"`
 	Artifacts     []ArtifactV2         `json:"artifacts"`
 	MCPs          []MCPV2              `json:"mcps"`
+	AgentModels   []AgentModelV2       `json:"agent_models"`
 	TransactionID string               `json:"transaction_id"`
 	BackupID      string               `json:"backup_id,omitempty"`
 	Migration     *MigrationProvenance `json:"migration,omitempty"`
@@ -166,13 +203,14 @@ type MetadataV2 struct {
 // LockV2 is the v2 lock document. It mirrors MetadataV2 for verification and
 // repair; disagreement between the two fails closed via CheckAgreementV2.
 type LockV2 struct {
-	SchemaVersion int          `json:"schema_version"`
-	OpencodeRoot  string       `json:"opencode_root"`
-	Artifacts     []ArtifactV2 `json:"artifacts"`
-	MCPs          []MCPV2      `json:"mcps"`
-	TransactionID string       `json:"transaction_id"`
-	BackupID      string       `json:"backup_id,omitempty"`
-	GeneratedAt   time.Time    `json:"generated_at"`
+	SchemaVersion int            `json:"schema_version"`
+	OpencodeRoot  string         `json:"opencode_root"`
+	Artifacts     []ArtifactV2   `json:"artifacts"`
+	MCPs          []MCPV2        `json:"mcps"`
+	AgentModels   []AgentModelV2 `json:"agent_models"`
+	TransactionID string         `json:"transaction_id"`
+	BackupID      string         `json:"backup_id,omitempty"`
+	GeneratedAt   time.Time      `json:"generated_at"`
 }
 
 // NewLockFromMetadataV2 derives the lock view of a metadata document so both
@@ -184,14 +222,16 @@ func NewLockFromMetadataV2(meta MetadataV2) LockV2 {
 		OpencodeRoot:  meta.OpencodeRoot,
 		Artifacts:     meta.Artifacts,
 		MCPs:          meta.MCPs,
+		AgentModels:   meta.AgentModels,
 		TransactionID: meta.TransactionID,
 		BackupID:      meta.BackupID,
 		GeneratedAt:   meta.UpdatedAt,
 	}
 }
 
-// Normalize sorts artifacts by path and MCPs by name so serialized documents
-// and agreement checks are deterministic. Nil slices become empty slices.
+// Normalize sorts artifacts by path, MCPs by name, and agent models by agent
+// so serialized documents and agreement checks are deterministic. Nil slices
+// become empty slices.
 func (m *MetadataV2) Normalize() {
 	if m == nil {
 		return
@@ -202,11 +242,17 @@ func (m *MetadataV2) Normalize() {
 	if m.MCPs == nil {
 		m.MCPs = []MCPV2{}
 	}
+	if m.AgentModels == nil {
+		m.AgentModels = []AgentModelV2{}
+	}
 	sort.SliceStable(m.Artifacts, func(i, j int) bool {
 		return m.Artifacts[i].Path < m.Artifacts[j].Path
 	})
 	sort.SliceStable(m.MCPs, func(i, j int) bool {
 		return m.MCPs[i].Name < m.MCPs[j].Name
+	})
+	sort.SliceStable(m.AgentModels, func(i, j int) bool {
+		return m.AgentModels[i].Agent < m.AgentModels[j].Agent
 	})
 }
 
@@ -221,11 +267,17 @@ func (l *LockV2) Normalize() {
 	if l.MCPs == nil {
 		l.MCPs = []MCPV2{}
 	}
+	if l.AgentModels == nil {
+		l.AgentModels = []AgentModelV2{}
+	}
 	sort.SliceStable(l.Artifacts, func(i, j int) bool {
 		return l.Artifacts[i].Path < l.Artifacts[j].Path
 	})
 	sort.SliceStable(l.MCPs, func(i, j int) bool {
 		return l.MCPs[i].Name < l.MCPs[j].Name
+	})
+	sort.SliceStable(l.AgentModels, func(i, j int) bool {
+		return l.AgentModels[i].Agent < l.AgentModels[j].Agent
 	})
 }
 
@@ -242,12 +294,13 @@ func (e *ValidationError) Error() string {
 
 // ValidateV2 enforces the canonical form of the v2 state document: required
 // identifiers, a canonical absolute and cleaned OpenCode root, closed enums,
-// unique artifact paths and MCP names, canonical artifact sha256 and
-// versioned MCP digests, and relative paths without absolute, traversal,
-// ambiguous Win32, or alias forms. Uniqueness follows the platform's path
-// case policy: case-fold-equivalent artifact paths, MCP config paths, and
-// MCP names collide on case-insensitive platforms (Windows, macOS) while
-// remaining distinct on case-sensitive ones. MCP digests must be exactly the
+// unique artifact paths, MCP names, and agent-model agents, canonical
+// artifact sha256 and versioned MCP/agent-model digests, and relative paths
+// without absolute, traversal, ambiguous Win32, or alias forms. Uniqueness
+// follows the platform's path case policy: case-fold-equivalent artifact
+// paths, MCP config paths/names, and agent-model config paths/agents collide
+// on case-insensitive platforms (Windows, macOS) while remaining distinct on
+// case-sensitive ones. MCP and agent-model digests must be exactly the
 // encoding of the supported installmeta version: legacy raw-hex or
 // unknown-version values are rejected so consumers fail closed instead of
 // degrading. Invalid documents are rejected before any write; Save and Load
@@ -255,7 +308,7 @@ func (e *ValidationError) Error() string {
 func ValidateV2(meta MetadataV2) error {
 	meta.Normalize()
 	if err := validateCore(meta.SchemaVersion, meta.OpencodeRoot, meta.TransactionID,
-		meta.Artifacts, meta.MCPs); err != nil {
+		meta.Artifacts, meta.MCPs, meta.AgentModels); err != nil {
 		return err
 	}
 	if meta.Migration != nil && meta.Migration.Source == "" {
@@ -268,10 +321,10 @@ func ValidateV2(meta MetadataV2) error {
 func ValidateLockV2(lock LockV2) error {
 	lock.Normalize()
 	return validateCore(lock.SchemaVersion, lock.OpencodeRoot, lock.TransactionID,
-		lock.Artifacts, lock.MCPs)
+		lock.Artifacts, lock.MCPs, lock.AgentModels)
 }
 
-func validateCore(schema int, root, txnID string, artifacts []ArtifactV2, mcps []MCPV2) error {
+func validateCore(schema int, root, txnID string, artifacts []ArtifactV2, mcps []MCPV2, agentModels []AgentModelV2) error {
 	if schema != MetadataSchemaV2 {
 		return &ValidationError{Field: "schema_version",
 			Reason: fmt.Sprintf("expected %d, got %d", MetadataSchemaV2, schema)}
@@ -383,6 +436,52 @@ func validateCore(schema int, root, txnID string, artifacts []ArtifactV2, mcps [
 		}
 		if !validOwnership[m.Ownership] {
 			return &ValidationError{Field: field + ".ownership", Reason: "unknown ownership " + string(m.Ownership)}
+		}
+	}
+	seenAgents := make(map[string]bool, len(agentModels))
+	seenAgentsFolded := make(map[string]bool, len(agentModels))
+	seenModelConfigFolded := make(map[string]string, len(agentModels))
+	for i, am := range agentModels {
+		field := fmt.Sprintf("agent_models[%d]", i)
+		if strings.TrimSpace(am.Agent) == "" {
+			return &ValidationError{Field: field + ".agent", Reason: "empty"}
+		}
+		if seenAgents[am.Agent] {
+			return &ValidationError{Field: field + ".agent", Reason: "duplicate " + am.Agent}
+		}
+		seenAgents[am.Agent] = true
+		if fold {
+			key := strings.ToLower(am.Agent)
+			if seenAgentsFolded[key] {
+				return &ValidationError{Field: field + ".agent",
+					Reason: "case-colliding duplicate " + am.Agent}
+			}
+			seenAgentsFolded[key] = true
+		}
+		if err := validateRelPath(field+".config_path", am.ConfigPath); err != nil {
+			return err
+		}
+		// Managed agents legitimately share one config file, so an exactly
+		// repeated config path is canonical; two spellings folding to the
+		// same file on case-insensitive platforms are inconsistent evidence
+		// and fail closed.
+		if fold {
+			key := strings.ToLower(am.ConfigPath)
+			if first, seen := seenModelConfigFolded[key]; seen {
+				if first != am.ConfigPath {
+					return &ValidationError{Field: field + ".config_path",
+						Reason: "case-colliding duplicate " + am.ConfigPath}
+				}
+			} else {
+				seenModelConfigFolded[key] = am.ConfigPath
+			}
+		}
+		if !installmeta.ValidAgentModelDigest(am.SemanticDigest) {
+			return &ValidationError{Field: field + ".semantic_digest",
+				Reason: fmt.Sprintf("not the canonical amdv%d digest of the current encoding", installmeta.AgentModelDigestVersion)}
+		}
+		if !validOwnership[am.Ownership] {
+			return &ValidationError{Field: field + ".ownership", Reason: "unknown ownership " + string(am.Ownership)}
 		}
 	}
 	return nil
@@ -736,10 +835,11 @@ func (e *AgreementError) Error() string {
 }
 
 // CheckAgreementV2 verifies that state and lock agree on the transaction and
-// the complete managed artifact and MCP evidence: identity (path/name), kind,
-// origin, installed and source digests, prior presence evidence, backup
-// references, ownership, and config paths. Any disagreement fails closed
-// with an *AgreementError; it is never reported as success.
+// the complete managed artifact, MCP, and agent-model evidence: identity
+// (path/name/agent), kind, origin, installed and source digests, prior
+// presence evidence, backup references, ownership, and config paths. Any
+// disagreement fails closed with an *AgreementError; it is never reported as
+// success.
 func CheckAgreementV2(meta MetadataV2, lock LockV2) error {
 	meta.Normalize()
 	lock.Normalize()
@@ -760,6 +860,9 @@ func CheckAgreementV2(meta MetadataV2, lock LockV2) error {
 		return err
 	}
 	if err := mcpsAgree(meta.MCPs, lock.MCPs); err != nil {
+		return err
+	}
+	if err := agentModelsAgree(meta.AgentModels, lock.AgentModels); err != nil {
 		return err
 	}
 	return nil
@@ -826,6 +929,28 @@ func mcpsAgree(meta, lock []MCPV2) error {
 		} {
 			if p.m != p.l {
 				return &AgreementError{Field: "mcps." + p.field + "[" + fmt.Sprint(i) + "]",
+					MetadataValue: p.m, LockValue: p.l}
+			}
+		}
+	}
+	return nil
+}
+
+func agentModelsAgree(meta, lock []AgentModelV2) error {
+	if len(meta) != len(lock) {
+		return &AgreementError{Field: "agent_models.length",
+			MetadataValue: fmt.Sprint(len(meta)), LockValue: fmt.Sprint(len(lock))}
+	}
+	for i := range meta {
+		m, l := meta[i], lock[i]
+		for _, p := range []struct{ field, m, l string }{
+			{"agent", m.Agent, l.Agent},
+			{"config_path", m.ConfigPath, l.ConfigPath},
+			{"semantic_digest", m.SemanticDigest, l.SemanticDigest},
+			{"ownership", string(m.Ownership), string(l.Ownership)},
+		} {
+			if p.m != p.l {
+				return &AgreementError{Field: "agent_models." + p.field + "[" + fmt.Sprint(i) + "]",
 					MetadataValue: p.m, LockValue: p.l}
 			}
 		}

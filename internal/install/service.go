@@ -3,6 +3,7 @@
 package install
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -93,14 +94,21 @@ type Options struct {
 	SkipEnvironment bool
 	// SkipTUIPlugin disables OpenCode TUI plugin registration.
 	SkipTUIPlugin bool
+	// ApplyTheme is the explicit opt-in for writing the bundled cortex theme
+	// into the OpenCode configuration. It defaults to false: a plain install or
+	// sync registers the plugin but leaves the user's theme key exactly as it
+	// is. OpenCode silently drops a theme the user never chose, so applying one
+	// must always be a deliberate request.
+	ApplyTheme bool
 }
 
 // DefaultOptions returns the recommended OpenCode selection as data: Cortex
 // on and Context7 optional. Work control is built into cortex-ia. Returning this
 // value is the only place the default exists — no service method injects or
-// extends a selection implicitly.
+// extends a selection implicitly. The theme stays unapplied until the caller
+// opts in, so the default never rewrites a user's theme.
 func DefaultOptions() Options {
-	return Options{Cortex: true, Context7: false}
+	return Options{Cortex: true, Context7: false, ApplyTheme: false}
 }
 
 // request projects the service options onto the engine request type.
@@ -156,15 +164,52 @@ func (s *Service) Plan(opts Options) (*pipeline.Plan, error) {
 // Install plans and applies the embedded OpenCode asset set and managed MCP selection.
 func (s *Service) Install(opts Options) (*InstallReceipt, error) {
 	req := s.request(opts)
+	warnings := s.preflightCortexBinary(opts)
 	plan, err := pipeline.PlanInstall(req)
 	if err != nil {
-		return newInstallReceipt(plan, &pipeline.Receipt{DryRun: opts.DryRun}), err
+		receipt := newInstallReceipt(plan, &pipeline.Receipt{DryRun: opts.DryRun})
+		receipt.Warnings = append(receipt.Warnings, warnings...)
+		return receipt, err
 	}
 	if opts.DryRun {
 		plan, receipt, err := pipeline.InstallV2(req)
-		return newInstallReceipt(plan, receipt), err
+		out := newInstallReceipt(plan, receipt)
+		out.Warnings = append(out.Warnings, warnings...)
+		recordDryRunThemeIntent(opts, out)
+		return out, err
 	}
-	return s.applyServicePlan(opts, req, plan, pipeline.PlanInstall, "install")
+	receipt, err := s.applyServicePlan(opts, req, plan, pipeline.PlanInstall, "install")
+	if receipt != nil {
+		receipt.Warnings = append(receipt.Warnings, warnings...)
+	}
+	return receipt, err
+}
+
+// preflightCortexBinary best-effort installs the cortex executable before the
+// install plan is derived. It never fails the caller: a missing Go toolchain,
+// network failure, or unrefreshed PATH degrades to a printed manual command
+// and a receipt warning. Dry runs and Cortex-free selections perform no work,
+// so a preview stays side-effect free.
+func (s *Service) preflightCortexBinary(opts Options) []string {
+	if opts.DryRun || !opts.Cortex {
+		return nil
+	}
+	if path, ok := CortexBinaryPath(); ok {
+		logging.Debugf("install.cortex.present path=%s", path)
+		return nil
+	}
+	cortexNoticef("cortex binary not found on PATH; installing automatically: %s\n", CortexManualCommand)
+	result := EnsureCortexBinary(context.Background())
+	if result.Outcome == CortexInstalled {
+		cortexNoticef("cortex installed at %s\n", result.Path)
+		return nil
+	}
+	if result.Outcome == CortexFailed {
+		cortexNoticef("automatic cortex installation failed: %s\n", result.Detail)
+		cortexNoticef("install it manually and re-run: %s\n", result.Manual)
+		return []string{fmt.Sprintf("cortex binary preflight failed: %s; run %q to finish setup", result.Detail, result.Manual)}
+	}
+	return nil
 }
 
 // Sync reconciles an installed home with the current embedded asset set:
@@ -174,15 +219,25 @@ func (s *Service) Install(opts Options) (*InstallReceipt, error) {
 // closed.
 func (s *Service) Sync(opts Options) (*InstallReceipt, error) {
 	req := s.request(opts)
+	warnings := s.preflightCortexBinary(opts)
 	plan, err := pipeline.PlanSync(req)
 	if err != nil {
-		return newInstallReceipt(plan, &pipeline.Receipt{DryRun: opts.DryRun}), err
+		receipt := newInstallReceipt(plan, &pipeline.Receipt{DryRun: opts.DryRun})
+		receipt.Warnings = append(receipt.Warnings, warnings...)
+		return receipt, err
 	}
 	if opts.DryRun {
 		plan, receipt, err := pipeline.SyncV2(req)
-		return newInstallReceipt(plan, receipt), err
+		out := newInstallReceipt(plan, receipt)
+		out.Warnings = append(out.Warnings, warnings...)
+		recordDryRunThemeIntent(opts, out)
+		return out, err
 	}
-	return s.applyServicePlan(opts, req, plan, pipeline.PlanSync, "sync")
+	receipt, err := s.applyServicePlan(opts, req, plan, pipeline.PlanSync, "sync")
+	if receipt != nil {
+		receipt.Warnings = append(receipt.Warnings, warnings...)
+	}
+	return receipt, err
 }
 
 func (s *Service) applyServicePlan(opts Options, req pipeline.Request, plan *pipeline.Plan, planner func(pipeline.Request) (*pipeline.Plan, error), op string) (*InstallReceipt, error) {
@@ -254,6 +309,9 @@ type EffectRecoveryOptions struct {
 	RequirePreimage  bool
 	RetryEnvironment bool
 	RetryTUIPlugin   bool
+	// ApplyTheme carries the same opt-in as Options.ApplyTheme into a TUI
+	// plugin retry; a retry without it never touches the theme key.
+	ApplyTheme bool
 }
 
 // RecoverEffect re-inspects and retries separate post-pipeline effects under the canonical home lock
@@ -296,49 +354,62 @@ func (s *Service) RecoverEffect(opts EffectRecoveryOptions) (*InstallReceipt, er
 		}
 	}
 
-	if opts.RetryTUIPlugin && firstErr == nil {
-		tuiPath, changed, err := ConfigureTUIPluginWithResult(s.homeDir)
-		if err != nil {
-			firstErr = fmt.Errorf("recover tui plugin: %w", err)
+	if opts.RetryTUIPlugin {
+		if firstErr != nil {
 			effects = append(effects, PostPipelineEffect{
-				Kind: "tui_plugin", Status: EffectStatusFailed, Error: err.Error(),
-			})
-		} else if changed {
-			survivingChanges = true
-			receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/"+filepath.Base(tuiPath))
-			effects = append(effects, PostPipelineEffect{
-				Kind: "tui_plugin", Status: EffectStatusChanged, Destination: tuiPath,
+				Kind: "tui_plugin", Status: EffectStatusNotAttempted,
 			})
 		} else {
-			effects = append(effects, PostPipelineEffect{
-				Kind: "tui_plugin", Status: EffectStatusUnchanged, Destination: tuiPath,
-			})
+			tuiPath, changed, themeOutcome, err := ConfigureTUIPluginWithResult(s.homeDir, opts.ApplyTheme)
+			receipt.ThemeOutcome = themeOutcome
+			if err != nil {
+				firstErr = fmt.Errorf("recover tui plugin: %w", err)
+				effects = append(effects, PostPipelineEffect{
+					Kind: "tui_plugin", Status: EffectStatusFailed, Error: err.Error(),
+				})
+			} else if changed {
+				survivingChanges = true
+				receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/"+filepath.Base(tuiPath))
+				effects = append(effects, PostPipelineEffect{
+					Kind: "tui_plugin", Status: EffectStatusChanged, Destination: tuiPath,
+				})
+			} else {
+				effects = append(effects, PostPipelineEffect{
+					Kind: "tui_plugin", Status: EffectStatusUnchanged, Destination: tuiPath,
+				})
+			}
 		}
 	}
 
-	if opts.DelegationConfig != nil && firstErr == nil {
-		configDir := filepath.Join(s.homeDir, ".config", "opencode")
-		saveOpts := delegation.SaveOptions{
-			ExpectedPreimage: opts.ExpectedPreimage,
-			RequirePreimage:  opts.RequirePreimage,
-			AllowOverwrite:   true,
-		}
-		res, err := delegation.SaveWithResult(configDir, *opts.DelegationConfig, saveOpts)
-		if err != nil {
-			firstErr = fmt.Errorf("recover delegation config: %w", err)
+	if opts.DelegationConfig != nil {
+		if firstErr != nil {
 			effects = append(effects, PostPipelineEffect{
-				Kind: "delegation_config", Status: EffectStatusFailed, Error: err.Error(),
-			})
-		} else if res.Outcome == delegation.ConfigOutcomeChanged || res.Outcome == delegation.ConfigOutcomeCreated {
-			survivingChanges = true
-			receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/cortex-delegation.json")
-			effects = append(effects, PostPipelineEffect{
-				Kind: "delegation_config", Status: EffectStatusChanged, Destination: filepath.Join(configDir, "cortex-delegation.json"),
+				Kind: "delegation_config", Status: EffectStatusNotAttempted,
 			})
 		} else {
-			effects = append(effects, PostPipelineEffect{
-				Kind: "delegation_config", Status: EffectStatusUnchanged, Destination: filepath.Join(configDir, "cortex-delegation.json"),
-			})
+			configDir := filepath.Join(s.homeDir, ".config", "opencode")
+			saveOpts := delegation.SaveOptions{
+				ExpectedPreimage: opts.ExpectedPreimage,
+				RequirePreimage:  opts.RequirePreimage,
+				AllowOverwrite:   true,
+			}
+			res, err := delegation.SaveWithResult(configDir, *opts.DelegationConfig, saveOpts)
+			if err != nil {
+				firstErr = fmt.Errorf("recover delegation config: %w", err)
+				effects = append(effects, PostPipelineEffect{
+					Kind: "delegation_config", Status: EffectStatusFailed, Error: err.Error(),
+				})
+			} else if res.Outcome == delegation.ConfigOutcomeChanged || res.Outcome == delegation.ConfigOutcomeCreated {
+				survivingChanges = true
+				receipt.Changed = append(receipt.Changed, "managed-update .config/opencode/cortex-delegation.json")
+				effects = append(effects, PostPipelineEffect{
+					Kind: "delegation_config", Status: EffectStatusChanged, Destination: filepath.Join(configDir, "cortex-delegation.json"),
+				})
+			} else {
+				effects = append(effects, PostPipelineEffect{
+					Kind: "delegation_config", Status: EffectStatusUnchanged, Destination: filepath.Join(configDir, "cortex-delegation.json"),
+				})
+			}
 		}
 	}
 

@@ -2,11 +2,43 @@ package delegation
 
 import (
 	"context"
-	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+// legacyJobSeed materializes a durable delegation_jobs row directly.
+// The AGY write helpers that used to produce these rows are retired (DP-2), but
+// persisted legacy rows must stay readable through the query projections.
+type legacyJobSeed struct {
+	id        string
+	role      string
+	workspace string
+	status    Status
+	errorCode string
+	createdAt string
+	updatedAt string
+	startedAt string
+	attempt   int
+	pid       int
+}
+
+func seedLegacyJob(t *testing.T, store *Store, seed legacyJobSeed) {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if seed.createdAt == "" {
+		seed.createdAt = now
+	}
+	if seed.updatedAt == "" {
+		seed.updatedAt = seed.createdAt
+	}
+	_, err := store.db.Exec(
+		`INSERT INTO delegation_jobs(id,role,task_id,objective_digest,status,transport,workspace,pid,attempt,error_code,error_message,created_at,updated_at,started_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		seed.id, seed.role, "", "sha256:legacy", string(seed.status), "direct", seed.workspace, seed.pid, seed.attempt, seed.errorCode, "", seed.createdAt, seed.updatedAt, seed.startedAt, "")
+	if err != nil {
+		t.Fatalf("seed legacy job %s: %v", seed.id, err)
+	}
+}
 
 func TestJobQueryAndCoherentView(t *testing.T) {
 	tempDir := t.TempDir()
@@ -19,82 +51,41 @@ func TestJobQueryAndCoherentView(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 1. Query active (accepted) job
-	job, err := store.Create(ctx, NewJob{
-		Role:            "implement",
-		TaskID:          "task-query-1",
-		ObjectiveDigest: "sha256:digest1",
-		Transport:       "direct",
-		Workspace:       filepath.Join(tempDir, "ws1"),
-	})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	// 1. Query a non-terminal accepted job: no receipt must be projected.
+	seedLegacyJob(t, store, legacyJobSeed{id: "job-accepted", role: "implement", workspace: tempDir, status: StatusAccepted})
 
-	view, err := store.Query(ctx, job.ID)
+	view, err := store.Query(ctx, "job-accepted")
 	if err != nil {
 		t.Fatalf("Query failed: %v", err)
 	}
-	if view.ID != job.ID || view.Status != StatusAccepted {
+	if view.ID != "job-accepted" || view.Status != StatusAccepted {
 		t.Fatalf("unexpected view status: %+v", view)
 	}
 	if view.ReceiptAvailable || view.Receipt != nil || view.ReceiptMissing {
 		t.Fatalf("expected non-terminal job to have no receipt: %+v", view)
 	}
 
-	// 2. Mark running, request cancellation
-	err = store.Claim(ctx, job.ID, "worker-1", 12345, 5*time.Minute)
-	if err != nil {
-		t.Fatalf("Claim failed: %v", err)
-	}
-	err = store.MarkRunning(ctx, job.ID)
-	if err != nil {
-		t.Fatalf("MarkRunning failed: %v", err)
-	}
-	err = store.Cancel(ctx, job.ID)
-	if err != nil {
-		t.Fatalf("Cancel failed: %v", err)
-	}
+	// 2. Query a running job carrying a pending cancellation request.
+	seedLegacyJob(t, store, legacyJobSeed{id: "job-running", role: "implement", workspace: tempDir, status: StatusRunning, errorCode: "CANCEL_REQUESTED"})
 
-	view, err = store.Query(ctx, job.ID)
+	view, err = store.Query(ctx, "job-running")
 	if err != nil {
-		t.Fatalf("Query after cancel request failed: %v", err)
+		t.Fatalf("Query running job failed: %v", err)
 	}
 	if !view.CancellationRequested || view.Status != StatusRunning {
 		t.Fatalf("expected running job with CancellationRequested=true: %+v", view)
 	}
 
-	// 3. Complete job with receipt in separate workspace
-	job2, err := store.Create(ctx, NewJob{
-		Role:            "implement",
-		TaskID:          "task-query-2",
-		ObjectiveDigest: "sha256:digest2",
-		Transport:       "direct",
-		Workspace:       filepath.Join(tempDir, "ws2"),
-	})
+	// 3. Query a terminal job with a persisted receipt in a separate workspace.
+	seedLegacyJob(t, store, legacyJobSeed{id: "job-succeeded", role: "implement", workspace: filepath.Join(tempDir, "ws2"), status: StatusSucceeded})
+	_, err = store.db.Exec(
+		`INSERT INTO delegation_receipts(job_id,status,output_json,output_hash,exit_code,created_at) VALUES(?,?,?,?,?,?)`,
+		"job-succeeded", string(StatusSucceeded), `{"status":"completed","files":["a.go"]}`, "sha256:receipt1", 0, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
-		t.Fatalf("Create job2 failed: %v", err)
-	}
-	if err := store.Claim(ctx, job2.ID, "worker-2", 12346, 5*time.Minute); err != nil {
-		t.Fatalf("Claim job2 failed: %v", err)
-	}
-	if err := store.MarkRunning(ctx, job2.ID); err != nil {
-		t.Fatalf("MarkRunning job2 failed: %v", err)
+		t.Fatalf("seed receipt failed: %v", err)
 	}
 
-	receipt := Receipt{
-		JobID:      job2.ID,
-		Status:     StatusSucceeded,
-		Output:     json.RawMessage(`{"status":"completed","files":["a.go"]}`),
-		OutputHash: "sha256:receipt1",
-		ExitCode:   0,
-	}
-	err = store.Complete(ctx, job2.ID, StatusSucceeded, receipt, "", "")
-	if err != nil {
-		t.Fatalf("Complete failed: %v", err)
-	}
-
-	view, err = store.Query(ctx, job2.ID)
+	view, err = store.Query(ctx, "job-succeeded")
 	if err != nil {
 		t.Fatalf("Query completed job failed: %v", err)
 	}
@@ -117,24 +108,9 @@ func TestJobQueryTerminalWithoutReceipt(t *testing.T) {
 
 	ctx := context.Background()
 
-	job, err := store.Create(ctx, NewJob{
-		Role:            "reviewer",
-		TaskID:          "task-query-missing",
-		ObjectiveDigest: "sha256:digest2",
-		Transport:       "direct",
-		Workspace:       tempDir,
-	})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	seedLegacyJob(t, store, legacyJobSeed{id: "job-failed", role: "reviewer", workspace: tempDir, status: StatusFailed})
 
-	// Directly update status to failed without writing to delegation_receipts
-	_, err = store.db.ExecContext(ctx, "UPDATE delegation_jobs SET status='failed' WHERE id=?", job.ID)
-	if err != nil {
-		t.Fatalf("failed update: %v", err)
-	}
-
-	view, err := store.Query(ctx, job.ID)
+	view, err := store.Query(ctx, "job-failed")
 	if err != nil {
 		t.Fatalf("Query failed: %v", err)
 	}
@@ -157,25 +133,10 @@ func TestJobWait(t *testing.T) {
 
 	ctx := context.Background()
 
-	job, err := store.Create(ctx, NewJob{
-		Role:            "implement",
-		TaskID:          "task-wait",
-		ObjectiveDigest: "sha256:digest3",
-		Transport:       "direct",
-		Workspace:       tempDir,
-	})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if err := store.Claim(ctx, job.ID, "worker-wait", 12347, 5*time.Minute); err != nil {
-		t.Fatalf("Claim failed: %v", err)
-	}
-	if err := store.MarkRunning(ctx, job.ID); err != nil {
-		t.Fatalf("MarkRunning failed: %v", err)
-	}
+	seedLegacyJob(t, store, legacyJobSeed{id: "job-wait", role: "implement", workspace: tempDir, status: StatusRunning})
 
 	// Test timeout
-	timedOutView, err := store.Wait(ctx, job.ID, 150*time.Millisecond)
+	timedOutView, err := store.Wait(ctx, "job-wait", 150*time.Millisecond)
 	if err != nil {
 		t.Fatalf("Wait failed: %v", err)
 	}
@@ -183,20 +144,17 @@ func TestJobWait(t *testing.T) {
 		t.Fatalf("expected WaitTimedOut=true: %+v", timedOutView)
 	}
 
-	// Asynchronously finish job
+	// Asynchronously finish the legacy job
 	go func() {
 		time.Sleep(50 * time.Millisecond)
-		receipt := Receipt{
-			JobID:      job.ID,
-			Status:     StatusSucceeded,
-			Output:     json.RawMessage(`{}`),
-			OutputHash: "sha256:done",
-			ExitCode:   0,
-		}
-		_ = store.Complete(ctx, job.ID, StatusSucceeded, receipt, "", "")
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		_, _ = store.db.Exec(`UPDATE delegation_jobs SET status=?,updated_at=?,finished_at=? WHERE id=?`, string(StatusSucceeded), now, now, "job-wait")
+		_, _ = store.db.Exec(
+			`INSERT INTO delegation_receipts(job_id,status,output_json,output_hash,exit_code,created_at) VALUES(?,?,?,?,?,?)`,
+			"job-wait", string(StatusSucceeded), `{}`, "sha256:done", 0, now)
 	}()
 
-	view, err := store.Wait(ctx, job.ID, 2*time.Second)
+	view, err := store.Wait(ctx, "job-wait", 2*time.Second)
 	if err != nil {
 		t.Fatalf("Wait failed: %v", err)
 	}

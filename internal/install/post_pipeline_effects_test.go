@@ -33,6 +33,17 @@ func TestPostPipelineEffects(t *testing.T) {
 		if len(rec.Qualified) > 0 {
 			t.Errorf("expected no qualified entries on dry-run, got: %v", rec.Qualified)
 		}
+		if rec.ThemeOutcome != ThemeOutcomeSkipped {
+			t.Errorf("expected theme outcome %q, got %q", ThemeOutcomeSkipped, rec.ThemeOutcome)
+		}
+
+		themeRec, err := s.Install(Options{DryRun: true, ApplyTheme: true})
+		if err != nil {
+			t.Fatalf("Install dry-run with theme failed: %v", err)
+		}
+		if themeRec.ThemeOutcome != ThemeOutcomePlanned {
+			t.Errorf("expected requested theme outcome %q, got %q", ThemeOutcomePlanned, themeRec.ThemeOutcome)
+		}
 	})
 
 	// 2. Happy path: all effects requested and changed

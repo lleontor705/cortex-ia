@@ -2,7 +2,7 @@
 
 **Version:** 3.0 · **Installed contract:** `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`
 
-This is the single normative runtime contract for OpenCode controllers, native subagents, and Cortex-IA-supervised external leaves. Role prompts and skills define task-specific behavior; when they disagree with this file, this file wins for authority, delegation, and completion.
+This is the single normative runtime contract for OpenCode controllers and native subagents. Role prompts and skills define task-specific behavior; when they disagree with this file, this file wins for authority, delegation, and completion.
 
 The canonical routing/phase/artifact matrix is `workflow-map.md` in this contract directory. Use it before each phase; a skill is not a separate agent for every SDD stage.
 
@@ -18,20 +18,21 @@ The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observ
 
 ## 2. Role boundaries
 
-| Role | Work-control authority | Delegation boundary |
-|---|---|---|
-| `orchestrator` | Query boards/tasks; create only under the bounded bootstrap below; recover expired attempts; retry bounded reconciled blockers; route decomposition to planner. Never decompose, claim, lease, edit, or approve. | Dispatch native role controllers only. Never launch AGY directly. |
-| `planner` | Create the initiative board and its same-board dependency DAG; design and atomically apply an orchestrator-routed decomposition of a blocked task. Never claim implementation work. | At most one optional plan-only external leaf through its native controller. |
-| `investigate` | Read-only board/task status and durable evidence. Never mutate work state. | At most one optional read-only external leaf. |
-| `implement` | Own exactly one live task claim, lease every writable path, renew authority, verify, and transition to `in_review`. | At most one external AGY leaf for the bounded objective. |
-| `reviewer` | Independently inspect and rerun checks; its only work mutation is `cortex_ia_work_approve`. Never edit, claim, lease, or self-approve. | At most one optional review-only external leaf. |
-| external AGY leaf | Execute only the validated envelope in the current workspace under exclusive lease and baseline validation, and return a bounded receipt. | No Cortex session, task-control, approval, MCP, or nested-delegation authority. |
+| Role | Work-control authority |
+|---|---|
+| `orchestrator` | Query boards/tasks; create only under the bounded bootstrap below; recover expired attempts; retry bounded reconciled blockers; route decomposition to planner. Never decompose, claim, lease, edit, or approve. |
+| `planner` | Create the initiative board and its same-board dependency DAG; design and atomically apply an orchestrator-routed decomposition of a blocked task. Never claim implementation work. |
+| `investigate` | Read-only board/task status and durable evidence. Never mutate work state. |
+| `implement` | Own exactly one live task claim, lease every writable path, renew authority, verify, and transition to `in_review`. |
+| `reviewer` | Independently inspect and rerun checks; its only work mutation is `cortex_ia_work_approve`. Never edit, claim, lease, or self-approve. |
+
+The orchestrator dispatches native role controllers only. Every role executes natively within OpenCode under Cortex-IA work authority; no role may hand work to an external CLI or leaf, and no external execution surface holds work-control, approval, session, or MCP authority.
 
 Only the orchestrator owns `cortex_session_start`, session summaries, and `cortex_session_end`. It MUST maintain exactly ONE stable session ID and ONE stable board ID throughout the entire initiative lifecycle (binding to existing active sessions from `cortex_context` upon startup). Dispatched controllers are ephemeral within that session and must never invoke session lifecycle tools.
 
 ### Tier 1: Fast Path (Zero-Ceremony Direct Execution)
 
-Answers, summaries, handoffs, documentation composed in chat, and read-only diagnostic lookups do not require SQLite boards or implementation claims. The orchestrator answers from supplied evidence and dispatches `investigate` for filesystem reads. File mutations route to Tier 2 with one bounded task and explicit writable scope; no planner is required. This prepares the claim and file authority before an external-enabled implement controller calls its gate, avoiding an invalid taskless AGY request. Native edit/write/apply_patch tools require a live task claim and session-owned file leases, including direct changes. Taskless writes are confined to separately authorized typed planning/discovery tools; shell is not an alternate route around admission checks.
+Answers, summaries, handoffs, documentation composed in chat, and read-only diagnostic lookups do not require SQLite boards or implementation claims. The orchestrator answers from supplied evidence and dispatches `investigate` for filesystem reads. File mutations route to Tier 2 with one bounded task and explicit writable scope; no planner is required. This prepares the claim and file authority before an implement controller begins editing, avoiding an invalid taskless dispatch. Native edit/write/apply_patch tools require a live task claim and session-owned file leases, including direct changes. Taskless writes are confined to separately authorized typed planning/discovery tools; shell is not an alternate route around admission checks.
 
 ### Tier 2: Bounded Authorized Bootstrap (Single Bounded Code & Operational Tasks)
 
@@ -52,8 +53,8 @@ Every delegation decision balances role permissions, uncertainty, output volume,
 2. **High-Stdout Containment Boundary**:
    - Commands producing massive stdout (full test suites, linters, builds, benchmarks) must NEVER be executed directly in the orchestrator's main conversation. Delegate them to `reviewer` or bounded execution minions to preserve orchestrator context for strategic routing.
 3. **Workspace Strategy (`current_workspace` as Single Supported Strategy)**:
-   - When preparing external AGY execution, `current_workspace` is the sole supported implementation workspace strategy; `isolated_worktree` is retired.
-   - An external leaf remains strictly exclusive during its execution window: native controllers must not edit concurrently, and Cortex-IA verifies changes against a pre-run baseline before accepting the result.
+   - `current_workspace` is the sole supported implementation workspace strategy; `isolated_worktree` requests fail closed as retired.
+   - Native implement controllers may share that workspace in parallel only with distinct live task claims and disjoint per-file reservations acquired before editing each file.
 4. **Bounded Agent Contracts & Step SLAs**:
    - Native subagent controller step budgets are advisory: reaching a dispatch's `max_steps` produces a model-visible warning, not a stop or work-state transition. Canonical `max_steps` and deprecated `budget.max_turns` (along with host `args.steps`/`args.max_steps`) are mutually exclusive aliases for one advisory count; providing multiple forms (even with identical integer values), duplicate decoded keys (including escaped spellings), malformed or non-object budgets, or role conflicts is rejected fail-closed. Use the canonical `<minion-dispatch>` envelope; the transport also accepts one legacy `<minion-contract>` envelope with identical validation, never mixed or multiple envelopes. Without an explicit budget, defaults are implement 70, discovery/orchestrator 60, and investigate/reviewer 50. Planner has no step-count threshold or ceiling, including resumed sessions; planner exemption and fallback roles derive strictly from verified host task target identity, not envelope or agent claims. The transport policy applies to verified child sessions, not the root orchestrator. Scope, permissions, resource budgets, and progress requirements still apply.
    - The transport reads `CORTEX_IA_EMERGENCY_STEPS` once at startup (default 500, integer 1-100000) as the non-planner emergency ceiling; it is independent of dispatch budgets. At that ceiling ordinary tools stop, up to five cleanup calls remain, and the controller reports partial progress for explicit reconciliation. No SQLite task status changes automatically. Invalid configured values reject plugin initialization; restart OpenCode after changing these environment variables.

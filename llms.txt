@@ -1,6 +1,6 @@
 ﻿# cortex-ia
 
-Cortex-IA is a deterministic Multi-Agent Control Plane, transactional installer, and orchestration engine for OpenCode and Herdr.
+Cortex-IA is a deterministic Multi-Agent Control Plane, transactional installer, and orchestration engine for OpenCode.
 
 - **Planes Separation**:
   - Epistemic & Evidence Plane: Cortex MCP (`cortex_*` tools: AST graphs, blast radius, durable gotcha memory).
@@ -9,11 +9,10 @@ Cortex-IA is a deterministic Multi-Agent Control Plane, transactional installer,
 - **Core CLI Surfaces**:
   - `board`: `create`, `list`, `status`/`show`/`get`, `serve`
   - `work`: `create`, `list`, `status`/`show`/`get`, `claim`, `renew`, `lease`, `lease-renew`, `release`, `transition`, `approve`, `retry`, `recover`
-  - `delegate`: `create`, `worker`, `status`, `result`, `cancel`, `recover`
   - `openspec`: `validate`, `list`, `status`
   - `web`: `--open`, `--addr` (real-time SSE web console)
   - `install`, `sync`, `doctor`, `mcp`, `rollback`, `uninstall`
-- **Herdr Multiplexing**: Real-time NDJSON stream parsing, human-readable action summaries, live heartbeat spinners, and sub-second tool execution telemetry.
+- **Native-Only Execution**: Every role controller runs inside OpenCode under Cortex-IA work authority; no external CLI or leaf receives work-control, approval, session, or MCP authority.
 - **Safety Invariants**:
   - LockFileEx / flock cross-process file locks.
   - Verified snapshot backups before any disk write with automatic rollback.

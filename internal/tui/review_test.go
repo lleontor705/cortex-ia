@@ -111,6 +111,19 @@ func TestReviewShowsEffectsAndConflicts(t *testing.T) {
 	if len(fake.installCalls) != 0 {
 		t.Fatal("no install may run while conflicts block the plan")
 	}
+
+	// Withdrawing overwrite must drop the sticky hint once the replanned plan
+	// itself carries no conflicts.
+	fresh := &pipeline.Plan{Digest: "digest0002"}
+	fake.planFn = func(install.Options) (*pipeline.Plan, error) { return fresh, nil }
+	m = pressDrive(t, m, "o")
+	m = pressDrive(t, m, "o")
+	if m.hadConflict {
+		t.Fatal("toggling overwrite off must clear the sticky conflict hint")
+	}
+	if view := m.View(); !strings.Contains(view, "no blocking conflicts") {
+		t.Fatalf("conflict-free replan must stop advertising overwrite:\n%s", view)
+	}
 }
 
 // TestReviewOverwriteRequiresExplicitConfirmation proves the destructive
@@ -210,10 +223,19 @@ func TestReviewUnclearableConflictsStayBlocking(t *testing.T) {
 	if !strings.Contains(view, "overwrite cannot clear this") {
 		t.Fatalf("expected unclearable-conflict hint:\n%s", view)
 	}
+	if !strings.Contains(view, "manual resolution required") || !strings.Contains(view, "malformed-config") {
+		t.Fatalf("expected manual-resolution hint naming the blocked kind:\n%s", view)
+	}
+	if strings.Contains(view, "[o] authorize overwrite") {
+		t.Fatalf("overwrite must not be offered when no conflict can be cleared:\n%s", view)
+	}
 	m = pressDrive(t, m, "o") // toggling is allowed…
 	m = press(m, "enter")     // …but conflicts still block
 	if m.screen != screenReview || m.confirm.kind != confirmNone {
 		t.Fatalf("unclearable conflicts must keep blocking, got screen=%v confirm=%v", m.screen, m.confirm.kind)
+	}
+	if m.reviewStatus == "" || !strings.Contains(m.View(), "cannot run") {
+		t.Fatalf("blocked enter must surface a visible status message:\n%s", m.View())
 	}
 }
 

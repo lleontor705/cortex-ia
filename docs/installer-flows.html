@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cortex-ia Installer Flows - System Diagram</title>
+<style>
+:root {
+  --bg: #0b0f19;
+  --panel: #131b2e;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border: #1e293b;
+  --accent: #38bdf8;
+  --node-bg: #1e293b;
+  --node-border: #334155;
+  --edge: #64748b;
+  --edge-text: #94a3b8;
+}
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: auto;
+}
+.header {
+  padding: 1.5rem 2rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+h1 { margin: 0; font-size: 1.4rem; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; }
+.badge { background: #0284c7; color: white; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+.theme-btn {
+  background: var(--border);
+  color: var(--text);
+  border: 1px solid var(--node-border);
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.theme-btn:hover { background: var(--node-border); }
+.canvas-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+}
+svg {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
+}
+.node rect {
+  fill: var(--node-bg);
+  stroke: var(--node-border);
+  stroke-width: 1.5px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.node:hover rect {
+  stroke: var(--accent);
+  fill: #25334d;
+}
+.node text.label {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.node text.sublabel {
+  fill: var(--text-muted);
+  font-size: 11px;
+  pointer-events: none;
+}
+.edge path {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.5px;
+}
+.edge text {
+  fill: var(--edge-text);
+  font-size: 11px;
+  text-anchor: middle;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>cortex-ia Installer Flows <span class="badge">workflow</span></h1>
+    <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.25rem;">Install, sync, doctor, recover, uninstall/rollback, conflict authorization model and invariants</div>
+  </div>
+  <button class="theme-btn" onclick="toggleTheme()">Toggle Theme</button>
+</div>
+<div class="canvas-container">
+<svg width="1080" height="680" viewBox="0 0 1080 680">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748b" />
+  </marker>
+</defs>
+  <g class="edge">
+    <path d="M 150 115 L 410 115" marker-end="url(#arrow)"/>
+    <text x="280" y="109">install</text>
+  </g>
+  <g class="edge">
+    <path d="M 150 115 L 150 115 L 150 565" marker-end="url(#arrow)"/>
+    <text x="150" y="334">sync</text>
+  </g>
+  <g class="edge">
+    <path d="M 150 115 L 280 115 L 410 565" marker-end="url(#arrow)"/>
+    <text x="280" y="334">doctor</text>
+  </g>
+  <g class="edge">
+    <path d="M 150 115 L 410 115 L 670 565" marker-end="url(#arrow)"/>
+    <text x="410" y="334">recover</text>
+  </g>
+  <g class="edge">
+    <path d="M 150 115 L 540 115 L 930 565" marker-end="url(#arrow)"/>
+    <text x="540" y="334">rollback | uninstall</text>
+  </g>
+  <g class="edge">
+    <path d="M 410 115 L 670 115" marker-end="url(#arrow)"/>
+    <text x="540" y="109">re-plan per toggle</text>
+  </g>
+  <g class="edge">
+    <path d="M 670 115 L 930 115" marker-end="url(#arrow)"/>
+    <text x="800" y="109">planDigest</text>
+  </g>
+  <g class="edge">
+    <path d="M 930 115 L 540 115 L 150 265" marker-end="url(#arrow)"/>
+    <text x="540" y="184">no blockers</text>
+  </g>
+  <g class="edge">
+    <path d="M 930 115 L 670 115 L 410 415" marker-end="url(#arrow)"/>
+    <text x="670" y="259">clearable</text>
+  </g>
+  <g class="edge">
+    <path d="M 930 115 L 800 115 L 670 415" marker-end="url(#arrow)"/>
+    <text x="800" y="259">non-clearable</text>
+  </g>
+  <g class="edge">
+    <path d="M 930 115 L 930 115 L 930 415" marker-end="url(#arrow)"/>
+    <text x="930" y="259">sync finding</text>
+  </g>
+  <g class="edge">
+    <path d="M 410 415 L 410 415 L 410 265" marker-end="url(#arrow)"/>
+    <text x="410" y="334">authorized overwrite</text>
+  </g>
+  <g class="edge">
+    <path d="M 670 415 L 670 415 L 670 115" marker-end="url(#arrow)"/>
+    <text x="670" y="259">fix source, re-plan</text>
+  </g>
+  <g class="edge">
+    <path d="M 930 415 L 540 415 L 150 565" marker-end="url(#arrow)"/>
+    <text x="540" y="484">surfaced by sync</text>
+  </g>
+  <g class="edge">
+    <path d="M 150 265 L 410 265" marker-end="url(#arrow)"/>
+    <text x="280" y="259">warn on failure</text>
+  </g>
+  <g class="edge">
+    <path d="M 410 265 L 670 265" marker-end="url(#arrow)"/>
+    <text x="540" y="259">digest match</text>
+  </g>
+  <g class="edge">
+    <path d="M 670 265 L 930 265" marker-end="url(#arrow)"/>
+    <text x="800" y="259">transaction committed</text>
+  </g>
+  <g class="edge">
+    <path d="M 930 265 L 540 265 L 150 415" marker-end="url(#arrow)"/>
+    <text x="540" y="334">warnings, backupID</text>
+  </g>
+  <g class="edge">
+    <path d="M 150 565 L 410 565 L 670 115" marker-end="url(#arrow)"/>
+    <text x="410" y="334">PlanSync</text>
+  </g>
+  <g class="edge">
+    <path d="M 410 565 L 280 565 L 150 415" marker-end="url(#arrow)"/>
+    <text x="280" y="484">read-only report</text>
+  </g>
+  <g class="edge">
+    <path d="M 670 565 L 670 565 L 670 265" marker-end="url(#arrow)"/>
+    <text x="670" y="409">journal restore</text>
+  </g>
+  <g class="edge">
+    <path d="M 670 565 L 800 565 L 930 265" marker-end="url(#arrow)"/>
+    <text x="800" y="409">RecoverEffect retry</text>
+  </g>
+  <g class="edge">
+    <path d="M 930 565 L 540 565 L 150 415" marker-end="url(#arrow)"/>
+    <text x="540" y="484">unaccredited = fail-closed</text>
+  </g>
+  <g class="node" id="node-entry">
+    <rect x="60" y="80" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="72" y="108">CLI dispatch</text>
+    <text class="sublabel" x="72" y="128">install | sync | doctor | recover | rollback | uninstall (internal/app/app.go)</text>
+  </g>
+  <g class="node" id="node-options">
+    <rect x="320" y="80" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="332" y="108">Options</text>
+    <text class="sublabel" x="332" y="128">Cortex / Context7 / ApplyTheme / overwrite toggles; each toggle re-plans (internal/install/service.go:Options)</text>
+  </g>
+  <g class="node" id="node-plan">
+    <rect x="580" y="80" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="592" y="108">Plan</text>
+    <text class="sublabel" x="592" y="128">PlanInstall / PlanSync derive effects and bind planDigest (internal/pipeline/engine.go:PlanInstall, PlanSync)</text>
+  </g>
+  <g class="node" id="node-review">
+    <rect x="840" y="80" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="852" y="108">Review</text>
+    <text class="sublabel" x="852" y="128">Clearable vs non-clearable conflicts; overwrite authorization; Enter feedback (internal/install/service.go:applyPlanWithConfirmation)</text>
+  </g>
+  <g class="node" id="node-preflight">
+    <rect x="60" y="230" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="72" y="258">Cortex preflight</text>
+    <text class="sublabel" x="72" y="278">Missing binary -> automatic argv-only go install with GOBIN/GOPATH fallback; failure is a non-fatal warning (internal/install/cortex_check.go:EnsureCortexBinary)</text>
+  </g>
+  <g class="node" id="node-confirm">
+    <rect x="320" y="230" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="332" y="258">Confirm</text>
+    <text class="sublabel" x="332" y="278">ExpectedPlanDigest binding; drift rejects as PlanDriftError (internal/pipeline/engine.go:checkPlanDrift)</text>
+  </g>
+  <g class="node" id="node-apply">
+    <rect x="580" y="230" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="592" y="258">Apply</text>
+    <text class="sublabel" x="592" y="278">Verified backup -> journaled apply -> rollback-on-fail with preimages (internal/pipeline/apply.go:ApplyConfirmed, internal/pipeline/journal.go)</text>
+  </g>
+  <g class="node" id="node-post">
+    <rect x="840" y="230" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="852" y="258">Post effects</text>
+    <text class="sublabel" x="852" y="278">TUI plugin registration + opt-in theme overlay; ThemeOutcome applied | skipped-not-requested | planned | error (internal/install/receipt.go:applyPostPipelineEffects)</text>
+  </g>
+  <g class="node" id="node-receipt">
+    <rect x="60" y="380" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="72" y="408">Receipt</text>
+    <text class="sublabel" x="72" y="428">Warnings plus backupID for recovery (internal/install/receipt.go:newInstallReceipt)</text>
+  </g>
+  <g class="node" id="node-c_overwrite">
+    <rect x="320" y="380" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="332" y="408">Overwritable conflict</text>
+    <text class="sublabel" x="332" y="428">unmanaged-existing / unmanaged-drift: explicit overwrite converts to EffectOverwrite (internal/pipeline/engine.go:ConflictUnmanagedExisting)</text>
+  </g>
+  <g class="node" id="node-c_manual">
+    <rect x="580" y="380" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="592" y="408">Manual-only conflict</text>
+    <text class="sublabel" x="592" y="428">malformed-config / mcp-conflict: overwrite never clears; resolve manually then re-plan (internal/pipeline/engine.go:ConflictMalformedConfig, ConflictMCP)</text>
+  </g>
+  <g class="node" id="node-c_staledrift">
+    <rect x="840" y="380" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="852" y="408">Never auto-deleted</text>
+    <text class="sublabel" x="852" y="428">stale-drift: stale owned artifact modified after install is never deleted (internal/pipeline/engine.go:ConflictStaleDrift)</text>
+  </g>
+  <g class="node" id="node-sync">
+    <rect x="60" y="530" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="72" y="558">Sync</text>
+    <text class="sublabel" x="72" y="578">Stale accredited -> delete; stale-drift -> conflict (internal/install/service.go:Sync)</text>
+  </g>
+  <g class="node" id="node-doctor">
+    <rect x="320" y="530" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="332" y="558">Doctor (read-only)</text>
+    <text class="sublabel" x="332" y="578">Inspects state, journals and cortex suggest-only with no mutation (internal/install/doctor.go:Doctor)</text>
+  </g>
+  <g class="node" id="node-recover">
+    <rect x="580" y="530" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="592" y="558">Recover</text>
+    <text class="sublabel" x="592" y="578">Journal restore with explicit confirmation; RecoverEffect retries post-effects, reported NotAttempted when skipped (internal/install/rollback.go:Recover, internal/install/service.go:RecoverEffect)</text>
+  </g>
+  <g class="node" id="node-uninstall_rollback">
+    <rect x="840" y="530" width="180" height="70" rx="6" ry="6"/>
+    <text class="label" x="852" y="558">Uninstall / Rollback</text>
+    <text class="sublabel" x="852" y="578">Fail-closed on unaccredited content (internal/install/uninstall.go:Uninstall, internal/install/rollback.go:Rollback)</text>
+  </g>
+</svg>
+</div>
+<script>
+function toggleTheme() {
+  const current = document.body.style.getPropertyValue('--bg');
+  if (current === '#ffffff') {
+    document.body.style.setProperty('--bg', '#0b0f19');
+    document.body.style.setProperty('--panel', '#131b2e');
+    document.body.style.setProperty('--text', '#f1f5f9');
+    document.body.style.setProperty('--text-muted', '#94a3b8');
+    document.body.style.setProperty('--border', '#1e293b');
+    document.body.style.setProperty('--node-bg', '#1e293b');
+    document.body.style.setProperty('--node-border', '#334155');
+  } else {
+    document.body.style.setProperty('--bg', '#ffffff');
+    document.body.style.setProperty('--panel', '#f8fafc');
+    document.body.style.setProperty('--text', '#0f172a');
+    document.body.style.setProperty('--text-muted', '#64748b');
+    document.body.style.setProperty('--border', '#e2e8f0');
+    document.body.style.setProperty('--node-bg', '#f1f5f9');
+    document.body.style.setProperty('--node-border', '#cbd5e1');
+  }
+}
+</script>
+</body>
+</html>

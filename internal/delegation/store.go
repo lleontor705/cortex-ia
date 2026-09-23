@@ -61,16 +61,6 @@ type Job struct {
 	FinishedAt      string  `json:"finished_at,omitempty"`
 }
 
-type NewJob struct {
-	ConversationOwnership
-	Role            string
-	TaskID          string
-	ObjectiveDigest string
-	Transport       string
-	Workspace       string
-	Worktree        string
-}
-
 type Receipt struct {
 	TerminationReconciled  bool            `json:"termination_reconciled,omitempty"`
 	ReconciliationRequired bool            `json:"reconciliation_required,omitempty"`
@@ -120,6 +110,9 @@ func OpenStore(path string) (*Store, error) {
 		return nil, errors.New("delegation database path is required")
 	}
 	logging.Debugf("delegation.store.open path=%s", path)
+	if err := CheckSchemaDriftBeforeOpen(path); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create delegation state directory: %w", err)
 	}
@@ -187,8 +180,8 @@ func (s *Store) initialize(ctx context.Context) error {
 		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 			return fmt.Errorf("read migration ledger: %w", err)
 		}
-		if version > 14 {
-			return fmt.Errorf("cortex database schema %d is newer than supported schema 14", version)
+		if version > MaxSupportedSchemaVersion {
+			return &SchemaDriftError{OnDisk: version, Supported: MaxSupportedSchemaVersion}
 		}
 		logging.Debugf("delegation.store.migrate current_version=%d", version)
 		statements := []string{
@@ -530,6 +523,14 @@ func (s *Store) initialize(ctx context.Context) error {
 				return err
 			}
 		}
+		if version < 15 {
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE work_items ADD COLUMN workload_policy TEXT NOT NULL DEFAULT 'flexible'`); err != nil {
+				return fmt.Errorf("workload policy migration: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(15,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record workload policy migration: %w", err)
+			}
+		}
 		return nil
 	})
 }
@@ -577,253 +578,12 @@ func (s *Store) SetPaneID(ctx context.Context, jobID, paneID string) error {
 	})
 }
 
-func (s *Store) Create(ctx context.Context, input NewJob) (Job, error) {
-	if err := input.Validate(); err != nil {
-		return Job{}, err
-	}
-	if !supportedRoles[input.Role] {
-		return Job{}, fmt.Errorf("unsupported role %q", input.Role)
-	}
-	if input.Transport != "herdr" && input.Transport != "direct" {
-		return Job{}, fmt.Errorf("unsupported transport %q", input.Transport)
-	}
-	if strings.TrimSpace(input.Workspace) == "" || strings.TrimSpace(input.ObjectiveDigest) == "" {
-		return Job{}, errors.New("workspace and objective digest are required")
-	}
-	workspace, err := CanonicalWorkspace(input.Workspace)
-	if err != nil {
-		return Job{}, fmt.Errorf("normalize job workspace: %w", err)
-	}
-	input.Workspace = workspace
-	id, err := newID()
-	if err != nil {
-		return Job{}, err
-	}
-	now := s.timestamp()
-	job := Job{ID: id, Role: input.Role, TaskID: input.TaskID, ObjectiveDigest: input.ObjectiveDigest, Status: StatusAccepted, Transport: input.Transport, Workspace: input.Workspace, Worktree: input.Worktree, CreatedAt: now, UpdatedAt: now}
-	job.ConversationOwnership = input.ConversationOwnership
-	err = s.immediate(ctx, func(conn *sql.Conn) error {
-		var blocker string
-		var blockedStatus Status
-		rows, err := conn.QueryContext(ctx, `SELECT j.id, j.status, j.role, COALESCE(j.task_id, ''), COALESCE(j.error_code, '') FROM delegation_jobs j WHERE j.workspace=? AND
-			(j.status IN ('accepted','starting','running','blocked') OR
-			((j.status='lost' OR j.error_code IN ('CANCEL_REQUESTED','TERMINATION_UNCONFIRMED')) AND NOT (j.status='lost' AND `+reconciledJobSQL+`)))
-			ORDER BY j.created_at, j.id`, job.Workspace)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = rows.Close() }()
-
-		for rows.Next() {
-			var candidateID string
-			var candidateStatus Status
-			var candidateRole string
-			var candidateTaskID string
-			var candidateErrorCode string
-			if err := rows.Scan(&candidateID, &candidateStatus, &candidateRole, &candidateTaskID, &candidateErrorCode); err != nil {
-				return err
-			}
-
-			if candidateStatus == StatusLost || candidateErrorCode == "CANCEL_REQUESTED" || candidateErrorCode == "TERMINATION_UNCONFIRMED" {
-				blocker = candidateID
-				blockedStatus = candidateStatus
-				break
-			}
-
-			if job.Role == "planner" || candidateRole == "planner" {
-				blocker = candidateID
-				blockedStatus = candidateStatus
-				break
-			}
-
-			if IsReadOnlyRole(job.Role) && IsReadOnlyRole(candidateRole) {
-				continue
-			}
-
-			if (IsReadOnlyRole(job.Role) && candidateRole == "implement") ||
-				(job.Role == "implement" && IsReadOnlyRole(candidateRole)) {
-				continue
-			}
-
-			if job.Role == "implement" && candidateRole == "implement" {
-				if job.TaskID != "" && candidateTaskID == job.TaskID {
-					blocker = candidateID
-					blockedStatus = candidateStatus
-					break
-				}
-				if job.TaskID != "" && candidateTaskID != "" {
-					var overlap int
-					err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_leases l1
-						JOIN work_leases l2 ON l1.path = l2.path
-						WHERE l1.item_id = ? AND l2.item_id = ?
-						  AND l1.expires_at > ? AND l2.expires_at > ?`,
-						job.TaskID, candidateTaskID, now, now).Scan(&overlap)
-					if err != nil {
-						return err
-					}
-					if overlap > 0 {
-						blocker = candidateID
-						blockedStatus = candidateStatus
-						break
-					}
-					continue
-				}
-				blocker = candidateID
-				blockedStatus = candidateStatus
-				break
-			}
-
-			blocker = candidateID
-			blockedStatus = candidateStatus
-			break
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		if blocker != "" {
-			action := "wait or request cancellation and await worker acknowledgement"
-			if blockedStatus == StatusLost {
-				action = "inspect the job; explicitly use delegate reconcile " + blocker + " --reason <reason> only if prior-boot termination can be proved"
-			}
-			return fmt.Errorf("%w: workspace blocked by external job %s (%s); %s", ErrWorkConflict, blocker, blockedStatus, action)
-		}
-		if job.TaskID != "" {
-			var taskWorkspace string
-			err := conn.QueryRowContext(ctx, `SELECT workspace FROM work_items WHERE id=?`, job.TaskID).Scan(&taskWorkspace)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return err
-			}
-			if err == nil {
-				if strings.TrimSpace(taskWorkspace) != "" && !WorkspacesCompatible(taskWorkspace, job.Workspace) {
-					return fmt.Errorf("%w: task/job workspace mismatch", ErrWorkConflict)
-				}
-			}
-		}
-		_, err = conn.ExecContext(ctx, `INSERT INTO delegation_jobs(id, role, task_id, objective_digest, status, transport, workspace, worktree, created_at, updated_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, job.ID, job.Role, job.TaskID, job.ObjectiveDigest, job.Status, job.Transport, job.Workspace, job.Worktree, now, now, job.OpenCodeSessionID, job.OpenCodeRootSessionID, job.OpenCodeParentSessionID)
-		if err != nil {
-			return err
-		}
-		return s.addEvent(ctx, conn, job.ID, "created", "", StatusAccepted, "")
-	})
-	return job, err
-}
-
-func (s *Store) Claim(ctx context.Context, id, owner string, pid int, ttl time.Duration) error {
-	if strings.TrimSpace(owner) == "" || ttl <= 0 {
-		return errors.New("claim owner and positive ttl are required")
-	}
-	now := s.timestamp()
-	expires := s.now().UTC().Add(ttl).Format(time.RFC3339Nano)
-	return s.immediate(ctx, func(conn *sql.Conn) error {
-		result, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET status='starting', pid=?, lease_owner=?, lease_expires_at=?, attempt=attempt+1, updated_at=?, started_at=? WHERE id=? AND status='accepted'`, pid, owner, expires, now, now, id)
-		if err != nil {
-			return err
-		}
-		if err := s.requireTransition(ctx, conn, result, id, StatusAccepted, StatusStarting); err != nil {
-			return err
-		}
-		if logging.Enabled() {
-			var attempt int
-			if qerr := conn.QueryRowContext(ctx, `SELECT attempt FROM delegation_jobs WHERE id=?`, id).Scan(&attempt); qerr == nil {
-				logging.Debugf("delegation.job.claim id=%s owner=%s pid=%d attempt=%d ttl=%s", id, owner, pid, attempt, ttl)
-			}
-		}
-		return nil
-	})
-}
-
-func (s *Store) MarkRunning(ctx context.Context, id string) error {
-	err := s.transition(ctx, id, []Status{StatusStarting}, StatusRunning, "", "")
-	if err == nil {
-		logging.Debugf("delegation.job.running id=%s", id)
-	}
-	return err
-}
-
 func (s *Store) MarkBlocked(ctx context.Context, id, detail string) error {
 	return s.transition(ctx, id, []Status{StatusRunning}, StatusBlocked, "blocked", detail)
 }
 
 func (s *Store) MarkResumed(ctx context.Context, id string) error {
 	return s.transition(ctx, id, []Status{StatusBlocked}, StatusRunning, "resumed", "")
-}
-
-func (s *Store) ExtendJobLease(ctx context.Context, id, owner string, ttl time.Duration) error {
-	if ttl <= 0 {
-		return errors.New("positive ttl is required")
-	}
-	now := s.timestamp()
-	expires := s.now().UTC().Add(ttl).Format(time.RFC3339Nano)
-	return s.immediate(ctx, func(conn *sql.Conn) error {
-		var status Status
-		var currentOwner string
-		if err := conn.QueryRowContext(ctx, `SELECT status, lease_owner FROM delegation_jobs WHERE id=?`, id).Scan(&status, &currentOwner); err != nil {
-			return err
-		}
-		if status != StatusRunning && status != StatusStarting && status != StatusBlocked {
-			return fmt.Errorf("%w: job %s is not active", ErrInvalidTransition, id)
-		}
-		if owner != "" && currentOwner != owner {
-			return fmt.Errorf("%w: lease owner mismatch", ErrInvalidTransition)
-		}
-		_, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET lease_expires_at=?, updated_at=? WHERE id=?`, expires, now, id)
-		return err
-	})
-}
-
-func (s *Store) Complete(ctx context.Context, id string, status Status, receipt Receipt, code, message string) error {
-	return s.completeWorker(ctx, id, "", status, receipt, code, message)
-}
-
-func (s *Store) completeWorker(ctx context.Context, id, owner string, status Status, receipt Receipt, code, message string) error {
-	if status != StatusSucceeded && status != StatusFailed && status != StatusTimedOut && status != StatusCancelled {
-		return fmt.Errorf("%w: terminal status %q", ErrInvalidTransition, status)
-	}
-	if len(receipt.Output) > 1024*1024 {
-		return errors.New("delegation receipt exceeds 1 MiB")
-	}
-	err := s.immediate(ctx, func(conn *sql.Conn) error {
-		now := s.timestamp()
-		var from Status
-		var currentOwner, currentCode string
-		var expires sql.NullString
-		if err := conn.QueryRowContext(ctx, `SELECT status,lease_owner,error_code,lease_expires_at FROM delegation_jobs WHERE id=?`, id).Scan(&from, &currentOwner, &currentCode, &expires); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return ErrJobNotFound
-			}
-			return err
-		}
-		if owner != "" && (owner != currentOwner || !expires.Valid || expires.String <= now) {
-			return fmt.Errorf("%w: stale worker owner", ErrInvalidTransition)
-		}
-		if currentCode == "TERMINATION_UNCONFIRMED" {
-			return fmt.Errorf("%w: process cleanup requires reconciliation", ErrInvalidTransition)
-		}
-		if currentCode == "CANCEL_REQUESTED" {
-			if owner == "" {
-				return fmt.Errorf("%w: cancellation requires worker acknowledgement", ErrInvalidTransition)
-			}
-			status, code, message = StatusCancelled, "CANCELLED", "worker confirmed process termination and cleanup"
-			receipt = Receipt{Output: json.RawMessage("{}"), ExitCode: -1}
-		}
-		if from != StatusStarting && from != StatusRunning && from != StatusBlocked {
-			return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, from, status)
-		}
-		_, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET status=?, error_code=?, error_message=?, lease_owner='', lease_expires_at=NULL, updated_at=?, finished_at=? WHERE id=? AND status=?`, status, bounded(code, 64), bounded(message, 512), now, now, id, from)
-		if err != nil {
-			return err
-		}
-		receipt.JobID, receipt.Status, receipt.CreatedAt = id, status, now
-		_, err = conn.ExecContext(ctx, `INSERT INTO delegation_receipts(job_id,status,output_json,output_hash,exit_code,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status, output_json=excluded.output_json, output_hash=excluded.output_hash, exit_code=excluded.exit_code, created_at=excluded.created_at`, id, status, string(receipt.Output), receipt.OutputHash, receipt.ExitCode, now)
-		if err != nil {
-			return err
-		}
-		return s.addEvent(ctx, conn, id, "completed", from, status, bounded(message, 512))
-	})
-	if err == nil {
-		logging.Debugf("delegation.job.complete id=%s status=%s code=%s exit=%d", id, status, code, receipt.ExitCode)
-	}
-	return err
 }
 
 func (s *Store) Get(ctx context.Context, id string) (Job, error) {

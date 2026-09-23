@@ -134,7 +134,7 @@ done
 export OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS="true"
 success "Environment variable configured"
 
-info "Running cortex-ia sync to configure OpenCode, Herdr, and agents..."
+info "Running cortex-ia sync to configure OpenCode and agents..."
 "${INSTALL_DIR}/cortex-ia" sync || true
 
 if command -v cortex-ia &> /dev/null; then

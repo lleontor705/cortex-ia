@@ -1837,6 +1837,137 @@ function HomeLogo(props: { theme?: TuiThemeCurrent }) {
   );
 }
 
+interface UsageStatsSummary {
+  sessions: number;
+  messages: number;
+  tokens: number;
+  active_days: number;
+  peak_hour: number;
+  peak_hour_messages: number;
+  favorite_model: string;
+  favorite_model_share: number;
+  first_day: string;
+  last_day: string;
+  top_models?: Array<{ ModelID: string; Sessions: number; Tokens: number; SharePct: number }>;
+}
+
+function formatLargeTokens(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return String(Math.round(value));
+}
+
+function formatInteger(n: number): string {
+  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function openStatsView(): void {
+  try {
+    if (process.platform === "win32") {
+      spawn("cmd.exe", ["/c", "start", "Cortex Stats", cortexExecutable(), "stats"], {
+        detached: true,
+        stdio: "ignore",
+      }).unref();
+    } else {
+      spawn(cortexExecutable(), ["stats"], {
+        detached: true,
+        stdio: "ignore",
+      }).unref();
+    }
+  } catch {}
+}
+
+function HomeStatsWidget(props: {
+  stats: () => UsageStatsSummary | null;
+  loading: () => boolean;
+  theme?: TuiThemeCurrent;
+}) {
+  const palette = resolvePalette(props.theme);
+  const data = props.stats;
+  const dim = useTerminalDimensions();
+
+  return (
+    <Show when={data()}>
+      {(s) => {
+        const isNarrow = () => dim().width < 80;
+        return (
+          <box
+            flexDirection="column"
+            borderStyle="rounded"
+            borderColor={palette.border}
+            paddingLeft={1}
+            paddingRight={1}
+            marginTop={1}
+            marginBottom={1}
+            width="100%"
+            onMouseDown={() => openStatsView()}
+          >
+            {/* Header row */}
+            <box flexDirection="row" justifyContent="space-between">
+              <box flexDirection="row">
+                <text fg={palette.accent} attributes={TextAttributes.BOLD}>
+                  {`${GLYPH.brand} CORTEX · IA `}
+                </text>
+                <text fg={palette.text} attributes={TextAttributes.BOLD}>
+                  {"Estadísticas de Uso"}
+                </text>
+              </box>
+              <Show when={s().first_day && s().last_day}>
+                <text fg={palette.textMuted}>
+                  {`${s().first_day} → ${s().last_day}`}
+                </text>
+              </Show>
+            </box>
+
+            {/* Metrics Row 1 */}
+            <box flexDirection="row" marginTop={0} gap={isNarrow() ? 1 : 2}>
+              <text fg={palette.sky}>
+                {`● ${formatInteger(s().sessions)} sesiones`}
+              </text>
+              <text fg={palette.border}>{"│"}</text>
+              <text fg={palette.info}>
+                {`✉ ${formatInteger(s().messages)} mensajes`}
+              </text>
+              <text fg={palette.border}>{"│"}</text>
+              <text fg={palette.success} attributes={TextAttributes.BOLD}>
+                {`◆ ${formatLargeTokens(s().tokens)} tokens`}
+              </text>
+              <Show when={!isNarrow()}>
+                <text fg={palette.border}>{"│"}</text>
+                <text fg={palette.warning}>
+                  {`📅 ${s().active_days} días activos`}
+                </text>
+              </Show>
+            </box>
+
+            {/* Metrics Row 2 */}
+            <box flexDirection="row" marginTop={0} gap={isNarrow() ? 1 : 2}>
+              <text fg={palette.accentAlt}>
+                {`★ Top: ${s().favorite_model || "-"} (${(s().favorite_model_share ?? 0).toFixed(1)}%)`}
+              </text>
+              <text fg={palette.border}>{"│"}</text>
+              <text fg={palette.sky}>
+                {`⚡ Pico: ${String(s().peak_hour).padStart(2, "0")}:00`}
+              </text>
+              <Show when={isNarrow()}>
+                <text fg={palette.border}>{"│"}</text>
+                <text fg={palette.warning}>
+                  {`📅 ${s().active_days}d`}
+                </text>
+              </Show>
+              <text fg={palette.textMuted}>
+                {" · [:cortex-stats para panel interactivo]"}
+              </text>
+            </box>
+          </box>
+        );
+      }}
+    </Show>
+  );
+}
+
 function initialize(api: any, disposeRoot: () => void): () => void {
   const [activeSessionOverride, setActiveSessionOverride] = createSignal<string | undefined>();
   const updateActiveSession = (val: any) => {
@@ -2115,10 +2246,40 @@ function initialize(api: any, disposeRoot: () => void): () => void {
   const spinnerTimer = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 90);
   const pulseTimer = setInterval(() => setPulseFrame((p) => (p + 1) % NEURAL_PULSE_FRAMES.length), 350);
 
+  const [usageStats, setUsageStats] = createSignal<UsageStatsSummary | null>(null);
+  const [statsLoading, setStatsLoading] = createSignal(false);
+  let pendingStats = false;
+
+  const readUsageStats = (): void => {
+    if (disposed || pendingStats) return;
+    pendingStats = true;
+    setStatsLoading(true);
+    execFile(
+      cortexExecutable(),
+      ["stats", "--json"],
+      { encoding: "utf8", maxBuffer: 512 * 1024, timeout: 5000, windowsHide: true },
+      (error, stdout) => {
+        pendingStats = false;
+        setStatsLoading(false);
+        if (disposed || error) return;
+        try {
+          const parsed = JSON.parse(stdout) as UsageStatsSummary;
+          if (typeof parsed?.sessions === "number" && typeof parsed?.messages === "number") {
+            setUsageStats(parsed);
+          }
+        } catch {}
+      }
+    );
+  };
+
+  readUsageStats();
+  const statsPoll = setInterval(readUsageStats, 60_000);
+
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
     clearInterval(snapshotPoll);
+    clearInterval(statsPoll);
     clearInterval(clock);
     clearInterval(spinnerTimer);
     clearInterval(pulseTimer);
@@ -2160,7 +2321,16 @@ function initialize(api: any, disposeRoot: () => void): () => void {
     // OpenCode v2 has no v1 home_logo slot; the banner prepends the home footer surface instead.
     api.ui.slot({
       prepend: "home.footer",
-      render: (ctx: any) => <HomeLogo theme={ctx?.theme?.current || ctx?.theme || api.theme} />,
+      render: (ctx: any) => (
+        <box flexDirection="column" width="100%">
+          <HomeLogo theme={ctx?.theme?.current || ctx?.theme || api.theme} />
+          <HomeStatsWidget
+            stats={usageStats}
+            loading={statsLoading}
+            theme={ctx?.theme?.current || ctx?.theme || api.theme}
+          />
+        </box>
+      ),
     });
 
     api.ui.slot({
@@ -2230,6 +2400,28 @@ function initialize(api: any, disposeRoot: () => void): () => void {
             return true;
           },
         },
+        {
+          name: ":cortex-stats",
+          title: "Cortex Usage Stats",
+          desc: "Open Cortex usage statistics dashboard",
+          category: "Cortex",
+          nargs: "0",
+          run: () => {
+            openStatsView();
+            return true;
+          },
+        },
+        {
+          name: ":stats",
+          title: "Usage Stats",
+          desc: "Open Cortex usage statistics dashboard",
+          category: "Cortex",
+          nargs: "0",
+          run: () => {
+            openStatsView();
+            return true;
+          },
+        },
       ],
     });
     if (typeof disposeBoardLayer === "function" && api.lifecycle && typeof api.lifecycle.onDispose === "function") {
@@ -2296,13 +2488,20 @@ function initialize(api: any, disposeRoot: () => void): () => void {
     home_bottom(ctx: any) {
       updateActiveSession(ctx);
       return (
-        <HomeBottomStatus
-          snapshot={snapshot}
-          jobs={jobs}
-          spinner={spinner}
-          snapshotError={snapshotError}
-          theme={ctx?.theme?.current || ctx?.theme || api.theme}
-        />
+        <box flexDirection="column" width="100%">
+          <HomeStatsWidget
+            stats={usageStats}
+            loading={statsLoading}
+            theme={ctx?.theme?.current || ctx?.theme || api.theme}
+          />
+          <HomeBottomStatus
+            snapshot={snapshot}
+            jobs={jobs}
+            spinner={spinner}
+            snapshotError={snapshotError}
+            theme={ctx?.theme?.current || ctx?.theme || api.theme}
+          />
+        </box>
       );
     },
     "home.footer.status"(ctx: any) {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
+	"github.com/lleontor705/cortex-ia/internal/modelmgr"
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
@@ -29,10 +30,11 @@ func (o UninstallOptions) now() time.Time {
 	return time.Now().UTC()
 }
 
-// RetainedItem records one file or MCP entry uninstall refused to touch
-// because ownership or digest evidence could not prove it safe.
+// RetainedItem records one file, MCP entry, or agent-model entry uninstall
+// refused to touch because ownership or digest evidence could not prove it
+// safe.
 type RetainedItem struct {
-	// Target is the home-relative path or MCP server name.
+	// Target is the home-relative path, MCP server name, or agent name.
 	Target string `json:"target"`
 	Reason string `json:"reason"`
 }
@@ -64,6 +66,8 @@ type UninstallReceipt struct {
 	RemovedDirs []string `json:"removed_dirs,omitempty"`
 	// MCPRemoved lists managed MCP entries deregistered this run.
 	MCPRemoved []string `json:"mcp_removed,omitempty"`
+	// ModelRemoved lists managed agent-model entries deregistered this run.
+	ModelRemoved []string `json:"model_removed,omitempty"`
 	// Retained lists every target uninstall refused to delete.
 	Retained []RetainedItem `json:"retained,omitempty"`
 	// StateRemoved reports the v2 state and lock files were deleted after
@@ -131,6 +135,11 @@ func (s *Service) Uninstall(opts UninstallOptions) (*UninstallReceipt, error) {
 		for _, mcp := range metaLoad.Metadata.MCPs {
 			if mcp.Ownership == state.OwnershipManaged {
 				receipt.MCPRemoved = append(receipt.MCPRemoved, mcp.Name)
+			}
+		}
+		for _, model := range metaLoad.Metadata.AgentModels {
+			if model.Ownership == state.OwnershipManaged {
+				receipt.ModelRemoved = append(receipt.ModelRemoved, model.Agent)
 			}
 		}
 		return receipt, nil
@@ -249,6 +258,42 @@ func (s *Service) Uninstall(opts UninstallOptions) (*UninstallReceipt, error) {
 		remainingMCPs = append(remainingMCPs, mcp)
 	}
 
+	// Managed agent models follow the same ownership accreditation as every
+	// other mutation: the manager only removes an entry it can still
+	// accredit, and any refusal is retained with the record intact so a
+	// later doctor, sync, or uninstall run still has ownership proof.
+	modelManager := modelmgr.New(s.homeDir)
+	modelEvidence := modelOwnershipEvidence(meta)
+	remainingModels := make([]state.AgentModelV2, 0, len(meta.AgentModels))
+	for _, model := range meta.AgentModels {
+		if model.Ownership != state.OwnershipManaged {
+			remainingModels = append(remainingModels, model)
+			continue
+		}
+		result, err := modelManager.Unset(model.Agent, modelEvidence)
+		if err != nil {
+			receipt.Retained = append(receipt.Retained, RetainedItem{Target: model.Agent, Reason: fmt.Sprintf("agent-model removal failed closed: %v", err)})
+			remainingModels = append(remainingModels, model)
+			continue
+		}
+		if result.Changed {
+			// The manager mutated the declared config target; record its
+			// verified postimage so a later failure restores the exact
+			// pre-transaction config bytes.
+			if err := txn.record(modelManager.ConfigPath()); err != nil {
+				return receipt, abort(err)
+			}
+		}
+		if err := s.dropFingerprintRecordTxn(txn, &store, storePresent, agentModelSidecarName(model.Agent)); err != nil {
+			return receipt, abort(fmt.Errorf("drop agent-model fingerprint: %w", err))
+		}
+		if result.Action == "unset" || result.Action == "already-unset" {
+			receipt.ModelRemoved = append(receipt.ModelRemoved, model.Agent)
+			continue
+		}
+		remainingModels = append(remainingModels, model)
+	}
+
 	if len(receipt.Retained) == 0 {
 		// Fully verified uninstall: the state documents themselves are the
 		// last managed files to go. Each is removed individually and
@@ -294,7 +339,7 @@ func (s *Service) Uninstall(opts UninstallOptions) (*UninstallReceipt, error) {
 	// Partial uninstall: keep truthful metadata for everything retained so
 	// future doctor, sync, and uninstall runs still have ownership proof.
 	meta.Artifacts = s.retainedArtifacts(meta, receipt)
-	if err := txn.commitState(meta, remainingMCPs, opts.now()); err != nil {
+	if err := txn.commitStateRecords(meta, remainingMCPs, remainingModels, opts.now()); err != nil {
 		return receipt, abort(fmt.Errorf("commit partial state v2: %w", err))
 	}
 	if err := txn.commit(); err != nil {

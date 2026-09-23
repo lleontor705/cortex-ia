@@ -5,7 +5,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/logging"
+	"github.com/lleontor705/cortex-ia/internal/targets"
 	"github.com/lleontor705/cortex-ia/internal/tui"
 )
 
@@ -43,7 +45,7 @@ func runCLI(args []string) error {
 
 	switch command {
 	case "install":
-		return runInstall(rest)
+		return runInstallWithTheme(rest)
 
 	case "sync":
 		return runSync(rest)
@@ -81,11 +83,14 @@ func runCLI(args []string) error {
 	case "mcp":
 		return runMCP(rest)
 
+	case "model":
+		return runModel(rest)
+
+	case "stats":
+		return runStats(rest)
+
 	case "report":
 		return runReport(rest)
-
-	case "hook":
-		return runHook(rest)
 
 	case "doctor":
 		return runDoctor()
@@ -116,6 +121,64 @@ func runCLI(args []string) error {
 		}
 		return fmt.Errorf("unknown command: %s (use 'cortex-ia help' for usage)", args[0])
 	}
+}
+
+// themeFlag is the explicit install opt-in that applies the bundled cortex
+// theme to the OpenCode configuration.
+const themeFlag = "--theme"
+
+// runInstallWithTheme consumes the --theme opt-in and then delegates to the
+// shared install front end. The dispatcher only recognizes and removes the
+// token: building the options, planning, and writing stay in the install
+// service. Without the token the install surface is untouched.
+func runInstallWithTheme(args []string) error {
+	args, applyTheme := stripThemeFlag(args)
+	if !applyTheme {
+		return runInstall(args)
+	}
+	flags, err := parseRunFlags(args, "install", true)
+	if err != nil {
+		return err
+	}
+	if flags.Target != "" {
+		targetList, err := targets.ParseTargets(flags.Target)
+		if err != nil {
+			return err
+		}
+		for _, target := range targetList {
+			if target != targets.TargetOpenCode {
+				return fmt.Errorf("--theme applies to the opencode target only; install the %s target without --theme", target)
+			}
+		}
+	}
+	service, err := newService()
+	if err != nil {
+		return err
+	}
+	opts := install.DefaultOptions()
+	opts.Version = Version
+	opts.ApplyTheme = true
+	return previewAndApply("install", flags, opts, service.Install)
+}
+
+// stripThemeFlag removes every --theme token and reports whether the opt-in was
+// requested. Tokens after a bare "--" separator are verbatim command data and
+// are never scanned, so a `--theme` that is not a CLI flag stays representable.
+func stripThemeFlag(args []string) ([]string, bool) {
+	found := false
+	stripped := make([]string, 0, len(args))
+	for i, arg := range args {
+		if arg == "--" {
+			stripped = append(stripped, args[i:]...)
+			break
+		}
+		if strings.EqualFold(arg, themeFlag) {
+			found = true
+			continue
+		}
+		stripped = append(stripped, arg)
+	}
+	return stripped, found
 }
 
 // stripDebugFlag removes every exact `--debug` token that appears before the
@@ -183,6 +246,7 @@ var retiredCommands = map[string]bool{
 	"profile":        true,
 	"delegate":       true,
 	"herdr":          true,
+	"hook":           true,
 }
 
 // retiredFlagPrefixes are removed legacy flags. Any argument starting with
@@ -206,7 +270,7 @@ type RetiredSurfaceError struct {
 
 func (e RetiredSurfaceError) Error() string {
 	return fmt.Sprintf(
-		"%q was removed from the OpenCode CLI; available commands: install, sync, snapshot, work, worktree, board, ledger, ui, openspec, web, doc, diagram, mcp, report, hook, doctor, rollback, recover, uninstall, update, version, help",
+		"%q was removed from the OpenCode CLI; available commands: install, sync, snapshot, work, worktree, board, ledger, ui, openspec, web, doc, diagram, mcp, model, report, doctor, rollback, recover, uninstall, update, version, help",
 		e.Surface,
 	)
 }
@@ -235,13 +299,12 @@ func printHelp() {
 
 Usage:
   cortex-ia                          Launch the interactive TUI
-  cortex-ia install [--target <list>] [--dry-run] [--overwrite]
+  cortex-ia install [--target <list>] [--dry-run] [--overwrite] [--theme]
                                       Install the assets and plugins for
-                                      the specified targets (opencode, agy, claude, all)
+                                      the specified targets (opencode, claude, all)
   cortex-ia sync [--target <list>] [--dry-run] [--overwrite]
                                       Reconcile an installed home with the
                                       current asset set for targets
-  cortex-ia hook [pre-tool|stop]     Execute Antigravity lifecycle hook
   cortex-ia mcp add <name> --preset [--dry-run]
                                       Register a managed catalog MCP preset
   cortex-ia mcp add <name> --local [--env KEY=VALUE]... -- <command> [args...]
@@ -254,6 +317,21 @@ Usage:
                                       (--json prints a sanitized JSON report)
   cortex-ia mcp remove <name> [--dry-run]
                                       Deregister a managed MCP entry
+  cortex-ia model list [--json]       List agents with their effective models,
+                                      variants, sources, and ownership
+  cortex-ia model get <agent> [--json]
+                                      Report one agent's effective model,
+                                      variant, and source
+  cortex-ia model set <agent> <provider/model[#variant]> [--effort <level>]
+                    [--json] [--dry-run]
+                                      Assign an agent model in the global config
+  cortex-ia model unset <agent> [--json] [--dry-run]
+                                      Remove an agent's managed model entry
+  cortex-ia model doctor [--json]     Diagnose agent-model config, drift,
+                                      template safety, and markdown pins
+  cortex-ia model catalog [--json] [--provider <id>]
+                                      List selectable provider/model entries with
+                                      variants and the acquisition source
   cortex-ia snapshot read --project <project> --id <id> [--expected-sha256 <digest>]
                                       Read and verify one bounded local Cortex snapshot
   cortex-ia work create|revise|archive|list|status|approvals|fingerprint
@@ -302,6 +380,11 @@ Flags:
   --overwrite                        Replace unmanaged conflicting files
                                       (explicit and confirmed; a verified
                                       backup is captured first)
+  --theme                            Apply the bundled cortex theme to the
+                                      OpenCode configuration (install only,
+                                      opencode target only). Opt-in: without
+                                      it the theme key is never touched, and
+                                      an explicit light/dark mode is kept
   --env KEY=VALUE                    Environment assignment for --local MCP
                                       servers (repeatable; the value reaches
                                       the config file only and is never

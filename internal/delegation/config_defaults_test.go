@@ -2,15 +2,15 @@ package delegation
 
 import "testing"
 
-func TestDelegationDefaultsEnableUnattendedPermissions(t *testing.T) {
+func TestDelegationDefaultsUseNativeRoles(t *testing.T) {
 	for _, herdr := range []bool{false, true} {
 		cfg := DefaultDelegationConfig(herdr)
 		if err := cfg.Validate(); err != nil {
 			t.Fatal(err)
 		}
 		for role, settings := range cfg.Roles {
-			if !settings.Delegate || settings.CLI != "agy" || !settings.SkipPermissions {
-				t.Fatalf("role %s must delegate with unattended permissions: %+v", role, settings)
+			if settings.Delegate || settings.CLI != "native" {
+				t.Fatalf("role %s must default to non-delegated native execution: %+v", role, settings)
 			}
 		}
 	}

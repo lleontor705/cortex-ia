@@ -34,7 +34,7 @@ roots fail closed.
 | Platform | Support Tier | Configuration Directory | Notes |
 | :--- | :---: | :--- | :--- |
 | **OpenCode** | **Active (Native)** | `~/.config/opencode/` | Full SDD stack: 5 sub-agents, 9 commands, 12 skills, 5 plugins, managed MCPs. |
-| **Google Antigravity** | *Roadmap* | `~/.gemini/antigravity/` | Native rules, custom skills, sidecar orchestration. |
+| **Google Antigravity** | *Not committed* | `~/.gemini/antigravity/` | No committed support; any future evaluation stays native-only with no external execution. |
 | **Claude CLI** | *Roadmap* | `~/.claude/` | Native prompts, tool definitions, stdio MCPs. |
 
 ## Shells and Terminals

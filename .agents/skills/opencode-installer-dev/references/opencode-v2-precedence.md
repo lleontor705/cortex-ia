@@ -30,7 +30,7 @@ This reference documents the merging behavior and precedence hierarchy for confi
 
 | Key in Config | Data Type | Merge Behavior |
 | :--- | :--- | :--- |
-| `permissions` | Array of objects | Prepend higher-priority rules; first matching rule takes effect |
+| `permissions` | Array of objects | Prepend higher-priority rules; the LAST matching rule takes effect (broad rules first, specific exceptions after) |
 | `plugins` | Array of strings | Union with deduplication (preserving order) |
 | `skills` | Array of paths/URLs | Union with deduplication |
 | `mcp.servers` | Object of servers | Deep merge; higher priority overrides server with same name |

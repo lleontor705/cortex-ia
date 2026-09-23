@@ -75,6 +75,6 @@ Destructive operations (`--overwrite`, `uninstall`, `mcp remove`, `rollback`) ar
 
 ## 5. Styling and Responsiveness
 
-- Centralized in `internal/tui/styles/theme.go` with unified palette (Primary Violet `#7C3AED`, Secondary Cyan `#06B6D4`, Success Green `#22C55E`, Warning Amber `#F59E0B`, Error Red `#EF4444`).
+- Centralized in `internal/tui/styles/theme.go` with the unified brand palette (Primary Violet `#7C3AED`, Secondary Cyan `#06B6D4`, Success Emerald `#10B981`, Warning Amber `#F59E0B`, Error Rose `#F43F5E`, Muted Slate `#64748B`, White Slate `#F8FAFC`, navy dark background `#0A0E17`).
 - **Responsive Clamping**: `clampScreen` dynamically adapts header, content, and footer to terminal heights down to 16 rows.
 

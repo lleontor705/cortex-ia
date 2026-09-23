@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	"github.com/lleontor705/cortex-ia/internal/installmeta"
@@ -256,11 +257,17 @@ func sortedFingerprintRecords(records []FingerprintRecord) []FingerprintRecord {
 	return sorted
 }
 
+// agentModelFingerprintNamespace prefixes agent-model sidecar record names.
+// Agent-model references are non-secret, so their records carry the plain
+// versioned amdv1 digest instead of the mcpv2 keyed postimage the design
+// reserves for MCP records.
+const agentModelFingerprintNamespace = "agent-model/"
+
 // validateFingerprintDocument enforces the closed sidecar schema: one known
 // schema version, one sufficiently strong hex salt, and unique records whose
-// digests are exactly the canonical mcpv2 encoding and whose config paths
-// share the MetadataV2 relative-path form. No secret value is representable
-// here by construction.
+// digests match their record namespace and whose config paths share the
+// MetadataV2 relative-path form. No secret value is representable here by
+// construction.
 func validateFingerprintDocument(doc FingerprintDocument) error {
 	if doc.SchemaVersion != FingerprintSchemaV1 {
 		return fmt.Errorf("state: MCP fingerprint document schema_version %d is not supported", doc.SchemaVersion)
@@ -280,6 +287,12 @@ func validateFingerprintDocument(doc FingerprintDocument) error {
 		seen[record.Name] = true
 		if err := validateRelPath(field+".config_path", record.ConfigPath); err != nil {
 			return err
+		}
+		if strings.HasPrefix(record.Name, agentModelFingerprintNamespace) {
+			if !installmeta.ValidAgentModelDigest(record.PostImageDigest) {
+				return fmt.Errorf("state: agent-model fingerprint %s.postimage_digest is not the canonical amdv%d encoding", field, installmeta.AgentModelDigestVersion)
+			}
+			continue
 		}
 		if !installmeta.ValidMCPServerPostImageDigest(record.PostImageDigest) {
 			return fmt.Errorf("state: MCP fingerprint %s.postimage_digest is not the canonical mcpv%d encoding", field, installmeta.MCPPostImageDigestVersion)

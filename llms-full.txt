@@ -1,15 +1,15 @@
 # cortex-ia — Full System Context
 
-cortex-ia is the deterministic multi-agent control plane, transactional OpenCode installer, and Herdr process multiplexer.
+cortex-ia is the deterministic multi-agent control plane, transactional OpenCode installer, and native-only agent execution bridge.
 
 ## Architecture Packages
 
 ```text
 cmd/cortex-ia/               main(): release version + internal/app
-internal/app/                CLI command dispatch (board, work, delegate, openspec, mcp, web)
+internal/app/                CLI command dispatch (board, work, openspec, mcp, web)
 internal/delegation/         ACID SQLite engine: DAG, CAS revisions, claims, file leases, reviews
 internal/cortexiaweb/        Embedded Preact web console with SSE real-time event streaming
-internal/herdr/              Herdr workspace discovery, pane splitting & process multiplexing
+internal/herdr/              Optional Herdr setup/detection helpers (diagnostics only)
 internal/tui/                Bubble Tea interactive wizard
 internal/install/            Service facade: install, sync, doctor, rollback, uninstall
 internal/pipeline/           Transactional plan, backup, apply, rollback engine
@@ -38,9 +38,9 @@ internal/assets/             go:embed runtime assets (AGENTS.md, agents, command
    - Markdown delta specifications with RFC 2119 keywords (`openspec/changes/`).
    - Validated natively via `openspec validate` / `cortex-ia openspec validate`.
 
-4. **Delegation & Multiplexing Plane (Herdr / AGY)**:
-   - Dedicated terminal panes running external workers.
-   - Sub-second NDJSON stream telemetry: tool calls, live activity spinners, and streamed textual reasoning.
+4. **Native Execution Plane (OpenCode Role Controllers)**:
+   - Every role controller executes inside OpenCode under Cortex-IA work authority.
+   - No external execution leaf exists: no external CLI receives work-control, approval, session, or MCP authority.
 
 ## Complete CLI Reference
 

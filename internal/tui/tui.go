@@ -12,6 +12,7 @@
 package tui
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -56,6 +57,9 @@ func Run(version string) error {
 	service, err := install.New(homeDir)
 	if err != nil {
 		return err
+	}
+	if err := MaybePromptUpdate(homeDir, version, bufio.NewReader(os.Stdin), os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "aviso de actualización: %v\n", err)
 	}
 	program := tea.NewProgram(newModel(service, homeDir, version), tea.WithAltScreen())
 	_, err = program.Run()

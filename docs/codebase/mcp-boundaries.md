@@ -9,7 +9,6 @@ Cortex-IA cleanly separates the **Epistemic & Evidence Plane** (Cortex MCP) from
 | **Cortex-IA Work Control** | Native Go CLI + SQLite WAL | Task DAG, CAS revisions, TTL claims, exclusive file leases, recovery, review approvals | Long-form evidence or raw agent transcripts |
 | **Cortex-IA Task Board** | Embedded HTTP UI (`cortex-ia web`) | Board grouping, real-time SSE Kanban visualization, task intake | Authorization grants, remote exposure |
 | **OpenSpec SDD** | Repository Markdown (`openspec/`) | Human-readable proposals, delta requirements, designs, task decompositions | Runtime locks, process supervision |
-| **Delegation Bridge** | Built-in Go CLI + Herdr plugin | Background/multiplexed worker lifecycle, real-time NDJSON stream telemetry, receipts | Task approval, Cortex session ownership |
 
 ---
 
@@ -18,4 +17,4 @@ Cortex-IA cleanly separates the **Epistemic & Evidence Plane** (Cortex MCP) from
 1. **`cortex-ia work status` is strictly authoritative**: Task readiness and active authority are read solely from SQLite. Browser card positions or chat messages never substitute for `work status`.
 2. **Cortex observations are advisory**: Knowledge graph nodes or stored gotchas provide context but never grant permission to touch files or bypass review gates.
 3. **Tokens stay in memory**: `claim_token` and `lease_token` reside in live memory only. SQLite stores only their SHA-256 digests.
-4. **External workers are execution-only**: Workers delegated through Herdr receive neither work control tokens nor session ownership capabilities.
+4. **No external execution leaf**: Every role controller executes natively inside OpenCode; no external CLI receives work-control tokens, approval, session, or MCP authority.

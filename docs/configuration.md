@@ -19,13 +19,13 @@ cortex-ia version                      # Show version
 cortex-ia help                         # Show usage
 ```
 
-The remaining commands — `herdr`, `delegate`, `snapshot`, `work`, `worktree`, `board`, `ledger`, `ui`, `openspec`, `web`, `doc`, `diagram`, `report`, and `hook` — are part of the operations surface. See [`codebase/reference-map.md`](codebase/reference-map.md) and `cortex-ia help` for their subcommands.
+The remaining commands — `snapshot`, `work`, `worktree`, `board`, `ledger`, `ui`, `openspec`, `web`, `doc`, `diagram`, and `report` — are part of the operations surface. See [`codebase/reference-map.md`](codebase/reference-map.md) and `cortex-ia help` for their subcommands. The former `delegate`, `herdr`, and `hook` subcommands are retired and fail closed.
 
 ### Install and sync flags
 
 | Flag | Description |
 |------|-------------|
-| `--target <list>` | Comma-separated targets: `opencode`, `agy`, `claude`, or `all`. Defaults to `opencode` |
+| `--target <list>` | Comma-separated targets: `opencode`, `claude`, or `all`. Defaults to `opencode` |
 | `--dry-run` | Preview the plan without writing; no backup is created |
 | `--overwrite` | Replace unmanaged conflicting files (explicit; a verified backup is captured first) |
 
@@ -35,7 +35,7 @@ Install and sync preview the final plan — including every `--overwrite` replac
 
 | Flag | Description |
 |------|-------------|
-| `--target <list>` | Comma-separated targets: `opencode`, `agy`, `claude`, or `all`. Defaults to `opencode` |
+| `--target <list>` | Comma-separated targets: `opencode`, `claude`, or `all`. Defaults to `opencode` |
 | `--dry-run` | Print the planned operations without writing |
 
 Uninstall is destructive and requires an interactive terminal and an explicit confirmation. A snapshot tagged `BackupSourceUninstall` is captured before any change, so `cortex-ia rollback` restores the pre-uninstall state. See [`rollback.md`](rollback.md).
@@ -73,8 +73,8 @@ cortex-ia requires no environment variables. Optional:
 |----------|-------------|
 | `CORTEX_IA_HOME` | Override the state root (default `~/.cortex-ia/`). Must resolve to an absolute path; used by automation and tests. |
 | `CORTEX_IA_DEBUG` | Enable debug tracing when set to `1`, `true`, or `yes`. Debug output goes to stderr and a file; stdout stays reserved for command receipts. The `--debug` flag enables the same tracing per invocation. |
-| `CORTEX_IA_AGY_AUTH` | Set to `gemini` to authenticate the external AGY leaf with a Gemini API key instead of the existing AGY account/keyring. |
-| `GEMINI_API_KEY` | Gemini API key used when `CORTEX_IA_AGY_AUTH=gemini`. |
+
+The former `CORTEX_IA_AGY_AUTH` and `GEMINI_API_KEY` variables authenticated the retired external AGY leaf. They are dead: execution is native-only and neither variable is read.
 
 ## Interactive TUI
 

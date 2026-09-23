@@ -33,6 +33,31 @@ const (
 var ErrWorkNotFound = errors.New("work item not found")
 var ErrWorkConflict = errors.New("work control conflict")
 var ErrWorkAttemptLimit = errors.New("work attempt limit reached")
+var ErrWorkReviewFailStreak = errors.New("review-fail retry circuit breaker")
+
+// WorkloadPolicy is the per-task churn budget profile. It is persisted on the
+// work item and read by the transition and retry paths, which own the actual
+// budget enforcement.
+type WorkloadPolicy string
+
+const (
+	WorkloadPolicyStrict    WorkloadPolicy = "strict"
+	WorkloadPolicyFlexible  WorkloadPolicy = "flexible"
+	WorkloadPolicyUnbounded WorkloadPolicy = "unbounded"
+)
+
+const DefaultWorkloadPolicy = WorkloadPolicyFlexible
+
+func parseWorkloadPolicy(value WorkloadPolicy) (WorkloadPolicy, error) {
+	switch policy := WorkloadPolicy(strings.TrimSpace(string(value))); policy {
+	case "":
+		return DefaultWorkloadPolicy, nil
+	case WorkloadPolicyStrict, WorkloadPolicyFlexible, WorkloadPolicyUnbounded:
+		return policy, nil
+	default:
+		return "", errors.New("workload policy must be strict, flexible or unbounded")
+	}
+}
 
 type WorkItem struct {
 	Contract *SDDContract `json:"contract,omitempty"`
@@ -48,6 +73,7 @@ type WorkItem struct {
 	Replaces       string          `json:"replaces,omitempty"`
 	ReplacedBy     []string        `json:"replaced_by,omitempty"`
 	Status         WorkStatus      `json:"status"`
+	WorkloadPolicy WorkloadPolicy  `json:"workload_policy"`
 	Revision       int64           `json:"revision"`
 	Dependencies   []string        `json:"dependencies,omitempty"`
 	Claim          *WorkClaim      `json:"claim,omitempty"`
@@ -62,11 +88,12 @@ type WorkItem struct {
 type WorkDefinition struct {
 	Contract *SDDContract
 	ConversationOwnership
-	Project      string
-	Objective    string
-	Acceptance   string
-	Verification string
-	AllowedFiles []string
+	Project        string
+	Objective      string
+	Acceptance     string
+	Verification   string
+	AllowedFiles   []string
+	WorkloadPolicy WorkloadPolicy
 }
 
 type WorkClaim struct {
@@ -164,6 +191,10 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 	if err := definition.Validate(); err != nil {
 		return WorkItem{}, err
 	}
+	workloadPolicy, policyErr := parseWorkloadPolicy(definition.WorkloadPolicy)
+	if policyErr != nil {
+		return WorkItem{}, policyErr
+	}
 	boardID = strings.TrimSpace(boardID)
 	if boardID == "" {
 		boardID = DefaultBoardID
@@ -236,7 +267,7 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 		if boardExists != 1 {
 			return ErrBoardNotFound
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id,workspace,opencode_session_id,opencode_root_session_id,opencode_parent_session_id) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, title, status, now, now, boardID, workspace, definition.OpenCodeSessionID, definition.OpenCodeRootSessionID, definition.OpenCodeParentSessionID); err != nil {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id,workspace,opencode_session_id,opencode_root_session_id,opencode_parent_session_id,workload_policy) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, id, title, status, now, now, boardID, workspace, definition.OpenCodeSessionID, definition.OpenCodeRootSessionID, definition.OpenCodeParentSessionID, string(workloadPolicy)); err != nil {
 			return fmt.Errorf("create work item: %w", err)
 		}
 		if _, err := conn.ExecContext(ctx, `INSERT INTO work_definitions(item_id,objective,acceptance_criteria,verification,allowed_files_json,contract_json) VALUES(?,?,?,?,?,?)`, id, definition.Objective, definition.Acceptance, definition.Verification, string(allowedFilesJSON), contractJSON); err != nil {
@@ -341,7 +372,7 @@ func (s *Store) listWork(ctx context.Context, boardID string, filtered bool) ([]
 
 func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 	var item WorkItem
-	err := s.db.QueryRowContext(ctx, `SELECT id,board_id,workspace,title,status,revision,created_at,updated_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id FROM work_items WHERE id=?`, id).Scan(&item.ID, &item.BoardID, &item.Workspace, &item.Title, &item.Status, &item.Revision, &item.CreatedAt, &item.UpdatedAt, &item.OpenCodeSessionID, &item.OpenCodeRootSessionID, &item.OpenCodeParentSessionID)
+	err := s.db.QueryRowContext(ctx, `SELECT id,board_id,workspace,title,status,workload_policy,revision,created_at,updated_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id FROM work_items WHERE id=?`, id).Scan(&item.ID, &item.BoardID, &item.Workspace, &item.Title, &item.Status, &item.WorkloadPolicy, &item.Revision, &item.CreatedAt, &item.UpdatedAt, &item.OpenCodeSessionID, &item.OpenCodeRootSessionID, &item.OpenCodeParentSessionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WorkItem{}, ErrWorkNotFound
 	}
@@ -873,7 +904,8 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 	err := s.immediate(ctx, func(conn *sql.Conn) error {
 		var from WorkStatus
 		var revision int64
-		if err := conn.QueryRowContext(ctx, `SELECT status,revision FROM work_items WHERE id=?`, id).Scan(&from, &revision); errors.Is(err, sql.ErrNoRows) {
+		var workloadPolicy, workspace string
+		if err := conn.QueryRowContext(ctx, `SELECT status,revision,workload_policy,workspace FROM work_items WHERE id=?`, id).Scan(&from, &revision, &workloadPolicy, &workspace); errors.Is(err, sql.ErrNoRows) {
 			return ErrWorkNotFound
 		} else if err != nil {
 			return err
@@ -893,7 +925,13 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 			return err
 		}
 		var reviewID string
+		workloadAdvisory := false
 		if to == WorkInReview {
+			advisory, advisoryErr := resolveWorkloadBudget(ctx, WorkloadPolicy(workloadPolicy), workspace)
+			if advisoryErr != nil {
+				return advisoryErr
+			}
+			workloadAdvisory = advisory
 			binding, err := currentReviewBinding(ctx, conn, id)
 			if err != nil {
 				return err
@@ -947,6 +985,9 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 		detail := strconv.FormatInt(revision, 10)
 		if submissionID != "" {
 			detail += ":submission=" + submissionID
+		}
+		if workloadAdvisory {
+			detail += ":" + workloadAdvisoryDetail
 		}
 		return s.addWorkEvent(ctx, conn, id, "transition", string(from), string(to), detail)
 	})
@@ -1015,8 +1056,15 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 		if err := conn.QueryRowContext(ctx, `SELECT binding_json FROM work_reviews WHERE item_id=?`, id).Scan(&binding); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
+		if binding != "" {
+			if err := json.Unmarshal([]byte(binding), &approval.Binding); err != nil {
+				return err
+			}
+		}
 		if verdict == "PASS" {
-			if binding != "" && expectedRevision <= 0 {
+			// Only a contract review is pin-backed and therefore revision-critical; a
+			// fingerprints-only direct binding keeps the revision-optional legacy flow.
+			if approval.Binding != nil && approval.Binding.Contract != nil && expectedRevision <= 0 {
 				return errors.New("SDD approval requires an explicit positive revision")
 			}
 			current, err := currentReviewBinding(ctx, conn, id)
@@ -1025,11 +1073,6 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 			}
 			if binding != current {
 				return errors.New("SDD review binding changed; fresh review required")
-			}
-		}
-		if binding != "" {
-			if err := json.Unmarshal([]byte(binding), &approval.Binding); err != nil {
-				return err
 			}
 		}
 
@@ -1081,14 +1124,16 @@ func (s *Store) RecoverWork(ctx context.Context) (int64, error) {
 	var recovered int64
 	err := s.immediate(ctx, func(conn *sql.Conn) error {
 		staleReviewThreshold := s.now().UTC().Add(-30 * time.Minute).Format(time.RFC3339Nano)
+		// An in_review task stays approvable after its implementation claim TTL elapses, so claim
+		// expiry must never recover it; only an abandoned review past the staleness window does.
 		rows, err := conn.QueryContext(ctx, `
 			SELECT DISTINCT w.id, w.status FROM work_items w
 			LEFT JOIN work_claims c ON c.item_id = w.id
 			LEFT JOIN work_reviews r ON r.item_id = w.id
 			WHERE (w.status = 'in_progress' AND (c.expires_at IS NULL OR c.expires_at <= ?))
-			   OR (w.status = 'in_review' AND (c.expires_at IS NULL OR c.expires_at <= ? OR r.created_at <= ?))
+			   OR (w.status = 'in_review' AND r.created_at IS NOT NULL AND r.created_at <= ?)
 			ORDER BY w.id
-		`, now, now, staleReviewThreshold)
+		`, now, staleReviewThreshold)
 		if err != nil {
 			return err
 		}
@@ -1171,6 +1216,22 @@ func (s *Store) RetryWork(ctx context.Context, id string, expectedRevision int64
 		if attempts >= MaxWorkAttempts {
 			return workAttemptLimitError(id, attempts)
 		}
+		streak, err := workReviewFailStreak(ctx, conn, id)
+		if err != nil {
+			return err
+		}
+		if streak >= 2 {
+			pureTest, err := workIsPureTestTask(ctx, conn, id)
+			if err != nil {
+				return err
+			}
+			if !pureTest {
+				return fmt.Errorf("%w: task %s has 2 consecutive review FAIL verdicts; route it to planner decomposition via cortex_ia_work_decompose", ErrWorkReviewFailStreak, id)
+			}
+			if err := s.addWorkEvent(ctx, conn, id, "pure_test_exemption", string(WorkBlocked), string(WorkReady), ""); err != nil {
+				return err
+			}
+		}
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
@@ -1200,6 +1261,79 @@ func workAttemptCount(ctx context.Context, conn *sql.Conn, id string) (int64, er
 
 func workAttemptLimitError(id string, attempts int64) error {
 	return fmt.Errorf("%w: task %s used %d of %d attempts; create a replacement task or reconcile manually", ErrWorkAttemptLimit, id, attempts, MaxWorkAttempts)
+}
+
+// workReviewFailStreak returns the trailing run of FAIL verdicts in the task's PASS/FAIL approval
+// subsequence: BLOCKED and INCONCLUSIVE verdicts are skipped entirely and a PASS resets the streak.
+func workReviewFailStreak(ctx context.Context, conn *sql.Conn, id string) (int, error) {
+	rows, err := conn.QueryContext(ctx, `SELECT verdict FROM work_approvals WHERE item_id=? ORDER BY created_at,id`, id)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	streak := 0
+	for rows.Next() {
+		var verdict string
+		if err := rows.Scan(&verdict); err != nil {
+			return 0, err
+		}
+		switch verdict {
+		case "FAIL":
+			streak++
+		case "PASS":
+			streak = 0
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return streak, nil
+}
+
+// workIsPureTestTask reports whether every declared allowed file is a test or tooling artifact.
+// A task with no declared files is not exempt: the breaker must still apply to undeclared scope.
+func workIsPureTestTask(ctx context.Context, conn *sql.Conn, id string) (bool, error) {
+	var allowedJSON string
+	if err := conn.QueryRowContext(ctx, `SELECT allowed_files_json FROM work_definitions WHERE item_id=?`, id).Scan(&allowedJSON); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	var files []string
+	if err := json.Unmarshal([]byte(allowedJSON), &files); err != nil {
+		return false, fmt.Errorf("decode allowed files: %w", err)
+	}
+	if len(files) == 0 {
+		return false, nil
+	}
+	for _, file := range files {
+		if !isTestOrToolingPath(file) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func isTestOrToolingPath(path string) bool {
+	cleaned := strings.ToLower(filepath.ToSlash(strings.TrimSpace(path)))
+	if cleaned == "" {
+		return false
+	}
+	base := cleaned
+	if idx := strings.LastIndex(cleaned, "/"); idx >= 0 {
+		base = cleaned[idx+1:]
+	}
+	if strings.HasSuffix(base, "_test.go") || strings.Contains(base, ".test.") {
+		return true
+	}
+	for _, segment := range strings.Split(cleaned, "/") {
+		switch segment {
+		case "test", "tests", "__tests__", "testdata", "mock", "mocks", "fixture", "fixtures":
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) addWorkEvent(ctx context.Context, conn *sql.Conn, id, kind, from, to, detail string) error {
