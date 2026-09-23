@@ -3,3 +3,8 @@
 # CRLF on checkout, which breaks every TestGolden* test on a fresh clone.
 # Pin them to LF so they are byte-identical across all platforms and checkouts.
 testdata/golden/** text eol=lf
+
+# Repository canon is LF for Go sources. With core.autocrlf=true on Windows the
+# checkout is CRLF, so `gofmt -l` flags every file and the pre-commit gofmt leg
+# fails. Pin Go sources to LF to keep worktrees and the index byte-identical.
+*.go text eol=lf
