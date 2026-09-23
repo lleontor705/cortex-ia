@@ -226,3 +226,9 @@ target did not match and the release would have shipped without a key.
 
 Tests inject keys only through `updater.SetTrustedKeysForTesting`. No test, and
 no CI job, ever receives real private key material.
+
+## Provisioning Log
+
+| Date | Key ID | Repository | Scope |
+|---|---|---|---|
+| 2026-09-23 | `release-2026-09-root` | `lleontor705/cortex-ia` | Root key for the `v0.1.0` line: `MinVersion` `v0.1.0`, empty `MaxVersion` (no ceiling). The pair was generated offline with the section 4 program; the private key is stored as the `CORTEX_IA_RELEASE_SIGNING_KEY` Actions secret and escrowed in the project password manager, while the public bundle is stored as the `CORTEX_IA_TRUST_BUNDLE` Actions variable and `CORTEX_IA_RELEASE_KEY_ID` mirrors this ID. No key material is recorded here. |
