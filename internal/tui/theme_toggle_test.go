@@ -68,7 +68,7 @@ func TestReviewThemeSelectionTravelsWithPlanAndConfirmedOptions(t *testing.T) {
 		t.Fatalf("replan must carry the theme selection, got %+v", planned)
 	}
 
-	m = pressDrive(t, m, "enter")
+	pressDrive(t, m, "enter")
 	if len(fake.installCalls) != 1 {
 		t.Fatalf("expected one confirmed install, got %d", len(fake.installCalls))
 	}
