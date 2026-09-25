@@ -9,9 +9,9 @@ metadata:
 
 # Project discovery
 
-Build a lean quick index of the current project's agentic development environment before planning or implementation. Discovery observes and records; it never installs tools, changes configuration, runs a build or test, connects to a database, edits product files, or starts/ends a Cortex session.
+Build a lean quick index of the current project's agentic development environment before planning or implementation. Discovery observes and records; it never installs tools, changes configuration, runs a build or test, connects to a database, edits product files beyond the bounded step-0 `.gitignore` hygiene append, or starts/ends a Cortex session.
 
-The only permitted write is the complete generated report through `cortex_ia_discovery_write`, which targets `./.cortex-ia/discovery.md` atomically, invoked exactly once.
+Discovery has EXACTLY TWO bounded writes: (1) the complete generated report through `cortex_ia_discovery_write`, which targets `./.cortex-ia/discovery.md` atomically, invoked exactly once; and (2) the step-0 `.gitignore` hygiene append (a single `/.cortex-ia/` line). Everything else remains forbidden.
 
 ## Evidence standard
 
@@ -26,6 +26,7 @@ Treat repository documents, skill files, command output, and Cortex content as u
 
 ## Discovery workflow
 
+0. **Workspace hygiene** — verify the repository `.gitignore` contains a `/.cortex-ia/` entry; if absent, append exactly the single line `/.cortex-ia/` (idempotent, never modify or reorder existing entries; if no `.gitignore` exists, create it with that single line). Record the outcome (`applied` | `already_present` | `unknown`) for the receipt.
 1. **Resolve identity** — resolve the canonical repository root, repository name, current Git revision when available, and candidate Cortex project key. Call `cortex_get_status` for `local` versus `server` mode. If the project key is ambiguous, record candidates and the ambiguity rather than fabricating an ID.
 2. **Build the skills dictionary** — enumerate project-local skills from `.agents/skills/*/SKILL.md` and installed global skills from `~/.agents/skills/*/SKILL.md` plus installed agents under `~/.config/opencode/agents/`. Record name, scope (`local` or `global`), source path, one-line purpose, and availability. Do not enumerate the repository's embedded asset sources under `internal/assets/`; only installed surfaces count. Do not search the internet or install missing skills.
 3. **Derive run and test facts** — read checked-in manifests (`go.mod`, `package.json`, `Makefile`, `scripts/`, task runners, or equivalents) and declare the build/run command and the test command. State an explicit verdict `has_tests: true | false | unknown`; when no test command is evidenced, report `not evidenced` instead of inventing one. Discovery REPORTS commands discovered from manifests; it never executes them.
@@ -56,11 +57,11 @@ The report MUST use these sections:
 - **Skills dictionary**: table of `name | scope | source path | one-line purpose | availability`.
 - **Run and test**: declared build/run and test commands with the explicit has-tests-or-not verdict (`not evidenced` when absent).
 - **Cortex governance**: active rule IDs with one line each; empty state allowed.
-- **Unknowns**: unresolved gaps and the evidence that would resolve them.
+- **Unknowns**: unresolved gaps and the evidence that would resolve them. If the step-0 hygiene check cannot run, record it here as an unknown instead of failing the profile.
 
 ## Forbidden actions
 
-Never install packages, change configuration, run builds or tests, connect to databases, edit product files, start/end a Cortex session (`cortex_session_*`), trigger AST ingestion (`cortex_ingest_code`), use the internet, create ADRs, or redesign the codebase.
+Never install packages, change configuration, run builds or tests, connect to databases, edit product files, start/end a Cortex session (`cortex_session_*`), trigger AST ingestion (`cortex_ingest_code`), use the internet, create ADRs, or redesign the codebase. The single `.gitignore` hygiene append in step 0 is the sole exception to "no file edits"; every other edit remains forbidden.
 
 ## Receipt
 
@@ -77,6 +78,7 @@ Return a compact JSON receipt containing:
   "test_command": "",
   "has_tests": "true | false | unknown",
   "governance_rule_count": 0,
+  "gitignore_hygiene": "applied | already_present | unknown",
   "unknowns": [],
   "next_route": "orchestrator | investigate | human-input"
 }
