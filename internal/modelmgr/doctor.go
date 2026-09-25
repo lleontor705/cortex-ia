@@ -51,6 +51,9 @@ const (
 	CheckTemplateGuard CheckID = "template-guard"
 	// CheckOpencode2Models is the optional `opencode2 models` cross-check.
 	CheckOpencode2Models CheckID = "opencode2-models"
+	// CheckNanVariants validates nan agent effort ids against the static
+	// vocabulary. It is read-only and warns instead of rewriting.
+	CheckNanVariants CheckID = "nan-variants"
 )
 
 // defaultAgentKey is OpenCode's root default-agent selector.
@@ -150,6 +153,7 @@ func (m *Manager) Doctor(opts DoctorOptions) DoctorReport {
 	m.checkModelShapes(&report, config, configAgents, agentsDecoded)
 	m.checkManagedDrift(&report, configAgents, reg, agentsDecoded, opts.Evidence)
 	m.checkMarkdownPins(&report, configAgents)
+	m.checkNanVariants(&report, configAgents, agentsDecoded)
 	m.checkDefaultAgent(&report, config, reg)
 	m.checkTemplateGuard(&report, opts.Template)
 	m.checkOpencode2Models(&report, opts.RunCommand)
@@ -290,6 +294,67 @@ func (m *Manager) checkMarkdownPins(report *DoctorReport, configAgents map[strin
 	if pinned == 0 {
 		report.add(CheckMarkdownPin, SeverityOK, "", "no markdown agent frontmatter pins found")
 	}
+}
+
+// checkNanVariants validates every config agent whose reference names a nan
+// effort against the static vocabulary. It never rewrites anything, matching
+// the markdown-pin never-rewrite posture, and it stays silent for nan models
+// absent from the catalog so acquisition drift cannot manufacture warnings.
+func (m *Manager) checkNanVariants(report *DoctorReport, configAgents map[string]any, decoded bool) {
+	if !decoded {
+		report.add(CheckNanVariants, SeveritySkipped, "", "skipped because the config did not decode")
+		return
+	}
+	validated := 0
+	problems := 0
+	for _, agent := range sortedKeys(configAgents) {
+		object, ok := configAgents[agent].(map[string]any)
+		if !ok {
+			continue
+		}
+		value, hasModel := object["model"]
+		if !hasModel {
+			continue
+		}
+		desired, err := DecodeModelRef(agent, value)
+		if err != nil {
+			// checkModelShape already reports the malformed value.
+			continue
+		}
+		if desired.Provider != NanProvider || desired.Variant == "" {
+			continue
+		}
+		meta, ok := NanModelMetaFor(desired.Model)
+		if !ok {
+			continue
+		}
+		validated++
+		if containsLevel(meta.EffortVocabulary, desired.Variant) {
+			continue
+		}
+		problems++
+		report.add(CheckNanVariants, SeverityWarning, agent,
+			fmt.Sprintf("nan model %s does not list effort %q; valid efforts: %s",
+				desired.Provider+"/"+desired.Model, desired.Variant, vocabularyLabel(meta.EffortVocabulary)))
+	}
+	if problems > 0 {
+		return
+	}
+	if validated == 0 {
+		report.add(CheckNanVariants, SeverityOK, "", "no nan agent effort references to validate")
+		return
+	}
+	report.add(CheckNanVariants, SeverityOK, "",
+		fmt.Sprintf("validated %d nan effort reference(s) against the static vocabulary", validated))
+}
+
+func containsLevel(vocabulary []string, level string) bool {
+	for _, candidate := range vocabulary {
+		if candidate == level {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Manager) checkDefaultAgent(report *DoctorReport, config map[string]any, reg *registry) {

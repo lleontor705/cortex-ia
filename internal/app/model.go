@@ -421,6 +421,9 @@ func printModelCatalog(catalog modelmgr.Catalog, provider string) {
 			fmt.Printf("  %s\n", group)
 		}
 		fmt.Printf("    %-44s variants: %s\n", entry.Model, catalogVariantsLabel(entry.Variants))
+		if entry.Meta != nil {
+			fmt.Printf("      %s\n", renderNanModelMeta(entry.Meta))
+		}
 	}
 	if len(catalog.Entries) == 0 {
 		fmt.Println("  (no models)")
@@ -437,6 +440,34 @@ func catalogVariantsLabel(variants []string) string {
 		return "(none)"
 	}
 	return strings.Join(variants, ", ")
+}
+
+// renderNanModelMeta renders one nan entry's static capability metadata. It
+// prints identifiers, counts, and vocabulary tokens only: variant settings,
+// headers, bodies, and API keys never reach this surface.
+func renderNanModelMeta(meta *modelmgr.NanModelMeta) string {
+	parts := []string{
+		"tier=" + meta.Tier,
+		fmt.Sprintf("ctx=%d", meta.ContextTokens),
+		fmt.Sprintf("quota=%d", meta.MonthlyQuotaTokens),
+		"effort=[" + strings.Join(meta.EffortVocabulary, ",") + "]",
+		fmt.Sprintf("adjustable=%t", meta.EffortAdjustable),
+		"modalities=[" + strings.Join(meta.Modalities, ",") + "]",
+		fmt.Sprintf("picker=%t", meta.PickerEligible),
+	}
+	if meta.Rolling4hRefTokens > 0 {
+		parts = append(parts, fmt.Sprintf("rolling4h=%d", meta.Rolling4hRefTokens))
+	}
+	if meta.MaxOutputTokens > 0 {
+		parts = append(parts, fmt.Sprintf("maxOutput=%d", meta.MaxOutputTokens))
+	}
+	if meta.EffortMode != "" {
+		parts = append(parts, "effortMode="+meta.EffortMode)
+	}
+	if meta.PreferredOver != "" {
+		parts = append(parts, "preferredOver="+meta.PreferredOver)
+	}
+	return "meta: " + strings.Join(parts, " ")
 }
 
 // printModelMutationReceipt renders a set or unset outcome. The text form

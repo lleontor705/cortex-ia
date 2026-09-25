@@ -36,10 +36,13 @@ const catalogEntryLimit = 512
 // Provider is the leading '/'-segment while Model keeps any further segments:
 // openrouter/anthropic/claude-sonnet-4.5 splits into provider "openrouter" and
 // model "anthropic/claude-sonnet-4.5". Variants are deduplicated and sorted.
+// Meta is additive static capability metadata and is present only for provider
+// nan entries, so every other provider keeps its original receipt shape.
 type CatalogEntry struct {
-	Provider string   `json:"provider"`
-	Model    string   `json:"model"`
-	Variants []string `json:"variants"`
+	Provider string        `json:"provider"`
+	Model    string        `json:"model"`
+	Variants []string      `json:"variants"`
+	Meta     *NanModelMeta `json:"meta,omitempty"`
 }
 
 // Catalog is the typed acquisition result. Truncated is set when the source
@@ -198,10 +201,11 @@ func catalogReferences(entries []CatalogEntry) []string {
 	return refs
 }
 
-// buildCatalog normalizes entries, applies the entry cap, and stamps the
-// source. Entries is always non-nil so JSON receipts carry a stable [].
+// buildCatalog normalizes entries, attaches static nan metadata, applies the
+// entry cap, and stamps the source. Entries is always non-nil so JSON receipts
+// carry a stable [].
 func buildCatalog(entries []CatalogEntry, source string) Catalog {
-	normalized := normalizeEntries(entries)
+	normalized := attachNanMeta(normalizeEntries(entries))
 	truncated := false
 	if len(normalized) > catalogEntryLimit {
 		normalized = normalized[:catalogEntryLimit]

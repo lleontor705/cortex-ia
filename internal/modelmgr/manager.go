@@ -27,6 +27,12 @@ const (
 	jsoncName = "opencode.jsonc"
 	jsonName  = "opencode.json"
 
+	// providerKey, modelsKey, and variantsKey locate the OpenCode provider
+	// model entry that nan effort authoring extends.
+	providerKey = "provider"
+	modelsKey   = "models"
+	variantsKey = "variants"
+
 	// markdownDir holds markdown agent definitions under the config root.
 	markdownDir = "agents"
 
@@ -117,6 +123,15 @@ type ListResult struct {
 	Agents     []AgentEntry
 }
 
+// AuthoredVariant records one variant object a nan set appended to a provider
+// model entry. It carries identifiers only, so a dry-run can preview exactly
+// what a real run would write without exposing any other variant setting.
+type AuthoredVariant struct {
+	Provider string
+	Model    string
+	ID       string
+}
+
 // Result describes one Set or Unset outcome. Previous is always the effective
 // value observed before the call, so a set discloses what it overwrote.
 type Result struct {
@@ -134,6 +149,9 @@ type Result struct {
 	Value string
 	// Warning carries the markdown frontmatter note when one exists.
 	Warning string
+	// AuthoredVariants lists the variant objects the plan appends to the
+	// provider model entry; empty when the set only writes the agents mapping.
+	AuthoredVariants []AuthoredVariant
 	// Ownership is the record to persist in transactional metadata; nil for
 	// unset.
 	Ownership *OwnershipRecord
@@ -300,6 +318,9 @@ func (m *Manager) planSet(desired Desired, evidence []OwnershipRecord) (Result, 
 	if err := desired.Validate(); err != nil {
 		return Result{}, nil, err
 	}
+	if err := desired.validateNanEffort(); err != nil {
+		return Result{}, nil, err
+	}
 	path := m.ConfigPath()
 	config, err := loadConfig(path)
 	if err != nil {
@@ -330,23 +351,116 @@ func (m *Manager) planSet(desired Desired, evidence []OwnershipRecord) (Result, 
 	if err != nil {
 		return Result{}, nil, err
 	}
-	overlay, err := setOverlay(canonical, desired.Compact())
+	variants, authored, err := planNanVariants(config, desired)
+	if err != nil {
+		return Result{}, nil, err
+	}
+	overlay, err := setOverlay(canonical, desired.Compact(), desired.Provider, desired.Model, variants)
 	if err != nil {
 		return Result{}, nil, err
 	}
 	result := Result{
-		Agent:      canonical,
-		ConfigPath: path,
-		Action:     "set",
-		Previous:   compactEntry(previous),
-		Value:      desired.Compact(),
-		Warning:    markdownWarning(reg, canonical),
-		Ownership:  &OwnershipRecord{Agent: canonical, Digest: digest, ConfigPath: path},
+		Agent:            canonical,
+		ConfigPath:       path,
+		Action:           "set",
+		Previous:         compactEntry(previous),
+		Value:            desired.Compact(),
+		Warning:          markdownWarning(reg, canonical),
+		AuthoredVariants: authored,
+		Ownership:        &OwnershipRecord{Agent: canonical, Digest: digest, ConfigPath: path},
 	}
-	if previous.Source != SourceMarkdown && previous.Source != SourceUnset && result.Previous == result.Value {
+	// An unchanged assignment is only "already-set" when this run also has
+	// nothing to author; otherwise the run still mutates the config.
+	if previous.Source != SourceMarkdown && previous.Source != SourceUnset &&
+		result.Previous == result.Value && len(authored) == 0 {
 		result.Action = "already-set"
 	}
 	return result, overlay, nil
+}
+
+// planNanVariants computes the full replacement variants array so a nan set
+// authors exactly one {id, settings.reasoningEffort} object appended after the
+// existing entries. It reports no authoring when the provider model entry is
+// absent (the v1 contract), when the entry already lists the requested id, or
+// when the reference is not a nan effort. A present variants value that is not
+// an array of objects is malformed config and fails closed before any write.
+func planNanVariants(config map[string]any, desired Desired) ([]any, []AuthoredVariant, error) {
+	if desired.Provider != NanProvider || desired.Variant == "" {
+		return nil, nil, nil
+	}
+	entry, ok := providerModelEntry(config, desired.Provider, desired.Model)
+	if !ok {
+		return nil, nil, nil
+	}
+	raw, present := entry[variantsKey]
+	if !present {
+		return authoredVariants(desired, nil), authored(desired), nil
+	}
+	array, ok := raw.([]any)
+	if !ok {
+		return nil, nil, malformedVariants(desired)
+	}
+	for _, element := range array {
+		if _, ok := element.(map[string]any); !ok {
+			return nil, nil, malformedVariants(desired)
+		}
+	}
+	for _, element := range array {
+		if id, _ := element.(map[string]any)["id"].(string); id == desired.Variant {
+			return nil, nil, nil
+		}
+	}
+	return authoredVariants(desired, array), authored(desired), nil
+}
+
+func authored(desired Desired) []AuthoredVariant {
+	return []AuthoredVariant{{Provider: desired.Provider, Model: desired.Model, ID: desired.Variant}}
+}
+
+// authoredVariants appends the authored object to a fresh slice so the caller's
+// decoded array is never mutated in place.
+func authoredVariants(desired Desired, existing []any) []any {
+	variants := make([]any, 0, len(existing)+1)
+	variants = append(variants, existing...)
+	variants = append(variants, nanVariantObject(desired.Variant))
+	return variants
+}
+
+// nanVariantObject is the single authored variant shape. reasoningEffort is the
+// only setting ever written; headers and bodies stay untouched.
+func nanVariantObject(effort string) map[string]any {
+	return map[string]any{
+		"id":       effort,
+		"settings": map[string]any{"reasoningEffort": effort},
+	}
+}
+
+func malformedVariants(desired Desired) *ConflictError {
+	return configMalformed("provider.%s.models.%s.variants must be an array of variant objects",
+		desired.Provider, desired.Model)
+}
+
+// providerModelEntry locates provider.<id>.models.<model>. A missing or
+// wrong-typed chain is unresolvable, so Set keeps the v1 assignment-only
+// contract rather than writing a provider definition it cannot trust.
+func providerModelEntry(config map[string]any, provider, model string) (map[string]any, bool) {
+	providers, ok := config[providerKey].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	providerEntry, ok := providers[provider].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	models, ok := providerEntry[modelsKey].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	modelEntry, ok := models[model].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	return modelEntry, true
 }
 
 // effectiveEntry resolves the observed model for one registry agent. Config
@@ -401,12 +515,25 @@ func applyMarkdownPin(entry *AgentEntry) {
 	}
 }
 
-func setOverlay(agent, compact string) ([]byte, error) {
-	return json.Marshal(map[string]any{
+// setOverlay builds the one overlay a set applies. The agents mapping is always
+// present; the provider model update is added only when a nan effort authored a
+// variants array, so both changes travel through a single JSONMutation.
+func setOverlay(agent, compact, provider, model string, variants []any) ([]byte, error) {
+	overlay := map[string]any{
 		agentsKey: map[string]any{
 			agent: map[string]any{"model": compact},
 		},
-	})
+	}
+	if variants != nil {
+		overlay[providerKey] = map[string]any{
+			provider: map[string]any{
+				modelsKey: map[string]any{
+					model: map[string]any{variantsKey: variants},
+				},
+			},
+		}
+	}
+	return json.Marshal(overlay)
 }
 
 func compactEntry(entry AgentEntry) string {

@@ -56,6 +56,49 @@ func invalidDesired(agent, field, reason string) error {
 	return &InvalidDesiredError{Agent: agent, Field: field, Reason: reason}
 }
 
+// UnsupportedEffortError reports a nan effort level the referenced model does
+// not enumerate in its static vocabulary. It is produced before any config
+// access, so returning one guarantees nothing was written.
+type UnsupportedEffortError struct {
+	Model      string
+	Effort     string
+	Vocabulary []string
+}
+
+func (e *UnsupportedEffortError) Error() string {
+	return fmt.Sprintf("nan model %q does not support effort %q; valid efforts: %s",
+		e.Model, e.Effort, vocabularyLabel(e.Vocabulary))
+}
+
+// validateNanEffort enforces the static nan effort vocabulary. Non-nan
+// providers and effort-less references pass untouched, so the v1 contract for
+// every other provider is preserved exactly. An unknown nan model has no
+// vocabulary to author against, so it fails closed like an enumerated miss.
+func (d Desired) validateNanEffort() error {
+	if d.Provider != NanProvider || d.Variant == "" {
+		return nil
+	}
+	meta, ok := NanModelMetaFor(d.Model)
+	if !ok {
+		return &UnsupportedEffortError{Model: d.Model, Effort: d.Variant}
+	}
+	for _, level := range meta.EffortVocabulary {
+		if level == d.Variant {
+			return nil
+		}
+	}
+	return &UnsupportedEffortError{Model: d.Model, Effort: d.Variant, Vocabulary: meta.EffortVocabulary}
+}
+
+// vocabularyLabel renders an effort vocabulary for a receipt. An empty
+// vocabulary is spelled out so it is never mistaken for "any level".
+func vocabularyLabel(vocabulary []string) string {
+	if len(vocabulary) == 0 {
+		return "(none)"
+	}
+	return strings.Join(vocabulary, ", ")
+}
+
 // ParseModelRef splits and validates a compact reference into its provider,
 // model, and optional variant tokens. The variant is split at the rightmost
 // "#", so an earlier "#" surfaces as an invalid model token instead of being
