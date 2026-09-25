@@ -340,8 +340,10 @@ Usage:
                                       Acquire or advance bounded task authority
   cortex-ia work lease|reserve|lease-renew|release|release-all|verify-lease
                                       Reserve, renew, or verify workspace file scopes
-  cortex-ia work review-refresh|decompose|recover
+  cortex-ia work review-refresh|decompose|recover|reconcile
                                       Refresh review bindings, decompose, or sweep state
+  cortex-ia work reconcile <task-id> --reason <text> --session <id> --revision <n>
+                                      Force-release an orphaned live claim
   cortex-ia worktree list|validate   Inspect authoritative Git worktrees (read-only)
   cortex-ia board create|list|status|archive|unarchive|delete
                                       Group task DAGs into local task boards

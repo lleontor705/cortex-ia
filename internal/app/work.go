@@ -39,6 +39,7 @@ func runWork(args []string) error {
 		fmt.Println("  revise --plan <file|@stdin>                                 Safely revise an unclaimed task definition")
 		fmt.Println("  decompose <task-id> --revision <n> --plan <file|@stdin>       Replace a blocked task with atomic tasks")
 		fmt.Println("  recover                                                     Recover expired claims/leases")
+		fmt.Println("  reconcile <task-id> --reason <text> --session <id> --revision <n>  Force-release an orphaned live claim")
 		fmt.Println("  verify-lease --path <file> [--task <id>] [--owner <owner>]  Verify active file lease")
 		return nil
 	}
@@ -513,6 +514,53 @@ func runWork(args []string) error {
 			return err
 		}
 		return printJSON(map[string]int64{"recovered": count})
+	case "reconcile":
+		if len(args) > 1 && isHelp(args[1]) {
+			return workUsage("reconcile <task-id> --reason <text> --session <host-session-id> --revision <n> [--to ready] [--owner-session-inactive <true|false>]", nil)
+		}
+		id, opts, err := workIDOptions(args[1:], map[string]bool{"--reason": false, "--session": false, "--revision": false, "--to": false, "--owner-session-inactive": false})
+		if err != nil {
+			return workUsage("reconcile <task-id> --reason <text> --session <host-session-id> --revision <n> [--to ready] [--owner-session-inactive <true|false>]", err)
+		}
+		revision, err := positiveRevision(oneOption(opts, "--revision"))
+		if err != nil {
+			return err
+		}
+		session := strings.TrimSpace(oneOption(opts, "--session"))
+		if session == "" {
+			return errors.New("work reconcile requires --session <host-session-id>")
+		}
+		to := delegation.WorkStatus(strings.ToLower(strings.TrimSpace(oneOption(opts, "--to"))))
+		if to == "" {
+			to = delegation.WorkBlocked
+		}
+		if to != delegation.WorkBlocked && to != delegation.WorkReady {
+			return errors.New("work reconcile --to must be blocked or ready")
+		}
+		inactive := false
+		if raw, explicit := opts["--owner-session-inactive"]; explicit {
+			parsed, parseErr := strconv.ParseBool(strings.TrimSpace(raw[0]))
+			if parseErr != nil {
+				return errors.New("--owner-session-inactive must be true or false")
+			}
+			inactive = parsed
+		}
+		result, err := store.ReconcileWork(ctx, delegation.ReconcileInput{
+			TaskID:               id,
+			Reason:               oneOption(opts, "--reason"),
+			HostSessionID:        session,
+			ExpectedRevision:     revision,
+			To:                   to,
+			OwnerSessionInactive: inactive,
+		})
+		if err != nil {
+			return err
+		}
+		if err := printJSON(result); err != nil {
+			return err
+		}
+		fmt.Printf("reconciled %s: %s -> %s at revision %d, released %d lease(s)\n", result.TaskID, result.From, result.To, result.RevisionAfter, len(result.ReleasedLeases))
+		return nil
 	case "verify-lease", "check-lease":
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("verify-lease --path <file> [--path <file2>] [--task <task-id>] [--owner <owner>]", nil)
