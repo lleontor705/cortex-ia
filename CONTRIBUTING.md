@@ -1,5 +1,7 @@
 # Contributing to cortex-ia
 
+**English** | [Español](CONTRIBUTING.es.md)
+
 Thank you for your interest in contributing to **cortex-ia** — a Go CLI/TUI configurator for **OpenCode**. It installs the embedded workflow asset set under `~/.config/opencode/`, manages Cortex and Context7 MCP entries, and provides its own SQLite task/lease control through `cortex-ia work`.
 
 Before you dive in, please read this guide fully. We have a structured workflow to keep the project organized and maintainable.
