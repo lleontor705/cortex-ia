@@ -29,3 +29,4 @@ Thumbs.db
 # Go
 vendor/
 node_modules/
+.opencode/themes/

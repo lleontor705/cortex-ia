@@ -19,6 +19,11 @@ var SNAPSHOT_STALE_MS = 1e4;
 var MAX_VISIBLE_ROWS = 4;
 var SPINNER_FRAMES = ["\u280B", "\u2819", "\u2839", "\u2838", "\u283C", "\u2834", "\u2826", "\u2827", "\u2807", "\u280F"];
 var NEURAL_PULSE_FRAMES = ["\u25C6", "\u25C7", "\u25CB", "\u25C7"];
+var NAN_USAGE_POLL_INTERVAL_MS = 6e4;
+var NAN_CATALOG_TTL_MS = 10 * 6e4;
+var NAN_EXEC_MAX_BUFFER = 4 * 1024 * 1024;
+var NAN_EXEC_TIMEOUT_MS = 8e3;
+var NAN_DETAIL_DAY_POINTS = 21;
 var GLYPH = {
   active: "\u25C6",
   working: "\u25CF",
@@ -49,79 +54,117 @@ var ETA_MIN_SAMPLES = 2;
 var ETA_SPARK_MIN_SAMPLES = 3;
 var ETA_SPARK_POINTS = 12;
 var ETA_SPARK_LEVELS = ["\u2840", "\u28C0", "\u28C4", "\u28C6", "\u28C7", "\u28E7", "\u28FF"];
-var CORTEX_THEME = {
-  brandViolet: "#8b5cf6",
-  brandIndigo: "#6366f1",
-  brandPurple: "#a855f7",
-  neonCyan: "#06b6d4",
-  skyBlue: "#38bdf8",
-  amberGold: "#f59e0b",
-  emeraldGreen: "#10b981",
-  roseRed: "#f43f5e",
-  slateBorder: "#334155",
-  slateDark: "#0f172a",
-  slateCard: "#1e293b",
-  slateMuted: "#64748b",
-  slateLight: "#cbd5e1",
-  pureWhite: "#ffffff"
-};
-var PALETTE_SOURCES = {
-  text: [["text", "base"], ["text"]],
-  textMuted: [["hue", "neutral", 500], ["textMuted"], ["text", "muted"]],
-  textSoft: [["hue", "neutral", 300]],
-  accent: [["hue", "purple", 400], ["accent"], ["text", "action", "primary", "base"]],
-  accentAlt: [["hue", "purple", 500], ["secondary"]],
-  primary: [["hue", "blue", 500], ["primary"]],
-  sky: [["hue", "blue", 400], ["info"]],
-  success: [["hue", "green", 500], ["success"], ["text", "feedback", "success", "base"]],
-  warning: [["hue", "yellow", 500], ["warning"], ["text", "feedback", "warning", "base"]],
-  error: [["hue", "red", 500], ["error"], ["text", "feedback", "error", "base"]],
-  info: [["hue", "cyan", 500], ["info"], ["text", "feedback", "info", "base"]],
-  border: [["hue", "neutral", 700], ["border", "base"], ["border"], ["borderSubtle"]],
-  panel: [["hue", "neutral", 800], ["background", "raised", "high"], ["backgroundPanel"]]
-};
+var AGENTS_ROUTE = "cortex.agents";
+var AGENTS_COMMAND = ":cortex-agents";
+var AGENTS_MIN_COLUMNS = 68;
+var AGENTS_NARROW_COLUMNS = 96;
+var AGENTS_TITLE_MIN = 14;
+var AGENTS_STATUS_WIDTH = 2;
+var AGENTS_AGENT_WIDTH = 12;
+var AGENTS_NARROW_AGENT_WIDTH = 9;
+var AGENTS_ELAPSED_WIDTH = 8;
+var AGENTS_ACTIVITY_WIDTH = 16;
+var AGENTS_TOKENS_WIDTH = 8;
+var AGENTS_COST_WIDTH = 8;
+var AGENTS_TASK_WIDTH = 20;
+var OPENCODE_SESSION_OWNER_PREFIX = "opencode-session:";
 var PALETTE_FALLBACK = {
-  text: CORTEX_THEME.pureWhite,
-  textMuted: CORTEX_THEME.slateMuted,
-  textSoft: CORTEX_THEME.slateLight,
-  accent: CORTEX_THEME.brandPurple,
-  accentAlt: CORTEX_THEME.brandViolet,
-  primary: CORTEX_THEME.brandIndigo,
-  sky: CORTEX_THEME.skyBlue,
-  success: CORTEX_THEME.emeraldGreen,
-  warning: CORTEX_THEME.amberGold,
-  error: CORTEX_THEME.roseRed,
-  info: CORTEX_THEME.neonCyan,
-  border: CORTEX_THEME.slateBorder,
-  panel: CORTEX_THEME.slateCard
+  text: "#f8fafc",
+  textMuted: "#94a3b8",
+  accent: "#a855f7",
+  accentAlt: "#22d3ee",
+  primary: "#6366f1",
+  sky: "#38bdf8",
+  success: "#34d399",
+  warning: "#fbbf24",
+  error: "#fb7185",
+  info: "#22d3ee",
+  border: "#334155",
+  panel: "#111927",
+  element: "#1e293b",
+  background: "#0a0e17"
 };
-function readColor(source, path2) {
-  let node = source;
-  for (const key of path2) {
-    if (typeof node !== "object" || node === null) return void 0;
-    node = node[key];
-  }
-  if (typeof node === "string") return node;
-  if (typeof node === "object" && node !== null) {
-    const candidate = node;
+var SOFT_TEXT_WEIGHT = 0.65;
+function readColor(value) {
+  if (typeof value === "string" && value.trim() !== "") return value;
+  if (typeof value === "object" && value !== null) {
+    const candidate = value;
     if (typeof candidate.r === "number" && typeof candidate.g === "number" && typeof candidate.b === "number") {
-      return node;
+      return value;
     }
   }
   return void 0;
 }
-function resolvePalette(theme) {
-  const source = theme;
-  const palette = {};
-  for (const role of Object.keys(PALETTE_SOURCES)) {
-    let resolved;
-    for (const path2 of PALETTE_SOURCES[role]) {
-      resolved = readColor(source, path2);
-      if (resolved !== void 0) break;
-    }
-    palette[role] = resolved ?? PALETTE_FALLBACK[role];
+function hexToBytes(value) {
+  const hex = value.trim().replace(/^#/, "");
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return void 0;
+  return {
+    r: parseInt(hex.slice(0, 2), 16),
+    g: parseInt(hex.slice(2, 4), 16),
+    b: parseInt(hex.slice(4, 6), 16)
+  };
+}
+function channelToByte(value) {
+  const scaled = Math.abs(value) <= 1 ? value * 255 : value;
+  return Math.round(Math.min(255, Math.max(0, scaled)));
+}
+function colorToBytes(color) {
+  if (typeof color === "string") return hexToBytes(color);
+  const candidate = color;
+  if (typeof candidate.r !== "number" || typeof candidate.g !== "number" || typeof candidate.b !== "number") {
+    return void 0;
   }
-  return palette;
+  return {
+    r: channelToByte(candidate.r),
+    g: channelToByte(candidate.g),
+    b: channelToByte(candidate.b)
+  };
+}
+function blendColor(foreground, background, weight) {
+  const fg = colorToBytes(foreground);
+  const bg = colorToBytes(background);
+  if (!fg || !bg) return foreground;
+  const mix = (a, b) => Math.round(a * weight + b * (1 - weight));
+  const toHex = (value) => value.toString(16).padStart(2, "0");
+  return `#${toHex(mix(fg.r, bg.r))}${toHex(mix(fg.g, bg.g))}${toHex(mix(fg.b, bg.b))}`;
+}
+function buildPalette(theme) {
+  const source = theme ?? {};
+  const read = (key, fallback) => readColor(source[key]) ?? fallback;
+  const text = read("text", PALETTE_FALLBACK.text);
+  const background = read("background", PALETTE_FALLBACK.background);
+  const border = read("border", PALETTE_FALLBACK.border);
+  return {
+    text,
+    textMuted: read("textMuted", PALETTE_FALLBACK.textMuted),
+    textSoft: blendColor(text, background, SOFT_TEXT_WEIGHT),
+    accent: read("accent", PALETTE_FALLBACK.accent),
+    accentAlt: read("secondary", PALETTE_FALLBACK.accentAlt),
+    primary: read("primary", PALETTE_FALLBACK.primary),
+    sky: read("info", PALETTE_FALLBACK.sky),
+    success: read("success", PALETTE_FALLBACK.success),
+    warning: read("warning", PALETTE_FALLBACK.warning),
+    error: read("error", PALETTE_FALLBACK.error),
+    info: read("info", PALETTE_FALLBACK.info),
+    border,
+    borderSubtle: readColor(source["borderSubtle"]) ?? border,
+    borderActive: readColor(source["borderActive"]) ?? border,
+    panel: read("backgroundPanel", PALETTE_FALLBACK.panel),
+    element: read("backgroundElement", PALETTE_FALLBACK.element),
+    background
+  };
+}
+var PALETTE_CACHE = /* @__PURE__ */ new WeakMap();
+var themelessPalette;
+function resolvePalette(theme) {
+  if (theme && typeof theme === "object") {
+    const cached = PALETTE_CACHE.get(theme);
+    if (cached) return cached;
+    const built = buildPalette(theme);
+    PALETTE_CACHE.set(theme, built);
+    return built;
+  }
+  return themelessPalette ??= buildPalette();
 }
 function sidebarLayout(width) {
   const measured = Number.isFinite(width) && width > 0 ? Math.floor(width) : 0;
@@ -177,6 +220,19 @@ function cortexExecutable() {
     }
   }
   return process.platform === "win32" ? "cortex-ia.exe" : "cortex-ia";
+}
+function nanExecutable() {
+  if (process.env.NAN_BIN) return process.env.NAN_BIN;
+  const home = process.env.USERPROFILE || process.env.HOME || "";
+  const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+  const candidates = [path.join(local, "Programs", "nan", process.platform === "win32" ? "nan.exe" : "nan"), path.join(home, ".local", "bin", "nan"), "/usr/local/bin/nan", "/usr/bin/nan"];
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {
+    }
+  }
+  return process.platform === "win32" ? "nan.exe" : "nan";
 }
 function openWebConsole(boardId, taskId) {
   const args = ["web", "--open", "--daemon"];
@@ -381,6 +437,102 @@ function taskStatusChip(status, palette) {
       };
   }
 }
+function subagentStatus(status) {
+  const type = typeof status === "string" ? status : status?.type;
+  return type === "busy" || type === "idle" || type === "retry" ? type : "unknown";
+}
+function subagentRetryAttempt(status) {
+  const attempt = status?.attempt;
+  return typeof attempt === "number" && Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : void 0;
+}
+function sessionStartMillis(session) {
+  const created = session?.time?.created;
+  if (typeof created !== "number" || !Number.isFinite(created) || created <= 0) return void 0;
+  return created < 1e12 ? created * 1e3 : created;
+}
+function sessionTokenTotal(session) {
+  const tokens = session?.tokens;
+  if (!tokens) return void 0;
+  const used = (tokens.input || 0) + (tokens.output || 0) + (tokens.reasoning || 0) + (tokens.cache?.read || 0) + (tokens.cache?.write || 0);
+  return used > 0 ? used : void 0;
+}
+function formatElapsedClock(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return "--:--";
+  const totalSecs = Math.floor(ms / 1e3);
+  const secs = totalSecs % 60;
+  const mins = Math.floor(totalSecs / 60) % 60;
+  const hours = Math.floor(totalSecs / 3600);
+  const clock = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  return hours > 0 ? `${hours}:${clock}` : clock;
+}
+function fitWidth(value, width) {
+  if (width <= 0) return "";
+  if (value.length > width) return `${value.slice(0, Math.max(0, width - 1))}\u2026`;
+  return value.padEnd(width, " ");
+}
+function taskForSession(sessionID, tasks) {
+  for (const task of tasks || []) {
+    if (!task) continue;
+    const owner = typeof task.owner === "string" ? task.owner : "";
+    const ownerSession = owner.startsWith(OPENCODE_SESSION_OWNER_PREFIX) ? owner.slice(OPENCODE_SESSION_OWNER_PREFIX.length) : "";
+    if (task.opencode_session_id === sessionID || task.opencode_parent_session_id === sessionID || ownerSession === sessionID) {
+      return {
+        taskID: task.task_id,
+        status: task.status
+      };
+    }
+  }
+  return void 0;
+}
+function partActivityLabel(part) {
+  if (!part || typeof part.type !== "string") return void 0;
+  if (part.type === "tool") return typeof part.tool === "string" && part.tool ? {
+    tool: part.tool
+  } : void 0;
+  if (part.type === "reasoning") return {
+    step: "reasoning"
+  };
+  if (part.type === "text") return {
+    step: "writing"
+  };
+  if (part.type === "step-start") return {
+    step: "step"
+  };
+  return void 0;
+}
+function lastActivityLabel(api, sessionID) {
+  const messages = sessionMessages(api, sessionID);
+  const partFn = api?.state?.part;
+  if (!messages || typeof partFn !== "function") return {};
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const info = messages[i]?.info || messages[i];
+    if (info?.role !== "assistant" || typeof info?.id !== "string") continue;
+    let parts;
+    try {
+      parts = partFn(info.id);
+    } catch {
+      return {};
+    }
+    if (!Array.isArray(parts)) return {};
+    for (let j = parts.length - 1; j >= 0; j -= 1) {
+      const label = partActivityLabel(parts[j]);
+      if (label) return label;
+    }
+    return {};
+  }
+  return {};
+}
+function subagentRank(status) {
+  if (status === "busy") return 0;
+  if (status === "retry") return 1;
+  return 2;
+}
+function subagentStatusColor(status, palette) {
+  if (status === "busy") return palette.accent;
+  if (status === "retry") return palette.warning;
+  if (status === "idle") return palette.textMuted;
+  return palette.textSoft;
+}
 function attentionItems(snapshot, snapshotError) {
   const items = snapshot.attention.map((item) => ({
     id: item.id,
@@ -549,9 +701,24 @@ function CortexCockpitHeader(props) {
     return path.basename(props.projectRoot);
   });
   const palette = resolvePalette(props.theme);
+  const freshnessColor = () => {
+    if (props.freshness() === "live") return palette.success;
+    if (props.freshness() === "stale") return palette.warning;
+    return palette.textMuted;
+  };
+  const freshnessGlyph = () => {
+    if (props.freshness() === "live") return GLYPH.working;
+    if (props.freshness() === "stale") return GLYPH.warn;
+    return GLYPH.idle;
+  };
+  const resolvedActivity = () => {
+    const activity = props.nativeActivity();
+    return activity && activity !== "unknown" ? activity : void 0;
+  };
   return (() => {
-    var _el$ = _$createElement("box"), _el$5 = _$createElement("box"), _el$6 = _$createElement("text"), _el$7 = _$createElement("text");
+    var _el$ = _$createElement("box"), _el$5 = _$createElement("box"), _el$6 = _$createElement("text"), _el$7 = _$createElement("box"), _el$8 = _$createElement("text"), _el$9 = _$createElement("text");
     _$insertNode(_el$, _el$5);
+    _$insertNode(_el$, _el$7);
     _$setProp(_el$, "flexDirection", "column");
     _$setProp(_el$, "borderStyle", "rounded");
     _$setProp(_el$, "titleAlignment", "left");
@@ -581,41 +748,51 @@ function CortexCockpitHeader(props) {
         return _el$2;
       }
     }), _el$5);
-    _$insert(_el$, _$createComponent(Show, {
+    _$insertNode(_el$5, _el$6);
+    _$setProp(_el$5, "flexDirection", "row");
+    _$setProp(_el$5, "marginTop", 0);
+    _$insert(_el$6, () => `${freshnessGlyph()} ${props.freshness()}`);
+    _$insert(_el$5, _$createComponent(Show, {
+      get when() {
+        return resolvedActivity();
+      },
+      children: (activity) => (() => {
+        var _el$0 = _$createElement("text");
+        _$insert(_el$0, () => ` \xB7 OpenCode: ${activity()}`);
+        _$effect((_$p) => _$setProp(_el$0, "fg", palette.textMuted, _$p));
+        return _el$0;
+      })()
+    }), null);
+    _$insertNode(_el$7, _el$8);
+    _$insertNode(_el$7, _el$9);
+    _$setProp(_el$7, "flexDirection", "row");
+    _$setProp(_el$7, "marginTop", 0);
+    _$insert(_el$7, _$createComponent(Show, {
       get when() {
         return props.sessionElapsed?.();
       },
       children: (elapsed) => (() => {
-        var _el$8 = _$createElement("box"), _el$9 = _$createElement("text");
-        _$insertNode(_el$8, _el$9);
-        _$setProp(_el$8, "flexDirection", "row");
-        _$setProp(_el$8, "marginTop", 0);
-        _$insert(_el$9, () => clipped(`T+${elapsed()}`, Math.max(8, props.textLimit)));
-        _$effect((_$p) => _$setProp(_el$9, "fg", palette.sky, _$p));
-        return _el$8;
+        var _el$1 = _$createElement("text");
+        _$insert(_el$1, () => clipped(`T+${elapsed()} `, Math.max(8, props.textLimit)));
+        _$effect((_$p) => _$setProp(_el$1, "fg", palette.sky, _$p));
+        return _el$1;
       })()
-    }), _el$5);
-    _$insertNode(_el$5, _el$6);
-    _$insertNode(_el$5, _el$7);
-    _$setProp(_el$5, "flexDirection", "row");
-    _$setProp(_el$5, "marginTop", 0);
-    _$setProp(_el$6, "onMouseDown", () => openWebConsole());
-    _$setProp(_el$6, "selectable", false);
-    _$insert(_el$6, () => `[${GLYPH.web} Web]`);
-    _$setProp(_el$7, "selectable", false);
-    _$insert(_el$7, (() => {
-      var _c$ = _$memo(() => props.density() === "compact");
-      return () => _c$() ? ` [${MARK_COLLAPSED} ${props.textLimit < 26 ? "COMP" : "COMPACT"}]` : ` [${MARK_EXPANDED} ${props.textLimit < 26 ? "EXPD" : "EXPANDED"}]`;
-    })());
+    }), _el$8);
+    _$setProp(_el$8, "onMouseDown", () => openWebConsole());
+    _$setProp(_el$8, "selectable", false);
+    _$insert(_el$8, () => `[${GLYPH.web} Web] `);
+    _$setProp(_el$9, "selectable", false);
+    _$insert(_el$9, () => props.density() === "compact" ? `[${MARK_COLLAPSED} CMP]` : `[${MARK_EXPANDED} EXP]`);
     _$effect((_p$) => {
-      var _v$3 = props.isExecuting() ? palette.warning : palette.primary, _v$4 = props.isExecuting() ? `${GLYPH.brand} CORTEX\xB7IA v2.0 [${props.spinner()} ACTIVE]` : `${GLYPH.brand} CORTEX\xB7IA v2.0 [${GLYPH.working} STANDBY]`, _v$5 = palette.accent, _v$6 = palette.panel, _v$7 = palette.info, _v$8 = props.density() === "compact" ? palette.success : palette.textMuted, _v$9 = props.onToggleDensity;
+      var _v$3 = props.isExecuting() ? palette.warning : palette.primary, _v$4 = props.isExecuting() ? `${GLYPH.brand} CORTEX\xB7IA v2.0 [${props.spinner()} ACTIVE]` : `${GLYPH.brand} CORTEX\xB7IA v2.0 [${GLYPH.working} STANDBY]`, _v$5 = palette.accent, _v$6 = palette.panel, _v$7 = freshnessColor(), _v$8 = palette.info, _v$9 = props.density() === "compact" ? palette.success : palette.textMuted, _v$0 = props.onToggleDensity;
       _v$3 !== _p$.e && (_p$.e = _$setProp(_el$, "borderColor", _v$3, _p$.e));
       _v$4 !== _p$.t && (_p$.t = _$setProp(_el$, "title", _v$4, _p$.t));
       _v$5 !== _p$.a && (_p$.a = _$setProp(_el$, "titleColor", _v$5, _p$.a));
       _v$6 !== _p$.o && (_p$.o = _$setProp(_el$, "backgroundColor", _v$6, _p$.o));
       _v$7 !== _p$.i && (_p$.i = _$setProp(_el$6, "fg", _v$7, _p$.i));
-      _v$8 !== _p$.n && (_p$.n = _$setProp(_el$7, "fg", _v$8, _p$.n));
-      _v$9 !== _p$.s && (_p$.s = _$setProp(_el$7, "onMouseDown", _v$9, _p$.s));
+      _v$8 !== _p$.n && (_p$.n = _$setProp(_el$8, "fg", _v$8, _p$.n));
+      _v$9 !== _p$.s && (_p$.s = _$setProp(_el$9, "fg", _v$9, _p$.s));
+      _v$0 !== _p$.h && (_p$.h = _$setProp(_el$9, "onMouseDown", _v$0, _p$.h));
       return _p$;
     }, {
       e: void 0,
@@ -624,72 +801,45 @@ function CortexCockpitHeader(props) {
       o: void 0,
       i: void 0,
       n: void 0,
-      s: void 0
+      s: void 0,
+      h: void 0
     });
     return _el$;
   })();
 }
-function OperationalKPIHud(props) {
-  const isAllZero = () => props.activeExecutions === 0 && props.inReview === 0 && props.doneTasks === 0 && props.attentionCount === 0;
-  const palette = resolvePalette(props.theme);
+function StatusCell(props) {
   return (() => {
-    var _el$0 = _$createElement("box");
-    _$setProp(_el$0, "flexDirection", "column");
-    _$setProp(_el$0, "marginTop", 1);
-    _$insert(_el$0, _$createComponent(Show, {
-      get when() {
-        return !isAllZero();
-      },
-      get fallback() {
-        return (() => {
-          var _el$15 = _$createElement("box"), _el$16 = _$createElement("text");
-          _$insertNode(_el$15, _el$16);
-          _$setProp(_el$15, "flexDirection", "row");
-          _$insertNode(_el$16, _$createTextNode(`\u25CB 0 act \xB7 0 rev \xB7 0 done \xB7 0 alrt`));
-          _$effect((_$p) => _$setProp(_el$16, "fg", palette.textMuted, _$p));
-          return _el$15;
-        })();
-      },
-      get children() {
-        return [(() => {
-          var _el$1 = _$createElement("box"), _el$10 = _$createElement("text"), _el$11 = _$createElement("text");
-          _$insertNode(_el$1, _el$10);
-          _$insertNode(_el$1, _el$11);
-          _$setProp(_el$1, "flexDirection", "row");
-          _$insert(_el$10, () => `[${props.activeExecutions > 0 ? props.spinner() : "\u25CF"} ${props.activeExecutions} ACT] `);
-          _$insert(_el$11, () => `[\u25C6 ${props.inReview} REVW]`);
-          _$effect((_p$) => {
-            var _v$0 = props.activeExecutions > 0 ? palette.warning : palette.textMuted, _v$1 = props.inReview > 0 ? palette.accent : palette.textMuted;
-            _v$0 !== _p$.e && (_p$.e = _$setProp(_el$10, "fg", _v$0, _p$.e));
-            _v$1 !== _p$.t && (_p$.t = _$setProp(_el$11, "fg", _v$1, _p$.t));
-            return _p$;
-          }, {
-            e: void 0,
-            t: void 0
-          });
-          return _el$1;
-        })(), (() => {
-          var _el$12 = _$createElement("box"), _el$13 = _$createElement("text"), _el$14 = _$createElement("text");
-          _$insertNode(_el$12, _el$13);
-          _$insertNode(_el$12, _el$14);
-          _$setProp(_el$12, "flexDirection", "row");
-          _$setProp(_el$12, "marginTop", 0);
-          _$insert(_el$13, () => `[\u2713 ${props.doneTasks} DONE] `);
-          _$insert(_el$14, () => `[${props.attentionCount > 0 ? "\u2715" : "\u25CB"} ${props.attentionCount} ALRT]`);
-          _$effect((_p$) => {
-            var _v$10 = props.doneTasks > 0 ? palette.success : palette.textMuted, _v$11 = props.attentionCount > 0 ? palette.error : palette.textMuted;
-            _v$10 !== _p$.e && (_p$.e = _$setProp(_el$13, "fg", _v$10, _p$.e));
-            _v$11 !== _p$.t && (_p$.t = _$setProp(_el$14, "fg", _v$11, _p$.t));
-            return _p$;
-          }, {
-            e: void 0,
-            t: void 0
-          });
-          return _el$12;
-        })()];
-      }
-    }));
-    return _el$0;
+    var _el$10 = _$createElement("box"), _el$11 = _$createElement("text"), _el$12 = _$createElement("text");
+    _$insertNode(_el$10, _el$11);
+    _$insertNode(_el$10, _el$12);
+    _$setProp(_el$10, "flexDirection", "row");
+    _$setProp(_el$10, "gap", 1);
+    _$insert(_el$11, () => props.label);
+    _$insert(_el$12, () => props.value());
+    _$effect((_p$) => {
+      var _v$1 = props.palette.textMuted, _v$10 = props.color ? props.color() : props.palette.text;
+      _v$1 !== _p$.e && (_p$.e = _$setProp(_el$11, "fg", _v$1, _p$.e));
+      _v$10 !== _p$.t && (_p$.t = _$setProp(_el$12, "fg", _v$10, _p$.t));
+      return _p$;
+    }, {
+      e: void 0,
+      t: void 0
+    });
+    return _el$10;
+  })();
+}
+function padMetric(value) {
+  return String(Math.max(0, Math.min(999, Math.round(value)))).padStart(2, "0");
+}
+function EmptyState(props) {
+  return (() => {
+    var _el$13 = _$createElement("box"), _el$14 = _$createElement("text");
+    _$insertNode(_el$13, _el$14);
+    _$setProp(_el$13, "flexDirection", "row");
+    _$setProp(_el$13, "paddingLeft", 2);
+    _$insert(_el$14, () => `${GLYPH.idle} ${props.label}`);
+    _$effect((_$p) => _$setProp(_el$14, "fg", props.palette.textMuted, _$p));
+    return _el$13;
   })();
 }
 function Section(props) {
@@ -700,29 +850,29 @@ function Section(props) {
   });
   const palette = resolvePalette(props.theme);
   return (() => {
-    var _el$18 = _$createElement("box"), _el$19 = _$createElement("box"), _el$20 = _$createElement("text"), _el$21 = _$createElement("text");
-    _$insertNode(_el$18, _el$19);
-    _$setProp(_el$18, "flexDirection", "column");
-    _$setProp(_el$18, "marginTop", 1);
-    _$insertNode(_el$19, _el$20);
-    _$insertNode(_el$19, _el$21);
-    _$setProp(_el$19, "flexDirection", "row");
-    _$setProp(_el$20, "selectable", false);
-    _$insert(_el$20, () => props.expanded() ? `${MARK_EXPANDED} ` : `${MARK_COLLAPSED} `);
-    _$setProp(_el$21, "selectable", false);
-    _$insert(_el$21, displayTitle);
-    _$insert(_el$19, _$createComponent(Show, {
+    var _el$15 = _$createElement("box"), _el$16 = _$createElement("box"), _el$17 = _$createElement("text"), _el$18 = _$createElement("text");
+    _$insertNode(_el$15, _el$16);
+    _$setProp(_el$15, "flexDirection", "column");
+    _$setProp(_el$15, "marginTop", 1);
+    _$insertNode(_el$16, _el$17);
+    _$insertNode(_el$16, _el$18);
+    _$setProp(_el$16, "flexDirection", "row");
+    _$setProp(_el$17, "selectable", false);
+    _$insert(_el$17, () => props.expanded() ? `${MARK_EXPANDED} ` : `${MARK_COLLAPSED} `);
+    _$setProp(_el$18, "selectable", false);
+    _$insert(_el$18, displayTitle);
+    _$insert(_el$16, _$createComponent(Show, {
       get when() {
         return displayBadge();
       },
       get children() {
-        var _el$22 = _$createElement("text");
-        _$insert(_el$22, () => ` [${displayBadge()}]`);
-        _$effect((_$p) => _$setProp(_el$22, "fg", palette.sky, _$p));
-        return _el$22;
+        var _el$19 = _$createElement("text");
+        _$insert(_el$19, () => ` [${displayBadge()}]`);
+        _$effect((_$p) => _$setProp(_el$19, "fg", palette.sky, _$p));
+        return _el$19;
       }
     }), null);
-    _$insert(_el$18, _$createComponent(Show, {
+    _$insert(_el$15, _$createComponent(Show, {
       get when() {
         return props.expanded();
       },
@@ -731,17 +881,17 @@ function Section(props) {
       }
     }), null);
     _$effect((_p$) => {
-      var _v$12 = props.onToggle, _v$13 = props.expanded() ? palette.info : palette.textMuted, _v$14 = palette.text;
-      _v$12 !== _p$.e && (_p$.e = _$setProp(_el$19, "onMouseDown", _v$12, _p$.e));
-      _v$13 !== _p$.t && (_p$.t = _$setProp(_el$20, "fg", _v$13, _p$.t));
-      _v$14 !== _p$.a && (_p$.a = _$setProp(_el$21, "fg", _v$14, _p$.a));
+      var _v$11 = props.onToggle, _v$12 = props.expanded() ? palette.info : palette.textMuted, _v$13 = palette.text;
+      _v$11 !== _p$.e && (_p$.e = _$setProp(_el$16, "onMouseDown", _v$11, _p$.e));
+      _v$12 !== _p$.t && (_p$.t = _$setProp(_el$17, "fg", _v$12, _p$.t));
+      _v$13 !== _p$.a && (_p$.a = _$setProp(_el$18, "fg", _v$13, _p$.a));
       return _p$;
     }, {
       e: void 0,
       t: void 0,
       a: void 0
     });
-    return _el$18;
+    return _el$15;
   })();
 }
 function MultiColorProgressBar(props) {
@@ -754,75 +904,90 @@ function MultiColorProgressBar(props) {
   const emptyW = createMemo(() => Math.max(0, w() - doneW() - revW() - progW() - blckW()));
   const pct = createMemo(() => Math.min(100, Math.max(0, Math.round(props.done / total() * 100))));
   const waiting = createMemo(() => Math.max(0, props.total - props.done - props.inReview - props.inProgress - (props.blocked || 0)));
+  const showLegend = createMemo(() => !props.compact && props.textLimit >= 34);
   const palette = resolvePalette(props.theme);
+  const block = "\u2588";
   return (() => {
-    var _el$23 = _$createElement("box"), _el$24 = _$createElement("box"), _el$25 = _$createElement("text"), _el$26 = _$createElement("text"), _el$27 = _$createElement("text"), _el$28 = _$createElement("text"), _el$30 = _$createElement("text"), _el$31 = _$createElement("text"), _el$32 = _$createElement("text"), _el$33 = _$createElement("box"), _el$34 = _$createElement("text"), _el$35 = _$createElement("text"), _el$36 = _$createElement("text"), _el$38 = _$createElement("text");
-    _$insertNode(_el$23, _el$24);
-    _$insertNode(_el$23, _el$33);
-    _$setProp(_el$23, "flexDirection", "column");
-    _$setProp(_el$23, "marginTop", 1);
-    _$insertNode(_el$24, _el$25);
-    _$insertNode(_el$24, _el$26);
-    _$insertNode(_el$24, _el$27);
-    _$insertNode(_el$24, _el$28);
-    _$insertNode(_el$24, _el$30);
-    _$insertNode(_el$24, _el$31);
-    _$insertNode(_el$24, _el$32);
-    _$setProp(_el$24, "flexDirection", "row");
-    _$insert(_el$25, () => props.compact ? "D:" : "DAG: ");
-    _$insert(_el$26, () => "\u2588".repeat(doneW()));
-    _$insert(_el$27, () => "\u2593".repeat(revW()));
-    _$insert(_el$28, () => "\u2592".repeat(progW()));
-    _$insert(_el$24, _$createComponent(Show, {
+    var _el$20 = _$createElement("box"), _el$21 = _$createElement("box"), _el$22 = _$createElement("text"), _el$23 = _$createElement("text"), _el$24 = _$createElement("text"), _el$25 = _$createElement("text"), _el$27 = _$createElement("text"), _el$28 = _$createElement("text"), _el$29 = _$createElement("text");
+    _$insertNode(_el$20, _el$21);
+    _$setProp(_el$20, "flexDirection", "column");
+    _$setProp(_el$20, "marginTop", 1);
+    _$insertNode(_el$21, _el$22);
+    _$insertNode(_el$21, _el$23);
+    _$insertNode(_el$21, _el$24);
+    _$insertNode(_el$21, _el$25);
+    _$insertNode(_el$21, _el$27);
+    _$insertNode(_el$21, _el$28);
+    _$insertNode(_el$21, _el$29);
+    _$setProp(_el$21, "flexDirection", "row");
+    _$insert(_el$22, () => props.label ?? (props.compact ? "D:" : "DAG: "));
+    _$insert(_el$23, () => block.repeat(doneW()));
+    _$insert(_el$24, () => block.repeat(revW()));
+    _$insert(_el$25, () => block.repeat(progW()));
+    _$insert(_el$21, _$createComponent(Show, {
       get when() {
         return blckW() > 0;
       },
       get children() {
-        var _el$29 = _$createElement("text");
-        _$insert(_el$29, () => "\u2593".repeat(blckW()));
-        _$effect((_$p) => _$setProp(_el$29, "fg", palette.error, _$p));
-        return _el$29;
+        var _el$26 = _$createElement("text");
+        _$insert(_el$26, () => block.repeat(blckW()));
+        _$effect((_$p) => _$setProp(_el$26, "fg", palette.error, _$p));
+        return _el$26;
       }
-    }), _el$30);
-    _$insert(_el$30, () => "\u2591".repeat(emptyW()));
-    _$insert(_el$31, () => ` ${pct()}%`);
-    _$insert(_el$32, (() => {
-      var _c$2 = _$memo(() => !!props.compact);
-      return () => _c$2() ? "" : ` (${props.done}/${props.total})`;
+    }), _el$27);
+    _$insert(_el$27, () => block.repeat(emptyW()));
+    _$insert(_el$28, () => ` ${pct()}%`);
+    _$insert(_el$29, (() => {
+      var _c$ = _$memo(() => !!props.compact);
+      return () => _c$() ? "" : ` (${props.done}/${props.total})`;
     })());
-    _$insertNode(_el$33, _el$34);
-    _$insertNode(_el$33, _el$35);
-    _$insertNode(_el$33, _el$36);
-    _$insertNode(_el$33, _el$38);
-    _$setProp(_el$33, "flexDirection", "row");
-    _$insert(_el$34, () => `\u2713${props.done} `);
-    _$insert(_el$35, () => `\u25C6${props.inReview} `);
-    _$insert(_el$36, () => `\u25CF${props.inProgress} `);
-    _$insert(_el$33, _$createComponent(Show, {
+    _$insert(_el$21, _$createComponent(Show, {
       get when() {
-        return (props.blocked || 0) > 0;
+        return showLegend();
       },
       get children() {
-        var _el$37 = _$createElement("text");
-        _$insert(_el$37, () => `\u2715${props.blocked} `);
-        _$effect((_$p) => _$setProp(_el$37, "fg", palette.error, _$p));
-        return _el$37;
+        return [(() => {
+          var _el$30 = _$createElement("text");
+          _$insert(_el$30, () => ` \u2713${props.done}`);
+          _$effect((_$p) => _$setProp(_el$30, "fg", palette.success, _$p));
+          return _el$30;
+        })(), (() => {
+          var _el$31 = _$createElement("text");
+          _$insert(_el$31, () => ` \u25C6${props.inReview}`);
+          _$effect((_$p) => _$setProp(_el$31, "fg", palette.primary, _$p));
+          return _el$31;
+        })(), (() => {
+          var _el$32 = _$createElement("text");
+          _$insert(_el$32, () => ` \u25CF${props.inProgress}`);
+          _$effect((_$p) => _$setProp(_el$32, "fg", palette.warning, _$p));
+          return _el$32;
+        })(), _$createComponent(Show, {
+          get when() {
+            return (props.blocked || 0) > 0;
+          },
+          get children() {
+            var _el$33 = _$createElement("text");
+            _$insert(_el$33, () => ` \u2715${props.blocked}`);
+            _$effect((_$p) => _$setProp(_el$33, "fg", palette.error, _$p));
+            return _el$33;
+          }
+        }), (() => {
+          var _el$34 = _$createElement("text");
+          _$insert(_el$34, () => ` \u25CB${waiting()}`);
+          _$effect((_$p) => _$setProp(_el$34, "fg", palette.textMuted, _$p));
+          return _el$34;
+        })()];
       }
-    }), _el$38);
-    _$insert(_el$38, () => `\u25CB${waiting()}`);
+    }), null);
     _$effect((_p$) => {
-      var _v$15 = palette.info, _v$16 = palette.success, _v$17 = palette.accent, _v$18 = palette.warning, _v$19 = palette.border, _v$20 = palette.text, _v$21 = palette.textMuted, _v$22 = palette.success, _v$23 = palette.accent, _v$24 = palette.warning, _v$25 = palette.textMuted;
-      _v$15 !== _p$.e && (_p$.e = _$setProp(_el$25, "fg", _v$15, _p$.e));
-      _v$16 !== _p$.t && (_p$.t = _$setProp(_el$26, "fg", _v$16, _p$.t));
-      _v$17 !== _p$.a && (_p$.a = _$setProp(_el$27, "fg", _v$17, _p$.a));
-      _v$18 !== _p$.o && (_p$.o = _$setProp(_el$28, "fg", _v$18, _p$.o));
-      _v$19 !== _p$.i && (_p$.i = _$setProp(_el$30, "fg", _v$19, _p$.i));
-      _v$20 !== _p$.n && (_p$.n = _$setProp(_el$31, "fg", _v$20, _p$.n));
-      _v$21 !== _p$.s && (_p$.s = _$setProp(_el$32, "fg", _v$21, _p$.s));
-      _v$22 !== _p$.h && (_p$.h = _$setProp(_el$34, "fg", _v$22, _p$.h));
-      _v$23 !== _p$.r && (_p$.r = _$setProp(_el$35, "fg", _v$23, _p$.r));
-      _v$24 !== _p$.d && (_p$.d = _$setProp(_el$36, "fg", _v$24, _p$.d));
-      _v$25 !== _p$.l && (_p$.l = _$setProp(_el$38, "fg", _v$25, _p$.l));
+      var _v$14 = palette.info, _v$15 = palette.success, _v$16 = palette.primary, _v$17 = palette.warning, _v$18 = palette.borderSubtle, _v$19 = palette.text, _v$20 = palette.textMuted;
+      _v$14 !== _p$.e && (_p$.e = _$setProp(_el$22, "fg", _v$14, _p$.e));
+      _v$15 !== _p$.t && (_p$.t = _$setProp(_el$23, "fg", _v$15, _p$.t));
+      _v$16 !== _p$.a && (_p$.a = _$setProp(_el$24, "fg", _v$16, _p$.a));
+      _v$17 !== _p$.o && (_p$.o = _$setProp(_el$25, "fg", _v$17, _p$.o));
+      _v$18 !== _p$.i && (_p$.i = _$setProp(_el$27, "fg", _v$18, _p$.i));
+      _v$19 !== _p$.n && (_p$.n = _$setProp(_el$28, "fg", _v$19, _p$.n));
+      _v$20 !== _p$.s && (_p$.s = _$setProp(_el$29, "fg", _v$20, _p$.s));
       return _p$;
     }, {
       e: void 0,
@@ -831,13 +996,9 @@ function MultiColorProgressBar(props) {
       o: void 0,
       i: void 0,
       n: void 0,
-      s: void 0,
-      h: void 0,
-      r: void 0,
-      d: void 0,
-      l: void 0
+      s: void 0
     });
-    return _el$23;
+    return _el$20;
   })();
 }
 function ActiveTaskHero(props) {
@@ -855,97 +1016,97 @@ function ActiveTaskHero(props) {
   });
   const palette = resolvePalette(props.theme);
   return (() => {
-    var _el$39 = _$createElement("box"), _el$40 = _$createElement("box"), _el$41 = _$createElement("text"), _el$42 = _$createElement("text"), _el$44 = _$createElement("box"), _el$45 = _$createElement("text");
-    _$insertNode(_el$39, _el$40);
-    _$insertNode(_el$39, _el$44);
-    _$setProp(_el$39, "flexDirection", "column");
-    _$setProp(_el$39, "marginTop", 1);
-    _$setProp(_el$39, "paddingLeft", 1);
-    _$setProp(_el$39, "paddingRight", 1);
-    _$setProp(_el$39, "borderStyle", "rounded");
-    _$setProp(_el$39, "titleAlignment", "left");
-    _$insertNode(_el$40, _el$41);
-    _$insertNode(_el$40, _el$42);
-    _$setProp(_el$40, "flexDirection", "row");
-    _$insert(_el$41, () => `${GLYPH.active} `);
-    _$insert(_el$42, () => clipped(`${props.task.task_id} \xB7 ${props.task.title}`, props.textLimit - 3));
-    _$insert(_el$40, _$createComponent(Show, {
+    var _el$35 = _$createElement("box"), _el$36 = _$createElement("box"), _el$37 = _$createElement("text"), _el$38 = _$createElement("text"), _el$40 = _$createElement("box"), _el$41 = _$createElement("text");
+    _$insertNode(_el$35, _el$36);
+    _$insertNode(_el$35, _el$40);
+    _$setProp(_el$35, "flexDirection", "column");
+    _$setProp(_el$35, "marginTop", 1);
+    _$setProp(_el$35, "paddingLeft", 1);
+    _$setProp(_el$35, "paddingRight", 1);
+    _$setProp(_el$35, "borderStyle", "rounded");
+    _$setProp(_el$35, "titleAlignment", "left");
+    _$insertNode(_el$36, _el$37);
+    _$insertNode(_el$36, _el$38);
+    _$setProp(_el$36, "flexDirection", "row");
+    _$insert(_el$37, () => `${GLYPH.active} `);
+    _$insert(_el$38, () => clipped(`${props.task.task_id} \xB7 ${props.task.title}`, props.textLimit - 3));
+    _$insert(_el$36, _$createComponent(Show, {
       get when() {
         return props.densityCompact;
       },
       get children() {
-        var _el$43 = _$createElement("text");
-        _$setProp(_el$43, "onMouseDown", () => openWebConsole(props.task.board_id, props.task.task_id));
-        _$setProp(_el$43, "selectable", false);
-        _$insert(_el$43, () => ` [${GLYPH.web}]`);
-        _$effect((_$p) => _$setProp(_el$43, "fg", palette.info, _$p));
-        return _el$43;
+        var _el$39 = _$createElement("text");
+        _$setProp(_el$39, "onMouseDown", () => openWebConsole(props.task.board_id, props.task.task_id));
+        _$setProp(_el$39, "selectable", false);
+        _$insert(_el$39, () => ` [${GLYPH.web}]`);
+        _$effect((_$p) => _$setProp(_el$39, "fg", palette.info, _$p));
+        return _el$39;
       }
     }), null);
-    _$insertNode(_el$44, _el$45);
-    _$setProp(_el$44, "flexDirection", "row");
-    _$insert(_el$45, () => `T+${elapsed()} `);
-    _$insert(_el$44, _$createComponent(Show, {
+    _$insertNode(_el$40, _el$41);
+    _$setProp(_el$40, "flexDirection", "row");
+    _$insert(_el$41, () => `T+${elapsed()} `);
+    _$insert(_el$40, _$createComponent(Show, {
       get when() {
         return ttlRemaining();
       },
       children: (ttl) => (() => {
-        var _el$49 = _$createElement("text");
-        _$insert(_el$49, () => `\u2502 ${GLYPH.warn} TTL: ${ttl()}${props.task.lease_count ? ` (${props.task.lease_count} lk)` : ""}`);
-        _$effect((_$p) => _$setProp(_el$49, "fg", ttl() === "expired" ? palette.error : palette.sky, _$p));
-        return _el$49;
+        var _el$45 = _$createElement("text");
+        _$insert(_el$45, () => `\u2502 ${GLYPH.warn} TTL: ${ttl()}${props.task.lease_count ? ` (${props.task.lease_count} lk)` : ""}`);
+        _$effect((_$p) => _$setProp(_el$45, "fg", ttl() === "expired" ? palette.error : palette.sky, _$p));
+        return _el$45;
       })()
     }), null);
-    _$insert(_el$39, _$createComponent(Show, {
+    _$insert(_el$35, _$createComponent(Show, {
       get when() {
         return !props.densityCompact;
       },
       get children() {
         return [(() => {
-          var _el$46 = _$createElement("box");
-          _$setProp(_el$46, "flexDirection", "row");
-          _$insert(_el$46, _$createComponent(Show, {
+          var _el$42 = _$createElement("box");
+          _$setProp(_el$42, "flexDirection", "row");
+          _$insert(_el$42, _$createComponent(Show, {
             get when() {
               return props.activeDelegation;
             },
             get fallback() {
               return (() => {
-                var _el$50 = _$createElement("text");
-                _$insert(_el$50, () => clipped(`${GLYPH.row} Durable task${props.task.owner ? ` (${props.task.owner})` : ""}`, props.textLimit));
-                _$effect((_$p) => _$setProp(_el$50, "fg", palette.accent, _$p));
-                return _el$50;
+                var _el$46 = _$createElement("text");
+                _$insert(_el$46, () => clipped(`${GLYPH.row} Durable task${props.task.owner ? ` (${props.task.owner})` : ""}`, props.textLimit));
+                _$effect((_$p) => _$setProp(_el$46, "fg", palette.accent, _$p));
+                return _el$46;
               })();
             },
             children: (del) => (() => {
-              var _el$51 = _$createElement("text");
-              _$insert(_el$51, () => `${GLYPH.working} AGY ${del().transport || "direct"}${del().pane_id ? ` \xB7 ${del().pane_id}` : ""}${del().attempt ? ` \xB7 int #${del().attempt}` : ""}`);
-              _$effect((_$p) => _$setProp(_el$51, "fg", palette.info, _$p));
-              return _el$51;
+              var _el$47 = _$createElement("text");
+              _$insert(_el$47, () => `${GLYPH.working} ${del().transport || "direct"}${del().pane_id ? ` \xB7 ${del().pane_id}` : ""}${del().attempt ? ` \xB7 int #${del().attempt}` : ""}`);
+              _$effect((_$p) => _$setProp(_el$47, "fg", palette.info, _$p));
+              return _el$47;
             })()
           }));
-          return _el$46;
+          return _el$42;
         })(), (() => {
-          var _el$47 = _$createElement("box"), _el$48 = _$createElement("text");
-          _$insertNode(_el$47, _el$48);
-          _$setProp(_el$47, "flexDirection", "row");
-          _$setProp(_el$47, "marginTop", 0);
-          _$setProp(_el$47, "onMouseDown", () => openWebConsole(props.task.board_id, props.task.task_id));
-          _$setProp(_el$48, "selectable", false);
-          _$insert(_el$48, () => `  [ ${GLYPH.web} View in Web ]`);
-          _$effect((_$p) => _$setProp(_el$48, "fg", palette.info, _$p));
-          return _el$47;
+          var _el$43 = _$createElement("box"), _el$44 = _$createElement("text");
+          _$insertNode(_el$43, _el$44);
+          _$setProp(_el$43, "flexDirection", "row");
+          _$setProp(_el$43, "marginTop", 0);
+          _$setProp(_el$43, "onMouseDown", () => openWebConsole(props.task.board_id, props.task.task_id));
+          _$setProp(_el$44, "selectable", false);
+          _$insert(_el$44, () => `[${GLYPH.web} View in Web]`);
+          _$effect((_$p) => _$setProp(_el$44, "fg", palette.info, _$p));
+          return _el$43;
         })()];
       }
     }), null);
     _$effect((_p$) => {
-      var _v$26 = palette.warning, _v$27 = clipped(`${props.spinner()} TASK IN PROGRESS`, props.textLimit), _v$28 = palette.warning, _v$29 = palette.panel, _v$30 = palette.sky, _v$31 = palette.text, _v$32 = palette.warning;
-      _v$26 !== _p$.e && (_p$.e = _$setProp(_el$39, "borderColor", _v$26, _p$.e));
-      _v$27 !== _p$.t && (_p$.t = _$setProp(_el$39, "title", _v$27, _p$.t));
-      _v$28 !== _p$.a && (_p$.a = _$setProp(_el$39, "titleColor", _v$28, _p$.a));
-      _v$29 !== _p$.o && (_p$.o = _$setProp(_el$39, "backgroundColor", _v$29, _p$.o));
-      _v$30 !== _p$.i && (_p$.i = _$setProp(_el$41, "fg", _v$30, _p$.i));
-      _v$31 !== _p$.n && (_p$.n = _$setProp(_el$42, "fg", _v$31, _p$.n));
-      _v$32 !== _p$.s && (_p$.s = _$setProp(_el$45, "fg", _v$32, _p$.s));
+      var _v$21 = props.activeDelegation ? palette.warning : palette.borderSubtle, _v$22 = clipped(`${props.spinner()} TASK IN PROGRESS`, props.textLimit), _v$23 = palette.warning, _v$24 = palette.panel, _v$25 = palette.sky, _v$26 = palette.text, _v$27 = palette.warning;
+      _v$21 !== _p$.e && (_p$.e = _$setProp(_el$35, "borderColor", _v$21, _p$.e));
+      _v$22 !== _p$.t && (_p$.t = _$setProp(_el$35, "title", _v$22, _p$.t));
+      _v$23 !== _p$.a && (_p$.a = _$setProp(_el$35, "titleColor", _v$23, _p$.a));
+      _v$24 !== _p$.o && (_p$.o = _$setProp(_el$35, "backgroundColor", _v$24, _p$.o));
+      _v$25 !== _p$.i && (_p$.i = _$setProp(_el$37, "fg", _v$25, _p$.i));
+      _v$26 !== _p$.n && (_p$.n = _$setProp(_el$38, "fg", _v$26, _p$.n));
+      _v$27 !== _p$.s && (_p$.s = _$setProp(_el$41, "fg", _v$27, _p$.s));
       return _p$;
     }, {
       e: void 0,
@@ -956,7 +1117,7 @@ function ActiveTaskHero(props) {
       n: void 0,
       s: void 0
     });
-    return _el$39;
+    return _el$35;
   })();
 }
 function TaskRows(props) {
@@ -966,12 +1127,10 @@ function TaskRows(props) {
       return props.tasks.length > 0;
     },
     get fallback() {
-      return (() => {
-        var _el$52 = _$createElement("text");
-        _$insertNode(_el$52, _$createTextNode(` \u25CB No queued tasks`));
-        _$effect((_$p) => _$setProp(_el$52, "fg", palette.textMuted, _$p));
-        return _el$52;
-      })();
+      return _$createComponent(EmptyState, {
+        palette,
+        label: "No queued tasks"
+      });
     },
     get children() {
       return _$createComponent(For, {
@@ -982,32 +1141,34 @@ function TaskRows(props) {
           const chip = taskStatusChip(task.status, palette);
           const isProg = task.status === "in_progress";
           return (() => {
-            var _el$54 = _$createElement("box"), _el$55 = _$createElement("box"), _el$56 = _$createElement("text"), _el$57 = _$createElement("text"), _el$58 = _$createElement("text"), _el$59 = _$createElement("text"), _el$60 = _$createElement("box"), _el$61 = _$createElement("text");
+            var _el$48 = _$createElement("box"), _el$49 = _$createElement("box"), _el$50 = _$createElement("text"), _el$51 = _$createElement("text"), _el$52 = _$createElement("text"), _el$53 = _$createElement("text"), _el$54 = _$createElement("box"), _el$55 = _$createElement("text");
+            _$insertNode(_el$48, _el$49);
+            _$insertNode(_el$48, _el$54);
+            _$setProp(_el$48, "flexDirection", "column");
+            _$setProp(_el$48, "marginTop", 0);
+            _$insertNode(_el$49, _el$50);
+            _$insertNode(_el$49, _el$51);
+            _$insertNode(_el$49, _el$52);
+            _$insertNode(_el$49, _el$53);
+            _$setProp(_el$49, "flexDirection", "row");
+            _$setProp(_el$49, "paddingLeft", 2);
+            _$insert(_el$50, () => `${isProg ? props.spinner() : chip.icon} `);
+            _$insert(_el$51, () => `[${chip.tag}] `);
+            _$insert(_el$52, () => clipped(task.task_id, Math.max(8, props.textLimit - 14)));
+            _$setProp(_el$53, "onMouseDown", () => openWebConsole(task.board_id, task.task_id));
+            _$setProp(_el$53, "selectable", false);
+            _$insert(_el$53, () => ` [${GLYPH.web}]`);
             _$insertNode(_el$54, _el$55);
-            _$insertNode(_el$54, _el$60);
-            _$setProp(_el$54, "flexDirection", "column");
-            _$setProp(_el$54, "marginTop", 0);
-            _$insertNode(_el$55, _el$56);
-            _$insertNode(_el$55, _el$57);
-            _$insertNode(_el$55, _el$58);
-            _$insertNode(_el$55, _el$59);
-            _$setProp(_el$55, "flexDirection", "row");
-            _$insert(_el$56, () => `  ${isProg ? props.spinner() : chip.icon} `);
-            _$insert(_el$57, () => `[${chip.tag}] `);
-            _$insert(_el$58, () => clipped(task.task_id, Math.max(8, props.textLimit - 14)));
-            _$setProp(_el$59, "onMouseDown", () => openWebConsole(task.board_id, task.task_id));
-            _$setProp(_el$59, "selectable", false);
-            _$insert(_el$59, () => ` [${GLYPH.web}]`);
-            _$insertNode(_el$60, _el$61);
-            _$setProp(_el$60, "flexDirection", "row");
-            _$insert(_el$61, () => `     ${clipped(task.title, Math.max(8, props.textLimit - 5))}${task.owner ? ` \xB7 ${clipped(task.owner, 6)}` : ""}${task.lease_count ? ` \xB7 ${GLYPH.warn} ${task.lease_count}lk` : ""}`);
+            _$setProp(_el$54, "flexDirection", "row");
+            _$setProp(_el$54, "paddingLeft", 5);
+            _$insert(_el$55, () => `${clipped(task.title, Math.max(8, props.textLimit - 5))}${task.owner ? ` \xB7 ${clipped(task.owner, 6)}` : ""}${task.lease_count ? ` \xB7 ${GLYPH.warn} ${task.lease_count}lk` : ""}`);
             _$effect((_p$) => {
-              var _v$33 = chip.color, _v$34 = chip.color, _v$35 = isProg ? palette.text : palette.textSoft, _v$36 = palette.info, _v$37 = palette.textMuted;
-              _v$33 !== _p$.e && (_p$.e = _$setProp(_el$56, "fg", _v$33, _p$.e));
-              _v$34 !== _p$.t && (_p$.t = _$setProp(_el$57, "fg", _v$34, _p$.t));
-              _v$35 !== _p$.a && (_p$.a = _$setProp(_el$58, "fg", _v$35, _p$.a));
-              _v$36 !== _p$.o && (_p$.o = _$setProp(_el$59, "fg", _v$36, _p$.o));
-              _v$37 !== _p$.i && (_p$.i = _$setProp(_el$61, "fg", _v$37, _p$.i));
+              var _v$28 = chip.color, _v$29 = chip.color, _v$30 = isProg ? palette.text : palette.textSoft, _v$31 = palette.info, _v$32 = palette.textMuted;
+              _v$28 !== _p$.e && (_p$.e = _$setProp(_el$50, "fg", _v$28, _p$.e));
+              _v$29 !== _p$.t && (_p$.t = _$setProp(_el$51, "fg", _v$29, _p$.t));
+              _v$30 !== _p$.a && (_p$.a = _$setProp(_el$52, "fg", _v$30, _p$.a));
+              _v$31 !== _p$.o && (_p$.o = _$setProp(_el$53, "fg", _v$31, _p$.o));
+              _v$32 !== _p$.i && (_p$.i = _$setProp(_el$55, "fg", _v$32, _p$.i));
               return _p$;
             }, {
               e: void 0,
@@ -1016,7 +1177,7 @@ function TaskRows(props) {
               o: void 0,
               i: void 0
             });
-            return _el$54;
+            return _el$48;
           })();
         }
       });
@@ -1030,12 +1191,10 @@ function DelegationRows(props) {
       return props.jobs.length > 0;
     },
     get fallback() {
-      return (() => {
-        var _el$62 = _$createElement("text");
-        _$insertNode(_el$62, _$createTextNode(` \u25CB No active workers`));
-        _$effect((_$p) => _$setProp(_el$62, "fg", palette.textMuted, _$p));
-        return _el$62;
-      })();
+      return _$createComponent(EmptyState, {
+        palette,
+        label: "No active workers"
+      });
     },
     get children() {
       return _$createComponent(For, {
@@ -1052,37 +1211,39 @@ function DelegationRows(props) {
           });
           const statusCol = isRunning ? palette.warning : job.status === "succeeded" ? palette.success : palette.error;
           return (() => {
-            var _el$64 = _$createElement("box"), _el$65 = _$createElement("box"), _el$66 = _$createElement("text"), _el$67 = _$createElement("text"), _el$68 = _$createElement("text"), _el$69 = _$createElement("text"), _el$70 = _$createElement("box"), _el$71 = _$createElement("text");
-            _$insertNode(_el$64, _el$65);
-            _$insertNode(_el$64, _el$70);
-            _$setProp(_el$64, "flexDirection", "column");
-            _$setProp(_el$64, "marginTop", 0);
-            _$insertNode(_el$65, _el$66);
-            _$insertNode(_el$65, _el$67);
-            _$insertNode(_el$65, _el$68);
-            _$insertNode(_el$65, _el$69);
-            _$setProp(_el$65, "flexDirection", "row");
-            _$setProp(_el$66, "fg", statusCol);
-            _$insert(_el$66, () => `  ${isRunning ? props.spinner() : job.status === "succeeded" ? "\u2713" : "\u2715"} `);
-            _$insert(_el$67, () => `[${chip.tag}] `);
-            _$insert(_el$68, () => clipped(job.role || "worker", Math.max(6, props.textLimit - 12)));
-            _$setProp(_el$69, "fg", statusCol);
-            _$insert(_el$69, elapsed);
-            _$insertNode(_el$70, _el$71);
-            _$setProp(_el$70, "flexDirection", "row");
-            _$insert(_el$71, () => clipped(`     ${shortID(job.job_id)} \xB7 ${job.transport || "direct"}${job.pane_id ? ` \xB7 ${job.pane_id}` : ""}${job.attempt ? ` \xB7 int #${job.attempt}` : ""}`, props.textLimit));
+            var _el$56 = _$createElement("box"), _el$57 = _$createElement("box"), _el$58 = _$createElement("text"), _el$59 = _$createElement("text"), _el$60 = _$createElement("text"), _el$61 = _$createElement("text"), _el$62 = _$createElement("box"), _el$63 = _$createElement("text");
+            _$insertNode(_el$56, _el$57);
+            _$insertNode(_el$56, _el$62);
+            _$setProp(_el$56, "flexDirection", "column");
+            _$setProp(_el$56, "marginTop", 0);
+            _$insertNode(_el$57, _el$58);
+            _$insertNode(_el$57, _el$59);
+            _$insertNode(_el$57, _el$60);
+            _$insertNode(_el$57, _el$61);
+            _$setProp(_el$57, "flexDirection", "row");
+            _$setProp(_el$57, "paddingLeft", 2);
+            _$setProp(_el$58, "fg", statusCol);
+            _$insert(_el$58, () => `${isRunning ? props.spinner() : job.status === "succeeded" ? GLYPH.done : GLYPH.fail} `);
+            _$insert(_el$59, () => `[${chip.tag}] `);
+            _$insert(_el$60, () => clipped(job.role || "worker", Math.max(6, props.textLimit - 12)));
+            _$setProp(_el$61, "fg", statusCol);
+            _$insert(_el$61, elapsed);
+            _$insertNode(_el$62, _el$63);
+            _$setProp(_el$62, "flexDirection", "row");
+            _$setProp(_el$62, "paddingLeft", 5);
+            _$insert(_el$63, () => clipped(`${shortID(job.job_id)} \xB7 ${job.transport || "direct"}${job.pane_id ? ` \xB7 ${job.pane_id}` : ""}${job.attempt ? ` \xB7 int #${job.attempt}` : ""}`, props.textLimit));
             _$effect((_p$) => {
-              var _v$38 = chip.color, _v$39 = isRunning ? palette.text : palette.textSoft, _v$40 = palette.textMuted;
-              _v$38 !== _p$.e && (_p$.e = _$setProp(_el$67, "fg", _v$38, _p$.e));
-              _v$39 !== _p$.t && (_p$.t = _$setProp(_el$68, "fg", _v$39, _p$.t));
-              _v$40 !== _p$.a && (_p$.a = _$setProp(_el$71, "fg", _v$40, _p$.a));
+              var _v$33 = chip.color, _v$34 = isRunning ? palette.text : palette.textSoft, _v$35 = palette.textMuted;
+              _v$33 !== _p$.e && (_p$.e = _$setProp(_el$59, "fg", _v$33, _p$.e));
+              _v$34 !== _p$.t && (_p$.t = _$setProp(_el$60, "fg", _v$34, _p$.t));
+              _v$35 !== _p$.a && (_p$.a = _$setProp(_el$63, "fg", _v$35, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$64;
+            return _el$56;
           })();
         }
       });
@@ -1096,12 +1257,10 @@ function AttentionRows(props) {
       return props.items.length > 0;
     },
     get fallback() {
-      return (() => {
-        var _el$72 = _$createElement("text");
-        _$insertNode(_el$72, _$createTextNode(` \u2713 No pending alerts`));
-        _$effect((_$p) => _$setProp(_el$72, "fg", palette.success, _$p));
-        return _el$72;
-      })();
+      return _$createComponent(EmptyState, {
+        palette,
+        label: "No pending alerts"
+      });
     },
     get children() {
       return _$createComponent(For, {
@@ -1109,34 +1268,38 @@ function AttentionRows(props) {
           return props.items.slice(0, MAX_VISIBLE_ROWS);
         },
         children: (item) => (() => {
-          var _el$74 = _$createElement("box"), _el$75 = _$createElement("box"), _el$76 = _$createElement("text"), _el$78 = _$createElement("text"), _el$79 = _$createElement("text");
-          _$insertNode(_el$74, _el$75);
-          _$insertNode(_el$74, _el$79);
-          _$setProp(_el$74, "flexDirection", "column");
-          _$insertNode(_el$75, _el$76);
-          _$insertNode(_el$75, _el$78);
-          _$setProp(_el$75, "flexDirection", "row");
-          _$insertNode(_el$76, _$createTextNode(`  \u2715 `));
-          _$insert(_el$78, () => clipped(item.title, Math.max(8, props.textLimit - 4)));
-          _$insert(_el$79, () => `     ${clipped(item.detail, Math.max(8, props.textLimit - 5))}`);
+          var _el$64 = _$createElement("box"), _el$65 = _$createElement("box"), _el$66 = _$createElement("text"), _el$67 = _$createElement("text"), _el$68 = _$createElement("box"), _el$69 = _$createElement("text");
+          _$insertNode(_el$64, _el$65);
+          _$insertNode(_el$64, _el$68);
+          _$setProp(_el$64, "flexDirection", "column");
+          _$insertNode(_el$65, _el$66);
+          _$insertNode(_el$65, _el$67);
+          _$setProp(_el$65, "flexDirection", "row");
+          _$setProp(_el$65, "paddingLeft", 2);
+          _$insert(_el$66, () => `${GLYPH.fail} `);
+          _$insert(_el$67, () => clipped(item.title, Math.max(8, props.textLimit - 4)));
+          _$insertNode(_el$68, _el$69);
+          _$setProp(_el$68, "flexDirection", "row");
+          _$setProp(_el$68, "paddingLeft", 5);
+          _$insert(_el$69, () => clipped(item.detail, Math.max(8, props.textLimit - 5)));
           _$effect((_p$) => {
-            var _v$41 = palette.error, _v$42 = palette.text, _v$43 = palette.textMuted;
-            _v$41 !== _p$.e && (_p$.e = _$setProp(_el$76, "fg", _v$41, _p$.e));
-            _v$42 !== _p$.t && (_p$.t = _$setProp(_el$78, "fg", _v$42, _p$.t));
-            _v$43 !== _p$.a && (_p$.a = _$setProp(_el$79, "fg", _v$43, _p$.a));
+            var _v$36 = palette.error, _v$37 = palette.text, _v$38 = palette.textMuted;
+            _v$36 !== _p$.e && (_p$.e = _$setProp(_el$66, "fg", _v$36, _p$.e));
+            _v$37 !== _p$.t && (_p$.t = _$setProp(_el$67, "fg", _v$37, _p$.t));
+            _v$38 !== _p$.a && (_p$.a = _$setProp(_el$69, "fg", _v$38, _p$.a));
             return _p$;
           }, {
             e: void 0,
             t: void 0,
             a: void 0
           });
-          return _el$74;
+          return _el$64;
         })()
       });
     }
   });
 }
-function OperationalBottomDashboard(props) {
+function OperationalStatusBlock(props) {
   const palette = resolvePalette(props.theme);
   const succeededJobs = createMemo(() => props.jobs.filter((j) => j.status === "succeeded").length);
   const failedJobs = createMemo(() => props.jobs.filter((j) => ["failed", "timed_out", "lost", "cancelled"].includes(j.status)).length);
@@ -1145,6 +1308,20 @@ function OperationalBottomDashboard(props) {
   const totalTasks = createMemo(() => props.snapshot.summary.total_tasks || props.snapshot.tasks.length);
   const totalLeases = createMemo(() => props.snapshot.tasks.reduce((sum, t) => sum + (t.lease_count || 0), 0));
   const blockedTasks = createMemo(() => props.snapshot.summary.blocked || 0);
+  const metrics = createMemo(() => [{
+    label: "act",
+    value: props.activeExecutions
+  }, {
+    label: "rev",
+    value: props.inReview
+  }, {
+    label: "done",
+    value: doneTasks()
+  }, {
+    label: "alrt",
+    value: props.attentionCount
+  }]);
+  const hasSignal = createMemo(() => props.activeExecutions > 0 || props.inReview > 0 || props.attentionCount > 0 || doneTasks() > 0 || totalTasks() > 0 || totalLeases() > 0 || blockedTasks() > 0 || succeededJobs() > 0 || failedJobs() > 0 || activeJobs() > 0);
   const etaLabel = createMemo(() => {
     const eta = props.eta();
     const suffix = eta.backlog > 0 ? ` \xB7 ${eta.backlog} backlog` : "";
@@ -1186,262 +1363,209 @@ function OperationalBottomDashboard(props) {
     if (rate >= 50) return palette.warning;
     return palette.error;
   });
-  const hasMetrics = createMemo(() => succeededJobs() > 0 || failedJobs() > 0 || activeJobs() > 0 || totalLeases() > 0 || blockedTasks() > 0);
-  return (() => {
-    var _el$80 = _$createElement("box"), _el$81 = _$createElement("box"), _el$83 = _$createElement("text"), _el$91 = _$createElement("box"), _el$92 = _$createElement("text"), _el$97 = _$createElement("box"), _el$98 = _$createElement("text"), _el$101 = _$createElement("box");
-    _$insertNode(_el$80, _el$81);
-    _$insertNode(_el$80, _el$91);
-    _$insertNode(_el$80, _el$97);
-    _$insertNode(_el$80, _el$101);
-    _$setProp(_el$80, "flexDirection", "column");
-    _$setProp(_el$80, "marginTop", 1);
-    _$setProp(_el$80, "paddingLeft", 1);
-    _$setProp(_el$80, "paddingRight", 1);
-    _$setProp(_el$80, "borderStyle", "rounded");
-    _$setProp(_el$80, "titleAlignment", "left");
-    _$insertNode(_el$81, _el$83);
-    _$setProp(_el$81, "flexDirection", "row");
-    _$insert(_el$81, _$createComponent(Show, {
-      get when() {
-        return activeJobs() > 0;
-      },
-      get fallback() {
-        return (() => {
-          var _el$103 = _$createElement("text");
-          _$insert(_el$103, () => `  ${props.pulse()} SYNAPSE: SYNCED`);
-          _$effect((_$p) => _$setProp(_el$103, "fg", palette.success, _$p));
-          return _el$103;
-        })();
-      },
-      get children() {
-        var _el$82 = _$createElement("text");
-        _$insert(_el$82, () => `  ${props.spinner()} SYNAPSE: ENGINE ACTIVE`);
-        _$effect((_$p) => _$setProp(_el$82, "fg", palette.warning, _$p));
-        return _el$82;
-      }
-    }), _el$83);
-    _$setProp(_el$83, "onMouseDown", () => openWebConsole(props.snapshot.tasks[0]?.board_id));
-    _$setProp(_el$83, "selectable", false);
-    _$insert(_el$83, () => `  [${GLYPH.web} Web]`);
-    _$insert(_el$80, _$createComponent(Show, {
-      get when() {
-        return hasMetrics();
-      },
-      get fallback() {
-        return (() => {
-          var _el$104 = _$createElement("box"), _el$105 = _$createElement("text");
-          _$insertNode(_el$104, _el$105);
-          _$setProp(_el$104, "flexDirection", "row");
-          _$insertNode(_el$105, _$createTextNode(` Standby \xB7 0 runs`));
-          _$effect((_$p) => _$setProp(_el$105, "fg", palette.textMuted, _$p));
-          return _el$104;
-        })();
-      },
-      get children() {
-        return _$createComponent(Show, {
-          get when() {
-            return !props.layout.compact;
-          },
-          get fallback() {
-            return (() => {
-              var _el$107 = _$createElement("box"), _el$108 = _$createElement("text"), _el$109 = _$createElement("text"), _el$110 = _$createElement("text"), _el$111 = _$createElement("text");
-              _$insertNode(_el$107, _el$108);
-              _$insertNode(_el$107, _el$109);
-              _$insertNode(_el$107, _el$110);
-              _$insertNode(_el$107, _el$111);
-              _$setProp(_el$107, "flexDirection", "row");
-              _$insert(_el$108, () => `\u2713${succeededJobs()} `);
-              _$insert(_el$109, () => `\u2715${failedJobs()} `);
-              _$insert(_el$110, () => `\u25CF${activeJobs()} `);
-              _$insert(_el$111, () => `${GLYPH.warn}${totalLeases()}`);
-              _$insert(_el$107, _$createComponent(Show, {
-                get when() {
-                  return blockedTasks() > 0;
-                },
-                get children() {
-                  var _el$112 = _$createElement("text");
-                  _$insert(_el$112, () => ` \u2715${blockedTasks()}b`);
-                  _$effect((_$p) => _$setProp(_el$112, "fg", palette.error, _$p));
-                  return _el$112;
-                }
-              }), null);
-              _$effect((_p$) => {
-                var _v$55 = succeededJobs() > 0 ? palette.success : palette.textMuted, _v$56 = failedJobs() > 0 ? palette.error : palette.textMuted, _v$57 = activeJobs() > 0 ? palette.warning : palette.textMuted, _v$58 = totalLeases() > 0 ? palette.sky : palette.textMuted;
-                _v$55 !== _p$.e && (_p$.e = _$setProp(_el$108, "fg", _v$55, _p$.e));
-                _v$56 !== _p$.t && (_p$.t = _$setProp(_el$109, "fg", _v$56, _p$.t));
-                _v$57 !== _p$.a && (_p$.a = _$setProp(_el$110, "fg", _v$57, _p$.a));
-                _v$58 !== _p$.o && (_p$.o = _$setProp(_el$111, "fg", _v$58, _p$.o));
-                return _p$;
-              }, {
-                e: void 0,
-                t: void 0,
-                a: void 0,
-                o: void 0
-              });
-              return _el$107;
-            })();
-          },
-          get children() {
-            return [(() => {
-              var _el$84 = _$createElement("box"), _el$85 = _$createElement("text"), _el$86 = _$createElement("text");
-              _$insertNode(_el$84, _el$85);
-              _$insertNode(_el$84, _el$86);
-              _$setProp(_el$84, "flexDirection", "row");
-              _$insert(_el$85, () => `[ \u2713 ${succeededJobs()} OK ] `);
-              _$insert(_el$86, () => `[ \u2715 ${failedJobs()} FAIL ]`);
-              _$effect((_p$) => {
-                var _v$44 = palette.success, _v$45 = failedJobs() > 0 ? palette.error : palette.textMuted;
-                _v$44 !== _p$.e && (_p$.e = _$setProp(_el$85, "fg", _v$44, _p$.e));
-                _v$45 !== _p$.t && (_p$.t = _$setProp(_el$86, "fg", _v$45, _p$.t));
-                return _p$;
-              }, {
-                e: void 0,
-                t: void 0
-              });
-              return _el$84;
-            })(), (() => {
-              var _el$87 = _$createElement("box"), _el$88 = _$createElement("text"), _el$89 = _$createElement("text");
-              _$insertNode(_el$87, _el$88);
-              _$insertNode(_el$87, _el$89);
-              _$setProp(_el$87, "flexDirection", "row");
-              _$insert(_el$88, () => `[ ${activeJobs() > 0 ? props.spinner() : "\u25CF"} ${activeJobs()} ACT ] `);
-              _$insert(_el$89, () => `[ ${GLYPH.warn} ${totalLeases()} LOCKS ] `);
-              _$insert(_el$87, _$createComponent(Show, {
-                get when() {
-                  return blockedTasks() > 0;
-                },
-                get children() {
-                  var _el$90 = _$createElement("text");
-                  _$insert(_el$90, () => `[ \u2715 ${blockedTasks()} BLCK ]`);
-                  _$effect((_$p) => _$setProp(_el$90, "fg", palette.error, _$p));
-                  return _el$90;
-                }
-              }), null);
-              _$effect((_p$) => {
-                var _v$46 = activeJobs() > 0 ? palette.warning : palette.textMuted, _v$47 = totalLeases() > 0 ? palette.sky : palette.textMuted;
-                _v$46 !== _p$.e && (_p$.e = _$setProp(_el$88, "fg", _v$46, _p$.e));
-                _v$47 !== _p$.t && (_p$.t = _$setProp(_el$89, "fg", _v$47, _p$.t));
-                return _p$;
-              }, {
-                e: void 0,
-                t: void 0
-              });
-              return _el$87;
-            })()];
-          }
-        });
-      }
-    }), _el$91);
-    _$insertNode(_el$91, _el$92);
-    _$setProp(_el$91, "flexDirection", "row");
-    _$insertNode(_el$92, _$createTextNode(`Health: `));
-    _$insert(_el$91, _$createComponent(Show, {
+  const freshnessLabel = createMemo(() => {
+    if (props.stale) {
+      return props.layout.compact ? `${GLYPH.warn} stale` : `${GLYPH.warn} stale (+${syncAgeSec()}s)`;
+    }
+    return props.layout.compact ? `${GLYPH.working} live` : `${GLYPH.working} live \xB7 ${syncAgeSec()}s ago`;
+  });
+  const synapseValue = createMemo(() => activeJobs() > 0 ? `${props.spinner()} active \xB7 ${activeJobs()} runs` : `${props.pulse()} synced`);
+  const authorityValue = createMemo(() => totalLeases() > 0 ? `sqlite \xB7 ${totalLeases()} lk` : "sqlite");
+  const healthCell = () => (() => {
+    var _el$70 = _$createElement("box"), _el$71 = _$createElement("text");
+    _$insertNode(_el$70, _el$71);
+    _$setProp(_el$70, "flexDirection", "row");
+    _$setProp(_el$70, "gap", 1);
+    _$insertNode(_el$71, _$createTextNode(`health`));
+    _$insert(_el$70, _$createComponent(Show, {
       get when() {
         return successRate() !== void 0;
       },
       get fallback() {
         return (() => {
-          var _el$113 = _$createElement("text");
-          _$insertNode(_el$113, _$createTextNode(`\u25CB standby`));
-          _$effect((_$p) => _$setProp(_el$113, "fg", palette.textMuted, _$p));
-          return _el$113;
+          var _el$76 = _$createElement("text");
+          _$insert(_el$76, () => `${GLYPH.idle} standby`);
+          _$effect((_$p) => _$setProp(_el$76, "fg", palette.textMuted, _$p));
+          return _el$76;
         })();
       },
       get children() {
         return [(() => {
-          var _el$94 = _$createElement("text");
-          _$insert(_el$94, () => healthBars().filled);
-          _$effect((_$p) => _$setProp(_el$94, "fg", healthColor(), _$p));
-          return _el$94;
+          var _el$73 = _$createElement("text");
+          _$insert(_el$73, () => healthBars().filled);
+          _$effect((_$p) => _$setProp(_el$73, "fg", healthColor(), _$p));
+          return _el$73;
         })(), (() => {
-          var _el$95 = _$createElement("text");
-          _$insert(_el$95, () => healthBars().empty);
-          _$effect((_$p) => _$setProp(_el$95, "fg", palette.border, _$p));
-          return _el$95;
+          var _el$74 = _$createElement("text");
+          _$insert(_el$74, () => healthBars().empty);
+          _$effect((_$p) => _$setProp(_el$74, "fg", palette.borderSubtle, _$p));
+          return _el$74;
         })(), (() => {
-          var _el$96 = _$createElement("text");
-          _$insert(_el$96, () => ` ${successRate()}%`);
-          _$effect((_$p) => _$setProp(_el$96, "fg", healthColor(), _$p));
-          return _el$96;
+          var _el$75 = _$createElement("text");
+          _$insert(_el$75, () => `${successRate()}%`);
+          _$effect((_$p) => _$setProp(_el$75, "fg", healthColor(), _$p));
+          return _el$75;
         })()];
       }
     }), null);
-    _$insertNode(_el$97, _el$98);
-    _$setProp(_el$97, "flexDirection", "row");
-    _$insert(_el$98, (() => {
-      var _c$3 = _$memo(() => !!props.layout.compact);
-      return () => _c$3() ? "Authority: SQLite" : `${GLYPH.row} DAG: ${doneTasks()}/${totalTasks()} \xB7 Authority: SQLite`;
-    })());
-    _$insert(_el$80, _$createComponent(Show, {
+    _$effect((_$p) => _$setProp(_el$71, "fg", palette.textMuted, _$p));
+    return _el$70;
+  })();
+  const signalCells = () => [_$createComponent(StatusCell, {
+    palette,
+    label: "synapse",
+    value: synapseValue,
+    color: () => activeJobs() > 0 ? palette.warning : palette.text
+  }), _$memo(healthCell), _$createComponent(StatusCell, {
+    palette,
+    label: "authority",
+    value: authorityValue
+  }), _$createComponent(StatusCell, {
+    palette,
+    label: "web",
+    value: () => "loopback",
+    color: () => palette.info
+  })];
+  return (() => {
+    var _el$77 = _$createElement("box");
+    _$setProp(_el$77, "flexDirection", "column");
+    _$setProp(_el$77, "marginTop", 1);
+    _$setProp(_el$77, "paddingLeft", 1);
+    _$setProp(_el$77, "paddingRight", 1);
+    _$setProp(_el$77, "borderStyle", "rounded");
+    _$setProp(_el$77, "titleAlignment", "left");
+    _$insert(_el$77, _$createComponent(Show, {
       get when() {
-        return totalTasks() > 0;
-      },
-      get children() {
-        var _el$99 = _$createElement("box"), _el$100 = _$createElement("text");
-        _$insertNode(_el$99, _el$100);
-        _$setProp(_el$99, "flexDirection", "row");
-        _$insert(_el$100, etaLabel);
-        _$insert(_el$99, _$createComponent(Show, {
-          get when() {
-            return props.eta().sparkline;
-          },
-          children: (spark) => (() => {
-            var _el$115 = _$createElement("text");
-            _$insert(_el$115, () => ` ${spark()}`);
-            _$effect((_$p) => _$setProp(_el$115, "fg", palette.textMuted, _$p));
-            return _el$115;
-          })()
-        }), null);
-        _$effect((_$p) => _$setProp(_el$100, "fg", etaColor(), _$p));
-        return _el$99;
-      }
-    }), _el$101);
-    _$setProp(_el$101, "flexDirection", "row");
-    _$insert(_el$101, _$createComponent(Show, {
-      get when() {
-        return props.stale;
+        return hasSignal();
       },
       get fallback() {
         return (() => {
-          var _el$116 = _$createElement("text");
-          _$insert(_el$116, (() => {
-            var _c$5 = _$memo(() => !!props.layout.compact);
-            return () => _c$5() ? `${GLYPH.working} Live` : `${GLYPH.working} Live \xB7 Synced ${syncAgeSec()}s ago`;
-          })());
-          _$effect((_$p) => _$setProp(_el$116, "fg", palette.success, _$p));
-          return _el$116;
+          var _el$85 = _$createElement("text");
+          _$insert(_el$85, () => `${GLYPH.idle} standby \xB7 0 active \xB7 authority sqlite \xB7 ${props.stale ? "stale" : "live"}`);
+          _$effect((_$p) => _$setProp(_el$85, "fg", palette.textMuted, _$p));
+          return _el$85;
         })();
       },
       get children() {
-        var _el$102 = _$createElement("text");
-        _$insert(_el$102, (() => {
-          var _c$4 = _$memo(() => !!props.layout.compact);
-          return () => _c$4() ? `${GLYPH.warn} Stale` : `${GLYPH.warn} Snapshot stale (+${syncAgeSec()}s)`;
-        })());
-        _$effect((_$p) => _$setProp(_el$102, "fg", palette.warning, _$p));
-        return _el$102;
+        return [(() => {
+          var _el$78 = _$createElement("box");
+          _$setProp(_el$78, "flexDirection", "row");
+          _$setProp(_el$78, "gap", 2);
+          _$insert(_el$78, _$createComponent(For, {
+            get each() {
+              return metrics();
+            },
+            children: (metric) => (() => {
+              var _el$86 = _$createElement("box"), _el$87 = _$createElement("text"), _el$88 = _$createElement("text");
+              _$insertNode(_el$86, _el$87);
+              _$insertNode(_el$86, _el$88);
+              _$setProp(_el$86, "flexDirection", "row");
+              _$setProp(_el$86, "gap", 1);
+              _$insert(_el$87, () => metric.label);
+              _$insert(_el$88, () => padMetric(metric.value));
+              _$effect((_p$) => {
+                var _v$43 = palette.textMuted, _v$44 = palette.accent;
+                _v$43 !== _p$.e && (_p$.e = _$setProp(_el$87, "fg", _v$43, _p$.e));
+                _v$44 !== _p$.t && (_p$.t = _$setProp(_el$88, "fg", _v$44, _p$.t));
+                return _p$;
+              }, {
+                e: void 0,
+                t: void 0
+              });
+              return _el$86;
+            })()
+          }));
+          return _el$78;
+        })(), _$createComponent(Show, {
+          get when() {
+            return !props.layout.compact;
+          },
+          get fallback() {
+            return (() => {
+              var _el$89 = _$createElement("box");
+              _$setProp(_el$89, "flexDirection", "column");
+              _$insert(_el$89, signalCells);
+              return _el$89;
+            })();
+          },
+          get children() {
+            var _el$79 = _$createElement("box"), _el$80 = _$createElement("box"), _el$81 = _$createElement("box");
+            _$insertNode(_el$79, _el$80);
+            _$insertNode(_el$79, _el$81);
+            _$setProp(_el$79, "flexDirection", "row");
+            _$setProp(_el$79, "gap", 2);
+            _$setProp(_el$80, "flexDirection", "column");
+            _$setProp(_el$80, "flexGrow", 1);
+            _$insert(_el$80, _$createComponent(StatusCell, {
+              palette,
+              label: "synapse",
+              value: synapseValue,
+              color: () => activeJobs() > 0 ? palette.warning : palette.text
+            }), null);
+            _$insert(_el$80, healthCell, null);
+            _$setProp(_el$81, "flexDirection", "column");
+            _$setProp(_el$81, "flexGrow", 1);
+            _$insert(_el$81, _$createComponent(StatusCell, {
+              palette,
+              label: "authority",
+              value: authorityValue
+            }), null);
+            _$insert(_el$81, _$createComponent(StatusCell, {
+              palette,
+              label: "web",
+              value: () => "loopback",
+              color: () => palette.info
+            }), null);
+            return _el$79;
+          }
+        }), (() => {
+          var _el$82 = _$createElement("box"), _el$83 = _$createElement("text");
+          _$insertNode(_el$82, _el$83);
+          _$setProp(_el$82, "flexDirection", "row");
+          _$setProp(_el$82, "gap", 2);
+          _$insert(_el$83, freshnessLabel);
+          _$insert(_el$82, _$createComponent(Show, {
+            get when() {
+              return totalTasks() > 0;
+            },
+            get children() {
+              return [(() => {
+                var _el$84 = _$createElement("text");
+                _$insert(_el$84, etaLabel);
+                _$effect((_$p) => _$setProp(_el$84, "fg", etaColor(), _$p));
+                return _el$84;
+              })(), _$createComponent(Show, {
+                get when() {
+                  return props.eta().sparkline;
+                },
+                children: (spark) => (() => {
+                  var _el$90 = _$createElement("text");
+                  _$insert(_el$90, spark);
+                  _$effect((_$p) => _$setProp(_el$90, "fg", palette.textMuted, _$p));
+                  return _el$90;
+                })()
+              })];
+            }
+          }), null);
+          _$effect((_$p) => _$setProp(_el$83, "fg", props.stale ? palette.warning : palette.success, _$p));
+          return _el$82;
+        })()];
       }
     }));
     _$effect((_p$) => {
-      var _v$48 = failedJobs() > 0 ? palette.error : palette.primary, _v$49 = props.layout.compact ? `${GLYPH.brand} CONTROL` : `${GLYPH.brand} CONTROL MATRIX`, _v$50 = palette.accent, _v$51 = palette.panel, _v$52 = palette.info, _v$53 = palette.textMuted, _v$54 = palette.textMuted;
-      _v$48 !== _p$.e && (_p$.e = _$setProp(_el$80, "borderColor", _v$48, _p$.e));
-      _v$49 !== _p$.t && (_p$.t = _$setProp(_el$80, "title", _v$49, _p$.t));
-      _v$50 !== _p$.a && (_p$.a = _$setProp(_el$80, "titleColor", _v$50, _p$.a));
-      _v$51 !== _p$.o && (_p$.o = _$setProp(_el$80, "backgroundColor", _v$51, _p$.o));
-      _v$52 !== _p$.i && (_p$.i = _$setProp(_el$83, "fg", _v$52, _p$.i));
-      _v$53 !== _p$.n && (_p$.n = _$setProp(_el$92, "fg", _v$53, _p$.n));
-      _v$54 !== _p$.s && (_p$.s = _$setProp(_el$98, "fg", _v$54, _p$.s));
+      var _v$39 = failedJobs() > 0 ? palette.error : props.stale ? palette.borderSubtle : palette.borderActive, _v$40 = props.layout.compact ? `${GLYPH.brand} CONTROL` : `${GLYPH.brand} CONTROL MATRIX`, _v$41 = palette.accent, _v$42 = palette.element;
+      _v$39 !== _p$.e && (_p$.e = _$setProp(_el$77, "borderColor", _v$39, _p$.e));
+      _v$40 !== _p$.t && (_p$.t = _$setProp(_el$77, "title", _v$40, _p$.t));
+      _v$41 !== _p$.a && (_p$.a = _$setProp(_el$77, "titleColor", _v$41, _p$.a));
+      _v$42 !== _p$.o && (_p$.o = _$setProp(_el$77, "backgroundColor", _v$42, _p$.o));
       return _p$;
     }, {
       e: void 0,
       t: void 0,
       a: void 0,
-      o: void 0,
-      i: void 0,
-      n: void 0,
-      s: void 0
+      o: void 0
     });
-    return _el$80;
+    return _el$77;
   })();
 }
 function SidebarStatus(props) {
@@ -1453,6 +1577,15 @@ function SidebarStatus(props) {
   const stale = createMemo(() => {
     const generated = Date.parse(props.snapshot().generated_at);
     return Boolean(props.snapshotError()) || !Number.isFinite(generated) || props.now() - generated > SNAPSHOT_STALE_MS;
+  });
+  const freshness = createMemo(() => {
+    if (!props.scopeReady() || !props.snapshot().generated_at) return "standby";
+    return stale() ? "stale" : "live";
+  });
+  const snapshotFailureLabel = createMemo(() => {
+    const generated = Date.parse(props.snapshot().generated_at);
+    if (!Number.isFinite(generated)) return "Snapshot refresh failed";
+    return `Snapshot refresh failed \xB7 data from ${Math.round((props.now() - generated) / 1e3)}s ago`;
   });
   const activeTask = createMemo(() => props.snapshot().tasks.find((t) => t.status === "in_progress"));
   const activeDelegation = createMemo(() => props.jobs().find((j) => ["running", "starting", "accepted"].includes(j.status)));
@@ -1477,18 +1610,18 @@ function SidebarStatus(props) {
   const blockedTasks = createMemo(() => props.snapshot().summary.blocked || 0);
   const totalTasks = createMemo(() => props.snapshot().summary.total_tasks || props.snapshot().tasks.length);
   return (() => {
-    var _el$117 = _$createElement("box"), _el$124 = _$createElement("box"), _el$125 = _$createElement("text");
-    _$insertNode(_el$117, _el$124);
-    _$use((node) => setRootWidth(Math.max(0, node.width || 0)), _el$117);
-    _$setProp(_el$117, "flexDirection", "column");
-    _$setProp(_el$117, "onSizeChange", function() {
+    var _el$91 = _$createElement("box");
+    _$use((node) => setRootWidth(Math.max(0, node.width || 0)), _el$91);
+    _$setProp(_el$91, "flexDirection", "column");
+    _$setProp(_el$91, "onSizeChange", function() {
       setRootWidth(Math.max(0, this.width || 0));
     });
-    _$insert(_el$117, _$createComponent(CortexCockpitHeader, {
+    _$insert(_el$91, _$createComponent(CortexCockpitHeader, {
       isExecuting,
       get nativeActivity() {
         return props.nativeActivity;
       },
+      freshness,
       get projectRoot() {
         return props.snapshot().project_root;
       },
@@ -1507,79 +1640,87 @@ function SidebarStatus(props) {
       get spinner() {
         return props.spinner;
       },
-      get pulse() {
-        return props.pulse;
-      },
       get theme() {
         return props.theme;
       }
-    }), _el$124);
-    _$insert(_el$117, _$createComponent(Show, {
+    }), null);
+    _$insert(_el$91, _$createComponent(Show, {
       get when() {
         return !props.scopeReady();
       },
       get children() {
-        var _el$118 = _$createElement("text");
-        _$insertNode(_el$118, _$createTextNode(`Conversation unavailable \xB7 awaiting metadata`));
-        _$setProp(_el$118, "marginTop", 1);
-        _$effect((_$p) => _$setProp(_el$118, "fg", palette.warning, _$p));
-        return _el$118;
+        var _el$92 = _$createElement("text");
+        _$insertNode(_el$92, _$createTextNode(`Conversation unavailable \xB7 awaiting metadata`));
+        _$setProp(_el$92, "marginTop", 1);
+        _$effect((_$p) => _$setProp(_el$92, "fg", palette.warning, _$p));
+        return _el$92;
       }
-    }), _el$124);
-    _$insert(_el$117, _$createComponent(Show, {
+    }), null);
+    _$insert(_el$91, _$createComponent(Show, {
       get when() {
         return _$memo(() => !!(props.scopeReady() && !props.snapshot().generated_at))() && !props.snapshotError();
       },
       get children() {
-        var _el$120 = _$createElement("text");
-        _$insertNode(_el$120, _$createTextNode(`Loading conversation state\u2026`));
-        _$setProp(_el$120, "marginTop", 1);
-        _$effect((_$p) => _$setProp(_el$120, "fg", palette.textMuted, _$p));
-        return _el$120;
+        var _el$94 = _$createElement("text");
+        _$insertNode(_el$94, _$createTextNode(`Loading conversation state\u2026`));
+        _$setProp(_el$94, "marginTop", 1);
+        _$effect((_$p) => _$setProp(_el$94, "fg", palette.textMuted, _$p));
+        return _el$94;
       }
-    }), _el$124);
-    _$insert(_el$117, _$createComponent(Show, {
+    }), null);
+    _$insert(_el$91, _$createComponent(Show, {
       get when() {
         return props.snapshotError();
       },
       get children() {
-        var _el$122 = _$createElement("text");
-        _$insertNode(_el$122, _$createTextNode(`Update failed \xB7 data unconfirmed`));
-        _$setProp(_el$122, "marginTop", 1);
-        _$effect((_$p) => _$setProp(_el$122, "fg", palette.error, _$p));
-        return _el$122;
+        var _el$96 = _$createElement("text");
+        _$setProp(_el$96, "marginTop", 1);
+        _$insert(_el$96, snapshotFailureLabel);
+        _$effect((_$p) => _$setProp(_el$96, "fg", palette.error, _$p));
+        return _el$96;
       }
-    }), _el$124);
-    _$insertNode(_el$124, _el$125);
-    _$setProp(_el$124, "flexDirection", "row");
-    _$setProp(_el$124, "marginTop", 0);
-    _$insert(_el$125, (() => {
-      var _c$6 = _$memo(() => props.nativeActivity() === "busy");
-      return () => _c$6() ? `${props.spinner()} OpenCode: busy` : _$memo(() => props.nativeActivity() === "idle")() ? "\u25CF OpenCode: idle" : `\u25CB OpenCode: ${props.nativeActivity() || "unknown"}`;
-    })());
-    _$insert(_el$117, _$createComponent(Show, {
+    }), null);
+    _$insert(_el$91, _$createComponent(Show, {
       get when() {
         return _$memo(() => !!props.scopeReady())() && Boolean(props.snapshot().generated_at);
       },
       get children() {
-        return [_$createComponent(OperationalKPIHud, {
+        return [_$createComponent(OperationalStatusBlock, {
+          get snapshot() {
+            return props.snapshot();
+          },
+          get jobs() {
+            return props.jobs();
+          },
           get activeExecutions() {
             return activeExecutionsCount();
           },
           get inReview() {
             return counts().review;
           },
-          get doneTasks() {
-            return doneTasks();
-          },
           get attentionCount() {
             return counts().attention;
+          },
+          get stale() {
+            return stale();
+          },
+          get eta() {
+            return props.eta;
+          },
+          get now() {
+            return props.now;
           },
           get spinner() {
             return props.spinner;
           },
+          get pulse() {
+            return props.pulse;
+          },
           get theme() {
             return props.theme;
+          },
+          get layout() {
+            return layout();
           }
         }), _$createComponent(Show, {
           get when() {
@@ -1781,39 +1922,10 @@ function SidebarStatus(props) {
               }
             });
           }
-        }), _$createComponent(OperationalBottomDashboard, {
-          get snapshot() {
-            return props.snapshot();
-          },
-          get jobs() {
-            return props.jobs();
-          },
-          get stale() {
-            return stale();
-          },
-          get eta() {
-            return props.eta;
-          },
-          get now() {
-            return props.now;
-          },
-          get spinner() {
-            return props.spinner;
-          },
-          get pulse() {
-            return props.pulse;
-          },
-          get theme() {
-            return props.theme;
-          },
-          get layout() {
-            return layout();
-          }
         })];
       }
     }), null);
-    _$effect((_$p) => _$setProp(_el$125, "fg", props.nativeActivity() === "busy" ? palette.warning : props.nativeActivity() === "idle" ? palette.success : palette.textMuted, _$p));
-    return _el$117;
+    return _el$91;
   })();
 }
 function SidebarFooterMetrics(props) {
@@ -1844,75 +1956,62 @@ function SidebarFooterMetrics(props) {
   });
   const visible = createMemo(() => {
     const metrics = props.metrics();
-    return Boolean(metrics.elapsed) || metrics.tokensUsed !== void 0 || metrics.cost !== void 0;
+    return metrics.tokensUsed !== void 0 || metrics.cost !== void 0;
   });
   return _$createComponent(Show, {
     get when() {
       return visible();
     },
     get children() {
-      var _el$126 = _$createElement("box");
-      _$setProp(_el$126, "flexDirection", "row");
-      _$setProp(_el$126, "paddingLeft", 1);
-      _$setProp(_el$126, "paddingRight", 1);
-      _$insert(_el$126, _$createComponent(Show, {
-        get when() {
-          return props.metrics().elapsed;
-        },
-        children: (elapsed) => (() => {
-          var _el$132 = _$createElement("box"), _el$133 = _$createElement("text");
-          _$insertNode(_el$132, _el$133);
-          _$setProp(_el$132, "flexDirection", "row");
-          _$insert(_el$133, () => `T+${elapsed()}`);
-          _$effect((_$p) => _$setProp(_el$133, "fg", palette.sky, _$p));
-          return _el$132;
-        })()
-      }), null);
-      _$insert(_el$126, _$createComponent(Show, {
+      var _el$97 = _$createElement("box");
+      _$setProp(_el$97, "flexDirection", "row");
+      _$setProp(_el$97, "paddingLeft", 1);
+      _$setProp(_el$97, "paddingRight", 1);
+      _$insert(_el$97, _$createComponent(Show, {
         get when() {
           return props.metrics().tokensUsed !== void 0;
         },
         get children() {
           return [(() => {
-            var _el$127 = _$createElement("text");
-            _$insertNode(_el$127, _$createTextNode(` \u2502 `));
-            _$effect((_$p) => _$setProp(_el$127, "fg", palette.border, _$p));
-            return _el$127;
+            var _el$98 = _$createElement("text");
+            _$insertNode(_el$98, _$createTextNode(` \u2502 `));
+            _$effect((_$p) => _$setProp(_el$98, "fg", palette.border, _$p));
+            return _el$98;
           })(), _$createComponent(Show, {
             get when() {
               return contextGauge();
             },
             get fallback() {
               return (() => {
-                var _el$134 = _$createElement("text");
-                _$insert(_el$134, () => `\u25C6 ${formatTokens(props.metrics().tokensUsed)} tok`);
-                _$effect((_$p) => _$setProp(_el$134, "fg", palette.sky, _$p));
-                return _el$134;
+                var _el$103 = _$createElement("text");
+                _$insert(_el$103, () => `\u25C6 ${formatTokens(props.metrics().tokensUsed)} tok`);
+                _$effect((_$p) => _$setProp(_el$103, "fg", palette.sky, _$p));
+                return _el$103;
               })();
             },
             children: (gauge) => (() => {
-              var _el$135 = _$createElement("box"), _el$136 = _$createElement("text"), _el$138 = _$createElement("text"), _el$139 = _$createElement("text"), _el$140 = _$createElement("text"), _el$141 = _$createElement("text"), _el$143 = _$createElement("text");
-              _$insertNode(_el$135, _el$136);
-              _$insertNode(_el$135, _el$138);
-              _$insertNode(_el$135, _el$139);
-              _$insertNode(_el$135, _el$140);
-              _$insertNode(_el$135, _el$141);
-              _$insertNode(_el$135, _el$143);
-              _$setProp(_el$135, "flexDirection", "row");
-              _$insertNode(_el$136, _$createTextNode(`\u25C6 `));
-              _$insert(_el$138, () => gauge().filled);
-              _$insert(_el$139, () => gauge().empty);
-              _$insert(_el$140, () => ` ${contextPct()}%`);
-              _$insertNode(_el$141, _$createTextNode(` \xB7 `));
-              _$insert(_el$143, () => formatTokens(props.metrics().tokensUsed));
+              var _el$104 = _$createElement("box"), _el$105 = _$createElement("text"), _el$107 = _$createElement("text"), _el$108 = _$createElement("text"), _el$109 = _$createElement("text"), _el$110 = _$createElement("text"), _el$112 = _$createElement("text");
+              _$insertNode(_el$104, _el$105);
+              _$insertNode(_el$104, _el$107);
+              _$insertNode(_el$104, _el$108);
+              _$insertNode(_el$104, _el$109);
+              _$insertNode(_el$104, _el$110);
+              _$insertNode(_el$104, _el$112);
+              _$setProp(_el$104, "flexDirection", "row");
+              _$insertNode(_el$105, _$createTextNode(`\u25C6 `));
+              _$insert(_el$107, () => gauge().filled);
+              _$insert(_el$108, () => gauge().empty);
+              _$insert(_el$109, () => ` ${contextPct()}%`);
+              _$insertNode(_el$110, _$createTextNode(` \xB7 `));
+              _$insert(_el$112, () => formatTokens(props.metrics().tokensUsed));
               _$effect((_p$) => {
-                var _v$59 = contextColor(), _v$60 = contextColor(), _v$61 = palette.border, _v$62 = contextColor(), _v$63 = palette.border, _v$64 = palette.sky;
-                _v$59 !== _p$.e && (_p$.e = _$setProp(_el$136, "fg", _v$59, _p$.e));
-                _v$60 !== _p$.t && (_p$.t = _$setProp(_el$138, "fg", _v$60, _p$.t));
-                _v$61 !== _p$.a && (_p$.a = _$setProp(_el$139, "fg", _v$61, _p$.a));
-                _v$62 !== _p$.o && (_p$.o = _$setProp(_el$140, "fg", _v$62, _p$.o));
-                _v$63 !== _p$.i && (_p$.i = _$setProp(_el$141, "fg", _v$63, _p$.i));
-                _v$64 !== _p$.n && (_p$.n = _$setProp(_el$143, "fg", _v$64, _p$.n));
+                var _v$45 = contextColor(), _v$46 = contextColor(), _v$47 = palette.border, _v$48 = contextColor(), _v$49 = palette.border, _v$50 = palette.sky;
+                _v$45 !== _p$.e && (_p$.e = _$setProp(_el$105, "fg", _v$45, _p$.e));
+                _v$46 !== _p$.t && (_p$.t = _$setProp(_el$107, "fg", _v$46, _p$.t));
+                _v$47 !== _p$.a && (_p$.a = _$setProp(_el$108, "fg", _v$47, _p$.a));
+                _v$48 !== _p$.o && (_p$.o = _$setProp(_el$109, "fg", _v$48, _p$.o));
+                _v$49 !== _p$.i && (_p$.i = _$setProp(_el$110, "fg", _v$49, _p$.i));
+                _v$50 !== _p$.n && (_p$.n = _$setProp(_el$112, "fg", _v$50, _p$.n));
                 return _p$;
               }, {
                 e: void 0,
@@ -1922,30 +2021,30 @@ function SidebarFooterMetrics(props) {
                 i: void 0,
                 n: void 0
               });
-              return _el$135;
+              return _el$104;
             })()
           })];
         }
       }), null);
-      _$insert(_el$126, _$createComponent(Show, {
+      _$insert(_el$97, _$createComponent(Show, {
         get when() {
           return props.metrics().cost !== void 0;
         },
         get children() {
           return [(() => {
-            var _el$129 = _$createElement("text");
-            _$insertNode(_el$129, _$createTextNode(` \u2502 `));
-            _$effect((_$p) => _$setProp(_el$129, "fg", palette.border, _$p));
-            return _el$129;
+            var _el$100 = _$createElement("text");
+            _$insertNode(_el$100, _$createTextNode(` \u2502 `));
+            _$effect((_$p) => _$setProp(_el$100, "fg", palette.border, _$p));
+            return _el$100;
           })(), (() => {
-            var _el$131 = _$createElement("text");
-            _$insert(_el$131, () => `$ ${formatCost(props.metrics().cost)}`);
-            _$effect((_$p) => _$setProp(_el$131, "fg", palette.warning, _$p));
-            return _el$131;
+            var _el$102 = _$createElement("text");
+            _$insert(_el$102, () => `$ ${formatCost(props.metrics().cost)}`);
+            _$effect((_$p) => _$setProp(_el$102, "fg", palette.warning, _$p));
+            return _el$102;
           })()];
         }
       }), null);
-      return _el$126;
+      return _el$97;
     }
   });
 }
@@ -1959,84 +2058,84 @@ function HomeBottomStatus(props) {
       return visible();
     },
     get children() {
-      var _el$144 = _$createElement("box"), _el$145 = _$createElement("text"), _el$146 = _$createElement("text"), _el$148 = _$createElement("text"), _el$150 = _$createElement("text"), _el$152 = _$createElement("text");
-      _$insertNode(_el$144, _el$145);
-      _$insertNode(_el$144, _el$146);
-      _$insertNode(_el$144, _el$148);
-      _$insertNode(_el$144, _el$150);
-      _$insertNode(_el$144, _el$152);
-      _$setProp(_el$144, "paddingLeft", 1);
-      _$setProp(_el$144, "paddingRight", 1);
-      _$setProp(_el$144, "flexDirection", "row");
-      _$insert(_el$145, () => `${GLYPH.brand} `);
-      _$insertNode(_el$146, _$createTextNode(`CORTEX`));
-      _$insertNode(_el$148, _$createTextNode(`\xB7`));
-      _$insertNode(_el$150, _$createTextNode(`IA `));
-      _$insertNode(_el$152, _$createTextNode(`\u2502 `));
-      _$insert(_el$144, _$createComponent(Show, {
+      var _el$113 = _$createElement("box"), _el$114 = _$createElement("text"), _el$115 = _$createElement("text"), _el$117 = _$createElement("text"), _el$119 = _$createElement("text"), _el$121 = _$createElement("text");
+      _$insertNode(_el$113, _el$114);
+      _$insertNode(_el$113, _el$115);
+      _$insertNode(_el$113, _el$117);
+      _$insertNode(_el$113, _el$119);
+      _$insertNode(_el$113, _el$121);
+      _$setProp(_el$113, "paddingLeft", 1);
+      _$setProp(_el$113, "paddingRight", 1);
+      _$setProp(_el$113, "flexDirection", "row");
+      _$insert(_el$114, () => `${GLYPH.brand} `);
+      _$insertNode(_el$115, _$createTextNode(`CORTEX`));
+      _$insertNode(_el$117, _$createTextNode(`\xB7`));
+      _$insertNode(_el$119, _$createTextNode(`IA `));
+      _$insertNode(_el$121, _$createTextNode(`\u2502 `));
+      _$insert(_el$113, _$createComponent(Show, {
         get when() {
           return activeTask();
         },
         get fallback() {
           return (() => {
-            var _el$154 = _$createElement("box"), _el$155 = _$createElement("text"), _el$156 = _$createElement("text"), _el$158 = _$createElement("text");
-            _$insertNode(_el$154, _el$155);
-            _$insertNode(_el$154, _el$156);
-            _$insertNode(_el$154, _el$158);
-            _$setProp(_el$154, "flexDirection", "row");
-            _$insert(_el$155, () => `\u25CF ${counts().active} active`);
-            _$insertNode(_el$156, _$createTextNode(` \xB7 `));
-            _$insert(_el$158, () => `\u25C6 ${counts().review} rev`);
-            _$insert(_el$154, _$createComponent(Show, {
+            var _el$123 = _$createElement("box"), _el$124 = _$createElement("text"), _el$125 = _$createElement("text"), _el$127 = _$createElement("text");
+            _$insertNode(_el$123, _el$124);
+            _$insertNode(_el$123, _el$125);
+            _$insertNode(_el$123, _el$127);
+            _$setProp(_el$123, "flexDirection", "row");
+            _$insert(_el$124, () => `\u25CF ${counts().active} active`);
+            _$insertNode(_el$125, _$createTextNode(` \xB7 `));
+            _$insert(_el$127, () => `\u25C6 ${counts().review} rev`);
+            _$insert(_el$123, _$createComponent(Show, {
               get when() {
                 return counts().attention > 0;
               },
               get children() {
                 return [(() => {
-                  var _el$159 = _$createElement("text");
-                  _$insertNode(_el$159, _$createTextNode(` \xB7 `));
-                  _$effect((_$p) => _$setProp(_el$159, "fg", palette.border, _$p));
-                  return _el$159;
+                  var _el$128 = _$createElement("text");
+                  _$insertNode(_el$128, _$createTextNode(` \xB7 `));
+                  _$effect((_$p) => _$setProp(_el$128, "fg", palette.border, _$p));
+                  return _el$128;
                 })(), (() => {
-                  var _el$161 = _$createElement("text");
-                  _$insert(_el$161, () => `\u2715 ${counts().attention} alert`);
-                  _$effect((_$p) => _$setProp(_el$161, "fg", palette.error, _$p));
-                  return _el$161;
+                  var _el$130 = _$createElement("text");
+                  _$insert(_el$130, () => `\u2715 ${counts().attention} alert`);
+                  _$effect((_$p) => _$setProp(_el$130, "fg", palette.error, _$p));
+                  return _el$130;
                 })()];
               }
             }), null);
             _$effect((_p$) => {
-              var _v$70 = palette.warning, _v$71 = palette.border, _v$72 = palette.accent;
-              _v$70 !== _p$.e && (_p$.e = _$setProp(_el$155, "fg", _v$70, _p$.e));
-              _v$71 !== _p$.t && (_p$.t = _$setProp(_el$156, "fg", _v$71, _p$.t));
-              _v$72 !== _p$.a && (_p$.a = _$setProp(_el$158, "fg", _v$72, _p$.a));
+              var _v$56 = palette.warning, _v$57 = palette.border, _v$58 = palette.accent;
+              _v$56 !== _p$.e && (_p$.e = _$setProp(_el$124, "fg", _v$56, _p$.e));
+              _v$57 !== _p$.t && (_p$.t = _$setProp(_el$125, "fg", _v$57, _p$.t));
+              _v$58 !== _p$.a && (_p$.a = _$setProp(_el$127, "fg", _v$58, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$154;
+            return _el$123;
           })();
         },
         children: (task) => (() => {
-          var _el$162 = _$createElement("box"), _el$163 = _$createElement("text"), _el$164 = _$createElement("text"), _el$165 = _$createElement("text"), _el$166 = _$createElement("text");
-          _$insertNode(_el$162, _el$163);
-          _$insertNode(_el$162, _el$164);
-          _$insertNode(_el$162, _el$165);
-          _$insertNode(_el$162, _el$166);
-          _$setProp(_el$162, "flexDirection", "row");
-          _$setProp(_el$162, "onMouseDown", () => openWebConsole(task().board_id, task().task_id));
-          _$insert(_el$163, () => `[${props.spinner()} ${task().task_id}] `);
-          _$insert(_el$164, () => clipped(task().title, 20));
-          _$insert(_el$165, () => ` \xB7 ${counts().active} active`);
-          _$insert(_el$166, () => ` [${GLYPH.web}]`);
+          var _el$131 = _$createElement("box"), _el$132 = _$createElement("text"), _el$133 = _$createElement("text"), _el$134 = _$createElement("text"), _el$135 = _$createElement("text");
+          _$insertNode(_el$131, _el$132);
+          _$insertNode(_el$131, _el$133);
+          _$insertNode(_el$131, _el$134);
+          _$insertNode(_el$131, _el$135);
+          _$setProp(_el$131, "flexDirection", "row");
+          _$setProp(_el$131, "onMouseDown", () => openWebConsole(task().board_id, task().task_id));
+          _$insert(_el$132, () => `[${props.spinner()} ${task().task_id}] `);
+          _$insert(_el$133, () => clipped(task().title, 20));
+          _$insert(_el$134, () => ` \xB7 ${counts().active} active`);
+          _$insert(_el$135, () => ` [${GLYPH.web}]`);
           _$effect((_p$) => {
-            var _v$73 = palette.warning, _v$74 = palette.text, _v$75 = palette.textMuted, _v$76 = palette.info;
-            _v$73 !== _p$.e && (_p$.e = _$setProp(_el$163, "fg", _v$73, _p$.e));
-            _v$74 !== _p$.t && (_p$.t = _$setProp(_el$164, "fg", _v$74, _p$.t));
-            _v$75 !== _p$.a && (_p$.a = _$setProp(_el$165, "fg", _v$75, _p$.a));
-            _v$76 !== _p$.o && (_p$.o = _$setProp(_el$166, "fg", _v$76, _p$.o));
+            var _v$59 = palette.warning, _v$60 = palette.text, _v$61 = palette.textMuted, _v$62 = palette.info;
+            _v$59 !== _p$.e && (_p$.e = _$setProp(_el$132, "fg", _v$59, _p$.e));
+            _v$60 !== _p$.t && (_p$.t = _$setProp(_el$133, "fg", _v$60, _p$.t));
+            _v$61 !== _p$.a && (_p$.a = _$setProp(_el$134, "fg", _v$61, _p$.a));
+            _v$62 !== _p$.o && (_p$.o = _$setProp(_el$135, "fg", _v$62, _p$.o));
             return _p$;
           }, {
             e: void 0,
@@ -2044,16 +2143,16 @@ function HomeBottomStatus(props) {
             a: void 0,
             o: void 0
           });
-          return _el$162;
+          return _el$131;
         })()
       }), null);
       _$effect((_p$) => {
-        var _v$65 = palette.accentAlt, _v$66 = palette.text, _v$67 = palette.info, _v$68 = palette.sky, _v$69 = palette.border;
-        _v$65 !== _p$.e && (_p$.e = _$setProp(_el$145, "fg", _v$65, _p$.e));
-        _v$66 !== _p$.t && (_p$.t = _$setProp(_el$146, "fg", _v$66, _p$.t));
-        _v$67 !== _p$.a && (_p$.a = _$setProp(_el$148, "fg", _v$67, _p$.a));
-        _v$68 !== _p$.o && (_p$.o = _$setProp(_el$150, "fg", _v$68, _p$.o));
-        _v$69 !== _p$.i && (_p$.i = _$setProp(_el$152, "fg", _v$69, _p$.i));
+        var _v$51 = palette.accentAlt, _v$52 = palette.text, _v$53 = palette.info, _v$54 = palette.sky, _v$55 = palette.border;
+        _v$51 !== _p$.e && (_p$.e = _$setProp(_el$114, "fg", _v$51, _p$.e));
+        _v$52 !== _p$.t && (_p$.t = _$setProp(_el$115, "fg", _v$52, _p$.t));
+        _v$53 !== _p$.a && (_p$.a = _$setProp(_el$117, "fg", _v$53, _p$.a));
+        _v$54 !== _p$.o && (_p$.o = _$setProp(_el$119, "fg", _v$54, _p$.o));
+        _v$55 !== _p$.i && (_p$.i = _$setProp(_el$121, "fg", _v$55, _p$.i));
         return _p$;
       }, {
         e: void 0,
@@ -2062,7 +2161,7 @@ function HomeBottomStatus(props) {
         o: void 0,
         i: void 0
       });
-      return _el$144;
+      return _el$113;
     }
   });
 }
@@ -2102,68 +2201,68 @@ var KANBAN_COLUMNS_STACKED = [["in_progress", "in_review", "done", "blocked"]];
 function KanbanCard(props) {
   const meta = KANBAN_GROUP_META[props.kind];
   return (() => {
-    var _el$167 = _$createElement("box"), _el$168 = _$createElement("text"), _el$169 = _$createElement("text");
-    _$insertNode(_el$167, _el$168);
-    _$insertNode(_el$167, _el$169);
-    _$setProp(_el$167, "flexDirection", "column");
-    _$setProp(_el$167, "marginTop", 1);
-    _$setProp(_el$168, "wrapMode", "none");
-    _$setProp(_el$168, "truncate", true);
-    _$insert(_el$168, () => `${meta.glyph} ${props.task.task_id}`);
-    _$setProp(_el$169, "wrapMode", "none");
-    _$setProp(_el$169, "truncate", true);
-    _$insert(_el$169, () => props.task.title);
-    _$insert(_el$167, _$createComponent(Show, {
+    var _el$136 = _$createElement("box"), _el$137 = _$createElement("text"), _el$138 = _$createElement("text");
+    _$insertNode(_el$136, _el$137);
+    _$insertNode(_el$136, _el$138);
+    _$setProp(_el$136, "flexDirection", "column");
+    _$setProp(_el$136, "marginTop", 1);
+    _$setProp(_el$137, "wrapMode", "none");
+    _$setProp(_el$137, "truncate", true);
+    _$insert(_el$137, () => `${meta.glyph} ${props.task.task_id}`);
+    _$setProp(_el$138, "wrapMode", "none");
+    _$setProp(_el$138, "truncate", true);
+    _$insert(_el$138, () => props.task.title);
+    _$insert(_el$136, _$createComponent(Show, {
       get when() {
         return _$memo(() => props.kind === "in_progress")() ? props.task.owner : void 0;
       },
       children: (owner) => (() => {
-        var _el$172 = _$createElement("text");
-        _$setProp(_el$172, "wrapMode", "none");
-        _$setProp(_el$172, "truncate", true);
-        _$insert(_el$172, () => `Claim: ${owner()}`);
-        _$effect((_$p) => _$setProp(_el$172, "fg", props.palette.info, _$p));
-        return _el$172;
+        var _el$141 = _$createElement("text");
+        _$setProp(_el$141, "wrapMode", "none");
+        _$setProp(_el$141, "truncate", true);
+        _$insert(_el$141, () => `Claim: ${owner()}`);
+        _$effect((_$p) => _$setProp(_el$141, "fg", props.palette.info, _$p));
+        return _el$141;
       })()
     }), null);
-    _$insert(_el$167, _$createComponent(Show, {
+    _$insert(_el$136, _$createComponent(Show, {
       get when() {
         return props.kind === "in_review";
       },
       get children() {
-        var _el$170 = _$createElement("text");
-        _$insertNode(_el$170, _$createTextNode(`awaiting reviewer`));
-        _$setProp(_el$170, "wrapMode", "none");
-        _$setProp(_el$170, "truncate", true);
-        _$effect((_$p) => _$setProp(_el$170, "fg", props.palette.warning, _$p));
-        return _el$170;
+        var _el$139 = _$createElement("text");
+        _$insertNode(_el$139, _$createTextNode(`awaiting reviewer`));
+        _$setProp(_el$139, "wrapMode", "none");
+        _$setProp(_el$139, "truncate", true);
+        _$effect((_$p) => _$setProp(_el$139, "fg", props.palette.warning, _$p));
+        return _el$139;
       }
     }), null);
     _$effect((_p$) => {
-      var _v$77 = props.palette[meta.id], _v$78 = TextAttributes.BOLD, _v$79 = props.palette[meta.body];
-      _v$77 !== _p$.e && (_p$.e = _$setProp(_el$168, "fg", _v$77, _p$.e));
-      _v$78 !== _p$.t && (_p$.t = _$setProp(_el$168, "attributes", _v$78, _p$.t));
-      _v$79 !== _p$.a && (_p$.a = _$setProp(_el$169, "fg", _v$79, _p$.a));
+      var _v$63 = props.palette[meta.id], _v$64 = TextAttributes.BOLD, _v$65 = props.palette[meta.body];
+      _v$63 !== _p$.e && (_p$.e = _$setProp(_el$137, "fg", _v$63, _p$.e));
+      _v$64 !== _p$.t && (_p$.t = _$setProp(_el$137, "attributes", _v$64, _p$.t));
+      _v$65 !== _p$.a && (_p$.a = _$setProp(_el$138, "fg", _v$65, _p$.a));
       return _p$;
     }, {
       e: void 0,
       t: void 0,
       a: void 0
     });
-    return _el$167;
+    return _el$136;
   })();
 }
 function KanbanGroup(props) {
   const meta = KANBAN_GROUP_META[props.kind];
   return (() => {
-    var _el$173 = _$createElement("box"), _el$174 = _$createElement("text");
-    _$insertNode(_el$173, _el$174);
-    _$setProp(_el$173, "flexDirection", "column");
-    _$setProp(_el$173, "marginBottom", 1);
-    _$setProp(_el$174, "wrapMode", "none");
-    _$setProp(_el$174, "truncate", true);
-    _$insert(_el$174, () => `${meta.glyph} ${meta.label} (${props.tasks().length})`);
-    _$insert(_el$173, _$createComponent(For, {
+    var _el$142 = _$createElement("box"), _el$143 = _$createElement("text");
+    _$insertNode(_el$142, _el$143);
+    _$setProp(_el$142, "flexDirection", "column");
+    _$setProp(_el$142, "marginBottom", 1);
+    _$setProp(_el$143, "wrapMode", "none");
+    _$setProp(_el$143, "truncate", true);
+    _$insert(_el$143, () => `${meta.glyph} ${meta.label} (${props.tasks().length})`);
+    _$insert(_el$142, _$createComponent(For, {
       get each() {
         return props.tasks();
       },
@@ -2178,15 +2277,15 @@ function KanbanGroup(props) {
       })
     }), null);
     _$effect((_p$) => {
-      var _v$80 = props.palette[meta.header], _v$81 = TextAttributes.BOLD;
-      _v$80 !== _p$.e && (_p$.e = _$setProp(_el$174, "fg", _v$80, _p$.e));
-      _v$81 !== _p$.t && (_p$.t = _$setProp(_el$174, "attributes", _v$81, _p$.t));
+      var _v$66 = props.palette[meta.header], _v$67 = TextAttributes.BOLD;
+      _v$66 !== _p$.e && (_p$.e = _$setProp(_el$143, "fg", _v$66, _p$.e));
+      _v$67 !== _p$.t && (_p$.t = _$setProp(_el$143, "attributes", _v$67, _p$.t));
       return _p$;
     }, {
       e: void 0,
       t: void 0
     });
-    return _el$173;
+    return _el$142;
   })();
 }
 function SessionKanbanPanel(props) {
@@ -2215,28 +2314,28 @@ function SessionKanbanPanel(props) {
     return Math.max(KANBAN_MIN_COLUMN_WIDTH, Math.floor(usable / count));
   });
   return (() => {
-    var _el$175 = _$createElement("box"), _el$176 = _$createElement("box"), _el$177 = _$createElement("text"), _el$178 = _$createElement("text"), _el$179 = _$createElement("box");
-    _$insertNode(_el$175, _el$176);
-    _$insertNode(_el$175, _el$179);
-    _$setProp(_el$175, "flexDirection", "column");
-    _$setProp(_el$175, "padding", 1);
-    _$insertNode(_el$176, _el$177);
-    _$insertNode(_el$176, _el$178);
-    _$setProp(_el$176, "flexDirection", "row");
-    _$setProp(_el$176, "marginBottom", 1);
-    _$setProp(_el$177, "wrapMode", "none");
-    _$setProp(_el$177, "truncate", true);
-    _$insert(_el$177, () => `${GLYPH.web} CORTEX \xB7 IA KANBAN DECK [${props.pulse()}] `);
-    _$insert(_el$178, () => `(${tasks().length} tasks \xB7 ${props.jobs().length} workers)`);
-    _$setProp(_el$179, "flexDirection", "row");
-    _$insert(_el$179, _$createComponent(For, {
+    var _el$144 = _$createElement("box"), _el$145 = _$createElement("box"), _el$146 = _$createElement("text"), _el$147 = _$createElement("text"), _el$148 = _$createElement("box");
+    _$insertNode(_el$144, _el$145);
+    _$insertNode(_el$144, _el$148);
+    _$setProp(_el$144, "flexDirection", "column");
+    _$setProp(_el$144, "padding", 1);
+    _$insertNode(_el$145, _el$146);
+    _$insertNode(_el$145, _el$147);
+    _$setProp(_el$145, "flexDirection", "row");
+    _$setProp(_el$145, "marginBottom", 1);
+    _$setProp(_el$146, "wrapMode", "none");
+    _$setProp(_el$146, "truncate", true);
+    _$insert(_el$146, () => `${GLYPH.web} CORTEX \xB7 IA KANBAN DECK [${props.pulse()}] `);
+    _$insert(_el$147, () => `(${tasks().length} tasks \xB7 ${props.jobs().length} workers)`);
+    _$setProp(_el$148, "flexDirection", "row");
+    _$insert(_el$148, _$createComponent(For, {
       get each() {
         return columns();
       },
       children: (column, index) => (() => {
-        var _el$180 = _$createElement("box");
-        _$setProp(_el$180, "flexDirection", "column");
-        _$insert(_el$180, _$createComponent(For, {
+        var _el$149 = _$createElement("box");
+        _$setProp(_el$149, "flexDirection", "column");
+        _$insert(_el$149, _$createComponent(For, {
           each: column,
           children: (kind) => _$createComponent(KanbanGroup, {
             kind,
@@ -2245,31 +2344,31 @@ function SessionKanbanPanel(props) {
           })
         }));
         _$effect((_p$) => {
-          var _v$85 = columnWidth(), _v$86 = index() > 0 ? KANBAN_COLUMN_BORDER : false, _v$87 = palette.border;
-          _v$85 !== _p$.e && (_p$.e = _$setProp(_el$180, "width", _v$85, _p$.e));
-          _v$86 !== _p$.t && (_p$.t = _$setProp(_el$180, "border", _v$86, _p$.t));
-          _v$87 !== _p$.a && (_p$.a = _$setProp(_el$180, "borderColor", _v$87, _p$.a));
+          var _v$71 = columnWidth(), _v$72 = index() > 0 ? KANBAN_COLUMN_BORDER : false, _v$73 = palette.border;
+          _v$71 !== _p$.e && (_p$.e = _$setProp(_el$149, "width", _v$71, _p$.e));
+          _v$72 !== _p$.t && (_p$.t = _$setProp(_el$149, "border", _v$72, _p$.t));
+          _v$73 !== _p$.a && (_p$.a = _$setProp(_el$149, "borderColor", _v$73, _p$.a));
           return _p$;
         }, {
           e: void 0,
           t: void 0,
           a: void 0
         });
-        return _el$180;
+        return _el$149;
       })()
     }));
     _$effect((_p$) => {
-      var _v$82 = palette.info, _v$83 = TextAttributes.BOLD, _v$84 = palette.textMuted;
-      _v$82 !== _p$.e && (_p$.e = _$setProp(_el$177, "fg", _v$82, _p$.e));
-      _v$83 !== _p$.t && (_p$.t = _$setProp(_el$177, "attributes", _v$83, _p$.t));
-      _v$84 !== _p$.a && (_p$.a = _$setProp(_el$178, "fg", _v$84, _p$.a));
+      var _v$68 = palette.info, _v$69 = TextAttributes.BOLD, _v$70 = palette.textMuted;
+      _v$68 !== _p$.e && (_p$.e = _$setProp(_el$146, "fg", _v$68, _p$.e));
+      _v$69 !== _p$.t && (_p$.t = _$setProp(_el$146, "attributes", _v$69, _p$.t));
+      _v$70 !== _p$.a && (_p$.a = _$setProp(_el$147, "fg", _v$70, _p$.a));
       return _p$;
     }, {
       e: void 0,
       t: void 0,
       a: void 0
     });
-    return _el$175;
+    return _el$144;
   })();
 }
 var CORTEX_LOGO_BRAILLE = ["       \u28E0\u28F6\u28FF\u28FF\u28FF\u28FF\u28F6\u28E4\u2840       \u2880\u28E4\u28F6\u28FF\u28FF\u28FF\u28FF\u28F6\u28C4", "    \u28B0\u28FF\u28FF\u281F\u2809   \u2819\u28BF\u28FF\u28F7\u2840   \u28A0\u28FE\u28FF\u287F\u280B   \u2808\u283B\u28FF\u28FF\u2846", "   \u28A0\u28FF\u28FF\u280B  \u2880\u28E4\u28E4\u28C0  \u2839\u28FF\u28FF\u28C4\u28E0\u28FF\u28FF\u280F  \u28C0\u28E4\u28E4\u2840  \u2819\u28FF\u28FF\u2844", "   \u28FE\u28FF\u2803  \u28B0\u28FF\u28FF\u28FF\u28FF\u28F7\u2840 \u2839\u28FF\u28FF\u28FF\u28FF\u280F \u28A0\u28FE\u28FF\u28FF\u28FF\u28FF\u2846  \u2818\u28FF\u28F7", "  \u28B8\u28FF\u285F   \u2838\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u28C6 \u2839\u28FF\u28FF\u280F \u28F0\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u2807   \u28BB\u28FF\u2847", "  \u2818\u28FF\u28E7    \u2808\u281B\u283F\u28FF\u28FF\u28FF\u28FF\u28F7\u28C4\u2819\u280B\u28E0\u28FE\u28FF\u28FF\u28FF\u28FF\u283F\u281B\u2801    \u28FC\u28FF\u2803", "   \u2839\u28FF\u28E7\u2840     \u2808\u2819\u283F\u28FF\u28FF\u28FF\u2846\u28B0\u28FF\u28FF\u28FF\u283F\u280B\u2801     \u2880\u28FC\u28FF\u280F", "    \u2819\u28BF\u28FF\u28E6\u2840   \u2880\u28E0\u28F4\u28FF\u28FF\u28FF\u2847\u28B8\u28FF\u28FF\u28FF\u28E6\u28C4\u2840   \u2880\u28F4\u28FF\u287F\u280B", "      \u2809\u281B\u283F\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u287F\u281B\u2801 \u2808\u281B\u28BF\u28FF\u28FF\u28FF\u28FF\u28FF\u28FF\u283F\u281B\u2809", "  \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2557  \u2588\u2588\u2557     \u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2557 ", " \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D\u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2557\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557\u255A\u2550\u2550\u2588\u2588\u2554\u2550\u2550\u255D\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D\u255A\u2588\u2588\u2557\u2588\u2588\u2554\u255D     \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557", " \u2588\u2588\u2551     \u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255D   \u2588\u2588\u2551   \u2588\u2588\u2588\u2588\u2588\u2557   \u255A\u2588\u2588\u2588\u2554\u255D\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551", " \u2588\u2588\u2551     \u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557   \u2588\u2588\u2551   \u2588\u2588\u2554\u2550\u2550\u255D   \u2588\u2588\u2554\u2588\u2588\u2557\u255A\u2550\u2550\u2550\u2550\u255D\u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2551", " \u255A\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u255A\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255D\u2588\u2588\u2551  \u2588\u2588\u2551   \u2588\u2588\u2551   \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2554\u255D \u2588\u2588\u2557     \u2588\u2588\u2551\u2588\u2588\u2551  \u2588\u2588\u2551", "  \u255A\u2550\u2550\u2550\u2550\u2550\u255D \u255A\u2550\u2550\u2550\u2550\u2550\u255D \u255A\u2550\u255D  \u255A\u2550\u255D   \u255A\u2550\u255D   \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u255D\u255A\u2550\u255D  \u255A\u2550\u255D     \u255A\u2550\u255D\u255A\u2550\u255D  \u255A\u2550\u255D"];
@@ -2288,35 +2387,35 @@ function HomeLogo(props) {
     return d.height >= CORTEX_LOGO_BRAILLE.length + 5 && d.width >= 72;
   });
   return (() => {
-    var _el$181 = _$createElement("box");
-    _$setProp(_el$181, "flexDirection", "column");
-    _$setProp(_el$181, "alignItems", "center");
-    _$setProp(_el$181, "marginBottom", 1);
-    _$insert(_el$181, _$createComponent(Show, {
+    var _el$150 = _$createElement("box");
+    _$setProp(_el$150, "flexDirection", "column");
+    _$setProp(_el$150, "alignItems", "center");
+    _$setProp(_el$150, "marginBottom", 1);
+    _$insert(_el$150, _$createComponent(Show, {
       get when() {
         return isLarge();
       },
       get fallback() {
         return (() => {
-          var _el$183 = _$createElement("box"), _el$184 = _$createElement("text"), _el$185 = _$createElement("text");
-          _$insertNode(_el$183, _el$184);
-          _$insertNode(_el$183, _el$185);
-          _$setProp(_el$183, "flexDirection", "column");
-          _$setProp(_el$183, "alignItems", "center");
-          _$insert(_el$184, () => `${GLYPH.active} CORTEX \xB7 IA ${GLYPH.active}`);
-          _$insertNode(_el$185, _$createTextNode(`[Adaptive Cognitive Control Plane]`));
+          var _el$152 = _$createElement("box"), _el$153 = _$createElement("text"), _el$154 = _$createElement("text");
+          _$insertNode(_el$152, _el$153);
+          _$insertNode(_el$152, _el$154);
+          _$setProp(_el$152, "flexDirection", "column");
+          _$setProp(_el$152, "alignItems", "center");
+          _$insert(_el$153, () => `${GLYPH.active} CORTEX \xB7 IA ${GLYPH.active}`);
+          _$insertNode(_el$154, _$createTextNode(`[Adaptive Cognitive Control Plane]`));
           _$effect((_p$) => {
-            var _v$88 = palette.info, _v$89 = TextAttributes.BOLD, _v$90 = palette.textMuted;
-            _v$88 !== _p$.e && (_p$.e = _$setProp(_el$184, "fg", _v$88, _p$.e));
-            _v$89 !== _p$.t && (_p$.t = _$setProp(_el$184, "attributes", _v$89, _p$.t));
-            _v$90 !== _p$.a && (_p$.a = _$setProp(_el$185, "fg", _v$90, _p$.a));
+            var _v$74 = palette.info, _v$75 = TextAttributes.BOLD, _v$76 = palette.textMuted;
+            _v$74 !== _p$.e && (_p$.e = _$setProp(_el$153, "fg", _v$74, _p$.e));
+            _v$75 !== _p$.t && (_p$.t = _$setProp(_el$153, "attributes", _v$75, _p$.t));
+            _v$76 !== _p$.a && (_p$.a = _$setProp(_el$154, "fg", _v$76, _p$.a));
             return _p$;
           }, {
             e: void 0,
             t: void 0,
             a: void 0
           });
-          return _el$183;
+          return _el$152;
         })();
       },
       get children() {
@@ -2324,22 +2423,22 @@ function HomeLogo(props) {
           each: CORTEX_LOGO_BRAILLE,
           children: (line, index) => {
             return (() => {
-              var _el$187 = _$createElement("text");
-              _$insert(_el$187, line);
-              _$effect((_$p) => _$setProp(_el$187, "fg", logoLineColor(index(), palette), _$p));
-              return _el$187;
+              var _el$156 = _$createElement("text");
+              _$insert(_el$156, line);
+              _$effect((_$p) => _$setProp(_el$156, "fg", logoLineColor(index(), palette), _$p));
+              return _el$156;
             })();
           }
         }), (() => {
-          var _el$182 = _$createElement("text");
-          _$setProp(_el$182, "marginTop", 1);
-          _$insert(_el$182, () => `${GLYPH.active} OpenCode Multi-Agent Control Plane & Task DAG ${GLYPH.active}`);
-          _$effect((_$p) => _$setProp(_el$182, "fg", palette.textMuted, _$p));
-          return _el$182;
+          var _el$151 = _$createElement("text");
+          _$setProp(_el$151, "marginTop", 1);
+          _$insert(_el$151, () => `${GLYPH.active} OpenCode Multi-Agent Control Plane & Task DAG ${GLYPH.active}`);
+          _$effect((_$p) => _$setProp(_el$151, "fg", palette.textMuted, _$p));
+          return _el$151;
         })()];
       }
     }));
-    return _el$181;
+    return _el$150;
   })();
 }
 function formatLargeTokens(value) {
@@ -2379,114 +2478,114 @@ function HomeStatsWidget(props) {
     children: (s) => {
       const isNarrow = () => dim().width < 80;
       return (() => {
-        var _el$188 = _$createElement("box"), _el$189 = _$createElement("box"), _el$190 = _$createElement("box"), _el$191 = _$createElement("text"), _el$192 = _$createElement("text"), _el$195 = _$createElement("box"), _el$196 = _$createElement("text"), _el$197 = _$createElement("text"), _el$199 = _$createElement("text"), _el$200 = _$createElement("text"), _el$202 = _$createElement("text"), _el$206 = _$createElement("box"), _el$207 = _$createElement("text"), _el$208 = _$createElement("text"), _el$210 = _$createElement("text"), _el$214 = _$createElement("text");
-        _$insertNode(_el$188, _el$189);
-        _$insertNode(_el$188, _el$195);
-        _$insertNode(_el$188, _el$206);
-        _$setProp(_el$188, "flexDirection", "column");
-        _$setProp(_el$188, "borderStyle", "rounded");
-        _$setProp(_el$188, "paddingLeft", 1);
-        _$setProp(_el$188, "paddingRight", 1);
-        _$setProp(_el$188, "marginTop", 1);
-        _$setProp(_el$188, "marginBottom", 1);
-        _$setProp(_el$188, "width", "100%");
-        _$setProp(_el$188, "onMouseDown", () => openStatsView());
-        _$insertNode(_el$189, _el$190);
-        _$setProp(_el$189, "flexDirection", "row");
-        _$setProp(_el$189, "justifyContent", "space-between");
-        _$insertNode(_el$190, _el$191);
-        _$insertNode(_el$190, _el$192);
-        _$setProp(_el$190, "flexDirection", "row");
-        _$insert(_el$191, () => `${GLYPH.brand} CORTEX \xB7 IA `);
-        _$insertNode(_el$192, _$createTextNode(`Estad\xEDsticas de Uso`));
-        _$insert(_el$189, _$createComponent(Show, {
+        var _el$157 = _$createElement("box"), _el$158 = _$createElement("box"), _el$159 = _$createElement("box"), _el$160 = _$createElement("text"), _el$161 = _$createElement("text"), _el$164 = _$createElement("box"), _el$165 = _$createElement("text"), _el$166 = _$createElement("text"), _el$168 = _$createElement("text"), _el$169 = _$createElement("text"), _el$171 = _$createElement("text"), _el$175 = _$createElement("box"), _el$176 = _$createElement("text"), _el$177 = _$createElement("text"), _el$179 = _$createElement("text"), _el$183 = _$createElement("text");
+        _$insertNode(_el$157, _el$158);
+        _$insertNode(_el$157, _el$164);
+        _$insertNode(_el$157, _el$175);
+        _$setProp(_el$157, "flexDirection", "column");
+        _$setProp(_el$157, "borderStyle", "rounded");
+        _$setProp(_el$157, "paddingLeft", 1);
+        _$setProp(_el$157, "paddingRight", 1);
+        _$setProp(_el$157, "marginTop", 1);
+        _$setProp(_el$157, "marginBottom", 1);
+        _$setProp(_el$157, "width", "100%");
+        _$setProp(_el$157, "onMouseDown", () => openStatsView());
+        _$insertNode(_el$158, _el$159);
+        _$setProp(_el$158, "flexDirection", "row");
+        _$setProp(_el$158, "justifyContent", "space-between");
+        _$insertNode(_el$159, _el$160);
+        _$insertNode(_el$159, _el$161);
+        _$setProp(_el$159, "flexDirection", "row");
+        _$insert(_el$160, () => `${GLYPH.brand} CORTEX \xB7 IA `);
+        _$insertNode(_el$161, _$createTextNode(`Estad\xEDsticas de Uso`));
+        _$insert(_el$158, _$createComponent(Show, {
           get when() {
             return _$memo(() => !!s().first_day)() && s().last_day;
           },
           get children() {
-            var _el$194 = _$createElement("text");
-            _$insert(_el$194, () => `${s().first_day} \u2192 ${s().last_day}`);
-            _$effect((_$p) => _$setProp(_el$194, "fg", palette.textMuted, _$p));
-            return _el$194;
+            var _el$163 = _$createElement("text");
+            _$insert(_el$163, () => `${s().first_day} \u2192 ${s().last_day}`);
+            _$effect((_$p) => _$setProp(_el$163, "fg", palette.textMuted, _$p));
+            return _el$163;
           }
         }), null);
-        _$insertNode(_el$195, _el$196);
-        _$insertNode(_el$195, _el$197);
-        _$insertNode(_el$195, _el$199);
-        _$insertNode(_el$195, _el$200);
-        _$insertNode(_el$195, _el$202);
-        _$setProp(_el$195, "flexDirection", "row");
-        _$setProp(_el$195, "marginTop", 0);
-        _$insert(_el$196, () => `\u25CF ${formatInteger(s().sessions)} sesiones`);
-        _$insertNode(_el$197, _$createTextNode(`\u2502`));
-        _$insert(_el$199, () => `\u2709 ${formatInteger(s().messages)} mensajes`);
-        _$insertNode(_el$200, _$createTextNode(`\u2502`));
-        _$insert(_el$202, () => `\u25C6 ${formatLargeTokens(s().tokens)} tokens`);
-        _$insert(_el$195, _$createComponent(Show, {
+        _$insertNode(_el$164, _el$165);
+        _$insertNode(_el$164, _el$166);
+        _$insertNode(_el$164, _el$168);
+        _$insertNode(_el$164, _el$169);
+        _$insertNode(_el$164, _el$171);
+        _$setProp(_el$164, "flexDirection", "row");
+        _$setProp(_el$164, "marginTop", 0);
+        _$insert(_el$165, () => `\u25CF ${formatInteger(s().sessions)} sesiones`);
+        _$insertNode(_el$166, _$createTextNode(`\u2502`));
+        _$insert(_el$168, () => `\u2709 ${formatInteger(s().messages)} mensajes`);
+        _$insertNode(_el$169, _$createTextNode(`\u2502`));
+        _$insert(_el$171, () => `\u25C6 ${formatLargeTokens(s().tokens)} tokens`);
+        _$insert(_el$164, _$createComponent(Show, {
           get when() {
             return !isNarrow();
           },
           get children() {
             return [(() => {
-              var _el$203 = _$createElement("text");
-              _$insertNode(_el$203, _$createTextNode(`\u2502`));
-              _$effect((_$p) => _$setProp(_el$203, "fg", palette.border, _$p));
-              return _el$203;
+              var _el$172 = _$createElement("text");
+              _$insertNode(_el$172, _$createTextNode(`\u2502`));
+              _$effect((_$p) => _$setProp(_el$172, "fg", palette.border, _$p));
+              return _el$172;
             })(), (() => {
-              var _el$205 = _$createElement("text");
-              _$insert(_el$205, () => `\u{1F4C5} ${s().active_days} d\xEDas activos`);
-              _$effect((_$p) => _$setProp(_el$205, "fg", palette.warning, _$p));
-              return _el$205;
+              var _el$174 = _$createElement("text");
+              _$insert(_el$174, () => `\u{1F4C5} ${s().active_days} d\xEDas activos`);
+              _$effect((_$p) => _$setProp(_el$174, "fg", palette.warning, _$p));
+              return _el$174;
             })()];
           }
         }), null);
-        _$insertNode(_el$206, _el$207);
-        _$insertNode(_el$206, _el$208);
-        _$insertNode(_el$206, _el$210);
-        _$insertNode(_el$206, _el$214);
-        _$setProp(_el$206, "flexDirection", "row");
-        _$setProp(_el$206, "marginTop", 0);
-        _$insert(_el$207, () => `\u2605 Top: ${s().favorite_model || "-"} (${(s().favorite_model_share ?? 0).toFixed(1)}%)`);
-        _$insertNode(_el$208, _$createTextNode(`\u2502`));
-        _$insert(_el$210, () => `\u26A1 Pico: ${String(s().peak_hour).padStart(2, "0")}:00`);
-        _$insert(_el$206, _$createComponent(Show, {
+        _$insertNode(_el$175, _el$176);
+        _$insertNode(_el$175, _el$177);
+        _$insertNode(_el$175, _el$179);
+        _$insertNode(_el$175, _el$183);
+        _$setProp(_el$175, "flexDirection", "row");
+        _$setProp(_el$175, "marginTop", 0);
+        _$insert(_el$176, () => `\u2605 Top: ${s().favorite_model || "-"} (${(s().favorite_model_share ?? 0).toFixed(1)}%)`);
+        _$insertNode(_el$177, _$createTextNode(`\u2502`));
+        _$insert(_el$179, () => `\u26A1 Pico: ${String(s().peak_hour).padStart(2, "0")}:00`);
+        _$insert(_el$175, _$createComponent(Show, {
           get when() {
             return isNarrow();
           },
           get children() {
             return [(() => {
-              var _el$211 = _$createElement("text");
-              _$insertNode(_el$211, _$createTextNode(`\u2502`));
-              _$effect((_$p) => _$setProp(_el$211, "fg", palette.border, _$p));
-              return _el$211;
+              var _el$180 = _$createElement("text");
+              _$insertNode(_el$180, _$createTextNode(`\u2502`));
+              _$effect((_$p) => _$setProp(_el$180, "fg", palette.border, _$p));
+              return _el$180;
             })(), (() => {
-              var _el$213 = _$createElement("text");
-              _$insert(_el$213, () => `\u{1F4C5} ${s().active_days}d`);
-              _$effect((_$p) => _$setProp(_el$213, "fg", palette.warning, _$p));
-              return _el$213;
+              var _el$182 = _$createElement("text");
+              _$insert(_el$182, () => `\u{1F4C5} ${s().active_days}d`);
+              _$effect((_$p) => _$setProp(_el$182, "fg", palette.warning, _$p));
+              return _el$182;
             })()];
           }
-        }), _el$214);
-        _$insertNode(_el$214, _$createTextNode(` \xB7 [:cortex-stats para panel interactivo]`));
+        }), _el$183);
+        _$insertNode(_el$183, _$createTextNode(` \xB7 [:cortex-stats para panel interactivo]`));
         _$effect((_p$) => {
-          var _v$91 = palette.border, _v$92 = palette.accent, _v$93 = TextAttributes.BOLD, _v$94 = palette.text, _v$95 = TextAttributes.BOLD, _v$96 = isNarrow() ? 1 : 2, _v$97 = palette.sky, _v$98 = palette.border, _v$99 = palette.info, _v$100 = palette.border, _v$101 = palette.success, _v$102 = TextAttributes.BOLD, _v$103 = isNarrow() ? 1 : 2, _v$104 = palette.accentAlt, _v$105 = palette.border, _v$106 = palette.sky, _v$107 = palette.textMuted;
-          _v$91 !== _p$.e && (_p$.e = _$setProp(_el$188, "borderColor", _v$91, _p$.e));
-          _v$92 !== _p$.t && (_p$.t = _$setProp(_el$191, "fg", _v$92, _p$.t));
-          _v$93 !== _p$.a && (_p$.a = _$setProp(_el$191, "attributes", _v$93, _p$.a));
-          _v$94 !== _p$.o && (_p$.o = _$setProp(_el$192, "fg", _v$94, _p$.o));
-          _v$95 !== _p$.i && (_p$.i = _$setProp(_el$192, "attributes", _v$95, _p$.i));
-          _v$96 !== _p$.n && (_p$.n = _$setProp(_el$195, "gap", _v$96, _p$.n));
-          _v$97 !== _p$.s && (_p$.s = _$setProp(_el$196, "fg", _v$97, _p$.s));
-          _v$98 !== _p$.h && (_p$.h = _$setProp(_el$197, "fg", _v$98, _p$.h));
-          _v$99 !== _p$.r && (_p$.r = _$setProp(_el$199, "fg", _v$99, _p$.r));
-          _v$100 !== _p$.d && (_p$.d = _$setProp(_el$200, "fg", _v$100, _p$.d));
-          _v$101 !== _p$.l && (_p$.l = _$setProp(_el$202, "fg", _v$101, _p$.l));
-          _v$102 !== _p$.u && (_p$.u = _$setProp(_el$202, "attributes", _v$102, _p$.u));
-          _v$103 !== _p$.c && (_p$.c = _$setProp(_el$206, "gap", _v$103, _p$.c));
-          _v$104 !== _p$.w && (_p$.w = _$setProp(_el$207, "fg", _v$104, _p$.w));
-          _v$105 !== _p$.m && (_p$.m = _$setProp(_el$208, "fg", _v$105, _p$.m));
-          _v$106 !== _p$.f && (_p$.f = _$setProp(_el$210, "fg", _v$106, _p$.f));
-          _v$107 !== _p$.y && (_p$.y = _$setProp(_el$214, "fg", _v$107, _p$.y));
+          var _v$77 = palette.border, _v$78 = palette.accent, _v$79 = TextAttributes.BOLD, _v$80 = palette.text, _v$81 = TextAttributes.BOLD, _v$82 = isNarrow() ? 1 : 2, _v$83 = palette.sky, _v$84 = palette.border, _v$85 = palette.info, _v$86 = palette.border, _v$87 = palette.success, _v$88 = TextAttributes.BOLD, _v$89 = isNarrow() ? 1 : 2, _v$90 = palette.accentAlt, _v$91 = palette.border, _v$92 = palette.sky, _v$93 = palette.textMuted;
+          _v$77 !== _p$.e && (_p$.e = _$setProp(_el$157, "borderColor", _v$77, _p$.e));
+          _v$78 !== _p$.t && (_p$.t = _$setProp(_el$160, "fg", _v$78, _p$.t));
+          _v$79 !== _p$.a && (_p$.a = _$setProp(_el$160, "attributes", _v$79, _p$.a));
+          _v$80 !== _p$.o && (_p$.o = _$setProp(_el$161, "fg", _v$80, _p$.o));
+          _v$81 !== _p$.i && (_p$.i = _$setProp(_el$161, "attributes", _v$81, _p$.i));
+          _v$82 !== _p$.n && (_p$.n = _$setProp(_el$164, "gap", _v$82, _p$.n));
+          _v$83 !== _p$.s && (_p$.s = _$setProp(_el$165, "fg", _v$83, _p$.s));
+          _v$84 !== _p$.h && (_p$.h = _$setProp(_el$166, "fg", _v$84, _p$.h));
+          _v$85 !== _p$.r && (_p$.r = _$setProp(_el$168, "fg", _v$85, _p$.r));
+          _v$86 !== _p$.d && (_p$.d = _$setProp(_el$169, "fg", _v$86, _p$.d));
+          _v$87 !== _p$.l && (_p$.l = _$setProp(_el$171, "fg", _v$87, _p$.l));
+          _v$88 !== _p$.u && (_p$.u = _$setProp(_el$171, "attributes", _v$88, _p$.u));
+          _v$89 !== _p$.c && (_p$.c = _$setProp(_el$175, "gap", _v$89, _p$.c));
+          _v$90 !== _p$.w && (_p$.w = _$setProp(_el$176, "fg", _v$90, _p$.w));
+          _v$91 !== _p$.m && (_p$.m = _$setProp(_el$177, "fg", _v$91, _p$.m));
+          _v$92 !== _p$.f && (_p$.f = _$setProp(_el$179, "fg", _v$92, _p$.f));
+          _v$93 !== _p$.y && (_p$.y = _$setProp(_el$183, "fg", _v$93, _p$.y));
           return _p$;
         }, {
           e: void 0,
@@ -2507,10 +2606,906 @@ function HomeStatsWidget(props) {
           f: void 0,
           y: void 0
         });
-        return _el$188;
+        return _el$157;
       })();
     }
   });
+}
+function nanModelTokens(window, model) {
+  if (!window || !Array.isArray(window.byModel)) return 0;
+  for (const entry of window.byModel) {
+    if (entry?.model !== model) continue;
+    const input = typeof entry.inputTokens === "number" ? entry.inputTokens : 0;
+    const output = typeof entry.outputTokens === "number" ? entry.outputTokens : 0;
+    return input + output;
+  }
+  return 0;
+}
+function nanDailySeries(timeSeries, limit) {
+  if (!Array.isArray(timeSeries)) return [];
+  const totals = /* @__PURE__ */ new Map();
+  for (const point of timeSeries) {
+    if (typeof point?.date !== "string" || point.date === "") continue;
+    const input = typeof point.inputTokens === "number" ? point.inputTokens : 0;
+    const output = typeof point.outputTokens === "number" ? point.outputTokens : 0;
+    totals.set(point.date, (totals.get(point.date) ?? 0) + input + output);
+  }
+  return [...totals.entries()].sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0).slice(-limit).map(([date, tokens]) => ({
+    date,
+    tokens
+  }));
+}
+function burnSparkline(values, points) {
+  const window = values.slice(-points);
+  const peak = Math.max(0, ...window);
+  const top = ETA_SPARK_LEVELS.length - 1;
+  return window.map((value) => ETA_SPARK_LEVELS[peak > 0 ? Math.max(0, Math.min(top, Math.round(value / peak * top))) : 0]).join("");
+}
+var NAN_REASONING_OFF_LEVELS = ["none", "minimal"];
+function nanCatalogModel(entry) {
+  const meta = entry.meta;
+  const quota = typeof meta.monthlyQuotaTokens === "number" && Number.isFinite(meta.monthlyQuotaTokens) ? meta.monthlyQuotaTokens : 0;
+  return {
+    model: entry.model,
+    tier: typeof meta.tier === "string" ? meta.tier : "",
+    quota,
+    rolling4hRef: typeof meta.rolling4hRefTokens === "number" ? meta.rolling4hRefTokens : 0,
+    vocabulary: Array.isArray(meta.effortVocabulary) ? meta.effortVocabulary.filter((level) => typeof level === "string") : [],
+    effortMode: typeof meta.effortMode === "string" ? meta.effortMode : "",
+    effortAdjustable: meta.effortAdjustable === true,
+    preferredOver: typeof meta.preferredOver === "string" ? meta.preferredOver : ""
+  };
+}
+function agentModelOption(entry) {
+  if (typeof entry?.agent !== "string" || entry.agent === "") return void 0;
+  const model = typeof entry.model === "string" && entry.model !== "" ? entry.model : "";
+  const variant = typeof entry.variant === "string" && entry.variant !== "" ? `#${entry.variant}` : "";
+  return {
+    agent: entry.agent,
+    value: model ? `${model}${variant}` : "(unset)"
+  };
+}
+function nanEffortModeBadge(mode) {
+  if (mode === "adaptive") return `${GLYPH.active} adaptive \xB7 depth auto`;
+  if (mode === "accepted-not-adjustable") return `${GLYPH.warn} accepted \xB7 depth fixed`;
+  if (mode === "adjustable") return `${GLYPH.done} adjustable`;
+  return `${GLYPH.idle} posture unknown`;
+}
+function nanSetReceiptLines(stdout) {
+  try {
+    const receipt = JSON.parse(stdout);
+    const lines = [`agent    ${receipt.agent || "-"}`, `action   ${receipt.action || "-"}${receipt.dry_run ? " (dry-run)" : ""}`, `previous ${receipt.previous || "(unset)"}`, `value    ${receipt.value || "(unset)"}`, `changed  ${receipt.changed === true}`, `managed  ${receipt.managed === true}`];
+    if (receipt.restored === true) lines.push("restored true");
+    if (Array.isArray(receipt.warnings)) for (const warning of receipt.warnings) lines.push(`warning  ${warning}`);
+    return lines;
+  } catch {
+    return [];
+  }
+}
+function nanCommandFailure(error, stderr) {
+  const text = (stderr || error.message || "").trim();
+  return text ? text.split(/\r?\n/)[0] : "command failed";
+}
+function NanUsageStrip(props) {
+  const palette = resolvePalette(props.theme);
+  return _$createComponent(Show, {
+    get when() {
+      return props.view();
+    },
+    children: (view) => (() => {
+      var _el$185 = _$createElement("box"), _el$186 = _$createElement("text"), _el$187 = _$createElement("text"), _el$189 = _$createElement("text"), _el$191 = _$createElement("text");
+      _$insertNode(_el$185, _el$186);
+      _$insertNode(_el$185, _el$187);
+      _$insertNode(_el$185, _el$189);
+      _$insertNode(_el$185, _el$191);
+      _$setProp(_el$185, "flexDirection", "row");
+      _$setProp(_el$185, "paddingLeft", 1);
+      _$setProp(_el$185, "paddingRight", 1);
+      _$insert(_el$186, () => `${GLYPH.active} nan `);
+      _$insert(_el$185, _$createComponent(Show, {
+        get when() {
+          return view().percent !== void 0;
+        },
+        get fallback() {
+          return (() => {
+            var _el$192 = _$createElement("text");
+            _$insertNode(_el$192, _$createTextNode(`quota n/a `));
+            _$effect((_$p) => _$setProp(_el$192, "fg", palette.textMuted, _$p));
+            return _el$192;
+          })();
+        },
+        get children() {
+          return _$createComponent(MultiColorProgressBar, {
+            get done() {
+              return view().percent ?? 0;
+            },
+            inReview: 0,
+            inProgress: 0,
+            total: 100,
+            width: 10,
+            compact: true,
+            get textLimit() {
+              return props.textLimit;
+            },
+            label: "MTD: ",
+            get theme() {
+              return props.theme;
+            }
+          });
+        }
+      }), _el$187);
+      _$insertNode(_el$187, _$createTextNode(` \xB7 `));
+      _$insertNode(_el$189, _$createTextNode(`24h `));
+      _$insert(_el$191, () => formatLargeTokens(view().burn));
+      _$effect((_p$) => {
+        var _v$94 = palette.accentAlt, _v$95 = palette.border, _v$96 = palette.textMuted, _v$97 = palette.sky;
+        _v$94 !== _p$.e && (_p$.e = _$setProp(_el$186, "fg", _v$94, _p$.e));
+        _v$95 !== _p$.t && (_p$.t = _$setProp(_el$187, "fg", _v$95, _p$.t));
+        _v$96 !== _p$.a && (_p$.a = _$setProp(_el$189, "fg", _v$96, _p$.a));
+        _v$97 !== _p$.o && (_p$.o = _$setProp(_el$191, "fg", _v$97, _p$.o));
+        return _p$;
+      }, {
+        e: void 0,
+        t: void 0,
+        a: void 0,
+        o: void 0
+      });
+      return _el$185;
+    })()
+  });
+}
+function NanModelPickerPanel(props) {
+  const palette = resolvePalette(props.theme);
+  const [modelID, setModelID] = createSignal("");
+  const [level, setLevel] = createSignal("");
+  const [agentID, setAgentID] = createSignal("");
+  const agents = () => props.agents() ?? [];
+  const activeModel = createMemo(() => props.models().find((m) => m.model === modelID()) || props.models()[0]);
+  const activeAgent = createMemo(() => agents().find((a) => a.agent === agentID()) || agents()[0]);
+  const needsEffort = createMemo(() => Boolean(activeModel()?.effortAdjustable && (activeModel()?.vocabulary.length ?? 0) > 0));
+  const ready = createMemo(() => Boolean(activeModel() && activeAgent() && (!needsEffort() || level() !== "")));
+  const dispatch = (apply) => {
+    const model = activeModel();
+    const agent = activeAgent();
+    if (!ready() || !model || !agent) return;
+    const chosen = needsEffort() ? level() : "";
+    if (apply) props.onApply(agent.agent, model.model, chosen);
+    else props.onPreview(agent.agent, model.model, chosen);
+  };
+  return (() => {
+    var _el$194 = _$createElement("box"), _el$195 = _$createElement("text"), _el$196 = _$createElement("text");
+    _$insertNode(_el$194, _el$195);
+    _$insertNode(_el$194, _el$196);
+    _$setProp(_el$194, "flexDirection", "column");
+    _$setProp(_el$194, "padding", 1);
+    _$insert(_el$195, () => `${GLYPH.web} nan model picker \xB7 browse only, preview then apply`);
+    _$insertNode(_el$196, _$createTextNode(`pick a model, an effort, and an agent \xB7 the ref form is nan/&lt;model>`));
+    _$insert(_el$194, _$createComponent(Show, {
+      get when() {
+        return props.loadError() !== "";
+      },
+      get children() {
+        var _el$198 = _$createElement("text");
+        _$insert(_el$198, () => `catalog unavailable (${props.loadError()}) \xB7 no assignment attempted`);
+        _$effect((_$p) => _$setProp(_el$198, "fg", palette.error, _$p));
+        return _el$198;
+      }
+    }), null);
+    _$insert(_el$194, _$createComponent(Show, {
+      get when() {
+        return _$memo(() => props.loadError() === "")() && props.loading();
+      },
+      get children() {
+        var _el$199 = _$createElement("text");
+        _$insertNode(_el$199, _$createTextNode(`reading nan catalog\u2026`));
+        _$effect((_$p) => _$setProp(_el$199, "fg", palette.textMuted, _$p));
+        return _el$199;
+      }
+    }), null);
+    _$insert(_el$194, _$createComponent(Show, {
+      get when() {
+        return _$memo(() => !!(props.loadError() === "" && !props.loading()))() && props.models().length === 0;
+      },
+      get children() {
+        var _el$201 = _$createElement("text");
+        _$insertNode(_el$201, _$createTextNode(`no picker-eligible nan chat models in the catalog`));
+        _$effect((_$p) => _$setProp(_el$201, "fg", palette.textMuted, _$p));
+        return _el$201;
+      }
+    }), null);
+    _$insert(_el$194, _$createComponent(Show, {
+      get when() {
+        return _$memo(() => props.loadError() === "")() && props.models().length > 0;
+      },
+      get children() {
+        return [(() => {
+          var _el$203 = _$createElement("text");
+          _$insertNode(_el$203, _$createTextNode(`model`));
+          _$effect((_p$) => {
+            var _v$98 = palette.textSoft, _v$99 = TextAttributes.BOLD;
+            _v$98 !== _p$.e && (_p$.e = _$setProp(_el$203, "fg", _v$98, _p$.e));
+            _v$99 !== _p$.t && (_p$.t = _$setProp(_el$203, "attributes", _v$99, _p$.t));
+            return _p$;
+          }, {
+            e: void 0,
+            t: void 0
+          });
+          return _el$203;
+        })(), _$createComponent(For, {
+          get each() {
+            return props.models();
+          },
+          children: (model) => (() => {
+            var _el$224 = _$createElement("box"), _el$225 = _$createElement("text"), _el$226 = _$createElement("text"), _el$227 = _$createElement("text");
+            _$insertNode(_el$224, _el$225);
+            _$insertNode(_el$224, _el$226);
+            _$insertNode(_el$224, _el$227);
+            _$setProp(_el$224, "flexDirection", "row");
+            _$setProp(_el$224, "onMouseDown", () => {
+              setModelID(model.model);
+              setLevel("");
+              props.onSelectionChange();
+            });
+            _$insert(_el$225, () => activeModel()?.model === model.model ? "\u25B8 " : "  ");
+            _$insert(_el$226, () => `nan/${model.model}`);
+            _$insert(_el$227, () => ` \xB7 ${nanEffortModeBadge(model.effortMode)}`);
+            _$insert(_el$224, _$createComponent(Show, {
+              get when() {
+                return model.preferredOver !== "";
+              },
+              get children() {
+                var _el$228 = _$createElement("text");
+                _$insert(_el$228, () => ` \xB7 preferred over ${model.preferredOver}`);
+                _$effect((_$p) => _$setProp(_el$228, "fg", palette.success, _$p));
+                return _el$228;
+              }
+            }), null);
+            _$insert(_el$224, _$createComponent(Show, {
+              get when() {
+                return model.tier === "legacy";
+              },
+              get children() {
+                var _el$229 = _$createElement("text");
+                _$insertNode(_el$229, _$createTextNode(` \xB7 legacy \xB7 deprioritized`));
+                _$effect((_$p) => _$setProp(_el$229, "fg", palette.warning, _$p));
+                return _el$229;
+              }
+            }), null);
+            _$effect((_p$) => {
+              var _v$113 = palette.border, _v$114 = model.tier === "legacy" ? palette.textMuted : palette.text, _v$115 = palette.textMuted;
+              _v$113 !== _p$.e && (_p$.e = _$setProp(_el$225, "fg", _v$113, _p$.e));
+              _v$114 !== _p$.t && (_p$.t = _$setProp(_el$226, "fg", _v$114, _p$.t));
+              _v$115 !== _p$.a && (_p$.a = _$setProp(_el$227, "fg", _v$115, _p$.a));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0,
+              a: void 0
+            });
+            return _el$224;
+          })()
+        }), (() => {
+          var _el$205 = _$createElement("text");
+          _$insertNode(_el$205, _$createTextNode(`effort`));
+          _$effect((_p$) => {
+            var _v$100 = palette.textSoft, _v$101 = TextAttributes.BOLD;
+            _v$100 !== _p$.e && (_p$.e = _$setProp(_el$205, "fg", _v$100, _p$.e));
+            _v$101 !== _p$.t && (_p$.t = _$setProp(_el$205, "attributes", _v$101, _p$.t));
+            return _p$;
+          }, {
+            e: void 0,
+            t: void 0
+          });
+          return _el$205;
+        })(), _$createComponent(Show, {
+          get when() {
+            return needsEffort();
+          },
+          get fallback() {
+            return (() => {
+              var _el$231 = _$createElement("text");
+              _$insert(_el$231, () => `no adjustable depth for nan/${activeModel()?.model ?? ""} \xB7 the reference is written without --effort`);
+              _$effect((_$p) => _$setProp(_el$231, "fg", palette.textMuted, _$p));
+              return _el$231;
+            })();
+          },
+          get children() {
+            var _el$207 = _$createElement("box");
+            _$setProp(_el$207, "flexDirection", "row");
+            _$insert(_el$207, _$createComponent(For, {
+              get each() {
+                return activeModel()?.vocabulary ?? [];
+              },
+              children: (option) => (() => {
+                var _el$232 = _$createElement("text");
+                _$setProp(_el$232, "onMouseDown", () => {
+                  setLevel(option);
+                  props.onSelectionChange();
+                });
+                _$insert(_el$232, () => `[${level() === option ? "\u25B8" : " "} ${option}${NAN_REASONING_OFF_LEVELS.includes(option) ? " \xB7skips reasoning" : ""}] `);
+                _$effect((_$p) => _$setProp(_el$232, "fg", level() === option ? palette.success : palette.text, _$p));
+                return _el$232;
+              })()
+            }));
+            return _el$207;
+          }
+        }), (() => {
+          var _el$208 = _$createElement("text");
+          _$insert(_el$208, () => `agent \xB7 effective mapping (${agents().length})`);
+          _$effect((_p$) => {
+            var _v$102 = palette.textSoft, _v$103 = TextAttributes.BOLD;
+            _v$102 !== _p$.e && (_p$.e = _$setProp(_el$208, "fg", _v$102, _p$.e));
+            _v$103 !== _p$.t && (_p$.t = _$setProp(_el$208, "attributes", _v$103, _p$.t));
+            return _p$;
+          }, {
+            e: void 0,
+            t: void 0
+          });
+          return _el$208;
+        })(), _$createComponent(For, {
+          get each() {
+            return agents();
+          },
+          children: (agent) => (() => {
+            var _el$233 = _$createElement("text");
+            _$setProp(_el$233, "onMouseDown", () => {
+              setAgentID(agent.agent);
+              props.onSelectionChange();
+            });
+            _$insert(_el$233, () => `[${activeAgent()?.agent === agent.agent ? "\u25B8" : " "} ${agent.agent}: ${agent.value}] `);
+            _$effect((_$p) => _$setProp(_el$233, "fg", activeAgent()?.agent === agent.agent ? palette.info : palette.textMuted, _$p));
+            return _el$233;
+          })()
+        }), _$createComponent(Show, {
+          get when() {
+            return _$memo(() => !!!props.loading())() && agents().length === 0;
+          },
+          get children() {
+            var _el$209 = _$createElement("text");
+            _$insertNode(_el$209, _$createTextNode(`agent list unavailable \xB7 confirmation is disabled`));
+            _$effect((_$p) => _$setProp(_el$209, "fg", palette.warning, _$p));
+            return _el$209;
+          }
+        }), (() => {
+          var _el$211 = _$createElement("box"), _el$212 = _$createElement("text"), _el$216 = _$createElement("text");
+          _$insertNode(_el$211, _el$212);
+          _$insertNode(_el$211, _el$216);
+          _$setProp(_el$211, "flexDirection", "row");
+          _$setProp(_el$211, "marginTop", 1);
+          _$insertNode(_el$212, _$createTextNode(`[ preview dry-run ]`));
+          _$setProp(_el$212, "onMouseDown", () => dispatch(false));
+          _$insert(_el$211, _$createComponent(Show, {
+            get when() {
+              return props.preview() !== "";
+            },
+            get children() {
+              var _el$214 = _$createElement("text");
+              _$insertNode(_el$214, _$createTextNode(`  [ apply ]`));
+              _$setProp(_el$214, "onMouseDown", () => dispatch(true));
+              _$effect((_$p) => _$setProp(_el$214, "fg", palette.success, _$p));
+              return _el$214;
+            }
+          }), _el$216);
+          _$insert(_el$216, (() => {
+            var _c$2 = _$memo(() => props.phase() === "previewing");
+            return () => _c$2() ? "  running dry-run\u2026" : props.phase() === "applying" ? "  applying\u2026" : "";
+          })());
+          _$effect((_p$) => {
+            var _v$104 = ready() ? palette.info : palette.textMuted, _v$105 = palette.textMuted;
+            _v$104 !== _p$.e && (_p$.e = _$setProp(_el$212, "fg", _v$104, _p$.e));
+            _v$105 !== _p$.t && (_p$.t = _$setProp(_el$216, "fg", _v$105, _p$.t));
+            return _p$;
+          }, {
+            e: void 0,
+            t: void 0
+          });
+          return _el$211;
+        })(), _$createComponent(Show, {
+          get when() {
+            return props.runError() !== "";
+          },
+          get children() {
+            var _el$217 = _$createElement("text");
+            _$insert(_el$217, () => `model set failed \xB7 ${props.runError()} \u2014 the effective mapping above is unchanged`);
+            _$effect((_$p) => _$setProp(_el$217, "fg", palette.error, _$p));
+            return _el$217;
+          }
+        }), _$createComponent(Show, {
+          get when() {
+            return props.preview() !== "";
+          },
+          get children() {
+            return [(() => {
+              var _el$218 = _$createElement("text");
+              _$insertNode(_el$218, _$createTextNode(`dry-run receipt (nothing written)`));
+              _$effect((_p$) => {
+                var _v$106 = palette.textSoft, _v$107 = TextAttributes.BOLD;
+                _v$106 !== _p$.e && (_p$.e = _$setProp(_el$218, "fg", _v$106, _p$.e));
+                _v$107 !== _p$.t && (_p$.t = _$setProp(_el$218, "attributes", _v$107, _p$.t));
+                return _p$;
+              }, {
+                e: void 0,
+                t: void 0
+              });
+              return _el$218;
+            })(), (() => {
+              var _el$220 = _$createElement("text");
+              _$insert(_el$220, () => props.preview());
+              _$effect((_$p) => _$setProp(_el$220, "fg", palette.textMuted, _$p));
+              return _el$220;
+            })()];
+          }
+        }), _$createComponent(Show, {
+          get when() {
+            return props.result() !== "";
+          },
+          get children() {
+            return [(() => {
+              var _el$221 = _$createElement("text");
+              _$insertNode(_el$221, _$createTextNode(`applied receipt`));
+              _$effect((_p$) => {
+                var _v$108 = palette.success, _v$109 = TextAttributes.BOLD;
+                _v$108 !== _p$.e && (_p$.e = _$setProp(_el$221, "fg", _v$108, _p$.e));
+                _v$109 !== _p$.t && (_p$.t = _$setProp(_el$221, "attributes", _v$109, _p$.t));
+                return _p$;
+              }, {
+                e: void 0,
+                t: void 0
+              });
+              return _el$221;
+            })(), (() => {
+              var _el$223 = _$createElement("text");
+              _$insert(_el$223, () => props.result());
+              _$effect((_$p) => _$setProp(_el$223, "fg", palette.text, _$p));
+              return _el$223;
+            })()];
+          }
+        })];
+      }
+    }), null);
+    _$effect((_p$) => {
+      var _v$110 = palette.accent, _v$111 = TextAttributes.BOLD, _v$112 = palette.textMuted;
+      _v$110 !== _p$.e && (_p$.e = _$setProp(_el$195, "fg", _v$110, _p$.e));
+      _v$111 !== _p$.t && (_p$.t = _$setProp(_el$195, "attributes", _v$111, _p$.t));
+      _v$112 !== _p$.a && (_p$.a = _$setProp(_el$196, "fg", _v$112, _p$.a));
+      return _p$;
+    }, {
+      e: void 0,
+      t: void 0,
+      a: void 0
+    });
+    return _el$194;
+  })();
+}
+function NanDetailPanel(props) {
+  const palette = resolvePalette(props.theme);
+  const dim = useTerminalDimensions();
+  const sparkline = createMemo(() => burnSparkline(props.days().map((point) => point.tokens), NAN_DETAIL_DAY_POINTS));
+  const rollingRefs = createMemo(() => props.rows().filter((row) => row.rolling4hRef > 0));
+  const textLimit = createMemo(() => Math.max(24, measuredColumns(dim().width) - 8));
+  const days = () => props.days();
+  return (() => {
+    var _el$234 = _$createElement("box"), _el$235 = _$createElement("text");
+    _$insertNode(_el$234, _el$235);
+    _$setProp(_el$234, "flexDirection", "column");
+    _$setProp(_el$234, "padding", 1);
+    _$insert(_el$235, () => `${GLYPH.active} nan usage detail \xB7 daily granularity`);
+    _$insert(_el$234, _$createComponent(Show, {
+      get when() {
+        return props.loadError() !== "";
+      },
+      get children() {
+        var _el$236 = _$createElement("text");
+        _$insert(_el$236, () => props.loadError());
+        _$effect((_$p) => _$setProp(_el$236, "fg", palette.error, _$p));
+        return _el$236;
+      }
+    }), null);
+    _$insert(_el$234, _$createComponent(Show, {
+      get when() {
+        return _$memo(() => props.loadError() === "")() && props.loading();
+      },
+      get children() {
+        var _el$237 = _$createElement("text");
+        _$insertNode(_el$237, _$createTextNode(`reading nan metrics\u2026`));
+        _$effect((_$p) => _$setProp(_el$237, "fg", palette.textMuted, _$p));
+        return _el$237;
+      }
+    }), null);
+    _$insert(_el$234, _$createComponent(Show, {
+      get when() {
+        return days().length > 0;
+      },
+      get children() {
+        var _el$239 = _$createElement("box"), _el$240 = _$createElement("text"), _el$242 = _$createElement("text"), _el$243 = _$createElement("text");
+        _$insertNode(_el$239, _el$240);
+        _$insertNode(_el$239, _el$242);
+        _$insertNode(_el$239, _el$243);
+        _$setProp(_el$239, "flexDirection", "row");
+        _$setProp(_el$239, "marginTop", 1);
+        _$insertNode(_el$240, _$createTextNode(`daily tokens `));
+        _$insert(_el$242, sparkline);
+        _$insert(_el$243, () => `  ${days()[0].date} \u2192 ${days()[days().length - 1].date}`);
+        _$effect((_p$) => {
+          var _v$116 = palette.textSoft, _v$117 = palette.accentAlt, _v$118 = palette.textMuted;
+          _v$116 !== _p$.e && (_p$.e = _$setProp(_el$240, "fg", _v$116, _p$.e));
+          _v$117 !== _p$.t && (_p$.t = _$setProp(_el$242, "fg", _v$117, _p$.t));
+          _v$118 !== _p$.a && (_p$.a = _$setProp(_el$243, "fg", _v$118, _p$.a));
+          return _p$;
+        }, {
+          e: void 0,
+          t: void 0,
+          a: void 0
+        });
+        return _el$239;
+      }
+    }), null);
+    _$insert(_el$234, _$createComponent(Show, {
+      get when() {
+        return props.rows().length > 0;
+      },
+      get children() {
+        return [(() => {
+          var _el$244 = _$createElement("text");
+          _$insertNode(_el$244, _$createTextNode(`month-to-date against monthly quota`));
+          _$setProp(_el$244, "marginTop", 1);
+          _$effect((_p$) => {
+            var _v$119 = palette.textSoft, _v$120 = TextAttributes.BOLD;
+            _v$119 !== _p$.e && (_p$.e = _$setProp(_el$244, "fg", _v$119, _p$.e));
+            _v$120 !== _p$.t && (_p$.t = _$setProp(_el$244, "attributes", _v$120, _p$.t));
+            return _p$;
+          }, {
+            e: void 0,
+            t: void 0
+          });
+          return _el$244;
+        })(), _$createComponent(For, {
+          get each() {
+            return props.rows();
+          },
+          children: (row) => (() => {
+            var _el$248 = _$createElement("box"), _el$249 = _$createElement("text"), _el$250 = _$createElement("text");
+            _$insertNode(_el$248, _el$249);
+            _$insertNode(_el$248, _el$250);
+            _$setProp(_el$248, "flexDirection", "row");
+            _$insert(_el$249, () => `${(row.model + "                    ").slice(0, 20)}`);
+            _$insert(_el$250, () => `${formatLargeTokens(row.monthToDate).padStart(8, " ")}`);
+            _$insert(_el$248, _$createComponent(Show, {
+              get when() {
+                return row.quota > 0;
+              },
+              get fallback() {
+                return (() => {
+                  var _el$252 = _$createElement("text");
+                  _$insertNode(_el$252, _$createTextNode(`  quota unknown`));
+                  _$effect((_$p) => _$setProp(_el$252, "fg", palette.textMuted, _$p));
+                  return _el$252;
+                })();
+              },
+              get children() {
+                return [(() => {
+                  var _el$251 = _$createElement("text");
+                  _$insert(_el$251, () => ` / ${formatLargeTokens(row.quota)} `);
+                  _$effect((_$p) => _$setProp(_el$251, "fg", palette.textMuted, _$p));
+                  return _el$251;
+                })(), _$createComponent(MultiColorProgressBar, {
+                  get done() {
+                    return Math.round(row.monthToDate / row.quota * 100);
+                  },
+                  inReview: 0,
+                  inProgress: 0,
+                  total: 100,
+                  width: 12,
+                  compact: true,
+                  get textLimit() {
+                    return textLimit();
+                  },
+                  get theme() {
+                    return props.theme;
+                  }
+                })];
+              }
+            }), null);
+            _$effect((_p$) => {
+              var _v$123 = palette.text, _v$124 = palette.sky;
+              _v$123 !== _p$.e && (_p$.e = _$setProp(_el$249, "fg", _v$123, _p$.e));
+              _v$124 !== _p$.t && (_p$.t = _$setProp(_el$250, "fg", _v$124, _p$.t));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0
+            });
+            return _el$248;
+          })()
+        })];
+      }
+    }), null);
+    _$insert(_el$234, _$createComponent(For, {
+      get each() {
+        return rollingRefs();
+      },
+      children: (row) => (() => {
+        var _el$254 = _$createElement("text");
+        _$setProp(_el$254, "marginTop", 1);
+        _$insert(_el$254, () => `reference only: ${row.model} rolling-4h allowance ${formatLargeTokens(row.rolling4hRef)} tokens \u2014 daily-granularity data cannot express a rolling window`);
+        _$effect((_$p) => _$setProp(_el$254, "fg", palette.warning, _$p));
+        return _el$254;
+      })()
+    }), null);
+    _$insert(_el$234, _$createComponent(Show, {
+      get when() {
+        return _$memo(() => !!(props.loadError() === "" && !props.loading() && days().length === 0))() && props.rows().length === 0;
+      },
+      get children() {
+        var _el$246 = _$createElement("text");
+        _$insertNode(_el$246, _$createTextNode(`no nan usage data available`));
+        _$effect((_$p) => _$setProp(_el$246, "fg", palette.textMuted, _$p));
+        return _el$246;
+      }
+    }), null);
+    _$effect((_p$) => {
+      var _v$121 = palette.info, _v$122 = TextAttributes.BOLD;
+      _v$121 !== _p$.e && (_p$.e = _$setProp(_el$235, "fg", _v$121, _p$.e));
+      _v$122 !== _p$.t && (_p$.t = _$setProp(_el$235, "attributes", _v$122, _p$.t));
+      return _p$;
+    }, {
+      e: void 0,
+      t: void 0
+    });
+    return _el$234;
+  })();
+}
+function CortexAgentsRow(props) {
+  const row = props.row;
+  const palette = props.palette;
+  const statusCore = () => {
+    if (row.retryAttempt) return `${GLYPH.warn}${row.retryAttempt}`;
+    if (row.status === "busy") return props.pulse();
+    if (row.status === "idle") return GLYPH.idle;
+    if (row.status === "unknown") return GLYPH.active;
+    return GLYPH.working;
+  };
+  const activity = () => row.tool || row.step || (row.status === "busy" ? "working" : "");
+  const elapsed = () => row.startedAt ? formatElapsedClock(props.now() - row.startedAt) : "--:--";
+  const taskBadge = createMemo(() => row.taskID ? `[${shortID(row.taskID)}\xB7${row.taskStatus || "unknown"}]` : "");
+  return (() => {
+    var _el$255 = _$createElement("box"), _el$256 = _$createElement("text"), _el$257 = _$createElement("text"), _el$258 = _$createElement("text"), _el$259 = _$createElement("text"), _el$260 = _$createElement("text"), _el$262 = _$createElement("text"), _el$263 = _$createElement("text");
+    _$insertNode(_el$255, _el$256);
+    _$insertNode(_el$255, _el$257);
+    _$insertNode(_el$255, _el$258);
+    _$insertNode(_el$255, _el$259);
+    _$insertNode(_el$255, _el$260);
+    _$insertNode(_el$255, _el$262);
+    _$insertNode(_el$255, _el$263);
+    _$setProp(_el$255, "flexDirection", "row");
+    _$setProp(_el$256, "selectable", false);
+    _$insert(_el$256, () => `${props.active ? GLYPH.row : " "} `);
+    _$setProp(_el$257, "selectable", false);
+    _$insert(_el$257, () => `${fitWidth(statusCore(), AGENTS_STATUS_WIDTH)} `);
+    _$setProp(_el$258, "selectable", false);
+    _$insert(_el$258, () => `${fitWidth(row.agent || "agent", props.layout().agent)} `);
+    _$insert(_el$259, () => fitWidth(row.title, props.layout().title));
+    _$setProp(_el$260, "selectable", false);
+    _$insert(_el$260, () => ` ${fitWidth(elapsed(), AGENTS_ELAPSED_WIDTH)}`);
+    _$insert(_el$255, _$createComponent(Show, {
+      get when() {
+        return props.layout().activity > 0;
+      },
+      get children() {
+        var _el$261 = _$createElement("text");
+        _$setProp(_el$261, "selectable", false);
+        _$insert(_el$261, () => ` ${fitWidth(activity(), props.layout().activity)}`);
+        _$effect((_$p) => _$setProp(_el$261, "fg", palette.info, _$p));
+        return _el$261;
+      }
+    }), _el$262);
+    _$setProp(_el$262, "selectable", false);
+    _$insert(_el$262, () => ` ${fitWidth(row.tokens === void 0 ? "-" : formatTokens(row.tokens), AGENTS_TOKENS_WIDTH)}`);
+    _$setProp(_el$263, "selectable", false);
+    _$insert(_el$263, () => ` ${fitWidth(row.cost === void 0 ? "-" : `$${formatCost(row.cost)}`, AGENTS_COST_WIDTH)}`);
+    _$insert(_el$255, _$createComponent(Show, {
+      get when() {
+        return _$memo(() => props.layout().task > 0)() && taskBadge() !== "";
+      },
+      get children() {
+        var _el$264 = _$createElement("text");
+        _$setProp(_el$264, "selectable", false);
+        _$insert(_el$264, () => ` ${fitWidth(taskBadge(), props.layout().task)}`);
+        _$effect((_$p) => _$setProp(_el$264, "fg", taskStatusChip(row.taskStatus || "backlog", palette).color, _$p));
+        return _el$264;
+      }
+    }), null);
+    _$effect((_p$) => {
+      var _v$125 = props.active ? palette.element : palette.background, _v$126 = props.onActivate, _v$127 = props.active ? palette.accent : palette.textMuted, _v$128 = subagentStatusColor(row.status, palette), _v$129 = palette.accentAlt, _v$130 = props.active ? palette.text : palette.textSoft, _v$131 = palette.textSoft, _v$132 = palette.sky, _v$133 = palette.warning;
+      _v$125 !== _p$.e && (_p$.e = _$setProp(_el$255, "backgroundColor", _v$125, _p$.e));
+      _v$126 !== _p$.t && (_p$.t = _$setProp(_el$255, "onMouseDown", _v$126, _p$.t));
+      _v$127 !== _p$.a && (_p$.a = _$setProp(_el$256, "fg", _v$127, _p$.a));
+      _v$128 !== _p$.o && (_p$.o = _$setProp(_el$257, "fg", _v$128, _p$.o));
+      _v$129 !== _p$.i && (_p$.i = _$setProp(_el$258, "fg", _v$129, _p$.i));
+      _v$130 !== _p$.n && (_p$.n = _$setProp(_el$259, "fg", _v$130, _p$.n));
+      _v$131 !== _p$.s && (_p$.s = _$setProp(_el$260, "fg", _v$131, _p$.s));
+      _v$132 !== _p$.h && (_p$.h = _$setProp(_el$262, "fg", _v$132, _p$.h));
+      _v$133 !== _p$.r && (_p$.r = _$setProp(_el$263, "fg", _v$133, _p$.r));
+      return _p$;
+    }, {
+      e: void 0,
+      t: void 0,
+      a: void 0,
+      o: void 0,
+      i: void 0,
+      n: void 0,
+      s: void 0,
+      h: void 0,
+      r: void 0
+    });
+    return _el$255;
+  })();
+}
+function CortexAgentsPanel(props) {
+  const palette = resolvePalette(props.theme);
+  const dim = useTerminalDimensions();
+  const layout = createMemo(() => {
+    const measured = Math.floor(Number(dim().width) || 0) || measuredColumns();
+    const total = Math.max(AGENTS_MIN_COLUMNS, measured);
+    const narrow = total < AGENTS_NARROW_COLUMNS;
+    const agent = narrow ? AGENTS_NARROW_AGENT_WIDTH : AGENTS_AGENT_WIDTH;
+    const activity = narrow ? 0 : AGENTS_ACTIVITY_WIDTH;
+    const task = narrow ? 0 : AGENTS_TASK_WIDTH;
+    const fixed = AGENTS_STATUS_WIDTH + 1 + agent + 1 + AGENTS_ELAPSED_WIDTH + 1 + AGENTS_TOKENS_WIDTH + 1 + AGENTS_COST_WIDTH + (activity > 0 ? activity + 1 : 0) + (task > 0 ? task + 1 : 0);
+    return {
+      agent,
+      activity,
+      task,
+      title: Math.max(AGENTS_TITLE_MIN, total - fixed - 6)
+    };
+  });
+  const running = createMemo(() => props.rows().filter((row) => row.status === "busy" || row.status === "retry").length);
+  const header = () => (() => {
+    var _el$265 = _$createElement("box"), _el$266 = _$createElement("text"), _el$267 = _$createElement("text"), _el$268 = _$createElement("text"), _el$269 = _$createElement("text"), _el$270 = _$createElement("text"), _el$272 = _$createElement("text"), _el$273 = _$createElement("text");
+    _$insertNode(_el$265, _el$266);
+    _$insertNode(_el$265, _el$267);
+    _$insertNode(_el$265, _el$268);
+    _$insertNode(_el$265, _el$269);
+    _$insertNode(_el$265, _el$270);
+    _$insertNode(_el$265, _el$272);
+    _$insertNode(_el$265, _el$273);
+    _$setProp(_el$265, "flexDirection", "row");
+    _$setProp(_el$266, "selectable", false);
+    _$insert(_el$266, () => `${fitWidth("", 1)} `);
+    _$setProp(_el$267, "selectable", false);
+    _$insert(_el$267, () => `${fitWidth("st", AGENTS_STATUS_WIDTH)} `);
+    _$setProp(_el$268, "selectable", false);
+    _$insert(_el$268, () => `${fitWidth("agent", layout().agent)} `);
+    _$setProp(_el$269, "selectable", false);
+    _$insert(_el$269, () => fitWidth("objective", layout().title));
+    _$setProp(_el$270, "selectable", false);
+    _$insert(_el$270, () => ` ${fitWidth("elapsed", AGENTS_ELAPSED_WIDTH)}`);
+    _$insert(_el$265, _$createComponent(Show, {
+      get when() {
+        return layout().activity > 0;
+      },
+      get children() {
+        var _el$271 = _$createElement("text");
+        _$setProp(_el$271, "selectable", false);
+        _$insert(_el$271, () => ` ${fitWidth("activity", layout().activity)}`);
+        _$effect((_$p) => _$setProp(_el$271, "fg", palette.textMuted, _$p));
+        return _el$271;
+      }
+    }), _el$272);
+    _$setProp(_el$272, "selectable", false);
+    _$insert(_el$272, () => ` ${fitWidth("tokens", AGENTS_TOKENS_WIDTH)}`);
+    _$setProp(_el$273, "selectable", false);
+    _$insert(_el$273, () => ` ${fitWidth("cost", AGENTS_COST_WIDTH)}`);
+    _$insert(_el$265, _$createComponent(Show, {
+      get when() {
+        return layout().task > 0;
+      },
+      get children() {
+        var _el$274 = _$createElement("text");
+        _$setProp(_el$274, "selectable", false);
+        _$insert(_el$274, () => ` ${fitWidth("task", layout().task)}`);
+        _$effect((_$p) => _$setProp(_el$274, "fg", palette.textMuted, _$p));
+        return _el$274;
+      }
+    }), null);
+    _$effect((_p$) => {
+      var _v$134 = palette.textMuted, _v$135 = palette.textMuted, _v$136 = palette.textMuted, _v$137 = palette.textMuted, _v$138 = palette.textMuted, _v$139 = palette.textMuted, _v$140 = palette.textMuted;
+      _v$134 !== _p$.e && (_p$.e = _$setProp(_el$266, "fg", _v$134, _p$.e));
+      _v$135 !== _p$.t && (_p$.t = _$setProp(_el$267, "fg", _v$135, _p$.t));
+      _v$136 !== _p$.a && (_p$.a = _$setProp(_el$268, "fg", _v$136, _p$.a));
+      _v$137 !== _p$.o && (_p$.o = _$setProp(_el$269, "fg", _v$137, _p$.o));
+      _v$138 !== _p$.i && (_p$.i = _$setProp(_el$270, "fg", _v$138, _p$.i));
+      _v$139 !== _p$.n && (_p$.n = _$setProp(_el$272, "fg", _v$139, _p$.n));
+      _v$140 !== _p$.s && (_p$.s = _$setProp(_el$273, "fg", _v$140, _p$.s));
+      return _p$;
+    }, {
+      e: void 0,
+      t: void 0,
+      a: void 0,
+      o: void 0,
+      i: void 0,
+      n: void 0,
+      s: void 0
+    });
+    return _el$265;
+  })();
+  return (() => {
+    var _el$275 = _$createElement("box"), _el$277 = _$createElement("box"), _el$278 = _$createElement("text");
+    _$insertNode(_el$275, _el$277);
+    _$setProp(_el$275, "flexDirection", "column");
+    _$setProp(_el$275, "borderStyle", "rounded");
+    _$setProp(_el$275, "titleAlignment", "left");
+    _$setProp(_el$275, "paddingLeft", 1);
+    _$setProp(_el$275, "paddingRight", 1);
+    _$insert(_el$275, header, _el$277);
+    _$insert(_el$275, _$createComponent(Show, {
+      get when() {
+        return props.error() !== "";
+      },
+      get children() {
+        var _el$276 = _$createElement("text");
+        _$insert(_el$276, () => clipped(props.error(), 72));
+        _$effect((_$p) => _$setProp(_el$276, "fg", palette.warning, _$p));
+        return _el$276;
+      }
+    }), _el$277);
+    _$insert(_el$275, _$createComponent(Show, {
+      get when() {
+        return props.rows().length > 0;
+      },
+      get fallback() {
+        return _$createComponent(EmptyState, {
+          palette,
+          get label() {
+            return props.loading() ? "loading subagent sessions" : "no subagent sessions";
+          }
+        });
+      },
+      get children() {
+        return _$createComponent(For, {
+          get each() {
+            return props.rows();
+          },
+          children: (row, index) => _$createComponent(CortexAgentsRow, {
+            row,
+            get active() {
+              return props.selected() === index();
+            },
+            get now() {
+              return props.now;
+            },
+            get pulse() {
+              return props.pulse;
+            },
+            layout,
+            palette,
+            onActivate: () => props.onActivate(index())
+          })
+        });
+      }
+    }), _el$277);
+    _$insertNode(_el$277, _el$278);
+    _$setProp(_el$277, "flexDirection", "row");
+    _$setProp(_el$277, "marginTop", 1);
+    _$insertNode(_el$278, _$createTextNode(`open enter \xB7 close esc \xB7 parent up`));
+    _$setProp(_el$278, "selectable", false);
+    _$effect((_p$) => {
+      var _v$141 = palette.primary, _v$142 = `${GLYPH.brand} SUBAGENTS [${running()} running \xB7 ${props.rows().length} total]`, _v$143 = palette.accent, _v$144 = palette.background, _v$145 = palette.textMuted;
+      _v$141 !== _p$.e && (_p$.e = _$setProp(_el$275, "borderColor", _v$141, _p$.e));
+      _v$142 !== _p$.t && (_p$.t = _$setProp(_el$275, "title", _v$142, _p$.t));
+      _v$143 !== _p$.a && (_p$.a = _$setProp(_el$275, "titleColor", _v$143, _p$.a));
+      _v$144 !== _p$.o && (_p$.o = _$setProp(_el$275, "backgroundColor", _v$144, _p$.o));
+      _v$145 !== _p$.i && (_p$.i = _$setProp(_el$278, "fg", _v$145, _p$.i));
+      return _p$;
+    }, {
+      e: void 0,
+      t: void 0,
+      a: void 0,
+      o: void 0,
+      i: void 0
+    });
+    return _el$275;
+  })();
 }
 function initialize(api, disposeRoot) {
   const [activeSessionOverride, setActiveSessionOverride] = createSignal();
@@ -2524,6 +3519,7 @@ function initialize(api, disposeRoot) {
   const scopeReady = createMemo(() => Boolean(conversationScope(api, activeSessionOverride())?.project));
   const [snapshot, setSnapshot] = createSignal(EMPTY_SNAPSHOT);
   const [snapshotError, setSnapshotError] = createSignal("");
+  let consecutiveSnapshotFailures = 0;
   const [now, setNow] = createSignal(Date.now());
   const [frame, setFrame] = createSignal(0);
   const [pulseFrame, setPulseFrame] = createSignal(0);
@@ -2614,7 +3610,6 @@ function initialize(api, disposeRoot) {
     const scope = conversationScope(api, activeSessionOverride());
     const sessionID = scope?.sessionID;
     return {
-      elapsed: sessionElapsed(),
       tokensUsed: contextTokensUsed(sessionMessages(api, sessionID)),
       tokenLimit: sessionContextLimit(api, sessionID),
       cost: sessionCostUsd(api, sessionID)
@@ -2670,35 +3665,47 @@ function initialize(api, disposeRoot) {
       generation += 1;
       setSnapshot(EMPTY_SNAPSHOT);
       setSnapshotError("");
+      consecutiveSnapshotFailures = 0;
     }
     if (!scope || !scope.project || pendingGeneration === generation) return;
     const requestGeneration = generation;
     pendingGeneration = requestGeneration;
-    execFile(cortexExecutable(), ["ui", "snapshot", "--project", scope.project, "--session-id", scope.sessionID, "--root-session-id", scope.rootSessionID], {
-      encoding: "utf8",
-      maxBuffer: 512 * 1024,
-      timeout: 7500,
-      windowsHide: true
-    }, (error, stdout) => {
-      if (pendingGeneration === requestGeneration) pendingGeneration = void 0;
-      if (disposed || requestGeneration !== generation || JSON.stringify(conversationScope(api, activeSessionOverride())) !== key) return;
-      if (error) {
-        setSnapshot(EMPTY_SNAPSHOT);
-        setSnapshotError(error.message);
-        return;
-      }
-      try {
-        const next = JSON.parse(stdout);
-        if (next.schema_version !== 2 || next.requested_session_id !== scope.sessionID || next.root_session_id !== scope.rootSessionID || !Array.isArray(next.tasks) || !Array.isArray(next.delegations) || !Array.isArray(next.attention) || !next.counts || !next.summary) {
-          throw new Error("snapshot schema or conversation is incompatible");
+    const recordFailure = (message) => {
+      consecutiveSnapshotFailures += 1;
+      if (consecutiveSnapshotFailures >= 2) setSnapshotError(message);
+    };
+    const runAttempt = (retryAllowed) => {
+      execFile(cortexExecutable(), ["ui", "snapshot", "--project", scope.project, "--session-id", scope.sessionID, "--root-session-id", scope.rootSessionID], {
+        encoding: "utf8",
+        maxBuffer: 512 * 1024,
+        timeout: 7500,
+        windowsHide: true
+      }, (error, stdout) => {
+        if (pendingGeneration === requestGeneration) pendingGeneration = void 0;
+        if (disposed || requestGeneration !== generation || JSON.stringify(conversationScope(api, activeSessionOverride())) !== key) return;
+        if (error) {
+          if (error.killed === true && retryAllowed) {
+            pendingGeneration = requestGeneration;
+            runAttempt(false);
+            return;
+          }
+          recordFailure(error.message);
+          return;
         }
-        setSnapshot(next);
-        setSnapshotError("");
-      } catch (parseError) {
-        setSnapshot(EMPTY_SNAPSHOT);
-        setSnapshotError(parseError instanceof Error ? parseError.message : "invalid snapshot JSON");
-      }
-    });
+        try {
+          const next = JSON.parse(stdout);
+          if (next.schema_version !== 2 || next.requested_session_id !== scope.sessionID || next.root_session_id !== scope.rootSessionID || !Array.isArray(next.tasks) || !Array.isArray(next.delegations) || !Array.isArray(next.attention) || !next.counts || !next.summary) {
+            throw new Error("snapshot schema or conversation is incompatible");
+          }
+          consecutiveSnapshotFailures = 0;
+          setSnapshot(next);
+          setSnapshotError("");
+        } catch (parseError) {
+          recordFailure(parseError instanceof Error ? parseError.message : "invalid snapshot JSON");
+        }
+      });
+    };
+    runAttempt(true);
   };
   createEffect(() => {
     const count = operationalCounts(snapshot(), snapshotError()).attention;
@@ -2773,11 +3780,640 @@ function initialize(api, disposeRoot) {
   };
   readUsageStats();
   const statsPoll = setInterval(readUsageStats, 6e4);
+  const [nanUsage, setNanUsage] = createSignal(null);
+  const [nanCatalog, setNanCatalog] = createSignal(void 0);
+  let pendingNanUsage = false;
+  let pendingNanCatalog = false;
+  let nanScopeKey = "";
+  let nanGeneration = 0;
+  const currentNanModel = () => {
+    const record = sessionRecord(api, currentSessionID(api, activeSessionOverride()));
+    const model = record?.model;
+    if (!model || model.providerID !== "nan" || typeof model.id !== "string") return void 0;
+    return model.id.split("#")[0];
+  };
+  const readNanCatalog = () => {
+    if (disposed || pendingNanCatalog) return;
+    const cached = nanCatalog();
+    if (cached && Date.now() - cached.cachedAt < NAN_CATALOG_TTL_MS) return;
+    pendingNanCatalog = true;
+    execFile(cortexExecutable(), ["model", "catalog", "--json", "--provider", "nan"], {
+      encoding: "utf8",
+      maxBuffer: NAN_EXEC_MAX_BUFFER,
+      timeout: NAN_EXEC_TIMEOUT_MS,
+      windowsHide: true
+    }, (error, stdout) => {
+      pendingNanCatalog = false;
+      if (disposed) return;
+      if (error) {
+        setNanCatalogFailed(true);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(stdout);
+        if (!Array.isArray(parsed?.entries)) throw new Error("catalog entries");
+        const index = /* @__PURE__ */ new Map();
+        const models = [];
+        for (const entry of parsed.entries) {
+          const meta = entry?.meta;
+          if (entry?.provider !== "nan" || !meta || meta.pickerEligible !== true) continue;
+          if (typeof entry.model !== "string" || entry.model === "") continue;
+          if (typeof meta.monthlyQuotaTokens === "number" && Number.isFinite(meta.monthlyQuotaTokens)) index.set(entry.model, meta.monthlyQuotaTokens);
+          models.push(nanCatalogModel({
+            model: entry.model,
+            meta
+          }));
+        }
+        models.sort((left, right) => (left.tier === "legacy" ? 1 : 0) - (right.tier === "legacy" ? 1 : 0));
+        setNanCatalog({
+          cachedAt: Date.now(),
+          index,
+          models
+        });
+        setNanCatalogFailed(false);
+      } catch {
+        setNanCatalogFailed(true);
+      }
+    });
+  };
+  const readNanUsage = () => {
+    if (disposed) return;
+    const sessionID = currentSessionID(api, activeSessionOverride()) || "";
+    if (sessionID !== nanScopeKey) {
+      nanScopeKey = sessionID;
+      nanGeneration += 1;
+      setNanUsage(null);
+    }
+    if (pendingNanUsage) return;
+    const model = currentNanModel();
+    if (!model) return;
+    pendingNanUsage = true;
+    const requestGeneration = nanGeneration;
+    readNanCatalog();
+    execFile(nanExecutable(), ["metrics", "usage"], {
+      encoding: "utf8",
+      maxBuffer: NAN_EXEC_MAX_BUFFER,
+      timeout: NAN_EXEC_TIMEOUT_MS,
+      windowsHide: true
+    }, (error, stdout) => {
+      pendingNanUsage = false;
+      if (disposed || requestGeneration !== nanGeneration) return;
+      if (error) {
+        setNanUsage(null);
+        return;
+      }
+      try {
+        const metrics = JSON.parse(stdout);
+        if (!Array.isArray(metrics?.monthToDate?.byModel) || !Array.isArray(metrics?.last24h?.byModel)) {
+          setNanUsage(null);
+          return;
+        }
+        setNanUsage({
+          model,
+          monthToDate: nanModelTokens(metrics.monthToDate, model),
+          last24h: nanModelTokens(metrics.last24h, model)
+        });
+      } catch {
+        setNanUsage(null);
+      }
+    });
+  };
+  createEffect(() => {
+    activeSessionOverride();
+    untrack(readNanUsage);
+  });
+  const nanPoll = setInterval(readNanUsage, NAN_USAGE_POLL_INTERVAL_MS);
+  const nanStrip = createMemo(() => {
+    activeSessionOverride();
+    const usage = nanUsage();
+    if (!usage) return void 0;
+    const model = currentNanModel();
+    if (!model || model !== usage.model) return void 0;
+    const quota = nanCatalog()?.index.get(model);
+    if (quota === void 0) return void 0;
+    return {
+      percent: quota > 0 ? Math.min(100, Math.max(0, Math.round(usage.monthToDate / quota * 100))) : void 0,
+      burn: usage.last24h
+    };
+  });
+  const [nanCatalogFailed, setNanCatalogFailed] = createSignal(false);
+  const [modelAgents, setModelAgents] = createSignal(void 0);
+  const [pickerLoading, setPickerLoading] = createSignal(false);
+  const [pickerPhase, setPickerPhase] = createSignal("idle");
+  const [pickerPreview, setPickerPreview] = createSignal("");
+  const [pickerResult, setPickerResult] = createSignal("");
+  const [pickerRunError, setPickerRunError] = createSignal("");
+  let pendingModelSet = false;
+  const [nanDetailMetrics, setNanDetailMetrics] = createSignal(void 0);
+  const [nanDetailLoading, setNanDetailLoading] = createSignal(false);
+  const [nanDetailError, setNanDetailError] = createSignal("");
+  let pendingNanDetail = false;
+  const pickerLoadError = createMemo(() => nanCatalogFailed() ? "catalog JSON failed" : "");
+  const readModelAgents = (onSettled) => {
+    if (disposed) {
+      onSettled();
+      return;
+    }
+    execFile(cortexExecutable(), ["model", "list", "--json"], {
+      encoding: "utf8",
+      maxBuffer: NAN_EXEC_MAX_BUFFER,
+      timeout: NAN_EXEC_TIMEOUT_MS,
+      windowsHide: true
+    }, (error, stdout) => {
+      if (disposed) return;
+      let options;
+      if (!error) {
+        try {
+          const parsed = JSON.parse(stdout);
+          if (Array.isArray(parsed?.agents)) {
+            const seen = /* @__PURE__ */ new Set();
+            options = [];
+            for (const entry of parsed.agents) {
+              const option = agentModelOption(entry);
+              if (!option || seen.has(option.agent)) continue;
+              seen.add(option.agent);
+              options.push(option);
+            }
+          }
+        } catch {
+          options = void 0;
+        }
+      }
+      setModelAgents(options);
+      onSettled();
+    });
+  };
+  const loadModelPicker = () => {
+    if (disposed) return;
+    setNanCatalogFailed(false);
+    setModelAgents(void 0);
+    setPickerPreview("");
+    setPickerResult("");
+    setPickerRunError("");
+    setPickerPhase("idle");
+    setPickerLoading(true);
+    readNanCatalog();
+    readModelAgents(() => {
+      if (!disposed) setPickerLoading(false);
+    });
+  };
+  const runModelSet = (agentName, modelName, level, dryRun) => {
+    if (disposed || pendingModelSet) return;
+    const args = ["model", "set", agentName, `nan/${modelName}`];
+    if (level) args.push("--effort", level);
+    if (dryRun) args.push("--dry-run");
+    args.push("--json");
+    pendingModelSet = true;
+    if (dryRun) setPickerPhase("previewing");
+    else {
+      setPickerPhase("applying");
+      setPickerRunError("");
+    }
+    execFile(cortexExecutable(), args, {
+      encoding: "utf8",
+      maxBuffer: NAN_EXEC_MAX_BUFFER,
+      timeout: NAN_EXEC_TIMEOUT_MS,
+      windowsHide: true
+    }, (error, stdout, stderr) => {
+      pendingModelSet = false;
+      if (disposed) return;
+      if (error) {
+        setPickerPhase(dryRun ? "idle" : "ready");
+        setPickerRunError(nanCommandFailure(error, stderr));
+        return;
+      }
+      const receipt = nanSetReceiptLines(stdout).join("\n");
+      if (dryRun) {
+        setPickerPreview(receipt);
+        setPickerPhase("ready");
+        return;
+      }
+      setPickerResult(receipt);
+      setPickerPhase("applied");
+      readModelAgents(() => {
+      });
+    });
+  };
+  const loadNanDetails = () => {
+    if (disposed || pendingNanDetail) return;
+    pendingNanDetail = true;
+    setNanDetailLoading(true);
+    setNanDetailError("");
+    readNanCatalog();
+    execFile(nanExecutable(), ["metrics", "usage"], {
+      encoding: "utf8",
+      maxBuffer: NAN_EXEC_MAX_BUFFER,
+      timeout: NAN_EXEC_TIMEOUT_MS,
+      windowsHide: true
+    }, (error, stdout) => {
+      pendingNanDetail = false;
+      if (disposed) return;
+      setNanDetailLoading(false);
+      if (error) {
+        setNanDetailError("nan metrics unavailable");
+        return;
+      }
+      try {
+        const metrics = JSON.parse(stdout);
+        if (!Array.isArray(metrics?.timeSeries) || !Array.isArray(metrics?.monthToDate?.byModel)) {
+          setNanDetailError("nan metrics payload was not understood");
+          return;
+        }
+        setNanDetailMetrics(metrics);
+      } catch {
+        setNanDetailError("nan metrics payload was not understood");
+      }
+    });
+  };
+  const nanDetailDays = createMemo(() => nanDailySeries(nanDetailMetrics()?.timeSeries, NAN_DETAIL_DAY_POINTS));
+  const nanDetailRows = createMemo(() => {
+    const window = nanDetailMetrics()?.monthToDate;
+    const rows = [];
+    for (const entry of window?.byModel ?? []) {
+      if (typeof entry?.model !== "string" || entry.model === "") continue;
+      const meta = nanCatalog()?.models.find((candidate) => candidate.model === entry.model);
+      rows.push({
+        model: entry.model,
+        monthToDate: nanModelTokens(window, entry.model),
+        quota: meta?.quota ?? 0,
+        rolling4hRef: meta?.rolling4hRef ?? 0
+      });
+    }
+    rows.sort((left, right) => right.monthToDate - left.monthToDate);
+    return rows;
+  });
+  const [agentsOpen, setAgentsOpen] = createSignal(false);
+  const [agentsChildren, setAgentsChildren] = createSignal([]);
+  const [agentsLive, setAgentsLive] = createSignal(/* @__PURE__ */ new Map());
+  const [agentsSelected, setAgentsSelected] = createSignal(0);
+  const [agentsLoading, setAgentsLoading] = createSignal(false);
+  const [agentsError, setAgentsError] = createSignal("");
+  let agentsReturnRoute;
+  let agentsSurface = "route";
+  let agentsOpenedFrom;
+  let agentsPending = false;
+  let agentsKnownChildren = /* @__PURE__ */ new Set();
+  let agentsKeyHandler;
+  const agentsEventDisposers = [];
+  const subagentRootSessionID = () => {
+    const root = snapshot().root_session_id;
+    if (typeof root === "string" && root !== "" && root !== "global") return root;
+    return conversationScope(api, activeSessionOverride())?.rootSessionID || "";
+  };
+  const readSubagentChildren = () => {
+    if (disposed || agentsPending) return;
+    const root = subagentRootSessionID();
+    if (!root) {
+      setAgentsChildren([]);
+      agentsKnownChildren = /* @__PURE__ */ new Set();
+      setAgentsError("");
+      return;
+    }
+    const listFn = api.client?.session?.children;
+    if (typeof listFn !== "function") {
+      setAgentsError("subagent sessions are unavailable in this host");
+      return;
+    }
+    agentsPending = true;
+    setAgentsLoading(true);
+    let request;
+    try {
+      request = listFn.call(api.client.session, {
+        sessionID: root
+      });
+    } catch {
+      agentsPending = false;
+      setAgentsLoading(false);
+      setAgentsError("subagent sessions are unavailable in this host");
+      return;
+    }
+    Promise.resolve(request).then((response) => {
+      if (disposed) return;
+      const list = Array.isArray(response) ? response : response?.data;
+      if (!Array.isArray(list)) {
+        setAgentsError("subagent sessions are unavailable in this host");
+        return;
+      }
+      const children = list.filter((child) => child && typeof child.id === "string" && child.id !== root);
+      agentsKnownChildren = new Set(children.map((child) => child.id));
+      setAgentsChildren(children);
+      setAgentsError("");
+    }).catch(() => {
+      if (!disposed) setAgentsError("subagent sessions are unavailable in this host");
+    }).finally(() => {
+      agentsPending = false;
+      if (!disposed) setAgentsLoading(false);
+    });
+  };
+  const patchSubagentLive = (sessionID, patch) => {
+    if (typeof sessionID !== "string" || sessionID === "" || !agentsOpen()) return;
+    if (!agentsKnownChildren.has(sessionID)) return;
+    setAgentsLive((previous) => {
+      const next = new Map(previous);
+      next.set(sessionID, {
+        ...next.get(sessionID),
+        ...patch
+      });
+      return next;
+    });
+  };
+  const partActivityPatch = (part) => {
+    const label = partActivityLabel(part);
+    return {
+      tool: label?.tool,
+      step: label?.step,
+      updatedAt: Date.now()
+    };
+  };
+  const agentRows = createMemo(() => {
+    const tasks = snapshot().tasks;
+    const live = agentsLive();
+    const rows = agentsChildren().map((child) => {
+      const patch = live.get(child.id);
+      const stateStatus = api.state?.session?.status?.(child.id) || api.data?.session?.status?.(child.id);
+      const patchActivity = patch && (patch.tool || patch.step) ? {
+        tool: patch.tool,
+        step: patch.step
+      } : lastActivityLabel(api, child.id);
+      const task = taskForSession(child.id, tasks);
+      const created = sessionStartMillis(child);
+      return {
+        sessionID: child.id,
+        title: patch?.title || (typeof child.title === "string" && child.title ? child.title : child.id),
+        agent: patch?.agent || (typeof child.agent === "string" ? child.agent : ""),
+        status: patch?.status ?? subagentStatus(stateStatus),
+        retryAttempt: patch?.retryAttempt ?? subagentRetryAttempt(stateStatus),
+        startedAt: created,
+        tool: patchActivity.tool,
+        step: patchActivity.step,
+        tokens: patch?.tokens ?? sessionTokenTotal(child),
+        cost: patch?.cost ?? (typeof child.cost === "number" && child.cost > 0 ? child.cost : void 0),
+        updatedAt: patch?.updatedAt ?? created ?? 0,
+        taskID: task?.taskID,
+        taskStatus: task?.status
+      };
+    });
+    rows.sort((left, right) => {
+      const rank = subagentRank(left.status) - subagentRank(right.status);
+      return rank !== 0 ? rank : right.updatedAt - left.updatedAt;
+    });
+    return rows;
+  });
+  createEffect(() => {
+    const count = agentRows().length;
+    if (count === 0) {
+      if (agentsSelected() !== 0) setAgentsSelected(0);
+      return;
+    }
+    if (agentsSelected() >= count) setAgentsSelected(count - 1);
+  });
+  const moveAgentsSelection = (delta) => {
+    const count = agentRows().length;
+    if (count === 0) return;
+    const next = Math.min(count - 1, Math.max(0, agentsSelected() + delta));
+    if (next !== agentsSelected()) setAgentsSelected(next);
+  };
+  const agentsKeyInput = () => {
+    const keyInput = api.renderer?.keyInput;
+    return keyInput && typeof keyInput.on === "function" ? keyInput : void 0;
+  };
+  const detachAgentsKeys = () => {
+    const keyInput = agentsKeyInput();
+    if (agentsKeyHandler && keyInput && typeof keyInput.off === "function") {
+      try {
+        keyInput.off("keypress", agentsKeyHandler);
+      } catch {
+      }
+    }
+    agentsKeyHandler = void 0;
+  };
+  const agentsPanelOwnsKeyboard = () => {
+    if (agentsSurface === "dialog") return true;
+    const name = api.route?.current?.name;
+    if (typeof name !== "string" || name === "" || name === AGENTS_ROUTE) return true;
+    return name === agentsOpenedFrom;
+  };
+  const handleAgentsKey = (event) => {
+    if (!agentsOpen() || !agentsPanelOwnsKeyboard()) return;
+    const name = typeof event?.name === "string" ? event.name.toLowerCase() : "";
+    const sequence = typeof event?.sequence === "string" ? event.sequence : "";
+    const modifiers = Boolean(event?.ctrl || event?.meta);
+    let handled = true;
+    if (name === "up" || sequence === "\x1B[A" || !modifiers && name === "k") {
+      moveAgentsSelection(-1);
+    } else if (name === "down" || sequence === "\x1B[B" || !modifiers && name === "j") {
+      moveAgentsSelection(1);
+    } else if (name === "return" || name === "enter" || name === "linefeed" || sequence === "\r") {
+      activateSubagentRow(agentsSelected());
+    } else if (name === "escape" || name === "esc" || sequence === "\x1B") {
+      closeAgentsPanel();
+    } else {
+      handled = false;
+    }
+    if (!handled) return;
+    if (typeof event?.preventDefault === "function") event.preventDefault();
+    if (typeof event?.stopPropagation === "function") event.stopPropagation();
+  };
+  const attachAgentsKeys = () => {
+    if (agentsKeyHandler) return;
+    const keyInput = agentsKeyInput();
+    if (!keyInput) return;
+    const handler = (event) => handleAgentsKey(event);
+    try {
+      keyInput.on("keypress", handler);
+      agentsKeyHandler = handler;
+    } catch {
+      agentsKeyHandler = void 0;
+    }
+  };
+  const resetAgentsPanelState = () => {
+    detachAgentsKeys();
+    setAgentsOpen(false);
+    setAgentsLive(/* @__PURE__ */ new Map());
+    agentsKnownChildren = /* @__PURE__ */ new Set();
+    setAgentsChildren([]);
+    setAgentsError("");
+  };
+  const closeAgentsPanel = (restoreRoute = true) => {
+    if (!agentsOpen()) return;
+    resetAgentsPanelState();
+    const dialogStack = api.ui?.dialog;
+    if (dialogStack && typeof dialogStack.clear === "function") {
+      try {
+        dialogStack.clear();
+      } catch {
+      }
+    }
+    const route = api.route;
+    const target = agentsReturnRoute;
+    agentsReturnRoute = void 0;
+    if (restoreRoute && target && route && typeof route.navigate === "function") {
+      try {
+        route.navigate(target.name, target.params);
+      } catch {
+      }
+    }
+  };
+  const openSubagentSession = (sessionID) => {
+    if (!sessionID) return;
+    closeAgentsPanel(false);
+    const route = api.route;
+    if (route && typeof route.navigate === "function") {
+      try {
+        route.navigate("session", {
+          sessionID
+        });
+        return;
+      } catch {
+      }
+    }
+    const selectSession = api.client?.tui?.selectSession;
+    if (typeof selectSession === "function") {
+      try {
+        void Promise.resolve(selectSession.call(api.client.tui, {
+          sessionID
+        })).catch(() => {
+        });
+        return;
+      } catch {
+      }
+    }
+    showToast("Subagent", "this host cannot navigate to a child session", "info");
+  };
+  const activateSubagentRow = (index) => {
+    const row = agentRows()[index];
+    if (!row) return;
+    setAgentsSelected(index);
+    openSubagentSession(row.sessionID);
+  };
+  const agentsPanelView = () => _$createComponent(CortexAgentsPanel, {
+    rows: agentRows,
+    selected: agentsSelected,
+    loading: agentsLoading,
+    error: agentsError,
+    now,
+    pulse,
+    onActivate: activateSubagentRow,
+    get theme() {
+      return api.theme?.current || api.theme;
+    }
+  });
+  const openAgentsPanel = () => {
+    const route = api.route;
+    const dialogStack = api.ui?.dialog;
+    const hasRoute = Boolean(route && typeof route.register === "function" && typeof route.navigate === "function");
+    const hasDialog = Boolean(dialogStack && typeof dialogStack.replace === "function");
+    if (!hasRoute && !hasDialog) {
+      showToast("Cortex Subagents", "this host exposes no route or dialog surface", "warning");
+      return false;
+    }
+    if (hasRoute) {
+      agentsSurface = "route";
+      agentsOpenedFrom = void 0;
+      const current = route.current;
+      if (current && typeof current.name === "string" && current.name !== AGENTS_ROUTE) {
+        agentsOpenedFrom = current.name;
+        agentsReturnRoute = {
+          name: current.name,
+          params: current.params
+        };
+      }
+      try {
+        route.navigate(AGENTS_ROUTE, {});
+      } catch {
+      }
+    } else {
+      agentsSurface = "dialog";
+      agentsOpenedFrom = void 0;
+      try {
+        if (typeof dialogStack.setSize === "function") dialogStack.setSize("large");
+        dialogStack.replace(() => agentsPanelView(), () => resetAgentsPanelState());
+      } catch {
+      }
+    }
+    setAgentsOpen(true);
+    setAgentsSelected(0);
+    attachAgentsKeys();
+    readSubagentChildren();
+    return true;
+  };
+  if (api.event && typeof api.event.on === "function") {
+    const patch = (event, live) => patchSubagentLive(event?.properties?.sessionID, live);
+    const busy = (tool) => ({
+      tool,
+      step: void 0,
+      status: "busy",
+      updatedAt: Date.now()
+    });
+    const subscriptions = [["session.status", (event) => patch(event, {
+      status: subagentStatus(event?.properties?.status),
+      retryAttempt: subagentRetryAttempt(event?.properties?.status),
+      updatedAt: Date.now()
+    })], ["session.idle", (event) => patch(event, {
+      status: "idle",
+      tool: void 0,
+      step: void 0,
+      updatedAt: Date.now()
+    })], ["session.updated", (event) => {
+      const info = event?.properties?.info;
+      patchSubagentLive(info?.id ?? event?.properties?.sessionID, {
+        title: typeof info?.title === "string" && info.title ? info.title : void 0,
+        agent: typeof info?.agent === "string" && info.agent ? info.agent : void 0,
+        tokens: sessionTokenTotal(info),
+        cost: typeof info?.cost === "number" && info.cost > 0 ? info.cost : void 0,
+        updatedAt: Date.now()
+      });
+    }], ["session.next.tool.input.started", (event) => patch(event, busy(typeof event?.properties?.name === "string" ? event.properties.name : void 0))], ["session.next.tool.called", (event) => patch(event, busy(typeof event?.properties?.tool === "string" ? event.properties.tool : void 0))], ["session.next.tool.success", (event) => patch(event, {
+      tool: void 0,
+      updatedAt: Date.now()
+    })], ["session.next.tool.failed", (event) => patch(event, {
+      tool: void 0,
+      updatedAt: Date.now()
+    })], ["session.next.step.started", (event) => patch(event, {
+      step: "step",
+      tool: void 0,
+      status: "busy",
+      updatedAt: Date.now()
+    })], ["session.next.step.ended", (event) => {
+      const properties = event?.properties;
+      patch(event, {
+        step: void 0,
+        tool: void 0,
+        tokens: sessionTokenTotal({
+          tokens: properties?.tokens
+        }),
+        cost: typeof properties?.cost === "number" && properties.cost > 0 ? properties.cost : void 0,
+        updatedAt: Date.now()
+      });
+    }], ["message.part.updated", (event) => patch(event, partActivityPatch(event?.properties?.part))]];
+    for (const [type, handler] of subscriptions) {
+      try {
+        const off = api.event.on(type, handler);
+        if (typeof off === "function") agentsEventDisposers.push(off);
+      } catch {
+      }
+    }
+  }
+  createEffect(() => {
+    const open = agentsOpen();
+    const stamp = snapshot().generated_at;
+    if (!open || !stamp) return;
+    untrack(() => readSubagentChildren());
+  });
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
+    detachAgentsKeys();
+    for (const off of agentsEventDisposers) {
+      try {
+        off();
+      } catch {
+      }
+    }
+    agentsEventDisposers.length = 0;
     clearInterval(snapshotPoll);
     clearInterval(statsPoll);
+    clearInterval(nanPoll);
     clearInterval(clock);
     clearInterval(spinnerTimer);
     clearInterval(pulseTimer);
@@ -2816,22 +4452,22 @@ function initialize(api, disposeRoot) {
     api.ui.slot({
       prepend: "home.footer",
       render: (ctx) => (() => {
-        var _el$216 = _$createElement("box");
-        _$setProp(_el$216, "flexDirection", "column");
-        _$setProp(_el$216, "width", "100%");
-        _$insert(_el$216, _$createComponent(HomeLogo, {
+        var _el$280 = _$createElement("box");
+        _$setProp(_el$280, "flexDirection", "column");
+        _$setProp(_el$280, "width", "100%");
+        _$insert(_el$280, _$createComponent(HomeLogo, {
           get theme() {
             return ctx?.theme?.current || ctx?.theme || api.theme;
           }
         }), null);
-        _$insert(_el$216, _$createComponent(HomeStatsWidget, {
+        _$insert(_el$280, _$createComponent(HomeStatsWidget, {
           stats: usageStats,
           loading: statsLoading,
           get theme() {
             return ctx?.theme?.current || ctx?.theme || api.theme;
           }
         }), null);
-        return _el$216;
+        return _el$280;
       })()
     });
     api.ui.slot({
@@ -2865,24 +4501,78 @@ function initialize(api, disposeRoot) {
       append: "session.panel",
       render: (panel) => {
         updateActiveSession(panel);
+        const panelTheme = panel?.theme?.current || panel?.theme || api.theme;
         return _$createComponent(Show, {
           get when() {
-            return !panel?.name || panel?.name === "cortex.dashboard" || panel?.name === "session.panel" || panel?.name === "cortex.board" || panel?.name === "cortex";
+            return panel?.name === "cortex.model";
+          },
+          get fallback() {
+            return _$createComponent(Show, {
+              get when() {
+                return panel?.name === "cortex.nan";
+              },
+              get fallback() {
+                return _$createComponent(Show, {
+                  get when() {
+                    return !panel?.name || panel?.name === "cortex.dashboard" || panel?.name === "session.panel" || panel?.name === "cortex.board" || panel?.name === "cortex";
+                  },
+                  get children() {
+                    return _$createComponent(SessionKanbanPanel, {
+                      snapshot,
+                      jobs,
+                      now,
+                      spinner,
+                      pulse,
+                      theme: panelTheme
+                    });
+                  }
+                });
+              },
+              get children() {
+                return _$createComponent(NanDetailPanel, {
+                  days: nanDetailDays,
+                  rows: nanDetailRows,
+                  loading: nanDetailLoading,
+                  loadError: nanDetailError,
+                  theme: panelTheme
+                });
+              }
+            });
           },
           get children() {
-            return _$createComponent(SessionKanbanPanel, {
-              snapshot,
-              jobs,
-              now,
-              spinner,
-              pulse,
-              get theme() {
-                return panel?.theme?.current || panel?.theme || api.theme;
-              }
+            return _$createComponent(NanModelPickerPanel, {
+              models: () => nanCatalog()?.models ?? [],
+              agents: modelAgents,
+              loading: pickerLoading,
+              loadError: pickerLoadError,
+              phase: pickerPhase,
+              preview: pickerPreview,
+              result: pickerResult,
+              runError: pickerRunError,
+              onSelectionChange: () => {
+                setPickerPreview("");
+                setPickerResult("");
+                setPickerRunError("");
+              },
+              onPreview: (agent, model, level) => runModelSet(agent, model, level, true),
+              onApply: (agent, model, level) => runModelSet(agent, model, level, false),
+              theme: panelTheme
             });
           }
         });
       }
+    });
+    api.ui.slot({
+      append: "session.composer.top",
+      render: (ctx) => _$createComponent(NanUsageStrip, {
+        view: nanStrip,
+        get textLimit() {
+          return Math.max(24, terminalColumns() - 8);
+        },
+        get theme() {
+          return ctx?.theme?.current || ctx?.theme || api.theme;
+        }
+      })
     });
   }
   if (api.keymap && typeof api.keymap.registerLayer === "function") {
@@ -2948,6 +4638,69 @@ function initialize(api, disposeRoot) {
       api.lifecycle.onDispose(disposeDensityLayer);
     }
   }
+  if (api.keymap && typeof api.keymap.registerLayer === "function") {
+    const nanPanels = [{
+      name: ":model",
+      title: "Nan Model Picker",
+      desc: "Pick a nan model and effort for an agent from the catalog",
+      panel: "cortex.model",
+      load: loadModelPicker
+    }, {
+      name: ":nan",
+      title: "Nan Usage Detail",
+      desc: "Open the nan daily usage detail panel",
+      panel: "cortex.nan",
+      load: loadNanDetails
+    }];
+    const disposeNanLayers = api.keymap.registerLayer({
+      priority: 40,
+      commands: nanPanels.map((entry) => ({
+        name: entry.name,
+        title: entry.title,
+        desc: entry.desc,
+        category: "Cortex",
+        nargs: "0",
+        run: () => {
+          if (!api.ui?.panel?.open) return false;
+          api.ui.panel.open(entry.panel);
+          entry.load();
+          return true;
+        }
+      }))
+    });
+    if (typeof disposeNanLayers === "function" && api.lifecycle && typeof api.lifecycle.onDispose === "function") {
+      api.lifecycle.onDispose(disposeNanLayers);
+    }
+  }
+  if (api.route && typeof api.route.register === "function") {
+    let disposeAgentsRoute;
+    try {
+      disposeAgentsRoute = api.route.register([{
+        name: AGENTS_ROUTE,
+        render: () => agentsPanelView()
+      }]);
+    } catch {
+    }
+    if (typeof disposeAgentsRoute === "function" && api.lifecycle && typeof api.lifecycle.onDispose === "function") {
+      api.lifecycle.onDispose(disposeAgentsRoute);
+    }
+  }
+  if (api.keymap && typeof api.keymap.registerLayer === "function") {
+    const disposeAgentsLayer = api.keymap.registerLayer({
+      priority: 40,
+      commands: [{
+        name: AGENTS_COMMAND,
+        title: "Cortex Subagents",
+        desc: "Open the live subagent monitor panel",
+        category: "Cortex",
+        nargs: "0",
+        run: () => openAgentsPanel()
+      }]
+    });
+    if (typeof disposeAgentsLayer === "function" && api.lifecycle && typeof api.lifecycle.onDispose === "function") {
+      api.lifecycle.onDispose(disposeAgentsLayer);
+    }
+  }
   const registeredSlots = {
     home_logo(ctx) {
       return _$createComponent(HomeLogo, {
@@ -2985,17 +4738,17 @@ function initialize(api, disposeRoot) {
     home_bottom(ctx) {
       updateActiveSession(ctx);
       return (() => {
-        var _el$217 = _$createElement("box");
-        _$setProp(_el$217, "flexDirection", "column");
-        _$setProp(_el$217, "width", "100%");
-        _$insert(_el$217, _$createComponent(HomeStatsWidget, {
+        var _el$281 = _$createElement("box");
+        _$setProp(_el$281, "flexDirection", "column");
+        _$setProp(_el$281, "width", "100%");
+        _$insert(_el$281, _$createComponent(HomeStatsWidget, {
           stats: usageStats,
           loading: statsLoading,
           get theme() {
             return ctx?.theme?.current || ctx?.theme || api.theme;
           }
         }), null);
-        _$insert(_el$217, _$createComponent(HomeBottomStatus, {
+        _$insert(_el$281, _$createComponent(HomeBottomStatus, {
           snapshot,
           jobs,
           spinner,
@@ -3004,7 +4757,7 @@ function initialize(api, disposeRoot) {
             return ctx?.theme?.current || ctx?.theme || api.theme;
           }
         }), null);
-        return _el$217;
+        return _el$281;
       })();
     },
     "home.footer.status"(ctx) {
@@ -3027,6 +4780,17 @@ function initialize(api, disposeRoot) {
         now,
         spinner,
         pulse,
+        get theme() {
+          return ctx?.theme?.current || ctx?.theme || api.theme;
+        }
+      });
+    },
+    "session.composer.top"(ctx) {
+      return _$createComponent(NanUsageStrip, {
+        view: nanStrip,
+        get textLimit() {
+          return Math.max(24, terminalColumns() - 8);
+        },
         get theme() {
           return ctx?.theme?.current || ctx?.theme || api.theme;
         }

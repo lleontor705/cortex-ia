@@ -4,90 +4,113 @@ description: Author, migrate, inspect, and validate themes for OpenCode v2 (open
 license: MIT
 metadata:
   author: lleontor705
-  version: "2.1.0"
+  version: "2.2.0"
 ---
 
 # OpenCode v2 Theme Development Skill
 
-This skill provides comprehensive architectural guidelines, schema definitions, token contracts, and validation helpers for creating and maintaining themes in **OpenCode v2 (`opencode2`)**.
+Schema reference for authoring and migrating themes for **OpenCode v2 (`opencode2`)**, aligned with
+the loader the running binary actually enforces (verified against `opencode2` v2.0.15).
 
 ---
 
-## 1. OpenCode v2 Theme Architecture
+## 1. Theme architecture
 
-In OpenCode v2, themes follow a structured specification where semantic tokens and hue palettes are defined directly inside each mode (`dark` and/or `light`):
+Every v2 theme declares **one complete `base` token tree** plus **at least one hue palette**
+(`dark`, `light`, or both):
 
 ```
 theme.json
-├── $schema: "https://opencode.ai/theme.json"
-├── version: 2                  <-- MUST be 2
-├── dark: { ... }               <-- Dark mode definitions (REQUIRED if no light)
-│   ├── hue: { ... }            <-- 8 base hues + 3 aliases + 9 contrast steps (100-900)
-│   ├── categorical: [...]      <-- Ordered list of hues for agents/items
-│   ├── text: { ... }           <-- default, subdued, action, formfield, status, feedback
-│   ├── background: { ... }     <-- default, raised (base, high, max), action, formfield, feedback
-│   ├── border: { default }     <-- Border default color
-│   ├── scrollbar: { default }  <-- Scrollbar default color
-│   ├── diff: { ... }           <-- text, background, highlight, lineNumber
-│   ├── syntax: { ... }         <-- 9 syntax highlighting tokens
-│   ├── markdown: { ... }       <-- 14 markdown structural tokens
-│   ├── @context:elevated: { }  <-- Optional elevated surface overrides
-│   └── @context:overlay: { }   <-- Optional overlay surface overrides
-└── light: { ... }              <-- Light mode definitions (REQUIRED if no dark)
-    └── (same token structure as dark)
+├── $schema: <string>              <-- optional
+├── base: { ... }                  <-- REQUIRED: the complete token tree
+│   ├── categorical: [...]         <-- REQUIRED: ordered hues for agents/items
+│   ├── text: { ... }              <-- base, muted, action, formfield, feedback
+│   ├── background: { ... }        <-- base, raised (base|high|max), action, formfield, feedback
+│   ├── border: { base }
+│   ├── scrollbar: { base }
+│   ├── diff: { ... }
+│   ├── syntax: { ... }            <-- 9 keys
+│   ├── markdown: { ... }          <-- 14 keys
+│   └── @dialog: { ... }           <-- optional contextual dialog surface
+├── dark: { hue: { ... }, categorical?, <token overrides>?, @dialog? }
+└── light: { hue: { ... }, ... }   <-- optional
 ```
 
-> [!NOTE]
-> OpenCode v2 does **not** recognize a top-level `"base"` block. Semantic tokens must be located directly inside the `"dark"` and/or `"light"` mode objects.
+> [!IMPORTANT]
+> - The top-level `base` tree is **required and complete**. A theme that defines tokens only inside
+>   `dark`/`light` is rejected by the schema, and OpenCode reacts by **silently falling back to a
+>   builtin theme** — there is no user-visible error, no warning, and no log line worth grepping.
+> - Only `base`/`muted` naming exists: `text.base`, `text.muted`, `feedback.<kind>.base|.muted`,
+>   `background.base`, `background.raised.base|high|max`, `border.base`, `scrollbar.base`.
+>   The 2.0.8-era `default`/`subdued` names are invalid.
+> - `text.status.*` (`running`, `question`, `permission`, `unread`) was removed in v2.0.15; status
+>   colors are derived internally from feedback and action tokens. Do not emit it.
+> - `@context:elevated` / `@context:overlay` are gone. Contextual surfaces are declared as a single
+>   `@dialog` group over the raised surface, allowed in `base` and inside a mode.
+> - A theme may declare **only one mode**; OpenCode uses it when the other mode is requested.
+> - Theme selection lives **only** in `cli.json` (`theme.mode`, `theme.name`), never in `opencode.json`.
 
-### Precedence and Discovery Locations
-OpenCode resolves themes in the following order (later paths override earlier ones):
-1. **Built-in themes**: Embedded in the `opencode2` binary (`opencode`, `tokyonight`, `catppuccin`, `nord`, etc.).
-2. **Global user themes**: `~/.config/opencode/themes/<name>.json`
-3. **Project root themes**: `<workspace-root>/.opencode/themes/<name>.json`
-4. **Current directory themes**: `./.opencode/themes/<name>.json`
+### Discovery and precedence
+1. **Builtin themes** embedded in the `opencode2` binary.
+2. **Global**: `~/.config/opencode/themes/<name>.json`
+3. **Project**: `<project-root>/.opencode/themes/<name>.json`
 
-The filename without `.json` becomes the theme name. For example, `cortex.json` is selected in `cli.json` with:
-```json
+Only `.json` files are read; a theme closer to the current directory replaces a global or parent
+theme with the same name. The filename without `.json` is the theme name:
+
+```json title="~/.config/opencode/cli.json"
 "theme": { "mode": "dark", "name": "cortex" }
 ```
 
 ---
 
-## 2. Mandatory Contract Invariants
+## 2. Mandatory contract invariants
 
-OpenCode v2 validates themes using its internal schema (`ae`). Any invalid value or missing required property will cause the theme to fail schema validation and silently fall back to the built-in default theme:
+The loader validates `{ $schema?, base, light?, dark? }` and requires at least one mode. Any missing
+required key, invalid color, or unresolvable `$` reference rejects the whole file.
 
-| Component | Token Keys | Requirement |
+| Component | Required keys | Notes |
 | :--- | :--- | :--- |
-| `text` | `default`, `subdued`, `action`, `formfield`, `status`, `feedback` | `default` (not `base`), `subdued` (not `muted`) |
-| `background` | `default`, `raised` (`base`, `high`, `max`), `action`, `formfield`, `feedback` | `default` (not `base`) |
-| `border` | `default` | Color hex or reference |
-| `scrollbar` | `default` | Color hex or reference |
-| `diff.text` | `added`, `removed`, `context`, `hunkHeader` | Diff text colors |
-| `diff.background` | `added`, `removed`, `context` | Diff background fill |
-| `diff.highlight` | `added`, `removed` | Inline word-diff |
-| `diff.lineNumber` | `text`, `background.added`, `background.removed` | Gutter numbering |
+| `base.categorical` | non-empty string array | Ordered hues used for agents/items |
+| `text` | `base`, `muted`, `action.{primary,secondary,destructive}.base`, `formfield.base`, `feedback.{error,warning,success,info}.base` | `feedback.*.muted` is optional; there is no `status` group |
+| `background` | `base`, `raised.{base,high,max}`, `action.*.base`, `formfield.base`, `feedback.*.base` | Background feedback entries expose only `base` |
+| `border` / `scrollbar` | `base` | |
+| `diff` | `text.{added,removed,context,hunkHeader}`, `background.{added,removed,context}`, `highlight.{added,removed}`, `lineNumber.text`, `lineNumber.background.{added,removed}` | |
+| `syntax` | `comment`, `keyword`, `function`, `variable`, `string`, `number`, `type`, `operator`, `punctuation` | Value: hex or `$hue.<name>.<step>` |
+| `markdown` | `text`, `heading`, `link`, `linkText`, `code`, `blockQuote`, `emphasis`, `strong`, `horizontalRule`, `listItem`, `listEnumeration`, `image`, `imageText`, `codeBlock` | Value: hex or `$hue.<name>.<step>` |
+| `dark` / `light` | `hue` | `categorical` and any token group are optional overrides |
+| `@dialog` | — | Optional; accepts the same token groups as the base tree |
+
+**States**: `$hovered`, `$focused`, `$pressed`, `$selected`, `$disabled` are optional on every action
+and form-field entry; an unspecified state falls back to that entry's `base`.
+
+**Colors**: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `transparent`, or a `$` reference
+(`$hue.<name>.<step>`, `$text.base`, `$text.muted`, `$background.raised.base`, …). A reference that
+does not resolve rejects the theme.
 
 ---
 
-## 3. Hues and Contrast Scale Rules
+## 3. Hues and contrast scale rules
 
-Every mode (`dark` and/or `light`) defines the **8 base hues** and **3 aliases**:
-- **Base Hues**: `gray`, `purple`, `cyan`, `blue`, `green`, `yellow`, `orange`, `red`.
-- **Aliases**:
-  - `accent`: Must point to `$hue.<hue-name>` (e.g. `"$hue.purple"`).
-  - `interactive`: Must point to `$hue.<hue-name>` (e.g. `"$hue.cyan"`).
-  - `neutral`: Must point to `$hue.gray`.
-- **Contrast Direction**:
+Every mode palette declares the **8 base hues** and **3 aliases**:
+- **Base hues**: `gray`, `red`, `orange`, `yellow`, `green`, `cyan`, `blue`, `purple`.
+- **Aliases**: `accent`, `interactive`, `neutral`. Each must either reference `$hue.<name>` or
+  provide a full scale.
+- **Steps**: `100`–`900`. All nine steps are mandatory and must be **literal hex** colors (a scale
+  cannot reference another hue); an unknown step is rejected.
+- **Contrast direction**:
   - **Dark mode**: `100` is the lightest/brightest color; `900` is the darkest.
   - **Light mode**: `100` is the darkest color; `900` is the lightest.
+- `categorical` entries must resolve to a declared hue name or alias of the same theme.
 
 ---
 
-## 4. Syntax and Markdown Token Dictionaries
+## 4. Syntax and Markdown token dictionaries
 
-### Syntax Keys (All 9 required)
+Color values for `syntax.*` and `markdown.*` accept **only** a literal hex color or a
+`$hue.<name>.<step>` reference (no `transparent`, no `$text.*`/`$background.*` references).
+
+### Syntax keys (all 9 required)
 - `comment`: Comments and annotations
 - `keyword`: Language keywords (`const`, `function`, `return`, `package`)
 - `function`: Function and method identifiers
@@ -98,7 +121,7 @@ Every mode (`dark` and/or `light`) defines the **8 base hues** and **3 aliases**
 - `operator`: Operators (`+`, `-`, `=`, `=>`)
 - `punctuation`: Brackets, commas, semicolons
 
-### Markdown Keys (All 14 required)
+### Markdown keys (all 14 required)
 - `text`: Regular prose text
 - `heading`: Headings (`#`, `##`, `###`)
 - `link`: URL and link targets
@@ -116,7 +139,7 @@ Every mode (`dark` and/or `light`) defines the **8 base hues** and **3 aliases**
 
 ---
 
-## 5. Terminal Requirements
+## 5. Terminal requirements
 
 For themes to render accurately:
 - Terminal must support 24-bit Truecolor (`$COLORTERM=truecolor` or `$COLORTERM=24bit`).
@@ -125,10 +148,17 @@ For themes to render accurately:
 
 ---
 
-## 6. How to Validate a Theme
+## 6. How to validate a theme
 
-Use the validation script located in `scripts/validate-theme.mjs`:
+Use the validator located in `scripts/validate-theme.mjs`:
+
 ```bash
 node scripts/validate-theme.mjs internal/assets/themes/cortex.json
 ```
-If the theme passes with 0 errors, it is guaranteed to load cleanly in `opencode2`.
+
+It checks the same contract the running `opencode2` enforces: required top-level `base` tree,
+`base`/`muted` naming (rejecting `default`, `subdued`, `text.status.*`, `@context:*`, `version`),
+8 hue scales x 9 hex steps plus aliases, `@dialog`, every group/key shape, and reference resolution.
+Exit 0 means the file matches the loader contract; a failing file is reported with JSON paths, since
+opencode itself would only fall back silently. The validator never replaces a real render check in
+the terminal: schema validity proves loadability, not taste.
