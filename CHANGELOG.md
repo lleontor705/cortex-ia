@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.4.53 (2026-09-24) — orchestrator reconcile, nan effort catalog, TUI cockpit
+
+Consolidates the work-authority reconcile path, the nan model effort/usage
+surface, and the redesigned Cortex-IA TUI cockpit. No push, tag, or publish was
+performed for this entry.
+
+### Added
+
+- **`cortex-ia work reconcile`** — orchestrator-only force-release of a live-but-orphaned claim: fail-closed release conditions (`claim_not_live`, `current_session_owner`, `claim_fresh_no_inactivity_evidence`), compare-and-set on the expected revision, atomic lease release, and an immutable `reconciled` audit event carrying the decision inputs
+- **`cortex_ia_work_reconcile` bridge tool** — derives host session identity and owner-inactivity evidence only from the bridge's own execution context and host tracking, so an owner counts as inactive only when this bridge observed it active and it has since stopped
+- **nan catalog metadata** — `internal/modelmgr/nan_catalog.go` publishes per-model monthly quota tokens, effort vocabulary, and effort posture (`adjustable`, `adaptive`, `accepted-not-adjustable`); a zero quota means unknown and renders as no percentage instead of dividing by zero
+- **`model set <agent> <provider/model[#variant]> --effort <level>`** — a nan `set` auto-authors the matching `{id, settings.reasoningEffort}` variant entry when the provider model has none, previewing the appended variant in `--dry-run` and reporting it through `AuthoredVariants`
+- **`model doctor` nan-variant check** — flags nan references whose requested effort has no corresponding provider variant
+- **TUI nan usage strip** and `:model` picker — model selection with effort choice plus per-model month-to-date and 24h usage against quota
+- **TUI `:cortex-agents` panel** — live agent and work-authority view inside the cockpit
+- **Read-only cockpit snapshot** — the `ui` dashboard command opens the state database read-only, so the poll loop never contends with work-authority writers, and a fresh, unmigrated install renders an empty snapshot instead of failing
+
+### Changed
+
+- **TUI cockpit redesign** onto the OpenCode v2 theme schema (one complete `base` token tree plus hue palettes); the cortex theme was regenerated and the theme validator extended
+- **`opencode-theme-dev` skill** updated to the v2 theme specification and reference token spec
+- **Work-control plugin durable deference** — a retained in-memory claim handle no longer blocks a fresh claim when durable state shows the claim was recovered or reassigned; the stale handle is dropped and its maintenance stopped
+- **Agent guidance and discovery skill** refreshed (`investigate` permission ordering, `reviewer` read-only receipt allowlist with mutating carve-outs, canonical discovery heading invariant)
+- **OpenSpec** — archived the `nan-model-effort-usage` and `orchestrator-reconcile` changes and synced their canonical specs under `openspec/specs/`
+- `.gitignore` now ignores `.opencode/themes/`
+
+### Known Issues
+
+- **Task `allowed_files` entries are matched literally** — glob patterns are not expanded, so declare explicit file paths; the latent match behavior is most visible on Windows
+- **Error telemetry requires `CORTEX_REPORT_SECRET`** — reports are suppressed, not queued, when the secret is absent
+
 ## v0.3.0 (2026-04-25) — gentle-ai parity sweep
 
 This release ports the high-value functionality and governance assets from the
