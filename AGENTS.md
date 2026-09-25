@@ -34,7 +34,7 @@ All role controllers execute in `native` mode under the Cortex-IA Work Authority
 | Role | Allowed work-control behavior |
 |---|---|
 | `orchestrator` | Create/query boards and DAGs, recover expired attempts, retry reconciled blockers, dispatch native role controllers. Never claim tasks, lease files, or edit product code. |
-| `discovery` | Project onboarding: inspect skills, stack, engines, and architecture into `./.cortex-ia/discovery.md`. Never mutate work state. |
+| `discovery` | Agentic environment discovery: build the skills dictionary (project-local + installed global), run/test execution info, minimal governance list, and quick index into `./.cortex-ia/discovery.md`. Never mutate work state. |
 | `investigate` | Read-only `board list|status` and `work list|status`; diagnose and save bounded evidence. Never mutate work state. |
 | `planner` | Write OpenSpec planning artifacts, create the initiative board, and materialize its same-board dependency DAG. Never claim implementation work. |
 | `implement` | Own exactly one ready task claim, lease every writable path, renew authority, verify, then transition to `in_review`. Stop writing immediately if authority expires. |
@@ -130,4 +130,4 @@ Project-level skills are located in `.agents/skills/` (ready for use in this rep
 - PR CI requires a branch matching `<type>/<lowercase-name>`, a body containing `Closes #N`, `Fixes #N`, or `Resolves #N`, every linked issue labeled `status:approved`, and exactly one `type:*` PR label.
 - Commit first lines are enforced only to 10-72 characters by Husky, but repository convention is Conventional Commits; release changelog inclusion depends on `feat`, `fix`, `refactor`, and `perf` prefixes.
 
-The canonical workflow/phase matrix is `internal/assets/skills/_shared/workflow-map.md` (installed as `~/.cortex-ia/opencode/contracts/workflow-map.md`). Use it before routing SDD; do not assume one agent or skill per phase. `orchestrator` routes, `discovery` profiles the project, `investigate` diagnoses, `planner` owns proposal/spec/design/tasks/archive, `implement` executes, and `reviewer` independently verifies using `code-review-adversary`. Other installed utility skills are discovered from `internal/assets/skills/*/SKILL.md` and loaded only for their actual task trigger.
+The canonical workflow/phase matrix is `internal/assets/skills/_shared/workflow-map.md` (installed as `~/.cortex-ia/opencode/contracts/workflow-map.md`). Use it before routing SDD; do not assume one agent or skill per phase. `orchestrator` routes, `discovery` indexes the agentic environment, `investigate` diagnoses, `planner` owns proposal/spec/design/tasks/archive, `implement` executes, and `reviewer` independently verifies using `code-review-adversary`. Other installed utility skills are discovered from `internal/assets/skills/*/SKILL.md` and loaded only for their actual task trigger.

@@ -69,6 +69,7 @@ flowchart TD
 ```
 
 ### Startup Conditioning Rules
+0. **Mandatory Initial Discovery**: Immediately after session start and BEFORE the startup alignment gate and any routing decision, the orchestrator MUST dispatch the `discovery` subagent as the first task to build or refresh `./.cortex-ia/discovery.md` (minimal agentic-environment quick index). The resulting profile is the entry artifact carried as an `artifact_refs` entry in every subsequent dispatch envelope. Never skip it, never substitute `investigate`/`explore` for it.
 1. **Execution Mode**:
    - **`auto`**: Autonomous execution through the task DAG until all nodes pass or a hard blocker / approval gate is reached.
    - **`interactive`**: Explicit user review and sign-off required at each phase transition (plan approval -> task dispatch -> review verdict).

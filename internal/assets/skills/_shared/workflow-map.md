@@ -5,7 +5,7 @@ This is the single routing and phase matrix for Cortex-IA. Installed path: `~/.c
 | Workflow | Controller route | Required result and exit gate |
 |---|---|---|
 | direct-answer / direct-doc | Orchestrator answers from supplied evidence; investigate reads files | Evidence-backed response; filesystem mutations route to a bounded task |
-| discovery | Native discovery | Quick agentic environment index: skills dictionary (local + global installed), run/test info, minimal governance, quick index |
+| discovery | Native discovery | Mandatory initial task of every session; performs the `/.cortex-ia/` `.gitignore` hygiene append before profiling. Quick agentic environment index: skills dictionary (local + global installed), run/test info, minimal governance, quick index |
 | direct-change | Orchestrator creates one task in default; implement; reviewer only if risk warrants | Live claim/leases, proportional checks, independent or orchestrator auto-approval on low risk |
 | fast-tdd | Implement with fast-tdd, then reviewer | Causal RED, same oracle GREEN, independent approval |
 | hotfix | Implement with hotfix-triage, then reviewer | Containment, regression evidence and explicit structural follow-up |
