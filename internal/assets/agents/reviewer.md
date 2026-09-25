@@ -156,9 +156,11 @@ permissions:
   - action: cortex_ia_diagram_render
     resource: "*"
     effect: allow
+  # Ordering invariant: the broad shell allow precedes every destructive deny.
+  # OpenCode v2 applies last-matching-rule-wins, so trailing denies stay authoritative.
   - action: shell
     resource: "*"
-    effect: deny
+    effect: allow
   # Evidence hashing for review verification
   - action: shell
     resource: "sha256sum *"
@@ -227,6 +229,61 @@ permissions:
   - action: shell
     resource: "git branch*"
     effect: allow
+  # Destructive commands denied: reviewer is read-only by design
+  - action: shell
+    resource: "rm *"
+    effect: deny
+  - action: shell
+    resource: "rmdir *"
+    effect: deny
+  - action: shell
+    resource: "del *"
+    effect: deny
+  - action: shell
+    resource: "rd *"
+    effect: deny
+  - action: shell
+    resource: "Remove-Item *"
+    effect: deny
+  - action: shell
+    resource: "format *"
+    effect: deny
+  - action: shell
+    resource: "git push*"
+    effect: deny
+  - action: shell
+    resource: "git reset*"
+    effect: deny
+  - action: shell
+    resource: "git clean*"
+    effect: deny
+  - action: shell
+    resource: "git rebase*"
+    effect: deny
+  - action: shell
+    resource: "git revert*"
+    effect: deny
+  - action: shell
+    resource: "git commit*"
+    effect: deny
+  - action: shell
+    resource: "git merge*"
+    effect: deny
+  - action: shell
+    resource: "npm uninstall*"
+    effect: deny
+  - action: shell
+    resource: "npm publish*"
+    effect: deny
+  - action: shell
+    resource: "curl *"
+    effect: deny
+  - action: shell
+    resource: "sqlite3 *"
+    effect: deny
+  - action: shell
+    resource: "* delegation.db*"
+    effect: deny
   # Carve-outs: reviewer must never mutate work authority or installation state via CLI
   - action: shell
     resource: "cortex-ia work claim*"
