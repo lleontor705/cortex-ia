@@ -352,6 +352,10 @@ OpenCode v2's TUI and event bus stream subagent execution badges and spinners na
   - React to background completion notifications as tasks reach `in_review`. Do not poll in a sleep loop.
   - Dispatch `reviewer` (or auto-approve low-risk Tier 2).
   - Reviewer `PASS` marks tasks `done` and automatically unlocks downstream dependents to `ready`, forming the next parallel wave.
+- **Mid-Flight Steering & Synthetic Injection** (`cortex-work-protocol.md` §6, patterns 3-4):
+  - Retain each background child's `sessionID`. When a user decision arrives mid-run, an evidence-ref handoff is needed, or bounded context must complete, steer the live child through `task` session continuation: `steer` injects into the child's current run; `queue` waits for its next step.
+  - Steering delivers context only and never grants authority: claims and leases still govern every file edit, and claim/lease tokens NEVER appear in steering payloads.
+  - The orchestrator profile has no shell. Programmatic `opencode api post /api/session/<sessionID>/synthetic --data '<json>'` injection is reserved for shell-capable roles (`investigate`, `implement`, `reviewer`) and limited to context/evidence payloads.
 
 ---
 

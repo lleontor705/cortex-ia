@@ -81,6 +81,7 @@ Return a concise Markdown report and execute the transition tool. **Terse Commun
 - **Verification Verdict**: `PASS | FAIL | BLOCKED | INCONCLUSIVE`
 - **Changed Files**: list of modified paths
 - **Verification Commands**: commands, exit codes, and brief results
+- **Open Questions**: unresolved questions for the orchestrator (omit when none)
 ```
 
 Omit all claim and lease tokens. A PASS requires executable evidence; an unavailable required check yields `INCONCLUSIVE` or `BLOCKED`, never PASS.

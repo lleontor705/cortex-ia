@@ -49,7 +49,8 @@ const (
 	CheckDefaultAgent CheckID = "default-agent"
 	// CheckTemplateGuard pins the embedded template against agents/model keys.
 	CheckTemplateGuard CheckID = "template-guard"
-	// CheckOpencode2Models is the optional `opencode2 models` cross-check.
+	// CheckOpencode2Models is the optional resolved-OpenCode-binary `models`
+	// cross-check.
 	CheckOpencode2Models CheckID = "opencode2-models"
 	// CheckNanVariants validates nan agent effort ids against the static
 	// vocabulary. It is read-only and warns instead of rewriting.
@@ -117,15 +118,15 @@ func (r *DoctorReport) add(check CheckID, severity Severity, agent, message stri
 }
 
 // CommandRunner executes one external command and returns its combined output.
-// Doctor injects it so the opencode2 cross-check is a non-fatal seam that tests
-// can stub without touching PATH.
+// Doctor injects it so the resolved-binary `models` cross-check is a non-fatal
+// seam that tests can stub without touching PATH.
 type CommandRunner func(name string, args ...string) ([]byte, error)
 
 // DoctorOptions carries every injectable seam doctor needs. Evidence is the
 // recorded managed-entry ownership set (nil on an uninstalled home); Template
 // returns the embedded asset bytes the regression guard inspects; RunCommand
-// runs the optional opencode2 cross-check. A nil seam degrades to a SKIPPED
-// finding instead of failing the report.
+// runs the optional resolved-binary `models` cross-check. A nil seam degrades
+// to a SKIPPED finding instead of failing the report.
 type DoctorOptions struct {
 	Evidence   []OwnershipRecord
 	Template   func() ([]byte, error)
@@ -418,14 +419,14 @@ func (m *Manager) checkOpencode2Models(report *DoctorReport, run CommandRunner) 
 		report.add(CheckOpencode2Models, SeveritySkipped, "", "skipped because no command runner was injected")
 		return
 	}
-	output, err := run("opencode2", "models")
+	output, binary, err := runOpencodeCommand(run, "models")
 	if err != nil {
-		report.add(CheckOpencode2Models, SeveritySkipped, "", "opencode2 is unavailable: "+err.Error())
+		report.add(CheckOpencode2Models, SeveritySkipped, "", "the OpenCode models command is unavailable: "+err.Error())
 		return
 	}
 	refs := catalogReferences(ParseModelCatalog(output))
 	if len(refs) == 0 {
-		report.add(CheckOpencode2Models, SeveritySkipped, "", "opencode2 models output was not parseable")
+		report.add(CheckOpencode2Models, SeveritySkipped, "", binary+" models output was not parseable")
 		return
 	}
 	echo := refs
@@ -433,7 +434,7 @@ func (m *Manager) checkOpencode2Models(report *DoctorReport, run CommandRunner) 
 		echo = echo[:opencode2ModelsRefLimit]
 	}
 	report.add(CheckOpencode2Models, SeverityInfo, "",
-		fmt.Sprintf("opencode2 reported %d model reference(s): %s", len(refs), strings.Join(echo, ", ")))
+		fmt.Sprintf("%s reported %d model reference(s): %s", binary, len(refs), strings.Join(echo, ", ")))
 }
 
 // observedRefDigest resolves the observed config value for one recorded agent

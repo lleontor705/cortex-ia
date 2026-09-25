@@ -73,6 +73,7 @@ Shared operational policies that must remain identical across all roles (`Langua
 
 Delegation is a sociotechnical transfer of authority and accountability, not merely mechanical task decomposition. To prevent **Cascade Amplification** (where orchestrator ambiguities compound down worker chains):
 - Every minion dispatch envelope MUST define positive requirements along with explicit **negative boundaries (`non_goals`)**: paths not to touch, architectural patterns not to alter, and third-party dependencies not to introduce.
+- Every dispatch MUST be **context-complete** (`cortex-work-protocol.md` §6, pattern 1): `file:line` anchors, verified evidence, user-locked decisions, non-goals, and verification oracles travel upfront. A subagent forced to ask mid-run for context the orchestrator already held is an orchestrator defect, not a subagent failure.
 - Delegated subagents receive narrowed authority (principle of least privilege) and MUST NOT exceed the scope defined in `allowed_files` and `non_goals`.
 
 ## Double-Blind Adversarial Verification (Consensus Paradox Defense)
@@ -123,6 +124,7 @@ To eliminate AI code bloat and maintain long-term codebase health:
 
 - **No Chat Narration**: Do NOT emit conversational filler before or between tool calls (e.g. "Now I will inspect...", "Let me run tests...").
 - **Terse and Structured Delivery**: Deliver final responses using clean Markdown tables, headings, and high-density summaries. Omit apologies, cheerleading, and diff reiteration.
+- **Four Communication Patterns** (`cortex-work-protocol.md` §6): context-complete envelopes, `open_questions` in final receipts (§8), parent→child steering via a retained `sessionID`, and shell-only synthetic context injection. That contract defines them once; prompts and skills reference, never restate.
 
 ## Orchestrator Executive Synthesis Standard (Artifact Pyramid)
 

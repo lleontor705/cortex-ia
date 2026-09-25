@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +22,11 @@ const (
 // defaultDaemonBaseURL is the documented OpenCode v2 background daemon default.
 const defaultDaemonBaseURL = "http://localhost:4096"
 
+// opencodeBinEnv names the environment override that pins the OpenCode CLI used
+// for catalog and doctor acquisition. It is authoritative when set, so both
+// surfaces resolve the same binary.
+const opencodeBinEnv = "CORTEX_IA_OPENCODE_BIN"
+
 // daemonCatalogTimeout bounds the daemon tier so a hung daemon degrades to the
 // text tier quickly instead of stalling the caller.
 const daemonCatalogTimeout = 2 * time.Second
@@ -35,9 +42,11 @@ const catalogEntryLimit = 512
 // CatalogEntry is one selectable provider/model plus its effort variants.
 // Provider is the leading '/'-segment while Model keeps any further segments:
 // openrouter/anthropic/claude-sonnet-4.5 splits into provider "openrouter" and
-// model "anthropic/claude-sonnet-4.5". Variants are deduplicated and sorted.
-// Meta is additive static capability metadata and is present only for provider
-// nan entries, so every other provider keeps its original receipt shape.
+// model "anthropic/claude-sonnet-4.5". Acquired variants are deduplicated and
+// sorted; a static nan vocabulary keeps the order it declares because that order
+// is the effort scale. Meta is additive static capability metadata and is
+// present only for provider nan entries, so every other provider keeps its
+// original receipt shape.
 type CatalogEntry struct {
 	Provider string        `json:"provider"`
 	Model    string        `json:"model"`
@@ -55,8 +64,9 @@ type Catalog struct {
 }
 
 // CatalogOptions carries the injectable acquisition seams. A nil RoundTripper
-// uses http.DefaultTransport; an empty DaemonBaseURL uses the documented
-// default; a nil RunCommand skips the text tier.
+// uses http.DefaultTransport; an empty DaemonBaseURL is discovered from
+// `opencode service status` when a RunCommand is present, then falls back to the
+// documented default; a nil RunCommand skips discovery and the text tier.
 type CatalogOptions struct {
 	DaemonBaseURL string
 	RoundTripper  http.RoundTripper
@@ -78,6 +88,73 @@ type daemonVariant struct {
 	ID string `json:"id"`
 }
 
+// opencodeCandidates returns the CLI names to try, in resolution order. An
+// explicit CORTEX_IA_OPENCODE_BIN is authoritative and suppresses the fallback;
+// otherwise the v2 name is tried before the installed v1 name.
+func opencodeCandidates() []string {
+	if override := strings.TrimSpace(os.Getenv(opencodeBinEnv)); override != "" {
+		return []string{override}
+	}
+	return []string{"opencode2", "opencode"}
+}
+
+// runOpencodeCommand runs `<binary> args...` through the injected runner,
+// trying each resolved binary until one succeeds. It returns the combined
+// output and the binary that produced it so a caller can label its receipt.
+func runOpencodeCommand(run CommandRunner, args ...string) ([]byte, string, error) {
+	var lastErr error
+	for _, binary := range opencodeCandidates() {
+		output, err := run(binary, args...)
+		if err == nil {
+			return output, binary, nil
+		}
+		lastErr = err
+	}
+	return nil, "", lastErr
+}
+
+// resolveDaemonBaseURL picks the daemon origin for the HTTP tier. An explicit
+// option wins for tests and embedders; otherwise `opencode service status` is
+// consulted, and any failure falls back to the documented default.
+func resolveDaemonBaseURL(opts CatalogOptions) string {
+	if configured := strings.TrimRight(opts.DaemonBaseURL, "/"); configured != "" {
+		return configured
+	}
+	if opts.RunCommand != nil {
+		if discovered := discoverDaemonBaseURL(opts.RunCommand); discovered != "" {
+			return discovered
+		}
+	}
+	return defaultDaemonBaseURL
+}
+
+// discoverDaemonBaseURL reads the background server origin from
+// `opencode service status` output. It returns "" for any failure so a missing
+// daemon binary or an unrecognized status layout degrades to the default.
+func discoverDaemonBaseURL(run CommandRunner) string {
+	output, _, err := runOpencodeCommand(run, "service", "status")
+	if err != nil {
+		return ""
+	}
+	return parseDaemonBaseURL(string(output))
+}
+
+// parseDaemonBaseURL extracts the first http(s) origin from status output,
+// discarding any path or query so the caller appends its own API path.
+func parseDaemonBaseURL(output string) string {
+	for _, field := range strings.Fields(output) {
+		parsed, err := url.Parse(strings.Trim(field, "\"'()[]{},;"))
+		if err != nil || parsed.Host == "" {
+			continue
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			continue
+		}
+		return parsed.Scheme + "://" + parsed.Host
+	}
+	return ""
+}
+
 // Catalog acquires the selectable catalog through three ordered tiers:
 // daemon-api, opencode2-models, then none. No failure surfaces an error:
 // exhausting every tier yields Catalog{Source: CatalogSourceNone} with zero
@@ -87,7 +164,7 @@ func (m *Manager) Catalog(opts CatalogOptions) Catalog {
 		return buildCatalog(entries, CatalogSourceDaemon)
 	}
 	if opts.RunCommand != nil {
-		if output, err := opts.RunCommand("opencode2", "models"); err == nil {
+		if output, _, err := runOpencodeCommand(opts.RunCommand, "models"); err == nil {
 			if entries := ParseModelCatalog(output); len(entries) > 0 {
 				return buildCatalog(entries, CatalogSourceOpencode2)
 			}
@@ -100,10 +177,7 @@ func (m *Manager) Catalog(opts CatalogOptions) Catalog {
 // every documented failure mode (unreachable, timeout, non-2xx, malformed
 // payload) so the caller degrades to the text tier instead of failing.
 func fetchDaemonCatalog(opts CatalogOptions) ([]CatalogEntry, bool) {
-	base := strings.TrimRight(opts.DaemonBaseURL, "/")
-	if base == "" {
-		base = defaultDaemonBaseURL
-	}
+	base := resolveDaemonBaseURL(opts)
 	transport := opts.RoundTripper
 	if transport == nil {
 		transport = http.DefaultTransport
@@ -155,10 +229,10 @@ func catalogEntryFromRef(ref string) (CatalogEntry, bool) {
 	return CatalogEntry{Provider: desired.Provider, Model: desired.Model}, true
 }
 
-// ParseModelCatalog is the shared lenient text-tier parser for `opencode2
-// models` output. The command's layout is not a contract, so any token that
-// normalizes to a shape-valid reference is accepted. Tokens with the same
-// provider/model merge into one entry and '#variant' tokens extend that
+// ParseModelCatalog is the shared lenient text-tier parser for the resolved
+// OpenCode binary's `models` output. The command's layout is not a contract, so
+// any token that normalizes to a shape-valid reference is accepted. Tokens with
+// the same provider/model merge into one entry and '#variant' tokens extend that
 // entry's Variants. Entries are deduplicated and deterministically ordered.
 func ParseModelCatalog(output []byte) []CatalogEntry {
 	raw := make([]CatalogEntry, 0, 16)

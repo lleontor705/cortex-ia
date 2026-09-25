@@ -2,6 +2,8 @@ package modelmgr
 
 import (
 	"errors"
+	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -151,5 +153,75 @@ func TestDoctorNanVariantsFlagsUnlistedEffort(t *testing.T) {
 				t.Fatalf("message %q does not contain %q", finding.Message, tc.want)
 			}
 		})
+	}
+}
+
+func TestCatalogSeedsNanEffortVariantsWhenSourceIsBare(t *testing.T) {
+	t.Setenv(opencodeBinEnv, "")
+	output := []byte(strings.Join([]string{
+		"nan/glm5.3",
+		"nan/deepseek-v4-flash",
+		"nan/qwen3-embedding",
+		"anthropic/claude-sonnet-4-5",
+	}, "\n"))
+	run := func(name string, args ...string) ([]byte, error) {
+		if name != "opencode2" {
+			return nil, errors.New("executable file not found in PATH")
+		}
+		if len(args) == 2 && args[0] == "service" {
+			return nil, errors.New("no daemon")
+		}
+		return output, nil
+	}
+	catalog := New(t.TempDir()).Catalog(CatalogOptions{
+		RoundTripper: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("unreachable")
+		}),
+		RunCommand: run,
+	})
+	if catalog.Source != CatalogSourceOpencode2 {
+		t.Fatalf("catalog source = %s, want %s", catalog.Source, CatalogSourceOpencode2)
+	}
+	entries := make(map[string]CatalogEntry, len(catalog.Entries))
+	for _, entry := range catalog.Entries {
+		entries[entry.Provider+"/"+entry.Model] = entry
+	}
+	glm, ok := entries["nan/glm5.3"]
+	if !ok || !reflect.DeepEqual(glm.Variants, []string{"low", "medium", "high", "max"}) {
+		t.Fatalf("glm5.3 variants = %+v (present=%v)", glm.Variants, ok)
+	}
+	if glm.Meta == nil || !glm.Meta.PickerEligible || !glm.Meta.EffortAdjustable {
+		t.Fatalf("glm5.3 meta = %+v", glm.Meta)
+	}
+	if flash := entries["nan/deepseek-v4-flash"]; len(flash.Variants) != 0 {
+		t.Fatalf("a non-adjustable model must keep empty variants: %+v", flash.Variants)
+	}
+	if embedding := entries["nan/qwen3-embedding"]; len(embedding.Variants) != 0 {
+		t.Fatalf("a utility model must keep empty variants: %+v", embedding.Variants)
+	}
+	if anthropic := entries["anthropic/claude-sonnet-4-5"]; len(anthropic.Variants) != 0 || anthropic.Meta != nil {
+		t.Fatalf("a non-nan entry must stay unchanged: %+v", anthropic)
+	}
+}
+
+func TestCatalogPreservesAcquiredNanVariants(t *testing.T) {
+	t.Setenv(opencodeBinEnv, "")
+	run := func(name string, args ...string) ([]byte, error) {
+		if name != "opencode2" {
+			return nil, errors.New("executable file not found in PATH")
+		}
+		if len(args) == 2 && args[0] == "service" {
+			return nil, errors.New("no daemon")
+		}
+		return []byte("nan/glm5.3#high\n"), nil
+	}
+	catalog := New(t.TempDir()).Catalog(CatalogOptions{
+		RoundTripper: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("unreachable")
+		}),
+		RunCommand: run,
+	})
+	if len(catalog.Entries) != 1 || !reflect.DeepEqual(catalog.Entries[0].Variants, []string{"high"}) {
+		t.Fatalf("acquired variants must win over the static vocabulary: %+v", catalog.Entries)
 	}
 }

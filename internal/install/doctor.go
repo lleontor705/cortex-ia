@@ -2,12 +2,14 @@ package install
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/state"
@@ -334,6 +336,7 @@ func (s *Service) assessJournals(report *DoctorReport) {
 func (s *Service) doctorInstalled(report *DoctorReport, meta state.MetadataV2) {
 	report.OpencodeRoot = meta.OpencodeRoot
 	report.Selection = meta.Selection
+	s.assessTUIWiring(report)
 
 	userOwned := 0
 	for _, artifact := range meta.Artifacts {
@@ -495,6 +498,91 @@ func (s *Service) doctorInstalled(report *DoctorReport, meta state.MetadataV2) {
 		}
 		report.Findings = append(report.Findings, fmt.Sprintf("pending reconciliation: %s %s", effect.Kind, effect.Dest))
 	}
+}
+
+// assessTUIWiring degrades the report unless the cortex-ia TUI plugin and the
+// cortex theme are present in the configuration file the detected OpenCode
+// major version actually loads. The finding names the detected version so an
+// operator can tell which generation doctor judged.
+func (s *Service) assessTUIWiring(report *DoctorReport) {
+	configDir := filepath.Join(s.homeDir, ".config", "opencode")
+	major := detectOpenCodeConfigMajor(s.homeDir, configDir)
+	versionLabel := "v2"
+	configPath := filepath.Join(configDir, cliConfigName)
+	pluginTarget := TUIPluginDirV2
+	if major < opencodeMajorV2 {
+		versionLabel = "v1"
+		configPath = v1TUIConfigPath(configDir)
+		pluginTarget = TUIPluginPath
+	}
+	rel := homeRelative(s.homeDir, configPath)
+
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		degradeDoctor(report)
+		report.Findings = append(report.Findings, fmt.Sprintf(
+			"TUI wiring (OpenCode %s): %s is missing; run sync to register the plugin and theme", versionLabel, rel))
+		return
+	}
+	config, err := filemerge.DecodeJSONObject(raw)
+	if err != nil {
+		degradeDoctor(report)
+		report.Findings = append(report.Findings, fmt.Sprintf(
+			"TUI wiring (OpenCode %s): %s is unreadable: %v", versionLabel, rel, err))
+		return
+	}
+
+	pluginPresent := configHasPlugin(config, pluginTarget)
+	themePresent := configHasCortexTheme(config)
+	if pluginPresent && themePresent {
+		report.Findings = append(report.Findings, fmt.Sprintf(
+			"TUI wiring (OpenCode %s): plugin and cortex theme present in %s", versionLabel, rel))
+		return
+	}
+	degradeDoctor(report)
+	missing := make([]string, 0, 2)
+	if !pluginPresent {
+		missing = append(missing, "plugin entry")
+	}
+	if !themePresent {
+		missing = append(missing, "cortex theme")
+	}
+	report.Findings = append(report.Findings, fmt.Sprintf(
+		"TUI wiring (OpenCode %s): missing %s in %s; run sync to repair", versionLabel, strings.Join(missing, " and "), rel))
+}
+
+// degradeDoctor upgrades a healthy verdict to degraded; blocked and
+// not-installed verdicts are never rewritten by a wiring finding.
+func degradeDoctor(report *DoctorReport) {
+	if report.Verdict == DoctorHealthy {
+		report.Verdict = DoctorDegraded
+	}
+}
+
+// configHasPlugin reports whether either plugin array key carries the target
+// entry, tolerating both the v2 "plugins" and v1 "plugin" spellings.
+func configHasPlugin(config map[string]any, target string) bool {
+	for _, key := range []string{"plugin", "plugins"} {
+		values, ok := config[key].([]any)
+		if !ok {
+			continue
+		}
+		for _, entry := range values {
+			if value, ok := entry.(string); ok && value == target {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func configHasCortexTheme(config map[string]any) bool {
+	theme, ok := config["theme"].(map[string]any)
+	if !ok {
+		return false
+	}
+	name, _ := theme["name"].(string)
+	return name == cortexThemeName
 }
 
 // ownershipEvidence projects recorded MCP ownership onto manager records.

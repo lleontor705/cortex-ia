@@ -191,6 +191,7 @@ func TestDoctorInvalidRecordedDigestIsCorrupt(t *testing.T) {
 // while the echoed list stays bounded.
 func TestDoctorOpencode2CountBeyondEchoCap(t *testing.T) {
 	home := t.TempDir()
+	t.Setenv(opencodeBinEnv, "")
 	writeFile(t, configPath(home), `{"default_agent": "build"}`)
 	outputFor := func(count int) CommandRunner {
 		return func(string, ...string) ([]byte, error) {
@@ -227,5 +228,52 @@ func TestDoctorOpencode2CountBeyondEchoCap(t *testing.T) {
 				t.Fatalf("message = %q, want %q", finding.Message, want)
 			}
 		})
+	}
+}
+
+func TestDoctorOpencode2FallsBackToOpencodeBinary(t *testing.T) {
+	t.Setenv(opencodeBinEnv, "")
+	home := t.TempDir()
+	writeFile(t, configPath(home), `{"default_agent": "build"}`)
+	run := func(name string, args ...string) ([]byte, error) {
+		if name != "opencode" {
+			return nil, errors.New("executable file not found in PATH")
+		}
+		if len(args) == 1 && args[0] == "models" {
+			return []byte("anthropic/claude-sonnet-4-5\n"), nil
+		}
+		return nil, errors.New("unexpected command")
+	}
+	report := New(home).Doctor(DoctorOptions{Template: cleanTemplate, RunCommand: run})
+	finding, ok := findFinding(report, CheckOpencode2Models)
+	if !ok || finding.Severity != SeverityInfo || !strings.Contains(finding.Message, "opencode reported") {
+		t.Fatalf("fallback finding = %+v (present=%v)", finding, ok)
+	}
+	if report.HasErrors() {
+		t.Fatalf("the fallback cross-check must not fail the report: %+v", report.Findings)
+	}
+}
+
+func TestDoctorBinaryEnvOverrideIsAuthoritative(t *testing.T) {
+	t.Setenv(opencodeBinEnv, "custom-opencode")
+	home := t.TempDir()
+	writeFile(t, configPath(home), `{"default_agent": "build"}`)
+	var names []string
+	run := func(name string, args ...string) ([]byte, error) {
+		names = append(names, name)
+		return []byte("anthropic/claude-sonnet-4-5\n"), nil
+	}
+	report := New(home).Doctor(DoctorOptions{Template: cleanTemplate, RunCommand: run})
+	finding, ok := findFinding(report, CheckOpencode2Models)
+	if !ok || finding.Severity != SeverityInfo || !strings.Contains(finding.Message, "custom-opencode reported") {
+		t.Fatalf("override finding = %+v (present=%v)", finding, ok)
+	}
+	if len(names) == 0 {
+		t.Fatal("the runner was never called")
+	}
+	for _, name := range names {
+		if name != "custom-opencode" {
+			t.Fatalf("env override did not suppress fallback: %v", names)
+		}
 	}
 }

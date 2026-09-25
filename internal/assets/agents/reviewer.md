@@ -415,6 +415,7 @@ If Phases 1, 2, 3, and 4 ALL PASS without blockers:
    - **Verdict**: `PASS` (or `FAIL` with specific blockers)
    - **Lens Evaluation**: Functional/Structural, Resilience/Security, Architecture/Discovery.
    - **Checks Run**: Raw commands executed, exit codes, and hashes.
+   - **Open Questions**: unresolved questions the orchestrator must resolve (omit the line when none remain); never silently default an unresolved question.
    Do NOT emit raw JSON code blocks in chat.
 4. **TERMINATE IMMEDIATELY**: Do not call any further tools after issuing approval and the final report.
 </workflow_protocol>

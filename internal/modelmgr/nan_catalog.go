@@ -178,7 +178,9 @@ func NanModelMetaFor(model string) (NanModelMeta, bool) {
 
 // attachNanMeta decorates nan entries with their static metadata in a fresh
 // slice. Non-nan entries are copied unchanged and carry no meta, so their
-// receipt shape stays identical.
+// receipt shape stays identical. A picker-eligible, effort-adjustable nan entry
+// whose acquisition source yielded no variants inherits the static vocabulary,
+// because the CLI publishes model ids but never enumerates effort levels.
 func attachNanMeta(entries []CatalogEntry) []CatalogEntry {
 	decorated := make([]CatalogEntry, len(entries))
 	copy(decorated, entries)
@@ -186,10 +188,15 @@ func attachNanMeta(entries []CatalogEntry) []CatalogEntry {
 		if decorated[i].Provider != NanProvider {
 			continue
 		}
-		if meta, ok := NanModelMetaFor(decorated[i].Model); ok {
-			record := meta
-			decorated[i].Meta = &record
+		meta, ok := NanModelMetaFor(decorated[i].Model)
+		if !ok {
+			continue
 		}
+		record := meta
+		if len(decorated[i].Variants) == 0 && record.PickerEligible && record.EffortAdjustable && len(record.EffortVocabulary) > 0 {
+			decorated[i].Variants = append(make([]string, 0, len(record.EffortVocabulary)), record.EffortVocabulary...)
+		}
+		decorated[i].Meta = &record
 	}
 	return decorated
 }

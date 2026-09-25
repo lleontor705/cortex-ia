@@ -80,6 +80,9 @@ func InventoryFS(fsys fs.FS) ([]File, error) {
 		if d.IsDir() {
 			return nil
 		}
+		if isAppleDouble(p) {
+			return nil
+		}
 		kind, err := Classify(p)
 		if err != nil {
 			return err
@@ -102,6 +105,13 @@ func InventoryFS(fsys fs.FS) ([]File, error) {
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	return files, nil
+}
+
+// isAppleDouble reports macOS AppleDouble sidecar entries ("._*") that volume
+// metadata creates next to real files. They are not assets and must never be
+// classified or hashed.
+func isAppleDouble(p string) bool {
+	return strings.HasPrefix(path.Base(p), "._")
 }
 
 // Classify maps a slash-relative asset path to its Kind. The path must be
