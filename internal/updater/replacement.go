@@ -260,7 +260,7 @@ func payloadLooksExecutable(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var magic [4]byte
 	if _, err := io.ReadFull(f, magic[:]); err != nil {
