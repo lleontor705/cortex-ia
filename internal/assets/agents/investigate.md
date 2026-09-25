@@ -213,6 +213,11 @@ permissions:
   - action: cortex_ia_diagram_render
     resource: "*"
     effect: allow
+  # Ordering invariant: the broad shell allow precedes every destructive deny.
+  # OpenCode v2 applies last-matching-rule-wins, so trailing denies stay authoritative.
+  - action: shell
+    resource: "*"
+    effect: allow
   - action: shell
     resource: "rm *"
     effect: deny
@@ -258,9 +263,6 @@ permissions:
   - action: shell
     resource: "npm publish*"
     effect: deny
-  - action: shell
-    resource: "*"
-    effect: allow
 ---
 
 # role/investigate [STATIC_PREFIX_V3]

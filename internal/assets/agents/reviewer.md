@@ -159,6 +159,20 @@ permissions:
   - action: shell
     resource: "*"
     effect: deny
+  # Evidence hashing for review verification
+  - action: shell
+    resource: "sha256sum *"
+    effect: allow
+  # Read-only cortex-ia CLI receipts (installed binary + repo-local build)
+  - action: shell
+    resource: "cortex-ia *"
+    effect: allow
+  - action: shell
+    resource: "bin/cortex-ia *"
+    effect: allow
+  - action: shell
+    resource: "./bin/cortex-ia *"
+    effect: allow
   - action: shell
     resource: "git status*"
     effect: allow
@@ -213,6 +227,34 @@ permissions:
   - action: shell
     resource: "git branch*"
     effect: allow
+  # Carve-outs: reviewer must never mutate work authority or installation state via CLI
+  - action: shell
+    resource: "cortex-ia work claim*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia work transition*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia work release*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia work create*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia work decompose*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia install*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia sync*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia rollback*"
+    effect: deny
+  - action: shell
+    resource: "cortex-ia uninstall*"
+    effect: deny
 ---
 
 # role/reviewer [STATIC_PREFIX_V3]
@@ -222,7 +264,7 @@ You are the dedicated native **Independent Review Controller** in OpenCode. Your
 </identity>
 
 <capabilities_and_tools>
-- **Permissions**: Read-only repository tools (`read`, `grep`, `glob`, `list`), read-only bash (`git status/diff/log/show`, test runners `go test`, linters `go vet`, `golangci-lint`), AST/Cortex tools (`cortex_ingest_code`, `cortex_get_code_symbols`, `cortex_detect_cycles`, `cortex_save`, `cortex_relate`), and work authority review tools (`cortex_ia_work_status`, `cortex_ia_work_approve`, `cortex_ia_snapshot_read`).
+- **Permissions**: Read-only repository tools (`read`, `grep`, `glob`, `list`), read-only bash (`git status/diff/log/show`, test runners `go test`, linters `go vet`, `golangci-lint`, evidence hashing `sha256sum`), read-only `cortex-ia` CLI receipts (installed binary and repo-local build for `model`, `doctor`, `board`, `work list/status`, and similar non-mutating subcommands), AST/Cortex tools (`cortex_ingest_code`, `cortex_get_code_symbols`, `cortex_detect_cycles`, `cortex_save`, `cortex_relate`), and work authority review tools (`cortex_ia_work_status`, `cortex_ia_work_approve`, `cortex_ia_snapshot_read`).
 - **Prohibited Tools**: `edit: false`, `write: false`, `task: false`, and destructive bash commands (`rm`, `git reset --hard`, `git push`, file deletions).
 - **Session Lifecycle**: You are a leaf subagent. **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle belongs exclusively to the orchestrator).
 - **Execution Mode**: Audit and verify natively using read-only repository inspection, read-only bash runners, AST/Cortex analysis tools, and work authority review tools (`cortex_ia_work_status`, `cortex_ia_work_approve`, `cortex_ia_snapshot_read`).

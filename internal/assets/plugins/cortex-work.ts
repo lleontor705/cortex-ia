@@ -108,6 +108,9 @@ interface SubagentTrack {
 
 const activeSubagents = new Map<string, SubagentTrack>();
 const subagentStartTimes = new Map<string, number>();
+// Retained past idle so a host session that started and then stopped remains
+// classifiable as inactive for reconcile owner-inactivity evidence.
+const knownHostSessions = new Set<string>();
 interface WorkAuthority {
   claimToken: string;
   leases: Map<string, string>;
@@ -171,6 +174,28 @@ function durableWorkStatus(taskID: string, presentationRole?: string): any {
   const cmd = ["work", "status", taskID];
   if (presentationRole) cmd.push("--role", presentationRole);
   return parseJSON(cortex(cmd));
+}
+
+function durableLiveOwner(taskID: string): { owner: string; live: boolean } {
+  const claim = durableWorkStatus(taskID)?.claim;
+  const expiresAt = Date.parse(typeof claim?.expires_at === "string" ? claim.expires_at : "");
+  return {
+    owner: typeof claim?.owner === "string" ? claim.owner : "",
+    live: Number.isFinite(expiresAt) && expiresAt > Date.now(),
+  };
+}
+
+// Inactivity evidence is host-attested: only an owner session this bridge observed
+// active and that has since stopped counts; unknown or still-active owners never do.
+function reconcileOwnerInactive(taskID: string): boolean {
+  let owner = "";
+  try {
+    owner = durableLiveOwner(taskID).owner;
+  } catch {
+    return false;
+  }
+  const session = owner.startsWith("opencode-session:") ? owner.slice("opencode-session:".length) : "";
+  return session !== "" && knownHostSessions.has(session) && !activeSubagents.has(session);
 }
 
 export interface CachedProjectionEntry {
@@ -715,6 +740,9 @@ export const CortexWorkPlugin = Plugin.define({
     }
 
     // 1. Detectar inicio de subagente o subtask
+    if (type === "session.created") {
+      if (sessionID) knownHostSessions.add(sessionID);
+    }
     if (type === "session.created" && event.properties?.info?.parentID) {
       const role = event.properties?.info?.role || event.properties?.info?.agent || "subagent";
       subagentStartTimes.set(sessionID, Date.now());
@@ -869,7 +897,7 @@ export const CortexWorkPlugin = Plugin.define({
         const output = `${content}\n`;
         const bytes = Buffer.byteLength(output, "utf-8");
         if (!content.startsWith("# Cortex-IA Project Discovery")) {
-          throw new Error("discovery report must start with the canonical heading");
+          throw new Error("discovery report must start with the canonical heading \"# Cortex-IA Project Discovery\"");
         }
         if (bytes === 0 || bytes > 128 * 1024) {
           throw new Error("discovery report must contain 1-131072 UTF-8 bytes");
@@ -1166,7 +1194,23 @@ export const CortexWorkPlugin = Plugin.define({
         ttl: tool.schema.string().optional().describe("Duration such as 15m; defaults to Cortex-IA policy")
       },
       async execute(args, context) {
-        if (workAuthority.has(args.task_id)) throw new Error(`authority for ${args.task_id} is already held by this controller`);
+        const retained = workAuthority.get(args.task_id);
+        if (retained) {
+          let durable: { owner: string; live: boolean };
+          try {
+            durable = durableLiveOwner(args.task_id);
+          } catch {
+            throw authorityFailure("WORK_STATUS_UNAVAILABLE", args.task_id, context.sessionID);
+          }
+          if (durable.live && durable.owner === controllerIdentity(retained.sessionID)) {
+            throw new Error(`authority for ${args.task_id} is already held by this controller`);
+          }
+          // Durable state is authoritative over a retained in-memory handle: a recovered
+          // or reassigned claim must never keep blocking a fresh claim (obs 176).
+          stopMaintenance(retained, "durable_deference");
+          workAuthority.delete(args.task_id);
+          saveAuthorityState();
+        }
         if ([...workAuthority.values()].some((authority) => authority.sessionID === context.sessionID)) {
           throw new Error("this implement session already owns one work task; dispatch a separate controller for additional work");
         }
@@ -1182,6 +1226,23 @@ export const CortexWorkPlugin = Plugin.define({
         startMaintenance(args.task_id, authority, context.directory);
         saveAuthorityState();
         return JSON.stringify({ ...withoutToken(claim, "claim_token"), reserved_files: reserved.map(lease => withoutToken(lease, "lease_token")), maintenance: { ...maintenancePolicy, active: authority.maintenance?.active, reason: authority.maintenance?.reason } });
+      }
+    }),
+
+    cortex_ia_work_reconcile: tool({
+      description: "Orchestrator-only: force-release a live-but-orphaned work claim so the task can be retried. Fail-closed release conditions are enforced by the durable reconcile verb; host session identity and owner-inactivity evidence come only from this bridge's execution context and host tracking.",
+      args: {
+        task_id: tool.schema.string(),
+        reason: tool.schema.string().describe("Non-empty bounded explanation recorded in the audit snapshot"),
+        revision: tool.schema.number().describe("Current durable task revision for compare-and-set"),
+        to: tool.schema.enum(["ready"]).optional().describe("Release directly to ready (attempt-capped); defaults to blocked")
+      },
+      async execute(args, context) {
+        const command = ["work", "reconcile", args.task_id, "--reason", args.reason,
+          "--session", context.sessionID, "--revision", String(args.revision),
+          "--owner-session-inactive", String(reconcileOwnerInactive(args.task_id))];
+        if (args.to) command.push("--to", args.to);
+        return cortex(command);
       }
     }),
 
@@ -1402,6 +1463,7 @@ export const CortexWorkPlugin = Plugin.define({
     openspec_write: ["planner"], change_archive: ["planner"], discovery_write: ["discovery"],
     board_create: ["planner", "orchestrator"], work_create: ["planner", "orchestrator"],
     work_recover: ["orchestrator"], work_retry: ["orchestrator"], work_review_refresh: ["orchestrator"], work_decompose: ["planner"],
+    work_reconcile: ["orchestrator"],
     work_claim: ["implement"], work_renew: ["implement"],
     file_reserve: ["implement"], work_lease_renew: ["implement"],
     work_release_all: ["implement"], file_release: ["implement"], work_transition: ["implement"],
