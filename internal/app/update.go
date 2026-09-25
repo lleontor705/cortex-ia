@@ -62,6 +62,18 @@ func printUpdateHelp() {
 	fmt.Println("  schedule status    Report whether the managed update task is registered")
 }
 
+// printDevelopmentBuildNotice reports and returns true when the running build
+// carries no stable release identity and therefore cannot self-update. Source
+// builds report "dev" and repository checkouts report a git-describe string;
+// both degrade to this notice instead of a raw version-parser failure.
+func printDevelopmentBuildNotice() bool {
+	if updater.ClassifyBuild(Version) == updater.ReleaseBuild {
+		return false
+	}
+	fmt.Println(updater.SelfUpdateDisabledNotice(Version))
+	return true
+}
+
 // newUpdateClient binds the client to the machine-local state root so the
 // apply path resolves the persisted floor and raises it after a verified
 // replacement. No state is read or written here.
@@ -89,14 +101,37 @@ func resolveUpdateHome() string {
 }
 
 func runManualUpdate(checkOnly bool) error {
+	// Fail closed on trust before any cache short-circuit so a fresh state can
+	// never bypass the authenticated-update gate.
+	if err := updater.RequireTrust(); err != nil {
+		return err
+	}
+
+	if printDevelopmentBuildNotice() {
+		return nil
+	}
+
 	home := resolveUpdateHome()
+	state, _ := updater.LoadUpdateState(home)
 	client := newUpdateClient(home)
 
 	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
 	defer cancel()
 
+	if !checkOnly && state.CheckedWithin(time.Now().UTC(), updater.UpdateCheckTTL) && !state.UpdateAvailable() {
+		// A fresh state with nothing cached means the previous answer still
+		// holds. A pending cached release does not short-circuit: installing it
+		// needs the full asset list, which only a network response carries.
+		fmt.Printf("cortex-ia is already up to date (%s).\n", Version)
+		return nil
+	}
+
 	fmt.Printf("Checking for cortex-ia updates (current: %s)...\n", Version)
-	rel, hasUpdate, err := client.CheckLatest(ctx, Version)
+	check := client.CheckLatest
+	if !checkOnly {
+		check = client.CheckLatestFresh
+	}
+	rel, hasUpdate, err := check(ctx, Version)
 	if err != nil {
 		if errors.Is(err, updater.ErrNoTrustedKey) {
 			return err
@@ -109,7 +144,7 @@ func runManualUpdate(checkOnly bool) error {
 		if checkOnly {
 			return persistAndWarn(home, rel, false)
 		}
-		return nil
+		return recordCompletedCheck(home, rel, false)
 	}
 
 	fmt.Printf("Found newer release: %s (published %s)\n", rel.TagName, rel.PublishedAt.Format("2006-01-02"))
@@ -119,6 +154,10 @@ func runManualUpdate(checkOnly bool) error {
 		}
 		fmt.Println("Run 'cortex-ia update' to install the newest version.")
 		return nil
+	}
+
+	if err := recordCompletedCheck(home, rel, true); err != nil {
+		return err
 	}
 
 	fmt.Printf("Downloading and applying %s...\n", rel.TagName)
@@ -138,7 +177,21 @@ func runManualUpdate(checkOnly bool) error {
 // downloads, prompts, or replaces a binary, and a failed check leaves the
 // previous state untouched.
 func runScheduledUpdateCheck() error {
+	if err := updater.RequireTrust(); err != nil {
+		return err
+	}
+
+	if printDevelopmentBuildNotice() {
+		return nil
+	}
+
 	home := resolveUpdateHome()
+	state, _ := updater.LoadUpdateState(home)
+	if state.CheckedWithin(time.Now().UTC(), updater.UpdateCheckTTL) {
+		fmt.Printf("No update available (current: %s; checked %s)\n", Version, state.LastCheckedAt.UTC().Format(time.RFC3339))
+		return nil
+	}
+
 	client := newUpdateClient(home)
 
 	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
@@ -187,6 +240,11 @@ func persistCheckResult(home string, rel *updater.Release, hasUpdate bool) (upda
 	state.LastCheckedAt = time.Now().UTC()
 	state.Available = ""
 	state.AvailableDigest = ""
+	if rel != nil {
+		if etag := strings.TrimSpace(rel.ETag); etag != "" {
+			state.ReleaseETag = etag
+		}
+	}
 	if execPath := managedExecutablePath(); execPath != "" {
 		state.ManagedPath = execPath
 	}
@@ -199,6 +257,17 @@ func persistCheckResult(home string, rel *updater.Release, hasUpdate bool) (upda
 		return updater.UpdateState{}, err
 	}
 	return state, nil
+}
+
+// recordCompletedCheck persists an automatic apply-path check without the
+// install-candidate warning. An unresolvable state home keeps the check
+// read-only instead of failing the update.
+func recordCompletedCheck(home string, rel *updater.Release, hasUpdate bool) error {
+	if strings.TrimSpace(home) == "" {
+		return nil
+	}
+	_, err := persistCheckResult(home, rel, hasUpdate)
+	return err
 }
 
 // managedExecutablePath resolves the running binary through symlinks so the

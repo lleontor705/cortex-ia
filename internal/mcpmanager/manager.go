@@ -68,6 +68,11 @@ const (
 	// ConflictUnmanaged marks a name outside the managed preset catalog.
 	ConflictUnmanaged ConflictKind = "unmanaged-name"
 
+	// ConflictAbsent marks an adopt target that names a managed preset but
+	// has no live entry in the configuration. There is nothing to accredit,
+	// so the operation fails closed without writing.
+	ConflictAbsent ConflictKind = "absent-entry"
+
 	// ConflictMalformed marks config where "mcp" exists but is not a JSON
 	// object, or the document cannot be parsed unambiguously.
 	ConflictMalformed ConflictKind = "malformed-config"
@@ -111,6 +116,12 @@ func (e *ConflictError) Error() string {
 		)
 	case ConflictMalformed:
 		return fmt.Sprintf("mcpmanager: malformed OpenCode MCP config: %s", e.Detail)
+	case ConflictAbsent:
+		detail := e.Detail
+		if detail == "" {
+			detail = "no MCP entry exists for this managed preset"
+		}
+		return fmt.Sprintf("mcpmanager: cannot adopt %q: %s", e.Name, detail)
 	case ConflictDrifted:
 		return fmt.Sprintf(
 			"mcpmanager: MCP entry %q drifted from the accredited mcpv2 postimage (expected fingerprint %s, observed %s); URL, env/header values, enabled, type, argv, or the config file changed; refusing to remove user-modified configuration",
@@ -198,7 +209,8 @@ type ListResult struct {
 type Result struct {
 	Name       string
 	ConfigPath string
-	// Action is "added", "removed", "already-present", or "already-absent".
+	// Action is "added", "adopted", "removed", "already-present", or
+	// "already-absent".
 	Action string
 	// Changed reports whether the config file bytes changed.
 	Changed bool
@@ -216,6 +228,13 @@ type Result struct {
 	// Ownership is the record to persist in transactional metadata. It is
 	// nil for removals.
 	Ownership *OwnershipRecord
+	// ObservedIdentity is the canonical secret-free identity of the live
+	// entry an Adopt call accredited, carrying variable NAMES only. It is
+	// set when a live entry was observed and is the identity callers must
+	// persist: semantic equality tolerates env/header NAME-set divergence
+	// while the identity digest pins those names, so a preset-derived
+	// digest would never re-accredit the live entry.
+	ObservedIdentity *installmeta.MCPServerIdentity
 	// Qualification carries the evaluated probe outcome for Add calls; nil
 	// when no probe ran.
 	Qualification *ProbeEvidence
@@ -378,6 +397,106 @@ func (m *Manager) Add(name string, evidence []OwnershipRecord, probes ...ProbeFu
 	result.Qualified = qualified
 	result.Qualification = outcome
 	result.Installed = qualified
+	return result, nil
+}
+
+// AdoptableEntry classifies an entry as adoptable from its listing state: it
+// must be an active catalog preset whose live value equals the preset while
+// no ownership record accredits it. It is a pure classification with no
+// config access; callers still run the real Adopt, which fails closed on any
+// other state.
+func AdoptableEntry(name string, status EntryStatus) bool {
+	if status != StatusUnmanagedEquivalent {
+		return false
+	}
+	_, isCatalog := Lookup(name)
+	return isCatalog
+}
+
+// Adopt accredits an existing user-owned entry that already equals the named
+// managed preset. Adoption is explicit-only and read-only with respect to the
+// configuration: the live entry is never rewritten, so the config file stays
+// byte-identical. On success the Result carries the ownership record the
+// installer persists to transactional metadata: the observed semantic digest
+// plus the mcpv2 full-postimage fingerprint of the live entry. An entry that
+// matching evidence already accredits is an idempotent "already-present"
+// no-op. Unknown names, absent entries, and entries that differ from the
+// preset fail closed with a *ConflictError and mutate nothing.
+func (m *Manager) Adopt(name string, evidence []OwnershipRecord) (Result, error) {
+	preset, ok := Lookup(name)
+	if !ok {
+		return Result{}, &ConflictError{Name: name, Kind: ConflictUnmanaged}
+	}
+
+	path := m.ConfigPath()
+	config, err := loadConfig(path)
+	if err != nil {
+		return Result{}, err
+	}
+
+	entries, err := mcpEntries(config, path)
+	if err != nil {
+		return Result{}, err
+	}
+
+	observed, present := entries[name]
+	if !present {
+		return Result{}, &ConflictError{
+			Name:   name,
+			Kind:   ConflictAbsent,
+			Detail: fmt.Sprintf("no MCP entry named %q exists in %q; nothing to adopt", name, path),
+		}
+	}
+	observedMap, isMap := observed.(map[string]any)
+	if !isMap {
+		return Result{}, &ConflictError{
+			Name:   name,
+			Kind:   ConflictMalformed,
+			Detail: fmt.Sprintf("entry %q in %q is not a JSON object", name, path),
+		}
+	}
+	observedIdentity, err := installmeta.MCPServerIdentityFromEntry(name, observedMap)
+	if err != nil {
+		return Result{}, err
+	}
+	observedDigest, err := SemanticDigest(name, observedMap)
+	if err != nil {
+		return Result{}, err
+	}
+	equal, err := semanticEqual(observedMap, preset.Entry)
+	if err != nil {
+		return Result{}, err
+	}
+	if !equal {
+		presetDigest, err := SemanticDigest(name, preset.Entry)
+		if err != nil {
+			return Result{}, err
+		}
+		return Result{}, &ConflictError{
+			Name:           name,
+			Kind:           ConflictModified,
+			ExpectedDigest: presetDigest,
+			ObservedDigest: observedDigest,
+		}
+	}
+
+	result := Result{Name: name, ConfigPath: path, Configured: true, ObservedIdentity: &observedIdentity}
+	if _, accredited := accredit(evidence, name, observedDigest, path); accredited {
+		result.Action = "already-present"
+		return result, nil
+	}
+
+	postImageDigest, err := m.postImageDigest(name, observedMap)
+	if err != nil {
+		return Result{}, err
+	}
+	result.Action = "adopted"
+	result.Ownership = &OwnershipRecord{
+		Name:            name,
+		Digest:          observedDigest,
+		ConfigPath:      path,
+		PostImageDigest: postImageDigest,
+	}
 	return result, nil
 }
 

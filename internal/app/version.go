@@ -1,9 +1,10 @@
 package app
 
 import (
-	"os/exec"
 	"runtime/debug"
 	"strings"
+
+	"github.com/lleontor705/cortex-ia/internal/updater"
 )
 
 // Version holds the current build version, set via ldflags or defaulting to "dev".
@@ -37,15 +38,10 @@ func ResolveVersion(ldflags string) string {
 	return "dev"
 }
 
-// GitDescribeVersion attempts to read the current git tag if running within a git repository.
+// GitDescribeVersion returns the git-describe identifier of the checked-out
+// cortex-ia source tree, or "" when the working directory is not this project's
+// repository. Delegating to the updater keeps the module-path guard in one place
+// so an unrelated repository's tags never leak into the reported version.
 func GitDescribeVersion() string {
-	cmd := exec.Command("git", "describe", "--tags", "--always")
-	out, err := cmd.Output()
-	if err == nil {
-		tag := strings.TrimSpace(string(out))
-		if tag != "" {
-			return tag
-		}
-	}
-	return ""
+	return updater.GitDescribeVersion()
 }

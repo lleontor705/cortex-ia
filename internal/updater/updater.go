@@ -26,6 +26,18 @@ const (
 // ApplyUpdate would reject via its own canonical parsing.
 var ErrNonCanonicalVersion = errors.New("non-canonical version cannot participate in update checks")
 
+// Typed GitHub API failures surfaced by release checks. CLI surfaces distinguish
+// an exhausted rate limit (retryable after reset) from a genuinely missing
+// release and from transient server failures so the guidance they print is
+// actionable instead of a raw status dump.
+var (
+	ErrRateLimited        = errors.New("github api rate limit exceeded")
+	ErrGitHubAccessDenied = errors.New("github api access denied")
+	ErrReleaseNotFound    = errors.New("github release not found")
+	ErrGitHubServerError  = errors.New("github api server error")
+	ErrUnexpectedStatus   = errors.New("github api returned an unexpected status")
+)
+
 // ReleaseAsset represents an asset attached to a GitHub release.
 type ReleaseAsset struct {
 	Name        string `json:"name"`
@@ -41,6 +53,9 @@ type Release struct {
 	HTMLURL     string         `json:"html_url"`
 	Body        string         `json:"body"`
 	Assets      []ReleaseAsset `json:"assets"`
+	// ETag is the HTTP validator observed for this payload. It is transport
+	// metadata persisted in update state, never part of the GitHub JSON body.
+	ETag string `json:"-"`
 }
 
 // Client manages checking and applying updates from GitHub.
@@ -73,10 +88,31 @@ func New(repo string) *Client {
 // It returns the Release, a boolean indicating if an update is available, and any error.
 // A current or candidate version that is not canonical yields hasUpdate false with
 // ErrNonCanonicalVersion; dev/unknown current versions report no update without error.
+//
+// When the client is bound to a state home, the persisted release ETag is sent as
+// If-None-Match and an HTTP 304 is answered from the cached tag as a fresh cache
+// hit, avoiding a redundant payload transfer.
 func (c *Client) CheckLatest(ctx context.Context, currentVersion string) (*Release, bool, error) {
+	return c.checkLatest(ctx, currentVersion, true)
+}
+
+// CheckLatestFresh is CheckLatest without conditional caching. Apply paths must
+// use it because the download step needs the full asset list, which a 304 cache
+// hit cannot provide.
+func (c *Client) CheckLatestFresh(ctx context.Context, currentVersion string) (*Release, bool, error) {
+	return c.checkLatest(ctx, currentVersion, false)
+}
+
+func (c *Client) checkLatest(ctx context.Context, currentVersion string, conditional bool) (*Release, bool, error) {
 	if err := RequireTrust(); err != nil {
 		return nil, false, err
 	}
+
+	var cached UpdateState
+	if conditional && c.StateHome != "" {
+		cached, _ = LoadUpdateState(c.StateHome)
+	}
+
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", c.Repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -84,6 +120,12 @@ func (c *Client) CheckLatest(ctx context.Context, currentVersion string) (*Relea
 	}
 	req.Header.Set("User-Agent", UserAgent)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	if token := githubToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if etag := strings.TrimSpace(cached.ReleaseETag); etag != "" {
+		req.Header.Set("If-None-Match", etag)
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -91,21 +133,94 @@ func (c *Client) CheckLatest(ctx context.Context, currentVersion string) (*Relea
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode == http.StatusNotModified {
+		return cachedReleaseFromState(cached, currentVersion, strings.TrimSpace(resp.Header.Get("ETag")))
+	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, false, fmt.Errorf("github api returned %s: %s", resp.Status, string(body))
+		return nil, false, githubAPIError(resp, c.Repo)
 	}
 
 	var rel Release
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
 		return nil, false, fmt.Errorf("failed to decode release payload: %w", err)
 	}
+	rel.ETag = strings.TrimSpace(resp.Header.Get("ETag"))
 
 	hasUpdate, err := CheckUpdateCandidate(currentVersion, rel.TagName)
 	if err != nil {
 		return &rel, false, fmt.Errorf("%w: %w", ErrNonCanonicalVersion, err)
 	}
 	return &rel, hasUpdate, nil
+}
+
+// githubToken returns a GitHub API credential from the environment. GITHUB_TOKEN
+// is preferred so a CI-provided token wins over an interactive gh login when
+// both are exported.
+func githubToken() string {
+	for _, name := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {
+		if token := strings.TrimSpace(os.Getenv(name)); token != "" {
+			return token
+		}
+	}
+	return ""
+}
+
+// cachedReleaseFromState rebuilds the release reported after a 304 Not Modified.
+// Only the tag and ETag are known locally, which is enough for check surfaces;
+// an apply re-fetches the full payload through CheckLatestFresh.
+func cachedReleaseFromState(state UpdateState, currentVersion, headerETag string) (*Release, bool, error) {
+	tag := strings.TrimSpace(state.Available)
+	etag := strings.TrimSpace(headerETag)
+	if etag == "" {
+		etag = strings.TrimSpace(state.ReleaseETag)
+	}
+	if tag == "" {
+		return nil, false, nil
+	}
+
+	rel := &Release{TagName: tag, ETag: etag}
+	hasUpdate, err := CheckUpdateCandidate(currentVersion, tag)
+	if err != nil {
+		return rel, false, fmt.Errorf("%w: %w", ErrNonCanonicalVersion, err)
+	}
+	return rel, hasUpdate, nil
+}
+
+// githubAPIError maps a non-200 release response to a typed error with operator
+// guidance. Only 403 with an exhausted remaining quota is a rate limit; other
+// 403 responses are access problems.
+func githubAPIError(resp *http.Response, repo string) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	detail := strings.TrimSpace(string(body))
+
+	switch {
+	case resp.StatusCode == http.StatusForbidden && strings.TrimSpace(resp.Header.Get("X-RateLimit-Remaining")) == "0":
+		return fmt.Errorf("%w for %s%s: export GITHUB_TOKEN or GH_TOKEN to raise the limit, then retry",
+			ErrRateLimited, repo, rateLimitResetHint(resp.Header.Get("X-RateLimit-Reset")))
+	case resp.StatusCode == http.StatusForbidden:
+		return fmt.Errorf("%w: %s for %s; verify the GITHUB_TOKEN or GH_TOKEN scope", ErrGitHubAccessDenied, resp.Status, repo)
+	case resp.StatusCode == http.StatusNotFound:
+		return fmt.Errorf("%w: %s has no latest release (%s)", ErrReleaseNotFound, repo, resp.Status)
+	case resp.StatusCode >= 500:
+		return fmt.Errorf("%w: %s from %s%s", ErrGitHubServerError, resp.Status, repo, detailSuffix(detail))
+	default:
+		return fmt.Errorf("%w: %s from %s%s", ErrUnexpectedStatus, resp.Status, repo, detailSuffix(detail))
+	}
+}
+
+func rateLimitResetHint(raw string) string {
+	seconds, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || seconds <= 0 {
+		return ""
+	}
+	return " (resets " + time.Unix(seconds, 0).UTC().Format(time.RFC3339) + ")"
+}
+
+func detailSuffix(detail string) string {
+	if detail == "" {
+		return ""
+	}
+	return ": " + detail
 }
 
 // CompareSemver compares two semver tags (e.g. "v0.4.14" and "v0.4.15").

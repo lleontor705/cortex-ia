@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -106,6 +109,41 @@ func IsDevOrUnknown(v string) bool {
 	return norm == "" || norm == "dev" || norm == "unknown" || norm == "development"
 }
 
+// BuildKind classifies a running version for self-update eligibility.
+type BuildKind int
+
+const (
+	// ReleaseBuild is a canonical stable release that may participate in a self-update.
+	ReleaseBuild BuildKind = iota
+	// DevelopmentBuild is a dev, unknown, or empty version carrying no release identity.
+	DevelopmentBuild
+	// NonCanonicalBuild is any other non-canonical identifier, such as a git-describe string.
+	NonCanonicalBuild
+)
+
+// ClassifyBuild reports whether v is a canonical release, a development build,
+// or a non-canonical identifier. Only ReleaseBuild may be compared against
+// release tags; the other kinds must be told to install a release instead of
+// having a raw version-parser failure surfaced.
+func ClassifyBuild(v string) BuildKind {
+	if IsDevOrUnknown(v) {
+		return DevelopmentBuild
+	}
+	if _, err := ParseCanonicalVersion(v); err != nil {
+		return NonCanonicalBuild
+	}
+	return ReleaseBuild
+}
+
+// SelfUpdateDisabledNotice is the operator-facing message for a build that
+// cannot self-update because it carries no stable release identity.
+func SelfUpdateDisabledNotice(v string) string {
+	return fmt.Sprintf(
+		"cortex-ia is running a development build (%s); self-update is disabled.\nInstall a release from https://github.com/%s/releases to enable updates.",
+		v, DefaultRepo,
+	)
+}
+
 // VerifyVersionFloor checks that candidate exceeds current and any applied floor.
 func VerifyVersionFloor(currentVer, candidateVer, appliedFloor string) error {
 	if IsDevOrUnknown(currentVer) {
@@ -151,4 +189,57 @@ func CheckUpdateCandidate(currentVer, candidateVer string) (bool, error) {
 		return false, err
 	}
 	return CompareCanonical(cand, cur) > 0, nil
+}
+
+// projectModulePath is the Go module this binary is built from. Git metadata is
+// trusted only when the checked-out repository declares the same module, so an
+// unrelated repository's tags can never be reported as the running version.
+const projectModulePath = "github.com/" + DefaultRepo
+
+// GitDescribeVersion returns the git-describe identifier of the checked-out
+// cortex-ia source tree, or "" when the working directory is not this project's
+// repository.
+func GitDescribeVersion() string {
+	if !inProjectRepository() {
+		return ""
+	}
+	out, err := exec.Command("git", "describe", "--tags", "--always").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// inProjectRepository reports whether the working directory belongs to a git
+// repository whose go.mod declares this project's module path. A missing git
+// binary, a non-repository directory, and a repository with a different module
+// all report false.
+func inProjectRepository() bool {
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return false
+	}
+	root := strings.TrimSpace(string(out))
+	if root == "" {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return false
+	}
+	return declaredModule(data) == projectModulePath
+}
+
+// declaredModule extracts the module path declared by a go.mod file.
+func declaredModule(goMod []byte) string {
+	for _, line := range strings.Split(string(goMod), "\n") {
+		if idx := strings.Index(line, "//"); idx >= 0 {
+			line = line[:idx]
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "module" {
+			return fields[1]
+		}
+	}
+	return ""
 }

@@ -268,6 +268,105 @@ func (s *Service) MCPAdd(name string, opts MCPOptions) (*MCPReceipt, error) {
 	return receipt, nil
 }
 
+// MCPAdopt accredits an existing user-owned MCP entry that already equals a
+// managed preset. Adoption is explicit-only and never rewrites the OpenCode
+// config: the live config file stays byte-identical. Only transactional
+// ownership is recorded — the v2 metadata record and the mcpv2 postimage
+// fingerprint sidecar — so a later install or sync recognises the entry as
+// managed instead of reporting the ownership conflict. Unknown names, absent
+// entries, and entries that differ from the preset fail closed through the
+// manager with a *mcpmanager.ConflictError and mutate nothing. Real runs
+// follow MCPAdd's concurrency pattern exactly: the canonical home lock is
+// acquired first, and the v2 metadata, fingerprint sidecar, and config the
+// manager classifies are loaded under that lock, so adoption is never
+// recorded from stale pre-lock evidence. The metadata and sidecar commits are
+// journaled with verified postimages and restored on any later failure. An
+// already-accredited entry is an idempotent no-op that writes nothing.
+// Dry-runs stay read-only and never lock.
+func (s *Service) MCPAdopt(name string, opts MCPOptions) (*MCPReceipt, error) {
+	if _, ok := mcpmanager.Lookup(name); !ok {
+		return nil, &mcpmanager.ConflictError{Name: name, Kind: mcpmanager.ConflictUnmanaged}
+	}
+
+	if opts.DryRun {
+		_, evidence, err := s.v2Context()
+		if err != nil {
+			return nil, err
+		}
+		_, _, salt, err := s.fingerprintContext()
+		if err != nil {
+			return nil, err
+		}
+		manager := mcpmanager.NewFingerprinting(s.homeDir, salt)
+		return s.mcpDryRun(manager, name, evidence, "adopt")
+	}
+
+	release, err := s.lockForMutation(opts.LockTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("MCP adopt %q: %w", name, err)
+	}
+	defer release()
+
+	// Reload the mutating context under the lock: another process may have
+	// committed a different state, fingerprint sidecar, or config between
+	// this call and lock acquisition.
+	meta, evidence, err := s.v2Context()
+	if err != nil {
+		return nil, err
+	}
+	store, _, salt, err := s.fingerprintContext()
+	if err != nil {
+		return nil, err
+	}
+	manager := mcpmanager.NewFingerprinting(s.homeDir, salt)
+
+	receipt := &MCPReceipt{Name: name, ConfigPath: manager.ConfigPath()}
+	result, err := manager.Adopt(name, evidence)
+	if err != nil {
+		return receipt, err
+	}
+	receipt.Action = result.Action
+	receipt.ConfigPath = result.ConfigPath
+	receipt.Configured = result.Configured
+	if result.Action == "already-present" {
+		return receipt, nil
+	}
+
+	txn, err := s.beginServiceTxn("mcp", opts.now(), state.FingerprintPath(s.homeDir))
+	if err != nil {
+		return receipt, fmt.Errorf("MCP adopt %q: %w", name, err)
+	}
+	receipt.BackupID = txn.backupID
+	var status txnStatus
+	stage := fmt.Sprintf("MCP adopt %q", name)
+	// fail aborts the transaction and immediately mirrors the restore
+	// verdict onto the receipt, exactly like MCPAdd.
+	fail := func(err error) error {
+		aborted := txn.abort(&status, stage, err)
+		receipt.Restored, receipt.RestoreError = status.Restored, status.RestoreError
+		return aborted
+	}
+
+	record, err := mcpRecordFromObservedIdentity(name, result.ObservedIdentity, result.ConfigPath, meta.OpencodeRoot)
+	if err != nil {
+		return receipt, fail(fmt.Errorf("record ownership: %w", err))
+	}
+	if err := txn.commitState(meta, upsertMCPRecord(meta, record), opts.now()); err != nil {
+		return receipt, fail(fmt.Errorf("commit state v2: %w", err))
+	}
+	fingerprintDigest := ""
+	if result.Ownership != nil {
+		fingerprintDigest = result.Ownership.PostImageDigest
+	}
+	if err := s.persistFingerprintRecordTxn(txn, &store, name, result.ConfigPath, fingerprintDigest, meta.OpencodeRoot); err != nil {
+		return receipt, fail(fmt.Errorf("record MCP postimage fingerprint: %w", err))
+	}
+	if err := txn.commit(); err != nil {
+		return receipt, fail(err)
+	}
+	return receipt, nil
+}
+
 // MCPAddDesired installs the typed desired MCP server: a catalog preset, a
 // custom local server with an exact argv vector (never a shell string), or
 // a custom remote http(s) endpoint. The desired description is validated
@@ -531,13 +630,13 @@ func (s *Service) MCPList() (*MCPListReport, error) {
 	return report, nil
 }
 
-// mcpDryRun predicts the outcome of an add ("add") or remove ("remove")
-// operation for name from the read-only listing. Absent entries predict the
-// honest per-operation outcome ("add" versus "already-absent"), accredited
-// entries predict the operation's effect ("already-present" versus
-// "remove"), and user-owned entries predict the fail-closed conflict the
-// real operation would raise. No probe runs, so qualification is never
-// reported.
+// mcpDryRun predicts the outcome of an add ("add"), remove ("remove"), or
+// adopt ("adopt") operation for name from the read-only listing. Absent
+// entries predict the honest per-operation outcome ("add" versus
+// "already-absent"), accredited entries predict the operation's effect
+// ("already-present" versus "remove"), an equal unaccredited entry predicts
+// adoption, and user-owned entries predict the fail-closed conflict the real
+// operation would raise. No probe runs, so qualification is never reported.
 func (s *Service) mcpDryRun(manager *mcpmanager.Manager, name string, evidence []mcpmanager.OwnershipRecord, op string) (*MCPReceipt, error) {
 	listing, err := manager.List(evidence)
 	if err != nil {
@@ -557,15 +656,27 @@ func (s *Service) mcpDryRun(manager *mcpmanager.Manager, name string, evidence [
 		if entry.Name != name {
 			continue
 		}
+		if op == "adopt" && entry.Status == mcpmanager.StatusUnmanagedEquivalent {
+			receipt.Action = "adopted"
+			receipt.Configured = true
+			return receipt, nil
+		}
+		if op == "adopt" && entry.Status == mcpmanager.StatusAbsent {
+			return receipt, &mcpmanager.ConflictError{
+				Name:   name,
+				Kind:   mcpmanager.ConflictAbsent,
+				Detail: fmt.Sprintf("no MCP entry named %q exists; nothing to adopt", name),
+			}
+		}
 		switch entry.Status {
 		case mcpmanager.StatusAbsent:
 			return absent()
 		case mcpmanager.StatusManaged:
-			if op == "add" {
+			if op == "remove" {
+				receipt.Action = "remove"
+			} else {
 				receipt.Action = "already-present"
 				receipt.Configured = true
-			} else {
-				receipt.Action = "remove"
 			}
 			return receipt, nil
 		default:
@@ -622,6 +733,24 @@ func mcpRecordFromPreset(preset mcpmanager.Preset, configAbs, opencodeRoot strin
 		return state.MCPV2{}, fmt.Errorf("resolve config path relative to the OpenCode root: %w", err)
 	}
 	return state.NewMCPV2(identity, filepath.ToSlash(rel), state.OwnershipManaged)
+}
+
+// mcpRecordFromObservedIdentity derives the sanitized v2 ownership record for
+// an MCP entry that already exists in the user's configuration, keyed on the
+// identity the manager observed live. Adoption must persist the OBSERVED
+// identity: semantic equality tolerates env/header NAME-set divergence while
+// the identity digest pins those names, so a preset-derived digest would never
+// match the live entry on the next plan and the ownership conflict would
+// survive its own remediation.
+func mcpRecordFromObservedIdentity(name string, identity *installmeta.MCPServerIdentity, configAbs, opencodeRoot string) (state.MCPV2, error) {
+	if identity == nil || identity.Name == "" {
+		return state.MCPV2{}, fmt.Errorf("observed identity for MCP entry %q is unavailable", name)
+	}
+	rel, err := filepath.Rel(opencodeRoot, configAbs)
+	if err != nil {
+		return state.MCPV2{}, fmt.Errorf("resolve config path relative to the OpenCode root: %w", err)
+	}
+	return state.NewMCPV2(*identity, filepath.ToSlash(rel), state.OwnershipManaged)
 }
 
 // upsertMCPRecord replaces the record for the preset name, or appends it,

@@ -2,6 +2,10 @@ package updater
 
 import (
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -98,4 +102,97 @@ func TestUpdateVersion(t *testing.T) {
 			t.Errorf("newer version should report hasUpdate=true, err=nil; got hasUpdate=%v, err=%v", hasUpdate, err)
 		}
 	})
+}
+
+func TestClassifyBuild(t *testing.T) {
+	cases := []struct {
+		version string
+		want    BuildKind
+	}{
+		{"dev", DevelopmentBuild},
+		{"DEV", DevelopmentBuild},
+		{"unknown", DevelopmentBuild},
+		{"development", DevelopmentBuild},
+		{"", DevelopmentBuild},
+		{"   ", DevelopmentBuild},
+		{"v0.4.53-5-gabc1234", NonCanonicalBuild},
+		{"v0.4.50+dirty", NonCanonicalBuild},
+		{"v0.4.50-rc.1", NonCanonicalBuild},
+		{"nightly", NonCanonicalBuild},
+		{"v0.0.1", ReleaseBuild},
+		{"v1.2.3", ReleaseBuild},
+		{"v10.200.3000", ReleaseBuild},
+	}
+	for _, tc := range cases {
+		if got := ClassifyBuild(tc.version); got != tc.want {
+			t.Errorf("ClassifyBuild(%q) = %d, want %d", tc.version, got, tc.want)
+		}
+	}
+}
+
+func TestSelfUpdateDisabledNotice(t *testing.T) {
+	notice := SelfUpdateDisabledNotice("v0.4.53-5-gabc1234")
+	wants := []string{
+		"development build",
+		"v0.4.53-5-gabc1234",
+		"self-update is disabled",
+		"https://github.com/" + DefaultRepo + "/releases",
+	}
+	for _, want := range wants {
+		if !strings.Contains(notice, want) {
+			t.Errorf("notice missing %q:\n%s", want, notice)
+		}
+	}
+}
+
+func TestGitDescribeVersionRestrictedToProjectRepository(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not available")
+	}
+
+	t.Run("outside any repository is empty", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		if got := GitDescribeVersion(); got != "" {
+			t.Errorf("GitDescribeVersion() outside a repository = %q, want empty", got)
+		}
+	})
+
+	t.Run("unrelated repository module is ignored", func(t *testing.T) {
+		dir := initSyntheticRepo(t, "example.com/other", "v9.9.9")
+		t.Chdir(dir)
+		if got := GitDescribeVersion(); got != "" {
+			t.Errorf("GitDescribeVersion() in an unrelated repository = %q, want empty", got)
+		}
+	})
+
+	t.Run("project repository is described", func(t *testing.T) {
+		dir := initSyntheticRepo(t, projectModulePath, "v1.2.3")
+		t.Chdir(dir)
+		if got := GitDescribeVersion(); got != "v1.2.3" {
+			t.Errorf("GitDescribeVersion() in the project repository = %q, want v1.2.3", got)
+		}
+	})
+}
+
+// initSyntheticRepo builds a one-commit git repository whose go.mod declares
+// modulePath and whose HEAD is tagged tag.
+func initSyntheticRepo(t *testing.T, modulePath, tag string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module "+modulePath+"\n\ngo 1.26.1\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	for _, args := range [][]string{
+		{"init"},
+		{"add", "go.mod"},
+		{"-c", "user.email=test@example.com", "-c", "user.name=cortex-ia-test", "commit", "-m", "init"},
+		{"tag", tag},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return dir
 }

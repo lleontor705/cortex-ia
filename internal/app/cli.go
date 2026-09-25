@@ -340,7 +340,7 @@ func printInstallReceipt(title string, receipt *install.InstallReceipt) {
 // manager.
 func runMCP(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: cortex-ia mcp <add|list|remove> [name] [options] (see 'cortex-ia help')")
+		return fmt.Errorf("usage: cortex-ia mcp <add|adopt|list|remove> [name] [options] (see 'cortex-ia help')")
 	}
 
 	switch strings.ToLower(args[0]) {
@@ -354,6 +354,16 @@ func runMCP(args []string) error {
 			return err
 		}
 		return runMCPAdd(service, spec)
+	case "adopt":
+		name, dryRun, err := parseMCPAdopt(args[1:])
+		if err != nil {
+			return err
+		}
+		service, err := newService()
+		if err != nil {
+			return err
+		}
+		return runMCPAdopt(service, name, dryRun)
 	case "remove":
 		name, dryRun, err := parseMCPRemove(args[1:])
 		if err != nil {
@@ -375,7 +385,7 @@ func runMCP(args []string) error {
 		}
 		return runMCPList(service, asJSON)
 	default:
-		return fmt.Errorf("unknown mcp action: %s (use: add, list, remove)", args[0])
+		return fmt.Errorf("unknown mcp action: %s (use: add, adopt, list, remove)", args[0])
 	}
 }
 
@@ -504,6 +514,55 @@ func runMCPAdd(service *install.Service, spec mcpAddSpec) error {
 	fmt.Printf("%s — config %s\n", label, receipt.ConfigPath)
 	fmt.Printf("  Action: %s\n", defaultString(receipt.Action, "none"))
 	fmt.Printf("  Configured: %v  Qualified: %v  Installed: %v\n", receipt.Configured, receipt.Qualified, receipt.Installed)
+	fmt.Printf("  Config changed: %v\n", receipt.Changed)
+	if receipt.BackupID != "" {
+		fmt.Printf("  Backup: %s\n", receipt.BackupID)
+	}
+	for _, warning := range receipt.Warnings {
+		fmt.Printf("  Warning: %s\n", warning)
+	}
+	return nil
+}
+
+// parseMCPAdopt parses `mcp adopt <name> [--dry-run]`.
+func parseMCPAdopt(args []string) (string, bool, error) {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return "", false, fmt.Errorf("usage: cortex-ia mcp adopt <name> [--dry-run] (accredits an existing entry that already equals a managed preset)")
+	}
+	name := args[0]
+	dryRun := false
+	for _, arg := range args[1:] {
+		if strings.ToLower(arg) == "--dry-run" {
+			dryRun = true
+			continue
+		}
+		return name, false, fmt.Errorf("unknown flag: %s (cortex-ia mcp adopt supports only --dry-run)", arg)
+	}
+	return name, dryRun, nil
+}
+
+// runMCPAdopt accredits an existing user-owned MCP entry that already equals a
+// managed preset. Adoption never rewrites the OpenCode config: only cortex-ia
+// transactional ownership is recorded, so the entry is recognised as managed
+// on the next install or sync. Fail-closed conflicts surface the manager's
+// typed diagnosis.
+func runMCPAdopt(service *install.Service, name string, dryRun bool) error {
+	receipt, err := service.MCPAdopt(name, install.MCPOptions{DryRun: dryRun})
+	if err != nil {
+		var conflict *mcpmanager.ConflictError
+		if errors.As(err, &conflict) {
+			return fmt.Errorf("mcp adopt %q failed closed (nothing was written): %w", name, conflict)
+		}
+		return err
+	}
+
+	label := fmt.Sprintf("mcp adopt %s", receipt.Name)
+	if receipt.DryRun {
+		label += " (dry-run)"
+	}
+	fmt.Printf("%s — config %s\n", label, receipt.ConfigPath)
+	fmt.Printf("  Action: %s\n", defaultString(receipt.Action, "none"))
+	fmt.Printf("  Configured: %v\n", receipt.Configured)
 	fmt.Printf("  Config changed: %v\n", receipt.Changed)
 	if receipt.BackupID != "" {
 		fmt.Printf("  Backup: %s\n", receipt.BackupID)

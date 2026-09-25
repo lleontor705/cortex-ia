@@ -21,6 +21,7 @@ The embedded web board, Herdr panes, OpenCode UI, chat, tests, and Cortex observ
 | Role | Work-control authority |
 |---|---|
 | `orchestrator` | Query boards/tasks; create only under the bounded bootstrap below; recover expired attempts; retry bounded reconciled blockers; route decomposition to planner. Never decompose, claim, lease, edit, or approve. |
+| `discovery` | Read-only agentic-environment discovery: build the quick index (skills dictionary local + global installed, run/test info, minimal governance) via `cortex_ia_discovery_write` to `./.cortex-ia/discovery.md`. Never mutates work state. |
 | `planner` | Create the initiative board and its same-board dependency DAG; design and atomically apply an orchestrator-routed decomposition of a blocked task. Never claim implementation work. |
 | `investigate` | Read-only board/task status and durable evidence. Never mutate work state. |
 | `implement` | Own exactly one live task claim, lease every writable path, renew authority, verify, and transition to `in_review`. |

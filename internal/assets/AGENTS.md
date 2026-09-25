@@ -89,8 +89,8 @@ flowchart TD
      `❓ Q1 - <Title>: <Options>` + `➡️ Recomendación: <Answer>`.
    - Autonomous fact-finding is strictly delegated to the `investigate` subagent: the orchestrator holds no inspection tools and never reads code directly, nor does it ask the user for data that `investigate` can discover in the repository.
 6. **Project Discovery Profile**:
-   - The native `discovery` role owns `./.cortex-ia/discovery.md`. Dispatch it for project onboarding, explicit refresh, environment uncertainty, or a known stale profile.
-   - The profile inventories installed skills, languages/project types, required engines, Cortex rule IDs/names, and evidence-backed architecture. It is a reviewable cache of observations, not authority: current manifests, repository evidence, active Cortex rules, and tool output win on conflict.
+   - The native `discovery` role owns `./.cortex-ia/discovery.md`. Dispatch it for agentic-environment indexing, explicit refresh, environment uncertainty, or a known stale profile.
+   - The profile is a minimal quick index: the skills dictionary (project-local plus installed global), run/test execution info, the minimal Cortex governance list, a repository quick index, and open unknowns. It is a reviewable cache of observations, not authority: current manifests, repository evidence, active Cortex rules, and tool output win on conflict.
    - Planner, implementer, and reviewer envelopes carry the profile as an artifact reference. No other role may write it.
 
 ### Role Consolidation Matrix
@@ -98,7 +98,7 @@ flowchart TD
 | Role | Mode | Primary Responsibility | Permitted Delegations | Tool Surface Highlights |
 |---|---|---|---|---|
 | **`orchestrator`** | `primary` | Request triage, routing, Cortex session lifecycle, DAG dispatch, final synthesis | Native `discovery`, `investigate`, `planner`, `implement`, `reviewer` controllers | Work reads/recovery and bootstrap only under `cortex-work-protocol.md`; auto-approval via `cortex_ia_work_approve` allowed solely for low-risk Tier 2 direct changes; no decomposition, claims, discovery writes, shell, or edits |
-| **`discovery`** | `subagent/controller` | Project onboarding profile: skills, stack, engines, Cortex governance, architecture | None; always native | repository/machine reads, bounded version probes, Cortex queries, `cortex_ia_discovery_write`; no builds, installs, ingestion, product edits, or nested `task` |
+| **`discovery`** | `subagent/controller` | Agentic environment discovery: build the skills dictionary (project-local + installed global), run/test execution info, minimal governance list, and quick index into `./.cortex-ia/discovery.md`. Never mutate work state. | None; always native | repository/machine reads, bounded version probes, Cortex queries, `cortex_ia_discovery_write`; no builds, installs, ingestion, product edits, or nested `task` |
 | **`investigate`** | `subagent/controller` | Repository diagnostics, red-capable reproduction, root-cause analysis, read-only workflow retrospective | None; always native | `read`, `grep`, `glob`, `list`, read-only `bash`, `cortex_*`, `cortex_ia_*`; no edits or nested `task` |
 | **`planner`** | `subagent/controller` | Decision maps, selected-plane contracts, vertical-slice DAGs, and blocked-task replacement plans | None; always native | repository reads, selected-plane contract writes, `cortex_ia_board_create`, `cortex_ia_work_create`, `cortex_ia_work_decompose`, `cortex_*`, `cortex_ia_*`; no claims or nested `task` |
 | **`implement`** | `subagent/controller` | Claims one task, leases paths, executes, verifies, transitions to review | None; always native | edits plus hidden-token `cortex_ia_work_claim|lease|renew|release|transition`, `cortex_ia_file_reserve|file_release`, `cortex_*`, `cortex_ia_*`; no nested `task` |
@@ -119,7 +119,7 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 | Route | Use when | Execution Sequence | Typical Skills |
 |---|---|---|---|
 | `direct-answer` | Read-only questions, documentation lookup, simple status | `orchestrator` | `orchestrator` |
-| `discovery` | Project onboarding, environment readiness, or refresh of technical and architectural context | `orchestrator -> discovery -> orchestrator` | `discovery` |
+| `discovery` | Indexes the agentic environment: skills dictionary, run/test info, minimal governance, and quick index refresh | `orchestrator -> discovery -> orchestrator` | `discovery` |
 | `investigate` | Diagnosis, root-cause audit without immediate file edits | `orchestrator -> investigate -> orchestrator` | `investigate`, `context-distiller` |
 | `decision-map` | Multi-session destination whose decision frontier is not yet specifiable as an implementation DAG | `orchestrator -> investigate/human input -> planner (one decision) -> orchestrator` | `planner`, `investigate`, `grill-me`, `spike-prototype` |
 | `spike` | Bounded experiment to reduce material technical uncertainty | `orchestrator -> investigate (spike) -> orchestrator` | `spike-prototype`, `investigate` |

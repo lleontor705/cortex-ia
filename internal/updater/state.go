@@ -19,6 +19,10 @@ const (
 	// UpdateStateSchemaVersion is the only accepted update-state schema.
 	UpdateStateSchemaVersion = 1
 	updateStateFileName      = "update-state.json"
+
+	// UpdateCheckTTL is how long a completed automatic or scheduled check stays
+	// authoritative. Explicit `cortex-ia update --check` bypasses it.
+	UpdateCheckTTL = 24 * time.Hour
 )
 
 // ErrCorruptUpdateState marks persisted state that cannot be trusted. Callers
@@ -34,6 +38,7 @@ type UpdateState struct {
 	LastCheckedAt     time.Time `json:"last_checked_at"`
 	Available         string    `json:"available,omitempty"`
 	AvailableDigest   string    `json:"available_digest,omitempty"`
+	ReleaseETag       string    `json:"release_etag,omitempty"`
 	AppliedFloor      string    `json:"applied_floor,omitempty"`
 	ManagedPath       string    `json:"managed_path,omitempty"`
 	InstallCandidates []string  `json:"install_candidates,omitempty"`
@@ -42,6 +47,12 @@ type UpdateState struct {
 // UpdateAvailable reports whether a cached release is pending confirmation.
 func (s UpdateState) UpdateAvailable() bool {
 	return strings.TrimSpace(s.Available) != ""
+}
+
+// CheckedWithin reports whether the last completed check falls inside ttl. A
+// zero timestamp means the machine has never checked, which is never fresh.
+func (s UpdateState) CheckedWithin(now time.Time, ttl time.Duration) bool {
+	return !s.LastCheckedAt.IsZero() && now.Sub(s.LastCheckedAt) < ttl
 }
 
 // DefaultStateHome resolves the Cortex-IA state root: $CORTEX_IA_HOME when
@@ -187,13 +198,33 @@ func DualInstallWarning(candidates []string) string {
 	return fmt.Sprintf("multiple cortex-ia installations detected: %s", strings.Join(paths, ", "))
 }
 
+// systemInstallDirs holds the absolute directories the installer and package
+// managers deploy into. It stays a variable so tests can sandbox probing away
+// from the developer's real system paths.
+var systemInstallDirs = defaultSystemInstallDirs()
+
+func defaultSystemInstallDirs() []string {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return []string{"/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"}
+}
+
 func knownInstallPaths() []string {
 	binary := "cortex-ia"
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
 
-	paths := make([]string, 0, 2)
+	paths := make([]string, 0, len(systemInstallDirs)+3)
+	for _, dir := range systemInstallDirs {
+		paths = append(paths, filepath.Join(dir, binary))
+	}
+	if runtime.GOOS != "windows" {
+		if userHome, err := os.UserHomeDir(); err == nil {
+			paths = append(paths, filepath.Join(userHome, ".local", "bin", binary))
+		}
+	}
 	if local := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); local != "" {
 		paths = append(paths, filepath.Join(local, "Programs", "cortex-ia", "bin", binary))
 	}

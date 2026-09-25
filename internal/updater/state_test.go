@@ -29,6 +29,12 @@ func seed(t *testing.T, home string, state UpdateState) {
 	}
 }
 
+func setSystemInstallDirsForTesting(dirs []string) func() {
+	previous := systemInstallDirs
+	systemInstallDirs = dirs
+	return func() { systemInstallDirs = previous }
+}
+
 func TestUpdateStateRoundTripAtomic(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("CORTEX_IA_HOME", home)
@@ -95,14 +101,18 @@ func TestUpdateStateInstallCandidateDetection(t *testing.T) {
 	home := t.TempDir()
 	localAppData := filepath.Join(home, "localappdata")
 	gopath := filepath.Join(home, "gopath")
+	systemDir := filepath.Join(home, "system-bin")
 	t.Setenv("LOCALAPPDATA", localAppData)
 	t.Setenv("GOPATH", gopath)
+	t.Setenv("HOME", filepath.Join(home, "userhome"))
+	t.Cleanup(setSystemInstallDirsForTesting([]string{systemDir}))
 
 	bin := testBinaryName()
 	running := filepath.Join(home, "running", bin)
 	localBin := filepath.Join(localAppData, "Programs", "cortex-ia", "bin", bin)
 	goBin := filepath.Join(gopath, "bin", bin)
-	for _, path := range []string{running, localBin, goBin} {
+	systemBin := filepath.Join(systemDir, bin)
+	for _, path := range []string{running, localBin, goBin, systemBin} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
@@ -113,13 +123,34 @@ func TestUpdateStateInstallCandidateDetection(t *testing.T) {
 
 	candidates := DetectInstallCandidates(running)
 	warning := DualInstallWarning(candidates)
-	if len(candidates) != 3 || !strings.Contains(warning, localBin) || !strings.Contains(warning, goBin) || DualInstallWarning(candidates[:1]) != "" {
-		t.Fatalf("want both known installs recorded and no single-install warning: %v warning=%q", candidates, warning)
+	if len(candidates) != 4 || !strings.Contains(warning, localBin) || !strings.Contains(warning, goBin) || !strings.Contains(warning, systemBin) || DualInstallWarning(candidates[:1]) != "" {
+		t.Fatalf("want every known install recorded and no single-install warning: %v warning=%q", candidates, warning)
 	}
 
 	seed(t, home, UpdateState{InstallCandidates: candidates})
-	if state, err := LoadUpdateState(home); err != nil || len(state.InstallCandidates) != 3 {
+	if state, err := LoadUpdateState(home); err != nil || len(state.InstallCandidates) != 4 {
 		t.Fatalf("candidates not persisted: %+v err=%v", state, err)
+	}
+}
+
+func TestKnownInstallPathsCoverRealDeployments(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX deployment directories are not probed on Windows")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	bin := testBinaryName()
+	known := strings.Join(knownInstallPaths(), "\n")
+	for _, path := range []string{
+		filepath.Join("/usr", "local", "bin", bin),
+		filepath.Join("/opt", "homebrew", "bin", bin),
+		filepath.Join("/usr", "bin", bin),
+		filepath.Join(home, ".local", "bin", bin),
+	} {
+		if !strings.Contains(known, path) {
+			t.Fatalf("known install path %q missing from %v", path, known)
+		}
 	}
 }
 
@@ -244,6 +275,44 @@ func TestAppliedFloorApplyOutcome(t *testing.T) {
 			}
 			if got, _ := os.ReadFile(path); !bytes.Equal(got, payload) {
 				t.Fatal("target was not replaced with the verified payload")
+			}
+		})
+	}
+}
+
+func TestUpdateStateReleaseETagRoundTrip(t *testing.T) {
+	home := t.TempDir()
+	seed(t, home, UpdateState{
+		LastCheckedAt: time.Now().UTC(),
+		ReleaseETag:   `"etag-42"`,
+		Available:     "v0.5.0",
+	})
+
+	got, err := LoadUpdateState(home)
+	if err != nil {
+		t.Fatalf("LoadUpdateState: %v", err)
+	}
+	if got.ReleaseETag != `"etag-42"` {
+		t.Fatalf("release etag not preserved: %+v", got)
+	}
+}
+
+func TestUpdateStateCheckedWithinTTL(t *testing.T) {
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name    string
+		checked time.Time
+		want    bool
+	}{
+		{"never checked is stale", time.Time{}, false},
+		{"recent check is fresh", now.Add(-1 * time.Hour), true},
+		{"older than the ttl is stale", now.Add(-25 * time.Hour), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			state := UpdateState{LastCheckedAt: tc.checked}
+			if got := state.CheckedWithin(now, UpdateCheckTTL); got != tc.want {
+				t.Fatalf("CheckedWithin = %v, want %v", got, tc.want)
 			}
 		})
 	}

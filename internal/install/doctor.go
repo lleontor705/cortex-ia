@@ -433,7 +433,7 @@ func (s *Service) doctorInstalled(report *DoctorReport, meta state.MetadataV2) {
 			check := MCPCheck{Name: entry.Name, Status: entry.Status, Digest: entry.Digest, Expected: expected[entry.Name]}
 			switch {
 			case check.Expected && entry.Status != mcpmanager.StatusManaged:
-				report.Findings = append(report.Findings, fmt.Sprintf("MCP %q is recorded as installed but is not ownership-accredited (status %q)", entry.Name, entry.Status))
+				report.Findings = append(report.Findings, fmt.Sprintf("MCP %q is recorded as installed but is not ownership-accredited (status %q)%s", entry.Name, entry.Status, adoptHint(entry.Name, entry.Status)))
 			case !check.Expected && entry.Status == mcpmanager.StatusManaged:
 				report.Findings = append(report.Findings, fmt.Sprintf("MCP %q is accredited but not recorded as installed", entry.Name))
 			}
@@ -451,7 +451,7 @@ func (s *Service) doctorInstalled(report *DoctorReport, meta state.MetadataV2) {
 			check := MCPCheck{Name: entry.Name, Status: entry.Status, Digest: entry.Digest, Expected: expected[entry.Name]}
 			switch {
 			case check.Expected && entry.Status != mcpmanager.StatusManaged:
-				report.Findings = append(report.Findings, fmt.Sprintf("MCP %q is recorded as installed but is not ownership-accredited (status %q)", entry.Name, entry.Status))
+				report.Findings = append(report.Findings, fmt.Sprintf("MCP %q is recorded as installed but is not ownership-accredited (status %q)%s", entry.Name, entry.Status, adoptHint(entry.Name, entry.Status)))
 			case !check.Expected && entry.Status == mcpmanager.StatusManaged:
 				report.Findings = append(report.Findings, fmt.Sprintf("MCP %q is accredited but not recorded as installed", entry.Name))
 			}
@@ -490,7 +490,11 @@ func (s *Service) doctorInstalled(report *DoctorReport, meta state.MetadataV2) {
 	}
 	report.Verdict = DoctorDegraded
 	for _, conflict := range plan.Conflicts {
-		report.Findings = append(report.Findings, fmt.Sprintf("conflict %s: %s (%s)", conflict.Target, conflict.Kind, conflict.Reason))
+		hint := ""
+		if conflict.Kind == pipeline.ConflictMCP {
+			hint = adoptHint(conflict.Target, mcpStatusByName(report.MCPs, conflict.Target))
+		}
+		report.Findings = append(report.Findings, fmt.Sprintf("conflict %s: %s (%s)%s", conflict.Target, conflict.Kind, conflict.Reason, hint))
 	}
 	for _, effect := range plan.Effects {
 		if effect.Kind == pipeline.EffectNoop || effect.Kind == pipeline.EffectMCPNoop {
@@ -602,4 +606,27 @@ func ownershipEvidence(meta state.MetadataV2) []mcpmanager.OwnershipRecord {
 		})
 	}
 	return records
+}
+
+// adoptHint appends the explicit adopt remedy when doctor detects a catalog
+// entry the adopt path can accredit in place. It returns "" for every state
+// the remedy cannot resolve, so doctor never suggests a repair command that
+// would structurally fail closed.
+func adoptHint(name string, status mcpmanager.EntryStatus) string {
+	if !mcpmanager.AdoptableEntry(name, status) {
+		return ""
+	}
+	return fmt.Sprintf("; run cortex-ia mcp adopt %s to accredit the existing entry without modifying the configuration", name)
+}
+
+// mcpStatusByName returns the doctor-recorded status for one managed entry,
+// or the empty status when the plan conflict names an entry doctor did not
+// classify.
+func mcpStatusByName(checks []MCPCheck, name string) mcpmanager.EntryStatus {
+	for _, check := range checks {
+		if check.Name == name {
+			return check.Status
+		}
+	}
+	return ""
 }

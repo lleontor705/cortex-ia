@@ -315,6 +315,10 @@ Usage:
                                       server endpoint (http/https)
   cortex-ia mcp list [--json]        List managed MCP entries and ownership
                                       (--json prints a sanitized JSON report)
+  cortex-ia mcp adopt <name> [--dry-run]
+                                      Accredit an existing user-owned MCP entry
+                                      that already equals a managed preset,
+                                      without modifying the config file
   cortex-ia mcp remove <name> [--dry-run]
                                       Deregister a managed MCP entry
   cortex-ia model list [--json]       List agents with their effective models,

@@ -204,6 +204,12 @@ permissions:
   - action: shell
     resource: "wget *"
     effect: deny
+  - action: shell
+    resource: "npm install*"
+    effect: allow
+  - action: shell
+    resource: "npm ci*"
+    effect: allow
 ---
 
 # role/implement [STATIC_PREFIX_V3]
