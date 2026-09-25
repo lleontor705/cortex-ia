@@ -177,22 +177,29 @@ async function runSuite() {
   assert(fenceContent.includes("cortex_ia_workload_audit"), "Registers 'cortex_ia_workload_audit' tool");
   assert(fenceContent.includes("cortex_ia_work_watch"), "Registers 'cortex_ia_work_watch' tool");
 
-  // Suite 3: cortex-lease-guard.ts Security Interceptions
-  console.log("\n🔒 Suite 3: Shell Security Shield (Destructive Command Blocking)");
+  // Suite 3: cortex-lease-guard.ts Shell Fencing & Destructive Ask Gating
+  console.log("\n🔒 Suite 3: Shell Destructive-Command Ask Gating (Permission Prompts)");
   const guardPath = path.join(pluginsDir, "cortex-lease-guard.ts");
   const guardContent = fs.readFileSync(guardPath, "utf8");
 
-  assert(guardContent.includes("CORTEX_SECURITY_SHIELD"), "Implements CORTEX_SECURITY_SHIELD");
-  assert(guardContent.includes("rm\\s+-rf"), "Blocks recursive root removal");
-  assert(guardContent.includes("git\\s+push\\s+--force"), "Blocks force pushing");
-  assert(guardContent.includes("git\\s+clean\\s+-fdx"), "Blocks untracked purge");
+  // The hard-throw shield is retired: destructive commands now flow to ask prompts.
+  assert(!guardContent.includes("CORTEX_SECURITY_SHIELD"), "No longer hard-blocks destructive commands in CortexLeaseGuard");
+  assert(!guardContent.includes("rm\\s+-rf"), "Destructive throw regex removed from the plugin");
+  assert(guardContent.includes("CORTEX_SESSION_ID"), "Preserves CORTEX_SESSION_ID env injection");
+  assert(guardContent.includes("CORTEX_WORKSPACE_ROOT"), "Preserves CORTEX_WORKSPACE_ROOT env injection");
+  assert(guardContent.includes("300_000"), "Preserves the 300s shell timeout clamp");
+  assert(guardContent.includes("LEASE_REQUIRED"), "Preserves the independent LEASE_REQUIRED verification path");
 
-  const isDestructive = (cmd) => /\b(rm\s+-rf\s+[\/\*]|git\s+clean\s+-fdx|git\s+push\s+--force)(?:\s|$|;)/i.test(cmd.trim());
-  assert(isDestructive("rm -rf /"), "Intercepts 'rm -rf /'");
-  assert(isDestructive("git push --force origin main"), "Intercepts 'git push --force'");
-  assert(isDestructive("git clean -fdx"), "Intercepts 'git clean -fdx'");
-  assert(!isDestructive("git status"), "Permits 'git status'");
-  assert(!isDestructive("go test ./..."), "Permits 'go test ./...'");
+  // Baseline ask rules close the silent-execution gap for agents without destructive frontmatter.
+  const configPath = path.join(projectRoot, "internal", "assets", "opencode.jsonc");
+  const configContent = fs.readFileSync(configPath, "utf8");
+  const hasAskRule = (resource) => configContent.includes(`"resource": "${resource}", "effect": "ask"`);
+  assert(hasAskRule("rm *"), "Asks before 'rm *'");
+  assert(hasAskRule("git clean *"), "Asks before 'git clean *'");
+  assert(hasAskRule("Remove-Item *"), "Asks before 'Remove-Item *'");
+  assert(hasAskRule("git push -f *"), "Asks before 'git push -f *'");
+  assert(hasAskRule("rmdir *") && hasAskRule("del *") && hasAskRule("rd *"), "Asks before Windows removal variants");
+  assert(configContent.includes(`"resource": "*", "effect": "allow"`), "Preserves the broad shell allow baseline");
 
   // Suite 4: cortex-subagent-transport.ts Operational Task Write Guards
   console.log("\n✂️ Suite 4: Subagent Operational Task Write Guards");

@@ -140,22 +140,22 @@ permissions:
     effect: allow
   - action: shell
     resource: "git reset*"
-    effect: deny
+    effect: ask
   - action: shell
     resource: "git push*"
-    effect: deny
+    effect: ask
   - action: shell
     resource: "git clean*"
-    effect: deny
+    effect: ask
   - action: shell
     resource: "rm *"
-    effect: deny
+    effect: ask
   - action: shell
     resource: "del *"
-    effect: deny
+    effect: ask
   - action: shell
     resource: "Remove-Item *"
-    effect: deny
+    effect: ask
   - action: shell
     resource: "*.env"
     effect: deny

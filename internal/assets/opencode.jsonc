@@ -35,7 +35,14 @@
     { "action": "shell", "resource": "git push *", "effect": "ask" },
     { "action": "shell", "resource": "git push --force *", "effect": "ask" },
     { "action": "shell", "resource": "git rebase *", "effect": "ask" },
-    { "action": "shell", "resource": "git reset --hard *", "effect": "ask" }
+    { "action": "shell", "resource": "git reset --hard *", "effect": "ask" },
+    { "action": "shell", "resource": "git clean *", "effect": "ask" },
+    { "action": "shell", "resource": "git push -f *", "effect": "ask" },
+    { "action": "shell", "resource": "rm *", "effect": "ask" },
+    { "action": "shell", "resource": "rmdir *", "effect": "ask" },
+    { "action": "shell", "resource": "del *", "effect": "ask" },
+    { "action": "shell", "resource": "rd *", "effect": "ask" },
+    { "action": "shell", "resource": "Remove-Item *", "effect": "ask" }
   ],
   "share": "disabled"
 }

@@ -247,10 +247,6 @@ export const CortexLeaseGuardPlugin = Plugin.define({
         if (event?.timeout && typeof event.timeout === "number") {
           event.timeout = Math.min(event.timeout, 300_000);
         }
-        const cmd = typeof event?.command === "string" ? event.command.trim() : "";
-        if (/\b(rm\s+-rf\s+[\/\*]|git\s+clean\s+-fdx|git\s+push\s+--force)(?:\s|$|;)/i.test(cmd)) {
-          throw new Error("CORTEX_SECURITY_SHIELD: Destructive shell command intercepted by CortexLeaseGuard");
-        }
       });
     }
 

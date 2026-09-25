@@ -128,6 +128,17 @@ automatically.
 | `rollback [id]` | Restore backup, reverting newer managed writes | Interactive confirmation |
 | `recover <journal-id>` | Restore an interrupted transaction | Typing the exact journal ID + validated provenance |
 | `uninstall` | Remove the accredited installation | Interactive confirmation |
+| `rm -rf`, `rmdir`, `del`, `rd`, `Remove-Item` | Recursive or forced file/directory removal | Interactive ask prompt through the permission system |
+| `git clean -fdx` | Purge untracked and ignored files | Interactive ask prompt through the permission system |
+| `git push --force`, `git push -f` | Overwrite remote history | Interactive ask prompt through the permission system |
+
+Destructive shell commands are gated by the OpenCode permission system's
+interactive ask prompts, which require explicit user approval at execution
+time. `CortexLeaseGuard` no longer hard-intercepts these commands; the global
+asset config ships baseline ask rules (`rm *`, `rmdir *`, `del *`, `rd *`,
+`Remove-Item *`, `git clean *`, `git push -f *`) so agents without their own
+destructive frontmatter rules still surface a prompt instead of executing
+silently.
 
 Piped or non-interactive invocations of any destructive action fail closed
 with nothing written — safe for CI, scripts, and salt-driven runs, which
