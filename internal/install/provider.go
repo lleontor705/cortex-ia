@@ -20,27 +20,37 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/state"
 )
 
-// ErrProviderUnmanaged is returned when the winning config already defines the
-// provider block without a covering managed ownership record. Reconciliation
-// only ever touches the non-winning twin, so winner-side user content stays a
-// typed refusal that mutates nothing.
-var ErrProviderUnmanaged = errors.New("install service: provider block exists in the winning config without a covering managed ownership record; refusing to overwrite unmanaged configuration")
+// ErrProviderUnmanaged is returned only for a genuinely irreconcilable winning
+// config: an existing provider entry that is not a JSON object and so cannot be
+// merged into. A hand-authored provider block that is an object is adopted in
+// place instead of refused.
+var ErrProviderUnmanaged = errors.New("install service: provider block exists in the winning config with a shape that cannot be merged")
 
 // The provider config member names mirror the shape internal/modelmgr reads
 // (provider.<id>.models.<model>.variants) so the writer and the reader agree
-// on exactly one encoding.
+// on exactly one encoding. providerKey is the documented singular container
+// while providersKey is the OpenCode v2 plural container; only one is ever
+// written for a given provider.
 const (
 	providerKey        = "provider"
+	providersKey       = "providers"
 	npmKey             = "npm"
+	packageKey         = "package"
 	nameKey            = "name"
 	optionsKey         = "options"
+	settingsKey        = "settings"
 	baseURLKey         = "baseURL"
 	apiKeyKey          = "apiKey"
 	modelsKey          = "models"
 	variantsKey        = "variants"
-	settingsKey        = "settings"
 	reasoningEffortKey = "reasoningEffort"
-	replaceKey         = "__replace__"
+	limitKey           = "limit"
+	contextKey         = "context"
+	outputKey          = "output"
+	modalitiesKey      = "modalities"
+	capabilitiesKey    = "capabilities"
+	toolsKey           = "tools"
+	inputKey           = "input"
 	idKey              = "id"
 )
 
@@ -58,19 +68,49 @@ var (
 	providerWinnerMutate = filemerge.MutateJSONFile
 )
 
+// ProviderCatalogLimit is the numeric context/output token budget a catalog
+// model declares.
+type ProviderCatalogLimit struct {
+	Context int64 `json:"context"`
+	Output  int64 `json:"output"`
+}
+
+// ProviderCatalogModalities is the accepted input and output media types a
+// catalog model declares.
+type ProviderCatalogModalities struct {
+	Input  []string `json:"input"`
+	Output []string `json:"output"`
+}
+
+// ProviderCatalogVariant is one effort variant the installer authors for a
+// model, mirroring the emitted {id, settings.reasoningEffort} shape. A
+// catalog-authored variant always carries ID == ReasoningEffort.
+type ProviderCatalogVariant struct {
+	ID              string `json:"id"`
+	ReasoningEffort string `json:"reasoning_effort"`
+}
+
 // ProviderCatalogModel is one sanitized model projection of a catalog.
 type ProviderCatalogModel struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Efforts []string `json:"efforts"`
+	ID         string                     `json:"id"`
+	Name       string                     `json:"name"`
+	Efforts    []string                   `json:"efforts"`
+	Limit      *ProviderCatalogLimit      `json:"limit,omitempty"`
+	Modalities *ProviderCatalogModalities `json:"modalities,omitempty"`
+	Variants   []ProviderCatalogVariant   `json:"variants,omitempty"`
 }
 
 // ProviderCatalogEntry is one sanitized provider projection; it never carries
-// any endpoint secret.
+// any endpoint secret. NPM and Package are the runtime package keys for the
+// singular and plural config containers respectively, and the installer emits
+// exactly one of them for the resolved container.
 type ProviderCatalogEntry struct {
-	ID     string                 `json:"id"`
-	Name   string                 `json:"name"`
-	Models []ProviderCatalogModel `json:"models"`
+	ID      string                 `json:"id"`
+	Name    string                 `json:"name"`
+	NPM     string                 `json:"npm"`
+	Package string                 `json:"package"`
+	BaseURL string                 `json:"base_url"`
+	Models  []ProviderCatalogModel `json:"models"`
 }
 
 // ProviderCatalogReport is the read-only listing of every provider catalog.
@@ -100,32 +140,43 @@ func (o ProviderInstallOptions) now() time.Time {
 // preview. It deliberately has no token field; ReconciledTwinPath is set only
 // when a twin cleanup executed, and both mutations share one BackupID.
 type ProviderInstallReceipt struct {
-	Action             string   `json:"action"`
-	Provider           string   `json:"provider"`
-	ConfigPath         string   `json:"config_path,omitempty"`
-	ReconciledTwinPath string   `json:"reconciled_twin_path,omitempty"`
-	ModelsWritten      int      `json:"models_written"`
-	VariantsWritten    int      `json:"variants_written"`
-	DryRun             bool     `json:"dry_run"`
-	BackupID           string   `json:"backup_id,omitempty"`
-	RollbackCmd        string   `json:"rollback_cmd,omitempty"`
-	Detail             []string `json:"detail,omitempty"`
+	Action string `json:"action"`
+	// Entry, Container, RuntimeMember, and RuntimeKey disclose the loaded
+	// catalog content and the resolved container shape the installer will write,
+	// so a preview shows exactly what an install emits.
+	Entry              *ProviderCatalogEntry `json:"entry,omitempty"`
+	Container          string                `json:"container,omitempty"`
+	RuntimeMember      string                `json:"runtime_member,omitempty"`
+	RuntimeKey         string                `json:"runtime_key,omitempty"`
+	Provider           string                `json:"provider"`
+	ConfigPath         string                `json:"config_path,omitempty"`
+	ReconciledTwinPath string                `json:"reconciled_twin_path,omitempty"`
+	ModelsWritten      int                   `json:"models_written"`
+	VariantsWritten    int                   `json:"variants_written"`
+	DryRun             bool                  `json:"dry_run"`
+	BackupID           string                `json:"backup_id,omitempty"`
+	RollbackCmd        string                `json:"rollback_cmd,omitempty"`
+	Detail             []string              `json:"detail,omitempty"`
 }
 
 // providerInstallPlan is the fully resolved decision for one call: the winner
 // and twin paths, whether each needs mutation, and the exact overlay bytes.
 type providerInstallPlan struct {
-	meta        state.MetadataV2
-	provider    providermgr.Provider
-	winnerPath  string
-	twinPath    string
-	winnerRel   string
-	twinRel     string
-	winnerNeeds bool
-	reconcile   bool
-	overlay     []byte
-	models      []string
-	variants    int
+	meta          state.MetadataV2
+	provider      providermgr.Provider
+	container     string
+	runtimeMember string
+	runtimeKey    string
+	winnerPath    string
+	twinPath      string
+	winnerRel     string
+	twinRel       string
+	winnerNeeds   bool
+	reconcile     bool
+	adopt         bool
+	overlay       []byte
+	models        []string
+	variants      int
 }
 
 // ProviderCatalog loads and lists every provider catalog under the state root.
@@ -137,17 +188,45 @@ func (s *Service) ProviderCatalog() (*ProviderCatalogReport, error) {
 	}
 	report := &ProviderCatalogReport{Providers: make([]ProviderCatalogEntry, 0, len(providers))}
 	for _, provider := range providers {
-		entry := ProviderCatalogEntry{ID: provider.ID(), Name: provider.Name()}
-		for _, model := range provider.Models() {
-			entry.Models = append(entry.Models, ProviderCatalogModel{
-				ID:      model.ID(),
-				Name:    model.Name(),
-				Efforts: model.Efforts(),
-			})
-		}
-		report.Providers = append(report.Providers, entry)
+		report.Providers = append(report.Providers, catalogEntryProjection(provider))
 	}
 	return report, nil
+}
+
+// catalogEntryProjection is the single catalog-to-display projection shared by
+// the listing and the install/preview receipt, so the installer always shows
+// exactly what the loaded catalog holds.
+func catalogEntryProjection(provider providermgr.Provider) ProviderCatalogEntry {
+	entry := ProviderCatalogEntry{
+		ID:      provider.ID(),
+		Name:    provider.Name(),
+		NPM:     provider.NPM(),
+		Package: provider.Package(),
+		BaseURL: provider.BaseURL(),
+		Models:  make([]ProviderCatalogModel, 0, len(provider.Models())),
+	}
+	for _, model := range provider.Models() {
+		entry.Models = append(entry.Models, catalogModelProjection(model))
+	}
+	return entry
+}
+
+func catalogModelProjection(model providermgr.ModelDef) ProviderCatalogModel {
+	projection := ProviderCatalogModel{
+		ID:      model.ID(),
+		Name:    model.Name(),
+		Efforts: model.Efforts(),
+	}
+	if limit, ok := model.Limit(); ok {
+		projection.Limit = &ProviderCatalogLimit{Context: limit.Context, Output: limit.Output}
+	}
+	if media, ok := model.Modalities(); ok {
+		projection.Modalities = &ProviderCatalogModalities{Input: media.Input, Output: media.Output}
+	}
+	for _, effort := range projection.Efforts {
+		projection.Variants = append(projection.Variants, ProviderCatalogVariant{ID: effort, ReasoningEffort: effort})
+	}
+	return projection
 }
 
 // ProviderPreview resolves the provider transaction and returns the dry-run
@@ -164,11 +243,11 @@ func (s *Service) ProviderPreview(opts ProviderInstallOptions) (*ProviderInstall
 
 // ProviderInstall executes the provider transaction. It requires an agreed v2
 // installation (the Providers ownership record is state-only evidence). The
-// strict order is: plan, ownership gate, verified backup protecting BOTH
-// config files, twin RemovePaths cleanup, winner __replace__ overlay, ownership
-// commit. An already-present provider performs no backup. Any failure after
-// the backup restores both files from the verified backup and leaves state.json
-// uncommitted.
+// strict order is: plan, verified backup protecting BOTH config files, twin
+// RemovePaths cleanup, winner field-wise overlay, ownership commit. An
+// already-present provider performs no backup; an adopted unmanaged block
+// still commits its ownership record. Any failure after the backup restores
+// both files from the verified backup and leaves state.json uncommitted.
 func (s *Service) ProviderInstall(opts ProviderInstallOptions) (*ProviderInstallReceipt, error) {
 	if opts.DryRun {
 		return s.ProviderPreview(opts)
@@ -187,7 +266,7 @@ func (s *Service) ProviderInstall(opts ProviderInstallOptions) (*ProviderInstall
 		return nil, err
 	}
 	receipt := plan.receipt(false)
-	if !plan.winnerNeeds && !plan.reconcile {
+	if !plan.winnerNeeds && !plan.reconcile && !plan.adopt {
 		return receipt, nil
 	}
 
@@ -206,7 +285,10 @@ func (s *Service) ProviderInstall(opts ProviderInstallOptions) (*ProviderInstall
 	if plan.reconcile {
 		if err := txn.run(plan.twinPath, func() error {
 			_, inner := providerTwinMutate(plan.twinPath, filemerge.JSONMutation{
-				RemovePaths: [][]string{{providerKey, plan.provider.ID()}},
+				RemovePaths: [][]string{
+					{providerKey, plan.provider.ID()},
+					{providersKey, plan.provider.ID()},
+				},
 			})
 			return inner
 		}); err != nil {
@@ -272,26 +354,36 @@ func (s *Service) planProvider(opts ProviderInstallOptions) (*providerInstallPla
 	winnerBlock, winnerPresent := providerConfigBlock(winnerConfig, id)
 	_, twinPresent := providerConfigBlock(twinConfig, id)
 
-	if winnerPresent && !coveringProviderRecord(meta, id, winnerRel) {
-		return nil, fmt.Errorf("%w: provider %q in %s", ErrProviderUnmanaged, id, winnerRel)
+	container := providerContainerKey(winnerConfig, id)
+	if err := providerBlockShapeError(winnerConfig, container, id); err != nil {
+		return nil, err
 	}
-
-	overlay, variants, err := buildProviderOverlay(provider, opts.Token, winnerPresent)
+	runtimeMember, runtimeKey := providerRuntime(provider, container)
+	entry, variants := providerEntryForCatalog(provider, opts.Token, container, providerModelsObject(winnerBlock))
+	overlay, err := encodeProviderOverlay(container, id, entry)
+	if err != nil {
+		return nil, err
+	}
+	overlayEntry, err := decodeOverlayEntry(overlay, container, id)
 	if err != nil {
 		return nil, err
 	}
 	return &providerInstallPlan{
-		meta:        meta,
-		provider:    provider,
-		winnerPath:  winnerPath,
-		twinPath:    twinPath,
-		winnerRel:   winnerRel,
-		twinRel:     twinRel,
-		winnerNeeds: !reflect.DeepEqual(winnerBlock, buildProviderEntry(provider, opts.Token)),
-		reconcile:   twinPresent,
-		overlay:     overlay,
-		models:      providerModelIDs(provider),
-		variants:    variants,
+		meta:          meta,
+		provider:      provider,
+		container:     container,
+		runtimeMember: runtimeMember,
+		runtimeKey:    runtimeKey,
+		winnerPath:    winnerPath,
+		twinPath:      twinPath,
+		winnerRel:     winnerRel,
+		twinRel:       twinRel,
+		winnerNeeds:   !objectContains(winnerBlock, overlayEntry),
+		reconcile:     twinPresent,
+		adopt:         winnerPresent && !coveringProviderRecord(meta, id, winnerRel),
+		overlay:       overlay,
+		models:        providerModelIDs(provider),
+		variants:      variants,
 	}, nil
 }
 
@@ -351,9 +443,34 @@ func loadProviderConfig(path string) (map[string]any, error) {
 	return object, nil
 }
 
-// providerConfigBlock locates provider.<id> in a decoded config object.
+// providerContainerKey resolves the single top-level container that should hold
+// provider id. It prefers the container already carrying the provider (so a
+// provider is never duplicated across the singular and plural containers), then
+// a present singular provider map, then a present plural providers map, and
+// finally defaults to the documented singular container.
+func providerContainerKey(config map[string]any, id string) string {
+	if _, ok := containerBlock(config, providerKey, id); ok {
+		return providerKey
+	}
+	if _, ok := containerBlock(config, providersKey, id); ok {
+		return providersKey
+	}
+	if _, ok := config[providerKey].(map[string]any); ok {
+		return providerKey
+	}
+	if _, ok := config[providersKey].(map[string]any); ok {
+		return providersKey
+	}
+	return providerKey
+}
+
+// providerConfigBlock locates provider.<id> in the resolved container.
 func providerConfigBlock(config map[string]any, id string) (map[string]any, bool) {
-	providers, ok := config[providerKey].(map[string]any)
+	return containerBlock(config, providerContainerKey(config, id), id)
+}
+
+func containerBlock(config map[string]any, container, id string) (map[string]any, bool) {
+	providers, ok := config[container].(map[string]any)
 	if !ok {
 		return nil, false
 	}
@@ -361,9 +478,39 @@ func providerConfigBlock(config map[string]any, id string) (map[string]any, bool
 	return block, ok
 }
 
+// providerBlockShapeError reports the resolved container or its provider entry
+// taking a non-object shape. An explicit null is treated as absent because it
+// carries no content, but a scalar or array cannot be reconciled field-wise, so
+// it stays a typed refusal; an object entry is adopted instead.
+func providerBlockShapeError(config map[string]any, container, id string) error {
+	raw, present := config[container]
+	if !present || raw == nil {
+		return nil
+	}
+	providers, ok := raw.(map[string]any)
+	if !ok {
+		return fmt.Errorf("%w: %q is not an object", ErrProviderUnmanaged, container)
+	}
+	entry, present := providers[id]
+	if !present || entry == nil {
+		return nil
+	}
+	if _, isObject := entry.(map[string]any); !isObject {
+		return fmt.Errorf("%w: provider %q in %q is not an object", ErrProviderUnmanaged, id, container)
+	}
+	return nil
+}
+
+// providerModelsObject projects the models map of an existing provider block so
+// the overlay can distinguish a model that already exists from one it must add.
+func providerModelsObject(block map[string]any) map[string]any {
+	models, _ := block[modelsKey].(map[string]any)
+	return models
+}
+
 // coveringProviderRecord reports whether an agreed managed record accredits
-// provider.<id> in exactly this winner file. Reconciliation never cleanses
-// winner-side content, so an unmanaged winner stays refused.
+// provider.<id> in exactly this winner file. A missing record marks a
+// hand-authored block, which install adopts and records rather than refuses.
 func coveringProviderRecord(meta state.MetadataV2, id, winnerRel string) bool {
 	for _, record := range meta.Providers {
 		if record.Name == id && record.ConfigPath == winnerRel && record.Ownership == state.OwnershipManaged {
@@ -373,65 +520,160 @@ func coveringProviderRecord(meta state.MetadataV2, id, winnerRel string) bool {
 	return false
 }
 
-// buildProviderEntry materializes the full provider definition: the
-// __replace__ payload guarantees convergence to the catalog with no orphan
-// models. Variants carry exactly the {id, settings.reasoningEffort} shape and
-// an empty effort vocabulary gets no variants key at all.
-func buildProviderEntry(provider providermgr.Provider, token string) map[string]any {
+// providerEntryForCatalog builds the catalog-authored provider entry for one
+// container shape. Variants are authored only for a model the existing block
+// does not already define, so a deep merge refreshes catalog-owned fields
+// (name, limit, modalities/capabilities, npm/package options) while leaving
+// every user-added per-model field, model, and variant untouched. It returns
+// the entry and the number of variant objects the overlay authors.
+func providerEntryForCatalog(provider providermgr.Provider, token, container string, existingModels map[string]any) (map[string]any, int) {
+	plural := container == providersKey
 	models := make(map[string]any, len(provider.Models()))
+	variants := 0
 	for _, model := range provider.Models() {
-		entry := map[string]any{nameKey: model.Name()}
-		if efforts := model.Efforts(); len(efforts) > 0 {
-			variants := make([]any, 0, len(efforts))
-			for _, effort := range efforts {
-				variants = append(variants, map[string]any{
-					idKey: effort,
-					settingsKey: map[string]any{
-						reasoningEffortKey: effort,
-					},
-				})
+		entry := catalogModelEntry(model, plural)
+		if _, present := existingModels[model.ID()]; !present {
+			if authored := modelVariants(model); authored != nil {
+				entry[variantsKey] = authored
+				variants += len(authored)
 			}
-			entry[variantsKey] = variants
 		}
 		models[model.ID()] = entry
 	}
-	return map[string]any{
-		npmKey:  provider.NPM(),
-		nameKey: provider.Name(),
-		optionsKey: map[string]any{
+	member, key := providerRuntime(provider, container)
+	entry := map[string]any{
+		nameKey:   provider.Name(),
+		modelsKey: models,
+		member:    key,
+	}
+	if plural {
+		entry[settingsKey] = map[string]any{
 			baseURLKey: provider.BaseURL(),
 			apiKeyKey:  token,
-		},
-		modelsKey: models,
+		}
+	} else {
+		entry[optionsKey] = map[string]any{
+			baseURLKey: provider.BaseURL(),
+			apiKeyKey:  token,
+		}
 	}
+	return entry, variants
 }
 
-// buildProviderOverlay wraps the entry in the __replace__ sentinel only when
-// the winner already defines the block: filemerge applies the sentinel to
-// existing members, so an absent member takes the plain entry (a sentinel
-// there would be written literally). Replacement is what converges a stale or
-// rotated block with no orphan models.
-func buildProviderOverlay(provider providermgr.Provider, token string, replace bool) ([]byte, int, error) {
-	entry := buildProviderEntry(provider, token)
-	if replace {
-		entry = map[string]any{replaceKey: entry}
+// catalogModelEntry projects the catalog-owned per-model fields for one
+// container shape. The v2 plural container names media support capabilities
+// with a tools flag; the singular container names it modalities.
+func catalogModelEntry(model providermgr.ModelDef, plural bool) map[string]any {
+	entry := map[string]any{nameKey: model.Name()}
+	if limit, ok := model.Limit(); ok {
+		entry[limitKey] = map[string]any{contextKey: limit.Context, outputKey: limit.Output}
 	}
-	overlay := map[string]any{
-		providerKey: map[string]any{provider.ID(): entry},
+	if media, ok := model.Modalities(); ok {
+		if plural {
+			entry[capabilitiesKey] = map[string]any{
+				toolsKey:  true,
+				inputKey:  media.Input,
+				outputKey: media.Output,
+			}
+		} else {
+			entry[modalitiesKey] = map[string]any{
+				inputKey:  media.Input,
+				outputKey: media.Output,
+			}
+		}
 	}
+	return entry
+}
+
+func providerPackage(provider providermgr.Provider) string {
+	if pkg := provider.Package(); pkg != "" {
+		return pkg
+	}
+	return provider.NPM()
+}
+
+// providerRuntime selects the runtime package member and value a container
+// shape writes: the singular container always writes npm, while the plural v2
+// container writes package and falls back to npm when the catalog declares
+// none. The installer displays this same member and value, so the preview and
+// the emitted entry never diverge.
+func providerRuntime(provider providermgr.Provider, container string) (member, key string) {
+	if container == providersKey {
+		return packageKey, providerPackage(provider)
+	}
+	return npmKey, provider.NPM()
+}
+
+// modelVariants materializes the {id, settings.reasoningEffort} variant shape.
+// A model with no enumerable effort vocabulary gets no variants key at all.
+func modelVariants(model providermgr.ModelDef) []any {
+	efforts := model.Efforts()
+	if len(efforts) == 0 {
+		return nil
+	}
+	variants := make([]any, 0, len(efforts))
+	for _, effort := range efforts {
+		variants = append(variants, map[string]any{
+			idKey: effort,
+			settingsKey: map[string]any{
+				reasoningEffortKey: effort,
+			},
+		})
+	}
+	return variants
+}
+
+func encodeProviderOverlay(container, id string, entry map[string]any) ([]byte, error) {
+	overlay := map[string]any{container: map[string]any{id: entry}}
 	data, err := json.Marshal(overlay)
 	if err != nil {
-		return nil, 0, fmt.Errorf("encode provider overlay: %w", err)
+		return nil, fmt.Errorf("encode provider overlay: %w", err)
 	}
-	return data, countProviderVariants(provider), nil
+	return data, nil
 }
 
-func countProviderVariants(provider providermgr.Provider) int {
-	total := 0
-	for _, model := range provider.Models() {
-		total += len(model.Efforts())
+// decodeOverlayEntry re-decodes the overlay through the shared JSON boundary so
+// the containment comparison uses exactly the value types the merge boundary
+// will observe (float64 numbers, []any arrays).
+func decodeOverlayEntry(overlay []byte, container, id string) (map[string]any, error) {
+	decoded, err := filemerge.DecodeJSONObject(overlay)
+	if err != nil {
+		return nil, err
 	}
-	return total
+	containerObject, ok := decoded[container].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("provider overlay has no %q container", container)
+	}
+	entry, ok := containerObject[id].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("provider overlay has no %q entry", id)
+	}
+	return entry, nil
+}
+
+// objectContains reports whether container already carries every member of
+// subset with an equal value. Nested objects may carry extra members because
+// the field-wise merge preserves them. Numbers and arrays are compared after
+// JSON decoding, so both sides share the same value types.
+func objectContains(container, subset map[string]any) bool {
+	for key, want := range subset {
+		got, present := container[key]
+		if !present {
+			return false
+		}
+		wantObject, isObject := want.(map[string]any)
+		if !isObject {
+			if !reflect.DeepEqual(got, want) {
+				return false
+			}
+			continue
+		}
+		gotObject, ok := got.(map[string]any)
+		if !ok || !objectContains(gotObject, wantObject) {
+			return false
+		}
+	}
+	return true
 }
 
 func providerModelIDs(provider providermgr.Provider) []string {
@@ -494,15 +736,23 @@ func (p *providerInstallPlan) ownershipRecord() (state.ProviderV2, error) {
 }
 
 func (p *providerInstallPlan) receipt(dryRun bool) *ProviderInstallReceipt {
+	entry := catalogEntryProjection(p.provider)
 	receipt := &ProviderInstallReceipt{
 		Action:          "installed",
+		Entry:           &entry,
+		Container:       p.container,
+		RuntimeMember:   p.runtimeMember,
+		RuntimeKey:      p.runtimeKey,
 		Provider:        p.provider.ID(),
 		ConfigPath:      p.winnerPath,
 		ModelsWritten:   len(p.models),
 		VariantsWritten: p.variants,
 		DryRun:          dryRun,
 	}
-	if !p.winnerNeeds && !p.reconcile {
+	switch {
+	case p.adopt:
+		receipt.Action = "adopted"
+	case !p.winnerNeeds && !p.reconcile:
 		receipt.Action = "already-present"
 	}
 	if p.reconcile {
@@ -513,10 +763,13 @@ func (p *providerInstallPlan) receipt(dryRun bool) *ProviderInstallReceipt {
 }
 
 func (p *providerInstallPlan) disclosure() []string {
-	if !p.winnerNeeds && !p.reconcile {
+	if !p.winnerNeeds && !p.reconcile && !p.adopt {
 		return []string{fmt.Sprintf("provider.%s in %s already matches the catalog definition; no changes planned", p.provider.ID(), p.winnerRel)}
 	}
 	lines := []string{fmt.Sprintf("backup first: capture one verified snapshot of %s and %s before any edit", p.winnerRel, p.twinRel)}
+	if p.adopt {
+		lines = append(lines, fmt.Sprintf("adopt: record ownership of the existing provider.%s block in %s and merge catalog fields in place", p.provider.ID(), p.winnerRel))
+	}
 	if p.reconcile {
 		lines = append(lines, fmt.Sprintf("twin cleanup: remove the stale provider.%s block from non-winning %s", p.provider.ID(), p.twinRel))
 	}
