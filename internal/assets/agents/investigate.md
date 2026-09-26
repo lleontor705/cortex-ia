@@ -39,6 +39,12 @@ permissions:
   - action: skill
     resource: "*"
     effect: allow
+  - action: websearch
+    resource: "*"
+    effect: allow
+  - action: webfetch
+    resource: "*"
+    effect: allow
   - action: cortex_*
     resource: "*"
     effect: deny
