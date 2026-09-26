@@ -3,6 +3,7 @@
   "id": "nan",
   "name": "Nan",
   "npm": "@ai-sdk/openai-compatible",
+  "package": "@opencode/ai/providers/openai-compatible",
   "baseURL": "https://api.nan.builders/v1",
   "effort_posture": "A value a model cannot apply is never an error: adjustable models honor the requested reasoning effort, while adaptive and accepted-not-adjustable models tolerate it without changing behavior.",
   "models": [
@@ -11,42 +12,58 @@
       "name": "GLM 5.3",
       "efforts": ["low", "medium", "high", "max"],
       "context": "1M",
-      "premium": true
+      "premium": true,
+      "limit": { "context": 1048576, "output": 32768 },
+      "modalities": { "input": ["text"], "output": ["text"] }
     },
     {
       "id": "glm5.3-flash",
       "name": "GLM 5.3 Flash",
-      "efforts": ["low", "medium", "high", "max"]
+      "efforts": ["low", "medium", "high", "max"],
+      "limit": { "context": 1048576, "output": 32768 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] }
     },
     {
       "id": "deepseek-v4-flash",
       "name": "DeepSeek V4 Flash",
-      "efforts": []
+      "efforts": [],
+      "limit": { "context": 1048575, "output": 32768 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] }
     },
     {
       "id": "qwen3.8-flash",
       "name": "Qwen3.8 Flash",
-      "efforts": []
+      "efforts": [],
+      "limit": { "context": 262144, "output": 32768 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] }
     },
     {
       "id": "mimo-v2.5",
       "name": "MiMo v2.5",
-      "efforts": []
+      "efforts": [],
+      "limit": { "context": 1048576, "output": 32768 },
+      "modalities": { "input": ["text", "image", "audio"], "output": ["text"] }
     },
     {
       "id": "mimo-v2.6-flash",
-      "name": "MiMo v2.6 Flash",
-      "efforts": []
+      "name": "Xiaomi MiMo V2.6 Flash",
+      "efforts": [],
+      "limit": { "context": 1048576, "output": 32768 },
+      "modalities": { "input": ["text", "image", "audio"], "output": ["text"] }
     },
     {
       "id": "gemma4",
       "name": "Gemma 4",
-      "efforts": ["none", "minimal", "low", "medium", "high", "max"]
+      "efforts": ["none", "minimal", "low", "medium", "high", "max"],
+      "limit": { "context": 262144, "output": 65536 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] }
     },
     {
       "id": "qwen3.6",
       "name": "Qwen3.6",
-      "efforts": ["none", "minimal", "low", "medium", "high", "max"]
+      "efforts": ["none", "minimal", "low", "medium", "high", "max"],
+      "limit": { "context": 262144, "output": 65536 },
+      "modalities": { "input": ["text", "image"], "output": ["text"] }
     }
   ]
 }

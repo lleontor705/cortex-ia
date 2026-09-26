@@ -27,11 +27,13 @@ const (
 	jsoncName = "opencode.jsonc"
 	jsonName  = "opencode.json"
 
-	// providerKey, modelsKey, and variantsKey locate the OpenCode provider
-	// model entry that nan effort authoring extends.
-	providerKey = "provider"
-	modelsKey   = "models"
-	variantsKey = "variants"
+	// providerKey and providersKey are the singular documented container and
+	// the OpenCode v2 plural container; modelsKey and variantsKey locate the
+	// provider model entry that nan effort authoring extends.
+	providerKey  = "provider"
+	providersKey = "providers"
+	modelsKey    = "models"
+	variantsKey  = "variants"
 
 	// markdownDir holds markdown agent definitions under the config root.
 	markdownDir = "agents"
@@ -355,7 +357,7 @@ func (m *Manager) planSet(desired Desired, evidence []OwnershipRecord) (Result, 
 	if err != nil {
 		return Result{}, nil, err
 	}
-	overlay, err := setOverlay(canonical, desired.Compact(), desired.Provider, desired.Model, variants)
+	overlay, err := setOverlay(canonical, desired.Compact(), desired.Provider, desired.Model, providerContainerKey(config, desired.Provider), variants)
 	if err != nil {
 		return Result{}, nil, err
 	}
@@ -440,15 +442,16 @@ func malformedVariants(desired Desired) *ConflictError {
 		desired.Provider, desired.Model)
 }
 
-// providerModelEntry locates provider.<id>.models.<model>. A missing or
+// providerModelEntry locates <container>.<id>.models.<model>, resolving the
+// singular or plural container exactly like the installer. A missing or
 // wrong-typed chain is unresolvable, so Set keeps the v1 assignment-only
 // contract rather than writing a provider definition it cannot trust.
 func providerModelEntry(config map[string]any, provider, model string) (map[string]any, bool) {
-	providers, ok := config[providerKey].(map[string]any)
+	container, ok := config[providerContainerKey(config, provider)].(map[string]any)
 	if !ok {
 		return nil, false
 	}
-	providerEntry, ok := providers[provider].(map[string]any)
+	providerEntry, ok := container[provider].(map[string]any)
 	if !ok {
 		return nil, false
 	}
@@ -461,6 +464,36 @@ func providerModelEntry(config map[string]any, provider, model string) (map[stri
 		return nil, false
 	}
 	return modelEntry, true
+}
+
+// providerContainerKey resolves the container holding provider id: the
+// container already carrying it, else a present singular provider map, else a
+// present plural providers map, else the singular default. Effort authoring
+// extends whichever container the file already uses and never appends a
+// parallel section.
+func providerContainerKey(config map[string]any, provider string) string {
+	if _, ok := providerBlockInContainer(config, providerKey, provider); ok {
+		return providerKey
+	}
+	if _, ok := providerBlockInContainer(config, providersKey, provider); ok {
+		return providersKey
+	}
+	if _, ok := config[providerKey].(map[string]any); ok {
+		return providerKey
+	}
+	if _, ok := config[providersKey].(map[string]any); ok {
+		return providersKey
+	}
+	return providerKey
+}
+
+func providerBlockInContainer(config map[string]any, container, provider string) (map[string]any, bool) {
+	providers, ok := config[container].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	block, ok := providers[provider].(map[string]any)
+	return block, ok
 }
 
 // effectiveEntry resolves the observed model for one registry agent. Config
@@ -517,15 +550,16 @@ func applyMarkdownPin(entry *AgentEntry) {
 
 // setOverlay builds the one overlay a set applies. The agents mapping is always
 // present; the provider model update is added only when a nan effort authored a
-// variants array, so both changes travel through a single JSONMutation.
-func setOverlay(agent, compact, provider, model string, variants []any) ([]byte, error) {
+// variants array, authored under the resolved container so both changes travel
+// through a single JSONMutation.
+func setOverlay(agent, compact, provider, model, container string, variants []any) ([]byte, error) {
 	overlay := map[string]any{
 		agentsKey: map[string]any{
 			agent: map[string]any{"model": compact},
 		},
 	}
 	if variants != nil {
-		overlay[providerKey] = map[string]any{
+		overlay[container] = map[string]any{
 			provider: map[string]any{
 				modelsKey: map[string]any{
 					model: map[string]any{variantsKey: variants},
