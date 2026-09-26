@@ -1,0 +1,52 @@
+{
+  "schema": "cortex-ia/providers/v1",
+  "id": "nan",
+  "name": "Nan",
+  "npm": "@ai-sdk/openai-compatible",
+  "baseURL": "https://api.nan.builders/v1",
+  "effort_posture": "A value a model cannot apply is never an error: adjustable models honor the requested reasoning effort, while adaptive and accepted-not-adjustable models tolerate it without changing behavior.",
+  "models": [
+    {
+      "id": "glm5.3",
+      "name": "GLM 5.3",
+      "efforts": ["low", "medium", "high", "max"],
+      "context": "1M",
+      "premium": true
+    },
+    {
+      "id": "glm5.3-flash",
+      "name": "GLM 5.3 Flash",
+      "efforts": ["low", "medium", "high", "max"]
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash",
+      "efforts": []
+    },
+    {
+      "id": "qwen3.8-flash",
+      "name": "Qwen3.8 Flash",
+      "efforts": []
+    },
+    {
+      "id": "mimo-v2.5",
+      "name": "MiMo v2.5",
+      "efforts": []
+    },
+    {
+      "id": "mimo-v2.6-flash",
+      "name": "MiMo v2.6 Flash",
+      "efforts": []
+    },
+    {
+      "id": "gemma4",
+      "name": "Gemma 4",
+      "efforts": ["none", "minimal", "low", "medium", "high", "max"]
+    },
+    {
+      "id": "qwen3.6",
+      "name": "Qwen3.6",
+      "efforts": ["none", "minimal", "low", "medium", "high", "max"]
+    }
+  ]
+}

@@ -47,6 +47,8 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
    - **Zero-Noise Comments Invariant**: Write clean, self-documenting code. Never add narrative comments explaining WHAT obvious code does (e.g. `// get user`, `// return result`, `// increment count`), changelog/task attribution tags, or commented-out dead code. Comments are reserved strictly for non-obvious *WHY* (design rationale/workarounds) and essential domain invariants.
 4. **Focused Checks & Proportional Verification:**
    - Run focused checks, then proportional regression. Record command, exit code, revision, timestamp, and concise result.
+   - **Oracle Strength**: Every new or changed test must demonstrate failure capability by asserting at least one boundary, a return payload, or a failure branch; a test that cannot fail does not ship for eligible work.
+   - **Coverage-Delta Advisory**: For test-bearing changes, a before/after `go test -coverprofile` delta MAY be reported as an advisory signal only; it never gates this wave.
    - For declarative configs (Docker/Compose, YAML, JSON, `.dockerignore`, `.env*`), verify syntax and target values directly using standard parsers or real commands; NEVER invent ad-hoc shell lexers or custom grammar parsers.
 5. **Diff Review & Proactive Memory (MANDATORY):**
    - Review the diff for scope creep, secrets, unsafe paths, and accidental generated drift.
@@ -60,6 +62,7 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
      - **`flexible` (default)**: Source Logic <= 700 LOC in Go/Rust/Java/C#, <= 500 LOC in TS/Python; Tests <= 1200 LOC. If churn exceeds guidelines, record `workload_status: "EXCEEDED_ADVISORY"` and proceed to `in_review`.
      - **`unbounded`**: Churn threshold checks are bypassed.
      - **Declarative Data / Schemas**: Excluded from algorithmic line budget in all policies.
+   - **Pre-Transition Mutation Evidence**: For fast-TDD-eligible code tasks (a persistent test delta in a testable unit), complete the mutation-evidence gate defined in `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md` §4/§8 via the `mutation-testing` skill: accepted outcomes are `KILLED` and `STATIC-ANALYSIS`, `SURVIVED` blocks the transition until the covering test is strengthened and re-run, and a missing field on eligible work is `INCONCLUSIVE`, never `PASS`. TDD exemptions (documentation, declarative configuration, generated output, no reliable fast oracle) apply, with the reason recorded.
    - Complete the CLI lifecycle: verify -> `cortex_ia_work_transition({ to: "in_review" })` (auto-releases leases) -> independent reviewer PASS. Only reviewer PASS produces `done`.
 
 ### Repository database scripts (non-empty leased file scope)

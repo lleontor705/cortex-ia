@@ -7,13 +7,13 @@ This is the single routing and phase matrix for Cortex-IA. Installed path: `~/.c
 | direct-answer / direct-doc | Orchestrator answers from supplied evidence; investigate reads files | Evidence-backed response; filesystem mutations route to a bounded task |
 | discovery | Native discovery | Mandatory initial task of every session; performs the `/.cortex-ia/` `.gitignore` hygiene append before profiling. Quick agentic environment index: skills dictionary (local + global installed), run/test info, minimal governance, quick index |
 | direct-change | Orchestrator creates one task in default; implement; reviewer only if risk warrants | Live claim/leases, proportional checks, independent or orchestrator auto-approval on low risk |
-| fast-tdd | Implement with fast-tdd, then reviewer | Causal RED, same oracle GREEN, independent approval |
+| fast-tdd | Implement with fast-tdd, then reviewer | Causal RED, same oracle GREEN, mutation evidence (`KILLED` or `STATIC-ANALYSIS` per `cortex-work-protocol.md` §4/§8), independent approval |
 | hotfix | Implement with hotfix-triage, then reviewer | Containment, regression evidence and explicit structural follow-up |
 | spike | Investigate with authorized spike-prototype scratch scope | Reproducible conclusion and cleanup, then choose the next route |
 | decision-map | Investigate and user decisions, then planner | Decision map; no implementation board or DAG |
 | sdd-lite | Investigate; planner integrated; implement; reviewer; planner archive | Integrated contract, typed SDD task bindings, independent approval and durable closure |
 | sdd-full | Investigate; planner propose/spec/design/tasks; implement; reviewer; planner archive | Phase contracts, typed SDD task bindings, independent approval and durable closure |
-| review | Independent reviewer | Spec and implementation evidence; only work approval PASS produces done |
+| review | Independent reviewer | Spec and implementation evidence including mutation evidence (`cortex-work-protocol.md` §8); only work approval PASS produces done |
 | retrospective | Investigate with workflow-retrospective | Diagnosis and recommendations, no implementation or state mutation |
 
 ## Planning phases and storage planes
@@ -37,7 +37,7 @@ Only the planner materializes the SDD DAG, after integrated/tasks validation. Di
 
 For OpenSpec/hybrid use `cortex_ia_openspec_validate` with explicit `relative_directory`, `workflow`, and `phase`. Lite uses one `plan.md`; Full validates only artifacts due at that phase. Decision-map uses `decision-map.md`. The JSON result is structural evidence, not a semantic PASS or product acceptance.
 
-Use `REQ-{DOMAIN}-{NNN}` requirement headings. ADDED/MODIFIED requirements have at least three Scenario blocks with nonempty GIVEN, WHEN and THEN. Reviewers independently judge happy, edge and failure coverage; counting blocks cannot prove this. REMOVED requirements state their reason/migration instead of new implementation scenarios. Task blocks have unique task IDs and an explicit `Requirements:` list of existing requirement IDs. Integrated/final task validation rejects unknown references and uncovered implementable requirements.
+Use `REQ-{DOMAIN}-{NNN}` requirement headings. ADDED/MODIFIED requirements have at least three Scenario blocks with nonempty GIVEN, WHEN and THEN. Reviewers independently judge happy, edge and failure coverage; counting blocks cannot prove this. REMOVED requirements state their reason/migration instead of new implementation scenarios. Task blocks have unique task IDs and an explicit `Requirements:` list of existing requirement IDs. Integrated/final task validation rejects unknown references and uncovered implementable requirements. REQ-bound tasks delivering a persistent test name it `TestREQ_{DOMAIN}_{NNN}_<slug>` (language-conditional adaptation allowed) and carry a verification command targeting that name; the naming convention is recorded in `cortex-convention.md` and remains convention-level — no runtime validator enforces it this wave.
 
 ## Binding, review and closure
 
