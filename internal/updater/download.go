@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -149,30 +150,35 @@ func DownloadAndVerifyRelease(ctx context.Context, client *http.Client, repo, cu
 // through the same verification chain, so an already-applied release is
 // rejected before any network fetch.
 func downloadAndVerifyReleaseWithFloor(ctx context.Context, client *http.Client, repo, currentVersion string, rel *Release, appliedFloor string) ([]byte, *ManifestArtifact, error) {
-	if err := RequireTrust(); err != nil {
-		return nil, nil, err
-	}
-	if rel == nil || strings.TrimSpace(rel.TagName) == "" {
-		return nil, nil, errors.New("release cannot be nil and tag name cannot be empty")
-	}
-	if IsDevOrUnknown(currentVersion) {
-		return nil, nil, fmt.Errorf("%w: current version is %q", ErrDevUnknownVersion, currentVersion)
-	}
-	if err := VerifyVersionFloor(currentVersion, rel.TagName, appliedFloor); err != nil {
+	verifier := defaultVerifier()
+	if err := verifier.RequireAuthority(); err != nil {
 		return nil, nil, err
 	}
 
-	var manAsset, sigAsset *ReleaseAsset
-	for i := range rel.Assets {
-		switch rel.Assets[i].Name {
-		case "release-manifest.json":
-			manAsset = &rel.Assets[i]
-		case "release-manifest.sig":
-			sigAsset = &rel.Assets[i]
+	var relAssets []ReleaseAsset
+	tag := ""
+	if rel != nil {
+		relAssets = rel.Assets
+		tag = rel.TagName
+	}
+	if err := verifier.CheckEligibility(currentVersion, tag, appliedFloor); err != nil {
+		return nil, nil, err
+	}
+
+	requiredNames := verifier.RequiredAssets()
+	required := make(map[string]*ReleaseAsset, len(requiredNames))
+	for i := range relAssets {
+		for _, name := range requiredNames {
+			if relAssets[i].Name == name {
+				required[name] = &relAssets[i]
+			}
 		}
 	}
-	if manAsset == nil || sigAsset == nil {
-		return nil, nil, fmt.Errorf("release %s missing signed release-manifest.json or release-manifest.sig asset", rel.TagName)
+	manAsset := required["release-manifest.json"]
+	sigAsset := required["release-manifest.sig"]
+	requiresSignature := slices.Contains(requiredNames, "release-manifest.sig")
+	if manAsset == nil || (requiresSignature && sigAsset == nil) {
+		return nil, nil, fmt.Errorf("release %s missing signed %s asset", tag, strings.Join(requiredNames, " or "))
 	}
 
 	safeClient := SafeHTTPClient(client)
@@ -201,16 +207,20 @@ func downloadAndVerifyReleaseWithFloor(ctx context.Context, client *http.Client,
 		return io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	}
 
-	rawSig, err := fetchBytes(sigAsset.DownloadURL, MaxSignatureEnvelopeSize)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to fetch signature envelope: %w", err)
+	var rawSig []byte
+	if requiresSignature {
+		var err error
+		rawSig, err = fetchBytes(sigAsset.DownloadURL, MaxSignatureEnvelopeSize)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to fetch signature envelope: %w", err)
+		}
 	}
 	rawMan, err := fetchBytes(manAsset.DownloadURL, MaxManifestSize)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch release manifest: %w", err)
 	}
 
-	manifest, err := VerifyManifest(rawMan, rawSig, repo, rel.TagName)
+	manifest, err := verifier.VerifyBundle(rawMan, rawSig, repo, tag)
 	if err != nil {
 		return nil, nil, fmt.Errorf("manifest verification failed: %w", err)
 	}
@@ -223,9 +233,9 @@ func downloadAndVerifyReleaseWithFloor(ctx context.Context, client *http.Client,
 	}
 
 	var matchedRelAsset *ReleaseAsset
-	for i := range rel.Assets {
-		if rel.Assets[i].Name == art.Name {
-			matchedRelAsset = &rel.Assets[i]
+	for i := range relAssets {
+		if relAssets[i].Name == art.Name {
+			matchedRelAsset = &relAssets[i]
 			break
 		}
 	}

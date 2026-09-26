@@ -86,6 +86,27 @@ func VerifyManifest(rawManifest, rawSig []byte, expectedRepo, expectedTag string
 		return nil, fmt.Errorf("%w: expected %d bytes, got %d", ErrMalformedEncoding, ed25519.SignatureSize, len(sigBytes))
 	}
 
+	manifest, err := validateManifestShape(rawManifest, expectedRepo, expectedTag)
+	if err != nil {
+		return nil, err
+	}
+
+	key, err := LookupTrustedKey(env.KeyID, manifest.Repository, manifest.Tag)
+	if err != nil {
+		return nil, err
+	}
+
+	if !ed25519.Verify(key.PublicKey, rawManifest, sigBytes) {
+		return nil, ErrInvalidSignature
+	}
+
+	return manifest, nil
+}
+
+// validateManifestShape parses and structurally validates manifest bytes
+// against the schema version, repository/tag binding, and artifact table rules
+// shared by every verification profile. It performs no signature check.
+func validateManifestShape(rawManifest []byte, expectedRepo, expectedTag string) (*Manifest, error) {
 	if len(rawManifest) > MaxManifestSize {
 		return nil, ErrManifestTooLarge
 	}
@@ -139,15 +160,6 @@ func VerifyManifest(rawManifest, rawSig []byte, expectedRepo, expectedTag string
 		if !isValidSHA256(a.SHA256) {
 			return nil, fmt.Errorf("%w: %q", ErrMalformedHash, a.SHA256)
 		}
-	}
-
-	key, err := LookupTrustedKey(env.KeyID, manifest.Repository, manifest.Tag)
-	if err != nil {
-		return nil, err
-	}
-
-	if !ed25519.Verify(key.PublicKey, rawManifest, sigBytes) {
-		return nil, ErrInvalidSignature
 	}
 
 	return &manifest, nil

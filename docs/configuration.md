@@ -63,7 +63,20 @@ cortex-ia mcp remove <name> [--dry-run]
 ```bash
 cortex-ia update          # Check GitHub Releases and install the latest release
 cortex-ia update --check  # Check only, without downloading or applying
+cortex-ia update --allow-checksum-updates  # Verify by SHA-256 checksum when no trust bundle is packaged
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--check` | Check whether an update is available without downloading or applying it |
+| `--scheduled` | Headless check-only mode for the OS scheduler; valid only with `--check` |
+| `--allow-checksum-updates` | Grant per-run consent to verify releases by SHA-256 checksum only when the build carries no trust bundle. Ignored when a trust bundle is packaged. |
+
+A build with a packaged trust bundle always verifies with Ed25519 (`strict`);
+`--allow-checksum-updates` is ignored in that case. Bundle-less builds fail
+closed without this consent. See
+[`updater-verification-profiles.md`](updater-verification-profiles.md) for the
+profiles, the checksum threat model, and the fail-closed default.
 
 ## Environment Variables
 
@@ -73,6 +86,7 @@ cortex-ia requires no environment variables. Optional:
 |----------|-------------|
 | `CORTEX_IA_HOME` | Override the state root (default `~/.cortex-ia/`). Must resolve to an absolute path; used by automation and tests. |
 | `CORTEX_IA_DEBUG` | Enable debug tracing when set to `1`, `true`, or `yes`. Debug output goes to stderr and a file; stdout stays reserved for command receipts. The `--debug` flag enables the same tracing per invocation. |
+| `CORTEX_IA_ALLOW_CHECKSUM_UPDATES` | Grant per-run consent to verify updates by SHA-256 checksum only when no trust bundle is packaged. Only `1` and `true` (case-insensitive) grant consent; any other value means "not given". Equivalent to `update --allow-checksum-updates`; ignored when a bundle is packaged. See [`updater-verification-profiles.md`](updater-verification-profiles.md). |
 
 The former `CORTEX_IA_AGY_AUTH` and `GEMINI_API_KEY` variables authenticated the retired external AGY leaf. They are dead: execution is native-only and neither variable is read.
 

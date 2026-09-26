@@ -104,7 +104,8 @@ func (c *Client) CheckLatestFresh(ctx context.Context, currentVersion string) (*
 }
 
 func (c *Client) checkLatest(ctx context.Context, currentVersion string, conditional bool) (*Release, bool, error) {
-	if err := RequireTrust(); err != nil {
+	verifier := defaultVerifier()
+	if err := verifier.RequireAuthority(); err != nil {
 		return nil, false, err
 	}
 
@@ -134,7 +135,7 @@ func (c *Client) checkLatest(ctx context.Context, currentVersion string, conditi
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotModified {
-		return cachedReleaseFromState(cached, currentVersion, strings.TrimSpace(resp.Header.Get("ETag")))
+		return cachedReleaseFromState(cached, currentVersion, strings.TrimSpace(resp.Header.Get("ETag")), verifier, c.effectiveAppliedFloor())
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, false, githubAPIError(resp, c.Repo)
@@ -146,7 +147,7 @@ func (c *Client) checkLatest(ctx context.Context, currentVersion string, conditi
 	}
 	rel.ETag = strings.TrimSpace(resp.Header.Get("ETag"))
 
-	hasUpdate, err := CheckUpdateCandidate(currentVersion, rel.TagName)
+	hasUpdate, err := verifier.UpdateCandidate(currentVersion, rel.TagName, c.effectiveAppliedFloor())
 	if err != nil {
 		return &rel, false, fmt.Errorf("%w: %w", ErrNonCanonicalVersion, err)
 	}
@@ -168,7 +169,7 @@ func githubToken() string {
 // cachedReleaseFromState rebuilds the release reported after a 304 Not Modified.
 // Only the tag and ETag are known locally, which is enough for check surfaces;
 // an apply re-fetches the full payload through CheckLatestFresh.
-func cachedReleaseFromState(state UpdateState, currentVersion, headerETag string) (*Release, bool, error) {
+func cachedReleaseFromState(state UpdateState, currentVersion, headerETag string, verifier ReleaseVerifier, appliedFloor string) (*Release, bool, error) {
 	tag := strings.TrimSpace(state.Available)
 	etag := strings.TrimSpace(headerETag)
 	if etag == "" {
@@ -179,7 +180,7 @@ func cachedReleaseFromState(state UpdateState, currentVersion, headerETag string
 	}
 
 	rel := &Release{TagName: tag, ETag: etag}
-	hasUpdate, err := CheckUpdateCandidate(currentVersion, tag)
+	hasUpdate, err := verifier.UpdateCandidate(currentVersion, tag, appliedFloor)
 	if err != nil {
 		return rel, false, fmt.Errorf("%w: %w", ErrNonCanonicalVersion, err)
 	}
@@ -318,14 +319,16 @@ func (c *Client) ApplyUpdate(ctx context.Context, currentVersion string, rel *Re
 // and artifact digest, safely extracts the executable, and replaces the target binary.
 // If targetPath is empty, it resolves os.Executable().
 func (c *Client) ApplyUpdateToTarget(ctx context.Context, currentVersion string, rel *Release, targetPath string) error {
-	if err := RequireTrust(); err != nil {
+	verifier := defaultVerifier()
+	if err := verifier.RequireAuthority(); err != nil {
 		return err
 	}
-	if rel == nil || strings.TrimSpace(rel.TagName) == "" {
-		return errors.New("release cannot be nil and tag name cannot be empty")
+	tag := ""
+	if rel != nil {
+		tag = rel.TagName
 	}
-	if IsDevOrUnknown(currentVersion) {
-		return fmt.Errorf("%w: current version is %q", ErrDevUnknownVersion, currentVersion)
+	if err := verifier.CheckEligibility(currentVersion, tag, c.effectiveAppliedFloor()); err != nil {
+		return err
 	}
 
 	archiveBytes, art, err := downloadAndVerifyReleaseWithFloor(ctx, c.HTTPClient, c.Repo, currentVersion, rel, c.effectiveAppliedFloor())

@@ -147,6 +147,19 @@ before it is pasted into CI:
 - The JSON is an array (a single object is rejected).
 - The decoded public key length is 32 bytes.
 
+> **Provisioning and verification profiles.** A correctly provisioned bundle —
+> present, well-formed, and covering the release tag — selects the `strict`
+> profile for every build that carries it: Ed25519 signature verification is
+> restored everywhere and no consent is required. When the key pair is missing,
+> mismatched, or otherwise not packaged, builds fall back to the fail-closed
+> default and cannot install anything. The `checksum` profile exists precisely
+> as the consent-gated bootstrap for that interim state: an operator can opt in
+> per run to verify artifacts by SHA-256 checksum and size without a bundle.
+> Fixing the bundle is the permanent remedy; the checksum profile is a
+> deliberate, explicit bridge while keys are mismatched, not a replacement for
+> signing. See [`updater-verification-profiles.md`](updater-verification-profiles.md)
+> for the profiles, both consent surfaces, and the checksum threat model.
+
 ## 7. Rotation (Maximum Two Live Keys)
 
 Rotation never replaces a key in place. The new key is added as a second record
