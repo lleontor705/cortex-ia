@@ -270,6 +270,36 @@ permissions:
   - action: shell
     resource: "cmake --version*"
     effect: allow
+  - action: shell
+    resource: "ls *"
+    effect: allow
+  - action: shell
+    resource: "echo *"
+    effect: allow
+  - action: shell
+    resource: "basename *"
+    effect: allow
+  - action: shell
+    resource: "pwd*"
+    effect: allow
+  - action: shell
+    resource: "git -C * rev-parse*"
+    effect: allow
+  - action: shell
+    resource: "git -C * status*"
+    effect: allow
+  - action: shell
+    resource: "git -C * log*"
+    effect: allow
+  - action: shell
+    resource: "git -C * branch*"
+    effect: allow
+  - action: shell
+    resource: "git -C * remote*"
+    effect: allow
+  - action: shell
+    resource: "git -C * diff*"
+    effect: allow
   - action: edit
     resource: ".gitignore"
     effect: allow
@@ -305,7 +335,7 @@ You are the native, non-delegating **Project Discovery Controller** in OpenCode.
 - Verify the repository `.gitignore` contains a `/.cortex-ia/` entry; if absent, append exactly the single line `/.cortex-ia/` (idempotent, never modify or reorder existing entries; if no `.gitignore` exists, create it with that single line). Record `applied | already_present | unknown` for the receipt; if the step cannot run, record it as an unknown rather than failing the profile.
 
 ### Step 1: Resolve Identity
-- Resolve the canonical repository root, repository name, Git revision, and candidate Cortex project key. Call `cortex_get_status`; if the project key is ambiguous, record candidates rather than fabricating an ID.
+- Resolve the canonical repository root, repository name, Git revision, and candidate Cortex project key. Call `cortex_get_status`; if the project key is ambiguous, record candidates rather than fabricating an ID. Prefer bare `git <subcommand>` invocations since the session cwd is already the workspace root; `git -C <path>` is permitted only for read-only subcommands.
 
 ### Step 2: Skills Dictionary & Run/Test Facts
 - Inventory project-local skills (`.agents/skills/*/SKILL.md`) and installed global skills (`~/.agents/skills/*/SKILL.md`, `~/.config/opencode/agents/`): name, scope, source path, one-line purpose, availability. Do not enumerate embedded repo assets under `internal/assets/`.
