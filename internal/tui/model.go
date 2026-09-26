@@ -31,6 +31,7 @@ const (
 	screenAgentStudio
 	screenStats
 	screenModels
+	screenProviders
 )
 
 // productionBootScreen is the surface shipped to users: launched with zero
@@ -66,10 +67,16 @@ var homeEntries = []string{
 	"Uninstall",
 	"Quit",
 	"Configuración de modelos",
+	"Install custom provider",
 }
 
 // statsEntryIndex is the Home cursor position of the usage stats entry.
 const statsEntryIndex = 4
+
+// providersEntryIndex is the Home cursor position of the custom providers
+// entry. Its digit key is intentionally unbound: digits 1-9 stay frozen on
+// entries 0-8 and the entry opens through "p"/"P" or Enter (REQ-PROV-006).
+const providersEntryIndex = 9
 
 // managedNames lists the managed MCP presets in toggle order.
 var managedNames = []string{"cortex", "context7"}
@@ -175,6 +182,9 @@ type model struct {
 	// Models configuration state
 	models modelsState
 
+	// Custom providers screen state
+	providers providersState
+
 	// Animation state
 	logoFrame int
 }
@@ -200,6 +210,7 @@ func newModel(svc ServiceAPI, homeDir, version string) model {
 		screen:        bootScreen,
 		stats:         newStatsState(),
 		models:        newModelsState(homeDir),
+		providers:     newProvidersState(homeDir),
 		opts:          install.DefaultOptions(),
 		delegationCfg: cfg,
 	}
@@ -267,6 +278,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.models = m.models.onMutated(msg)
 		}
 		return m, nil
+	case providersCatalogMsg:
+		if m.screen == screenProviders {
+			m.providers = m.providers.onLoaded(msg)
+		}
+		return m, nil
+	case providersResultMsg:
+		if m.screen == screenProviders {
+			m.providers = m.providers.onResult(msg)
+		}
+		return m, nil
 	case webReadyMsg:
 		m.webReady = true
 		m.webURL = msg.url
@@ -301,6 +322,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateStats(msg)
 		case screenModels:
 			return m.updateModels(msg)
+		case screenProviders:
+			return m.updateProviders(msg)
 		}
 	}
 	return m, nil
@@ -341,6 +364,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "m", "M":
 		return m.openModels()
+	case "p", "P":
+		return m.openProviders()
 	case "enter":
 		return m.selectHomeEntry(m.cursor)
 	}
@@ -406,6 +431,8 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case 8: // Configuración de modelos
 		return m.openModels()
+	case 9: // Install custom provider
+		return m.openProviders()
 	}
 	return m, nil
 }

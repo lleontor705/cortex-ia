@@ -38,6 +38,7 @@ var homeDescriptions = []string{
 	"Remove accredited cortex-ia installation with backup",
 	"Exit cortex-ia",
 	"Modelo y esfuerzo por agente con vista previa dry-run",
+	"Instalar un proveedor personalizado con token enmascarado",
 }
 
 var mcpDescriptions = map[string]string{
@@ -154,6 +155,8 @@ func (m model) View() string {
 		body = m.stats.view(m.contentWidth())
 	case screenModels:
 		body = m.models.view(m.contentWidth())
+	case screenProviders:
+		body = m.providers.view(m.contentWidth())
 	}
 	if m.confirm.kind != confirmNone {
 		body = body + "\n" + m.viewConfirm()
