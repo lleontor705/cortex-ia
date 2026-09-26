@@ -25,12 +25,15 @@ func runUpdate(args []string) error {
 
 	checkOnly := false
 	scheduled := false
+	allowChecksumUpdates := false
 	for _, arg := range args {
 		switch strings.ToLower(arg) {
 		case "--check", "-c":
 			checkOnly = true
 		case "--scheduled":
 			scheduled = true
+		case "--allow-checksum-updates":
+			allowChecksumUpdates = true
 		case "--help", "-h":
 			printUpdateHelp()
 			return nil
@@ -38,6 +41,10 @@ func runUpdate(args []string) error {
 			return fmt.Errorf("unknown flag for update: %s (use 'cortex-ia update --help' for usage)", arg)
 		}
 	}
+
+	// Consent is per-run: an absent flag clears any prior grant so one
+	// invocation can never inherit a stale checksum selection.
+	updater.SetChecksumConsent(allowChecksumUpdates)
 
 	if !scheduled {
 		return runManualUpdate(checkOnly)
@@ -54,6 +61,9 @@ func printUpdateHelp() {
 	fmt.Println("Check for and apply updates from GitHub Releases.")
 	fmt.Println("\nOptions:")
 	fmt.Println("  --check, -c    Check if an update is available without downloading or applying it")
+	fmt.Println("  --allow-checksum-updates")
+	fmt.Println("                 Verify releases by SHA-256 checksum only when no trust bundle is packaged.")
+	fmt.Println("                 Requires explicit operator consent; equivalent to CORTEX_IA_ALLOW_CHECKSUM_UPDATES=1.")
 	fmt.Println("  --scheduled    Headless check-only mode for the OS scheduler; valid only with --check.")
 	fmt.Println("                 Records the result in the shared update state and never downloads or applies")
 	fmt.Println("\nSubcommands:")
@@ -72,6 +82,24 @@ func printDevelopmentBuildNotice() bool {
 	}
 	fmt.Println(updater.SelfUpdateDisabledNotice(Version))
 	return true
+}
+
+// checksumWarningEmitted keeps the consent warning to a single process-wide
+// line even when more than one update surface runs in the same process.
+var checksumWarningEmitted bool
+
+// printChecksumConsentWarning surfaces the signature-less profile exactly once,
+// naming whether consent came from the flag or the environment variable.
+func printChecksumConsentWarning(profile updater.VerificationProfile) {
+	if checksumWarningEmitted || profile != updater.ProfileChecksum {
+		return
+	}
+	source := updater.ConsentSource()
+	if source == "" {
+		return
+	}
+	checksumWarningEmitted = true
+	fmt.Printf("Warning: updates are verified by SHA-256 checksum only (consent: %s)\n", source)
 }
 
 // newUpdateClient binds the client to the machine-local state root so the
@@ -103,11 +131,16 @@ func resolveUpdateHome() string {
 func runManualUpdate(checkOnly bool) error {
 	// Fail closed on trust before any cache short-circuit so a fresh state can
 	// never bypass the authenticated-update gate.
-	if err := updater.RequireTrust(); err != nil {
+	if err := updater.RequireProfileAuthority(); err != nil {
 		return err
 	}
 
-	if printDevelopmentBuildNotice() {
+	profile := updater.ActiveProfile()
+	printChecksumConsentWarning(profile)
+
+	// A bundle-less checksum run is the only bootstrap path for a development
+	// build; the strict profile keeps the hard disabled notice unchanged.
+	if profile != updater.ProfileChecksum && printDevelopmentBuildNotice() {
 		return nil
 	}
 
@@ -168,7 +201,7 @@ func runManualUpdate(checkOnly bool) error {
 		return fmt.Errorf("update failed: %w", err)
 	}
 
-	fmt.Printf("Successfully updated cortex-ia to %s!\n", rel.TagName)
+	fmt.Printf("Successfully updated cortex-ia to %s! (verification: %s)\n", rel.TagName, profile)
 	return nil
 }
 
@@ -177,11 +210,14 @@ func runManualUpdate(checkOnly bool) error {
 // downloads, prompts, or replaces a binary, and a failed check leaves the
 // previous state untouched.
 func runScheduledUpdateCheck() error {
-	if err := updater.RequireTrust(); err != nil {
+	if err := updater.RequireProfileAuthority(); err != nil {
 		return err
 	}
 
-	if printDevelopmentBuildNotice() {
+	profile := updater.ActiveProfile()
+	printChecksumConsentWarning(profile)
+
+	if profile != updater.ProfileChecksum && printDevelopmentBuildNotice() {
 		return nil
 	}
 
