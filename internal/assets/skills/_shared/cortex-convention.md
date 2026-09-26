@@ -41,8 +41,8 @@ OpenSpec evidence uses `sdd/{change}/{artifact}` for `explore`, `proposal`, `spe
 When `spec_plane=cortex`, Cortex observations serve as the authoritative specification plane; OpenSpec files (`openspec/`) and tools (`cortex_ia_openspec_write`, `cortex_ia_openspec_validate`) are neither written nor required in any phase (decision-map, Lite, or any Full phase).
 
 ### Contract structure & traceability
-A Cortex specification observation MUST carry identified requirements, three Given/When/Then cases each (Happy Path, Edge Case, Error/Fail-Closed State), design/interfaces, acceptance criteria and deterministic oracles (expected exit code 0), risks/non-goals, and task traceability in a full snapshot observation.
-Traceability is strict: Requirements IDs (`REQ-{DOMAIN}-{NNN}`) -> Scenarios -> Design/Interfaces -> Acceptance Criteria / Deterministic Oracles -> Risks & Non-goals -> Task Traceability.
+A Cortex specification observation MUST carry identified requirements, three Given/When/Then cases each (Happy Path, Edge Case, Error/Fail-Closed State), design/interfaces, acceptance criteria and deterministic oracles (expected exit code 0), risks/non-goals, and task traceability in a full snapshot observation. Each requirement MUST carry a `Test:` oracle line, and a requirement whose oracle is a persistent test names it `TestREQ_{DOMAIN}_{NNN}_<slug>`, with language-conditional adaptation allowed for non-Go runners.
+Traceability is strict: Requirements IDs (`REQ-{DOMAIN}-{NNN}`) -> Scenarios -> Design/Interfaces -> Acceptance Criteria / Deterministic Oracles (`Test:` line, `TestREQ_{DOMAIN}_{NNN}_<slug>` naming) -> Risks & Non-goals -> Task Traceability. Planner verification commands for REQ-bound test tasks target those names with the runner selection flag (`-run TestREQ_...`).
 
 ### Verifiable pinned references via real Cortex MCP
 The real Cortex MCP API provides `cortex_save(title,content,project,session_id,topic_key,type...)`, `cortex_get_observation(id:number)`, and `cortex_revision_history(observation_id:number,limit:number)`. It does not provide get-by-revision or contract-validation tools.

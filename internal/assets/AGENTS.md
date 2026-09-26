@@ -143,6 +143,7 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 6. **Anti-Decomposition of Pure-Test & Tooling Tasks**: Tasks whose `allowed_files` consist purely of tests or test scaffolding (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks, fixtures) MUST NOT undergo DAG decomposition upon failure. If a pure-test or test-helper task fails review or verification, the implementer or planner must simplify or fix the test assertion directly, prune invalid/unrealistic mock assumptions, or revert to a standard CLI oracle. Never decompose a test into more tests.
 7. **Proportional Review & Low-Risk Auto-Approval**: For `direct-change` tasks where changes are low-risk (documentation, instructions like `AGENTS.md`/`README.md`, comments, or localized code diffs $\le 2$ files and $\le 70$ LOC with deterministic green tests), the orchestrator auto-approves the task via `cortex_ia_work_approve` without dispatching a separate `reviewer` subagent. Independent reviewers are reserved strictly for high-risk domains (concurrency, DB/schema migrations, public APIs, auth/security, high churn $> 3$ files, or failed tests).
 8. **Anti-Board Ceremony for Unitary Tasks**: Initiative boards (`cortex-ia board create`) are strictly reserved for Tier 3 SDD initiatives with multiple dependent tasks. Routine work, direct changes, hotfixes, and documentation updates NEVER create a new board; they execute under the existing `"default"` board without board overhead.
+9. **Mutation Evidence Gate**: Fast-TDD-eligible code tasks MUST satisfy the mutation-evidence gate defined once in `cortex-work-protocol.md` §4 (lifecycle) and §8 (evidence composition) — including the `SURVIVED`-blocks-transition rule and the exempt work kinds — before transition to `in_review`. This item is a cross-reference to that normative clause and introduces no independent wording.
 
 ---
 
@@ -214,6 +215,8 @@ sequenceDiagram
     Orch-->>User: Final Response + Cortex Session Summary
 ```
 
+Phase 4's independent-checks step includes reviewer verification of the implementer's mutation evidence and the perpetually-green test-strength lens; the normative clauses live in `cortex-work-protocol.md` §4 (lifecycle gate) and §8 (evidence composition), and the diagram line above is a pointer to them.
+
 ### Review Workload Guard & Stacked Units
 - **Decoupled Semantic Workload Budget**:
   - Calibrated by the session's active `workload_policy` (`strict` | `flexible` | `unbounded`):
@@ -225,6 +228,7 @@ sequenceDiagram
   - Under `strict`: If source logic changed lines exceed the cap, transitioning to `in_review` is strictly forbidden: transition directly to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if test fixtures exceed 600 LOC) to trigger immediate DAG decomposition.
   - Under `flexible`: If churn exceeds the standard guideline, implementer emits `workload_status: "EXCEEDED_ADVISORY"` in the task receipt and transitions to `in_review`. The reviewer evaluates if the scope is acceptable.
   - Under `unbounded`: Churn threshold checking is bypassed.
+  - For fast-TDD-eligible code tasks, the preflight also requires the mutation evidence defined by the Mutation Evidence Gate (`cortex-work-protocol.md` §4/§8); a `SURVIVED` outcome blocks the transition until the covering test is strengthened.
 - **Anti-Revision Loop Circuit Breaker**: If a task accumulates **two (2) consecutive review FAIL verdicts**, the orchestrator MUST NOT re-dispatch an implementer on the same monolithic task node. It MUST route the task to `planner` with `phase: "decompose"` for atomic decomposition into stacked units (<= 250 LOC). **Exception**: Pure-test or tooling tasks (`allowed_files` purely tests) MUST NOT be decomposed; fix or simplify the test assertions directly.
 - **In-Memory Immutability & Contract Preservation Invariants**:
   - Multi-record/batch validation must operate on defensive copies or without mutating caller-owned structs/pointers in-place prior to whole-request validation.

@@ -278,7 +278,8 @@ You are the dedicated native **Implementation Controller** in OpenCode assigned 
 
 ### Step 5: AST Boundary & Proportional Verification
 - Inspect definitions and relationships with `cortex_get_code_symbols` plus bounded source reads.
-- **Fast-TDD**: Execute the specific, fast unit oracle (RED -> GREEN -> Refactor).
+- **Fast-TDD**: Execute the specific, fast unit oracle (RED -> GREEN -> Refactor -> mutation evidence) and follow the `fast-tdd` and `mutation-testing` skills for the normative loop detail.
+- **Oracle Strength & Mutation Evidence**: Every new or changed test must demonstrate failure capability, and fast-TDD-eligible work completes the pre-transition mutation-evidence gate; the `implement` skill and `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md` §4/§8 own the normative wording and detail.
 - **Direct-Change / Hotfix**: Run syntax, build, lint, and targeted regression tests.
 - **Declarative Config Verification**: For Docker/Compose, YAML, JSON, `.dockerignore`, `.env*`, verify syntax and keys using standard parsers or CLI commands. NEVER build ad-hoc shell lexers.
 

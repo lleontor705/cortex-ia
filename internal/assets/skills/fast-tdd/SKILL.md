@@ -19,9 +19,10 @@ Read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` for bug fixes.
 
 1. Name the public seam and independent source of the expected result. Write one focused test or approved ephemeral oracle that captures the exact missing behavior. Run it and prove RED: failure must be caused by the intended behavior, not syntax, setup, or an unrelated failure.
 2. Implement the minimum production change and rerun the identical focused command to prove GREEN.
-3. Refactor only locally, then rerun the focused test and proportional regression suite.
-4. Rerun the original unminimized reproduction when the change fixes a defect. Verify tagged instrumentation and disposable harnesses are absent.
-5. Save a bounded Cortex observation containing commands, exit codes, revision, timestamp, oracle, seam, and summarized outcomes; never save tokens or large stdout. Use its reference for review approval; cleanup follows the canonical completion order on every exit path.
+3. Run 1–2 minimal reversible mutations per the `mutation-testing` skill and record the outcome: `KILLED` proves the covering test can fail and asserts a boundary, a return payload, or a failure branch; `SURVIVED` marks a shallow test — strengthen the assertions and re-run until `KILLED`, never transitioning with `SURVIVED`; `STATIC-ANALYSIS` is permitted only when mutations cannot execute, naming the explicit assertions covering error boundaries, return payloads, and failure branches. Exempt work kinds (documentation, declarative configuration, generated output, no reliable fast oracle) record the exemption reason instead.
+4. Refactor only locally, then rerun the focused test and proportional regression suite.
+5. Rerun the original unminimized reproduction when the change fixes a defect. Verify tagged instrumentation and disposable harnesses are absent.
+6. Save a bounded Cortex observation containing commands, exit codes, revision, timestamp, oracle, seam, and summarized outcomes; never save tokens or large stdout. Use its reference for review approval; cleanup follows the canonical completion order on every exit path.
 
 ## Output
 
@@ -36,7 +37,8 @@ Read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` for bug fixes.
     "red": {"command": "", "exit_code": 1, "oracle": "", "seam": "", "expected_source": ""},
     "green": {"command": "", "exit_code": 0},
     "refactor": {"command": "", "exit_code": 0},
-    "regression": {"command": "", "exit_code": 0}
+    "regression": {"command": "", "exit_code": 0},
+    "mutation": {"outcome": "KILLED | STATIC-ANALYSIS", "description": "", "command": "", "reverted": true}
   },
   "files_changed": [],
   "evidence_refs": [],
@@ -45,5 +47,7 @@ Read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` for bug fixes.
   "next_route": "review | continue | sdd-lite | stop"
 }
 ```
+
+For a fast-TDD-eligible code task with a test delta, `mutation` is required: accepted final outcomes are `KILLED` and `STATIC-ANALYSIS`; `SURVIVED` never ships, and a missing or empty field on eligible work makes the evidence incomplete (`INCONCLUSIVE` or `BLOCKED`), never `PASS`. Exempt work kinds record the exemption reason instead.
 
 Never include claim or lease authority in the receipt.

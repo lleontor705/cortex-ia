@@ -33,6 +33,8 @@ Assign unique IDs in the form `REQ-{DOMAIN}-{NNN}`. Every requirement MUST inclu
 2. **Edge Case Scenario**: Boundary conditions, concurrent access, or unusual inputs.
 3. **Error State Scenario**: Fail-closed negative behavior and validation rejection.
 
+Every requirement MUST also carry a `Test:` oracle line naming its covering oracle. When that oracle is a persistent test, name it `TestREQ_{DOMAIN}_{NNN}_<slug>`; language-conditional adaptation of the prefix and separator is allowed. The convention is recorded in `cortex-convention.md` under the traceability chain and the `TestREQ_` naming is validated structurally per `workflow-map.md`.
+
 When `spec_plane=cortex`, specifications are persisted as pinned snapshot observations per `cortex-convention.md` carrying requirements with three Given/When/Then scenarios each, design/interfaces, deterministic oracles, risks/non-goals, and task traceability, omitting OpenSpec files and validation gates.
 
 ```markdown
@@ -42,6 +44,8 @@ When `spec_plane=cortex`, specifications are persisted as pinned snapshot observ
 
 ### Requirement: REQ-{DOMAIN}-001: {Descriptive Name}
 The system MUST {behavior description using RFC 2119 keywords}.
+
+- **Test:** {oracle command or assertion naming the covering `TestREQ_{DOMAIN}_{NNN}_<slug>` test}
 
 #### Scenario: {Happy Path}
 - GIVEN {precondition}
@@ -109,6 +113,7 @@ Use horizontal prerequisite tasks only for a genuine shared foundation that must
   - `objective`: Thorough technical explanation (minimum 2-3 substantive sentences) describing context, expected input/output contract, failure modes, and architectural rationale. Never use vague or one-line placeholders.
   - `acceptance_criteria`: Observable, verifiable checklist or Given/When/Then scenarios specifying concrete behavior. Never leave empty or generic.
   - `verification`: Exact reproducible command with flags (e.g. `go test -v ./internal/auth/... -run TestJWTBearer`). MUST be a pure executable command line without comments, expected output descriptions, quotes, or parenthetical remarks (e.g. never write `node --test ... (expected exit 0)`). Explanations belong strictly in `acceptance_criteria` or `objective`.
+  - `verification` for a REQ-bound task delivering a persistent test: target the covering `TestREQ_{DOMAIN}_{NNN}_<slug>` name through the runner's selection flag (e.g. `go test -run TestREQ_{DOMAIN}_{NNN}_<slug> ./internal/auth/...`), adapting to the language's test runner.
   - `allowed_files`: Complete, explicit array of workspace-relative paths to be created or modified. Never empty for implementation tasks.
   - `dependencies`: Include ONLY genuine executable prerequisites.
 - Ensure every task is independently verifiable with exit code `0`.

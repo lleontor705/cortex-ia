@@ -43,6 +43,16 @@ Return verdicts for each lens independently. Global `verification_verdict` is `P
 
 For every finding include severity (`BLOCKER`, `WARNING`, `NIT`), lens (`functional_and_structural | resilience_and_security | architecture_and_discovery`), path and line where applicable, evidence, impact, and remediation. A secret in the diff, destructive data risk, unmet acceptance criterion, circular dependency regression, or reproducible critical regression is a BLOCKER.
 
+### Test-Strength Lens (Reviewer Phase 3 — elaborated single source)
+
+A test that would pass under any behavior change of the logic it claims to cover is a **perpetually-green** test: an oracle gap, not evidence. Under Lens 1 such an oracle fails a code task — name the specific unfailable assertion (one asserting only a non-error outcome without a boundary, payload, or failure-branch discriminator).
+
+Independently verify the implementer's claimed `mutation` evidence against the actual diff and test source, read-only:
+- `KILLED`: confirm the named mutation would flip an actual assertion in the delivered test; a contradiction or unfalsifiable claim fails, and the reviewer writes and executes no test to check it.
+- `STATIC-ANALYSIS`: when execution was impossible, verify the cited assertions cover the changed unit's error boundaries, return payloads, and failure branches; accept the evidence when that bar is met and do not fail solely because no executed mutation was available.
+
+The read-only bar is absolute: never write tests, never mutate files via `sed`/bash, never clone into a temporary directory. The normative gate lives in `_shared/cortex-work-protocol.md` §4/§8.
+
 ### Reviewer Proportionality & Reality Anchor (Anti-Nitpicking)
 - **Reality Anchor**: Reviewers MUST anchor all findings directly to actual repository code, declared contract requirements, and real execution risks. Never evaluate or demand handling of hypothetical, theoretical, or out-of-scope inputs.
 - **Forbidding BLOCKERs on Synthetic Test Harness Edge Cases**: A reviewer MUST NEVER issue a `BLOCKER` or `FAIL` verdict based on hypothetical inputs to internal test helpers, test harnesses, or mocks when the actual repository code and specified contracts do not contain those inputs. Discrepancies on uncalled or unrealistic helper branches (e.g. tabs vs spaces in synthetic shell parsers, unquoted strings never emitted by config, unreached edge cases in test assertions) are strictly `NIT` or `WARNING`, NEVER a blocker.
