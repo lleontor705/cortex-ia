@@ -73,7 +73,9 @@ func OSCommandRunner() CommandRunner { return osCommandRunner{} }
 type osCommandRunner struct{}
 
 func (osCommandRunner) Run(name string, args ...string) ([]byte, error) {
-	return exec.Command(name, args...).CombinedOutput()
+	cmd := exec.Command(name, args...)
+	hideConsoleWindow(cmd)
+	return cmd.CombinedOutput()
 }
 
 // EnableScheduledCheck registers the check-only update task for the current user.
