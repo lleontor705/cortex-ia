@@ -52,42 +52,42 @@ plugins:
 nav:
   - Home: index.md
   - Getting started:
-      - Quickstart: quickstart.md
-      - Installation: installation.md
-      - Non-interactive usage: non-interactive.md
-      - Platforms: platforms.md
-      - Configuration: configuration.md
-      - Custom providers: custom-providers.md
+      - Quickstart: getting-started/quickstart.md
+      - Installation: getting-started/installation.md
+      - Non-interactive usage: getting-started/non-interactive.md
+      - Platforms: getting-started/platforms.md
+      - Configuration: getting-started/configuration.md
+      - Custom providers: getting-started/custom-providers.md
   - Architecture:
-      - Architecture: architecture.md
-      - Codebase guide: CODEBASE-GUIDE.md
+      - Architecture: architecture/architecture.md
+      - Codebase guide: architecture/codebase-guide.md
       - Codebase:
-          - Mental model: codebase/mental-model.md
-          - Repository map: codebase/repository-map.md
-          - Interfaces: codebase/interfaces.md
-          - Reference map: codebase/reference-map.md
-          - MCP boundaries: codebase/mcp-boundaries.md
-          - Integrations: codebase/integrations.md
-          - Sync and cloud: codebase/sync-and-cloud.md
-          - Dashboard: codebase/dashboard.md
-          - SDD coordination: codebase/sdd-coordination.md
-          - Project and extension: codebase/project-and-extension.md
-          - Maintainer playbook: codebase/maintainer-playbook.md
+          - Mental model: architecture/codebase/mental-model.md
+          - Repository map: architecture/codebase/repository-map.md
+          - Interfaces: architecture/codebase/interfaces.md
+          - Reference map: architecture/codebase/reference-map.md
+          - MCP boundaries: architecture/codebase/mcp-boundaries.md
+          - Integrations: architecture/codebase/integrations.md
+          - Sync and cloud: architecture/codebase/sync-and-cloud.md
+          - Dashboard: architecture/codebase/dashboard.md
+          - SDD coordination: architecture/codebase/sdd-coordination.md
+          - Project and extension: architecture/codebase/project-and-extension.md
+          - Maintainer playbook: architecture/codebase/maintainer-playbook.md
   - Operations:
-      - Agents: agents.md
-      - Components: components.md
-      - MCP: mcp.md
-      - SDD workflow: sdd-workflow.md
-      - Cortex memory: cortex-memory.md
-      - Web console: web-console.md
-      - Usage stats and TUI: stats-and-ui.md
-      - Rollback: rollback.md
-      - Docker E2E testing: docker-e2e-testing.md
-      - Security: security.md
-      - Release keys: release-keys.md
+      - Agents: operations/agents.md
+      - Components: operations/components.md
+      - MCP: operations/mcp.md
+      - SDD workflow: operations/sdd-workflow.md
+      - Cortex memory: operations/cortex-memory.md
+      - Web console: operations/web-console.md
+      - Usage stats and TUI: operations/stats-and-ui.md
+      - Rollback: operations/rollback.md
+      - Docker E2E testing: operations/docker-e2e-testing.md
+      - Security: operations/security.md
+      - Release keys: operations/release-keys.md
   - Reference:
-      - Updater verification profiles: updater-verification-profiles.md
-      - Cortex report hub snapshot: cortex-report-hub-snapshot.md
-      - MCP qualification: mcp-qualification.md
-      - Qualification inputs: qualification-inputs.md
-      - SDK qualification: sdk-qualification.md
+      - Updater verification profiles: reference/updater-verification-profiles.md
+      - Cortex report hub snapshot: reference/cortex-report-hub-snapshot.md
+      - MCP qualification: reference/mcp-qualification.md
+      - Qualification inputs: reference/qualification-inputs.md
+      - SDK qualification: reference/sdk-qualification.md

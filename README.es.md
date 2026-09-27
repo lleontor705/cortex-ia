@@ -257,7 +257,7 @@ El antiguo subcomando `cortex-ia hook` está retirado y falla de forma cerrada c
 | **Actualizar** | `cortex-ia update [--check] [--scheduled] [--allow-checksum-updates]` *(o `upgrade`)* | Busca / instala la última versión |
 | **Programar actualización** | `cortex-ia update schedule <enable\|disable\|status>` | Gestiona la tarea diaria de comprobación de actualizaciones sin interfaz |
 
-`--theme`, `--scheduled` y `--allow-checksum-updates` se documentan con sus tablas completas de flags en [docs/configuration.md](docs/configuration.md).
+`--theme`, `--scheduled` y `--allow-checksum-updates` se documentan con sus tablas completas de flags en [docs/getting-started/configuration.md](docs/getting-started/configuration.md).
 
 ---
 
@@ -300,48 +300,48 @@ Cortex-IA adapta las solicitudes del usuario al flujo de trabajo más pequeño y
 ## 📚 Referencia de documentación
 
 ### Primeros pasos
-- 📖 [Guía de inicio rápido](docs/quickstart.md) — Configuración y onboarding guiados por primera vez
-- ⚙️ [Instalación](docs/installation.md) — Métodos de instalación del binario, Homebrew y actualización automática
-- 🔧 [Configuración](docs/configuration.md) — Referencia de la CLI, variables de entorno y diseño del estado
-- 💻 [Modo no interactivo](docs/non-interactive.md) — Recetas de scripting, CI y Docker
+- 📖 [Guía de inicio rápido](docs/getting-started/quickstart.md) — Configuración y onboarding guiados por primera vez
+- ⚙️ [Instalación](docs/getting-started/installation.md) — Métodos de instalación del binario, Homebrew y actualización automática
+- 🔧 [Configuración](docs/getting-started/configuration.md) — Referencia de la CLI, variables de entorno y diseño del estado
+- 💻 [Modo no interactivo](docs/getting-started/non-interactive.md) — Recetas de scripting, CI y Docker
 
 ### Arquitectura y diseño
-- 🏛️ [Análisis profundo de la arquitectura](docs/architecture.md) — Capas internas del motor, modelos y concurrencia de SQLite
-- 🧠 [Memoria y grafo de Cortex](docs/cortex-memory.md) — Grafo de símbolos AST, radio de explosión y observaciones duraderas
-- 🤖 [Roles y contratos de los agentes](docs/agents.md) — Topología de coordinación de 6 roles y contratos de recibos tipados
-- 🧩 [Componentes y MCP](docs/components.md) — Activos desplegados, presets de MCP y servidores personalizados
-- 📑 [Guía del flujo de trabajo SDD](docs/sdd-workflow.md) — Ciclo de vida del Desarrollo Guiado por Especificaciones con OpenSpec
+- 🏛️ [Análisis profundo de la arquitectura](docs/architecture/architecture.md) — Capas internas del motor, modelos y concurrencia de SQLite
+- 🧠 [Memoria y grafo de Cortex](docs/operations/cortex-memory.md) — Grafo de símbolos AST, radio de explosión y observaciones duraderas
+- 🤖 [Roles y contratos de los agentes](docs/operations/agents.md) — Topología de coordinación de 6 roles y contratos de recibos tipados
+- 🧩 [Componentes y MCP](docs/operations/components.md) — Activos desplegados, presets de MCP y servidores personalizados
+- 📑 [Guía del flujo de trabajo SDD](docs/operations/sdd-workflow.md) — Ciclo de vida del Desarrollo Guiado por Especificaciones con OpenSpec
 
 ### Operaciones y seguridad
-- 🔒 [Seguridad y recuperación](docs/security.md) — Garantías de seguridad, copias de seguridad, reversión y recuperación
-- 🔄 [Copias de seguridad y reversión](docs/rollback.md) — Ciclo de vida de las copias, retención y reversión explícita
-- 🖥️ [Plataformas soportadas](docs/platforms.md) — Soporte de SO, rutas y requisitos de terminal
-- 🐳 [Pruebas E2E con Docker](docs/docker-e2e-testing.md) — Suite de pruebas basada en contenedores
+- 🔒 [Seguridad y recuperación](docs/operations/security.md) — Garantías de seguridad, copias de seguridad, reversión y recuperación
+- 🔄 [Copias de seguridad y reversión](docs/operations/rollback.md) — Ciclo de vida de las copias, retención y reversión explícita
+- 🖥️ [Plataformas soportadas](docs/getting-started/platforms.md) — Soporte de SO, rutas y requisitos de terminal
+- 🐳 [Pruebas E2E con Docker](docs/operations/docker-e2e-testing.md) — Suite de pruebas basada en contenedores
 
 ### MCP e integración
-- 🔌 [Gestor de MCP](docs/mcp.md) — Presets del catálogo, servidores personalizados y propiedad
-- 🔑 [Claves de firma de releases](docs/release-keys.md) — Formato del paquete de confianza y ceremonia de claves
+- 🔌 [Gestor de MCP](docs/operations/mcp.md) — Presets del catálogo, servidores personalizados y propiedad
+- 🔑 [Claves de firma de releases](docs/operations/release-keys.md) — Formato del paquete de confianza y ceremonia de claves
 
 ### Cualificación y CI
-- 📋 [Entradas de CI y distribución](docs/qualification-inputs.md) — Procedencia del flujo de trabajo y línea base de la cadena de herramientas
-- 🧪 [Cualificación del SDK y plugins](docs/sdk-qualification.md) — Bloqueo y aislamiento del SDK del arnés
-- 🔗 [Cualificación de integración MCP](docs/mcp-qualification.md) — Evidencia de Context7 y Cortex MCP
+- 📋 [Entradas de CI y distribución](docs/reference/qualification-inputs.md) — Procedencia del flujo de trabajo y línea base de la cadena de herramientas
+- 🧪 [Cualificación del SDK y plugins](docs/reference/sdk-qualification.md) — Bloqueo y aislamiento del SDK del arnés
+- 🔗 [Cualificación de integración MCP](docs/reference/mcp-qualification.md) — Evidencia de Context7 y Cortex MCP
 
 ### Guía para desarrolladores
-- 🗺️ [Mapa del repositorio](docs/codebase/repository-map.md) — Diseño del código directorio por directorio
-- 📇 [Mapa de referencia](docs/codebase/reference-map.md) — Índice de comandos de la CLI, paquetes Go y tipos
-- 🧠 [Modelo mental](docs/codebase/mental-model.md) — Explicación del flujo de extremo a extremo
-- 🔌 [Límites de MCP](docs/codebase/mcp-boundaries.md) — Separación entre autoridad epistémica y operativa
-- 📊 [Panel y TUI](docs/codebase/dashboard.md) — Arquitectura de BubbleTea y estados de pantalla
-- 🔗 [Integraciones y CI/CD](docs/codebase/integrations.md) — Pipeline de release y flujos de trabajo
-- 📝 [Manual del mantenedor](docs/codebase/maintainer-playbook.md) — Runbook de release y mantenimiento de dependencias
-- 🔄 [Sincronización, estado y copias de seguridad](docs/codebase/sync-and-cloud.md) — Persistencia y reconciliación del estado local
-- 🧩 [Interfaces y contratos](docs/codebase/interfaces.md) — Referencia de las interfaces core de Go
-- 📘 [Guía del proyecto y extensiones](docs/codebase/project-and-extension.md) — Añadir skills, agentes, comandos y plugins
-- 🔀 [Coordinación SDD](docs/codebase/sdd-coordination.md) — Ciclo de vida del trabajo y reglas de autoridad
+- 🗺️ [Mapa del repositorio](docs/architecture/codebase/repository-map.md) — Diseño del código directorio por directorio
+- 📇 [Mapa de referencia](docs/architecture/codebase/reference-map.md) — Índice de comandos de la CLI, paquetes Go y tipos
+- 🧠 [Modelo mental](docs/architecture/codebase/mental-model.md) — Explicación del flujo de extremo a extremo
+- 🔌 [Límites de MCP](docs/architecture/codebase/mcp-boundaries.md) — Separación entre autoridad epistémica y operativa
+- 📊 [Panel y TUI](docs/architecture/codebase/dashboard.md) — Arquitectura de BubbleTea y estados de pantalla
+- 🔗 [Integraciones y CI/CD](docs/architecture/codebase/integrations.md) — Pipeline de release y flujos de trabajo
+- 📝 [Manual del mantenedor](docs/architecture/codebase/maintainer-playbook.md) — Runbook de release y mantenimiento de dependencias
+- 🔄 [Sincronización, estado y copias de seguridad](docs/architecture/codebase/sync-and-cloud.md) — Persistencia y reconciliación del estado local
+- 🧩 [Interfaces y contratos](docs/architecture/codebase/interfaces.md) — Referencia de las interfaces core de Go
+- 📘 [Guía del proyecto y extensiones](docs/architecture/codebase/project-and-extension.md) — Añadir skills, agentes, comandos y plugins
+- 🔀 [Coordinación SDD](docs/architecture/codebase/sdd-coordination.md) — Ciclo de vida del trabajo y reglas de autoridad
 
 ### Monitorización
-- 📊 [Instantánea del Report Hub](docs/cortex-report-hub-snapshot.md) — Monitorización del servicio Railway
+- 📊 [Instantánea del Report Hub](docs/reference/cortex-report-hub-snapshot.md) — Monitorización del servicio Railway
 
 ---
 

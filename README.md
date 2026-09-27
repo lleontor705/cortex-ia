@@ -257,7 +257,7 @@ The former `cortex-ia hook` subcommand is retired and fails closed with a retire
 | **Update** | `cortex-ia update [--check] [--scheduled] [--allow-checksum-updates]` *(or `upgrade`)* | Check for / install the latest release |
 | **Update Schedule** | `cortex-ia update schedule <enable\|disable\|status>` | Manage the headless daily check-only update task |
 
-`--theme`, `--scheduled`, and `--allow-checksum-updates` are documented with their full flag tables in [docs/configuration.md](docs/configuration.md).
+`--theme`, `--scheduled`, and `--allow-checksum-updates` are documented with their full flag tables in [docs/getting-started/configuration.md](docs/getting-started/configuration.md).
 
 ---
 
@@ -300,48 +300,48 @@ Cortex-IA matches user requests to the smallest, safest workflow using a three-t
 ## 📚 Documentation Reference
 
 ### Getting Started
-- 📖 [Quickstart Guide](docs/quickstart.md) — Guided first-time setup and onboarding
-- ⚙️ [Installation](docs/installation.md) — Binary installation methods, Homebrew, and auto-update
-- 🔧 [Configuration](docs/configuration.md) — CLI reference, environment variables, and state layout
-- 💻 [Non-Interactive Mode](docs/non-interactive.md) — Scripting, CI, and Docker recipes
+- 📖 [Quickstart Guide](docs/getting-started/quickstart.md) — Guided first-time setup and onboarding
+- ⚙️ [Installation](docs/getting-started/installation.md) — Binary installation methods, Homebrew, and auto-update
+- 🔧 [Configuration](docs/getting-started/configuration.md) — CLI reference, environment variables, and state layout
+- 💻 [Non-Interactive Mode](docs/getting-started/non-interactive.md) — Scripting, CI, and Docker recipes
 
 ### Architecture & Design
-- 🏛️ [Architecture Deep-Dive](docs/architecture.md) — Internal engine layers, models, and SQLite concurrency
-- 🧠 [Cortex Memory & Graph](docs/cortex-memory.md) — AST symbol graph, blast radius, and durable observations
-- 🤖 [Agent Roles & Contracts](docs/agents.md) — 6-role coordination topology and typed receipt contracts
-- 🧩 [Components & MCP](docs/components.md) — Deployed assets, MCP presets, and custom servers
-- 📑 [SDD Workflow Guide](docs/sdd-workflow.md) — Specification-Driven Development lifecycle with OpenSpec
+- 🏛️ [Architecture Deep-Dive](docs/architecture/architecture.md) — Internal engine layers, models, and SQLite concurrency
+- 🧠 [Cortex Memory & Graph](docs/operations/cortex-memory.md) — AST symbol graph, blast radius, and durable observations
+- 🤖 [Agent Roles & Contracts](docs/operations/agents.md) — 6-role coordination topology and typed receipt contracts
+- 🧩 [Components & MCP](docs/operations/components.md) — Deployed assets, MCP presets, and custom servers
+- 📑 [SDD Workflow Guide](docs/operations/sdd-workflow.md) — Specification-Driven Development lifecycle with OpenSpec
 
 ### Operations & Safety
-- 🔒 [Security & Recovery](docs/security.md) — Safety guarantees, backups, rollback, and recovery
-- 🔄 [Backups & Rollback](docs/rollback.md) — Backup lifecycle, retention, and explicit rollback
-- 🖥️ [Supported Platforms](docs/platforms.md) — OS support, paths, and terminal requirements
-- 🐳 [Docker E2E Testing](docs/docker-e2e-testing.md) — Container-based test suite
+- 🔒 [Security & Recovery](docs/operations/security.md) — Safety guarantees, backups, rollback, and recovery
+- 🔄 [Backups & Rollback](docs/operations/rollback.md) — Backup lifecycle, retention, and explicit rollback
+- 🖥️ [Supported Platforms](docs/getting-started/platforms.md) — OS support, paths, and terminal requirements
+- 🐳 [Docker E2E Testing](docs/operations/docker-e2e-testing.md) — Container-based test suite
 
 ### MCP & Integration
-- 🔌 [MCP Manager](docs/mcp.md) — Catalog presets, custom servers, and ownership
-- 🔑 [Release Signing Keys](docs/release-keys.md) — Trust bundle format and key ceremony
+- 🔌 [MCP Manager](docs/operations/mcp.md) — Catalog presets, custom servers, and ownership
+- 🔑 [Release Signing Keys](docs/operations/release-keys.md) — Trust bundle format and key ceremony
 
 ### Qualification & CI
-- 📋 [CI & Distribution Inputs](docs/qualification-inputs.md) — Workflow provenance and toolchain baseline
-- 🧪 [SDK & Plugin Qualification](docs/sdk-qualification.md) — Harness SDK lock and isolation
-- 🔗 [MCP Integration Qualification](docs/mcp-qualification.md) — Context7 and Cortex MCP evidence
+- 📋 [CI & Distribution Inputs](docs/reference/qualification-inputs.md) — Workflow provenance and toolchain baseline
+- 🧪 [SDK & Plugin Qualification](docs/reference/sdk-qualification.md) — Harness SDK lock and isolation
+- 🔗 [MCP Integration Qualification](docs/reference/mcp-qualification.md) — Context7 and Cortex MCP evidence
 
 ### Developer Guide
-- 🗺️ [Repository Map](docs/codebase/repository-map.md) — Directory-by-directory codebase layout
-- 📇 [Reference Map](docs/codebase/reference-map.md) — CLI commands, Go packages, and types index
-- 🧠 [Mental Model](docs/codebase/mental-model.md) — End-to-end flow explanation
-- 🔌 [MCP Boundaries](docs/codebase/mcp-boundaries.md) — Epistemic vs operational authority separation
-- 📊 [Dashboard & TUI](docs/codebase/dashboard.md) — BubbleTea architecture and screen states
-- 🔗 [Integrations & CI/CD](docs/codebase/integrations.md) — Release pipeline and workflows
-- 📝 [Maintainer Playbook](docs/codebase/maintainer-playbook.md) — Release runbook and dependency maintenance
-- 🔄 [Sync, State & Backup](docs/codebase/sync-and-cloud.md) — Local state persistence and reconciliation
-- 🧩 [Interfaces & Contracts](docs/codebase/interfaces.md) — Core Go interfaces reference
-- 📘 [Project & Extension Guide](docs/codebase/project-and-extension.md) — Adding skills, agents, commands, plugins
-- 🔀 [SDD Coordination](docs/codebase/sdd-coordination.md) — Work lifecycle and authority rules
+- 🗺️ [Repository Map](docs/architecture/codebase/repository-map.md) — Directory-by-directory codebase layout
+- 📇 [Reference Map](docs/architecture/codebase/reference-map.md) — CLI commands, Go packages, and types index
+- 🧠 [Mental Model](docs/architecture/codebase/mental-model.md) — End-to-end flow explanation
+- 🔌 [MCP Boundaries](docs/architecture/codebase/mcp-boundaries.md) — Epistemic vs operational authority separation
+- 📊 [Dashboard & TUI](docs/architecture/codebase/dashboard.md) — BubbleTea architecture and screen states
+- 🔗 [Integrations & CI/CD](docs/architecture/codebase/integrations.md) — Release pipeline and workflows
+- 📝 [Maintainer Playbook](docs/architecture/codebase/maintainer-playbook.md) — Release runbook and dependency maintenance
+- 🔄 [Sync, State & Backup](docs/architecture/codebase/sync-and-cloud.md) — Local state persistence and reconciliation
+- 🧩 [Interfaces & Contracts](docs/architecture/codebase/interfaces.md) — Core Go interfaces reference
+- 📘 [Project & Extension Guide](docs/architecture/codebase/project-and-extension.md) — Adding skills, agents, commands, plugins
+- 🔀 [SDD Coordination](docs/architecture/codebase/sdd-coordination.md) — Work lifecycle and authority rules
 
 ### Monitoring
-- 📊 [Report Hub Snapshot](docs/cortex-report-hub-snapshot.md) — Railway service monitoring
+- 📊 [Report Hub Snapshot](docs/reference/cortex-report-hub-snapshot.md) — Railway service monitoring
 
 ---
 

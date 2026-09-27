@@ -25,7 +25,7 @@ Adds the custom-provider install flow and the updater trust profiles. Tagged
 
 - **Custom provider install flow** (PR #68, PR #69) — `internal/providermgr/catalog.go` plus `seed/nan.json` define the provider catalog, `internal/install/provider.go` writes the entry, and `internal/state/provider_v2.go` records its ownership metadata (`fbe510f`)
 - **TUI Providers screen** — `internal/tui/providers_screen.go` with masked secret input (`internal/tui/masked_input.go`) drives an interactive provider install ("Install custom provider")
-- **Updater verification profiles** (`00e75e3`, PR #66) — `internal/updater/profile.go` and the Ed25519/checksum verifiers add `strict` and checksum profiles; `--allow-checksum-updates` and `CORTEX_IA_ALLOW_CHECKSUM_UPDATES` grant per-run checksum consent only when no trust bundle is packaged, and `--scheduled` adds a headless check-only mode. See [`docs/updater-verification-profiles.md`](docs/updater-verification-profiles.md)
+- **Updater verification profiles** (`00e75e3`, PR #66) — `internal/updater/profile.go` and the Ed25519/checksum verifiers add `strict` and checksum profiles; `--allow-checksum-updates` and `CORTEX_IA_ALLOW_CHECKSUM_UPDATES` grant per-run checksum consent only when no trust bundle is packaged, and `--scheduled` adds a headless check-only mode. See [`docs/reference/updater-verification-profiles.md`](docs/reference/updater-verification-profiles.md)
 
 ### Changed
 
