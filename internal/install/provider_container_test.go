@@ -213,10 +213,14 @@ func TestProviderInstall_EmitsCatalogDeclaredLimitAndModalities(t *testing.T) {
 		if !hasModalities {
 			continue
 		}
-		emittedModalities, _ := emitted["modalities"].(map[string]any)
-		if !reflect.DeepEqual(emittedModalities["input"], anyStrings(modalities.Input)) ||
-			!reflect.DeepEqual(emittedModalities["output"], anyStrings(modalities.Output)) {
-			t.Fatalf("%s modalities = %#v", declared.ID(), emittedModalities)
+		emittedCaps, ok := emitted["capabilities"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s has no capabilities object: %#v", declared.ID(), emitted)
+		}
+		if emittedCaps["tools"] != true ||
+			!reflect.DeepEqual(emittedCaps["input"], anyStrings(modalities.Input)) ||
+			!reflect.DeepEqual(emittedCaps["output"], anyStrings(modalities.Output)) {
+			t.Fatalf("%s capabilities = %#v", declared.ID(), emittedCaps)
 		}
 	}
 }

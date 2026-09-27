@@ -188,9 +188,14 @@ func TestREQ_PROV_003_TokenStaysOutAndRotationKeepsDigest(t *testing.T) {
 		t.Fatalf("rotated install: %v", err)
 	}
 	entry := providerEntry(t, providerDecode(t, winner), "nan")
-	options, _ := entry["options"].(map[string]any)
+	var apiKey any
+	if settings, ok := entry["settings"].(map[string]any); ok {
+		apiKey = settings["apiKey"]
+	} else if options, ok := entry["options"].(map[string]any); ok {
+		apiKey = options["apiKey"]
+	}
 	if rotatedReceipt.Action != "installed" || state.LoadMetadataV2(home).Metadata.Providers[0].SemanticDigest != digest ||
-		options["apiKey"] != rotated {
+		apiKey != rotated {
 		t.Fatalf("rotation = %+v entry = %#v", rotatedReceipt, entry)
 	}
 	stateBytes := string(providerRead(t, state.StatePath(home)))
@@ -310,7 +315,7 @@ func TestREQ_PROV_007_CatalogPreviewAndEmissionTrackJSONEdits(t *testing.T) {
 		t.Fatalf("edited model efforts/variants = %+v / %+v", edited.Efforts, edited.Variants)
 	}
 
-	providerWrite(t, providerConfigPath(home, "opencode.jsonc"), "{}\n")
+	providerWrite(t, providerConfigPath(home, "opencode.jsonc"), "{\n  \"provider\": { \"other\": { \"npm\": \"other-pkg\" } }\n}\n")
 	singular, err := service.ProviderPreview(ProviderInstallOptions{ProviderID: "nan", Token: "sentinel-token"})
 	if err != nil {
 		t.Fatalf("singular preview: %v", err)
@@ -325,7 +330,7 @@ func TestREQ_PROV_007_CatalogPreviewAndEmissionTrackJSONEdits(t *testing.T) {
 		t.Fatalf("singular counts = %d/%d", singular.ModelsWritten, singular.VariantsWritten)
 	}
 
-	providerWrite(t, providerConfigPath(home, "opencode.jsonc"), `{"providers":{"other":{"package":"other-pkg"}}}`)
+	providerWrite(t, providerConfigPath(home, "opencode.jsonc"), "{}\n")
 	plural, err := service.ProviderPreview(ProviderInstallOptions{ProviderID: "nan", Token: "sentinel-token"})
 	if err != nil {
 		t.Fatalf("plural preview: %v", err)

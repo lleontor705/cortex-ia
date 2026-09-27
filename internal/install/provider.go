@@ -27,9 +27,10 @@ import (
 var ErrProviderUnmanaged = errors.New("install service: provider block exists in the winning config with a shape that cannot be merged")
 
 // The provider config member names mirror the shape internal/modelmgr reads
-// (provider.<id>.models.<model>.variants) so the writer and the reader agree
-// on exactly one encoding. providerKey is the documented singular container
-// while providersKey is the OpenCode v2 plural container; only one is ever
+// (providers.<id>.models.<model>.variants) so the writer and the reader agree
+// on exactly one encoding. providersKey is the OpenCode v2 plural container
+// and the default container for installations. providerKey is the legacy
+// singular container supported for adopting existing configs; only one is ever
 // written for a given provider.
 const (
 	providerKey        = "provider"
@@ -444,24 +445,24 @@ func loadProviderConfig(path string) (map[string]any, error) {
 }
 
 // providerContainerKey resolves the single top-level container that should hold
-// provider id. It prefers the container already carrying the provider (so a
-// provider is never duplicated across the singular and plural containers), then
-// a present singular provider map, then a present plural providers map, and
-// finally defaults to the documented singular container.
+// provider id. It prefers the container already carrying the provider (so an
+// existing hand-authored block is adopted and not duplicated), then the
+// OpenCode v2 plural container (providersKey), then whichever container already
+// exists in the config, and finally defaults to the OpenCode v2 plural container.
 func providerContainerKey(config map[string]any, id string) string {
-	if _, ok := containerBlock(config, providerKey, id); ok {
-		return providerKey
-	}
 	if _, ok := containerBlock(config, providersKey, id); ok {
 		return providersKey
 	}
-	if _, ok := config[providerKey].(map[string]any); ok {
+	if _, ok := containerBlock(config, providerKey, id); ok {
 		return providerKey
 	}
-	if _, ok := config[providersKey].(map[string]any); ok {
+	if _, present := config[providersKey]; present {
 		return providersKey
 	}
-	return providerKey
+	if _, present := config[providerKey]; present {
+		return providerKey
+	}
+	return providersKey
 }
 
 // providerConfigBlock locates provider.<id> in the resolved container.

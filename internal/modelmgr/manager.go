@@ -467,24 +467,24 @@ func providerModelEntry(config map[string]any, provider, model string) (map[stri
 }
 
 // providerContainerKey resolves the container holding provider id: the
-// container already carrying it, else a present singular provider map, else a
-// present plural providers map, else the singular default. Effort authoring
-// extends whichever container the file already uses and never appends a
-// parallel section.
+// container already carrying it, else a present plural providers map, else a
+// present singular provider map, else the OpenCode v2 plural default. Effort
+// authoring extends whichever container the file already uses and never appends
+// a parallel section.
 func providerContainerKey(config map[string]any, provider string) string {
-	if _, ok := providerBlockInContainer(config, providerKey, provider); ok {
-		return providerKey
-	}
 	if _, ok := providerBlockInContainer(config, providersKey, provider); ok {
 		return providersKey
 	}
-	if _, ok := config[providerKey].(map[string]any); ok {
+	if _, ok := providerBlockInContainer(config, providerKey, provider); ok {
 		return providerKey
 	}
-	if _, ok := config[providersKey].(map[string]any); ok {
+	if _, present := config[providersKey]; present {
 		return providersKey
 	}
-	return providerKey
+	if _, present := config[providerKey]; present {
+		return providerKey
+	}
+	return providersKey
 }
 
 func providerBlockInContainer(config map[string]any, container, provider string) (map[string]any, bool) {
