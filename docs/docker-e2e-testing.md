@@ -34,7 +34,7 @@ The orchestrator builds an image per distro, runs `e2e/e2e_test.sh` inside it, a
 
 1. `cortex-ia version`
 2. `cortex-ia install --dry-run --target opencode` (no files written)
-3. `cortex-ia install --target opencode` against a fake `claude` binary on `PATH`
+3. `cortex-ia install --target opencode` with a fake `claude` binary on `PATH` for CLI detection (the secondary `claude` target only writes Cortex's MCP entry into `~/.claude.json`)
 4. State file, lockfile, skills directory, convention file presence
 5. Skill count ≥ 19, absolute (not relative) convention refs
 6. `cortex-ia doctor` passes

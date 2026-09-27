@@ -160,6 +160,7 @@ Los comandos que emiten recibos legibles por máquina imprimen JSON en stdout; l
 | **Reintentar** | `cortex-ia work retry <id> [--revision <n>]` | Elimina los bloqueos residuales y devuelve una tarea `blocked` a `ready` |
 | **Descomponer** | `cortex-ia work decompose <id> --revision <n> --plan <file\|@stdin> [--contract-file <file>]` | Reemplaza una tarea bloqueada por tareas atómicas |
 | **Recuperar** | `cortex-ia work recover` | Barre los reclamos y concesiones vencidos |
+| **Reconciliar** | `cortex-ia work reconcile <id> --reason <text> --session <id> --revision <n>` | Fuerza la liberación de un reclamo vivo pero huérfano (solo orquestador, falla de forma cerrada) |
 | **Verificar concesión** | `cortex-ia work verify-lease --path <file> [--task <id>] [--owner <owner>]` *(o `check-lease`)* | Verifica una concesión de archivo activa |
 
 ### 3. Espacio de trabajo OpenSpec SDD (`cortex-ia openspec`)
@@ -214,6 +215,7 @@ Los comandos que emiten recibos legibles por máquina imprimen JSON en stdout; l
 | **Añadir (local)** | `cortex-ia mcp add <name> --local [--env KEY=VALUE]... -- <command> [args...]` | Registra un servidor MCP local personalizado gestionado |
 | **Añadir (remoto)** | `cortex-ia mcp add <name> --remote <url> [--header KEY=VALUE]... [--dry-run]` | Registra un servidor MCP remoto personalizado gestionado |
 | **Listar** | `cortex-ia mcp list [--json]` | Lista las entradas de MCP gestionadas y su propiedad |
+| **Adoptar** | `cortex-ia mcp adopt <name> [--dry-run]` | Acredita una entrada MCP existente del usuario que ya equivale a un preset gestionado |
 | **Eliminar** | `cortex-ia mcp remove <name> [--dry-run]` | Da de baja una entrada de MCP gestionada |
 
 `--preset`, `--local` y `--remote` son mutuamente excluyentes: se requiere exactamente uno por cada `add`.
@@ -241,18 +243,21 @@ El antiguo subcomando `cortex-ia hook` está retirado y falla de forma cerrada c
 ### 12. Estadísticas de uso (`cortex-ia stats`)
 | Comando | Sintaxis | Propósito |
 |---|---|---|
-| **Instantánea** | `cortex-ia stats snapshot` | Imprime una instantánea acotada de solo lectura de estadísticas |
+| **Estadísticas** | `cortex-ia stats [--json]` | Imprime estadísticas de uso acotadas de solo lectura (`--json` para salida legible por máquina) |
 
 ### 13. Mantenimiento y ciclo de vida (`install` / `sync` / `doctor` / `rollback` / `recover` / `uninstall` / `update`)
 | Comando | Sintaxis | Propósito |
 |---|---|---|
-| **Instalar** | `cortex-ia install [--target <list>] [--dry-run] [--overwrite]` | Instala activos y plugins (objetivo predeterminado: `opencode`) |
+| **Instalar** | `cortex-ia install [--target <list>] [--dry-run] [--overwrite] [--theme]` | Instala activos y plugins (objetivo predeterminado: `opencode`); `--theme` aplica el tema cortex incluido (solo objetivo opencode) |
 | **Sincronizar** | `cortex-ia sync [--target <list>] [--dry-run] [--overwrite]` | Reconcilia el home instalado con el conjunto de activos actual |
 | **Doctor** | `cortex-ia doctor` | Informe de salud de la instalación de solo lectura |
 | **Revertir** | `cortex-ia rollback [backup-id]` / `cortex-ia rollback list` | Restaura una copia de seguridad o lista las copias disponibles |
 | **Recuperar** | `cortex-ia recover [list]` / `cortex-ia recover <journal-id>` | Lista o restaura los diarios de recuperación pendientes |
 | **Desinstalar** | `cortex-ia uninstall [--target <list>] [--dry-run]` | Elimina la instalación acreditada |
-| **Actualizar** | `cortex-ia update [--check]` *(o `upgrade`)* | Busca / instala la última versión |
+| **Actualizar** | `cortex-ia update [--check] [--scheduled] [--allow-checksum-updates]` *(o `upgrade`)* | Busca / instala la última versión |
+| **Programar actualización** | `cortex-ia update schedule <enable\|disable\|status>` | Gestiona la tarea diaria de comprobación de actualizaciones sin interfaz |
+
+`--theme`, `--scheduled` y `--allow-checksum-updates` se documentan con sus tablas completas de flags en [docs/configuration.md](docs/configuration.md).
 
 ---
 

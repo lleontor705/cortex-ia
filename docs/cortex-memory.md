@@ -1,6 +1,6 @@
 # Cortex — Persistent Memory & AST Code Intelligence for AI Agents
 
-`cortex` is the high-performance memory and code intelligence layer wired into OpenCode agents by Cortex-IA. Running as a dedicated Go binary exposing 32 tools over MCP, it provides a local-first SQLite + FTS5 + vector store, an associative knowledge graph, and a Zero-CGO Static AST Extractor.
+`cortex` is the high-performance memory and code intelligence layer wired into OpenCode agents by Cortex-IA. Running as a dedicated Go binary exposing 35 tools over MCP, it provides a local-first SQLite + FTS5 + vector store, an associative knowledge graph, and a Zero-CGO Static AST Extractor.
 
 ---
 
@@ -33,13 +33,13 @@
 
 ---
 
-## 🛠️ MCP Tool Groups (32 Tools)
+## 🛠️ MCP Tool Groups (35 Tools)
 
 | Category | Tools | Description |
 |---|---|---|
-| **Core Memory & Search** | `cortex_save`, `cortex_update`, `cortex_search`, `cortex_search_hybrid`, `cortex_get_observation`, `cortex_context`, `cortex_suggest_topic_key` | CRUD observations, hybrid FTS+vector search, topic keys |
+| **Core Memory & Search** | `cortex_save`, `cortex_save_prompt`, `cortex_update`, `cortex_search`, `cortex_search_hybrid`, `cortex_get_observation`, `cortex_context`, `cortex_suggest_topic_key`, `cortex_get_agent_context` | CRUD observations, prompt capture, hybrid FTS+vector search, topic keys, prompt-ready context packs |
 | **Knowledge Graph** | `cortex_relate`, `cortex_graph`, `cortex_graph_relationships`, `cortex_graph_path`, `cortex_score` | Graph edges, BFS path traversal, PageRank importance |
-| **AST & Architecture** | `cortex_ingest_code`, `cortex_get_code_symbols`, `cortex_code_graph`, `cortex_detect_cycles`, `cortex_analyze_architecture`, `cortex_get_blast_radius` | Polyglot AST extraction, import cycles, blast radius |
+| **AST & Architecture** | `cortex_ingest_code`, `cortex_get_code_symbols`, `cortex_code_graph`, `cortex_code_find`, `cortex_code_map`, `cortex_code_tests`, `cortex_detect_cycles`, `cortex_analyze_architecture`, `cortex_get_blast_radius` | Polyglot AST extraction, symbol search, repo maps, impacted tests, import cycles, blast radius |
 | **Governance & Rules** | `cortex_get_rules`, `cortex_save_rule`, `cortex_resolve_query`, `cortex_get_status` | Team directives, rule persistence, unified query |
 | **Session Lifecycle** | `cortex_session_start`, `cortex_session_end`, `cortex_session_summary`, `cortex_capture_passive` | Initiative boundary demarcation, final session summaries |
 | **History & Hygiene** | `cortex_revision_history`, `cortex_consolidate`, `cortex_project_dna`, `cortex_handoff` | Snapshot evolution, near-duplicate consolidation |

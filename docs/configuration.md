@@ -4,38 +4,43 @@
 
 ```
 cortex-ia                              # Launch interactive TUI
-cortex-ia install [--target <list>] [--dry-run] [--overwrite]
+cortex-ia install [--target <list>] [--dry-run] [--overwrite] [--theme]
 cortex-ia sync [--target <list>] [--dry-run] [--overwrite]
 cortex-ia uninstall [--target <list>] [--dry-run]
 cortex-ia mcp add <name> (--preset | --local ... -- <cmd> | --remote <url>) [--dry-run]
 cortex-ia mcp list [--json]
+cortex-ia mcp adopt <name> [--dry-run]
 cortex-ia mcp remove <name> [--dry-run]
 cortex-ia doctor                       # Read-only installation health report
 cortex-ia rollback [backup-id]         # Restore a backup
 cortex-ia rollback list                # List available backups
 cortex-ia recover [list]               # List pending recovery journals
-cortex-ia update [--check]             # Check for / install the latest release
+cortex-ia update [--check] [--scheduled] [--allow-checksum-updates]
+cortex-ia update schedule <enable|disable|status>
 cortex-ia version                      # Show version
 cortex-ia help                         # Show usage
 ```
 
-The remaining commands — `snapshot`, `work`, `worktree`, `board`, `ledger`, `ui`, `openspec`, `web`, `doc`, `diagram`, and `report` — are part of the operations surface. See [`codebase/reference-map.md`](codebase/reference-map.md) and `cortex-ia help` for their subcommands. The former `delegate`, `herdr`, and `hook` subcommands are retired and fail closed.
+The remaining commands — `snapshot`, `work`, `worktree`, `board`, `ledger`, `ui`, `openspec`, `web`, `doc`, `diagram`, `model`, `stats`, and `report` — are part of the operations surface. See [`codebase/reference-map.md`](codebase/reference-map.md) and `cortex-ia help` for their subcommands. The former `delegate`, `herdr`, and `hook` subcommands are retired and fail closed.
 
 ### Install and sync flags
 
 | Flag | Description |
 |------|-------------|
-| `--target <list>` | Comma-separated targets: `opencode`, `claude`, or `all`. Defaults to `opencode` |
+| `--target <list>` | Comma-separated targets: `opencode` (primary), `claude` (secondary legacy MCP-only target), or `all`. Defaults to `opencode` |
 | `--dry-run` | Preview the plan without writing; no backup is created |
 | `--overwrite` | Replace unmanaged conflicting files (explicit; a verified backup is captured first) |
+| `--theme` | Apply the bundled cortex theme to the OpenCode configuration. Install only, `opencode` target only, and opt-in: without it the theme key is never touched and an explicit light/dark mode is kept |
 
 Install and sync preview the final plan — including every `--overwrite` replacement — and bind the real run to that exact plan digest. If anything drifts between preview and apply, the run aborts with a stale-plan error and nothing is written.
+
+> **Target contract**: OpenCode is the primary supported target and the only platform the Cortex-IA asset set is installed for. The `claude` target is a secondary, legacy integration that writes only Cortex's MCP entry (`mcpServers.cortex`) into `~/.claude.json`; it installs no agents, commands, skills, plugins, or themes. Multi-platform adapters are retired and fail closed.
 
 ### Uninstall flags
 
 | Flag | Description |
 |------|-------------|
-| `--target <list>` | Comma-separated targets: `opencode`, `claude`, or `all`. Defaults to `opencode` |
+| `--target <list>` | Comma-separated targets: `opencode` (primary), `claude` (secondary legacy MCP-only target), or `all`. Defaults to `opencode` |
 | `--dry-run` | Print the planned operations without writing |
 
 Uninstall is destructive and requires an interactive terminal and an explicit confirmation. A snapshot tagged `BackupSourceUninstall` is captured before any change, so `cortex-ia rollback` restores the pre-uninstall state. See [`rollback.md`](rollback.md).
@@ -53,10 +58,14 @@ cortex-ia mcp add <name> --local [--env KEY=VALUE]... -- <command> [args...]
 cortex-ia mcp add <name> --remote <url> [--header KEY=VALUE]... [--dry-run]
 
 cortex-ia mcp list [--json]
+
+# Accredit an existing user-owned entry that already equals a managed preset
+cortex-ia mcp adopt <name> [--dry-run]
+
 cortex-ia mcp remove <name> [--dry-run]
 ```
 
-`--preset`, `--local`, and `--remote` are mutually exclusive: exactly one is required per `add`. `--env` and `--header` values reach the config file only and are never printed.
+`--preset`, `--local`, and `--remote` are mutually exclusive: exactly one is required per `add`. `--env` and `--header` values reach the config file only and are never printed. `mcp adopt` never rewrites the config file: it only records ownership of an entry that already matches the preset, which is the remedy `doctor` suggests for an unmanaged-equivalent entry.
 
 ### Updates
 
@@ -64,6 +73,7 @@ cortex-ia mcp remove <name> [--dry-run]
 cortex-ia update          # Check GitHub Releases and install the latest release
 cortex-ia update --check  # Check only, without downloading or applying
 cortex-ia update --allow-checksum-updates  # Verify by SHA-256 checksum when no trust bundle is packaged
+cortex-ia update schedule enable|disable|status  # Manage the daily headless check task
 ```
 
 | Flag | Description |

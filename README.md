@@ -67,7 +67,7 @@ Built as a single portable Go binary, Cortex-IA solves the fundamental challenge
 
 | Dimension | 🧠 **CORTEX** (MCP Server) | ⚙️ **CORTEX-IA** (Control Plane & CLI) |
 |---|---|---|
-| **Nature** | Standardized MCP Server (32 tools: `cortex_*`) | Standalone native Go binary (`cortex-ia.exe`) |
+| **Nature** | Standardized MCP Server (35 tools: `cortex_*`) | Standalone native Go binary (`cortex-ia.exe`) |
 | **System Plane** | **Epistemic & Evidence Plane** | **Operational Control Plane** |
 | **Storage** | Knowledge Graph & AST Symbol DB | ACID Transactional SQLite (`~/.cortex-ia/delegation.db`) |
 | **Primary Focus** | • AST code symbols & call graphs<br>• Blast radius impact analysis<br>• Durable bug gotchas & ADR memories<br>• Cross-session project context | • Task DAG & CAS revision state machines<br>• Atomic claim tokens & exclusive file leases<br>• Native-only role controllers & typed tool receipts<br>• OpenSpec SDD validator & Web dashboard |
@@ -160,6 +160,7 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 | **Retry** | `cortex-ia work retry <id> [--revision <n>]` | Clear residual locks and return a `blocked` task to `ready` |
 | **Decompose** | `cortex-ia work decompose <id> --revision <n> --plan <file\|@stdin> [--contract-file <file>]` | Replace a blocked task with atomic tasks |
 | **Recover** | `cortex-ia work recover` | Sweep expired claims/leases |
+| **Reconcile** | `cortex-ia work reconcile <id> --reason <text> --session <id> --revision <n>` | Force-release a live-but-orphaned claim (orchestrator-only, fail-closed) |
 | **Verify Lease** | `cortex-ia work verify-lease --path <file> [--task <id>] [--owner <owner>]` *(or `check-lease`)* | Verify an active file lease |
 
 ### 3. OpenSpec SDD Workspace (`cortex-ia openspec`)
@@ -214,6 +215,7 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 | **Add (local)** | `cortex-ia mcp add <name> --local [--env KEY=VALUE]... -- <command> [args...]` | Register a managed custom local MCP server |
 | **Add (remote)** | `cortex-ia mcp add <name> --remote <url> [--header KEY=VALUE]... [--dry-run]` | Register a managed custom remote MCP server |
 | **List** | `cortex-ia mcp list [--json]` | List managed MCP entries and ownership |
+| **Adopt** | `cortex-ia mcp adopt <name> [--dry-run]` | Accredit an existing user-owned MCP entry that already equals a managed preset |
 | **Remove** | `cortex-ia mcp remove <name> [--dry-run]` | Deregister a managed MCP entry |
 
 `--preset`, `--local`, and `--remote` are mutually exclusive: exactly one is required per `add`.
@@ -241,18 +243,21 @@ The former `cortex-ia hook` subcommand is retired and fails closed with a retire
 ### 12. Usage Statistics (`cortex-ia stats`)
 | Command | Syntax | Purpose |
 |---|---|---|
-| **Snapshot** | `cortex-ia stats snapshot` | Print a bounded read-only stats snapshot |
+| **Stats** | `cortex-ia stats [--json]` | Print bounded read-only usage statistics (`--json` for machine-readable output) |
 
 ### 13. Maintenance & Lifecycle (`install` / `sync` / `doctor` / `rollback` / `recover` / `uninstall` / `update`)
 | Command | Syntax | Purpose |
 |---|---|---|
-| **Install** | `cortex-ia install [--target <list>] [--dry-run] [--overwrite]` | Install assets and plugins (default target: `opencode`) |
+| **Install** | `cortex-ia install [--target <list>] [--dry-run] [--overwrite] [--theme]` | Install assets and plugins (default target: `opencode`); `--theme` applies the bundled cortex theme (opencode target only) |
 | **Sync** | `cortex-ia sync [--target <list>] [--dry-run] [--overwrite]` | Reconcile the installed home with the current asset set |
 | **Doctor** | `cortex-ia doctor` | Read-only installation health report |
 | **Rollback** | `cortex-ia rollback [backup-id]` / `cortex-ia rollback list` | Restore a backup or list available backups |
 | **Recover** | `cortex-ia recover [list]` / `cortex-ia recover <journal-id>` | List or restore pending recovery journals |
 | **Uninstall** | `cortex-ia uninstall [--target <list>] [--dry-run]` | Remove the accredited installation |
-| **Update** | `cortex-ia update [--check]` *(or `upgrade`)* | Check for / install the latest release |
+| **Update** | `cortex-ia update [--check] [--scheduled] [--allow-checksum-updates]` *(or `upgrade`)* | Check for / install the latest release |
+| **Update Schedule** | `cortex-ia update schedule <enable\|disable\|status>` | Manage the headless daily check-only update task |
+
+`--theme`, `--scheduled`, and `--allow-checksum-updates` are documented with their full flag tables in [docs/configuration.md](docs/configuration.md).
 
 ---
 

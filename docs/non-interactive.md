@@ -10,7 +10,9 @@ cortex-ia is TUI-first but every operation also has a CLI flag set, so you can d
 cortex-ia install --target opencode,claude
 ```
 
-`--target` accepts a comma-separated list of `opencode`, `claude`, or `all`. It defaults to `opencode`.
+`--target` accepts a comma-separated list of `opencode` (primary), `claude` (secondary legacy MCP-only target), or `all`. It defaults to `opencode`.
+
+> OpenCode is the primary supported target; the `claude` target only writes Cortex's MCP entry (`mcpServers.cortex`) into `~/.claude.json`. Multi-platform adapters are retired and fail closed.
 
 ### Dry run (preview without touching disk)
 

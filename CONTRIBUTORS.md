@@ -18,7 +18,7 @@ This project is open to community contributions. The list below grows as PRs lan
 
 ## Acknowledgements
 
-cortex-ia descends from [`gentle-ai`](https://github.com/Gentleman-Programming/gentle-ai) by [@Alan-TheGentleman](https://github.com/Alan-TheGentleman) and its contributors. Several modules — the backup pipeline, the issue-first workflow, and the Bubbletea TUI scaffolding — were seeded from that codebase. cortex-ia has since diverged in scope (OpenCode-only configuration, managed MCP presets for Cortex and ForgeSpec, transactional install with verified backup and rollback, read-only doctor report, embedded workflow asset set) but we keep the lineage explicit out of respect for that work.
+cortex-ia descends from [`gentle-ai`](https://github.com/Gentleman-Programming/gentle-ai) by [@Alan-TheGentleman](https://github.com/Alan-TheGentleman) and its contributors. Several modules — the backup pipeline, the issue-first workflow, and the Bubbletea TUI scaffolding — were seeded from that codebase. cortex-ia has since diverged in scope (OpenCode-only configuration, managed MCP presets for Cortex and Context7, transactional install with verified backup and rollback, read-only doctor report, embedded workflow asset set) but we keep the lineage explicit out of respect for that work.
 
 ## Contributing
 

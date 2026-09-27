@@ -31,7 +31,7 @@ cortex-ia
 cortex-ia install
 ```
 
-Esto instala de forma transaccional el conjunto de assets embebidos bajo `~/.config/opencode/`:
+Esto instala de forma transaccional el conjunto de assets embebidos en sus raíces declaradas de OpenCode (`~/.config/opencode/` y `~/.agents/skills/`):
 - El prompt de sistema `AGENTS.md` y los 6 roles nativos (`orchestrator`, `discovery`, `investigate`, `planner`, `implement`, `reviewer`).
 - Comandos de barra SDD, skills y plugins de OpenCode (el puente de delegación Herdr retirado ya no se instala).
 - Registra el servidor MCP del grafo de conocimiento **Cortex**.
@@ -64,8 +64,9 @@ cortex-ia work create auth-1.2 "Add refresh token rotation" --board my-feature -
 
 ### B. Validar propuestas de OpenSpec
 ```bash
-openspec validate
+cortex-ia openspec validate <change> --workflow <sdd-lite|sdd-full> --phase <phase>
 ```
+Tanto `--workflow` como `--phase` son obligatorios.
 
 ### C. Observar el estado del trabajo de forma nativa
 Cada controlador de rol se ejecuta de forma nativa dentro de OpenCode bajo la autoridad de trabajo de Cortex-IA; la delegación externa está retirada. Observa los tableros, claims, leases y transiciones de revisión en la consola de operaciones local:

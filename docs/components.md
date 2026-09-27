@@ -8,14 +8,17 @@
 
 All workflow assets are embedded directly inside the `cortex-ia` binary via `go:embed` and mapped byte-for-byte to OpenCode's native directory structure:
 
-| Asset Kind | Embedded Source | Destination under `~/.config/opencode/` | Purpose |
+| Asset Kind | Embedded Source | Destination (home-relative) | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Base Configuration** | `opencode.jsonc` | `opencode.jsonc` | Safe 3-way merge preserving user keys, comments, and permissions. |
-| **System Prompt** | `AGENTS.md` | `AGENTS.md` | Core orchestrator system prompt and SDD operational protocol. |
-| **Sub-Agents (5)** | `agents/*.md` | `agents/<name>.md` | `orchestrator`, `planner`, `implement`, `investigate`, `reviewer`. |
-| **Slash Commands (9)**| `commands/*.md` | `commands/<name>.md` | `/hotfix`, `/sdd`, `/work`, `/review`, `/tdd`, `/spike`, `/status`, `/resume`, `/investigate`. |
-| **Native Skills (12)**| `skills/<name>/SKILL.md`| `skills/<name>/SKILL.md` | SDD phase skills & utility skills (`fast-tdd`, `ast-impact-analysis`, `property-based-testing`, etc.). |
-| **Plugins** | `plugin/*.ts` | `plugin/*.ts` | Cortex integration, model variants, and optional delegation bridge. |
+| **Base Configuration** | `opencode.jsonc` | `~/.config/opencode/opencode.jsonc` | Safe 3-way merge preserving user keys, comments, and permissions. |
+| **System Prompt** | `AGENTS.md` | `~/.config/opencode/AGENTS.md` | Core orchestrator system prompt and SDD operational protocol. |
+| **Agents (6)** | `agents/*.md` | `~/.config/opencode/agents/<name>.md` | `orchestrator`, `discovery`, `investigate`, `planner`, `implement`, `reviewer`. |
+| **Slash Commands (13)**| `commands/*.md` | `~/.config/opencode/commands/<name>.md` | `/cortex-code`, `/cortex-ingest`, `/cortex-watch`, `/discover`, `/hotfix`, `/investigate`, `/resume`, `/review`, `/sdd`, `/spike`, `/status`, `/tdd`, `/work`. |
+| **Native Skills (17 + `_shared`)**| `skills/<name>/SKILL.md`| `~/.agents/skills/<name>/SKILL.md` | SDD phase skills & utility skills (`fast-tdd`, `ast-impact-analysis`, `property-based-testing`, etc.). |
+| **Shared Contracts** | `skills/_shared/*.md` | `~/.cortex-ia/opencode/contracts/*.md` | Canonical role, workflow, and protocol contracts. |
+| **Plugins (8)** | `plugins/*.ts` | `~/.config/opencode/plugins/<name>.ts` | Cortex memory integration, lease and permission guards, skill discovery, snapshot, subagent transport, and work-state plugins. |
+| **Theme** | `themes/cortex.json` | `~/.config/opencode/themes/cortex.json` | Bundled OpenCode theme (opt-in via `--theme`). |
+| **TUI Plugin** | `tui/*.js` | `~/.config/opencode/tui-plugins/<name>.js` | Compiled terminal UI extension. |
 
 ---
 
@@ -28,7 +31,7 @@ All workflow assets are embedded directly inside the `cortex-ia` binary via `go:
 - **Capabilities**: Cross-session persistent memory, knowledge graph, hybrid search (FTS5 + semantic), temporal evolution history.
 
 ### 2. Context7 (`context7`) — *Default: OFF (Optional)*
-- **Execution Vector**: `["npx", "-y", "@upstash/context7-mcp"]`
+- **Execution Vector**: `["npx", "-y", "@upstash/context7-mcp@4.1.0"]`
 - **Capabilities**: Live framework and library documentation lookup via MCP.
 
 ### Built-in Work Control
@@ -54,10 +57,9 @@ cortex-ia mcp list
 
 ---
 
-## 4. Platform Expansion Roadmap
+## 4. Target Support Contract
 
-`cortex-ia` is architected to bring the same SDD and MCP stack to additional platforms in the future:
-1. **OpenCode**: Primary active native target (`~/.config/opencode`).
-2. **Google Antigravity**: No committed support; any future evaluation stays native-only with no external execution (`~/.gemini/antigravity`).
-3. **Claude CLI**: Next target on roadmap (`~/.claude`).
+OpenCode is the only target the Cortex-IA asset set is installed for (`~/.config/opencode/`). Multi-platform adapters were retired: the external execution leaf, the platform adapter registry, and their configuration surfaces all fail closed rather than being silently accepted.
+
+The one secondary integration is the legacy `claude` target, which writes only Cortex's MCP entry (`mcpServers.cortex`) into `~/.claude.json` on `install --target claude` and removes it on `uninstall --target claude`. It installs no agents, commands, skills, plugins, or themes, and no additional platform targets are planned.
 

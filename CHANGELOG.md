@@ -1,5 +1,54 @@
 # Changelog
 
+## v0.4.56 (2026-09-26) — merge-safe provider configurator
+
+Merge-safe custom-provider installation (PR #71): the configurator now merges
+provider entries instead of overwriting neighbouring keys, and the installer is
+driven by the provider catalog. Tagged `v0.4.56`.
+
+### Fixed
+
+- **Provider configurator merge safety** — `internal/install/provider.go` merges into the existing `provider` container so unrelated entries and user keys survive an install (`6051c67`, PR #71)
+- **Model manager plural containers** — `internal/modelmgr/manager.go` handles provider `models` containers that already hold entries while staying catalog-driven (`internal/modelmgr/plural_container_test.go`)
+
+### Changed
+
+- **Provider catalog** expanded in `internal/providermgr/catalog.go` and `seed/nan.json`; the TUI Providers screen reflects the catalog updates
+- **GitHub Actions** bumped via Dependabot: `checkout` 7.0.1, `upload-artifact` 7.0.1, `setup-python` 7.0.0, `github-script` 9.0.0, `deploy-pages` 5.0.1
+
+## v0.4.55 (2026-09-26) — custom providers, updater verification profiles
+
+Adds the custom-provider install flow and the updater trust profiles. Tagged
+`v0.4.55`.
+
+### Added
+
+- **Custom provider install flow** (PR #68, PR #69) — `internal/providermgr/catalog.go` plus `seed/nan.json` define the provider catalog, `internal/install/provider.go` writes the entry, and `internal/state/provider_v2.go` records its ownership metadata (`fbe510f`)
+- **TUI Providers screen** — `internal/tui/providers_screen.go` with masked secret input (`internal/tui/masked_input.go`) drives an interactive provider install ("Install custom provider")
+- **Updater verification profiles** (`00e75e3`, PR #66) — `internal/updater/profile.go` and the Ed25519/checksum verifiers add `strict` and checksum profiles; `--allow-checksum-updates` and `CORTEX_IA_ALLOW_CHECKSUM_UPDATES` grant per-run checksum consent only when no trust bundle is packaged, and `--scheduled` adds a headless check-only mode. See [`docs/updater-verification-profiles.md`](docs/updater-verification-profiles.md)
+
+### Changed
+
+- **Agent flows** bake mutation-evidence gates into the shipped agent and skill assets (`29b3826`)
+
+## v0.4.54 (2026-09-25) — bilingual front door, updater resilience
+
+Documentation, discovery, and updater hardening. Tagged `v0.4.54`.
+
+### Added
+
+- **Bilingual front door** — English/Spanish README pair, a community skill set, and the published Pages site (PR #54)
+- **Updater resilience** — backup management and GitHub API improvements in the self-update path
+- **TUI plugin configuration tests** and OpenCode binary handling refactor
+
+### Changed
+
+- **Discovery narrowed to a quick-index contract** (PR #53)
+
+### Fixed
+
+- **Updater replacement errcheck** — the deferred `f.Close` return in `internal/updater/replacement.go` is explicitly discarded, clearing the `golangci-lint` finding that blocked PRs #53 and #54 (`42099d6`, PR #56)
+
 ## v0.4.53 (2026-09-24) — orchestrator reconcile, nan effort catalog, TUI cockpit
 
 Consolidates the work-authority reconcile path, the nan model effort/usage

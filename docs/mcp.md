@@ -125,6 +125,31 @@ entry, re-run the matching `mcp add` to accredit the full postimage, then
 remove. A missing or corrupt local salt likewise blocks destructive
 accreditation instead of guessing.
 
+## Adoption
+
+```bash
+cortex-ia mcp adopt <name> [--dry-run]
+```
+
+`mcp adopt` accredits an existing, user-owned MCP entry that already equals a
+managed catalog preset. It is the remedy `doctor` emits when it sees a catalog
+name recorded as installed but not ownership-accredited — for example
+`cortex-ia mcp adopt cortex`.
+
+Adoption is explicit-only and never rewrites the OpenCode config: the live
+config file stays byte-identical. Only transactional ownership is recorded —
+the v2 metadata record and the mcpv2 postimage fingerprint sidecar — so a
+later `install` or `sync` recognises the entry as managed instead of reporting
+the ownership conflict. `--dry-run` plans and reports without locking or
+writing anything.
+
+- An unknown name, an absent entry, or an entry that differs from the preset
+  fails closed with nothing written.
+- An entry that is already ownership-accredited is an idempotent no-op that
+  writes nothing.
+- The receipt names the entry and the config path only; commands, URLs, and
+  secret values are never surfaced.
+
 ## Removal
 
 ```bash

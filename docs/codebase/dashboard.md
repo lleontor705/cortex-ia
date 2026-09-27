@@ -18,26 +18,36 @@ The interactive Bubble Tea terminal user interface (TUI) powers `cortex-ia` when
 
 ---
 
-## 2. Five-Screen Workflow
+## 2. Ten-Screen Workflow
 
-The TUI is strictly organized around 5 conceptual screens with a global destructive-action confirmation overlay:
+The TUI exposes **ten** conceptual screens (`internal/tui/model.go`) with a global destructive-action confirmation overlay. The production build boots directly into the usage Stats panel (`productionBootScreen`); the Home dashboard remains the navigation entry point for every Home-menu action.
 
 ```text
 [ Home Dashboard ]
-  ├── 1. Install / Sync  ──▶ [ Review Plan & MCPs ] ──▶ (Confirm Overwrite?) ──▶ [ Running Pipeline ] ──▶ [ Result Receipt ]
-  ├── 2. Manage MCPs     ──▶ [ MCP Manager Screen ] ──▶ (Confirm Remove?)    ──▶ [ Running Pipeline ] ──▶ [ Result Receipt ]
-  ├── 3. Doctor / Health ──▶ [ Running Pipeline ]   ──▶ [ Result Receipt ]
-  ├── 4. Uninstall       ──▶ (Confirm Modal)        ──▶ [ Running Pipeline ] ──▶ [ Result Receipt ]
-  └── 5. Quit
+  ├── 1. Install / Sync            ──▶ [ Review Plan & MCPs ] ──▶ (Confirm Overwrite?) ──▶ [ Running Pipeline ] ──▶ [ Result Receipt ]
+  ├── 2. Manage MCPs               ──▶ [ MCP Manager Screen ] ──▶ (Confirm Remove?)     ──▶ [ Running Pipeline ] ──▶ [ Result Receipt ]
+  ├── 3. CortexIA Web Console      ──▶ [ Web Console Screen ]   (auto-starts the loopback console)
+  ├── 4. Agent Studio              ──▶ [ Archetype Select ] ──▶ [ Preview & Confirm ]   ──▶ [ Agent Studio Result ]
+  ├── 5. Usage Stats               ──▶ [ Usage Stats Screen ]   (also the production boot screen)
+  ├── 6. Doctor / Recovery         ──▶ [ Running Pipeline ]     ──▶ [ Result Receipt ]
+  ├── 7. Uninstall                 ──▶ (Confirm Modal)          ──▶ [ Running Pipeline ] ──▶ [ Result Receipt ]
+  ├── 8. Quit
+  ├── 9. Model Configuration       ──▶ [ Models Screen ]
+  └── 10. Install Custom Provider  ──▶ [ Providers Screen ]
 ```
 
 ### Screen Details
 
-1. **`screenHome`**: Landing dashboard with stylized ASCII logo banner, OpenCode status indicator, numbered menu options (`1-5`), and direct hotkey navigation.
+1. **`screenHome`**: Landing dashboard with stylized ASCII logo banner, OpenCode status indicator, numbered Home-menu options, and direct hotkey navigation.
 2. **`screenReview`**: Reactive plan inspector. Displays MCP toggles (`[x] cortex`, `[ ] context7`) with live re-planning, delegation choices, categorized operation badges, and overwrite warning toggle.
 3. **`screenRunning`**: Asynchronous execution timeline with high-framerate dot spinner (`⠋ ⠙ ⠹ ...`) and numbered stage progression (`Plan` → `Backup` → `Apply` → `Verify` → `Commit`).
 4. **`screenResult`**: Comprehensive receipt card with `PASS`/`FAIL` Hero badge, changed artifact count, verified backup ID, detailed scrollable log, and one-key rollback trigger (`[ r ]`).
 5. **`screenMCP`**: Interactive MCP catalog table with accreditation badges (`managed`, `absent`, `conflict`) and single-key add/remove toggling (`space`/`enter`).
+6. **`screenWeb`**: CortexIA Web Console launcher. Starts and reports the loopback operations console (`cortex-ia web`) without leaving the TUI.
+7. **`screenAgentStudio`**: Two-step sub-agent authoring flow — archetype selection, then a preview/confirm step (with an overwrite confirmation modal) that installs the generated agent asset and renders its result.
+8. **`screenStats`**: Usage stats panel and the production boot surface. Shows per-model month-to-date and 24h usage against the nan catalog quota, with the `:model` picker for model and effort selection.
+9. **`screenModels`**: Model-configuration screen for inspecting and assigning agent models, including variants and effective sources.
+10. **`screenProviders`**: Custom-provider install flow. Catalog-driven provider selection with masked input for credentials and a preview/confirm step before the provider entry is written.
 
 ---
 

@@ -21,11 +21,9 @@ All state lives under `~/.cortex-ia/`. Owned by `internal/state/`.
 
 | File | Purpose | Owner | Written by |
 |------|---------|-------|-----------|
-| `state.json` | Installed agents, active preset, selected components, persona, model assignments. Source of truth for `sync`. | `internal/state/` | `pipeline.Apply` on install/sync |
+| `state.json` | Install selection (asset groups, Cortex/Context7 flags), managed artifacts, MCP entries, agent-model pins, and custom providers. Source of truth for `sync`. | `internal/state/` | `pipeline.Apply` on install/sync |
 | `cortex-ia.lock` | Concrete list of files written to disk (checksums + paths). Enables drift detection and clean uninstall. | `internal/state/` | `pipeline.Apply`, `filemerge` |
 | `install-status.json` | Crash-detection marker. Written before apply, cleared after success. Presence at startup triggers repair prompt. | `internal/state/` | `pipeline` runner |
-| `profiles/` | Named preset profiles (agent + component bundles). | `internal/state/` | `cortex-ia profiles` |
-| `skills/` | Installed skill manifests and metadata. | `internal/state/` | `cortex-ia skill` |
 
 ### State Invariants
 
@@ -109,7 +107,7 @@ Cloud sync is a planned future capability. Do not assume any cloud-related code 
 
 - [ ] Changing what gets persisted? Update `state.json` schema in `internal/state/state.go` and bump/validate the version field.
 - [ ] Adding a new managed file type? Ensure `cortex-ia.lock` records it so `uninstall` cleans it up.
-- [ ] Modifying backup format? Regenerate golden test fixtures and verify `RestoreService` round-trips.
+- [ ] Modifying backup format? Verify `RestoreService` round-trips restores from the previous format.
 - [ ] Changing Prune retention? Update the default constant and document the new number.
 - [ ] Adding crash-detection logic? Write through `install-status.json`, not a new file.
 - [ ] Do **not** add network calls to the sync path — cloud sync is roadmap, keep local-only contracts intact.

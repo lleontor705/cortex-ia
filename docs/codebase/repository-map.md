@@ -23,9 +23,9 @@ Directory-by-directory map of the active `cortex-ia` codebase.
 - **Command Surface**: `install`, `sync`, `mcp`, `doctor`, `rollback`, `recover`, `uninstall`, `version`, `help`.
 
 ### `internal/tui` & `internal/tui/styles`
-- **Role**: Bubble Tea interactive terminal user interface (5 screens).
+- **Role**: Bubble Tea interactive terminal user interface (10 screens).
 - **Key Files**: `tui.go`, `model.go`, `views.go`, `actions.go`, `styles/theme.go`.
-- **Screens**: `Home`, `Review`, `Running`, `Result`, `MCP Manager`.
+- **Screens**: `Home`, `Review`, `Running`, `Result`, `MCP Manager`, `CortexIA Web`, `Agent Studio`, `Stats`, `Models`, `Providers`.
 
 ### `internal/install`
 - **Role**: High-level service facade orchestrating all install, sync, doctor, rollback, uninstall, and MCP operations.
@@ -57,14 +57,15 @@ Directory-by-directory map of the active `cortex-ia` codebase.
 
 ### `internal/assets`
 - **Role**: Embedded runtime source assets (`go:embed`).
-- **Key Files**: `assets.go`, `opencode.jsonc`, `AGENTS.md`, `agents/`, `commands/`, `skills/`, `plugin/`.
+- **Key Files**: `assets.go`, `opencode.jsonc`, `AGENTS.md`, `agents/`, `commands/`, `skills/`, `plugins/`, `themes/`, `tui/`.
 
 ---
 
-## 3. Supported Platforms & Future Roadmap
+## 3. Supported Platforms
 
-- **Active Platform**: **OpenCode** (`~/.config/opencode/`)
-- **Future Targets**: **Google Antigravity** (`~/.gemini/antigravity/`; no committed support, evaluation only), **Claude CLI** (`~/.claude/`)
+- **Primary Platform**: **OpenCode** (`~/.config/opencode/`, `~/.agents/skills/`, `~/.cortex-ia/opencode/`)
+- **Secondary (legacy)**: **Claude Code** (`~/.claude.json`) — MCP-only `--target claude`; no asset set
+- No additional platform targets are planned; the multi-platform adapter surface is retired and fails closed.
 
 ## 4. Project-Level Files
 
@@ -80,7 +81,7 @@ Directory-by-directory map of the active `cortex-ia` codebase.
 
 ## 5. Architectural Invariants
 
-1. **OpenCode First**: All asset installations target `~/.config/opencode/` without touching other locations.
+1. **OpenCode First**: Asset installations target only the declared OpenCode discovery roots (`~/.config/opencode/`, `~/.agents/skills/`) plus the Cortex-IA workflow roots under `~/.cortex-ia/opencode/`; nothing outside those roots is written.
 2. **Compile-Time Embedding**: Assets in `internal/assets/` are embedded via `go:embed` and delivered byte-for-byte.
 3. **Fail-Closed Verification**: Unmanaged conflicting files are never overwritten without explicit `--overwrite` and user confirmation.
 4. **Verified Backup**: A full snapshot is captured and verified before any filesystem mutation begins.

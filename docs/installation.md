@@ -4,7 +4,7 @@
 
 - **OpenCode** — supported target for AI agent orchestration.
 - **Herdr** (optional) — diagnostics-only integration; its only production consumer is the web console status display.
-- **Node.js 18+** — for OpenCode plugins runtime.
+- **Node.js >= 20.18.1** — required by the qualified Context7 MCP package engine range (`@upstash/context7-mcp@4.1.0`; see [`mcp-qualification.md`](mcp-qualification.md)) and sufficient for the OpenCode plugin runtime.
 - **`cortex` on PATH** (optional) — for Cortex Knowledge Graph MCP server.
 
 ---

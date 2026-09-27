@@ -15,7 +15,7 @@ The candidate Context7 preset is pinned and qualified against authentic npm regi
 | Node.js Engine Requirement | `>=20.18.1` |
 | Executable Entrypoint | `dist/index.js` |
 
-Transitive lock resolution has been verified via `npm install --package-lock-only` with official package integrity.
+Transitive lock resolution has been verified via `npm install --package-lock-only` with official package integrity. The engine range is sourced from the `engines.node` field of the captured manifest in `scripts/fixtures/mcp/package-lock.json`.
 
 ## 2. Cortex MCP Local Executable & Schema Evidence
 

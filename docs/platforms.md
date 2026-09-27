@@ -18,12 +18,16 @@ configured per release).
 
 ## Paths
 
-All writes are confined to two roots beneath the user's home directory:
+All managed writes are confined to the declared roots beneath the user's home directory:
 
 | Root | Contents |
 |------|----------|
-| `~/.config/opencode/` | Config, `AGENTS.md`, agents, commands, skills, plugin |
+| `~/.config/opencode/` | Config (`opencode.jsonc`), `AGENTS.md`, agents, commands, plugins, themes, tui-plugins |
+| `~/.agents/skills/` | Native skills (`<name>/SKILL.md`) |
+| `~/.cortex-ia/opencode/` | Cortex-IA workflow roots: contracts, roles, overlays, quality, manifests, models, permissions |
 | `~/.cortex-ia/` | Installation metadata, lock, MCP digests, backups |
+
+The optional `claude` target writes Cortex-IA's MCP entry to `~/.claude.json`.
 
 The transactional pipeline validates every destination against the layout
 declaration before writing; absolute paths and traversal outside these
@@ -33,9 +37,10 @@ roots fail closed.
 
 | Platform | Support Tier | Configuration Directory | Notes |
 | :--- | :---: | :--- | :--- |
-| **OpenCode** | **Active (Native)** | `~/.config/opencode/` | Full SDD stack: 5 sub-agents, 9 commands, 12 skills, 5 plugins, managed MCPs. |
-| **Google Antigravity** | *Not committed* | `~/.gemini/antigravity/` | No committed support; any future evaluation stays native-only with no external execution. |
-| **Claude CLI** | *Roadmap* | `~/.claude/` | Native prompts, tool definitions, stdio MCPs. |
+| **OpenCode** | **Primary (Native)** | `~/.config/opencode/` (`~/.agents/skills/`, `~/.cortex-ia/opencode/`) | Full SDD stack: 6 agents, 13 slash commands, 17 skills, 8 plugins, managed MCPs. |
+| **Claude Code** | *Secondary (legacy)* | `~/.claude.json` | MCP-only: `--target claude` writes or removes Cortex's `mcpServers.cortex` entry. Installs no asset set. |
+
+No additional platform targets are planned: the historical multi-platform adapter surface is retired and fails closed.
 
 ## Shells and Terminals
 

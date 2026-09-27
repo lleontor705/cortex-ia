@@ -33,7 +33,9 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | `cortex-ia web` | Launch the local operations dashboard |
 | `cortex-ia doc` | Convert office/PDF documents to Markdown or inspect metadata (`convert`, `inspect`) |
 | `cortex-ia diagram` | Validate, render, compare, or trace system diagrams (`validate`, `render`, `compare`, `reach`) |
-| `cortex-ia mcp` | Manage MCP entries (`add`, `remove`, `list`) |
+| `cortex-ia mcp` | Manage MCP entries (`add`, `remove`, `list`, `adopt`) |
+| `cortex-ia model` | Manage global-config agent model assignments (`list`, `get`, `set`, `unset`, `doctor`, `catalog`) |
+| `cortex-ia stats` | Print bounded read-only usage statistics (`[--json]`) |
 | `cortex-ia report` | Report errors or manage reporting config (`error`/`send`, `config`, `flush`, `status`) |
 | `cortex-ia doctor` | Assess installation health (read-only) |
 | `cortex-ia rollback` | Restore a backup or list available backups (`[backup-id]`, `list`) |
@@ -50,47 +52,59 @@ Retired surfaces: `delegate`, `herdr`, and `hook` belong to the removed external
 | Package | Location | One-liner |
 |---------|----------|-----------|
 | Entry point | `cmd/cortex-ia/` | `main.go` — ldflags version injection |
-| CLI dispatch | `internal/app/` | Subcommand routing + TUI launch (`app.go`, `version.go`) |
-| Core types | `internal/model/` | Shared type vocabulary leaf (`types.go`, `selection.go`) |
-| Agents | `internal/agents/` | Adapter interface + registry + 12 agent packages |
-| Catalog | `internal/catalog/` | Component/skill registry, `ResolveDeps()` topological sort |
-| Components | `internal/components/` | MCP injection engine + file-merge primitives + per-component injectors |
-| Pipeline | `internal/pipeline/` | 2-stage install (Prepare → Apply), parallel chains, rollback |
-| Assets | `internal/assets/` | `go:embed` access to skills, prompts, commands |
-| Backup | `internal/backup/` | Snapshotter, manifest, restore, prune |
-| State | `internal/state/` | `state.json` + lockfile persistence |
-| System detect | `internal/system/` | OS/platform/package-manager detection |
-| Config | `internal/config/` | Project `.cortex-ia.yaml` handling |
-| OpenCode | `internal/opencode/` | OpenCode model-assignment application |
-| Self-update | `internal/update/` | `cortex-ia update` support |
-| Verify | `internal/verify/` | `doctor` verification logic |
-| TUI | `internal/tui/` | Bubbletea dashboard, 28 screens |
+| CLI dispatch | `internal/app/` | Subcommand routing + TUI launch; retired-surface fail-closed guard |
+| Install facade | `internal/install/` | Service facade: install, sync, doctor, rollback, uninstall, MCP operations |
+| Pipeline | `internal/pipeline/` | Transactional copy engine: plan, verified backup, atomic apply, journal, rollback |
+| Backup | `internal/backup/` | Snapshots, manifests, restore verification, dedup, retention pruning |
+| State | `internal/state/` | Install metadata v2, lock agreement, semantic and postimage digests under `~/.cortex-ia/` |
+| Install metadata | `internal/installmeta/` | Versioned, secret-free semantic digests for MCP and model entries |
+| Delegation | `internal/delegation/` | SQLite work authority: boards, DAG tasks, claims, TTL file leases, approvals, recovery |
+| Assets | `internal/assets/` | `go:embed` access to agents, commands, skills, plugins, themes, and TUI assets |
+| OpenCode layout | `internal/agents/opencode/` | Declarative home-relative layout + pure asset mapping and collision checks |
+| MCP manager | `internal/mcpmanager/` | Managed MCP presets, ownership accreditation, qualification, conflict errors |
+| Model manager | `internal/modelmgr/` | Global-config agent model assignment, doctor, and catalog |
+| Provider manager | `internal/providermgr/` | Per-provider JSON catalogs under `~/.cortex-ia/` |
+| OpenSpec | `internal/openspec/` | Planning-structure validation; never approves semantics or work |
+| Diagram | `internal/diagram/` | System diagram validate, render, compare, and reach |
+| Doc conversion | `internal/docconv/` | Office/PDF conversion to Markdown plus metadata inspection |
+| Telemetry | `internal/telemetry/` | Bounded error-report outbox |
+| Updater | `internal/updater/` | Release check, authenticated download, checksum/trust verification, atomic replacement |
+| Targets | `internal/targets/` | Install target parsing and Claude target configuration |
+| CLI detection | `internal/clidetect/` | Host CLI availability detection for target recommendations |
+| Home lock | `internal/homelock/` | Cross-process, per-home exclusive lock |
+| Logging | `internal/logging/` | Debug tracing sink (stderr + file); never writes to stdout |
+| OpenCode stats | `internal/ocstats/` | Read-only, windowed aggregates of OpenCode usage data |
+| Web console | `internal/cortexiaweb/` | Loopback-only Preact operations console and HTTP/API server |
+| Components | `internal/components/filemerge/` | Atomic writes, JSON/TOML deep merge, section-based text merge |
+| TUI | `internal/tui/` | Bubble Tea dashboard, 10 screens |
+| TUI assets | `internal/tuiassets/` | TypeScript source for the compiled TUI plugin |
+| Herdr diagnostics | `internal/herdr/` | Optional diagnostics helper consumed only by the web console status display |
 
 ## Key Types
 
 | Type | Location | Purpose |
 |------|----------|---------|
-| `AgentID` | `internal/model/types.go` | Identifies an AI agent (e.g., `claude`, `opencode`) |
-| `ComponentID` | `internal/model/types.go` | Identifies an injectable component |
-| `SkillID` | `internal/model/types.go` | Identifies a skill |
-| `MCPStrategy` | `internal/model/types.go` | MCP injection strategy (separate file / merge / config file / TOML) |
-| `SystemPromptStrategy` | `internal/model/types.go` | Prompt injection strategy (markdown sections / append / replace) |
-| `PresetID` | `internal/model/types.go` | Identifies a preset bundle |
-| `PersonaID` | `internal/model/types.go` | Identifies a communication-style persona |
-| `ModelAssignments` | `internal/model/types.go` | Phase → model alias mapping |
-| `OpenCodeModel` | `internal/model/types.go` | OpenCode model configuration |
-| `Selection` | `internal/model/selection.go` | User's chosen agents + components + options |
-| `Adapter` | `internal/agents/interface.go` | 23-method interface every agent implements |
-| `RollbackStep` | `internal/pipeline/` | Interface for reversible pipeline steps |
+| `TargetID` | `internal/targets/targets.go` | Install target identifier (`opencode`, `claude`, `all`) |
+| `TargetResult` | `internal/targets/targets.go` | Outcome of installing or updating one target |
+| `Layout` | `internal/agents/opencode/layout.go` | Home-relative OpenCode discovery and Cortex-IA workflow roots |
+| `Mapping` | `internal/agents/opencode/assetmap.go` | Embedded asset → managed destination pair with content hash |
+| `Preset` | `internal/mcpmanager/presets.go` | Managed MCP server entry template |
+| `EntryStatus` | `internal/mcpmanager/manager.go` | Ownership classification of an observed MCP entry |
+| `WorkStatus` | `internal/delegation/work.go` | Task lifecycle state (`backlog`/`ready`/`in_progress`/`in_review`/`done`/`blocked`) |
+| `WorkloadPolicy` | `internal/delegation/work.go` | Line-budget policy (`strict`/`flexible`/`unbounded`) |
+| `WorkItem` | `internal/delegation/work.go` | Durable task DAG node |
+| `WorkClaim` | `internal/delegation/work.go` | Live task claim authority |
+| `WorkLease` | `internal/delegation/work.go` | TTL file reservation owned by a claim |
+| `RetiredSurfaceError` | `internal/app/app.go` | Fail-closed error for removed commands and flags |
 
 ## MCP Servers
 
-| Server | Binary | Purpose | Injection |
-|--------|--------|---------|-----------|
-| Cortex | `cortex` | Persistent memory + knowledge graph | `internal/components/cortex/` |
-| Mailbox | (npm) | Agent messaging + A2A task protocol | `internal/components/mailbox/` |
-| Cortex-IA work | built-in Go CLI | SQLite task DAG + claims + file leases + approvals | `internal/delegation/work.go` |
-| Context7 | (npm/remote) | Library documentation lookup | `internal/components/context7/` |
+| Server | Execution vector | Purpose | Managed in |
+|--------|------------------|---------|------------|
+| Cortex | `cortex mcp --tools=agent` | Persistent memory + knowledge graph | `internal/mcpmanager/presets.go` |
+| Context7 | `npx -y @upstash/context7-mcp@4.1.0` | Library documentation lookup | `internal/mcpmanager/presets.go` |
+
+`cortex-ia work` provides task coordination as a built-in Go CLI and SQLite store; it is not an MCP server. The retired `forgespec` preset is recognized only so `sync` can remove it.
 
 ## Config & Build Files
 
@@ -101,7 +115,7 @@ Retired surfaces: `delegate`, `herdr`, and `hook` belong to the removed external
 | `.goreleaser.yaml` | root | Cross-platform release config |
 | `.golangci.yml` | root | Lint config (errcheck, govet, staticcheck, unused, ineffassign) |
 | `Dockerfile` | root | Multi-stage Alpine build |
-| `.gitattributes` | root | Pins `testdata/golden/**` to `eol=lf` |
+| `.gitattributes` | root | Pins Go sources to `eol=lf` |
 | `.github/workflows/ci.yml` | `.github/workflows/` | Quality + security CI |
 | `.github/workflows/release.yml` | `.github/workflows/` | Tag-triggered release pipeline |
 | `.github/workflows/pr-check.yml` | `.github/workflows/` | PR compliance checks |
@@ -115,19 +129,18 @@ Retired surfaces: `delegate`, `herdr`, and `hook` belong to the removed external
 | `state.json` | `~/.cortex-ia/` | Installed agents, preset, components — sync source of truth |
 | `cortex-ia.lock` | `~/.cortex-ia/` | Concrete written-file list with checksums |
 | `install-status.json` | `~/.cortex-ia/` | Crash-detection marker (ephemeral) |
-| `profiles/` | `~/.cortex-ia/` | Named preset profiles |
-| `skills/` | `~/.cortex-ia/` | Installed skill manifests |
+| `delegation.db` | `~/.cortex-ia/` | SQLite work authority: boards, tasks, claims, leases, approvals, events |
 
 ## Key Counts
 
 | Metric | Value |
 |--------|-------|
-| AI agents | 12 |
-| Components | 14 |
-| Skills | ~27 (see `catalog/skills.go`) |
-| CLI subcommands | 24 |
-| TUI screens | 28 |
-| Adapter interface methods | 23 |
+| AI agents | 6 |
+| Slash commands | 13 |
+| Skills | 17 (+ `_shared`) |
+| Plugins | 8 |
+| CLI subcommands | 23 |
+| TUI screens | 10 |
 | Build targets | 6 (3 OS × 2 arch) |
 | Go version | 1.26.1 |
 
@@ -147,7 +160,7 @@ Retired surfaces: `delegate`, `herdr`, and `hook` belong to the removed external
 | Maintainer Playbook | `docs/codebase/maintainer-playbook.md` | Release & dependency process |
 | Reference Map | `docs/codebase/reference-map.md` | This page — quick lookup index |
 | Architecture | `docs/architecture.md` | High-level architecture overview |
-| Agents | `docs/AGENTS.md` | Per-agent reference (12 agents) |
+| Agents | `docs/AGENTS.md` | Agent topology & coordination contracts (6 native roles) |
 | SDD Workflow | `docs/sdd-workflow.md` | SDD skills & workflow docs |
 
 ## Invariants
@@ -155,7 +168,7 @@ Retired surfaces: `delegate`, `herdr`, and `hook` belong to the removed external
 - This page is a lookup index — if you need explanation, follow the sibling page link.
 - Counts are maintained manually; update them when adding agents/skills/components.
 - Package locations reflect `internal/` structure; `cmd/` is the only non-internal importable package.
-- MCP servers map 1:1 to component packages under `internal/components/`.
+- MCP servers are managed as presets in `internal/mcpmanager/presets.go`; `internal/components/` holds only the shared `filemerge` primitives.
 
 ## Contributor Checklist
 

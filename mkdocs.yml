@@ -57,6 +57,7 @@ nav:
       - Non-interactive usage: non-interactive.md
       - Platforms: platforms.md
       - Configuration: configuration.md
+      - Custom providers: custom-providers.md
   - Architecture:
       - Architecture: architecture.md
       - Codebase guide: CODEBASE-GUIDE.md
@@ -78,11 +79,14 @@ nav:
       - MCP: mcp.md
       - SDD workflow: sdd-workflow.md
       - Cortex memory: cortex-memory.md
+      - Web console: web-console.md
+      - Usage stats and TUI: stats-and-ui.md
       - Rollback: rollback.md
       - Docker E2E testing: docker-e2e-testing.md
       - Security: security.md
       - Release keys: release-keys.md
   - Reference:
+      - Updater verification profiles: updater-verification-profiles.md
       - Cortex report hub snapshot: cortex-report-hub-snapshot.md
       - MCP qualification: mcp-qualification.md
       - Qualification inputs: qualification-inputs.md

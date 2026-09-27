@@ -38,7 +38,7 @@ Skills, prompts, commands, and plugins under `internal/assets/` are runtime sour
 | 1 | [mental-model.md](codebase/mental-model.md) | End-to-end data flow: planning → snapshot verification → atomic apply → commit |
 | 2 | [repository-map.md](codebase/repository-map.md) | Directory-by-directory map of active packages |
 | 3 | [interfaces.md](codebase/interfaces.md) | Module boundaries defined by `ServiceAPI`, `Plan`, `Effect`, `Receipt` |
-| 4 | [dashboard.md](codebase/dashboard.md) | Bubble Tea TUI architecture, 5-screen workflow, Lip Gloss themes |
+| 4 | [dashboard.md](codebase/dashboard.md) | Bubble Tea TUI architecture, 10-screen workflow, Lip Gloss themes |
 | 5 | [mcp-boundaries.md](codebase/mcp-boundaries.md) | MCP catalog ownership, qualification, and fail-closed conflict rules |
 | 6 | [project-and-extension.md](codebase/project-and-extension.md) | Adding OpenCode skills, agents, commands, and MCP presets |
 | 7 | [sdd-coordination.md](codebase/sdd-coordination.md) | SDD workflow, sub-agent coordination, and file reservations |
@@ -51,9 +51,9 @@ Skills, prompts, commands, and plugins under `internal/assets/` are runtime sour
 
 ## 4. Platform Support Status
 
-- **OpenCode**: Fully supported active native target (`~/.config/opencode/`).
-- **Google Antigravity**: No committed support; any future evaluation stays native-only with no external execution (`~/.gemini/antigravity/`).
-- **Claude CLI**: Upcoming roadmap platform (`~/.claude/`).
+- **OpenCode**: The primary supported native target (`~/.config/opencode/`).
+- **Claude Code**: Secondary legacy MCP-only target — `--target claude` writes Cortex's `mcpServers.cortex` entry to `~/.claude.json`; no asset set.
+- No additional platform targets are planned; the multi-platform adapter surface is retired and fails closed.
 
 ---
 

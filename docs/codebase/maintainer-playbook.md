@@ -26,17 +26,7 @@ Run these before tagging a release.
 | 3 | Format check | `make fmt` | No formatting diffs |
 | 4 | Tidy dependencies | `make tidy` | `go.sum` clean, no diff after |
 | 5 | Security scan | `make security` | No new vulnerabilities |
-| 6 | Golden files line endings | Verify `.gitattributes` pins `testdata/golden/**` to `eol=lf` | No CRLF contamination |
-| 7 | Verify clean tree | `git status` | Working tree clean, nothing uncommitted |
-
-### Golden Files
-
-| Aspect | Detail |
-|--------|--------|
-| Location | `testdata/golden/**` |
-| Line ending | `eol=lf` enforced via `.gitattributes` |
-| Risk | Windows checkouts can introduce CRLF; `.gitattributes` normalizes at commit |
-| Check | `git diff` should show no line-ending-only changes after checkout on any platform |
+| 6 | Verify clean tree | `git status` | Working tree clean, nothing uncommitted |
 
 ## Release Flow
 
@@ -115,13 +105,12 @@ If a release is broken and already published:
 
 - Never tag a release from a dirty working tree — `git status` must be clean first.
 - Never skip `make check` — it is the single gate that catches lint, test, and vet failures.
-- Golden files must be `eol=lf` on all platforms — `.gitattributes` enforces this; do not override.
 - The release workflow is tag-triggered — do not run `goreleaser` manually for official releases.
 - All 6 platform targets must build — a release with missing platforms is incomplete.
 
 ## Contributor Checklist
 
-- [ ] Before tagging: `make check` passes, `git status` clean, golden files `eol=lf`.
+- [ ] Before tagging: `make check` passes, `git status` clean.
 - [ ] Tag follows `vX.Y.Z` semver format.
 - [ ] After release: verify GitHub Release, Homebrew install, curl installer, and `cortex-ia version`.
 - [ ] Dependency updates always followed by `make tidy` + `make check`.

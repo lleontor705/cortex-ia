@@ -61,9 +61,9 @@ How `cortex-ia` works end-to-end: a user executes an interactive TUI or CLI comm
 
 ## 3. Platform Support Strategy
 
-1. **OpenCode (Primary Active)**: Full native SDD asset set and MCP management under `~/.config/opencode/`.
-2. **Google Antigravity**: No committed support; any future evaluation stays native-only with no external execution under `~/.gemini/antigravity/`.
-3. **Claude CLI (Planned)**: Native prompts and tool definitions under `~/.claude/`.
+1. **OpenCode (Primary)**: Full native SDD asset set and MCP management under `~/.config/opencode/`.
+2. **Claude Code (Secondary, legacy)**: MCP-only `--target claude` writes Cortex's `mcpServers.cortex` entry into `~/.claude.json`; no asset set.
+3. The multi-platform adapter surface is retired and fails closed; no additional platform targets are planned.
 
 ---
 
