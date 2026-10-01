@@ -192,10 +192,14 @@ export const CortexPermissionFencePlugin = Plugin.define({
         // Role-based Read-Only Enforcement
         const role = String(event?.session?.role || (ctx as any)?.session?.role || process.env.CORTEX_ROLE || "").toLowerCase();
         if (READ_ONLY_ROLES.has(role) && MUTATING_TOOLS.has(toolName)) {
-          return {
-            effect: "deny",
-            reason: `CORTEX_PERMISSION_FENCE: Role '${role}' is restricted to read-only operations. File mutations are forbidden.`,
-          };
+          const isDiscoveryGitignore = role === "discovery" && toolName === "edit" &&
+            targetPath.replace(/\\/g, "/").split("/").pop() === ".gitignore";
+          if (!isDiscoveryGitignore) {
+            return {
+              effect: "deny",
+              reason: `CORTEX_PERMISSION_FENCE: Role '${role}' is restricted to read-only operations. File mutations are forbidden.`,
+            };
+          }
         }
 
         // Zero-Prompt Auto-Approval for verified active file leases

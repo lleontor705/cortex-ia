@@ -24,7 +24,7 @@ const TRANSPORT_ISOLATION_SYSTEM = [
 
 const ROLE_DEFAULT_STEPS: Record<string, number> = {
   implement: 70,
-  discovery: 60,
+  discovery: 90,
   orchestrator: 60,
   reviewer: 50,
   investigate: 50,

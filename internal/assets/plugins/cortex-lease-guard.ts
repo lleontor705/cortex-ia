@@ -116,7 +116,8 @@ async function verifyLeasesForTool(
   toolName: string,
   rawArgs: any,
   sessionID: string,
-  directory: string
+  directory: string,
+  role: string
 ) {
   if (toolName === "cortex_ia_doc_convert" && !(rawArgs as any)?.output_path) return;
   if (!["edit", "write_to_file", "write", "apply_patch", "cortex_ia_doc_convert", "cortex_ia_diagram_render"].includes(toolName)) return;
@@ -127,6 +128,10 @@ async function verifyLeasesForTool(
   // and control directories. Path names never confer mutation authority.
   const targets = [...new Set(rawTargets.map(target => relativeTarget(directory, target)))].sort();
   if (!targets.length) return;
+
+  // Sole leaseless sanctioned mutation: discovery's bounded .gitignore hygiene append (Step-0).
+  if (role === "discovery" && targets.length === 1 &&
+      String(targets[0]).replace(/\\/g, "/").split("/").pop() === ".gitignore") return;
 
   const cacheKey = `${sessionID}:${targets.join(";")}`;
   const cachedExpiresAt = verifiedLeaseCache.get(cacheKey);
@@ -224,14 +229,16 @@ export const CortexLeaseGuardPlugin = Plugin.define({
         const toolName = (event?.tool || "").toLowerCase();
         const sessionID = event?.sessionID || event?.sessionId || (ctx as any)?.session?.id || "";
         const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
-        await verifyLeasesForTool(toolName, event?.input, sessionID, directory);
+        const role = String(event?.session?.role || (ctx as any)?.session?.role || "").toLowerCase();
+        await verifyLeasesForTool(toolName, event?.input, sessionID, directory, role);
       });
     } else {
       (cleanup as any)["tool.execute.before"] = async (input: any, output: any) => {
         const toolName = (input?.tool || "").toLowerCase();
         const sessionID = input?.sessionID || "";
         const directory = ctx?.directory || (ctx as any)?.location?.directory || process.cwd();
-        await verifyLeasesForTool(toolName, output?.args, sessionID, directory);
+        const role = String(input?.session?.role || input?.agent || (ctx as any)?.session?.role || "").toLowerCase();
+        await verifyLeasesForTool(toolName, output?.args, sessionID, directory, role);
       };
     }
 
@@ -258,7 +265,8 @@ export const CortexLeaseGuardPlugin = Plugin.define({
       "tool.execute.before": async (input: any, output: any) => {
         const toolName = (input?.tool || "").toLowerCase();
         const sessionID = input?.sessionID || "";
-        await verifyLeasesForTool(toolName, output?.args, sessionID, directory);
+        const role = String(input?.session?.role || input?.agent || "").toLowerCase();
+        await verifyLeasesForTool(toolName, output?.args, sessionID, directory, role);
       },
     };
   },
