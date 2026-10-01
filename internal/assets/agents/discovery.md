@@ -12,18 +12,6 @@ permissions:
   - action: edit
     resource: "*"
     effect: deny
-  - action: write
-    resource: "*"
-    effect: deny
-  - action: write_to_file
-    resource: "*"
-    effect: deny
-  - action: apply_patch
-    resource: "*"
-    effect: deny
-  - action: read
-    resource: "*"
-    effect: allow
   - action: read
     resource: "*.env"
     effect: deny
@@ -60,18 +48,6 @@ permissions:
   - action: cortex_cortex_get_status
     resource: "*"
     effect: allow
-  - action: cortex_get_project_context
-    resource: "*"
-    effect: allow
-  - action: cortex_cortex_get_project_context
-    resource: "*"
-    effect: allow
-  - action: cortex_list_skills
-    resource: "*"
-    effect: allow
-  - action: cortex_cortex_list_skills
-    resource: "*"
-    effect: allow
   - action: cortex_get_observation
     resource: "*"
     effect: allow
@@ -88,12 +64,6 @@ permissions:
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_code_symbols
-    resource: "*"
-    effect: allow
-  - action: cortex_get_code_graph
-    resource: "*"
-    effect: allow
-  - action: cortex_cortex_get_code_graph
     resource: "*"
     effect: allow
   - action: cortex_analyze_architecture
@@ -301,9 +271,6 @@ permissions:
     resource: "git -C * diff*"
     effect: allow
   - action: edit
-    resource: ".gitignore"
-    effect: allow
-  - action: write
     resource: ".gitignore"
     effect: allow
 ---
