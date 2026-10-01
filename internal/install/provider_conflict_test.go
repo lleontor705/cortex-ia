@@ -71,8 +71,9 @@ func TestREQ_PROV_004_TwinCopyReconciledBackupFirst(t *testing.T) {
 	if providerDecode(t, twin)["twinNote"] != "keep" || providerDecode(t, winner)["winnerNote"] != "keep" {
 		t.Fatal("unrelated members were not preserved")
 	}
-	if won := providerEntry(t, providerDecode(t, winner), "nan"); len(providerModels(t, won)) != 8 {
-		t.Fatal("winner was not materialized with the full catalog")
+	won := providerEntry(t, providerDecode(t, winner), "nan")
+	if _, present := won["models"].(map[string]any); !present {
+		t.Fatal("winner was not materialized with a models object")
 	}
 
 	manifest := providerManifest(t, home, receipt.BackupID)
@@ -102,8 +103,8 @@ func TestREQ_PROV_004_DivergentTwinsConverge(t *testing.T) {
 	if _, present := providerConfigBlock(providerDecode(t, twin), "nan"); present {
 		t.Fatal("divergent twin block survived")
 	}
-	if len(providerModels(t, providerEntry(t, providerDecode(t, winner), "nan"))) != 8 {
-		t.Fatal("winner did not converge to the catalog")
+	if _, present := providerEntry(t, providerDecode(t, winner), "nan")["models"].(map[string]any); !present {
+		t.Fatal("winner did not converge to a models object")
 	}
 }
 
@@ -200,22 +201,37 @@ func TestREQ_PROV_004_FaultInjectedFailuresRestoreBothFiles(t *testing.T) {
 	}
 }
 
-func TestREQ_PROV_004_UnmanagedWinnerRefuses(t *testing.T) {
+func TestREQ_PROV_004_UnmanagedWinnerIsAdopted(t *testing.T) {
 	home, service := providerInstalledHome(t)
 	winner := providerConfigPath(home, "opencode.jsonc")
-	providerWrite(t, winner, "{\"provider\":{\"nan\":{\"npm\":\"user-owned\"}}}")
-	before := providerRead(t, winner)
-	preState := providerRead(t, state.StatePath(home))
+	providerWrite(t, winner,
+		"{\n  // keep comment\n  \"provider\":{\"nan\":{\"npm\":\"user-owned\",\"models\":{\"user-model\":{\"name\":\"Mine\",\"temperature\":0.3}}}}\n}\n")
 
-	_, err := service.ProviderInstall(ProviderInstallOptions{ProviderID: "nan", Token: "sentinel-unmanaged"})
-	if !errors.Is(err, ErrProviderUnmanaged) {
-		t.Fatalf("err = %v, want ErrProviderUnmanaged", err)
+	receipt, err := service.ProviderInstall(ProviderInstallOptions{ProviderID: "nan", Token: "sentinel-adopt"})
+	if err != nil {
+		t.Fatalf("adoption failed: %v", err)
 	}
-	if providerBackupCount(t, home) != 0 {
-		t.Fatal("unmanaged refusal must capture zero backups")
+	if receipt.Action != "adopted" || receipt.BackupID == "" {
+		t.Fatalf("adoption receipt = %+v", receipt)
 	}
-	if string(providerRead(t, winner)) != string(before) || string(providerRead(t, state.StatePath(home))) != string(preState) {
-		t.Fatal("unmanaged refusal must mutate nothing")
+	if !strings.Contains(string(providerRead(t, winner)), "// keep comment") {
+		t.Fatal("adoption lost a config comment")
+	}
+	entry := providerEntry(t, providerDecode(t, winner), "nan")
+	if entry["npm"] != "@ai-sdk/openai-compatible" {
+		t.Fatalf("catalog fields not merged in place: %#v", entry)
+	}
+	preserved, _ := providerModels(t, entry)["user-model"].(map[string]any)
+	if preserved["temperature"] != float64(0.3) {
+		t.Fatalf("adoption did not preserve user fields: %#v", preserved)
+	}
+	record := state.LoadMetadataV2(home).Metadata.Providers[0]
+	if record.Name != "nan" || record.ConfigPath != "opencode.jsonc" || record.Ownership != state.OwnershipManaged {
+		t.Fatalf("adoption did not record ownership: %+v", record)
+	}
+	again, err := service.ProviderInstall(ProviderInstallOptions{ProviderID: "nan", Token: "sentinel-adopt"})
+	if err != nil || again.Action != "already-present" {
+		t.Fatalf("post-adoption reinstall = %+v, %v", again, err)
 	}
 }
 

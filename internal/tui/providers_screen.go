@@ -388,8 +388,9 @@ func (s providersState) listView(width int) string {
 	return strings.Join(lines, "\n")
 }
 
-// providerBlock renders one provider row followed by every catalog model and
-// its effort vocabulary, so the List phase discloses what an install writes.
+// providerBlock renders one provider row followed by its runtime package keys,
+// API endpoint, and every catalog model with its limits, modalities and
+// effort/variant vocabulary, so the List phase discloses what an install writes.
 func (s providersState) providerBlock(entry install.ProviderCatalogEntry, active bool) []string {
 	prefix := "  "
 	if active {
@@ -399,20 +400,61 @@ func (s providersState) providerBlock(entry install.ProviderCatalogEntry, active
 	if active {
 		header = styleSelected.Render(header)
 	}
-	lines := []string{header}
+	return append([]string{header}, providersEntryLines(entry)...)
+}
+
+// providersEntryLines renders the catalog facts of one provider: runtime
+// package keys, API endpoint, and every declared model. Everything is read from
+// the loaded catalog JSON, so editing the file changes the Installer with no
+// code change.
+func providersEntryLines(entry install.ProviderCatalogEntry) []string {
+	lines := make([]string, 0, len(entry.Models)+3)
+	if entry.NPM != "" {
+		lines = append(lines, "    npm:      "+entry.NPM)
+	}
+	if entry.Package != "" {
+		lines = append(lines, "    package:  "+entry.Package)
+	}
+	if entry.BaseURL != "" {
+		lines = append(lines, "    baseURL:  "+entry.BaseURL)
+	}
 	for _, model := range entry.Models {
-		lines = append(lines, "    "+model.ID+"  ("+providersEfforts(model.Efforts)+")")
+		lines = append(lines, "    "+providersModelLine(model))
 	}
 	return lines
 }
 
-// providersEfforts names the empty vocabulary posture explicitly instead of
-// rendering a misleading blank.
-func providersEfforts(efforts []string) string {
-	if len(efforts) == 0 {
+// providersModelLine names every catalog-owned model fact: id, display name,
+// numeric limits, modalities, and the effort/variant vocabulary. A catalog
+// variant's id is its reasoning effort, so one vocabulary discloses both.
+func providersModelLine(model install.ProviderCatalogModel) string {
+	facts := make([]string, 0, 3)
+	if model.Limit != nil {
+		facts = append(facts, fmt.Sprintf("limit %d/%d", model.Limit.Context, model.Limit.Output))
+	}
+	if model.Modalities != nil {
+		facts = append(facts, fmt.Sprintf("modalities %s→%s",
+			strings.Join(model.Modalities.Input, ", "), strings.Join(model.Modalities.Output, ", ")))
+	}
+	facts = append(facts, "efforts/variants "+providersEfforts(model))
+	return model.ID + "  " + model.Name + "  ·  " + strings.Join(facts, "  ·  ")
+}
+
+// providersEfforts names the variant vocabulary the installer authors, falling
+// back to the model's effort list and then to the adaptive posture so an empty
+// vocabulary never renders a misleading blank.
+func providersEfforts(model install.ProviderCatalogModel) string {
+	vocabulary := model.Efforts
+	if len(model.Variants) > 0 {
+		vocabulary = make([]string, 0, len(model.Variants))
+		for _, variant := range model.Variants {
+			vocabulary = append(vocabulary, variant.ID)
+		}
+	}
+	if len(vocabulary) == 0 {
 		return "adaptive"
 	}
-	return strings.Join(efforts, ", ")
+	return strings.Join(vocabulary, ", ")
 }
 
 func (s providersState) inputView(width int) string {
@@ -443,6 +485,7 @@ func (s providersState) previewView(width int) string {
 	case s.busy || s.preview == nil:
 		lines = append(lines, styleDim.Render(styles.SpinnerChar(0)+" Calculando la vista previa…"))
 	default:
+		lines = append(lines, providersCatalogDisclosure(s.preview)...)
 		lines = append(lines, providersReceiptLines(s.preview)...)
 	}
 	lines = append(lines, "", styleDim.Render(truncate(hints, width)))
@@ -472,6 +515,27 @@ func (s providersState) receiptView(width int) string {
 	}
 	lines = append(lines, "", styleDim.Render(truncate(providersReceiptHints, width)))
 	return strings.Join(lines, "\n")
+}
+
+// providersCatalogDisclosure renders the catalog content a preview carries plus
+// the resolved runtime key, so the operator confirms against exactly what the
+// install will emit.
+func providersCatalogDisclosure(receipt *install.ProviderInstallReceipt) []string {
+	if receipt.Entry == nil {
+		return nil
+	}
+	lines := []string{styleSubtitle.Render("Catálogo")}
+	if receipt.Entry.Name != "" {
+		lines = append(lines, "    nombre:   "+receipt.Entry.Name)
+	}
+	lines = append(lines, providersEntryLines(*receipt.Entry)...)
+	if receipt.RuntimeKey != "" {
+		lines = append(lines,
+			"    container: "+receipt.Container,
+			fmt.Sprintf("    runtime:   %s %s", receipt.RuntimeMember, receipt.RuntimeKey),
+		)
+	}
+	return append(lines, "")
 }
 
 func providersReceiptLines(receipt *install.ProviderInstallReceipt) []string {

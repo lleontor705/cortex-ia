@@ -210,6 +210,7 @@ func runWeb(args []string) error {
 			return fmt.Errorf("failed to get executable path: %w", err)
 		}
 		cmd := exec.Command(exe, "board", "serve", "--addr", address)
+		hideConsoleWindow(cmd)
 		cmd.Stdin = nil
 		cmd.Stdout = nil
 		cmd.Stderr = nil

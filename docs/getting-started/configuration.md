@@ -1,0 +1,176 @@
+> **English only** — this page has no Spanish translation yet. The Spanish site
+> falls back to this English version.
+>
+> **Solo en inglés** — esta página aún no tiene traducción al español. El sitio en
+> español muestra esta versión en inglés.
+
+# Configuration
+
+## CLI Reference
+
+```
+cortex-ia                              # Launch interactive TUI
+cortex-ia install [--target <list>] [--dry-run] [--overwrite] [--theme]
+cortex-ia sync [--target <list>] [--dry-run] [--overwrite]
+cortex-ia uninstall [--target <list>] [--dry-run]
+cortex-ia mcp add <name> (--preset | --local ... -- <cmd> | --remote <url>) [--dry-run]
+cortex-ia mcp list [--json]
+cortex-ia mcp adopt <name> [--dry-run]
+cortex-ia mcp remove <name> [--dry-run]
+cortex-ia doctor                       # Read-only installation health report
+cortex-ia rollback [backup-id]         # Restore a backup
+cortex-ia rollback list                # List available backups
+cortex-ia recover [list]               # List pending recovery journals
+cortex-ia update [--check] [--scheduled] [--allow-checksum-updates]
+cortex-ia update schedule <enable|disable|status>
+cortex-ia version                      # Show version
+cortex-ia help                         # Show usage
+```
+
+The remaining commands — `snapshot`, `work`, `worktree`, `board`, `ledger`, `ui`, `openspec`, `web`, `doc`, `diagram`, `model`, `stats`, and `report` — are part of the operations surface. See [`codebase/reference-map.md`](../architecture/codebase/reference-map.md) and `cortex-ia help` for their subcommands. The former `delegate`, `herdr`, and `hook` subcommands are retired and fail closed.
+
+### Install and sync flags
+
+| Flag | Description |
+|------|-------------|
+| `--target <list>` | Comma-separated targets: `opencode` (primary), `claude` (secondary legacy MCP-only target), or `all`. Defaults to `opencode` |
+| `--dry-run` | Preview the plan without writing; no backup is created |
+| `--overwrite` | Replace unmanaged conflicting files (explicit; a verified backup is captured first) |
+| `--theme` | Apply the bundled cortex theme to the OpenCode configuration. Install only, `opencode` target only, and opt-in: without it the theme key is never touched and an explicit light/dark mode is kept |
+
+Install and sync preview the final plan — including every `--overwrite` replacement — and bind the real run to that exact plan digest. If anything drifts between preview and apply, the run aborts with a stale-plan error and nothing is written.
+
+> **Target contract**: OpenCode is the primary supported target and the only platform the Cortex-IA asset set is installed for. The `claude` target is a secondary, legacy integration that writes only Cortex's MCP entry (`mcpServers.cortex`) into `~/.claude.json`; it installs no agents, commands, skills, plugins, or themes. Multi-platform adapters are retired and fail closed.
+
+### Uninstall flags
+
+| Flag | Description |
+|------|-------------|
+| `--target <list>` | Comma-separated targets: `opencode` (primary), `claude` (secondary legacy MCP-only target), or `all`. Defaults to `opencode` |
+| `--dry-run` | Print the planned operations without writing |
+
+Uninstall is destructive and requires an interactive terminal and an explicit confirmation. A snapshot tagged `BackupSourceUninstall` is captured before any change, so `cortex-ia rollback` restores the pre-uninstall state. See [`rollback.md`](../operations/rollback.md).
+
+### Managed MCP entries
+
+```bash
+# Register a managed catalog preset
+cortex-ia mcp add <name> --preset [--dry-run]
+
+# Register a managed custom local server from an exact command vector
+cortex-ia mcp add <name> --local [--env KEY=VALUE]... -- <command> [args...]
+
+# Register a managed custom remote server endpoint (http/https)
+cortex-ia mcp add <name> --remote <url> [--header KEY=VALUE]... [--dry-run]
+
+cortex-ia mcp list [--json]
+
+# Accredit an existing user-owned entry that already equals a managed preset
+cortex-ia mcp adopt <name> [--dry-run]
+
+cortex-ia mcp remove <name> [--dry-run]
+```
+
+`--preset`, `--local`, and `--remote` are mutually exclusive: exactly one is required per `add`. `--env` and `--header` values reach the config file only and are never printed. `mcp adopt` never rewrites the config file: it only records ownership of an entry that already matches the preset, which is the remedy `doctor` suggests for an unmanaged-equivalent entry.
+
+### Updates
+
+```bash
+cortex-ia update          # Check GitHub Releases and install the latest release
+cortex-ia update --check  # Check only, without downloading or applying
+cortex-ia update --allow-checksum-updates  # Verify by SHA-256 checksum when no trust bundle is packaged
+cortex-ia update schedule enable|disable|status  # Manage the daily headless check task
+```
+
+| Flag | Description |
+|------|-------------|
+| `--check` | Check whether an update is available without downloading or applying it |
+| `--scheduled` | Headless check-only mode for the OS scheduler; valid only with `--check` |
+| `--allow-checksum-updates` | Grant per-run consent to verify releases by SHA-256 checksum only when the build carries no trust bundle. Ignored when a trust bundle is packaged. |
+
+A build with a packaged trust bundle always verifies with Ed25519 (`strict`);
+`--allow-checksum-updates` is ignored in that case. Bundle-less builds fail
+closed without this consent. See
+[`updater-verification-profiles.md`](../reference/updater-verification-profiles.md) for the
+profiles, the checksum threat model, and the fail-closed default.
+
+## Environment Variables
+
+cortex-ia requires no environment variables. Optional:
+
+| Variable | Description |
+|----------|-------------|
+| `CORTEX_IA_HOME` | Override the state root (default `~/.cortex-ia/`). Must resolve to an absolute path; used by automation and tests. |
+| `CORTEX_IA_DEBUG` | Enable debug tracing when set to `1`, `true`, or `yes`. Debug output goes to stderr and a file; stdout stays reserved for command receipts. The `--debug` flag enables the same tracing per invocation. |
+| `CORTEX_IA_ALLOW_CHECKSUM_UPDATES` | Grant per-run consent to verify updates by SHA-256 checksum only when no trust bundle is packaged. Only `1` and `true` (case-insensitive) grant consent; any other value means "not given". Equivalent to `update --allow-checksum-updates`; ignored when a bundle is packaged. See [`updater-verification-profiles.md`](../reference/updater-verification-profiles.md). |
+
+The former `CORTEX_IA_AGY_AUTH` and `GEMINI_API_KEY` variables authenticated the retired external AGY leaf. They are dead: execution is native-only and neither variable is read.
+
+## Interactive TUI
+
+When run without arguments, cortex-ia launches the interactive installation dashboard. Navigation: `Esc` goes back, `q` quits, `Enter` confirms.
+
+## State
+
+cortex-ia persists installation state at `~/.cortex-ia/`:
+
+| File | Purpose |
+|------|---------|
+| `state.json` | Installation metadata — the record `sync` reconciles against |
+| `cortex-ia.lock` | Concrete written-file list with checksums |
+| `install-status.json` | Crash-detection marker (ephemeral) |
+
+## Health Checks
+
+`cortex-ia doctor` runs a read-only assessment of the installed home: artifact presence and drift, detected coding CLIs, the resolved OpenCode root and selection, managed MCP entries, and any unknown MCPs. It prints a verdict and exits non-zero when the verdict is degraded or blocked.
+
+## Backup & Restore
+
+### Automatic backups
+
+Every `install`, `sync`, and `uninstall` creates a snapshot under `~/.cortex-ia/backups/`:
+
+```
+~/.cortex-ia/backups/
+├── manifest.json
+└── files/
+    └── (copies of all files that will be modified)
+```
+
+### Commands
+
+```bash
+cortex-ia rollback list        # list all backups newest-first
+cortex-ia rollback             # restore the most recent backup
+cortex-ia rollback <backup-id> # restore a specific backup
+```
+
+### Retention
+
+Backups carry two optional manifest fields (both `omitempty`, so legacy backups still load):
+
+| Field | Purpose |
+|-------|---------|
+| `pinned` | Excludes the backup from pruning. Reserved for internally retained snapshots. |
+| `checksum` | SHA-256 over the snapshot inputs. Used by `IsDuplicate` to skip duplicate backups. |
+
+Default retention is the **5 most recent unpinned backups** (`backup.DefaultRetentionCount`). Pruning runs at the end of `install` / `sync` so the backup directory does not grow without bound.
+
+## Dependency Resolution
+
+The installer resolves components with Kahn's topological sort and parallel group detection:
+
+```
+Level 0 (parallel): cortex, context7, skills, built-in work control
+Level 1 (after cortex): conventions
+Level 2 (after cortex + built-in work control): sdd
+```
+
+## Idempotency
+
+cortex-ia is idempotent:
+
+- MCP configs: atomic write with content comparison — skipped when identical
+- System prompts: marker-based injection replaces only managed sections
+- Skills: atomic write — no change when content matches
+- Running `install` twice produces zero file changes on the second run

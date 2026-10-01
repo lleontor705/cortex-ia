@@ -14,10 +14,23 @@ const providersTestHome = "C:/synthetic/providers-home"
 
 func providersFixtureCatalog() *install.ProviderCatalogReport {
 	return &install.ProviderCatalogReport{Providers: []install.ProviderCatalogEntry{{
-		ID:   "nan",
-		Name: "Nan",
+		ID:      "nan",
+		Name:    "Nan",
+		NPM:     "@ai-sdk/openai-compatible",
+		Package: "@opencode/ai/providers/openai-compatible",
+		BaseURL: "https://api.nan.builders/v1",
 		Models: []install.ProviderCatalogModel{
-			{ID: "glm5.3", Name: "GLM 5.3", Efforts: []string{"low", "medium", "high", "max"}},
+			{
+				ID: "glm5.3", Name: "GLM 5.3", Efforts: []string{"low", "medium", "high", "max"},
+				Limit:      &install.ProviderCatalogLimit{Context: 1048576, Output: 32768},
+				Modalities: &install.ProviderCatalogModalities{Input: []string{"text"}, Output: []string{"text"}},
+				Variants: []install.ProviderCatalogVariant{
+					{ID: "low", ReasoningEffort: "low"},
+					{ID: "medium", ReasoningEffort: "medium"},
+					{ID: "high", ReasoningEffort: "high"},
+					{ID: "max", ReasoningEffort: "max"},
+				},
+			},
 			{ID: "glm5.3-flash", Name: "GLM 5.3 Flash", Efforts: []string{"low", "medium", "high", "max"}},
 			{ID: "qwen3.6", Name: "Qwen 3.6", Efforts: []string{"none", "minimal", "low", "medium", "high", "max"}},
 			{ID: "gemma4", Name: "Gemma 4", Efforts: []string{"none", "minimal", "low", "medium", "high", "max"}},
@@ -30,8 +43,13 @@ func providersFixtureCatalog() *install.ProviderCatalogReport {
 }
 
 func providersPreviewFixture() *install.ProviderInstallReceipt {
+	entry := providersFixtureCatalog().Providers[0]
 	return &install.ProviderInstallReceipt{
 		Action:             "installed",
+		Entry:              &entry,
+		Container:          "provider",
+		RuntimeMember:      "npm",
+		RuntimeKey:         entry.NPM,
 		Provider:           "nan",
 		ConfigPath:         "C:/synthetic/opencode.jsonc",
 		ReconciledTwinPath: "C:/synthetic/opencode.json",
@@ -133,6 +151,41 @@ func TestREQ_PROV_005_ListRendersCatalogModelsAndEfforts(t *testing.T) {
 	} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("list frame missing %q:\n%s", want, frame)
+		}
+	}
+}
+
+func TestREQ_PROV_005_ListDisclosesRuntimeEndpointAndModelFacts(t *testing.T) {
+	frame := loadedProviders(t).view(240)
+	for _, want := range []string{
+		"Nan",
+		"npm:      @ai-sdk/openai-compatible",
+		"package:  @opencode/ai/providers/openai-compatible",
+		"baseURL:  https://api.nan.builders/v1",
+		"glm5.3  GLM 5.3  ·  limit 1048576/32768  ·  modalities text→text  ·  efforts/variants low, medium, high, max",
+		"mimo-v2.6-flash  MiMo v2.6 Flash  ·  efforts/variants adaptive",
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("list frame missing %q:\n%s", want, frame)
+		}
+	}
+}
+
+func TestREQ_PROV_005_PreviewRendersCatalogProjectionAndResolvedRuntime(t *testing.T) {
+	stubProvidersPreview(t, func(string, string) (*install.ProviderInstallReceipt, error) {
+		return providersPreviewFixture(), nil
+	})
+	s := enterProvidersToken(loadedProviders(t), "sentinel-preview")
+	s, _, cmd := s.update(tea.KeyMsg{Type: tea.KeyEnter})
+	s = s.onResult(cmd().(providersResultMsg))
+	frame := s.view(240)
+	for _, want := range []string{
+		"Catálogo", "nombre:   Nan", "baseURL:  https://api.nan.builders/v1",
+		"container: provider", "runtime:   npm @ai-sdk/openai-compatible",
+		"glm5.3  GLM 5.3  ·  limit 1048576/32768",
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("preview frame missing %q:\n%s", want, frame)
 		}
 	}
 }

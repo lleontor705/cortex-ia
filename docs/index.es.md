@@ -20,7 +20,7 @@ de agentes en paralelo.
 | 🚀 Inicio rápido | ⚙️ Instalación | 💻 CLI no interactiva | 🏛️ Arquitectura |
 |---|---|---|---|
 | Tu primer flujo de agentes coordinados en tres pasos. | Binarios precompilados, `go install` y el script de instalación. | Scripts, CI y recetas de Docker con recibos JSON. | Capas del motor, autoridad de tareas en SQLite e invariantes de seguridad. |
-| [Empezar →](quickstart.md) | [Instalar →](installation.md) | [Automatizar →](non-interactive.md) | [Explorar →](architecture.md) |
+| [Empezar →](getting-started/quickstart.md) | [Instalar →](getting-started/installation.md) | [Automatizar →](getting-started/non-interactive.md) | [Explorar →](architecture/architecture.md) |
 
 ## ¿Qué es Cortex-IA?
 

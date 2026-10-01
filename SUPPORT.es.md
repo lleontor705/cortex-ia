@@ -24,8 +24,8 @@ Antes de abrir una solicitud, los siguientes recursos pueden responder tu pregun
 
 - **[README.md](README.md)** — descripción general del proyecto e inicio rápido.
 - **[docs/](docs/)** — índice de documentación, que incluye
-  [installation.md](docs/installation.md), [quickstart.md](docs/quickstart.md),
-  [configuration.md](docs/configuration.md) y [mcp.md](docs/mcp.md).
+  [installation.md](docs/getting-started/installation.md), [quickstart.md](docs/getting-started/quickstart.md),
+  [configuration.md](docs/getting-started/configuration.md) y [mcp.md](docs/operations/mcp.md).
 - **[CHANGELOG.md](CHANGELOG.md)** — historial de versiones y cambios recientes.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — reglas de flujo de trabajo, ramas y commits.
 

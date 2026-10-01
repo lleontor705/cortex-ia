@@ -24,8 +24,8 @@ Before opening a request, the following resources may answer your question:
 
 - **[README.md](README.md)** — project overview and quickstart.
 - **[docs/](docs/)** — documentation index, including
-  [installation.md](docs/installation.md), [quickstart.md](docs/quickstart.md),
-  [configuration.md](docs/configuration.md), and [mcp.md](docs/mcp.md).
+  [installation.md](docs/getting-started/installation.md), [quickstart.md](docs/getting-started/quickstart.md),
+  [configuration.md](docs/getting-started/configuration.md), and [mcp.md](docs/operations/mcp.md).
 - **[CHANGELOG.md](CHANGELOG.md)** — release history and recent changes.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — workflow, branch, and commit rules.
 

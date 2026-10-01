@@ -3,9 +3,10 @@ package providermgr
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -55,41 +56,20 @@ func TestREQ_PROV_001_SeedAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed not materialized: %v", err)
 	}
-	if info.Mode().Perm() != catalogFileMode {
+	// Windows does not represent POSIX permission bits, so the mode assertion is
+	// only meaningful on platforms that do.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != catalogFileMode {
 		t.Fatalf("seed mode = %o, want %o", info.Mode().Perm(), catalogFileMode)
 	}
 
-	want := map[string][]string{
-		"glm5.3":            {"low", "medium", "high", "max"},
-		"glm5.3-flash":      {"low", "medium", "high", "max"},
-		"deepseek-v4-flash": {},
-		"qwen3.8-flash":     {},
-		"mimo-v2.5":         {},
-		"mimo-v2.6-flash":   {},
-		"gemma4":            {"none", "minimal", "low", "medium", "high", "max"},
-		"qwen3.6":           {"none", "minimal", "low", "medium", "high", "max"},
-	}
 	models := nan.Models()
-	if len(models) != len(want) {
-		t.Fatalf("models = %d, want %d", len(models), len(want))
+	if len(models) == 0 {
+		t.Fatal("catalog must declare at least one model")
 	}
 	for _, model := range models {
-		expected, ok := want[model.ID()]
-		if !ok {
-			t.Fatalf("unexpected model %q", model.ID())
+		if strings.TrimSpace(model.ID()) == "" || strings.TrimSpace(model.Name()) == "" {
+			t.Fatalf("model entry must carry an id and a name: %+v", model)
 		}
-		if got := model.Efforts(); !slices.Equal(got, expected) {
-			t.Fatalf("%s efforts = %v, want %v", model.ID(), got, expected)
-		}
-		delete(want, model.ID())
-	}
-	if len(want) != 0 {
-		t.Fatalf("missing models: %v", want)
-	}
-
-	premium, ok := nan.Model("glm5.3")
-	if !ok || !premium.Premium() || premium.Context() != "1M" {
-		t.Fatalf("glm5.3 premium/context = %v/%q", premium.Premium(), premium.Context())
 	}
 }
 
@@ -139,7 +119,7 @@ func TestREQ_PROV_001_MalformedCatalogRejectsTyped(t *testing.T) {
 	}{
 		{"unsupported_schema", `{"schema":"cortex-ia/providers/v999-sentinel"}`, "schema", []string{"v999-sentinel"}},
 		{"missing_models", `{"schema":"cortex-ia/providers/v1","id":"nan","name":"Nan","npm":"pkg","baseURL":"https://example.invalid/v1"}`, "models", nil},
-		{"non_array_efforts", `{"schema":"cortex-ia/providers/v1","id":"nan","name":"Nan","npm":"pkg","baseURL":"https://example.invalid/v1","models":[{"id":"glm5.3","name":"GLM 5.3","efforts":"high"}]}`, "models[0].efforts", nil},
+		{"non_array_efforts", `{"schema":"cortex-ia/providers/v1","id":"nan","name":"Nan","npm":"pkg","baseURL":"https://example.invalid/v1","models":[{"id":"m","name":"M","efforts":"high"}]}`, "models[0].efforts", nil},
 		{"unknown_top_level", `{"schema":"cortex-ia/providers/v1","id":"nan","name":"Nan","npm":"pkg","baseURL":"https://example.invalid/v1","token_value":"SENTINEL-TOP","models":[{"id":"m","name":"M","efforts":[]}]}`, "token_value", []string{"SENTINEL-TOP"}},
 		{"unknown_model_field", `{"schema":"cortex-ia/providers/v1","id":"nan","name":"Nan","npm":"pkg","baseURL":"https://example.invalid/v1","models":[{"id":"m","name":"M","efforts":[],"evil":"SENTINEL-MODEL"}]}`, "models[0].evil", []string{"SENTINEL-MODEL"}},
 	}
@@ -180,12 +160,22 @@ func TestREQ_PROV_001_MalformedCatalogRejectsTyped(t *testing.T) {
 }
 
 func TestREQ_PROV_001_AccessorsReturnDeepCopies(t *testing.T) {
-	_, _, providers := loadInIsolatedRoot(t)
+	stateRoot := t.TempDir()
+	t.Setenv("CORTEX_IA_HOME", stateRoot)
+	body := `{"schema":"cortex-ia/providers/v1","id":"nan","name":"Nan","npm":"pkg","baseURL":"https://example.invalid/v1","models":[` +
+		`{"id":"alpha","name":"Alpha","efforts":["low"]},` +
+		`{"id":"beta","name":"Beta","efforts":[]}]}`
+	writeCatalog(t, stateRoot, body)
+
+	providers, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
 	nan := providers[0]
 
 	models := nan.Models()
 	models[0] = ModelDef{id: "mutated"}
-	if again := nan.Models(); len(again) != 8 || again[0].ID() != "glm5.3" {
+	if again := nan.Models(); len(again) != 2 || again[0].ID() != "alpha" {
 		t.Fatalf("Models() aliases provider state: %+v", again)
 	}
 
@@ -195,12 +185,12 @@ func TestREQ_PROV_001_AccessorsReturnDeepCopies(t *testing.T) {
 		t.Fatalf("Efforts() aliases provider state: %v", again)
 	}
 
-	model, ok := nan.Model("glm5.3")
+	model, ok := nan.Model("alpha")
 	if !ok {
-		t.Fatal("glm5.3 not found")
+		t.Fatal("alpha not found")
 	}
 	model.efforts[0] = "mutated"
-	again, _ := nan.Model("glm5.3")
+	again, _ := nan.Model("alpha")
 	if again.Efforts()[0] != "low" {
 		t.Fatalf("Model() aliases provider state: %v", again.Efforts())
 	}
@@ -209,7 +199,7 @@ func TestREQ_PROV_001_AccessorsReturnDeepCopies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if reloaded[0].Models()[0].ID() != "glm5.3" || reloaded[0].Models()[0].Efforts()[0] != "low" {
+	if reloaded[0].Models()[0].ID() != "alpha" || reloaded[0].Models()[0].Efforts()[0] != "low" {
 		t.Fatal("reloaded catalog mutated by an earlier caller")
 	}
 
@@ -225,5 +215,69 @@ func TestREQ_PROV_001_AccessorsReturnDeepCopies(t *testing.T) {
 	clonedModels[0] = ModelDef{id: "b"}
 	if directProvider.models[0].id != "a" {
 		t.Fatalf("Models() aliases provider models: %+v", directProvider.models)
+	}
+}
+
+func TestREQ_PROV_001_MalformedLimitAndModalitiesRejectTyped(t *testing.T) {
+	cases := []struct {
+		name   string
+		member string
+		field  string
+	}{
+		{"limit_not_object", `"limit":5`, "models[0].limit"},
+		{"limit_missing_output", `"limit":{"context":1}`, "models[0].limit.output"},
+		{"limit_unknown_field", `"limit":{"context":1,"output":2,"evil":true}`, "models[0].limit.evil"},
+		{"limit_non_integer", `"limit":{"context":1.5,"output":2}`, "models[0].limit.context"},
+		{"modalities_not_object", `"modalities":[]`, "models[0].modalities"},
+		{"modalities_empty_input", `"modalities":{"input":[],"output":["text"]}`, "models[0].modalities.input"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stateRoot := t.TempDir()
+			t.Setenv("CORTEX_IA_HOME", stateRoot)
+			body := fmt.Sprintf(`{"schema":"cortex-ia/providers/v1","id":"nan","name":"Nan","npm":"pkg","baseURL":"https://example.invalid/v1","models":[{"id":"m","name":"M","efforts":[],%s}]}`, tc.member)
+			path := writeCatalog(t, stateRoot, body)
+
+			_, err := Load(t.TempDir())
+			var invalid *InvalidCatalogError
+			if !errors.As(err, &invalid) {
+				t.Fatalf("error %v is not *InvalidCatalogError", err)
+			}
+			if invalid.Field != tc.field {
+				t.Fatalf("field = %q, want %q", invalid.Field, tc.field)
+			}
+			after, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatalf("read back: %v", readErr)
+			}
+			if !bytes.Equal(after, []byte(body)) {
+				t.Fatal("malformed catalog was rewritten")
+			}
+		})
+	}
+}
+
+func TestREQ_PROV_001_OptionalLimitAndModalitiesAccepted(t *testing.T) {
+	stateRoot := t.TempDir()
+	t.Setenv("CORTEX_IA_HOME", stateRoot)
+	body := `{"schema":"cortex-ia/providers/v1","id":"nan","name":"Nan","npm":"pkg","baseURL":"https://example.invalid/v1","models":[` +
+		`{"id":"m","name":"M","efforts":[],"limit":{"context":1000,"output":500},"modalities":{"input":["text"],"output":["text"]}},` +
+		`{"id":"bare","name":"Bare","efforts":[]}]}`
+	writeCatalog(t, stateRoot, body)
+
+	providers, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	withLimit, _ := providers[0].Model("m")
+	if limit, ok := withLimit.Limit(); !ok || limit.Context != 1000 || limit.Output != 500 {
+		t.Fatalf("m limit = %+v (present=%v)", limit, ok)
+	}
+	bare, _ := providers[0].Model("bare")
+	if _, ok := bare.Limit(); ok {
+		t.Fatal("bare model must report no limit")
+	}
+	if _, ok := bare.Modalities(); ok {
+		t.Fatal("bare model must report no modalities")
 	}
 }

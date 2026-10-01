@@ -17,7 +17,7 @@ development with **OpenCode** — a single portable Go binary that makes paralle
 | 🚀 Quickstart | ⚙️ Installation | 💻 Non-interactive CLI | 🏛️ Architecture |
 |---|---|---|---|
 | Your first coordinated agent workflow in three steps. | Precompiled binaries, `go install`, and the install script. | Scripting, CI, and Docker recipes with JSON receipts. | Engine layers, SQLite task authority, and safety invariants. |
-| [Get started →](quickstart.md) | [Install →](installation.md) | [Automate →](non-interactive.md) | [Explore →](architecture.md) |
+| [Get started →](getting-started/quickstart.md) | [Install →](getting-started/installation.md) | [Automate →](getting-started/non-interactive.md) | [Explore →](architecture/architecture.md) |
 
 ## What is Cortex-IA?
 

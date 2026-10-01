@@ -270,7 +270,7 @@ type RetiredSurfaceError struct {
 
 func (e RetiredSurfaceError) Error() string {
 	return fmt.Sprintf(
-		"%q was removed from the OpenCode CLI; available commands: install, sync, snapshot, work, worktree, board, ledger, ui, openspec, web, doc, diagram, mcp, model, report, doctor, rollback, recover, uninstall, update, version, help",
+		"%q was removed from the OpenCode CLI; available commands: install, sync, snapshot, work, worktree, board, ledger, ui, openspec, web, doc, diagram, mcp, model, stats, report, doctor, rollback, recover, uninstall, update, version, help",
 		e.Surface,
 	)
 }
@@ -365,6 +365,7 @@ Usage:
                                      Validate, render, compare, or trace system diagrams
   cortex-ia report error|send|config|flush|status
                                       Report errors or manage reporting configuration
+  cortex-ia stats [--json]            Print bounded read-only usage statistics
   cortex-ia doctor                   Assess installation health (read-only)
   cortex-ia rollback [backup-id]|list  Restore a backup or list available backups
   cortex-ia recover [list]           List pending recovery journals (read-only)

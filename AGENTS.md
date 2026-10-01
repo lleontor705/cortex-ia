@@ -126,7 +126,7 @@ Project-level skills are located in `.agents/skills/` (ready for use in this rep
 
 ## Repository Workflow
 
-- Before code changes, load the task-matched `SKILL.md`; SDD and utility skill sources are under `internal/assets/skills/`. Load `go-testing` when writing tests. See `docs/sdd-workflow.md` only when the phase map is needed.
+- Before code changes, load the task-matched `SKILL.md`; SDD and utility skill sources are under `internal/assets/skills/`. Load `go-testing` when writing tests. See `docs/operations/sdd-workflow.md` only when the phase map is needed.
 - PR CI requires a branch matching `<type>/<lowercase-name>`, a body containing `Closes #N`, `Fixes #N`, or `Resolves #N`, every linked issue labeled `status:approved`, and exactly one `type:*` PR label.
 - Commit first lines are enforced only to 10-72 characters by Husky, but repository convention is Conventional Commits; release changelog inclusion depends on `feat`, `fix`, `refactor`, and `perf` prefixes.
 

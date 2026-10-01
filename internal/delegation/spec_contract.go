@@ -1,6 +1,7 @@
 package delegation
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -165,46 +167,127 @@ func hashJSON(value any) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// fingerprintFile rejects symlinks, including parent components, and streams the full
-// content into the digest. The result is fixed-width, so the binding persisted in
-// binding_json stays far below its 64 KiB column cap no matter how large the file is.
-// It does not sandbox other processes or close the check-to-write race.
+// fingerprintFile classifies one allowed-files entry. Existing regular files keep the
+// streaming content digest; existing directories and glob patterns are digested from the
+// git-tracked regular files they cover; a missing path keeps the literal "absent"
+// sentinel. Tracking-aware digests keep the binding bounded — an ignored dependency cache
+// with no tracked files collapses to one stable value — while still detecting every change
+// to tracked content. It rejects symlinks, including parent components, and the result is
+// fixed-width, so the binding persisted in binding_json stays far below its 64 KiB column
+// cap no matter how large a tree is. It does not sandbox other processes or close the
+// check-to-write race.
 func fingerprintFile(workspace, relative string) (string, error) {
 	clean, err := canonicalLeasePath(relative)
 	if err != nil {
 		return "", err
 	}
-	current := workspace
-	for _, component := range strings.Split(filepath.ToSlash(clean), "/") {
-		current = filepath.Join(current, component)
-		info, statErr := os.Lstat(current)
+	info, statErr := lstatChain(workspace, clean)
+	if statErr != nil {
+		if isGlobPattern(clean) {
+			return fingerprintTrackedTree(workspace, clean)
+		}
 		if errors.Is(statErr, os.ErrNotExist) {
 			return "absent", nil
 		}
-		if statErr != nil {
-			return "", statErr
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return "", errors.New("fingerprint paths must not contain symlinks")
-		}
+		return "", statErr
 	}
-	f, err := os.Open(current)
+	if info.IsDir() {
+		return fingerprintTrackedTree(workspace, clean)
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("fingerprint requires explicit regular files or directories")
+	}
+	f, err := os.Open(filepath.Join(workspace, filepath.FromSlash(clean)))
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = f.Close() }()
-	info, err := f.Stat()
-	if err != nil {
-		return "", err
-	}
-	if !info.Mode().IsRegular() {
-		return "", errors.New("fingerprint requires explicit regular files")
-	}
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err
 	}
 	return "file:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// lstatChain walks every component and rejects symlinks. A missing component surfaces the
+// raw os.ErrNotExist so the caller can map it to the "absent" sentinel.
+func lstatChain(workspace, clean string) (os.FileInfo, error) {
+	current := workspace
+	var last os.FileInfo
+	for _, component := range strings.Split(filepath.ToSlash(clean), "/") {
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return nil, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil, errors.New("fingerprint paths must not contain symlinks")
+		}
+		last = info
+	}
+	return last, nil
+}
+
+// isGlobPattern reports whether an entry is a path pattern rather than a literal path.
+// Only "*" and "?" are treated as glob metacharacters; both are illegal in Windows file
+// names, which is what let literal Lstat break glob entries on that platform.
+func isGlobPattern(value string) bool {
+	return strings.ContainsAny(value, "*?")
+}
+
+// fingerprintTrackedTree digests the git-tracked regular files covered by a directory or
+// glob entry. Only tracked files are read, so ignored build output and dependency caches
+// cannot make the binding unbounded, and a tree with no tracked files hashes to the stable
+// empty-set digest instead of failing.
+func fingerprintTrackedTree(workspace, pattern string) (string, error) {
+	tracked, err := listTrackedFiles(workspace, pattern)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	for _, name := range tracked {
+		info, statErr := os.Lstat(filepath.Join(workspace, filepath.FromSlash(name)))
+		if statErr == nil && !info.Mode().IsRegular() {
+			continue // symlinks and submodule gitlinks are not regular files
+		}
+		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+			return "", statErr
+		}
+		digest, err := fingerprintFile(workspace, name)
+		if err != nil {
+			return "", err
+		}
+		if _, err := fmt.Fprintf(h, "%s\x00%s\x00", name, digest); err != nil {
+			return "", err
+		}
+	}
+	return "tree:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// trackedFilesTimeout bounds the git query that backs a directory or glob fingerprint.
+const trackedFilesTimeout = 30 * time.Second
+
+// listTrackedFiles returns the sorted workspace-relative paths of git-tracked files that
+// match a directory entry or glob pattern.
+func listTrackedFiles(workspace, pattern string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), trackedFilesTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, "git", "-C", workspace, "ls-files", "-z", "--", pattern)
+	command.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	if err := command.Run(); err != nil {
+		return nil, fmt.Errorf("list git-tracked files for %s: %w: %s", pattern, err, strings.TrimSpace(stderr.String()))
+	}
+	fields := bytes.Split(stdout.Bytes(), []byte{0})
+	files := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if len(field) != 0 {
+			files = append(files, filepath.ToSlash(string(field)))
+		}
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 func currentReviewBinding(ctx context.Context, conn *sql.Conn, id string) (string, error) {

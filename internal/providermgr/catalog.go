@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -50,6 +51,7 @@ type Provider struct {
 	id            string
 	name          string
 	npm           string
+	pkg           string
 	baseURL       string
 	docs          string
 	effortPosture string
@@ -58,11 +60,28 @@ type Provider struct {
 
 // ModelDef is one chat model declared by a provider catalog.
 type ModelDef struct {
-	id      string
-	name    string
-	efforts []string
-	context string
-	premium bool
+	id         string
+	name       string
+	efforts    []string
+	context    string
+	premium    bool
+	limit      *ModelLimit
+	modalities *ModelModalities
+}
+
+// ModelLimit is the numeric context and output token budget a model declares.
+// It is optional: a catalog model without a limit emits no limit object, so an
+// informational model (such as a non-chat utility entry) stays valid.
+type ModelLimit struct {
+	Context int64
+	Output  int64
+}
+
+// ModelModalities is the accepted input and output media types of a model. It
+// is optional and, like Limit, mirrored from the published provider matrix.
+type ModelModalities struct {
+	Input  []string
+	Output []string
 }
 
 // InvalidCatalogError reports a provider catalog that violates the typed
@@ -94,6 +113,11 @@ func (p Provider) Name() string { return p.name }
 
 // NPM returns the OpenCode provider npm package.
 func (p Provider) NPM() string { return p.npm }
+
+// Package returns the optional OpenCode v2 runtime provider package, empty when
+// the catalog declares none. A caller writing the v2 plural shape falls back to
+// NPM when it is empty.
+func (p Provider) Package() string { return p.pkg }
 
 // BaseURL returns the provider API base URL.
 func (p Provider) BaseURL() string { return p.baseURL }
@@ -144,10 +168,45 @@ func (m ModelDef) Context() string { return m.context }
 // Premium reports whether the model is premium-gated.
 func (m ModelDef) Premium() bool { return m.premium }
 
+// Limit returns the numeric context/output token budget. It reports false when
+// the model declares none.
+func (m ModelDef) Limit() (ModelLimit, bool) {
+	if m.limit == nil {
+		return ModelLimit{}, false
+	}
+	return *m.limit, true
+}
+
+// Modalities returns a deep copy of the accepted media types. It reports false
+// when the model declares none, so a caller can omit the field entirely.
+func (m ModelDef) Modalities() (ModelModalities, bool) {
+	if m.modalities == nil {
+		return ModelModalities{}, false
+	}
+	return ModelModalities{
+		Input:  copyStrings(m.modalities.Input),
+		Output: copyStrings(m.modalities.Output),
+	}, true
+}
+
 func (m ModelDef) clone() ModelDef {
 	clone := m
-	clone.efforts = append(make([]string, 0, len(m.efforts)), m.efforts...)
+	clone.efforts = copyStrings(m.efforts)
+	if m.limit != nil {
+		limit := *m.limit
+		clone.limit = &limit
+	}
+	if m.modalities != nil {
+		clone.modalities = &ModelModalities{
+			Input:  copyStrings(m.modalities.Input),
+			Output: copyStrings(m.modalities.Output),
+		}
+	}
 	return clone
+}
+
+func copyStrings(values []string) []string {
+	return append(make([]string, 0, len(values)), values...)
 }
 
 // StateRoot resolves the Cortex-IA state root for the given user home. An
@@ -244,6 +303,7 @@ var catalogFields = map[string]bool{
 	"id":             true,
 	"name":           true,
 	"npm":            true,
+	"package":        true,
 	"baseURL":        true,
 	"docs":           true,
 	"effort_posture": true,
@@ -251,11 +311,13 @@ var catalogFields = map[string]bool{
 }
 
 var modelFields = map[string]bool{
-	"id":      true,
-	"name":    true,
-	"efforts": true,
-	"context": true,
-	"premium": true,
+	"id":         true,
+	"name":       true,
+	"efforts":    true,
+	"context":    true,
+	"premium":    true,
+	"limit":      true,
+	"modalities": true,
 }
 
 func parseProvider(providerID string, raw []byte) (Provider, error) {
@@ -286,6 +348,10 @@ func parseProvider(providerID string, raw []byte) (Provider, error) {
 	if err != nil {
 		return Provider{}, err
 	}
+	pkg, err := optionalString(providerID, root, "package", "package")
+	if err != nil {
+		return Provider{}, err
+	}
 	baseURL, err := requiredString(providerID, root, "baseURL", "baseURL")
 	if err != nil {
 		return Provider{}, err
@@ -309,6 +375,7 @@ func parseProvider(providerID string, raw []byte) (Provider, error) {
 		id:            id,
 		name:          name,
 		npm:           npm,
+		pkg:           pkg,
 		baseURL:       baseURL,
 		docs:          docs,
 		effortPosture: posture,
@@ -376,8 +443,108 @@ func parseModel(providerID string, index int, item any) (ModelDef, error) {
 	if err != nil {
 		return ModelDef{}, err
 	}
+	limit, err := parseLimit(providerID, object, index)
+	if err != nil {
+		return ModelDef{}, err
+	}
+	modalities, err := parseModalities(providerID, object, index)
+	if err != nil {
+		return ModelDef{}, err
+	}
 
-	return ModelDef{id: id, name: name, efforts: efforts, context: context, premium: premium}, nil
+	return ModelDef{
+		id:         id,
+		name:       name,
+		efforts:    efforts,
+		context:    context,
+		premium:    premium,
+		limit:      limit,
+		modalities: modalities,
+	}, nil
+}
+
+func parseLimit(providerID string, object map[string]any, index int) (*ModelLimit, error) {
+	field := modelFieldPath(index, "limit")
+	raw, present := object["limit"]
+	if !present || raw == nil {
+		return nil, nil
+	}
+	limitObject, ok := raw.(map[string]any)
+	if !ok {
+		return nil, invalidCatalog(providerID, field, "must be a JSON object")
+	}
+	for key := range limitObject {
+		if key != "context" && key != "output" {
+			return nil, invalidCatalog(providerID, field+"."+key, "is not a known limit field")
+		}
+	}
+	context, err := requiredPositiveInt(providerID, limitObject, "context", field+".context")
+	if err != nil {
+		return nil, err
+	}
+	output, err := requiredPositiveInt(providerID, limitObject, "output", field+".output")
+	if err != nil {
+		return nil, err
+	}
+	return &ModelLimit{Context: context, Output: output}, nil
+}
+
+func parseModalities(providerID string, object map[string]any, index int) (*ModelModalities, error) {
+	field := modelFieldPath(index, "modalities")
+	raw, present := object["modalities"]
+	if !present || raw == nil {
+		return nil, nil
+	}
+	modalitiesObject, ok := raw.(map[string]any)
+	if !ok {
+		return nil, invalidCatalog(providerID, field, "must be a JSON object")
+	}
+	for key := range modalitiesObject {
+		if key != "input" && key != "output" {
+			return nil, invalidCatalog(providerID, field+"."+key, "is not a known modalities field")
+		}
+	}
+	input, err := requiredMediaTypes(providerID, modalitiesObject, "input", field+".input")
+	if err != nil {
+		return nil, err
+	}
+	output, err := requiredMediaTypes(providerID, modalitiesObject, "output", field+".output")
+	if err != nil {
+		return nil, err
+	}
+	return &ModelModalities{Input: input, Output: output}, nil
+}
+
+func requiredPositiveInt(providerID string, object map[string]any, key, field string) (int64, error) {
+	raw, present := object[key]
+	if !present {
+		return 0, invalidCatalog(providerID, field, "is required")
+	}
+	number, ok := raw.(float64)
+	if !ok || number <= 0 || number != math.Trunc(number) {
+		return 0, invalidCatalog(providerID, field, "must be a positive integer")
+	}
+	return int64(number), nil
+}
+
+func requiredMediaTypes(providerID string, object map[string]any, key, field string) ([]string, error) {
+	raw, present := object[key]
+	if !present {
+		return nil, invalidCatalog(providerID, field, "is required")
+	}
+	items, ok := raw.([]any)
+	if !ok || len(items) == 0 {
+		return nil, invalidCatalog(providerID, field, "must be a non-empty array of strings")
+	}
+	media := make([]string, 0, len(items))
+	for position, item := range items {
+		value, ok := item.(string)
+		if !ok || strings.TrimSpace(value) == "" {
+			return nil, invalidCatalog(providerID, fmt.Sprintf("%s[%d]", field, position), "must be a non-empty string")
+		}
+		media = append(media, value)
+	}
+	return media, nil
 }
 
 func parseEfforts(providerID string, object map[string]any, index int) ([]string, error) {
