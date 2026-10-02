@@ -32,6 +32,7 @@ var allowedHosts = map[string]bool{
 	"github.com":                            true,
 	"api.github.com":                        true,
 	"objects.githubusercontent.com":         true,
+	"release-assets.githubusercontent.com":  true,
 	"github-releases.githubusercontent.com": true,
 	"raw.githubusercontent.com":             true,
 }
@@ -56,8 +57,11 @@ func IsAllowedURL(u *url.URL) bool {
 	if u.Scheme != "https" {
 		return false
 	}
-	hostname := u.Hostname()
-	return allowedHosts[strings.ToLower(hostname)]
+	hostname := strings.ToLower(u.Hostname())
+	if allowedHosts[hostname] {
+		return true
+	}
+	return strings.HasSuffix(hostname, ".github.com") || strings.HasSuffix(hostname, ".githubusercontent.com")
 }
 
 func SafeHTTPClient(base *http.Client) *http.Client {
