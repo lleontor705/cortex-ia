@@ -19,6 +19,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/internal/telemetry"
 )
 
 // ErrHomeBusy reports that another process holds this home's mutation lock.
@@ -181,8 +182,31 @@ func (s *Service) Install(opts Options) (*InstallReceipt, error) {
 	receipt, err := s.applyServicePlan(opts, req, plan, pipeline.PlanInstall, "install")
 	if receipt != nil {
 		receipt.Warnings = append(receipt.Warnings, warnings...)
+		if err == nil && !opts.DryRun {
+			receipt.Warnings = append(receipt.Warnings, s.reportingWarnings()...)
+		}
 	}
 	return receipt, err
+}
+
+// reportingWarnings makes the installed binary able to report errors without a
+// manual follow-up: on first configuration it persists the environment signing
+// secret (release binaries embed one, source builds embed none), and when no
+// secret resolves at all it attaches the exact remediation instead of letting
+// the first incident fail later as a silent 401. Read-only apart from that
+// first bootstrap write.
+func (s *Service) reportingWarnings() []string {
+	wrote, err := telemetry.BootstrapFromEnv(s.homeDir)
+	if err != nil {
+		return []string{fmt.Sprintf("error reporting config not persisted: %v; run \"cortex-ia report config --secret <KEY>\"", err)}
+	}
+	if _, ok := telemetry.SecretOrigin(s.homeDir); !ok {
+		return []string{"error reporting has no signing secret (source builds embed none): run \"cortex-ia report config --secret <KEY>\"; doctor flags it too"}
+	}
+	if wrote {
+		return []string{"error reporting signing secret persisted from CORTEX_REPORT_SECRET"}
+	}
+	return nil
 }
 
 // preflightCortexBinary best-effort installs the cortex executable before the
@@ -236,6 +260,9 @@ func (s *Service) Sync(opts Options) (*InstallReceipt, error) {
 	receipt, err := s.applyServicePlan(opts, req, plan, pipeline.PlanSync, "sync")
 	if receipt != nil {
 		receipt.Warnings = append(receipt.Warnings, warnings...)
+		if err == nil && !opts.DryRun {
+			receipt.Warnings = append(receipt.Warnings, s.reportingWarnings()...)
+		}
 	}
 	return receipt, err
 }

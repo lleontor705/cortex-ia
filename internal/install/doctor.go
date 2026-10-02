@@ -13,6 +13,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/internal/telemetry"
 )
 
 // DoctorVerdict summarizes a doctor report.
@@ -230,7 +231,25 @@ func (s *Service) Doctor() (*DoctorReport, error) {
 	s.assessState(report)
 	s.assessCortexBinary(report)
 	s.assessJournals(report)
+	s.assessReporting(report)
 	return report, nil
+}
+
+// assessReporting records a suggest-only finding when reporting is enabled but
+// no signing secret resolves (environment, config file, or the secret linked
+// into a release binary): every send would be rejected by the hub with 401.
+// Doctor never mutates configuration, so — like the cortex binary check — the
+// verdict stays untouched and the finding carries the exact remediation.
+// Disabled reporting is not a finding.
+func (s *Service) assessReporting(report *DoctorReport) {
+	if _, ok := telemetry.SecretOrigin(s.homeDir); ok {
+		return
+	}
+	if cfg, err := telemetry.LoadConfig(s.homeDir); err == nil && !cfg.Enabled {
+		return
+	}
+	report.Findings = append(report.Findings,
+		"error reporting has no signing secret: every report would be rejected with 401; run \"cortex-ia report config --secret <KEY>\" or install a release binary, which embeds it")
 }
 
 // assessCortexBinary records a suggest-only finding when the cortex executable
