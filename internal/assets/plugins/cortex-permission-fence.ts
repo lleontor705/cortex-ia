@@ -18,6 +18,9 @@ import * as path from "node:path";
 // verifications are logged so lease latency is observable in host logs.
 const EXECUTABLE_LOOKUP_TIMEOUT_MS = 3000;
 const SLOW_ADMISSION_LOG_MS = 2000;
+// The workload audit runs a git diff synchronously on the host event loop; a
+// hung repository degrades to empty stats instead of blocking the session.
+const GIT_DIFF_TIMEOUT_MS = 10000;
 
 function resolveExecutable(cmd: string): string | null {
   const isWin = process.platform === "win32";
@@ -113,6 +116,7 @@ export function auditWorkload(
       maxBuffer: 1024 * 1024,
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
+      timeout: GIT_DIFF_TIMEOUT_MS,
     });
 
     const lines = raw.trim().split(/\r?\n/);

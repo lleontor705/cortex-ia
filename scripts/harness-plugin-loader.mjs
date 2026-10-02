@@ -97,6 +97,11 @@ export function createIsolatedSandbox(options = {}) {
     String,
     Array,
     Object,
+    TextEncoder,
+    TextDecoder,
+    // Tests may inject host stubs (e.g. Bun) for plugins written against the
+    // OpenCode runtime; injected globals win over the defaults above.
+    ...(options.globals || {}),
   };
 
   vm.createContext(sandbox);

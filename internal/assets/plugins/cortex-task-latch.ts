@@ -13,6 +13,13 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+// The circuit report runs synchronously on the host event loop, so its PATH
+// scan and CLI call carry explicit budgets like lease admission: a stalled
+// scan must degrade to a skipped (logged) report instead of blocking the
+// session, and a reported timeout keeps the elapsed time diagnosable.
+const EXECUTABLE_LOOKUP_TIMEOUT_MS = 3000;
+const CIRCUIT_REPORT_TIMEOUT_MS = 3000;
+
 function resolveExecutable(cmd: string): string | null {
   const isWin = process.platform === "win32";
   const locator = isWin ? "where.exe" : "which";
@@ -21,6 +28,7 @@ function resolveExecutable(cmd: string): string | null {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
+      timeout: EXECUTABLE_LOOKUP_TIMEOUT_MS,
     }).trim();
     if (out) {
       const first = out.split(/\r?\n/)[0].trim();
@@ -28,7 +36,11 @@ function resolveExecutable(cmd: string): string | null {
         return first;
       }
     }
-  } catch {}
+  } catch (error: any) {
+    if (error?.code === "ETIMEDOUT") {
+      console.warn(`[CORTEX_TASK_LATCH] executable lookup for '${cmd}' timed out after ${EXECUTABLE_LOOKUP_TIMEOUT_MS}ms; circuit report skipped`);
+    }
+  }
   return null;
 }
 
@@ -345,7 +357,7 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
             execFileSync(executable, ["report", "error", "--code", "ERR_SUBAGENT_CIRCUIT_OPEN",
               "--task", recorded.taskId!, "--message", `Subagent circuit tripped after ${recorded.attempts} failures: ${reason}`,
               "--details", JSON.stringify({ role, task_id: recorded.taskId, reason, attempts: recorded.attempts }), "--source", "task-latch-plugin"],
-              { cwd: directory, stdio: "ignore", windowsHide: true, timeout: 3000 });
+              { cwd: directory, stdio: "ignore", windowsHide: true, timeout: CIRCUIT_REPORT_TIMEOUT_MS });
           } catch { /* Reporting availability cannot release the failed-attempt latch. */ }
         }
         throw new Error(`CORTEX_CIRCUIT_OPEN: Repeated terminal failure (${recorded.attempts} attempts: ${reason}); circuit breaker tripped. Supported continuation requires orchestrator reconciliation. ${guidance(recorded)}`);

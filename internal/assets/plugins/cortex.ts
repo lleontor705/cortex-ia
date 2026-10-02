@@ -674,9 +674,14 @@ function persistedSession(sent: {  id: string
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function extractProjectName(directory: string): string {
+// Plugin setup runs synchronously on the host event loop: a hung git lookup
+// must degrade to the directory-derived project name instead of blocking
+// startup (Bun kills the child at the deadline and reports no exit code).
+const GIT_LOOKUP_TIMEOUT_MS = 3000;
+
+export function extractProjectName(directory: string): string {
   try {
-    const result = Bun.spawnSync(["git", "-C", directory, "remote", "get-url", "origin"])
+    const result = Bun.spawnSync(["git", "-C", directory, "remote", "get-url", "origin"], { timeout: GIT_LOOKUP_TIMEOUT_MS })
     if (result.exitCode === 0) {
       const url = result.stdout?.toString().trim()
       if (url) {
@@ -687,7 +692,7 @@ function extractProjectName(directory: string): string {
   } catch {}
 
   try {
-    const result = Bun.spawnSync(["git", "-C", directory, "rev-parse", "--show-toplevel"])
+    const result = Bun.spawnSync(["git", "-C", directory, "rev-parse", "--show-toplevel"], { timeout: GIT_LOOKUP_TIMEOUT_MS })
     if (result.exitCode === 0) {
       const root = result.stdout?.toString().trim()
       if (root) return root.split("/").pop() ?? "unknown"
