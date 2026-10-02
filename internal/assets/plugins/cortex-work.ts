@@ -839,7 +839,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_change_archive: tool({
-      description: "Close one SDD change after durable task approval and current contract/file fingerprint checks. Cortex-only closure writes a logical receipt; OpenSpec/hybrid also archive the change directory. Planner only.",
+      description: "Close an approved SDD change after durable task approval and fingerprint verification (Planner only).",
       args: {
         board_id: tool.schema.string(), change_id: tool.schema.string(),
         workflow: tool.schema.enum(["sdd-lite", "sdd-full"]),
@@ -852,7 +852,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_openspec_write: tool({
-      description: "Write one Markdown planning artifact under openspec/changes. This tool cannot modify product code.",
+      description: "Write a Markdown planning artifact under openspec/changes/.",
       args: { relative_path: tool.schema.string(), content: tool.schema.string() },
       async execute(args, context) {
         const relative = args.relative_path.replaceAll("\\", "/");
@@ -887,7 +887,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_discovery_write: tool({
-      description: "Write the complete project-local .cortex-ia/discovery.md report atomically. This tool is reserved for the discovery agent.",
+      description: "Write the project-local .cortex-ia/discovery.md profile (Discovery agent only).",
       args: { content: tool.schema.string() },
       async execute(args, context) {
         if (context.agent !== "discovery") {
@@ -1016,13 +1016,13 @@ export const CortexWorkPlugin = Plugin.define({
           version: tool.schema.number(), workflow: tool.schema.enum(["sdd-lite", "sdd-full"]),
           change_id: tool.schema.string(), spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid", "speckit"]),
           pins: tool.schema.array(tool.schema.object({
-            transport: tool.schema.string().describe("Pin transport: 'workspace_file' for workspace files (OpenSpec/SpecKit/Hybrid), 'local_cortex_cli' or 'cortex_mcp' for Cortex observations"),
+            transport: tool.schema.string().describe("Pin transport ('workspace_file', 'local_cortex_cli', 'cortex_mcp')"),
             project: tool.schema.string().describe("Workspace root directory or project path"),
-            locator: tool.schema.string().describe("Relative path to specification file (e.g. openspec/changes/<name>/plan.md or specs/...)"),
+            locator: tool.schema.string().describe("Relative path to specification file"),
             sha256: tool.schema.string().describe("64-character lowercase SHA-256 digest")
           })),
           requirement_ids: tool.schema.array(tool.schema.string())
-        }).optional().describe("Required for SDD tasks: exact contract pins and requirement IDs; omitted only for direct/legacy work")
+        }).optional().describe("Required for SDD tasks: contract pins and requirement IDs")
       },
       async execute(args, context) {
         const sdd = args.workflow === "sdd-lite" || args.workflow === "sdd-full";
@@ -1076,7 +1076,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_review_refresh: tool({
-      description: "Reopen a done SDD task for fresh independent review after approved files change. Requires current revision; does not authorize writes or approve anything. Orchestrator only.",
+      description: "Reopen a done SDD task for fresh review after approved files change (Orchestrator only).",
       args: { task_id: tool.schema.string(), revision: tool.schema.number() },
       async execute(args) {
         return cortex(["work", "review-refresh", args.task_id, "--revision", String(args.revision)]);
@@ -1084,7 +1084,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_list: tool({
-      description: "List durable work items, optionally restricted to one board.",
+      description: "List durable work items, optionally filtered by board.",
       args: { board_id: tool.schema.string().optional() },
       async execute(args) {
         const command = ["work", "list"];
@@ -1094,7 +1094,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_status: tool({
-      description: "Read one durable Cortex-IA work item plus token-free bridge authority usability for the current session. Returns not_found if the task does not exist in SQLite.",
+      description: "Get task details and authority usability for the current session.",
       args: { task_id: tool.schema.string(), role: tool.schema.string().optional() },
       async execute(args, context) {
         const hostRole = activeSubagents.get(context.sessionID)?.role || "unknown";
@@ -1128,7 +1128,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_approvals: tool({
-      description: "List historical approval records and review bindings for a durable task.",
+      description: "List historical approval records for a task.",
       args: { task_id: tool.schema.string() },
       async execute(args) {
         return cortex(["work", "approvals", args.task_id]);
@@ -1136,7 +1136,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_fingerprint: tool({
-      description: "Calculate authoritative file and definition SHA-256 fingerprints for a task and verify whether they match the approved binding.",
+      description: "Calculate file fingerprints for a task and verify against approved binding.",
       args: { task_id: tool.schema.string() },
       async execute(args) {
         return cortex(["work", "fingerprint", args.task_id]);
@@ -1144,19 +1144,19 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_recover: tool({
-      description: "Recover expired work claims and leases. This never restores old authority tokens.",
+      description: "Recover expired work claims and leases.",
       args: {},
       async execute() { return cortex(["work", "recover"]); }
     }),
 
     cortex_ia_work_retry: tool({
-      description: "Retry one reconciled blocked work item using revision CAS. Fails closed at the durable attempt limit.",
+      description: "Retry a reconciled blocked task using revision CAS.",
       args: { task_id: tool.schema.string(), revision: tool.schema.number() },
       async execute(args) { return cortex(["work", "retry", args.task_id, "--revision", String(args.revision)]); }
     }),
 
     cortex_ia_work_decompose: tool({
-      description: "Planner-only: atomically supersede one orchestrator-routed blocked task with a sequential chain of 2-8 smaller tasks, preserving its board, project, upstream dependencies, and downstream DAG.",
+      description: "Atomically decompose a blocked task into 2-8 smaller DAG tasks (Planner only).",
       args: {
         task_id: tool.schema.string(),
         revision: tool.schema.number(),
@@ -1186,12 +1186,12 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_claim: tool({
-      description: "Claim one ready work item and optionally reserve initial files atomically. Tokens remain in memory. Auto-maintenance checks host busy/retry every 30s, renews to 15m, and stops after 15m without changed host message/part progress or on idle/error/dispose/delivery. Unavailable host status requires explicit manual renewal; expired authority cannot be revived.",
+      description: "Claim a ready task and atomically reserve file lease(s) (supports path or paths). Tokens remain in memory with automatic heartbeat renewal.",
       args: {
         task_id: tool.schema.string(),
-        path: tool.schema.string().optional().describe("Optional single workspace-relative file to reserve immediately upon claiming"),
-        paths: tool.schema.array(tool.schema.string()).optional().describe("Optional list of workspace-relative files to reserve immediately upon claiming"),
-        ttl: tool.schema.string().optional().describe("Duration such as 15m; defaults to Cortex-IA policy")
+        path: tool.schema.string().optional().describe("Optional single workspace-relative file to reserve upon claiming"),
+        paths: tool.schema.array(tool.schema.string()).optional().describe("Optional list of workspace-relative files to reserve upon claiming"),
+        ttl: tool.schema.string().optional().describe("Duration (e.g. 15m)")
       },
       async execute(args, context) {
         const retained = workAuthority.get(args.task_id);
@@ -1230,12 +1230,12 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_reconcile: tool({
-      description: "Orchestrator-only: force-release a live-but-orphaned work claim so the task can be retried. Fail-closed release conditions are enforced by the durable reconcile verb; host session identity and owner-inactivity evidence come only from this bridge's execution context and host tracking.",
+      description: "Force-release an orphaned live work claim so the task can be retried (Orchestrator only).",
       args: {
         task_id: tool.schema.string(),
-        reason: tool.schema.string().describe("Non-empty bounded explanation recorded in the audit snapshot"),
-        revision: tool.schema.number().describe("Current durable task revision for compare-and-set"),
-        to: tool.schema.enum(["ready"]).optional().describe("Release directly to ready (attempt-capped); defaults to blocked")
+        reason: tool.schema.string().describe("Audit explanation"),
+        revision: tool.schema.number().describe("Current task revision for compare-and-set"),
+        to: tool.schema.enum(["ready"]).optional().describe("Release directly to ready; defaults to blocked")
       },
       async execute(args, context) {
         const command = ["work", "reconcile", args.task_id, "--reason", args.reason,
@@ -1258,7 +1258,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_file_reserve: tool({
-      description: "Reserve one or more workspace-relative files for one claimed task. A live reservation by another task fails closed.",
+      description: "Reserve one or more file leases for a claimed task.",
       args: {
         task_id: tool.schema.string(),
         path: tool.schema.string().optional(),
@@ -1284,7 +1284,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_lease_renew: tool({
-      description: "Renew one live file lease retained by this bridge.",
+      description: "Renew a live file lease retained by this bridge.",
       args: { task_id: tool.schema.string(), path: tool.schema.string(), ttl: tool.schema.string().optional() },
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID);
@@ -1303,7 +1303,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_release_all: tool({
-      description: "Release all task file leases in one transaction. Only a matching durable acknowledgement clears local reservations; failure requires explicit reconciliation.",
+      description: "Release all task file leases in one transaction.",
       args: { task_id: tool.schema.string() },
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID);
@@ -1364,7 +1364,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_transition: tool({
-      description: "Transition a claimed task using authority retained by the bridge. Emits authoritative completion receipt without requiring raw JSON text in chat.",
+      description: "Transition claimed task state (in_review, in_progress, blocked) with evidence.",
       args: {
         task_id: tool.schema.string(),
         to: tool.schema.enum(["in_review", "in_progress", "blocked"]).optional(),
@@ -1405,10 +1405,10 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_approve: tool({
-      description: "Record an independent work verdict. PASS is the only verdict that can produce done.",
+      description: "Record independent task review verdict. PASS transitions task to done.",
       args: {
         task_id: tool.schema.string(),
-        reviewer: tool.schema.string().optional().describe("Legacy display hint; reviewer identity always comes from the host session"),
+        reviewer: tool.schema.string().optional().describe("Reviewer identity; defaults to host session"),
         verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"]),
         evidence: tool.schema.string().optional(),
         revision: tool.schema.number().optional(),
@@ -1432,7 +1432,7 @@ export const CortexWorkPlugin = Plugin.define({
 
 
     cortex_ia_report_error: tool({
-      description: "Emit an operational error and incident report to the central telemetry hub and local audit ledger.",
+      description: "Emit an operational error and incident report to the central telemetry hub and local ledger.",
       args: {
         code: tool.schema.string().describe("Standard error code (ERR_TASK_BLOCKED, ERR_DELEGATION_FAIL, ERR_INVARIANT_VIOLATION)"),
         message: tool.schema.string().describe("Descriptive error message explaining the failure condition"),
