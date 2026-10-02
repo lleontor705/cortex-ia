@@ -149,7 +149,8 @@ func runManualUpdate(checkOnly bool) error {
 	}
 
 	fmt.Printf("Successfully updated cortex-ia to %s! (verification: checksums.txt)\n", rel.TagName)
-	_ = printDualInstallWarning(home)
+	state, _ := updater.LoadUpdateState(home)
+	printDualInstallWarning(state.InstallCandidates)
 	return nil
 }
 
@@ -257,22 +258,10 @@ func managedExecutablePath() string {
 	return execPath
 }
 
-func printDualInstallWarning(v any) error {
-	var candidates []string
-	switch val := v.(type) {
-	case []string:
-		candidates = val
-	case string:
-		if state, err := updater.LoadUpdateState(val); err == nil && len(state.InstallCandidates) > 0 {
-			candidates = state.InstallCandidates
-		} else {
-			candidates = updater.DetectInstallCandidates(managedExecutablePath())
-		}
-	}
+func printDualInstallWarning(candidates []string) {
 	warning := updater.DualInstallWarning(candidates)
 	if warning == "" {
-		return nil
+		return
 	}
 	fmt.Printf("Warning: %s\n", warning)
-	return nil
 }

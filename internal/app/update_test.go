@@ -117,33 +117,10 @@ func TestRunUpdateManualBypassesRecentCheckTTL(t *testing.T) {
 }
 
 func TestPrintDualInstallWarning(t *testing.T) {
-	t.Run("from home state with candidates", func(t *testing.T) {
-		home := t.TempDir()
-		t.Setenv("CORTEX_IA_HOME", home)
-
-		state := updater.UpdateState{
-			SchemaVersion:     updater.UpdateStateSchemaVersion,
-			LastCheckedAt:     time.Now().UTC(),
-			InstallCandidates: []string{"/usr/local/bin/cortex-ia", "/opt/homebrew/bin/cortex-ia"},
-		}
-		if err := updater.SaveUpdateStateAtomic(home, state); err != nil {
-			t.Fatalf("failed to save state: %v", err)
-		}
-
-		out, err := captureStdout(func() error {
-			return printDualInstallWarning(home)
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !strings.Contains(out, "multiple cortex-ia installations detected") {
-			t.Errorf("expected dual install warning, got: %q", out)
-		}
-	})
-
 	t.Run("from candidates slice", func(t *testing.T) {
 		out, err := captureStdout(func() error {
-			return printDualInstallWarning([]string{"/usr/local/bin/cortex-ia", "/opt/homebrew/bin/cortex-ia"})
+			printDualInstallWarning([]string{"/usr/local/bin/cortex-ia", "/opt/homebrew/bin/cortex-ia"})
+			return nil
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -155,7 +132,8 @@ func TestPrintDualInstallWarning(t *testing.T) {
 
 	t.Run("single candidate produces no warning", func(t *testing.T) {
 		out, err := captureStdout(func() error {
-			return printDualInstallWarning([]string{"/usr/local/bin/cortex-ia"})
+			printDualInstallWarning([]string{"/usr/local/bin/cortex-ia"})
+			return nil
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
