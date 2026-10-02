@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"runtime"
 	"strings"
 	"testing"
@@ -166,6 +167,94 @@ func TestDownloadChecksumPipeline(t *testing.T) {
 		candidate, err := v.UpdateCandidate("v0.9.0", "v1.0.0", "")
 		if err != nil || !candidate {
 			t.Fatalf("expected candidate for release build, got cand=%v err=%v", candidate, err)
+		}
+	})
+}
+
+func TestIsAllowedURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		rawURL   string
+		expected bool
+	}{
+		{
+			name:     "allowed_release_assets_host",
+			rawURL:   "https://release-assets.githubusercontent.com/releases/v1.0.0.tar.gz",
+			expected: true,
+		},
+		{
+			name:     "allowed_objects_host",
+			rawURL:   "https://objects.githubusercontent.com/releases/v1.0.0.tar.gz",
+			expected: true,
+		},
+		{
+			name:     "allowed_github_com",
+			rawURL:   "https://github.com/lleontor705/cortex-ia/releases",
+			expected: true,
+		},
+		{
+			name:     "allowed_github_subdomain",
+			rawURL:   "https://api.github.com/repos/lleontor705/cortex-ia",
+			expected: true,
+		},
+		{
+			name:     "allowed_githubusercontent_subdomain",
+			rawURL:   "https://media.githubusercontent.com/media/file.tar.gz",
+			expected: true,
+		},
+		{
+			name:     "allowed_loopback_http",
+			rawURL:   "http://127.0.0.1:8080/cortex-ia.tar.gz",
+			expected: true,
+		},
+		{
+			name:     "allowed_loopback_localhost_https",
+			rawURL:   "https://localhost:8443/cortex-ia.tar.gz",
+			expected: true,
+		},
+		{
+			name:     "disallowed_insecure_http",
+			rawURL:   "http://github.com/archive.tar.gz",
+			expected: false,
+		},
+		{
+			name:     "disallowed_insecure_release_assets",
+			rawURL:   "http://release-assets.githubusercontent.com/archive.tar.gz",
+			expected: false,
+		},
+		{
+			name:     "disallowed_unrelated_domain",
+			rawURL:   "https://evil.com/malicious.tar.gz",
+			expected: false,
+		},
+		{
+			name:     "disallowed_fake_githubusercontent_suffix",
+			rawURL:   "https://attacker-githubusercontent.com/archive.tar.gz",
+			expected: false,
+		},
+		{
+			name:     "disallowed_fake_github_suffix",
+			rawURL:   "https://attacker-github.com/archive.tar.gz",
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			u, err := url.Parse(tc.rawURL)
+			if err != nil {
+				t.Fatalf("failed to parse url %q: %v", tc.rawURL, err)
+			}
+			got := IsAllowedURL(u)
+			if got != tc.expected {
+				t.Errorf("IsAllowedURL(%q) = %v; want %v", tc.rawURL, got, tc.expected)
+			}
+		})
+	}
+
+	t.Run("nil_url_returns_false", func(t *testing.T) {
+		if IsAllowedURL(nil) {
+			t.Error("IsAllowedURL(nil) = true; want false")
 		}
 	})
 }
