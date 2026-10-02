@@ -6,6 +6,8 @@ import (
 )
 
 func TestUpdateChecksumsCli(t *testing.T) {
+	t.Setenv("CORTEX_IA_HOME", t.TempDir())
+
 	t.Run("update_help_reflects_checksums_standard", func(t *testing.T) {
 		out, _ := captureStdout(func() error {
 			return runUpdate([]string{"--help"})
