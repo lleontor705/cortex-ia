@@ -204,10 +204,27 @@ func (h *HubServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// logSafe renders untrusted request fields for log lines: control characters
+// are stripped (log injection) and the value is capped so a hostile payload
+// cannot flood the logs. Report bodies and messages are never logged.
+func logSafe(s string, max int) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	return s
+}
+
 func (h *HubServer) handleCreateReport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	if h.secret == "" {
+		log.Print("🛑 [Report Rejected] status=503 reason=server_secret_unavailable")
 		http.Error(w, "report authentication is unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -215,24 +232,35 @@ func (h *HubServer) handleCreateReport(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	var report telemetry.ErrorReport
 	if err := decoder.Decode(&report); err != nil {
+		log.Printf("🛑 [Report Rejected] status=400 reason=invalid_body remote=%s", logSafe(r.RemoteAddr, 64))
 		http.Error(w, "invalid or oversized report body", http.StatusBadRequest)
 		return
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		log.Printf("🛑 [Report Rejected] status=400 reason=multiple_objects remote=%s", logSafe(r.RemoteAddr, 64))
 		http.Error(w, "report body must contain one object", http.StatusBadRequest)
 		return
 	}
 	if err := telemetry.ValidateReport(&report); err != nil {
+		log.Printf("🛑 [Report Rejected] status=400 reason=validation id=%s schema=%d remote=%s err=%s",
+			logSafe(report.ID, 40), report.SchemaVersion, logSafe(r.RemoteAddr, 64), logSafe(err.Error(), 120))
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if !telemetry.VerifyReport(&report, h.secret) {
+		// A reject here is silent for the sender's data but must be visible in the
+		// logs: schema/secret drift shows up exclusively as 401s.
+		log.Printf("🛑 [Report Rejected] status=401 reason=invalid_signature id=%s schema=%d code=%s source=%s remote=%s",
+			logSafe(report.ID, 40), report.SchemaVersion, logSafe(report.ErrorCode, 64),
+			logSafe(report.Source, 64), logSafe(r.RemoteAddr, 64))
 		http.Error(w, "invalid report signature", http.StatusUnauthorized)
 		return
 	}
 	telemetry.SanitizeReport(&report, h.secret)
 	telemetry.SignReport(&report, h.secret)
 	if err := telemetry.ValidateReport(&report); err != nil {
+		log.Printf("🛑 [Report Rejected] status=400 reason=post_sanitization id=%s remote=%s err=%s",
+			logSafe(report.ID, 40), logSafe(r.RemoteAddr, 64), logSafe(err.Error(), 120))
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -257,6 +285,8 @@ func (h *HubServer) handleCreateReport(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err := h.db.ExecContext(r.Context(), insertSQL, values...)
 	if err != nil {
+		log.Printf("🛑 [Report Rejected] status=500 reason=insert_failed id=%s err=%s",
+			logSafe(report.ID, 40), logSafe(err.Error(), 160))
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "database insert failed: " + err.Error()})
 		return
@@ -273,6 +303,8 @@ func (h *HubServer) handleCreateReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if matching != 1 {
+		log.Printf("🛑 [Report Rejected] status=409 reason=duplicate_identity id=%s schema=%d",
+			logSafe(report.ID, 40), report.SchemaVersion)
 		http.Error(w, "report identity conflicts with existing evidence", http.StatusConflict)
 		return
 	}
