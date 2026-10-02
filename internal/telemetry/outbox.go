@@ -26,7 +26,7 @@ func lockOutbox(home string) (string, *homelock.Lock, error) {
 // EnqueueReport commits sanitized evidence before any network operation.
 func EnqueueReport(home string, report *ErrorReport, secret string) error {
 	if report == nil || secret == "" {
-		return errors.New("authenticated reporting requires a configured signing secret")
+		return ErrMissingSecret
 	}
 	copy := *report
 	SanitizeReport(&copy, secret)
@@ -88,7 +88,7 @@ func FlushReports(ctx context.Context, home string, cfg Config) error {
 		return nil
 	}
 	if cfg.Secret == "" {
-		return errors.New("authenticated reporting requires a configured signing secret")
+		return ErrMissingSecret
 	}
 	dir, lock, err := lockOutbox(home)
 	if err != nil {

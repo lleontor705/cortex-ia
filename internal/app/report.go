@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -106,37 +105,13 @@ func runReportStatus(home string) error {
 	fmt.Printf("📊 Estado de Reporte y Telemetría de Errores:\n")
 	fmt.Printf("  • Endpoint: %s\n", cfg.Endpoint)
 	fmt.Printf("  • Habilitado: %v\n", cfg.Enabled)
-	source, ok := reportSecretSource(home, cfg.Secret)
+	source, ok := telemetry.SecretOrigin(home)
 	if !ok {
-		fmt.Println("  • Firma Secreta: NO CONFIGURADA — el hub rechazará cada reporte con 401")
+		fmt.Println("  • Firma Secreta: NO CONFIGURADA — el hub rechazará cada reporte con 401; ejecuta \"cortex-ia report config --secret <KEY>\" o instala un binario de release")
 		return nil
 	}
 	fmt.Printf("  • Firma Secreta: configurada (%s)\n", source)
 	return nil
-}
-
-// reportSecretSource classifies where the active signing secret comes from
-// without printing its value. ok is false when there is no usable secret, in
-// which case every outbound report fails signature verification at the hub.
-func reportSecretSource(home, secret string) (string, bool) {
-	if secret == "" {
-		return "", false
-	}
-	if env := os.Getenv("CORTEX_REPORT_SECRET"); env != "" && env == secret {
-		return "variable de entorno CORTEX_REPORT_SECRET", true
-	}
-	if raw, err := os.ReadFile(telemetry.ConfigPath(home)); err == nil {
-		var file struct {
-			Secret string `json:"secret"`
-		}
-		if json.Unmarshal(raw, &file) == nil && file.Secret != "" && file.Secret == secret {
-			return telemetry.ConfigPath(home), true
-		}
-	}
-	if secret == telemetry.CanonicalDefaultSecret {
-		return "embebido en el binario en tiempo de compilación (release); verificado contra el hub en el primer envío", true
-	}
-	return "desconocida", true
 }
 
 func runReportError(home string, args []string) error {

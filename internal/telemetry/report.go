@@ -131,6 +131,8 @@ func LoadConfig(homeDir string) (Config, error) {
 	return cfg, nil
 }
 
+// SaveConfig persists the endpoint and secret (never a compiled-in default)
+// beneath the home's .cortex-ia/telemetry.json.
 func SaveConfig(homeDir string, cfg Config) error {
 	cfg.Endpoint = NormalizeEndpoint(cfg.Endpoint)
 	// For security, if the configured secret matches the built-in binary secret,
@@ -147,6 +149,59 @@ func SaveConfig(homeDir string, cfg Config) error {
 		return err
 	}
 	return os.WriteFile(p, data, 0o600)
+}
+
+// ErrMissingSecret reports that a report must be signed but no secret resolves
+// from the environment, the config file, or the linked binary. The message
+// carries the exact remediation so a failed send is never a dead end.
+var ErrMissingSecret = errors.New("authenticated reporting requires a configured signing secret: run \"cortex-ia report config --secret <KEY>\" or install a release binary, which embeds it")
+
+// SecretOrigin classifies where the active signing secret comes from without
+// revealing its value: environment variable, config file, or the secret linked
+// into a release binary at build time. ok is false when no secret resolves, in
+// which case every outbound report fails signature verification at the hub.
+func SecretOrigin(homeDir string) (string, bool) {
+	cfg, err := LoadConfig(homeDir)
+	if err != nil || cfg.Secret == "" {
+		return "", false
+	}
+	if env := strings.TrimSpace(os.Getenv("CORTEX_REPORT_SECRET")); env != "" && env == cfg.Secret {
+		return "variable de entorno CORTEX_REPORT_SECRET", true
+	}
+	if raw, readErr := os.ReadFile(ConfigPath(homeDir)); readErr == nil {
+		var file struct {
+			Secret string `json:"secret"`
+		}
+		if json.Unmarshal(raw, &file) == nil && file.Secret != "" && file.Secret == cfg.Secret {
+			return ConfigPath(homeDir), true
+		}
+	}
+	if cfg.Secret == CanonicalDefaultSecret {
+		return "embebido en el binario en tiempo de compilación (release)", true
+	}
+	return "desconocida", true
+}
+
+// BootstrapFromEnv persists the endpoint and the environment signing secret on
+// first configuration so a source-built binary (which embeds no secret)
+// reports correctly with no extra manual step. It writes only when no config
+// exists yet, the environment supplies a secret, and the binary carries none:
+// release binaries and already-configured homes are left untouched. Reports
+// whether a config file was created.
+func BootstrapFromEnv(homeDir string) (bool, error) {
+	if _, err := os.Stat(ConfigPath(homeDir)); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+	secret := strings.TrimSpace(os.Getenv("CORTEX_REPORT_SECRET"))
+	if secret == "" || CanonicalDefaultSecret != "" {
+		return false, nil
+	}
+	if err := SaveConfig(homeDir, Config{Endpoint: CanonicalDefaultEndpoint, Secret: secret, Enabled: true}); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // AutoReport persists before returning; delivery may finish in a later process.
