@@ -54,6 +54,7 @@ func TestUpdateStateRoundTripAtomic(t *testing.T) {
 		LastCheckedAt:     checkedAt,
 		Available:         "v0.5.0",
 		AvailableDigest:   "9f2c",
+		LatestReleaseTag:  "v0.5.0",
 		AppliedFloor:      "v0.4.50",
 		ManagedPath:       binaryPath,
 		InstallCandidates: []string{binaryPath, binaryPath, ""},
@@ -70,7 +71,7 @@ func TestUpdateStateRoundTripAtomic(t *testing.T) {
 		got.AppliedFloor != "v0.4.50" || got.ManagedPath != binaryPath {
 		t.Fatalf("schema/time/floor/path not preserved: %+v", got)
 	}
-	if got.Available != "v0.5.0" || got.AvailableDigest != "9f2c" || !got.UpdateAvailable() || len(got.InstallCandidates) != 1 {
+	if got.Available != "v0.5.0" || got.AvailableDigest != "9f2c" || got.LatestReleaseTag != "v0.5.0" || !got.UpdateAvailable() || len(got.InstallCandidates) != 1 {
 		t.Fatalf("available/candidates not preserved: %+v", got)
 	}
 }
@@ -372,4 +373,79 @@ func TestUpdateStateCheckedWithinTTL(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdateStateLatestReleaseTagRoundTrip(t *testing.T) {
+	home := t.TempDir()
+	seed(t, home, UpdateState{
+		LastCheckedAt:    time.Now().UTC(),
+		ReleaseETag:      `"etag-42"`,
+		LatestReleaseTag: "v0.5.0",
+	})
+
+	got, err := LoadUpdateState(home)
+	if err != nil {
+		t.Fatalf("LoadUpdateState: %v", err)
+	}
+	if got.LatestReleaseTag != "v0.5.0" {
+		t.Fatalf("latest release tag not preserved: %+v", got)
+	}
+}
+
+func TestCheckLatestConditionalRequiresCachedTag(t *testing.T) {
+	withCheckTrust(t)
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+
+	t.Run("etag without cached tag omits If-None-Match", func(t *testing.T) {
+		home := t.TempDir()
+		seed(t, home, UpdateState{
+			ReleaseETag: `"etag-cached"`,
+		})
+		tr := &captureTransport{status: http.StatusOK, body: latestReleaseBody}
+		client := New("owner/repo")
+		client.StateHome = home
+		client.HTTPClient = &http.Client{Transport: tr}
+
+		_, _, err := client.CheckLatest(context.Background(), "v0.4.9")
+		if err != nil {
+			t.Fatalf("CheckLatest: %v", err)
+		}
+		if tr.conditional != "" {
+			t.Errorf("If-None-Match must be omitted when no tag is cached, got %q", tr.conditional)
+		}
+	})
+
+	t.Run("304 evaluates LatestReleaseTag against currentVersion", func(t *testing.T) {
+		home := t.TempDir()
+		seed(t, home, UpdateState{
+			ReleaseETag:      `"etag-cached"`,
+			LatestReleaseTag: "v0.5.0",
+		})
+		tr := &captureTransport{status: http.StatusNotModified}
+		client := New("owner/repo")
+		client.StateHome = home
+		client.HTTPClient = &http.Client{Transport: tr}
+
+		// When currentVersion < LatestReleaseTag, hasUpdate is true
+		rel, hasUpdate, err := client.CheckLatest(context.Background(), "v0.4.9")
+		if err != nil {
+			t.Fatalf("CheckLatest: %v", err)
+		}
+		if tr.conditional != `"etag-cached"` {
+			t.Errorf("If-None-Match = %q, want cached etag", tr.conditional)
+		}
+		if !hasUpdate || rel == nil || rel.TagName != "v0.5.0" {
+			t.Fatalf("expected update available for older version: rel=%+v hasUpdate=%v", rel, hasUpdate)
+		}
+
+		// When currentVersion == LatestReleaseTag, hasUpdate is false
+		rel, hasUpdate, err = client.CheckLatest(context.Background(), "v0.5.0")
+		if err != nil {
+			t.Fatalf("CheckLatest: %v", err)
+		}
+		if hasUpdate || rel == nil || rel.TagName != "v0.5.0" {
+			t.Fatalf("expected up to date for equal version: rel=%+v hasUpdate=%v", rel, hasUpdate)
+		}
+	})
 }

@@ -39,6 +39,7 @@ type UpdateState struct {
 	Available         string    `json:"available,omitempty"`
 	AvailableDigest   string    `json:"available_digest,omitempty"`
 	ReleaseETag       string    `json:"release_etag,omitempty"`
+	LatestReleaseTag  string    `json:"latest_release_tag,omitempty"`
 	AppliedFloor      string    `json:"applied_floor,omitempty"`
 	ManagedPath       string    `json:"managed_path,omitempty"`
 	InstallCandidates []string  `json:"install_candidates,omitempty"`

@@ -124,7 +124,11 @@ func (c *Client) checkLatest(ctx context.Context, currentVersion string, conditi
 	if token := githubToken(); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	if etag := strings.TrimSpace(cached.ReleaseETag); etag != "" {
+	cachedTag := strings.TrimSpace(cached.LatestReleaseTag)
+	if cachedTag == "" {
+		cachedTag = strings.TrimSpace(cached.Available)
+	}
+	if etag := strings.TrimSpace(cached.ReleaseETag); etag != "" && cachedTag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}
 
@@ -170,7 +174,10 @@ func githubToken() string {
 // Only the tag and ETag are known locally, which is enough for check surfaces;
 // an apply re-fetches the full payload through CheckLatestFresh.
 func cachedReleaseFromState(state UpdateState, currentVersion, headerETag string, verifier ReleaseVerifier, appliedFloor string) (*Release, bool, error) {
-	tag := strings.TrimSpace(state.Available)
+	tag := strings.TrimSpace(state.LatestReleaseTag)
+	if tag == "" {
+		tag = strings.TrimSpace(state.Available)
+	}
 	etag := strings.TrimSpace(headerETag)
 	if etag == "" {
 		etag = strings.TrimSpace(state.ReleaseETag)

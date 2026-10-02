@@ -101,20 +101,16 @@ func resolveUpdateHome() string {
 }
 
 func runManualUpdate(checkOnly bool) error {
+	if updater.ClassifyBuild(Version) != updater.ReleaseBuild {
+		fmt.Println(updater.SelfUpdateDisabledNotice(Version))
+		return nil
+	}
+
 	home := resolveUpdateHome()
-	state, _ := updater.LoadUpdateState(home)
 	client := newUpdateClient(home)
 
 	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
 	defer cancel()
-
-	if !checkOnly && state.CheckedWithin(time.Now().UTC(), updater.UpdateCheckTTL) && !state.UpdateAvailable() {
-		// A fresh state with nothing cached means the previous answer still
-		// holds. A pending cached release does not short-circuit: installing it
-		// needs the full asset list, which only a network response carries.
-		fmt.Printf("cortex-ia is already up to date (%s).\n", Version)
-		return nil
-	}
 
 	fmt.Printf("Checking for cortex-ia updates (current: %s)...\n", Version)
 	check := client.CheckLatest
@@ -153,6 +149,7 @@ func runManualUpdate(checkOnly bool) error {
 	}
 
 	fmt.Printf("Successfully updated cortex-ia to %s! (verification: checksums.txt)\n", rel.TagName)
+	_ = printDualInstallWarning(home)
 	return nil
 }
 
@@ -218,6 +215,9 @@ func persistCheckResult(home string, rel *updater.Release, hasUpdate bool) (upda
 		if etag := strings.TrimSpace(rel.ETag); etag != "" {
 			state.ReleaseETag = etag
 		}
+		if tag := strings.TrimSpace(rel.TagName); tag != "" {
+			state.LatestReleaseTag = tag
+		}
 	}
 	if execPath := managedExecutablePath(); execPath != "" {
 		state.ManagedPath = execPath
@@ -257,10 +257,22 @@ func managedExecutablePath() string {
 	return execPath
 }
 
-func printDualInstallWarning(candidates []string) {
+func printDualInstallWarning(v any) error {
+	var candidates []string
+	switch val := v.(type) {
+	case []string:
+		candidates = val
+	case string:
+		if state, err := updater.LoadUpdateState(val); err == nil && len(state.InstallCandidates) > 0 {
+			candidates = state.InstallCandidates
+		} else {
+			candidates = updater.DetectInstallCandidates(managedExecutablePath())
+		}
+	}
 	warning := updater.DualInstallWarning(candidates)
 	if warning == "" {
-		return
+		return nil
 	}
 	fmt.Printf("Warning: %s\n", warning)
+	return nil
 }
