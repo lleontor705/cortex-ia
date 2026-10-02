@@ -863,4 +863,3 @@ func (m model) updateUpgrade(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	return m, cmd
 }
-

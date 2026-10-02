@@ -6,7 +6,8 @@ This is the single routing and phase matrix for Cortex-IA. Installed path: `~/.c
 |---|---|---|
 | direct-answer / direct-doc | Orchestrator answers from supplied evidence; investigate reads files | Evidence-backed response; filesystem mutations route to a bounded task |
 | discovery | Native discovery | Mandatory initial task of every session; performs the `/.cortex-ia/` `.gitignore` hygiene append before profiling. Quick agentic environment index: skills dictionary (local + global installed), run/test info, minimal governance, quick index |
-| direct-change | Orchestrator creates one task in default; implement; reviewer only if risk warrants | Live claim/leases, proportional checks, independent or orchestrator auto-approval on low risk |
+| direct-change | Orchestrator creates one task in default; implement; reviewer only if risk warrants | Live claim/leases, proportional checks, independent reviewer or orchestrator auto-approval on low-risk changes, data/artifact generation (Excel, CSV, reports), docs, and declarative config |
+| ops-task | Orchestrator creates one task in default; implement; reviewer only if risk warrants | Script execution exit 0, target DB/infrastructure verification, independent reviewer or orchestrator auto-approval on low-risk/idempotent scripts |
 | fast-tdd | Implement with fast-tdd, then reviewer | Causal RED, same oracle GREEN, mutation evidence (`KILLED` or `STATIC-ANALYSIS` per `cortex-work-protocol.md` §4/§8), independent approval |
 | hotfix | Implement with hotfix-triage, then reviewer | Containment, regression evidence and explicit structural follow-up |
 | spike | Investigate with authorized spike-prototype scratch scope | Reproducible conclusion and cleanup, then choose the next route |

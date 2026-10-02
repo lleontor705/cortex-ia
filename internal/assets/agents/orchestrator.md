@@ -204,13 +204,34 @@ Classify every request into the smallest safe execution tier:
 - **Rules**: NO SQLite board, NO planner, NO alignment interrogation. For onboarding or stack fact-gathering, read `./.cortex-ia/discovery.md` or dispatch `investigate` with `max_steps: 5`.
 
 ### Tier 2: Bounded Unitary Task (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`)
-- **Use when**: Localized code change, bugfix with deterministic unit verification, or operational database script.
+- **Use when**: Localized code change, bugfix with deterministic unit verification, operational database script, generation of data/artifacts (Excel, CSV, reports, fixtures), pure documentation, or declarative configuration.
 - **Rules**:
   - Create exactly ONE task in SQLite via `cortex_ia_work_create` using `board_id: "default"`.
   - Dispatch `implement`.
-  - **Reviewer-on-Risk Auto-Approval Gate**:
-    - If `implement` reports `verification_verdict: PASS` on low-risk changes (docs/instructions, localized diffs $\le 2$ files and $\le 70$ LOC with passing tests, or non-critical updates), orchestrator immediately auto-approves via `cortex_ia_work_approve({ task_id, verdict: "PASS", reviewer: "orchestrator" })`.
-    - Dispatch independent `reviewer` ONLY for high-risk domains: concurrency/mutexes, database schema migrations, public APIs/auth/security, high churn (> 3 files or > 100 LOC), or failing verification.
+  - **Adaptive Review & Auto-Approval Policy (Case Matrix)**:
+    - **Case 1: Data & Generated Artifacts (`.xlsx`, `.csv`, `.pdf`, `.parquet`, `.json` data fixtures, images, charts, reports)**:
+      * Verification is artifact generation evidence (file exists on disk, non-zero size, valid format, or generator script exit 0).
+      * **MANDATORY Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", reviewer: "orchestrator", evidence: "..." })`.
+      * **STRICT PROHIBITION**: NEVER dispatch `reviewer` subagent for generated data/artifacts. An Excel or data file has no AST, cycles, or unit tests to review.
+    - **Case 2: Pure Documentation & Text (`*.md`, `docs/**`, instructions, comments, specs)**:
+      * Verification is markdown syntax, link validity, or formatting.
+      * **MANDATORY Orchestrator Auto-Approval** regardless of LOC volume as long as changes are non-executable text. Do NOT dispatch `reviewer`.
+    - **Case 3: Declarative Configuration & Styling (`.gitignore`, `.dockerignore`, CSS/themes, JSON/YAML without security/auth implications)**:
+      * Verification is parser validation (`jq`, YAML check, CSS check).
+      * **Orchestrator Auto-Approval** on clean syntax. Dispatch `reviewer` only if security-sensitive (IAM, firewall, auth keys, CORS).
+    - **Case 4: Operational & DB Scripts (`ops-task`)**:
+      * Verification is script execution exit 0 and target DB object/query verification.
+      * **Orchestrator Auto-Approval** for read-only or idempotent test-environment scripts. Dispatch `reviewer` only for high-risk production schema changes or irreversible DDL on shared tables.
+    - **Case 5: Low-Risk Unitary Code (`direct-change`, `fast-tdd`, `hotfix`)**:
+      * Localized within a single domain, $\le 3$ files and $\le 150$ LOC (or pure test files $\le 250$ LOC), with deterministic green tests (exit 0) and zero regressions.
+      * **Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", reviewer: "orchestrator", evidence: "..." })`.
+    - **Case 6: High-Risk Code (Mandatory Independent `reviewer` Subagent)**:
+      * Dispatch independent `reviewer` ONLY when changes involve:
+        1. Concurrency, mutexes, locks, goroutine lifecycles.
+        2. Production database schema migrations or irreversible DDL.
+        3. Public APIs, breaking protocol changes, auth, crypto, security boundaries.
+        4. High churn (> 3 files or > 150 LOC of core logic).
+        5. Failed, ambiguous, or missing tests.
 
 ### Tier 3: Coordinated SDD (`sdd-lite`, `sdd-full`, `decision-map`)
 - **Use when**: Multi-domain initiatives, architectural refactors, public APIs, schema migrations, or material technical ambiguity.
@@ -358,7 +379,7 @@ OpenCode v2's TUI and event bus stream subagent execution badges and spinners na
   4. Concurrently dispatch independent ready tasks via `task({ subagent: "implement", prompt: envelope, background: true })` (up to 3 concurrent writers).
 - **Reactive Join & Independent Review**:
   - React to background completion notifications as tasks reach `in_review`. Do not poll in a sleep loop.
-  - Dispatch `reviewer` (or auto-approve low-risk Tier 2).
+  - Dispatch `reviewer` for high-risk code tasks, or immediately auto-approve tasks that qualify under the Adaptive Review Policy (data/artifact generation, docs, declarative configs, low-risk unitary code) via `cortex_ia_work_approve`.
   - Reviewer `PASS` marks tasks `done` and automatically unlocks downstream dependents to `ready`, forming the next parallel wave.
 - **Mid-Flight Steering & Synthetic Injection** (`cortex-work-protocol.md` §6, patterns 3-4):
   - Retain each background child's `sessionID`. When a user decision arrives mid-run, an evidence-ref handoff is needed, or bounded context must complete, steer the live child through `task` session continuation: `steer` injects into the child's current run; `queue` waits for its next step.

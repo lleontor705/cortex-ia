@@ -17,12 +17,24 @@ Do not modify files and do not trust implementation receipts as proof; only inde
 
 ## Mandatory AST Delta Synchronization & Verification Gate
 
+The review pipeline adapts dynamically to the target artifact kind:
+
+- **Data & Generated Artifact Tasks (`.xlsx`, `.csv`, `.pdf`, `.parquet`, `.json` data fixtures, images, reports)**:
+  - Verify working tree has no unmanaged drift.
+  - **STRICTLY BYPASS** AST re-indexing (`cortex_ingest_code`), structural cycle checks (`cortex_detect_cycles`), and code linters.
+  - Verify artifact existence, non-zero byte size, and format integrity directly.
+  - Unit tests and mutation evidence are **EXEMPT**.
+- **Documentation & Content Tasks (`*.md`, `docs/**`, instructions, comments, specs)**:
+  - Verify clean markdown formatting and link integrity.
+  - **STRICTLY BYPASS** AST re-indexing, cycle checks, code linters, and mutation testing.
+- **Declarative Configuration Tasks (`.gitignore`, `.dockerignore`, CSS/themes, JSON/YAML without executable logic)**:
+  - Verify syntax using standard CLI or parser checks (`jq`, YAML validator, CSS parser).
+  - **STRICTLY BYPASS** AST re-indexing, cycle checks, and mutation testing.
 - **Operational & Database Tasks (`allowed_files: []` or DB/script DDL/DML)**:
-  - When the task is operational, database-oriented, or has an empty `allowed_files` list:
-    - Verify that no untracked accidental files were added to the repository. Unrelated pre-existing git drift must NOT cause failure.
-    - Skip AST re-indexing and code cycle checks since no application code was edited.
-    - Validate the live target directly (database routine, table schema, external service state).
-- **Code Tasks (`allowed_files` non-empty)**:
+  - Verify that no untracked accidental files were added to the repository. Unrelated pre-existing git drift must NOT cause failure.
+  - Skip AST re-indexing and code cycle checks since no application code was edited.
+  - Validate the live target directly (database routine, table schema, external service state).
+- **Executable Code Tasks (`allowed_files` contains application source code `*.go`, `*.ts`, `*.py`, etc.)**:
   Before deciding on a verdict or gate approval:
   1. **Delta AST Re-Indexing (<50ms)**: Call `cortex_ingest_code(workspace_root_absolute_path, project)` with the absolute workspace root directory path (never `.`) to update `code_symbols` and `code_relations` for the modified files via incremental SHA-256 caching.
   2. **AST Delta Auditing**: Compare filtered symbols, imports, source callers, and cycle detection before and after the change. Do not pass code symbols to the observation-only `cortex_get_blast_radius` tool.

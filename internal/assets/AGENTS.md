@@ -55,7 +55,9 @@ flowchart TD
         Minions -->|Code Changes & Evidence| SubRev[Subagent: reviewer]
     end
 
-    SubImpDirect -.->|Risk warrants| SubRev
+    SubImpDirect --> AutoApproveGate{Adaptive Review:\nLow risk, data, docs, config?}
+    AutoApproveGate -->|Yes: Auto-Approve| OrchFinal
+    AutoApproveGate -->|No: High-risk code| SubRev
     SubImpTDD --> SubRev
     SubImpHotfix --> SubRev
 
@@ -124,10 +126,10 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 | `investigate` | Diagnosis, root-cause audit without immediate file edits | `orchestrator -> investigate -> orchestrator` | `investigate`, `context-distiller` |
 | `decision-map` | Multi-session destination whose decision frontier is not yet specifiable as an implementation DAG | `orchestrator -> investigate/human input -> planner (one decision) -> orchestrator` | `planner`, `investigate`, `grill-me`, `spike-prototype` |
 | `spike` | Bounded experiment to reduce material technical uncertainty | `orchestrator -> investigate (spike) -> orchestrator` | `spike-prototype`, `investigate` |
-| `direct-change` | Clear, reversible, single-domain change with fast verification | `orchestrator -> implement -> (reviewer) -> orchestrator` | `implement` |
-| `fast-tdd` | Localized functional unit with deterministic oracle | `orchestrator -> implement -> reviewer -> orchestrator` | `fast-tdd`, `ast-impact-analysis` |
-| `hotfix` | Urgent production or service containment | `orchestrator -> implement -> reviewer -> orchestrator` | `hotfix-triage`, `implement` |
-| `ops-task` | Standalone DB script, SQL migration, stored procedure, or direct infrastructure command | `orchestrator -> implement -> reviewer -> orchestrator` | `implement` |
+| `direct-change` | Clear, reversible change, data/artifact generation (Excel, CSV, reports), docs, or low-risk fix | `orchestrator -> implement -> (auto-approval / reviewer) -> orchestrator` | `implement` |
+| `fast-tdd` | Localized functional unit with deterministic oracle | `orchestrator -> implement -> (auto-approval / reviewer) -> orchestrator` | `fast-tdd`, `ast-impact-analysis` |
+| `hotfix` | Urgent production or service containment | `orchestrator -> implement -> (auto-approval / reviewer) -> orchestrator` | `hotfix-triage`, `implement` |
+| `ops-task` | Standalone DB script, SQL migration, stored procedure, or direct infrastructure command | `orchestrator -> implement -> (auto-approval / reviewer) -> orchestrator` | `implement` |
 | `sdd-lite` | Moderate risk, single domain, multi-file feature | `orchestrator -> planner -> implement minions (parallel waves) -> reviewer -> orchestrator` | `planner`, `parallel-dispatch`, `implement`, `reviewer` |
 | `sdd-full` | High risk, cross-domain, public API, security, migration | `orchestrator -> investigate -> planner -> implement minions (parallel waves) -> dual reviewer -> orchestrator` | Full SDD skill suite, `parallel-dispatch` |
 
@@ -141,7 +143,30 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 4. **Declarative Configuration Verification vs Synthetic Engines**: For declarative configs (Docker/Compose, YAML, JSON, `.dockerignore`, `.env*`), verification must test syntax validity, target keys/values, or real execution behavior using standard parsers or CLI commands. Agents MUST NEVER build ad-hoc shell lexers, custom grammar parsers, or complex AST tokenizers to inspect declarative files. Single-file declarative or infrastructure edits must route to `ops-task` or `direct-change`, never escalating to full SDD.
 5. **Reviewer Proportionality & Reality Anchor (Anti-Nitpicking)**: Reviewers MUST anchor all findings directly to actual repository code, declared contract requirements, and real execution risks. A reviewer MUST NEVER issue a `BLOCKER` or `FAIL` verdict based on hypothetical inputs to internal test helpers or mocks when the actual repository code and specified contracts do not contain those inputs. Discrepancies on uncalled or unrealistic helper branches (e.g. tabs vs spaces in synthetic shell parsers, unquoted strings never emitted by config, unreached edge cases in test assertions) are strictly `NIT` or `WARNING`, NEVER a blocker.
 6. **Anti-Decomposition of Pure-Test & Tooling Tasks**: Tasks whose `allowed_files` consist purely of tests or test scaffolding (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks, fixtures) MUST NOT undergo DAG decomposition upon failure. If a pure-test or test-helper task fails review or verification, the implementer or planner must simplify or fix the test assertion directly, prune invalid/unrealistic mock assumptions, or revert to a standard CLI oracle. Never decompose a test into more tests.
-7. **Proportional Review & Low-Risk Auto-Approval**: For `direct-change` tasks where changes are low-risk (documentation, instructions like `AGENTS.md`/`README.md`, comments, or localized code diffs $\le 2$ files and $\le 70$ LOC with deterministic green tests), the orchestrator auto-approves the task via `cortex_ia_work_approve` without dispatching a separate `reviewer` subagent. Independent reviewers are reserved strictly for high-risk domains (concurrency, DB/schema migrations, public APIs, auth/security, high churn $> 3$ files, or failed tests).
+7. **Adaptive Review & Proportional Auto-Approval Policy (Case Matrix)**: Review is NOT one-size-fits-all. The orchestrator must dynamically evaluate the task kind before deciding whether an independent reviewer subagent is necessary:
+   - **Case 1: Data & Generated Artifact Tasks (`.xlsx`, `.csv`, `.pdf`, `.parquet`, `.json` data fixtures, images, charts, reports)**:
+     * Verification is artifact generation proof (file exists on disk, non-zero size, valid format, or generator script exit 0).
+     * **MANDATORY Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", reviewer: "orchestrator", evidence: "..." })`.
+     * **STRICT PROHIBITION**: NEVER dispatch `reviewer` subagent for generated data/artifacts. An Excel or data file has no AST, cycles, or unit tests to review. If reviewer is ever dispatched, it must execute the Artifact Integrity Gate and immediately approve without AST/cycles/linters/mutations.
+   - **Case 2: Pure Documentation & Text (`*.md`, `docs/**`, instructions like `AGENTS.md`/`README.md`, comments, specs)**:
+     * Verification is markdown syntax, link validity, or formatting.
+     * **MANDATORY Orchestrator Auto-Approval** regardless of LOC volume as long as changes are non-executable text. Do NOT dispatch `reviewer`.
+   - **Case 3: Declarative Configuration & Styling (`.gitignore`, `.dockerignore`, CSS/themes, JSON/YAML without security/auth implications)**:
+     * Verification is parser validation (`jq`, YAML check, CSS check).
+     * **Orchestrator Auto-Approval** on clean syntax. Dispatch `reviewer` only if security-sensitive (IAM, firewall, auth keys, CORS).
+   - **Case 4: Operational & DB Scripts (`ops-task`)**:
+     * Verification is script execution exit 0 and target DB object/query verification.
+     * **Orchestrator Auto-Approval** for read-only or idempotent test-environment scripts. Dispatch `reviewer` only for high-risk production schema changes or irreversible DDL on shared tables.
+   - **Case 5: Low-Risk Unitary Code (`direct-change`, `fast-tdd`, `hotfix`)**:
+     * Localized within a single domain, $\le 3$ files and $\le 150$ LOC (or pure test files $\le 250$ LOC), with deterministic green tests (exit 0) and zero regressions.
+     * **Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", reviewer: "orchestrator", evidence: "..." })`.
+   - **Case 6: High-Risk Code & SDD (Mandatory Independent `reviewer` Subagent)**:
+     * Dispatch independent `reviewer` ONLY when changes involve:
+       1. Concurrency, mutexes, locks, goroutine lifecycles.
+       2. Production database schema migrations or irreversible DDL.
+       3. Public APIs, breaking protocol changes, auth, crypto, security boundaries.
+       4. High churn (> 3 files or > 150 LOC of core logic).
+       5. Failed, ambiguous, or missing tests.
 8. **Anti-Board Ceremony for Unitary Tasks**: Initiative boards (`cortex-ia board create`) are strictly reserved for Tier 3 SDD initiatives with multiple dependent tasks. Routine work, direct changes, hotfixes, and documentation updates NEVER create a new board; they execute under the existing `"default"` board without board overhead.
 9. **Mutation Evidence Gate**: Fast-TDD-eligible code tasks MUST satisfy the mutation-evidence gate defined once in `cortex-work-protocol.md` §4 (lifecycle) and §8 (evidence composition) — including the `SURVIVED`-blocks-transition rule and the exempt work kinds — before transition to `in_review`. This item is a cross-reference to that normative clause and introduces no independent wording.
 
@@ -189,26 +214,30 @@ sequenceDiagram
         Imp->>Work: work claim + file_reserve per writable file
         Imp->>Cortex: filtered symbols + bounded caller inspection
         Imp->>Imp: Implement Code + Proportional Verification (Tests)
-        Imp->>Work: transition in_review; reviewer approval produces done
+        Imp->>Work: transition in_review (releases leases)
         Imp-->>Orch: Task Execution Receipt (changed_files)
     end
 
     rect rgb(255, 245, 235)
-    Note over Rev,Cortex: Phase 4: Adversarial Review & AST Delta Sync Gate
-    Orch->>Rev: Dispatch Review Envelope (board_id, changed_files, blast_radius_baseline)
-    Rev->>Cortex: cortex_ingest_code(workspace_root_absolute_path, project) [Delta Ingestion: <50ms]
-    Rev->>Cortex: compare symbols/imports/callers (detect unapproved coupling)
-    Rev->>Cortex: cortex_detect_cycles (Verify no circular import regressions)
-    Rev->>Rev: Independent Checks & Mutation Testing
-    alt Verdict is PASS
-        Rev->>Work: work approve PASS (gate approval with evidence)
-        Rev->>Cortex: cortex_save(type: "decision", topic_key: "architecture/feature") + cortex_relate
-        Rev-->>Orch: Review Receipt (Verdict: PASS)
-        Orch->>Plan: Archive selected-plane contract after approval
-    else Verdict is FAIL / BLOCKED
-        Rev->>Cortex: cortex_save(type: "bugfix", topic_key: "gotchas/task_id", content: minimal_failure_locality) + cortex_relate
-        Rev-->>Orch: Review Receipt (Verdict: FAIL, evidence_ref: "gotchas/task_id")
-        Orch->>Imp: Re-dispatch Targeted Fix Minion (with evidence_ref from Cortex)
+    Note over Orch,Rev: Phase 4: Adaptive Review Gate (Auto-Approval vs Independent Reviewer)
+    alt Low-Risk / Data Artifacts / Docs / Declarative Config
+        Orch->>Work: work approve PASS (orchestrator auto-approval with evidence)
+    else High-Risk Code Tasks
+        Orch->>Rev: Dispatch Review Envelope (board_id, changed_files, blast_radius_baseline)
+        Rev->>Cortex: cortex_ingest_code(workspace_root_absolute_path, project) [Delta Ingestion: <50ms]
+        Rev->>Cortex: compare symbols/imports/callers (detect unapproved coupling)
+        Rev->>Cortex: cortex_detect_cycles (Verify no circular import regressions)
+        Rev->>Rev: Independent Checks & Mutation Testing
+        alt Verdict is PASS
+            Rev->>Work: work approve PASS (gate approval with evidence)
+            Rev->>Cortex: cortex_save(type: "decision", topic_key: "architecture/feature") + cortex_relate
+            Rev-->>Orch: Review Receipt (Verdict: PASS)
+            Orch->>Plan: Archive selected-plane contract after approval
+        else Verdict is FAIL / BLOCKED
+            Rev->>Cortex: cortex_save(type: "bugfix", topic_key: "gotchas/task_id", content: minimal_failure_locality) + cortex_relate
+            Rev-->>Orch: Review Receipt (Verdict: FAIL, evidence_ref: "gotchas/task_id")
+            Orch->>Imp: Re-dispatch Targeted Fix Minion (with evidence_ref from Cortex)
+        end
     end
     end
 
