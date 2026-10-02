@@ -107,6 +107,12 @@ Download the latest prebuilt binary from the [Releases](https://github.com/lleon
 go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
 ```
 
+> **Note:** source builds do not embed the error-reporting signing secret, so
+> they cannot send reports until you run `cortex-ia report config --secret <KEY>`
+> (or export `CORTEX_REPORT_SECRET` before `cortex-ia install`, which persists
+> it). The precompiled binary and the installers embed the secret and report
+> out of the box — `cortex-ia doctor` tells you which one you have.
+
 ### Install Script (Linux / macOS)
 ```bash
 curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh | bash

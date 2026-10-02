@@ -40,6 +40,13 @@ go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
 cortex-ia sync
 ```
 
+> **Error reporting:** a source build carries no signing secret, so its reports
+> would be rejected with `401` until you configure one:
+> `cortex-ia report config --secret <KEY>` — or export `CORTEX_REPORT_SECRET`
+> before running `cortex-ia install`, which persists it on first install.
+> Precompiled binaries and the installers embed the secret and report out of
+> the box; `cortex-ia doctor` reports which case you are in.
+
 ### Homebrew (macOS / Linux)
 
 ```bash
