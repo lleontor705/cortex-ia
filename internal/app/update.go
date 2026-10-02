@@ -74,36 +74,6 @@ func printUpdateHelp() {
 	fmt.Println("  schedule status    Report whether the managed update task is registered")
 }
 
-// printDevelopmentBuildNotice reports and returns true when the running build
-// carries no stable release identity and therefore cannot self-update. Source
-// builds report "dev" and repository checkouts report a git-describe string;
-// both degrade to this notice instead of a raw version-parser failure.
-func printDevelopmentBuildNotice() bool {
-	if updater.ClassifyBuild(Version) == updater.ReleaseBuild {
-		return false
-	}
-	fmt.Println(updater.SelfUpdateDisabledNotice(Version))
-	return true
-}
-
-// checksumWarningEmitted keeps the consent warning to a single process-wide
-// line even when more than one update surface runs in the same process.
-var checksumWarningEmitted bool
-
-// printChecksumConsentWarning surfaces the signature-less profile exactly once,
-// naming whether consent came from the flag or the environment variable.
-func printChecksumConsentWarning(profile updater.VerificationProfile) {
-	if checksumWarningEmitted || profile != updater.ProfileChecksum {
-		return
-	}
-	source := updater.ConsentSource()
-	if source == "" {
-		return
-	}
-	checksumWarningEmitted = true
-	fmt.Printf("Warning: updates are verified by SHA-256 checksum only (consent: %s)\n", source)
-}
-
 // newUpdateClient binds the client to the machine-local state root so the
 // apply path resolves the persisted floor and raises it after a verified
 // replacement. No state is read or written here.

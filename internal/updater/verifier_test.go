@@ -24,19 +24,6 @@ func TestResolveProfileSelection(t *testing.T) {
 	}
 }
 
-func TestConsentFromEnvironment(t *testing.T) {
-	cases := map[string]bool{
-		"1": true, "true": true, "TRUE": true, " true ": true,
-		"0": false, "false": false, "yes": false, "": false,
-	}
-	for value, want := range cases {
-		t.Setenv(consentEnvVar, value)
-		if got := consentFromEnvironment(); got != want {
-			t.Fatalf("consentFromEnvironment() with %q = %v, want %v", value, got, want)
-		}
-	}
-}
-
 func TestChecksumVerifierAuthorityGate(t *testing.T) {
 	if err := (checksumVerifier{}).RequireAuthority(); err != nil {
 		t.Fatalf("expected nil authority error for checksum verifier, got %v", err)

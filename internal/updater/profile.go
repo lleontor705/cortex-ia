@@ -1,8 +1,6 @@
 package updater
 
 import (
-	"os"
-	"strings"
 	"sync"
 )
 
@@ -38,38 +36,10 @@ func ChecksumConsentGiven() bool {
 	return checksumConsent
 }
 
-// consentFromEnvironment parses CORTEX_IA_ALLOW_CHECKSUM_UPDATES. Only "1" and
-// "true" (case-insensitive, trimmed) grant consent; any other value, including
-// unset, is treated as absent.
-func consentFromEnvironment() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(consentEnvVar))) {
-	case "1", "true":
-		return true
-	default:
-		return false
-	}
-}
-
-// checksumConsentActive resolves effective consent from either the flag-fed
-// store or the environment variable.
-func checksumConsentActive() bool {
-	return ChecksumConsentGiven() || consentFromEnvironment()
-}
-
-// trustBundlePresent reports false as trust bundles are retired in favor of checksums.txt.
-func trustBundlePresent() bool {
-	return false
-}
-
 // ResolveProfile selects the verification profile. Standard releases verify
 // integrity via GoReleaser checksums.txt over HTTPS.
 func ResolveProfile(bundlePresent, consent bool) VerificationProfile {
 	return ProfileChecksum
-}
-
-// verifierForProfile maps a resolved profile to its adapter.
-func verifierForProfile(profile VerificationProfile) ReleaseVerifier {
-	return checksumVerifier{}
 }
 
 // RequireProfileAuthority returns nil as authority is established through TLS transport

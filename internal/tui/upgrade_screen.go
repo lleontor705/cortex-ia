@@ -51,7 +51,6 @@ type upgradeState struct {
 	err                                                                       error
 	errText, authorityErr, authorityBlockedReason, appliedTag, appliedVersion string
 	hasAuthority                                                              bool
-	releaseDate                                                               time.Time
 	spinner, width                                                            int
 }
 
@@ -272,7 +271,7 @@ func (s upgradeState) viewUpgradeScreen() string {
 	errStr = orDefault(errStr, "Error desconocido")
 
 	lines := []string{styleSubtitle.Render("Actualización de software"), ""}
-	hints := "[esc] Volver"
+	var hints string
 
 	switch s.phase {
 	case upgradePhaseChecking, upgradePhaseApplying:

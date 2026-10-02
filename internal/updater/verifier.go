@@ -28,17 +28,3 @@ func defaultVerifier() ReleaseVerifier {
 func ActiveProfile() VerificationProfile {
 	return defaultVerifier().Name()
 }
-
-// ConsentSource names where checksum consent came from for the single operator
-// warning: "flag" for the in-process flag, "env" for the environment variable,
-// and "" when no consent is active. The flag wins when both are present because
-// it is the explicit per-run request.
-func ConsentSource() string {
-	if ChecksumConsentGiven() {
-		return "flag"
-	}
-	if consentFromEnvironment() {
-		return "env"
-	}
-	return ""
-}
