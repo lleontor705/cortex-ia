@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"io"
@@ -43,7 +42,6 @@ func (t *captureTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 
 func withCheckTrust(t *testing.T) {
 	t.Helper()
-	t.Cleanup(SetTrustedKeysForTesting([]TrustedKey{{ID: "check-test-key", PublicKey: make([]byte, ed25519.PublicKeySize)}}))
 }
 
 const latestReleaseBody = `{"tag_name":"v0.5.0","published_at":"2026-01-01T00:00:00Z","assets":[]}`

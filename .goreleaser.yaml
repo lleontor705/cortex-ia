@@ -27,9 +27,7 @@ builds:
       - -X github.com/lleontor705/cortex-ia/internal/app.Date={{ .Date }}
       - '-X github.com/lleontor705/cortex-ia/internal/telemetry.CanonicalDefaultEndpoint={{ if index .Env "CORTEX_REPORT_ENDPOINT" }}{{ .Env.CORTEX_REPORT_ENDPOINT }}{{ else }}https://cortex-report-hub-production.up.railway.app/api/v1/reports{{ end }}'
       - '-X github.com/lleontor705/cortex-ia/internal/telemetry.CanonicalDefaultSecret={{ if index .Env "CORTEX_REPORT_SECRET" }}{{ .Env.CORTEX_REPORT_SECRET }}{{ else }}{{ end }}'
-      # Public trust bundle (base64 of a JSON []updater.TrustedKey array). An unset variable
-      # leaves it empty, which keeps the updater fail-closed with ErrNoTrustedKey.
-      - -X github.com/lleontor705/cortex-ia/internal/updater.productionTrustBundle={{ .Env.CORTEX_IA_TRUST_BUNDLE }}
+
 
 archives:
   - id: default

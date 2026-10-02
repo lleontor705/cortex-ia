@@ -32,6 +32,7 @@ const (
 	screenStats
 	screenModels
 	screenProviders
+	screenUpgrade
 )
 
 // productionBootScreen is the surface shipped to users: launched with zero
@@ -60,23 +61,29 @@ const (
 var homeEntries = []string{
 	"Install / Sync",
 	"Manage MCPs",
-	"CortexIA Web Console",
-	"Agent Studio (Create Sub-agent)",
-	"Estadísticas de uso",
-	"Doctor / Recovery",
-	"Uninstall",
-	"Quit",
 	"Configuración de modelos",
 	"Install custom provider",
+	"CortexIA Web Console",
+	"Estadísticas de uso",
+	"Agent Studio (Create Sub-agent)",
+	"Doctor / Recovery",
+	"Actualizar software (Upgrade)",
+	"Uninstall",
+	"Quit",
 }
 
-// statsEntryIndex is the Home cursor position of the usage stats entry.
-const statsEntryIndex = 4
-
-// providersEntryIndex is the Home cursor position of the custom providers
-// entry. Its digit key is intentionally unbound: digits 1-9 stay frozen on
-// entries 0-8 and the entry opens through "p"/"P" or Enter (REQ-PROV-006).
-const providersEntryIndex = 9
+// Menu index constants for Home entries.
+const (
+	modelsEntryIndex    = 2
+	providersEntryIndex = 3
+	webEntryIndex       = 4
+	statsEntryIndex     = 5
+	studioEntryIndex    = 6
+	doctorEntryIndex    = 7
+	upgradeEntryIndex   = 8
+	uninstallEntryIndex = 9
+	quitEntryIndex      = 10
+)
 
 // managedNames lists the managed MCP presets in toggle order.
 var managedNames = []string{"cortex", "context7"}
@@ -185,6 +192,9 @@ type model struct {
 	// Custom providers screen state
 	providers providersState
 
+	// Software upgrade screen state
+	upgrade upgradeState
+
 	// Animation state
 	logoFrame int
 }
@@ -211,6 +221,7 @@ func newModel(svc ServiceAPI, homeDir, version string) model {
 		stats:         newStatsState(),
 		models:        newModelsState(homeDir),
 		providers:     newProvidersState(homeDir),
+		upgrade:       newUpgradeState(homeDir, version),
 		opts:          install.DefaultOptions(),
 		delegationCfg: cfg,
 	}
@@ -245,6 +256,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.screen == screenRunning && !m.running.finished {
 			m.running.spinner = (m.running.spinner + 1) % len(spinnerFrames)
 			return m, spinTick()
+		}
+		if m.screen == screenUpgrade {
+			var cmd tea.Cmd
+			m.upgrade, cmd = m.upgrade.updateUpgradeScreen(msg)
+			return m, cmd
 		}
 		return m, nil
 	case planMsg:
@@ -288,6 +304,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.providers = m.providers.onResult(msg)
 		}
 		return m, nil
+	case upgradeCheckMsg, upgradeApplyMsg, upgradeTickMsg:
+		var cmd tea.Cmd
+		m.upgrade, cmd = m.upgrade.updateUpgradeScreen(msg)
+		return m, cmd
 	case webReadyMsg:
 		m.webReady = true
 		m.webURL = msg.url
@@ -317,13 +337,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenWeb:
 			return m.updateWeb(msg)
 		case screenAgentStudio:
-			return m.updateAgentStudio(msg)
+			m2, cmd := m.updateAgentStudio(msg)
+			if updated, ok := m2.(model); ok {
+				if m.screen == screenAgentStudio && updated.screen == screenHome {
+					updated.cursor = studioEntryIndex
+				}
+				return updated, cmd
+			}
+			return m2, cmd
 		case screenStats:
 			return m.updateStats(msg)
 		case screenModels:
 			return m.updateModels(msg)
 		case screenProviders:
 			return m.updateProviders(msg)
+		case screenUpgrade:
+			return m.updateUpgrade(msg)
 		}
 	}
 	return m, nil
@@ -366,6 +395,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openModels()
 	case "p", "P":
 		return m.openProviders()
+	case "u", "U":
+		return m.openUpgrade()
 	case "enter":
 		return m.selectHomeEntry(m.cursor)
 	}
@@ -403,7 +434,11 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.mcpReport = nil
 		m.mcpErr = nil
 		return m, mcpListCmd(m.svc)
-	case 2: // CortexIA Web Console
+	case modelsEntryIndex: // 2: Configuración de modelos
+		return m.openModels()
+	case providersEntryIndex: // 3: Install custom provider
+		return m.openProviders()
+	case webEntryIndex: // 4: CortexIA Web Console
 		m.screen = screenWeb
 		if m.webReady {
 			return m, nil
@@ -411,28 +446,26 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.webStarting = true
 		m.webErr = nil
 		return m, startWebCmd(m.homeDir)
-	case 3: // Agent Studio (Create Sub-agent)
+	case statsEntryIndex: // 5: Estadísticas de uso
+		m.screen = screenStats
+		m.stats = newStatsState()
+		return m, statsLoadCmd()
+	case studioEntryIndex: // 6: Agent Studio (Create Sub-agent)
 		m.screen = screenAgentStudio
 		m.studioStep = 0
 		m.studioArchIdx = 0
 		m.studioResultMsg = ""
 		return m, nil
-	case 4: // Estadísticas de uso
-		m.screen = screenStats
-		m.stats = newStatsState()
-		return m, statsLoadCmd()
-	case 5: // Doctor / Recovery
+	case doctorEntryIndex: // 7: Doctor / Recovery
 		return m.startRunning("Doctor", []string{"Inspect state", "Compare digests", "Assess MCPs", "Report"}, doctorCmd(m.svc))
-	case 6: // Uninstall (destructive: explicit confirmation first)
+	case upgradeEntryIndex: // 8: Actualizar software (Upgrade)
+		return m.openUpgrade()
+	case uninstallEntryIndex: // 9: Uninstall (destructive: explicit confirmation first)
 		m.confirm = confirmState{kind: confirmUninstall}
 		return m, nil
-	case 7: // Quit
+	case quitEntryIndex: // 10: Quit
 		m.quitting = true
 		return m, tea.Quit
-	case 8: // Configuración de modelos
-		return m.openModels()
-	case 9: // Install custom provider
-		return m.openProviders()
 	}
 	return m, nil
 }
@@ -444,7 +477,7 @@ func (m model) updateWeb(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "esc", "b", "B":
 		m.screen = screenHome
-		m.cursor = 2
+		m.cursor = webEntryIndex
 		return m, homeTick()
 	case "o", "O", "enter", " ":
 		if m.webReady && m.webURL != "" {
@@ -795,6 +828,7 @@ func (m model) updateModels(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch action {
 	case modelsActionHome:
 		m.screen = screenHome
+		m.cursor = modelsEntryIndex
 		return m, homeTick()
 	case modelsActionQuit:
 		m.quitting = true
@@ -802,3 +836,31 @@ func (m model) updateModels(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	return m, cmd
 }
+
+// --- Software upgrade ---
+
+// updateUpgrade delegates key handling to the upgradeState FSM and handles
+// screen transitions (home, quit).
+func (m model) updateUpgrade(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.upgrade.phase == upgradePhaseApplying {
+		if msg.Type == tea.KeyCtrlC {
+			m.quitting = true
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+	var action upgradeAction
+	var cmd tea.Cmd
+	m.upgrade, action, cmd = m.upgrade.update(msg)
+	switch action {
+	case upgradeActionHome:
+		m.screen = screenHome
+		m.cursor = upgradeEntryIndex
+		return m, homeTick()
+	case upgradeActionQuit:
+		m.quitting = true
+		return m, tea.Quit
+	}
+	return m, cmd
+}
+

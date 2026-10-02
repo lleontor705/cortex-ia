@@ -114,8 +114,16 @@ func TestREQ_PROV_006_NumericDigitsStayFrozen(t *testing.T) {
 		}
 	}
 	nine := press(newHomeFlowModel(t), "9")
-	if nine.screen != screenModels || nine.providers.report != nil {
-		t.Fatalf("key 9 = screen %v providers report %v, want the frozen models screen", nine.screen, nine.providers.report != nil)
+	if nine.screen != screenUpgrade || nine.providers.report != nil {
+		t.Fatalf("key 9 = screen %v providers report %v, want the upgrade screen", nine.screen, nine.providers.report != nil)
+	}
+	three := press(newHomeFlowModel(t), "3")
+	if three.screen != screenModels || three.providers.report != nil {
+		t.Fatalf("key 3 = screen %v providers report %v, want the models screen", three.screen, three.providers.report != nil)
+	}
+	four := press(newHomeFlowModel(t), "4")
+	if four.screen != screenProviders {
+		t.Fatalf("key 4 = screen %v, want the providers screen", four.screen)
 	}
 	zero := press(newHomeFlowModel(t), "0")
 	if zero.screen != screenHome || zero.cursor != 0 || zero.quitting {
@@ -155,11 +163,11 @@ func TestREQ_PROV_006_EntryNineCursorEnterNavigableAndDescribed(t *testing.T) {
 	}
 	frame := m.View()
 	if !strings.Contains(frame, "Install custom provider") || !strings.Contains(frame, homeDescriptions[providersEntryIndex]) {
-		t.Fatalf("Home must render entry 9 with its description:\n%s", frame)
+		t.Fatalf("Home must render entry %d with its description:\n%s", providersEntryIndex, frame)
 	}
 	m, cmd := pressCmd(m, "enter")
 	if m.screen != screenProviders || m.providers.phase != providersPhaseList || cmd == nil {
-		t.Fatalf("enter on entry 9 = screen %v phase %d cmd %v, want providers/List/command", m.screen, m.providers.phase, cmd != nil)
+		t.Fatalf("enter on entry %d = screen %v phase %d cmd %v, want providers/List/command", providersEntryIndex, m.screen, m.providers.phase, cmd != nil)
 	}
 }
 

@@ -10,8 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
-	"slices"
 	"strings"
+)
+
+const (
+	// MaxArtifactSize is the upper limit for downloaded release archives (128 MiB).
+	MaxArtifactSize = 128 * 1024 * 1024
 )
 
 var (
@@ -19,7 +23,7 @@ var (
 	ErrArchiveTooLarge   = errors.New("archive exceeds maximum allowed size (128 MiB)")
 	ErrTruncatedDownload = errors.New("downloaded artifact size mismatch or truncation")
 	ErrMisleadingLength  = errors.New("server returned misleading Content-Length header")
-	ErrDigestMismatch    = errors.New("downloaded artifact SHA-256 digest does not match signed manifest")
+	ErrDigestMismatch    = errors.New("downloaded artifact SHA-256 digest does not match checksums file")
 	ErrMutatedRelease    = errors.New("release object mutated or inconsistent with manifest")
 	ErrInsecureScheme    = errors.New("insecure download scheme: HTTPS required")
 )
@@ -142,14 +146,15 @@ func DownloadArtifactBytes(ctx context.Context, client *http.Client, urlStr stri
 
 // DownloadAndVerifyRelease keeps the public signature for direct callers and
 // verifies against the running version with no persisted floor.
-func DownloadAndVerifyRelease(ctx context.Context, client *http.Client, repo, currentVersion string, rel *Release) ([]byte, *ManifestArtifact, error) {
+func DownloadAndVerifyRelease(ctx context.Context, client *http.Client, repo, currentVersion string, rel *Release) ([]byte, *ReleaseAsset, error) {
 	return downloadAndVerifyReleaseWithFloor(ctx, client, repo, currentVersion, rel, "")
 }
 
 // downloadAndVerifyReleaseWithFloor carries the persisted anti-replay floor
-// through the same verification chain, so an already-applied release is
-// rejected before any network fetch.
-func downloadAndVerifyReleaseWithFloor(ctx context.Context, client *http.Client, repo, currentVersion string, rel *Release, appliedFloor string) ([]byte, *ManifestArtifact, error) {
+// through the verification chain. It locates and fetches checksums.txt over HTTPS,
+// parses it with ParseChecksums, resolves the matching platform archive, verifies
+// its SHA-256 digest in flight, and returns the raw archive bytes and matched asset.
+func downloadAndVerifyReleaseWithFloor(ctx context.Context, client *http.Client, repo, currentVersion string, rel *Release, appliedFloor string) ([]byte, *ReleaseAsset, error) {
 	verifier := defaultVerifier()
 	if err := verifier.RequireAuthority(); err != nil {
 		return nil, nil, err
@@ -165,20 +170,15 @@ func downloadAndVerifyReleaseWithFloor(ctx context.Context, client *http.Client,
 		return nil, nil, err
 	}
 
-	requiredNames := verifier.RequiredAssets()
-	required := make(map[string]*ReleaseAsset, len(requiredNames))
+	var checksumsAsset *ReleaseAsset
 	for i := range relAssets {
-		for _, name := range requiredNames {
-			if relAssets[i].Name == name {
-				required[name] = &relAssets[i]
-			}
+		if relAssets[i].Name == ChecksumsFileName {
+			checksumsAsset = &relAssets[i]
+			break
 		}
 	}
-	manAsset := required["release-manifest.json"]
-	sigAsset := required["release-manifest.sig"]
-	requiresSignature := slices.Contains(requiredNames, "release-manifest.sig")
-	if manAsset == nil || (requiresSignature && sigAsset == nil) {
-		return nil, nil, fmt.Errorf("release %s missing signed %s asset", tag, strings.Join(requiredNames, " or "))
+	if checksumsAsset == nil {
+		return nil, nil, ErrChecksumsAssetNotFound
 	}
 
 	safeClient := SafeHTTPClient(client)
@@ -207,46 +207,30 @@ func downloadAndVerifyReleaseWithFloor(ctx context.Context, client *http.Client,
 		return io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	}
 
-	var rawSig []byte
-	if requiresSignature {
-		var err error
-		rawSig, err = fetchBytes(sigAsset.DownloadURL, MaxSignatureEnvelopeSize)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to fetch signature envelope: %w", err)
-		}
-	}
-	rawMan, err := fetchBytes(manAsset.DownloadURL, MaxManifestSize)
+	rawChecksums, err := fetchBytes(checksumsAsset.DownloadURL, MaxChecksumsSize)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to fetch release manifest: %w", err)
+		return nil, nil, fmt.Errorf("failed to fetch %s: %w", ChecksumsFileName, err)
 	}
 
-	manifest, err := verifier.VerifyBundle(rawMan, rawSig, repo, tag)
+	table, err := ParseChecksums(rawChecksums)
 	if err != nil {
-		return nil, nil, fmt.Errorf("manifest verification failed: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse %s: %w", ChecksumsFileName, err)
 	}
 
-	targetOS := runtime.GOOS
-	targetArch := runtime.GOARCH
-	art, err := FindManifestArtifact(manifest, targetOS, targetArch)
+	matchedAsset, err := FindAsset(relAssets, runtime.GOOS, runtime.GOARCH, tag)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	var matchedRelAsset *ReleaseAsset
-	for i := range relAssets {
-		if relAssets[i].Name == art.Name {
-			matchedRelAsset = &relAssets[i]
-			break
-		}
-	}
-	if matchedRelAsset == nil {
-		return nil, nil, fmt.Errorf("%w: release payload lacks exact asset %q", ErrMutatedRelease, art.Name)
+	expectedSHA256, err := table.FindChecksum(matchedAsset.Name)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %s", ErrAssetNotFoundInChecksums, matchedAsset.Name)
 	}
 
-	archiveBytes, err := DownloadArtifactBytes(ctx, client, matchedRelAsset.DownloadURL, art.Size, art.SHA256)
+	archiveBytes, err := DownloadArtifactBytes(ctx, client, matchedAsset.DownloadURL, matchedAsset.Size, expectedSHA256)
 	if err != nil {
 		return nil, nil, fmt.Errorf("artifact byte verification failed: %w", err)
 	}
 
-	return archiveBytes, art, nil
+	return archiveBytes, matchedAsset, nil
 }

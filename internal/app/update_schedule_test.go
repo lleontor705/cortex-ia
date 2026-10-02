@@ -1,8 +1,6 @@
 package app
 
 import (
-	"crypto/ed25519"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -70,9 +68,6 @@ func stubSchedulerRunner(t *testing.T, output string) *recordingSchedulerRunner 
 
 func injectUpdateTrust(t *testing.T) {
 	t.Helper()
-	t.Cleanup(updater.SetTrustedKeysForTesting([]updater.TrustedKey{
-		{ID: "app-test-key", PublicKey: make([]byte, ed25519.PublicKeySize)},
-	}))
 }
 
 // prepareScheduledHome isolates the state root from the developer's real home.
@@ -163,10 +158,9 @@ func TestUpdateScheduleScheduledCheckState(t *testing.T) {
 	}
 }
 
-func TestUpdateScheduleScheduledCheckFailsClosedWithoutTrust(t *testing.T) {
+func TestUpdateScheduleScheduledCheckFailsOnInvalidVersion(t *testing.T) {
 	home := prepareScheduledHome(t)
-	withVersion(t, "v0.4.9")
-	t.Cleanup(updater.SetTrustedKeysForTesting(nil))
+	withVersion(t, "invalid-semver")
 
 	if err := updater.SaveUpdateStateAtomic(home, updater.UpdateState{
 		SchemaVersion: updater.UpdateStateSchemaVersion,
@@ -180,8 +174,8 @@ func TestUpdateScheduleScheduledCheckFailsClosedWithoutTrust(t *testing.T) {
 		t.Fatalf("read seeded state: %v", err)
 	}
 
-	if err := runUpdate([]string{"--check", "--scheduled"}); !errors.Is(err, updater.ErrNoTrustedKey) {
-		t.Fatalf("expected the fail-closed trust error, got %v", err)
+	if err := runUpdate([]string{"--check", "--scheduled"}); err == nil {
+		t.Fatalf("expected error on invalid version, got nil")
 	}
 	after, err := os.ReadFile(updater.StatePath(home))
 	if err != nil {

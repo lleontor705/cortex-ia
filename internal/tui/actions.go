@@ -212,6 +212,23 @@ func (m model) updateProviders(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// --- Software upgrade screen ---
+
+// openUpgrade enters the software upgrade screen and triggers an initial
+// upgrade check if the state is idle.
+func (m model) openUpgrade() (tea.Model, tea.Cmd) {
+	m.screen = screenUpgrade
+	if m.upgrade.phase == upgradePhaseIdle {
+		if m.upgrade.homeDir == "" {
+			m.upgrade = newUpgradeState(m.homeDir, m.version)
+		}
+		var cmd tea.Cmd
+		m.upgrade, cmd = m.upgrade.startChecking()
+		return m, cmd
+	}
+	return m, nil
+}
+
 // --- Result assembly ---
 
 // onCortexInstall records the automatic install outcome and re-plans so the

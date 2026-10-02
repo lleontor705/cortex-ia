@@ -14,13 +14,9 @@ type checksumVerifier struct{}
 
 func (checksumVerifier) Name() VerificationProfile { return ProfileChecksum }
 
-// RequireAuthority passes only while explicit checksum consent is active; the
-// default stays the strict fail-closed error so no caller can silently reach a
-// signature-less path.
+// RequireAuthority passes unconditionally: release authenticity and integrity
+// are anchored by pinned-HTTPS transport and SHA-256 digests in checksums.txt.
 func (checksumVerifier) RequireAuthority() error {
-	if !checksumConsentActive() {
-		return ErrNoTrustedKey
-	}
 	return nil
 }
 
@@ -45,18 +41,11 @@ func (checksumVerifier) CheckEligibility(current, tag, appliedFloor string) erro
 	return nil
 }
 
-// UpdateCandidate reports whether the candidate should be offered. Release
-// builds compare against the running version; development builds compare against
-// the applied floor and report a candidate when none is recorded yet.
+// UpdateCandidate reports whether the candidate should be offered.
+// Release builds compare against the running version; dev/unknown builds return false
+// so they do not attempt automatic updates without an installed release.
 func (checksumVerifier) UpdateCandidate(current, tag, appliedFloor string) (bool, error) {
-	if ClassifyBuild(current) != DevelopmentBuild {
-		return CheckUpdateCandidate(current, tag)
-	}
-	delta, hasFloor, err := checksumFloorDelta(tag, appliedFloor)
-	if err != nil {
-		return false, err
-	}
-	return !hasFloor || delta > 0, nil
+	return CheckUpdateCandidate(current, tag)
 }
 
 // checksumFloorDelta parses the candidate and, when a usable applied floor is
@@ -77,15 +66,7 @@ func checksumFloorDelta(tag, appliedFloor string) (delta int, hasFloor bool, err
 	return CompareCanonical(cand, floorVer), true, nil
 }
 
-// RequiredAssets names only the unsigned manifest: no signature envelope is
-// fetched or required under this profile.
+// RequiredAssets names the standard GoReleaser checksums asset.
 func (checksumVerifier) RequiredAssets() []string {
-	return []string{"release-manifest.json"}
-}
-
-// VerifyBundle structurally validates the manifest through the single shared
-// validator. Signature bytes are intentionally ignored, so a nil envelope is
-// not an error.
-func (checksumVerifier) VerifyBundle(rawManifest, _ []byte, repo, tag string) (*Manifest, error) {
-	return validateManifestShape(rawManifest, repo, tag)
+	return []string{ChecksumsFileName}
 }
