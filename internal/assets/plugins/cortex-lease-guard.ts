@@ -12,6 +12,14 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+// Admission runs synchronously on the host event loop, so every child-process
+// call needs an explicit budget: a stalled PATH scan or lease lookup blocks
+// the whole session. Failure reasons keep the elapsed time so report-hub
+// incidents can be diagnosed without reproducing them.
+const EXECUTABLE_LOOKUP_TIMEOUT_MS = 3000;
+const LEASE_CLI_TIMEOUT_MS = 15000;
+const SLOW_ADMISSION_LOG_MS = 2000;
+
 function resolveExecutable(cmd: string): string | null {
   const isWin = process.platform === "win32";
   const locator = isWin ? "where.exe" : "which";
@@ -20,6 +28,7 @@ function resolveExecutable(cmd: string): string | null {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
+      timeout: EXECUTABLE_LOOKUP_TIMEOUT_MS,
     }).trim();
     if (out) {
       const first = out.split(/\r?\n/)[0].trim();
@@ -27,7 +36,11 @@ function resolveExecutable(cmd: string): string | null {
         return first;
       }
     }
-  } catch {}
+  } catch (error: any) {
+    if (error?.code === "ETIMEDOUT") {
+      throw new Error(`executable lookup for '${cmd}' timed out after ${EXECUTABLE_LOOKUP_TIMEOUT_MS}ms`);
+    }
+  }
   return null;
 }
 
@@ -139,9 +152,13 @@ async function verifyLeasesForTool(
     return;
   }
 
-  const cortex = firstCortexIA(directory);
+  const admissionStart = Date.now();
+  let attemptCount = 0;
 
   try {
+    const lookupStart = Date.now();
+    const cortex = firstCortexIA(directory);
+    const lookupMs = Date.now() - lookupStart;
     let raw: string | undefined;
     let lastExecErr: any;
     const pathArgs = targets.length === 1
@@ -150,19 +167,26 @@ async function verifyLeasesForTool(
     const cliArgs = ["work", "verify-lease", "--project", path.resolve(directory), "--session-id", sessionID, ...pathArgs];
 
     for (let attempt = 1; attempt <= 2; attempt++) {
+      attemptCount = attempt;
+      const attemptStart = Date.now();
       try {
         raw = execFileSync(cortex, cliArgs, {
           cwd: directory,
           encoding: "utf8",
           maxBuffer: 64 * 1024,
           stdio: ["ignore", "pipe", "pipe"],
-          timeout: 15000,
+          timeout: LEASE_CLI_TIMEOUT_MS,
           windowsHide: true,
         });
+        const verifyMs = Date.now() - attemptStart;
+        if (verifyMs >= SLOW_ADMISSION_LOG_MS) {
+          console.warn(`[CORTEX_LEASE_GUARD] slow lease admission: verify-lease ${verifyMs}ms, executable resolve ${lookupMs}ms, attempt ${attempt}`);
+        }
         break;
       } catch (execErr: any) {
         lastExecErr = execErr;
         if (execErr?.code === "ETIMEDOUT" && attempt === 1) {
+          console.warn(`[CORTEX_LEASE_GUARD] verify-lease attempt 1 exceeded ${LEASE_CLI_TIMEOUT_MS}ms; retrying once`);
           continue;
         }
         throw execErr;
@@ -188,8 +212,12 @@ async function verifyLeasesForTool(
       verifiedLeaseCache.set(cacheKey, cacheTtl);
     }
   } catch (err: any) {
+    const admissionElapsedMs = Date.now() - admissionStart;
     let reason = "";
-    if (err?.stdout) {
+    if (err?.code === "ETIMEDOUT") {
+      reason = `lease verification CLI exceeded ${LEASE_CLI_TIMEOUT_MS}ms (attempt ${attemptCount}/2)`;
+    }
+    if (!reason && err?.stdout) {
       try {
         const parsed = JSON.parse(typeof err.stdout === "string" ? err.stdout : err.stdout.toString("utf8"));
         if (typeof parsed?.reason === "string" && parsed.reason) {
@@ -205,6 +233,9 @@ async function verifyLeasesForTool(
     }
     if (!reason && typeof err?.message === "string" && err.message && !err.message.includes("Command failed")) {
       reason = err.message;
+    }
+    if (reason) {
+      reason += `; admission_elapsed_ms=${admissionElapsedMs}`;
     }
     const targetsStr = targets.join(", ");
     const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";

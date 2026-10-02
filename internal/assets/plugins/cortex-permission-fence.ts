@@ -12,6 +12,13 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+// A stalled PATH scan would block the permission hook (and the host event
+// loop) indefinitely; the lookup is bounded so a stall falls through to the
+// default permission decision instead of hanging admission. Slow positive
+// verifications are logged so lease latency is observable in host logs.
+const EXECUTABLE_LOOKUP_TIMEOUT_MS = 3000;
+const SLOW_ADMISSION_LOG_MS = 2000;
+
 function resolveExecutable(cmd: string): string | null {
   const isWin = process.platform === "win32";
   const locator = isWin ? "where.exe" : "which";
@@ -20,6 +27,7 @@ function resolveExecutable(cmd: string): string | null {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
+      timeout: EXECUTABLE_LOOKUP_TIMEOUT_MS,
     }).trim();
     if (out) {
       const first = out.split(/\r?\n/)[0].trim();
@@ -213,6 +221,7 @@ export const CortexPermissionFencePlugin = Plugin.define({
           if (cortex && sessionID) {
             try {
               const cliArgs = ["work", "verify-lease", "--project", path.resolve(directory), "--session-id", sessionID, "--path", targetPath];
+              const verifyStart = Date.now();
               const raw = execFileSync(cortex, cliArgs, {
                 cwd: directory,
                 encoding: "utf8",
@@ -221,6 +230,10 @@ export const CortexPermissionFencePlugin = Plugin.define({
                 timeout: 5000,
                 windowsHide: true,
               });
+              const verifyMs = Date.now() - verifyStart;
+              if (verifyMs >= SLOW_ADMISSION_LOG_MS) {
+                console.warn(`[CORTEX_PERMISSION_FENCE] slow lease admission: verify-lease ${verifyMs}ms`);
+              }
               const result = JSON.parse(raw);
               if (result?.valid === true && result?.owner === `opencode-session:${sessionID}`) {
                 verifiedPermLeaseCache.set(cacheKey, Date.now() + 30_000);
