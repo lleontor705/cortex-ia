@@ -1,12 +1,17 @@
 package updater
 
 import (
+	"archive/tar"
+	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -155,12 +160,6 @@ func TestKnownInstallPathsCoverRealDeployments(t *testing.T) {
 }
 
 func TestAppliedFloorRejectsReplayAcrossSessions(t *testing.T) {
-	pub, _, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("keygen: %v", err)
-	}
-	defer SetTrustedKeysForTesting([]TrustedKey{{ID: "floor-key", PublicKey: pub, Repository: DefaultRepo}})()
-
 	t.Run("persisted floor rejects a replay before download", func(t *testing.T) {
 		home := t.TempDir()
 		seed(t, home, UpdateState{AppliedFloor: "v0.5.0", Available: "v0.5.0"})
@@ -218,20 +217,52 @@ func TestAppliedFloorRecordIsForwardOnly(t *testing.T) {
 	}
 }
 
-func TestAppliedFloorApplyOutcome(t *testing.T) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("keygen: %v", err)
+func createTestStateArchive(t *testing.T, binName string, payload []byte) ([]byte, string, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	ext := ".tar.gz"
+	if runtime.GOOS == "windows" {
+		ext = ".zip"
+		zw := zip.NewWriter(&buf)
+		w, err := zw.Create(binName)
+		if err != nil {
+			t.Fatalf("zip create: %v", err)
+		}
+		if _, err := w.Write(payload); err != nil {
+			t.Fatalf("zip write: %v", err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatalf("zip close: %v", err)
+		}
+	} else {
+		gw := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(gw)
+		hdr := &tar.Header{
+			Name: binName,
+			Mode: 0755,
+			Size: int64(len(payload)),
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatalf("tar header: %v", err)
+		}
+		if _, err := tw.Write(payload); err != nil {
+			t.Fatalf("tar write: %v", err)
+		}
+		if err := tw.Close(); err != nil {
+			t.Fatalf("tar close: %v", err)
+		}
+		if err := gw.Close(); err != nil {
+			t.Fatalf("gzip close: %v", err)
+		}
 	}
-	keyID := "floor-apply-key"
-	defer SetTrustedKeysForTesting([]TrustedKey{{ID: keyID, PublicKey: pub, Repository: DefaultRepo, MinVersion: "v0.5.0"}})()
+	h := sha256.Sum256(buf.Bytes())
+	return buf.Bytes(), hex.EncodeToString(h[:]), ext
+}
 
+func TestAppliedFloorApplyOutcome(t *testing.T) {
 	bin := testBinaryName()
 	payload := []byte("verified-binary-v0.5.1")
-	archiveBytes, err := createTestArchive(bin, payload)
-	if err != nil {
-		t.Fatalf("create archive: %v", err)
-	}
+	archiveBytes, archiveHash, ext := createTestStateArchive(t, bin, payload)
 
 	home := t.TempDir()
 	for _, tc := range []struct {
@@ -244,8 +275,33 @@ func TestAppliedFloorApplyOutcome(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			seed(t, home, UpdateState{AppliedFloor: "v0.5.0", Available: "v0.5.1"})
-			rel, srv := setupReleaseServer(t, tc.tag, priv, keyID, archiveBytes, tc.corrupt)
+
+			archiveName := fmt.Sprintf("cortex-ia_%s_%s_%s%s", strings.TrimPrefix(tc.tag, "v"), runtime.GOOS, runtime.GOARCH, ext)
+			hashToServe := archiveHash
+			if tc.corrupt {
+				hashToServe = strings.Repeat("0", 64)
+			}
+			checksumsContent := fmt.Sprintf("%s  %s\n", hashToServe, archiveName)
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/checksums.txt":
+					_, _ = w.Write([]byte(checksumsContent))
+				case "/archive" + ext:
+					_, _ = w.Write(archiveBytes)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
 			defer srv.Close()
+
+			rel := &Release{
+				TagName: tc.tag,
+				Assets: []ReleaseAsset{
+					{Name: ChecksumsFileName, DownloadURL: srv.URL + "/checksums.txt"},
+					{Name: archiveName, DownloadURL: srv.URL + "/archive" + ext, Size: int64(len(archiveBytes))},
+				},
+			}
 
 			path := filepath.Join(t.TempDir(), bin)
 			if err := os.WriteFile(path, []byte("old-binary"), 0o755); err != nil {
@@ -257,7 +313,7 @@ func TestAppliedFloorApplyOutcome(t *testing.T) {
 
 			if tc.corrupt {
 				if applyErr == nil {
-					t.Fatal("expected signature verification failure")
+					t.Fatal("expected digest mismatch verification failure")
 				}
 				if loadErr != nil || state.AppliedFloor != "v0.5.0" || state.Available != "v0.5.1" {
 					t.Fatalf("failed apply mutated state: %+v err=%v", state, loadErr)

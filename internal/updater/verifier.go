@@ -1,11 +1,5 @@
 package updater
 
-import (
-	"errors"
-	"fmt"
-	"strings"
-)
-
 // VerificationProfile identifies the active release-verification adapter.
 type VerificationProfile string
 
@@ -13,55 +7,19 @@ type VerificationProfile string
 const ProfileStrict VerificationProfile = "strict"
 
 // ReleaseVerifier is the single seam through which the download pipeline
-// resolves authority, eligibility, required release assets, and manifest
-// verification. Keeping those decisions behind one interface lets alternative
-// profiles reuse the shared fetch and artifact-download path unchanged.
+// resolves authority, eligibility, and required release assets.
 type ReleaseVerifier interface {
 	Name() VerificationProfile
 	RequireAuthority() error
 	CheckEligibility(current, tag, appliedFloor string) error
 	UpdateCandidate(current, tag, appliedFloor string) (bool, error)
 	RequiredAssets() []string
-	VerifyBundle(rawManifest, rawSig []byte, repo, tag string) (*Manifest, error)
 }
 
-// strictVerifier preserves the pre-seam RequireTrust + VerifyVersionFloor +
-// CheckUpdateCandidate + VerifyManifest chain verbatim; every method delegates
-// so strict behavior and error values stay byte-identical.
-type strictVerifier struct{}
-
-func (strictVerifier) Name() VerificationProfile { return ProfileStrict }
-
-func (strictVerifier) RequireAuthority() error { return RequireTrust() }
-
-func (strictVerifier) CheckEligibility(current, tag, appliedFloor string) error {
-	if strings.TrimSpace(tag) == "" {
-		return errors.New("release cannot be nil and tag name cannot be empty")
-	}
-	if IsDevOrUnknown(current) {
-		return fmt.Errorf("%w: current version is %q", ErrDevUnknownVersion, current)
-	}
-	return VerifyVersionFloor(current, tag, appliedFloor)
-}
-
-func (strictVerifier) UpdateCandidate(current, tag, appliedFloor string) (bool, error) {
-	return CheckUpdateCandidate(current, tag)
-}
-
-func (strictVerifier) RequiredAssets() []string {
-	return []string{"release-manifest.json", "release-manifest.sig"}
-}
-
-func (strictVerifier) VerifyBundle(rawManifest, rawSig []byte, repo, tag string) (*Manifest, error) {
-	return VerifyManifest(rawManifest, rawSig, repo, tag)
-}
-
-// defaultVerifier resolves the active release verifier from packaged trust and
-// process consent: a packaged bundle always selects strict; a bundle-less build
-// selects checksum only with explicit consent and otherwise stays strict so the
-// unchanged ErrNoTrustedKey contract remains the fail-closed default.
+// defaultVerifier returns the active release verifier. Standard releases verify
+// integrity via GoReleaser checksums.txt over HTTPS without requiring signed manifests.
 func defaultVerifier() ReleaseVerifier {
-	return verifierForProfile(ResolveProfile(trustBundlePresent(), checksumConsentActive()))
+	return checksumVerifier{}
 }
 
 // ActiveProfile reports the verification profile the update pipeline resolves

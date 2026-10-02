@@ -321,12 +321,9 @@ func TestUninstallRequiresConfirmationFromHome(t *testing.T) {
 	}
 	m := sized(newModel(fake, "/home/test", "vtest"))
 
-	m = press(m, "down")
-	m = press(m, "down")
-	m = press(m, "down")
-	m = press(m, "down")
-	m = press(m, "down")
-	m = press(m, "down") // cursor 6: Uninstall
+	for i := 0; i < uninstallEntryIndex; i++ {
+		m = press(m, "down")
+	}
 	m = press(m, "enter")
 	if m.confirm.kind != confirmUninstall || fake.uninstallCals != 0 {
 		t.Fatalf("uninstall must wait for confirmation, got confirm=%v calls=%d", m.confirm.kind, fake.uninstallCals)

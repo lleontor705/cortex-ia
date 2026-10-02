@@ -45,6 +45,9 @@ func runUpdate(args []string) error {
 	// Consent is per-run: an absent flag clears any prior grant so one
 	// invocation can never inherit a stale checksum selection.
 	updater.SetChecksumConsent(allowChecksumUpdates)
+	if allowChecksumUpdates {
+		fmt.Println("Note: --allow-checksum-updates is deprecated; checksums.txt verification is now the default")
+	}
 
 	if !scheduled {
 		return runManualUpdate(checkOnly)
@@ -62,8 +65,7 @@ func printUpdateHelp() {
 	fmt.Println("\nOptions:")
 	fmt.Println("  --check, -c    Check if an update is available without downloading or applying it")
 	fmt.Println("  --allow-checksum-updates")
-	fmt.Println("                 Verify releases by SHA-256 checksum only when no trust bundle is packaged.")
-	fmt.Println("                 Requires explicit operator consent; equivalent to CORTEX_IA_ALLOW_CHECKSUM_UPDATES=1.")
+	fmt.Println("                 (Deprecated) Releases are now verified by standard GoReleaser checksums.txt by default.")
 	fmt.Println("  --scheduled    Headless check-only mode for the OS scheduler; valid only with --check.")
 	fmt.Println("                 Records the result in the shared update state and never downloads or applies")
 	fmt.Println("\nSubcommands:")
@@ -129,21 +131,6 @@ func resolveUpdateHome() string {
 }
 
 func runManualUpdate(checkOnly bool) error {
-	// Fail closed on trust before any cache short-circuit so a fresh state can
-	// never bypass the authenticated-update gate.
-	if err := updater.RequireProfileAuthority(); err != nil {
-		return err
-	}
-
-	profile := updater.ActiveProfile()
-	printChecksumConsentWarning(profile)
-
-	// A bundle-less checksum run is the only bootstrap path for a development
-	// build; the strict profile keeps the hard disabled notice unchanged.
-	if profile != updater.ProfileChecksum && printDevelopmentBuildNotice() {
-		return nil
-	}
-
 	home := resolveUpdateHome()
 	state, _ := updater.LoadUpdateState(home)
 	client := newUpdateClient(home)
@@ -166,9 +153,6 @@ func runManualUpdate(checkOnly bool) error {
 	}
 	rel, hasUpdate, err := check(ctx, Version)
 	if err != nil {
-		if errors.Is(err, updater.ErrNoTrustedKey) {
-			return err
-		}
 		return fmt.Errorf("update check failed: %w", err)
 	}
 
@@ -195,13 +179,10 @@ func runManualUpdate(checkOnly bool) error {
 
 	fmt.Printf("Downloading and applying %s...\n", rel.TagName)
 	if err := client.ApplyUpdate(ctx, Version, rel); err != nil {
-		if errors.Is(err, updater.ErrNoTrustedKey) {
-			return err
-		}
 		return fmt.Errorf("update failed: %w", err)
 	}
 
-	fmt.Printf("Successfully updated cortex-ia to %s! (verification: %s)\n", rel.TagName, profile)
+	fmt.Printf("Successfully updated cortex-ia to %s! (verification: checksums.txt)\n", rel.TagName)
 	return nil
 }
 
@@ -210,17 +191,6 @@ func runManualUpdate(checkOnly bool) error {
 // downloads, prompts, or replaces a binary, and a failed check leaves the
 // previous state untouched.
 func runScheduledUpdateCheck() error {
-	if err := updater.RequireProfileAuthority(); err != nil {
-		return err
-	}
-
-	profile := updater.ActiveProfile()
-	printChecksumConsentWarning(profile)
-
-	if profile != updater.ProfileChecksum && printDevelopmentBuildNotice() {
-		return nil
-	}
-
 	home := resolveUpdateHome()
 	state, _ := updater.LoadUpdateState(home)
 	if state.CheckedWithin(time.Now().UTC(), updater.UpdateCheckTTL) {
@@ -235,9 +205,7 @@ func runScheduledUpdateCheck() error {
 
 	rel, hasUpdate, err := client.CheckLatest(ctx, Version)
 	if err != nil {
-		// Preserve the typed fail-closed trust and symmetry failures verbatim;
-		// they are the operator-facing contract of the check engine.
-		if errors.Is(err, updater.ErrNoTrustedKey) || errors.Is(err, updater.ErrNonCanonicalVersion) {
+		if errors.Is(err, updater.ErrNonCanonicalVersion) {
 			return err
 		}
 		return fmt.Errorf("scheduled update check failed: %w", err)

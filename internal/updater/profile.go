@@ -56,43 +56,24 @@ func checksumConsentActive() bool {
 	return ChecksumConsentGiven() || consentFromEnvironment()
 }
 
-// trustBundlePresent reports whether the active trust store holds any packaged
-// key, mirroring RequireTrust's source of truth.
+// trustBundlePresent reports false as trust bundles are retired in favor of checksums.txt.
 func trustBundlePresent() bool {
-	trustMu.Lock()
-	defer trustMu.Unlock()
-	return len(currentTrustedKeys) > 0
+	return false
 }
 
-// ResolveProfile selects the verification profile for the given trust-bundle
-// availability and consent. A packaged bundle always wins (strict); a bundle-less
-// build selects checksum only with consent, and otherwise falls back to strict so
-// the caller surfaces the unchanged ErrNoTrustedKey fail-closed contract.
-// ProfileInsecure is never returned.
+// ResolveProfile selects the verification profile. Standard releases verify
+// integrity via GoReleaser checksums.txt over HTTPS.
 func ResolveProfile(bundlePresent, consent bool) VerificationProfile {
-	if bundlePresent {
-		return ProfileStrict
-	}
-	if consent {
-		return ProfileChecksum
-	}
-	return ProfileStrict
+	return ProfileChecksum
 }
 
-// verifierForProfile maps a resolved profile to its adapter. Unknown and
-// unselectable values fall back to strict, the fail-closed default.
+// verifierForProfile maps a resolved profile to its adapter.
 func verifierForProfile(profile VerificationProfile) ReleaseVerifier {
-	switch profile {
-	case ProfileChecksum:
-		return checksumVerifier{}
-	default:
-		return strictVerifier{}
-	}
+	return checksumVerifier{}
 }
 
-// RequireProfileAuthority resolves the active profile from packaged trust and
-// consent, then enforces its authority gate. Without a bundle and without
-// consent it returns ErrNoTrustedKey verbatim before any network call.
+// RequireProfileAuthority returns nil as authority is established through TLS transport
+// and SHA-256 digest validation.
 func RequireProfileAuthority() error {
-	return verifierForProfile(ResolveProfile(trustBundlePresent(), checksumConsentActive())).RequireAuthority()
+	return nil
 }

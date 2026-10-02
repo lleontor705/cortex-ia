@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/tui/styles"
+	"github.com/lleontor705/cortex-ia/internal/updater"
 )
 
 // spinnerFrames animates the Running screen with smooth dot spinners.
@@ -31,14 +33,15 @@ var (
 var homeDescriptions = []string{
 	"Deploy or reconcile skills, agents, commands & MCPs",
 	"Inspect and configure managed OpenCode MCP server presets",
-	"Open interactive local web dashboard (http://127.0.0.1:7331)",
-	"Create custom subagents with Cortex-IA safety guardrails",
-	"Resumen de uso de OpenCode: tokens, heatmap y ranking de modelos",
-	"Assess installation health, digests & recovery journals",
-	"Remove accredited cortex-ia installation with backup",
-	"Exit cortex-ia",
 	"Modelo y esfuerzo por agente con vista previa dry-run",
 	"Instalar un proveedor personalizado con token enmascarado",
+	"Open interactive local web dashboard (http://127.0.0.1:7331)",
+	"Resumen de uso de OpenCode: tokens, heatmap y ranking de modelos",
+	"Create custom subagents with Cortex-IA safety guardrails",
+	"Assess installation health, digests & recovery journals",
+	"Comprobar y aplicar actualizaciones de versión de cortex-ia",
+	"Remove accredited cortex-ia installation with backup",
+	"Exit cortex-ia",
 }
 
 var mcpDescriptions = map[string]string{
@@ -157,11 +160,21 @@ func (m model) View() string {
 		body = m.models.view(m.contentWidth())
 	case screenProviders:
 		body = m.providers.view(m.contentWidth())
+	case screenUpgrade:
+		body = m.viewUpgrade()
 	}
 	if m.confirm.kind != confirmNone {
 		body = body + "\n" + m.viewConfirm()
 	}
 	return styleFrame.Render(body)
+}
+
+func (m model) viewUpgrade() string {
+	w := m.contentWidth()
+	if w <= 0 {
+		w = m.width
+	}
+	return m.upgrade.view(w)
 }
 
 func (m model) header(name string) string {
@@ -170,6 +183,30 @@ func (m model) header(name string) string {
 
 func (m model) footer(keys string) string {
 	return styleDim.Render(keys)
+}
+
+func (m model) upgradeBadge() string {
+	if m.upgrade.phase == upgradePhaseSuccess || m.upgrade.phase == upgradePhaseUpToDate {
+		return ""
+	}
+	tag := m.upgrade.availableVersion
+	if tag == "" {
+		tag = m.upgrade.latestVersion
+	}
+	if tag == "" {
+		stateRoot := filepath.Join(m.homeDir, ".cortex-ia")
+		st, err := updater.LoadUpdateState(stateRoot)
+		if err == nil && st.UpdateAvailable() {
+			tag = strings.TrimSpace(st.Available)
+			if st.AppliedFloor != "" && tag == strings.TrimSpace(st.AppliedFloor) {
+				tag = ""
+			}
+		}
+	}
+	if tag == "" || tag == strings.TrimSpace(m.version) {
+		return ""
+	}
+	return " " + styleWarn.Render("[NEW "+tag+"]")
 }
 
 func (m model) viewHome() string {
@@ -183,15 +220,20 @@ func (m model) viewHome() string {
 		lines = append(lines, truncate(m.header("Home"), width), "")
 	}
 
+	badge := m.upgradeBadge()
 	for i, entry := range homeEntries {
 		prefix := fmt.Sprintf("  [%d] ", i+1)
 		text := entry
 		desc := " · " + styleDim.Render(homeDescriptions[i])
+		entryBadge := ""
+		if i == upgradeEntryIndex && badge != "" {
+			entryBadge = badge
+		}
 		if i == m.cursor {
 			prefix = fmt.Sprintf("▸ [%d] ", i+1)
 			text = styleSelected.Render(entry)
 		}
-		lines = append(lines, truncate(prefix+text+desc, width))
+		lines = append(lines, truncate(prefix+text+entryBadge+desc, width))
 	}
 	lines = append(lines, "", m.footer("↑/↓ move · 1-9/enter select · q quit"))
 	return strings.Join(lines, "\n")

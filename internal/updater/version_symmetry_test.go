@@ -2,7 +2,6 @@ package updater
 
 import (
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"io"
@@ -39,8 +38,6 @@ func newSymmetryClient(tag string) *Client {
 }
 
 func TestVersionSymmetry(t *testing.T) {
-	cleanup := SetTrustedKeysForTesting([]TrustedKey{{ID: "sym-key", PublicKey: make([]byte, ed25519.PublicKeySize)}})
-	defer cleanup()
 
 	t.Run("dirty build is not announced an update", func(t *testing.T) {
 		rel, hasUpdate, err := newSymmetryClient("v0.5.0").CheckLatest(context.Background(), "v0.4.50+dirty")
