@@ -24,7 +24,7 @@ All role controllers execute in `native` mode under the Cortex-IA Work Authority
 
 - `~/.cortex-ia/delegation.db` is the single local SQLite database for delegation jobs, boards, DAG tasks, claims, file leases, approvals, and append-only operational events. `CORTEX_IA_HOME` is allowed only as an explicit isolated state-root override for automation and smokes.
 - Use `cortex-ia board create|list|status|serve` for durable board grouping and the embedded Kanban. Every coordinated initiative should have one stable board ID; `default` is for direct ungrouped work and migrated tasks.
-- Use `cortex-ia work create --board <board-id>` for tasks. Every dependency must exist in the same board. Browser card position is observational and never proves readiness, review, or authority.
+- Use `cortex-ia work create` for tasks (defaults to `--board default`, or pass `--board <board-id>` for coordinated initiatives). Every dependency must exist in the same board. Browser card position is observational and never proves readiness, review, or authority.
 - `work claim`, revision-CAS transitions, TTL renewals, and workspace-relative `work lease` reservations are authoritative. Tokens remain only in live controller memory; never place them in prompts, receipts, Cortex observations, logs, or files.
 - Only an approved `work approve --verdict PASS` (from an independent reviewer, or orchestrator auto-approval on low-risk/data/docs/config tasks) with evidence produces `done`. External receipts, chat messages, tests alone, and Kanban placement never complete a task.
 - Canonical role and lifecycle rules live in `internal/assets/skills/_shared/cortex-work-protocol.md`; installed agents must follow that file.

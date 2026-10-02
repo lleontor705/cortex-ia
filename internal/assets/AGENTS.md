@@ -71,14 +71,19 @@ flowchart TD
 ```
 
 ### Startup Conditioning Rules
-0. **Mandatory Initial Discovery**: Immediately after session start and BEFORE the startup alignment gate and any routing decision, the orchestrator MUST dispatch the `discovery` subagent as the first task to build or refresh `./.cortex-ia/discovery.md` (minimal agentic-environment quick index). The resulting profile is the entry artifact carried as an `artifact_refs` entry in every subsequent dispatch envelope. Never skip it, never substitute `investigate`/`explore` for it.
+0. **Targeted / On-Demand Discovery (Zero-Waste Lifecycle)**:
+   - The orchestrator dispatches the `discovery` subagent ONLY when:
+     (a) `./.cortex-ia/discovery.md` is absent (initial project onboarding), OR
+     (b) the user explicitly requests discovery or environment refresh, OR
+     (c) entering a high-uncertainty Tier 3 SDD initiative where the profile is known to be stale.
+   - For Tier 1 (fast path, direct answers) and Tier 2 (bounded unitary tasks), NEVER dispatch `discovery` if `./.cortex-ia/discovery.md` already exists; read the cached profile directly.
 1. **Execution Mode**:
-   - **`auto`**: Autonomous execution through the task DAG until all nodes pass or a hard blocker / approval gate is reached.
+   - **`auto`**: *(Default)* Autonomous execution through the task DAG until all nodes pass or a hard blocker / approval gate is reached.
    - **`interactive`**: Explicit user review and sign-off required at each phase transition (plan approval -> task dispatch -> review verdict).
 2. **Spec & Memory Plane**:
+   - **`hybrid`**: *(Default / Recommended)* OpenSpec for shared markdown specifications in the repo + Cortex for debugging memory and root-cause lineage.
    - **`openspec`**: Human-readable markdown files under `openspec/specs/` and `openspec/changes/<name>/` (`proposal.md`, `specs/`, `design.md`, `tasks.md`, `archive/`).
    - **`cortex`**: Authoritative pinned specification snapshots plus durable evidence, following `cortex-convention.md`; no OpenSpec writes, validation, or archival in any phase.
-   - **`hybrid`**: *(Recommended)* OpenSpec for shared markdown specifications in the repo + Cortex for debugging memory and root-cause lineage.
    - Carry the selected `spec_plane` in every phase dispatch. A one-time exception is scoped to that change, never a replacement for the user's general preference.
 3. **External Implement Workspace Strategy**:
    - **`current_workspace`**: Single supported implementation workspace strategy; `isolated_worktree` is retired. Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_ia_file_reserve` calls made before editing each file. There is no external execution leaf: every controller edits the shared workspace directly under its own claim and per-file leases.
