@@ -43,6 +43,7 @@ if (!(Test-Path -Path $InstallDir)) {
 $LocalBin = Join-Path $PSScriptRoot "..\bin\cortex-ia.exe"
 if (Test-Path -Path $LocalBin) {
     Write-Cyan "Installing from local build: $LocalBin"
+    Write-Cyan "NOTE: this local build carries no error-reporting secret; run 'cortex-ia report config --secret <KEY>' so reports can be signed (release binaries embed it)."
     Copy-Item -Path $LocalBin -Destination $ExePath -Force
 } else {
     Write-Cyan "Fetching latest release version from GitHub..."
@@ -60,17 +61,10 @@ if (Test-Path -Path $LocalBin) {
         Expand-Archive -Path $TempZip -DestinationPath $InstallDir -Force
         Remove-Item -Path $TempZip -Force
     } catch {
-        Write-Cyan "Release archive not found, attempting go install..."
-        if (Get-Command go -ErrorAction SilentlyContinue) {
-            go install "github.com/$Repo/cmd/cortex-ia@latest"
-            $GopathBin = Join-Path (go env GOPATH) "bin\cortex-ia.exe"
-            if (Test-Path -Path $GopathBin) {
-                Copy-Item -Path $GopathBin -Destination $ExePath -Force
-            }
-        } else {
-            Write-Red "Failed to download binary: $_"
-            exit 1
-        }
+        Write-Red "Failed to download the release archive: $_"
+        Write-Red "The installer no longer falls back to 'go install': a source build carries no error-reporting secret, so every report it sends would be rejected."
+        Write-Red "Retry when GitHub is reachable, or build from source and then run: cortex-ia report config --secret <KEY>"
+        exit 1
     }
 }
 
