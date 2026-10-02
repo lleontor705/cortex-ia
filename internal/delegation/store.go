@@ -276,6 +276,10 @@ func (s *Store) initialize(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS work_items_status_idx ON work_items(status, updated_at)`,
 			`CREATE INDEX IF NOT EXISTS work_leases_item_idx ON work_leases(item_id, expires_at)`,
 			`CREATE INDEX IF NOT EXISTS work_events_created_idx ON work_events(created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS work_dependencies_depends_on_idx ON work_dependencies(depends_on, item_id)`,
+			`CREATE INDEX IF NOT EXISTS work_approvals_item_id_idx ON work_approvals(item_id, id DESC)`,
+			`CREATE INDEX IF NOT EXISTS work_claims_expires_at_idx ON work_claims(expires_at)`,
+			`CREATE INDEX IF NOT EXISTS work_leases_expires_at_idx ON work_leases(expires_at)`,
 			`CREATE TABLE IF NOT EXISTS work_boards (
 				id TEXT PRIMARY KEY,
 				title TEXT NOT NULL,
@@ -531,6 +535,22 @@ func (s *Store) initialize(ctx context.Context) error {
 				return fmt.Errorf("record workload policy migration: %w", err)
 			}
 		}
+		if version < 16 {
+			for _, stmt := range []string{
+				`CREATE INDEX IF NOT EXISTS work_dependencies_depends_on_idx ON work_dependencies(depends_on, item_id)`,
+				`CREATE INDEX IF NOT EXISTS work_approvals_item_id_idx ON work_approvals(item_id, id DESC)`,
+				`CREATE INDEX IF NOT EXISTS work_claims_expires_at_idx ON work_claims(expires_at)`,
+				`CREATE INDEX IF NOT EXISTS work_leases_expires_at_idx ON work_leases(expires_at)`,
+			} {
+				if _, err := conn.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("query index optimization migration: %w", err)
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(16,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record index optimization migration: %w", err)
+			}
+		}
+		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE expires_at<=?`, s.timestamp())
 		return nil
 	})
 }

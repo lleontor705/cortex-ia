@@ -27,15 +27,17 @@ Do not inflate Lite into Full because of file count. Escalate when evidence expo
 
 Specifications describe observable obligations using RFC 2119 keywords (**MUST**, **SHALL**, **SHOULD**, **MAY**, **MUST NOT**). They are stakeholder-readable and implementation-neutral.
 
-### Requirement Format & ID Traceability
-Assign unique IDs in the form `REQ-{DOMAIN}-{NNN}`. Every requirement MUST include three strict Given/When/Then scenarios:
-1. **Happy Path Scenario**: Standard expected behavior.
-2. **Edge Case Scenario**: Boundary conditions, concurrent access, or unusual inputs.
-3. **Error State Scenario**: Fail-closed negative behavior and validation rejection.
+### Requirement Format & Proportional Traceability
+Assign unique IDs in the form `REQ-{DOMAIN}-{NNN}`. Requirement scenarios must be proportional to domain complexity and risk:
+- **Complex Domain / Stateful Logic (`sdd-full` or critical algorithms)**: Include three strict Given/When/Then scenarios:
+  1. **Happy Path Scenario**: Standard expected behavior.
+  2. **Edge Case Scenario**: Boundary conditions, concurrent access, or unusual inputs.
+  3. **Error State Scenario**: Fail-closed negative behavior and validation rejection.
+- **Moderate / Localized Units (`sdd-lite` or straightforward features)**: Scenarios are proportional: 1 concise Happy Path scenario is sufficient when edge cases or error states do not exist or are trivial. Include edge/error scenarios only where genuine behavioral ambiguity or domain risk warrants them.
 
 Every requirement MUST also carry a `Test:` oracle line naming its covering oracle. When that oracle is a persistent test, name it `TestREQ_{DOMAIN}_{NNN}_<slug>`; language-conditional adaptation of the prefix and separator is allowed. The convention is recorded in `cortex-convention.md` under the traceability chain and the `TestREQ_` naming is validated structurally per `workflow-map.md`.
 
-When `spec_plane=cortex`, specifications are persisted as pinned snapshot observations per `cortex-convention.md` carrying requirements with three Given/When/Then scenarios each, design/interfaces, deterministic oracles, risks/non-goals, and task traceability, omitting OpenSpec files and validation gates.
+When `spec_plane=cortex`, specifications are persisted as pinned snapshot observations per `cortex-convention.md` carrying requirements with proportional Given/When/Then scenarios, design/interfaces, deterministic oracles, risks/non-goals, and task traceability, omitting OpenSpec files and validation gates.
 
 ```markdown
 # Delta for {Domain}

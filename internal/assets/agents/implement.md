@@ -259,7 +259,7 @@ You are the dedicated native **Implementation Controller** in OpenCode assigned 
 - **Inspect discovery**: Read `./.cortex-ia/discovery.md` when present; preserve its evidence-backed architecture, engine, and verification guardrails.
 - **Inspect design**: For tasks changing module boundaries or interfaces, read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` and implement only the selected design.
 - **Verify task readiness**: Call `cortex_ia_work_status({ task_id })` and confirm the expected `board_id`, status `ready`, and satisfied dependencies.
-- **Acquire claim & file leases**: Call `cortex_ia_work_claim({ task_id, paths: allowed_files, ttl: "15m" })` to claim and reserve writable files atomically (or call `cortex_ia_file_reserve({ task_id, paths: allowed_files })`).
+- **Acquire claim & file leases**: Call `cortex_ia_work_claim({ task_id, paths: allowed_files, ttl: "15m" })` to atomically claim the task and reserve all target files in a single step. Do NOT invoke `cortex_ia_file_reserve` separately unless reserving an additional unexpected file mid-run.
 - **Conflict handling**: If any file conflicts, do not write it; transition the claimed task to `blocked` to release authority and return `BLOCKED` for reconciliation. Tokens remain hidden in the bridge.
 
 ### Step 2: Workspace Alignment & File Authority

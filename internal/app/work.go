@@ -20,14 +20,14 @@ func runWork(args []string) error {
 	if len(args) == 0 || isHelp(args[0]) {
 		fmt.Println("Usage: cortex-ia work <subcommand> [options]")
 		fmt.Println("\nSubcommands:")
-		fmt.Println("  create <id> <title> [--board <board>] [definition options]     Create a work task")
-		fmt.Println("  list [--board <board-id>]                                   List work items")
+		fmt.Println("  create <id> <title> [--board <board>] [options]              Create a task (defaults to --board default)")
+		fmt.Println("  list [--board <board-id>]                                   List work items (all boards if omitted, or filter by board)")
 		fmt.Println("  status <task-id>                                            Get task details")
-		fmt.Println("  claim <task-id> --owner <owner> [--path <file> ...] [--ttl <duration>]          Claim a task")
+		fmt.Println("  claim <task-id> --owner <owner> [--path <file> ...] [--ttl <duration>]  Claim task and reserve file lease(s) atomically")
 		fmt.Println("  renew <task-id> --claim-token <token> [--ttl <duration>]    Renew a claim")
 		fmt.Println("  controller-renew <task-id> --owner <owner> --authority @stdin  Renew live claim and complete lease set")
-		fmt.Println("  reserve <task-id> --claim-token <token> --path <file>       Reserve files atomically")
-		fmt.Println("  lease <task-id> --claim-token <token> --path <file>         Reserve a file lease")
+		fmt.Println("  reserve <task-id> --claim-token <token> --path <file> ...   Reserve one or more file leases atomically")
+		fmt.Println("  lease <task-id> --claim-token <token> --path <file>         Reserve a single file lease")
 		fmt.Println("  lease-renew --path <file> --lease-token <token>             Renew a file lease")
 		fmt.Println("  release --path <file> --lease-token <token>                 Release a file lease")
 		fmt.Println("  release-all <task-id> --claim-token <token>                 Release all file leases for a task")
@@ -66,11 +66,11 @@ func runWork(args []string) error {
 	switch sub {
 	case "create":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]... [--workload-policy <strict|flexible|unbounded>]", nil)
+			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]... [--workload-policy <strict|flexible|unbounded>] (defaults to --board default)", nil)
 		}
 		opts, positionals, err := workOptions(args[1:], map[string]bool{"--id": false, "--title": false, "--depends": true, "--board": false, "--objective": false, "--acceptance": false, "--verify": false, "--file": true, "--project": false, "--opencode-session-id": false, "--opencode-root-session-id": false, "--opencode-parent-session-id": false, "--contract-file": false, "--workflow": false, "--workload-policy": false})
 		if err != nil {
-			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]... [--workload-policy <strict|flexible|unbounded>]", err)
+			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]... [--workload-policy <strict|flexible|unbounded>] (defaults to --board default)", err)
 		}
 		id := oneOption(opts, "--id")
 		title := oneOption(opts, "--title")
