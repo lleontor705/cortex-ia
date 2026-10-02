@@ -13,9 +13,6 @@ const ProfileChecksum VerificationProfile = "checksum"
 // flag, variable, or file may resolve to it: it exists only in the type system.
 const ProfileInsecure VerificationProfile = "insecure"
 
-// consentEnvVar is the environment surface mirroring --allow-checksum-updates.
-const consentEnvVar = "CORTEX_IA_ALLOW_CHECKSUM_UPDATES"
-
 var (
 	checksumConsentMu sync.Mutex
 	checksumConsent   bool
