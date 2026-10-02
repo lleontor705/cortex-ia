@@ -11,7 +11,7 @@ import (
 )
 
 // MaxSupportedSchemaVersion is the newest delegation schema this binary can read and write.
-const MaxSupportedSchemaVersion = 15
+const MaxSupportedSchemaVersion = 16
 
 // SchemaDriftError reports a delegation database migrated by a newer cortex-ia build.
 // It exists because the plain fail-closed message alone left operators without a recovery path.

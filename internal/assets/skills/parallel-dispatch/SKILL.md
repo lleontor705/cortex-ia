@@ -77,12 +77,12 @@ task({ subagent_type: "implement", prompt: envelopeTask2, background: true });
 
 1. **Reactive Completion:**
    Do not poll in a sleep loop. The orchestrator receives completion notifications automatically as each background subagent finishes and transitions its task to `in_review`.
-2. **Dispatch Independent Review:**
-   For each task reaching `in_review`, dispatch the `reviewer` controller:
-   - Reviewer runs the acceptance checks independently.
-   - Reviewer executes `cortex_ia_work_approve({ task_id, verdict: "PASS" })`.
+2. **Adaptive Verification & Approval:**
+   Apply the Adaptive Review Policy to avoid unnecessary reviewer overhead:
+   - **Non-Code & Low-Risk Unitary Tasks:** The orchestrator auto-approves directly (`cortex_ia_work_approve({ task_id, verdict: "PASS", evidence: ... })`) without dispatching a `reviewer` subagent.
+   - **Moderate & High-Risk Tasks:** Dispatch the independent `reviewer` controller to execute verification checks and submit approval.
 3. **Atomic DAG Unlocking:**
-   Upon reviewer `PASS`, SQLite atomically:
+   Upon reviewer or auto-approval `PASS`, SQLite atomically:
    - Marks the task `done`.
    - Releases any remaining claim/leases.
    - Evaluates downstream dependents in the board. Dependents whose prerequisites are now all `done` automatically transition to `ready`.
@@ -97,6 +97,8 @@ task({ subagent_type: "implement", prompt: envelopeTask2, background: true });
 |---|---|
 | Multiple tasks `ready` with disjoint `allowed_files` | Launch parallel background subagents (`parallel-dispatch`) |
 | Tasks share any file in `allowed_files` | Execute sequentially in dependency/sorted order |
+| Low-risk / non-code task reaches `in_review` | Orchestrator auto-approves directly without dispatching reviewer |
+| Moderate/high-risk task reaches `in_review` | Dispatch independent `reviewer` controller |
 | Task requests `isolated_worktree` or external execution | Fail closed; only native `current_workspace` controllers are supported |
 | Worker fails or hits collision | Worker transitions to `blocked`; other parallel tasks continue unaffected |
 | Reviewer returns `FAIL` | Task transitions to `blocked` for targeted retry; healthy tasks proceed |

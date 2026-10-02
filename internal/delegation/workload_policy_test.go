@@ -118,8 +118,8 @@ func TestWorkloadPolicyMigrationBackfillsPreviousSchema(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT COALESCE(MAX(version),0) FROM schema_migrations`).Scan(&version); err != nil {
 		t.Fatalf("read ledger: %v", err)
 	}
-	if version != 15 {
-		t.Fatalf("ledger version = %d, want 15", version)
+	if version != MaxSupportedSchemaVersion {
+		t.Fatalf("ledger version = %d, want %d", version, MaxSupportedSchemaVersion)
 	}
 	var backfilled string
 	if err := store.db.QueryRow(`SELECT workload_policy FROM work_items WHERE id='legacy-task'`).Scan(&backfilled); err != nil {
@@ -132,7 +132,7 @@ func TestWorkloadPolicyMigrationBackfillsPreviousSchema(t *testing.T) {
 
 func TestWorkloadPolicyMigrationRejectsFutureSchema(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "delegation.db")
-	seedPreviousSchema(t, dbPath, 16, false)
+	seedPreviousSchema(t, dbPath, MaxSupportedSchemaVersion+1, false)
 
 	if _, err := OpenStore(dbPath); err == nil {
 		t.Fatal("store accepted a future schema version")

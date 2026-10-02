@@ -107,6 +107,9 @@ func runCLI(args []string) error {
 	case "update", "upgrade":
 		return runUpdate(rest)
 
+	case "completion":
+		return runCompletion(rest)
+
 	case "version", "--version", "-v":
 		fmt.Printf("cortex-ia %s\n", Version)
 		return nil
@@ -374,6 +377,7 @@ Usage:
   cortex-ia uninstall [--dry-run] [--target <list>]
                                       Remove the accredited installation
   cortex-ia update [--check]         Check for and install latest release
+  cortex-ia completion bash|zsh|fish Generate shell autocompletion script
   cortex-ia version                  Show version
   cortex-ia help                     Show this help
 

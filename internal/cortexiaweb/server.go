@@ -114,6 +114,18 @@ func Serve(ctx context.Context, store *delegation.Store, address string, ready c
 	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(listener) }()
+	go func() {
+		ticker := time.NewTicker(2 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_, _ = store.RecoverWork(ctx)
+			}
+		}
+	}()
 	select {
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
