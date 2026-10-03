@@ -3,6 +3,7 @@ package delegation
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -75,13 +76,23 @@ func TestResolveCurrentBranch(t *testing.T) {
 		t.Errorf("expected empty branch in non-git directory, got %q", b)
 	}
 
-	// 2. In current repository
-	wd, err := os.Getwd()
-	if err == nil {
-		branch := ResolveCurrentBranch(wd)
-		if branch == "" {
-			t.Error("expected non-empty branch in current git repository")
-		}
+	// 2. In an isolated git repository with a known branch
+	gitDir := t.TempDir()
+	initCmd := exec.Command("git", "-C", gitDir, "init", "-b", "feature-test")
+	if err := initCmd.Run(); err != nil {
+		_ = exec.Command("git", "-C", gitDir, "init").Run()
+		_ = exec.Command("git", "-C", gitDir, "checkout", "-b", "feature-test").Run()
+	}
+	_ = exec.Command("git", "-C", gitDir, "config", "user.email", "test@example.com").Run()
+	_ = exec.Command("git", "-C", gitDir, "config", "user.name", "Test User").Run()
+	dummyFile := filepath.Join(gitDir, "README.md")
+	_ = os.WriteFile(dummyFile, []byte("test"), 0o600)
+	_ = exec.Command("git", "-C", gitDir, "add", "README.md").Run()
+	_ = exec.Command("git", "-C", gitDir, "commit", "-m", "init").Run()
+
+	branch := ResolveCurrentBranch(gitDir)
+	if branch != "feature-test" {
+		t.Errorf("expected branch feature-test, got %q", branch)
 	}
 }
 
