@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -169,8 +170,9 @@ func hashJSON(value any) string {
 
 // fingerprintFile classifies one allowed-files entry. Existing regular files keep the
 // streaming content digest; existing directories and glob patterns are digested from the
-// git-tracked regular files they cover; a missing path keeps the literal "absent"
-// sentinel. Tracking-aware digests keep the binding bounded — an ignored dependency cache
+// git-tracked regular files they cover — or, in a workspace that is not inside a git work
+// tree, from a bounded filesystem walk (see listTreeFiles); a missing path keeps the
+// literal "absent" sentinel. Tracking-aware digests keep the binding bounded — an ignored dependency cache
 // with no tracked files collapses to one stable value — while still detecting every change
 // to tracked content. It rejects symlinks, including parent components, and the result is
 // fixed-width, so the binding persisted in binding_json stays far below its 64 KiB column
@@ -235,12 +237,13 @@ func isGlobPattern(value string) bool {
 	return strings.ContainsAny(value, "*?")
 }
 
-// fingerprintTrackedTree digests the git-tracked regular files covered by a directory or
-// glob entry. Only tracked files are read, so ignored build output and dependency caches
-// cannot make the binding unbounded, and a tree with no tracked files hashes to the stable
-// empty-set digest instead of failing.
+// fingerprintTrackedTree digests the regular files covered by a directory or glob entry:
+// the git-tracked set inside a work tree, or the bounded filesystem walk that
+// listTreeFiles falls back to otherwise. Only tracked files are read, so ignored build
+// output and dependency caches cannot make the binding unbounded, and a tree with no
+// tracked files hashes to the stable empty-set digest instead of failing.
 func fingerprintTrackedTree(workspace, pattern string) (string, error) {
-	tracked, err := listTrackedFiles(workspace, pattern)
+	tracked, err := listTreeFiles(workspace, pattern)
 	if err != nil {
 		return "", err
 	}
@@ -288,6 +291,176 @@ func listTrackedFiles(workspace, pattern string) ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
+}
+
+// listTreeFiles resolves the files covered by a directory or glob entry. Inside a git
+// work tree that is the git-tracked set. A workspace that is not inside a git work tree —
+// an operational container root whose children are the actual repositories — falls back
+// to a bounded filesystem walk so review binding and the in_review transition keep
+// working there; every other git failure still fails closed with the original git error.
+func listTreeFiles(workspace, pattern string) ([]string, error) {
+	tracked, err := listTrackedFiles(workspace, pattern)
+	if err == nil {
+		return tracked, nil
+	}
+	workTree, probeErr := insideGitWorkTree(workspace)
+	if probeErr != nil {
+		return nil, err
+	}
+	if workTree {
+		return nil, err
+	}
+	return listWalkedTreeFiles(workspace, pattern)
+}
+
+// insideGitWorkTree reports whether dir sits inside a git work tree. A definitive "no"
+// from git is a normal answer; only an unavailable git binary or a timed-out probe
+// returns an error, so callers keep failing closed on those instead of degrading.
+func insideGitWorkTree(dir string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), trackedFilesTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--is-inside-work-tree")
+	command.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	var stdout bytes.Buffer
+	command.Stdout = &stdout
+	err := command.Run()
+	if err == nil {
+		return strings.TrimSpace(stdout.String()) == "true", nil
+	}
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return false, nil
+	}
+	return false, err
+}
+
+// maxWalkedTreeFiles bounds the non-git fingerprint walk so dependency caches or build
+// output under a container root cannot make review binding unbounded. Exceeding it fails
+// closed with a diagnosable message instead of silently binding a partial tree.
+const maxWalkedTreeFiles = 8192
+
+// listWalkedTreeFiles digests a directory or glob entry by walking the filesystem when
+// there is no git index to read. It keeps the guarantees the git-backed listing provides
+// where it can: sorted unique workspace-relative paths, regular files only (symlinks are
+// never followed), repository metadata excluded so routine commits are not content drift,
+// and a hard file cap. Without an index it cannot tell tracked from untracked content, so
+// untracked files under the entry are covered too — a stricter binding, never a looser one.
+func listWalkedTreeFiles(workspace, pattern string) ([]string, error) {
+	root := filepath.Join(workspace, filepath.FromSlash(walkLiteralPrefix(pattern)))
+	info, statErr := os.Lstat(root)
+	if statErr != nil {
+		if errors.Is(statErr, os.ErrNotExist) {
+			return nil, nil // a pattern that matches nothing digests as the empty set
+		}
+		return nil, statErr
+	}
+	if !info.IsDir() {
+		return nil, nil // only a literal entry can land here, and files have no children
+	}
+	var matcher *regexp.Regexp
+	if isGlobPattern(pattern) {
+		compiled, err := walkedTreePattern(pattern)
+		if err != nil {
+			return nil, err
+		}
+		matcher = compiled
+	}
+	var files []string
+	walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if strings.EqualFold(entry.Name(), ".git") {
+			if entry.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(workspace, path)
+		if err != nil {
+			return err
+		}
+		clean, err := canonicalLeasePath(filepath.ToSlash(relative))
+		if err != nil {
+			return fmt.Errorf("fingerprint %s: %w", pattern, err)
+		}
+		if matcher != nil {
+			if !matcher.MatchString(clean) {
+				return nil
+			}
+		} else if clean != pattern && !strings.HasPrefix(clean, pattern+"/") {
+			return nil
+		}
+		entryInfo, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !entryInfo.Mode().IsRegular() {
+			return nil
+		}
+		if len(files) >= maxWalkedTreeFiles {
+			return fmt.Errorf("directory fingerprint %s covers more than %d files in a workspace that is not a git work tree; narrow allowed_files or initialize git", pattern, maxWalkedTreeFiles)
+		}
+		files = append(files, clean)
+		return nil
+	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+// walkLiteralPrefix returns the leading path components of pattern that contain no glob
+// metacharacters: the directory the non-git walk can start from. Matching files are always
+// anchored under that prefix, so starting the walk there never misses a match.
+func walkLiteralPrefix(pattern string) string {
+	components := strings.Split(pattern, "/")
+	for i, component := range components {
+		if isGlobPattern(component) {
+			return strings.Join(components[:i], "/")
+		}
+	}
+	return pattern
+}
+
+// walkedTreePattern compiles a glob entry into an anchored expression that mirrors git
+// pathspec coverage: "*" and "**" run across separators, "?" matches any single character
+// (separators included), and a leading "**/" also matches at the root. Glob patterns are
+// never extended to the children of a directory they match — git does not do that either
+// (only literal directory entries carry the prefix rule, handled by the caller).
+func walkedTreePattern(pattern string) (*regexp.Regexp, error) {
+	runes := []rune(pattern)
+	var expression strings.Builder
+	expression.WriteString(`(?s)^`)
+	for i := 0; i < len(runes); i++ {
+		switch runes[i] {
+		case '*':
+			if i+1 < len(runes) && runes[i+1] == '*' {
+				i++
+				if i+1 < len(runes) && runes[i+1] == '/' {
+					i++
+					expression.WriteString(`(?:.*/)?`)
+					continue
+				}
+				expression.WriteString(`.*`)
+				continue
+			}
+			expression.WriteString(`.*`)
+		case '?':
+			expression.WriteString(`.`)
+		default:
+			expression.WriteString(regexp.QuoteMeta(string(runes[i])))
+		}
+	}
+	expression.WriteString(`$`)
+	return regexp.Compile(expression.String())
 }
 
 func currentReviewBinding(ctx context.Context, conn *sql.Conn, id string) (string, error) {
