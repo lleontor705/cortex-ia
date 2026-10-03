@@ -1003,7 +1003,7 @@ export const CortexWorkPlugin = Plugin.define({
     cortex_ia_work_create: tool({
       description: "Create one work item in a durable same-board DAG.",
       args: {
-        workflow: tool.schema.enum(["direct-change", "fast-tdd", "hotfix", "sdd-lite", "sdd-full"]),
+        workflow: tool.schema.enum(["direct-change", "fast-tdd", "hotfix", "ops-task", "sdd-lite", "sdd-full"]),
         board_id: tool.schema.string(),
         task_id: tool.schema.string(),
         title: tool.schema.string(),

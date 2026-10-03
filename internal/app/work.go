@@ -113,7 +113,7 @@ func runWork(args []string) error {
 				if contract == nil || contract.Workflow != workflow[0] {
 					return errors.New("SDD workflow requires a matching --contract-file")
 				}
-			case "direct-change", "fast-tdd", "hotfix":
+			case "direct-change", "fast-tdd", "hotfix", "ops-task":
 				if contract != nil {
 					return errors.New("direct workflow cannot carry an SDD contract")
 				}
