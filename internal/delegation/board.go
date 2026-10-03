@@ -28,6 +28,58 @@ type BoardSnapshot struct {
 	Items []WorkItem `json:"items"`
 }
 
+// BranchToBoardID maps a git branch name to a valid board ID without path separators.
+// Main, master, trunk, HEAD or empty return DefaultBoardID ("default").
+// Feature branches like "feat/dashboard-improvements" return "branch-feat-dashboard-improvements".
+func BranchToBoardID(branch string) string {
+	branch = strings.TrimSpace(branch)
+	if branch == "" || branch == "main" || branch == "master" || branch == "trunk" || branch == "HEAD" {
+		return DefaultBoardID
+	}
+	safe := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' {
+			return r
+		}
+		if r == '/' || r == '\\' || r == '_' || r == '.' || r == ' ' || r == ':' {
+			return '-'
+		}
+		return -1
+	}, branch)
+	safe = strings.ToLower(safe)
+	for strings.Contains(safe, "--") {
+		safe = strings.ReplaceAll(safe, "--", "-")
+	}
+	safe = strings.Trim(safe, "-")
+	if safe == "" || safe == "main" || safe == "master" {
+		return DefaultBoardID
+	}
+	id := "branch-" + safe
+	if len(id) > 128 {
+		id = id[:128]
+		id = strings.TrimRight(id, "-")
+	}
+	return id
+}
+
+// EnsureBoard returns the board if it already exists, or creates it if it does not.
+func (s *Store) EnsureBoard(ctx context.Context, id, title, description string) (WorkBoard, error) {
+	id, title, description = strings.TrimSpace(id), strings.TrimSpace(title), strings.TrimSpace(description)
+	if id == "" || title == "" {
+		return WorkBoard{}, errors.New("board id and title are required")
+	}
+	if board, err := s.GetBoard(ctx, id); err == nil {
+		return board, nil
+	} else if !errors.Is(err, ErrBoardNotFound) {
+		return WorkBoard{}, err
+	}
+	now := s.timestamp()
+	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO work_boards(id,title,description,status,created_at,updated_at) VALUES(?,?,?,'active',?,?)`, id, title, description, now, now)
+	if err != nil {
+		return WorkBoard{}, fmt.Errorf("ensure task board: %w", err)
+	}
+	return s.GetBoard(ctx, id)
+}
+
 func (s *Store) CreateBoard(ctx context.Context, id, title, description string) (WorkBoard, error) {
 	id, title, description = strings.TrimSpace(id), strings.TrimSpace(title), strings.TrimSpace(description)
 	if id == "" || title == "" {

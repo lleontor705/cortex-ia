@@ -39,6 +39,30 @@ func ResolveProjectRoot(start string) (string, error) {
 	return CanonicalWorkspace(absolute)
 }
 
+// ResolveCurrentBranch returns the active git branch for the given directory/workspace,
+// or "" if not inside a git repository, git is unavailable, or HEAD is detached.
+func ResolveCurrentBranch(workspace string) string {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		var err error
+		workspace, err = os.Getwd()
+		if err != nil {
+			return ""
+		}
+	}
+	cmd := exec.Command("git", "-C", workspace, "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	branch := strings.TrimSpace(string(output))
+	if branch == "" || branch == "HEAD" {
+		return ""
+	}
+	return branch
+}
+
 // CanonicalWorkspace normalizes a durable workspace key for comparisons.
 func CanonicalWorkspace(value string) (string, error) {
 	value = strings.TrimSpace(value)

@@ -29,6 +29,7 @@ func runBoard(args []string) error {
 		fmt.Println("\nSubcommands:")
 		fmt.Println("  create <id> <title> [desc]   Create a new task board")
 		fmt.Println("  list                         List all task boards")
+		fmt.Println("  current [--project <dir>]    Show or ensure the task board for active git branch")
 		fmt.Println("  status <board-id>            Show board status and task snapshot")
 		fmt.Println("  archive <board-id>           Archive a completed task board")
 		fmt.Println("  unarchive <board-id>         Restore an archived task board to active")
@@ -84,6 +85,38 @@ func runBoard(args []string) error {
 			return err
 		}
 		return printJSON(boards)
+	case "current":
+		if len(args) > 1 && isHelp(args[1]) {
+			return boardUsage("current [--project <dir>]", nil)
+		}
+		opts, positionals, err := workOptions(args[1:], map[string]bool{"--project": false})
+		if err != nil || len(positionals) != 0 {
+			return boardUsage("current [--project <dir>]", err)
+		}
+		project := oneOption(opts, "--project")
+		workspace, err := delegation.ResolveProjectRoot(project)
+		if err != nil {
+			return err
+		}
+		branch := delegation.ResolveCurrentBranch(workspace)
+		boardID := delegation.BranchToBoardID(branch)
+		var board delegation.WorkBoard
+		if boardID == delegation.DefaultBoardID {
+			board, err = store.GetBoard(ctx, delegation.DefaultBoardID)
+		} else {
+			board, err = store.EnsureBoard(ctx, boardID, "🌿 "+branch, fmt.Sprintf("Auto-generated board for branch %s", branch))
+		}
+		if err != nil {
+			return err
+		}
+		type currentBranchInfo struct {
+			delegation.WorkBoard
+			Branch string `json:"branch"`
+		}
+		return printJSON(currentBranchInfo{
+			WorkBoard: board,
+			Branch:    branch,
+		})
 	case "status", "show", "get":
 		if len(args) > 1 && isHelp(args[1]) {
 			return boardUsage("status <board-id>", nil)

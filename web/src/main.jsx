@@ -147,7 +147,10 @@ function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNew
             aria-current={view === 'board' && currentBoard === board.board_id ? 'page' : undefined}
             onClick={() => onBoard(board.board_id)}
           >
-            <span>{board.title}</span>
+            <span>
+              {board.board_id?.startsWith('branch-') && !board.title?.includes('🌿') && <span class="branch-indicator">🌿 </span>}
+              {board.title}
+            </span>
             <b>{Object.values(board.counts || {}).reduce((a, b) => a + b, 0)}</b>
           </button>
         )) : <small class="empty-boards">Sin tableros activos</small>}
@@ -696,18 +699,26 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
   const counts = board?.counts || {};
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [hideDone, setHideDone] = useState(() => {
+    try {
+      return localStorage.getItem('cortex_hide_done') === 'true';
+    } catch (_) {
+      return false;
+    }
+  });
   const [mode, setMode] = useState('graph');
   const itemsByID = useMemo(() => new Map(items.map(item => [item.task_id, item])), [items]);
   const filteredItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter(item => {
+      if (hideDone && (item.status === 'done' || item.status === 'superseded')) return false;
       if (statusFilter !== 'all' && item.status !== statusFilter) return false;
       if (!needle) return true;
       return [item.task_id, item.title, item.objective, item.acceptance_criteria, item.verification, item.claim?.owner, ...(item.allowed_files || []), ...(item.leases || []).map(lease => lease.path)]
         .filter(Boolean)
         .some(value => value.toLowerCase().includes(needle));
     });
-  }, [items, query, statusFilter]);
+  }, [items, query, statusFilter, hideDone]);
   const liveClaims = items.filter(item => isLive(item.claim?.expires_at));
   const leasedFiles = items.reduce((total, item) => total + (item.leases?.filter(lease => isLive(lease.expires_at)).length || 0), 0);
   const completed = (counts.done || 0) + (counts.superseded || 0);
@@ -726,6 +737,7 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
         <div class="board-identity">
           <p class="eyebrow">
             DURABLE TASK BOARD · <code>{board.board_id}</code>
+            {board.board_id?.startsWith('branch-') && <span class="status-chip branch-chip" style="margin-left: 8px;">Rama Git</span>}
             {board.status === 'archived' && <span class="status-chip archived" style="margin-left: 8px;">Archivado</span>}
           </p>
           <h1>{board.title}</h1>
@@ -831,6 +843,17 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
               </button>
             </div>
             <div class="board-filters">
+              <button
+                class={`toggle-button ${hideDone ? 'active' : ''}`}
+                onClick={() => {
+                  const next = !hideDone;
+                  setHideDone(next);
+                  try { localStorage.setItem('cortex_hide_done', String(next)); } catch (_) {}
+                }}
+                title={hideDone ? "Mostrar tareas completadas y descompuestas" : "Ocultar tareas completadas y descompuestas"}
+              >
+                {hideDone ? '👁️ Completadas ocultas' : '👁️ Ocultar completadas'}
+              </button>
               <select value={statusFilter} onChange={event => setStatusFilter(event.currentTarget.value)} aria-label="Filtrar por estado">
                 <option value="all">Todos los estados</option>
                 {states.map(([status, label]) => <option value={status} key={status}>{label}</option>)}
@@ -850,6 +873,7 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
           ) : mode === 'kanban' ? (
             <section class="kanban">
               {states.map(([status, label]) => {
+                if (hideDone && (status === 'done' || status === 'superseded')) return null;
                 const cards = filteredItems.filter(item => item.status === status);
                 return (
                   <section class={`column ${status}`} key={status}>
