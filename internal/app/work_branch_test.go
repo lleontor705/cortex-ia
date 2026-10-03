@@ -19,7 +19,7 @@ func TestWorkBranchAndPruneCli(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runBoard current failed: %v", err)
 	}
-	if !strings.Contains(stdout, "branch-feat-dashboard-improvements") && !strings.Contains(stdout, "default") {
+	if !strings.Contains(stdout, "branch-") && !strings.Contains(stdout, "default") {
 		t.Errorf("expected branch board or default in output, got: %s", stdout)
 	}
 

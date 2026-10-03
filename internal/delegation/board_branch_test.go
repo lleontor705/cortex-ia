@@ -79,8 +79,8 @@ func TestResolveCurrentBranch(t *testing.T) {
 	wd, err := os.Getwd()
 	if err == nil {
 		branch := ResolveCurrentBranch(wd)
-		if branch != "feat/dashboard-improvements" {
-			t.Logf("current branch: %s", branch)
+		if branch == "" {
+			t.Error("expected non-empty branch in current git repository")
 		}
 	}
 }
