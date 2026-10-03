@@ -128,6 +128,7 @@ func TestClassify(t *testing.T) {
 		{"commands/work.md", KindCommand},
 		{"skills/test/SKILL.md", KindSkill},
 		{"plugins/cortex.ts", KindPlugin},
+		{"plugins/cortex-tool-telemetry.ts", KindPlugin},
 		{"tui/status.js", KindTUI},
 		{"themes/cortex.json", KindTheme},
 	}

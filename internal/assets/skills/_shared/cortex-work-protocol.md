@@ -173,4 +173,8 @@ Controllers and orchestrators record structured operational error reports when e
   - `ERR_TASK_BLOCKED`: Unmet dependencies, CAS revision mismatch, or maximum retry exhaustion.
   - `ERR_VERIFICATION_FAIL`: Verification oracle or reviewer returned FAIL with reproducible failure details.
   - `ERR_INVARIANT_VIOLATION`: Dirty worktree, file lease collision, or expired claim authority token.
+  - `ERR_TOOL_EXECUTION_FAILED`: Tool execution failure, unhandled runtime exception, or tool error response.
+  - `ERR_TOOL_LEASE_REQUIRED`: Mutating file tool invoked without active lease claim or path reservation.
+  - `ERR_TOOL_MCP_FAILED`: Durable memory, code intelligence, or MCP tool communication/persistence failure.
+  - `ERR_TOOL_INVALID_ARGS`: Tool invoked with invalid, missing, or malformed parameters.
 All reports are recorded in the local SQLite operational events ledger (`~/.cortex-ia/delegation.db`) for local audit, retrospective review, and diagnostics.
