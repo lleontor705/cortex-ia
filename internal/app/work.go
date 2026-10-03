@@ -20,8 +20,9 @@ func runWork(args []string) error {
 	if len(args) == 0 || isHelp(args[0]) {
 		fmt.Println("Usage: cortex-ia work <subcommand> [options]")
 		fmt.Println("\nSubcommands:")
-		fmt.Println("  create <id> <title> [--board <board>] [options]              Create a task (defaults to --board default)")
-		fmt.Println("  list [--board <board-id>]                                   List work items (all boards if omitted, or filter by board)")
+		fmt.Println("  create <id> <title> [--board <board>] [options]              Create a task (defaults to active branch or --board default)")
+		fmt.Println("  list [--board <board-id>] [--current]                       List work items (all boards if omitted, or filter by board/branch)")
+		fmt.Println("  prune [--board <board-id>] [--older-than <dur>] [--dry-run]  Prune old completed tasks")
 		fmt.Println("  status <task-id>                                            Get task details")
 		fmt.Println("  claim <task-id> --owner <owner> [--path <file> ...] [--ttl <duration>]  Claim task and reserve file lease(s) atomically")
 		fmt.Println("  renew <task-id> --claim-token <token> [--ttl <duration>]    Renew a claim")
@@ -174,14 +175,24 @@ func runWork(args []string) error {
 		return printJSON(receipt)
 	case "list":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("list [--board <board-id>]", nil)
+			return workUsage("list [--board <board-id>] [--current] [--project <dir>]", nil)
 		}
-		opts, positionals, err := workOptions(args[1:], map[string]bool{"--board": false})
+		opts, positionals, err := workOptionsWithFlags(args[1:], map[string]bool{"--board": false, "--project": false}, map[string]bool{"--current": true})
 		if err != nil || len(positionals) != 0 {
-			return workUsage("list [--board <board-id>]", err)
+			return workUsage("list [--board <board-id>] [--current] [--project <dir>]", err)
+		}
+		boardID := oneOption(opts, "--board")
+		if _, current := opts["--current"]; current || boardID == "current" || boardID == "auto" {
+			project := oneOption(opts, "--project")
+			workspace, err := delegation.ResolveProjectRoot(project)
+			if err != nil {
+				return err
+			}
+			branch := delegation.ResolveCurrentBranch(workspace)
+			boardID = delegation.BranchToBoardID(branch)
 		}
 		var items []delegation.WorkItem
-		if boardID := oneOption(opts, "--board"); boardID != "" {
+		if boardID != "" && boardID != "all" {
 			items, err = store.ListWorkByBoard(ctx, boardID)
 		} else {
 			items, err = store.ListWork(ctx)
@@ -190,6 +201,50 @@ func runWork(args []string) error {
 			return err
 		}
 		return printJSON(items)
+	case "prune":
+		if len(args) > 1 && isHelp(args[1]) {
+			return workUsage("prune [--board <board-id>] [--older-than <duration>] [--dry-run]", nil)
+		}
+		opts, positionals, err := workOptionsWithFlags(args[1:], map[string]bool{"--board": false, "--older-than": false}, map[string]bool{"--dry-run": true})
+		if err != nil || len(positionals) != 0 {
+			return workUsage("prune [--board <board-id>] [--older-than <duration>] [--dry-run]", err)
+		}
+		boardID := oneOption(opts, "--board")
+		switch boardID {
+		case "":
+			boardID = delegation.DefaultBoardID
+		case "all":
+			boardID = ""
+		}
+		olderThanStr := oneOption(opts, "--older-than")
+		olderThan := 7 * 24 * time.Hour
+		if olderThanStr != "" {
+			parsed, parseErr := time.ParseDuration(olderThanStr)
+			if parseErr != nil {
+				if strings.HasSuffix(olderThanStr, "d") {
+					days, err := strconv.Atoi(strings.TrimSuffix(olderThanStr, "d"))
+					if err == nil && days >= 0 {
+						olderThan = time.Duration(days) * 24 * time.Hour
+						parseErr = nil
+					}
+				}
+				if parseErr != nil {
+					return fmt.Errorf("invalid --older-than duration %q: %w", olderThanStr, parseErr)
+				}
+			} else {
+				olderThan = parsed
+			}
+		}
+		_, dryRun := opts["--dry-run"]
+		result, err := store.PruneWork(ctx, delegation.PruneWorkOptions{
+			BoardID:   boardID,
+			OlderThan: olderThan,
+			DryRun:    dryRun,
+		})
+		if err != nil {
+			return err
+		}
+		return printJSON(result)
 	case "status", "show", "get":
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("status <task-id> [--role <presentation-role>] [--actor <actor>]", nil)
@@ -692,10 +747,18 @@ func cortexStateHome() (string, error) {
 }
 
 func workOptions(args []string, allowed map[string]bool) (map[string][]string, []string, error) {
+	return workOptionsWithFlags(args, allowed, nil)
+}
+
+func workOptionsWithFlags(args []string, allowed map[string]bool, booleanFlags map[string]bool) (map[string][]string, []string, error) {
 	values := map[string][]string{}
 	positionals := []string{}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if booleanFlags != nil && booleanFlags[arg] {
+			values[arg] = []string{"true"}
+			continue
+		}
 		repeatable, ok := allowed[arg]
 		if !ok {
 			positionals = append(positionals, arg)

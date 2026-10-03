@@ -196,7 +196,19 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 		return WorkItem{}, policyErr
 	}
 	boardID = strings.TrimSpace(boardID)
-	if boardID == "" {
+	if boardID == "" || boardID == "auto" {
+		branch := ResolveCurrentBranch(workspace)
+		if branch != "" {
+			branchBoardID := BranchToBoardID(branch)
+			if branchBoardID != DefaultBoardID {
+				boardID = branchBoardID
+				if _, err := s.EnsureBoard(ctx, boardID, "🌿 "+branch, fmt.Sprintf("Auto-generated board for branch %s", branch)); err != nil {
+					return WorkItem{}, fmt.Errorf("ensure branch board: %w", err)
+				}
+			}
+		}
+	}
+	if boardID == "" || boardID == "auto" {
 		boardID = DefaultBoardID
 	}
 	id, title = strings.TrimSpace(id), strings.TrimSpace(title)
@@ -1410,4 +1422,113 @@ func (s *Store) VerifyWorkLease(ctx context.Context, filePath, taskID, owner str
 		return LeaseVerification{Valid: false, Path: clean, TaskID: itemID, Owner: claimOwner, Reason: fmt.Sprintf("file is claimed by %s, not %s", claimOwner, owner)}, nil
 	}
 	return LeaseVerification{Valid: true, Path: clean, TaskID: itemID, Owner: claimOwner, ExpiresAt: expiresAt}, nil
+}
+
+// PruneWorkOptions configures task pruning for completed tasks.
+type PruneWorkOptions struct {
+	BoardID   string        `json:"board_id,omitempty"`
+	OlderThan time.Duration `json:"older_than,omitempty"`
+	DryRun    bool          `json:"dry_run"`
+}
+
+// PruneWorkResult contains summary metrics of the pruned tasks.
+type PruneWorkResult struct {
+	BoardID       string   `json:"board_id,omitempty"`
+	PrunedCount   int      `json:"pruned_count"`
+	PrunedTaskIDs []string `json:"pruned_task_ids"`
+	DryRun        bool     `json:"dry_run"`
+}
+
+// PruneWork safely removes completed tasks ('done') that have no active dependents.
+func (s *Store) PruneWork(ctx context.Context, opts PruneWorkOptions) (PruneWorkResult, error) {
+	boardID := strings.TrimSpace(opts.BoardID)
+	result := PruneWorkResult{
+		BoardID: boardID,
+		DryRun:  opts.DryRun,
+	}
+
+	var cutoff string
+	if opts.OlderThan > 0 {
+		cutoff = s.now().Add(-opts.OlderThan).UTC().Format(time.RFC3339Nano)
+	}
+
+	// Query candidate tasks: status == 'done', optional board filter, optional cutoff,
+	// and NOT depended on by any non-done task, and NOT a child in active decomposition.
+	query := `SELECT id FROM work_items
+		WHERE status = 'done'
+		  AND (? = '' OR board_id = ?)
+		  AND (? = '' OR updated_at <= ?)
+		  AND id NOT IN (
+			  SELECT wd.depends_on
+			  FROM work_dependencies wd
+			  JOIN work_items wi ON wd.item_id = wi.id
+			  WHERE wi.status != 'done'
+		  )
+		  AND id NOT IN (
+			  SELECT d.child_id
+			  FROM work_decomposition_steps d
+			  JOIN work_items p ON d.parent_id = p.id
+			  WHERE p.status != 'done'
+		  )
+		ORDER BY updated_at ASC`
+
+	rows, err := s.db.QueryContext(ctx, query, boardID, boardID, cutoff, cutoff)
+	if err != nil {
+		return result, fmt.Errorf("query prune candidates: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var candidateIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return result, err
+		}
+		candidateIDs = append(candidateIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return result, err
+	}
+
+	result.PrunedCount = len(candidateIDs)
+	result.PrunedTaskIDs = candidateIDs
+
+	if opts.DryRun || len(candidateIDs) == 0 {
+		return result, nil
+	}
+
+	err = s.immediate(ctx, func(conn *sql.Conn) error {
+		if _, err := conn.ExecContext(ctx, `CREATE TEMP TABLE IF NOT EXISTS _prune_candidates (id TEXT PRIMARY KEY)`); err != nil {
+			return fmt.Errorf("create temp prune table: %w", err)
+		}
+		defer func() {
+			_, _ = conn.ExecContext(ctx, `DROP TABLE IF EXISTS _prune_candidates`)
+		}()
+		if _, err := conn.ExecContext(ctx, `DELETE FROM _prune_candidates`); err != nil {
+			return err
+		}
+		for _, id := range candidateIDs {
+			if _, err := conn.ExecContext(ctx, `INSERT INTO _prune_candidates(id) VALUES(?)`, id); err != nil {
+				return fmt.Errorf("stage prune candidate %s: %w", id, err)
+			}
+		}
+		// 1. Delete dependencies referencing pruned items
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_dependencies WHERE item_id IN (SELECT id FROM _prune_candidates) OR depends_on IN (SELECT id FROM _prune_candidates)`); err != nil {
+			return fmt.Errorf("delete prune dependencies: %w", err)
+		}
+		// 2. Delete decomposition steps
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_decomposition_steps WHERE parent_id IN (SELECT id FROM _prune_candidates) OR child_id IN (SELECT id FROM _prune_candidates)`); err != nil {
+			return fmt.Errorf("delete prune decomposition steps: %w", err)
+		}
+		// 3. Delete work items (cascades to claims, leases, approvals, events, definitions)
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_items WHERE id IN (SELECT id FROM _prune_candidates)`); err != nil {
+			return fmt.Errorf("delete prune work items: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return result, fmt.Errorf("execute prune: %w", err)
+	}
+
+	return result, nil
 }
