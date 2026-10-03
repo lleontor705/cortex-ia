@@ -123,10 +123,56 @@ export function classifyToolErrorCode(toolName: string, message: string): string
   return "ERR_TOOL_EXECUTION_FAILED";
 }
 
+// A truthy error signal can be a bare flag (`error: true`) or a plain object:
+// neither carries usable text of its own, so reporting it verbatim yields the
+// useless messages "true" / "[object Object]" and hides the real failure reason
+// from classifyToolErrorCode (obs #116).
+function describeErrorValue(value: unknown): string {
+  if (value === undefined || value === null || value === false) return "";
+  if (value instanceof Error) return value.message;
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "boolean") return "";
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    for (const key of ["message", "error", "reason", "detail", "text"]) {
+      const nested = obj[key];
+      if (typeof nested === "string" && nested.trim()) return nested.trim();
+      if (nested instanceof Error && nested.message) return nested.message;
+    }
+    try {
+      const json = JSON.stringify(value);
+      return json && json !== "{}" ? json : "";
+    } catch {
+      return "";
+    }
+  }
+  return String(value);
+}
+
+// Detail that lives BESIDE an error flag, used when the flag itself says nothing.
+function payloadDetail(output: any): string {
+  if (!output || typeof output !== "object") return "";
+  if (Array.isArray(output.content)) {
+    const text = output.content
+      .map((c: any) => (c && c.text) || JSON.stringify(c))
+      .join("\n")
+      .trim();
+    if (text) return text;
+  } else if (typeof output.content === "string" && output.content.trim()) {
+    return output.content.trim();
+  }
+  for (const key of ["message", "reason", "error_message"]) {
+    const value = output[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
 export function extractError(event: any, output: any, rawError: any): { isError: boolean; message: string } {
   if (rawError) {
-    const msg = rawError instanceof Error ? rawError.message : String(rawError);
-    return { isError: true, message: msg };
+    const msg = describeErrorValue(rawError);
+    if (msg) return { isError: true, message: msg };
+    return { isError: true, message: payloadDetail(output) || "no error detail provided" };
   }
 
   if (output instanceof Error) {
@@ -135,17 +181,15 @@ export function extractError(event: any, output: any, rawError: any): { isError:
 
   if (output && typeof output === "object") {
     if (output.isError === true) {
-      let msg = "MCP tool execution returned error";
-      if (Array.isArray(output.content)) {
-        msg = output.content.map((c: any) => c.text || JSON.stringify(c)).join("\n");
-      } else if (typeof output.content === "string") {
-        msg = output.content;
-      }
-      return { isError: true, message: msg };
+      return {
+        isError: true,
+        message: payloadDetail(output) || "MCP tool execution returned error",
+      };
     }
     if (output.error) {
-      const msg = typeof output.error === "string" ? output.error : JSON.stringify(output.error);
-      return { isError: true, message: msg };
+      const msg = describeErrorValue(output.error);
+      if (msg) return { isError: true, message: msg };
+      return { isError: true, message: payloadDetail(output) || "no error detail provided" };
     }
     if (output.status === "failed" || output.status === "error") {
       const msg = output.message || output.reason || "Tool reported failed status";
@@ -159,8 +203,9 @@ export function extractError(event: any, output: any, rawError: any): { isError:
       try {
         const parsed = JSON.parse(trimmed);
         if (parsed.error) {
-          const msg = typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error);
-          return { isError: true, message: msg };
+          const msg = describeErrorValue(parsed.error);
+          if (msg) return { isError: true, message: msg };
+          return { isError: true, message: payloadDetail(parsed) || "no error detail provided" };
         }
         if (parsed.isError === true) {
           return { isError: true, message: parsed.message || "MCP tool error" };
@@ -261,7 +306,7 @@ export const CortexToolTelemetryPlugin = async (ctx: any) => {
     args: Record<string, any>
   ) => {
     if (!toolName || toolName === "cortex_ia_report_error" || toolName === "report_error") return;
-    const errorMsg = rawError instanceof Error ? rawError.message : String(rawError);
+    const errorMsg = describeErrorValue(rawError) || "no error detail provided";
     emitToolErrorReport(directory, toolName, errorMsg, sessionID, callID, role, args);
   };
 

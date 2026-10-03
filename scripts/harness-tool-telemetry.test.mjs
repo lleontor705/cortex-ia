@@ -115,6 +115,42 @@ test('cortex-tool-telemetry debounces duplicate identical errors', async () => {
   await plugin.dispose();
 });
 
+test('cortex-tool-telemetry keeps the failure detail behind boolean/object error flags', async () => {
+  const calls = [];
+  const plugin = await createPlugin(calls);
+
+  await plugin['tool.execute.after'](
+    { tool: 'execute', sessionID: 'ses-flag', callID: 'call-flag-1', args: { code: 'await work()' } },
+    { output: { error: true, content: [{ type: 'text', text: 'authority for task-f0 is already held by this controller' }] } }
+  );
+  assert.equal(calls.length, 1);
+  assert.ok(
+    calls[0][calls[0].indexOf('--message') + 1].includes('already held by this controller'),
+    'content next to a boolean error flag must be reported instead of the flag itself'
+  );
+
+  await plugin['tool.execute.after'](
+    { tool: 'execute', sessionID: 'ses-obj', callID: 'call-obj-1', args: {} },
+    { output: { error: { code: 'WORK_CONFLICT', message: 'task must be ready' } } }
+  );
+  assert.equal(calls.length, 2);
+  assert.ok(
+    calls[1][calls[1].indexOf('--message') + 1].includes('task must be ready'),
+    'a structured error object must report its message instead of [object Object]'
+  );
+
+  await plugin['tool.execute.after'](
+    { tool: 'execute', sessionID: 'ses-bare', callID: 'call-bare-1', args: {} },
+    { output: { error: true } }
+  );
+  assert.equal(calls.length, 3);
+  const bareMessage = calls[2][calls[2].indexOf('--message') + 1];
+  assert.ok(!bareMessage.endsWith(': true'), `bare error flag must not be reported as "true": ${bareMessage}`);
+  assert.equal(calls[2][calls[2].indexOf('--code') + 1], 'ERR_TOOL_EXECUTION_FAILED');
+
+  await plugin.dispose();
+});
+
 test('cortex-tool-telemetry ignores successful executions and self-reporting', async () => {
   const calls = [];
   const plugin = await createPlugin(calls);
