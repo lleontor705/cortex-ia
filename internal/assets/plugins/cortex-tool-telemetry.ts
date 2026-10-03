@@ -100,16 +100,9 @@ export function classifyToolErrorCode(toolName: string, message: string): string
     return "ERR_TOOL_LEASE_REQUIRED";
   }
 
-  if (
-    (lowerTool.startsWith("cortex_") && !lowerTool.startsWith("cortex_ia_")) ||
-    lowerTool.startsWith("mcp_") ||
-    lowerMsg.includes("mcp error") ||
-    lowerMsg.includes("storage write error") ||
-    lowerMsg.includes("write could not be persisted")
-  ) {
-    return "ERR_TOOL_MCP_FAILED";
-  }
-
+  // Argument-validation failures outrank the MCP bucket: a cortex_*/mcp_* tool
+  // rejected by its own schema is an invalid-arguments defect, not a backend
+  // persistence failure (misrouted reports, obs #115).
   if (
     lowerMsg.includes("invalid argument") ||
     lowerMsg.includes("missing required") ||
@@ -118,6 +111,16 @@ export function classifyToolErrorCode(toolName: string, message: string): string
     lowerMsg.includes("unexpected parameter")
   ) {
     return "ERR_TOOL_INVALID_ARGS";
+  }
+
+  if (
+    (lowerTool.startsWith("cortex_") && !lowerTool.startsWith("cortex_ia_")) ||
+    lowerTool.startsWith("mcp_") ||
+    lowerMsg.includes("mcp error") ||
+    lowerMsg.includes("storage write error") ||
+    lowerMsg.includes("write could not be persisted")
+  ) {
+    return "ERR_TOOL_MCP_FAILED";
   }
 
   return "ERR_TOOL_EXECUTION_FAILED";

@@ -85,6 +85,42 @@ test('cortex-tool-telemetry classifies argument validation as ERR_TOOL_INVALID_A
   await plugin.dispose();
 });
 
+test('cortex-tool-telemetry classifies cortex_* argument errors as ERR_TOOL_INVALID_ARGS', async () => {
+  const calls = [];
+  const plugin = await createPlugin(calls);
+
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_cortex_save', sessionID: 'ses-mcp-args', callID: 'call-mcp-args-1', args: {} },
+    { output: 'Error: invalid argument: content is required' }
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0][calls[0].indexOf('--code') + 1],
+    'ERR_TOOL_INVALID_ARGS',
+    'an argument error from a cortex_* MCP tool must not be bucketed as a persistence failure'
+  );
+
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_cortex_relate', sessionID: 'ses-mcp-args', callID: 'call-mcp-args-2', args: {} },
+    { output: '{"error":"missing required field: topic_key"}' }
+  );
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1][calls[1].indexOf('--code') + 1], 'ERR_TOOL_INVALID_ARGS');
+
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_cortex_save', sessionID: 'ses-mcp-args', callID: 'call-mcp-args-3', args: {} },
+    { output: '{"error":"Failed to save: write could not be persisted"}' }
+  );
+  assert.equal(calls.length, 3);
+  assert.equal(
+    calls[2][calls[2].indexOf('--code') + 1],
+    'ERR_TOOL_MCP_FAILED',
+    'a genuine persistence failure must stay in the MCP bucket'
+  );
+
+  await plugin.dispose();
+});
+
 test('cortex-tool-telemetry classifies generic tool failures as ERR_TOOL_EXECUTION_FAILED', async () => {
   const calls = [];
   const plugin = await createPlugin(calls);
