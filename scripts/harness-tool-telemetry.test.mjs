@@ -1,0 +1,133 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { loadPluginFile } from './harness-plugin-loader.mjs';
+
+const pluginPath = 'internal/assets/plugins/cortex-tool-telemetry.ts';
+const root = path.resolve('/isolated/harness');
+const home = path.resolve('/isolated/home');
+const executable = path.join(home, 'go', 'bin', 'cortex-ia.exe');
+
+function telemetryOptions(execFileCallback) {
+  return {
+    cwd: root,
+    env: { USERPROFILE: home, HOME: home },
+    fs: {
+      existsSync: p => p === executable,
+      realpathSync: p => p,
+      lstatSync: () => ({ isSymbolicLink: () => false }),
+      readFileSync: () => '',
+      writeFileSync: () => {},
+      mkdirSync: () => {},
+    },
+    childProcess: {
+      execFileSync: () => executable,
+      execFile: (_file, args, _opts, cb) => {
+        execFileCallback(args);
+        if (typeof cb === 'function') cb(null, '', '');
+      },
+    },
+  };
+}
+
+async function createPlugin(calls) {
+  const mod = await loadPluginFile(pluginPath, telemetryOptions(args => calls.push(args)));
+  const instance = await mod.instantiate({ directory: root });
+  return instance;
+}
+
+test('cortex-tool-telemetry classifies LEASE_REQUIRED as ERR_TOOL_LEASE_REQUIRED', async () => {
+  const calls = [];
+  const plugin = await createPlugin(calls);
+
+  await plugin['tool.execute.after'](
+    { tool: 'edit', sessionID: 'ses-1', callID: 'call-1', args: { targetFile: 'main.go' } },
+    { output: 'LEASE_REQUIRED: all native mutation targets require a live session-owned claim' }
+  );
+
+  assert.equal(calls.length, 1);
+  const args = calls[0];
+  assert.equal(args[0], 'report');
+  assert.equal(args[1], 'error');
+  assert.ok(args.includes('--code'));
+  assert.equal(args[args.indexOf('--code') + 1], 'ERR_TOOL_LEASE_REQUIRED');
+  assert.ok(args[args.indexOf('--message') + 1].includes("Tool 'edit' failed"));
+  await plugin.dispose();
+});
+
+test('cortex-tool-telemetry classifies MCP tool errors as ERR_TOOL_MCP_FAILED', async () => {
+  const calls = [];
+  const plugin = await createPlugin(calls);
+
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_save', sessionID: 'ses-2', callID: 'call-2', args: { type: 'decision' } },
+    { output: '{"error":"storage write error: database is locked"}' }
+  );
+
+  assert.equal(calls.length, 1);
+  const args = calls[0];
+  assert.equal(args[args.indexOf('--code') + 1], 'ERR_TOOL_MCP_FAILED');
+  await plugin.dispose();
+});
+
+test('cortex-tool-telemetry classifies argument validation as ERR_TOOL_INVALID_ARGS', async () => {
+  const calls = [];
+  const plugin = await createPlugin(calls);
+
+  await plugin['tool.execute.after'](
+    { tool: 'replace_file_content', sessionID: 'ses-3', callID: 'call-3', args: {} },
+    { output: 'Error: invalid argument: TargetFile is missing or empty' }
+  );
+
+  assert.equal(calls.length, 1);
+  const args = calls[0];
+  assert.equal(args[args.indexOf('--code') + 1], 'ERR_TOOL_INVALID_ARGS');
+  await plugin.dispose();
+});
+
+test('cortex-tool-telemetry classifies generic tool failures as ERR_TOOL_EXECUTION_FAILED', async () => {
+  const calls = [];
+  const plugin = await createPlugin(calls);
+
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_ia_work_transition', sessionID: 'ses-4', callID: 'call-4', args: { task_id: 'task-100', to: 'in_review' } },
+    { output: '{"error":"ErrWorkConflict: task must be in_progress"}' }
+  );
+
+  assert.equal(calls.length, 1);
+  const args = calls[0];
+  assert.equal(args[args.indexOf('--code') + 1], 'ERR_TOOL_EXECUTION_FAILED');
+  assert.equal(args[args.indexOf('--task') + 1], 'task-100');
+  await plugin.dispose();
+});
+
+test('cortex-tool-telemetry debounces duplicate identical errors', async () => {
+  const calls = [];
+  const plugin = await createPlugin(calls);
+
+  const input = { tool: 'edit', sessionID: 'ses-dup', callID: 'call-dup-1', args: { path: 'file.go' } };
+  const output = { output: 'Error: target content not found' };
+
+  await plugin['tool.execute.after'](input, output);
+  await plugin['tool.execute.after']({ ...input, callID: 'call-dup-2' }, output);
+
+  assert.equal(calls.length, 1);
+  await plugin.dispose();
+});
+
+test('cortex-tool-telemetry ignores successful executions and self-reporting', async () => {
+  const calls = [];
+  const plugin = await createPlugin(calls);
+
+  await plugin['tool.execute.after'](
+    { tool: 'read', sessionID: 'ses-ok', callID: 'call-ok', args: { path: 'main.go' } },
+    { output: 'package main\n\nfunc main() {}' }
+  );
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_ia_report_error', sessionID: 'ses-rep', callID: 'call-rep', args: { code: 'ERR_TASK_BLOCKED' } },
+    { output: '{"status":"ok"}' }
+  );
+
+  assert.equal(calls.length, 0);
+  await plugin.dispose();
+});

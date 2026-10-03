@@ -1434,7 +1434,7 @@ export const CortexWorkPlugin = Plugin.define({
     cortex_ia_report_error: tool({
       description: "Emit an operational error and incident report to the central telemetry hub and local ledger.",
       args: {
-        code: tool.schema.string().describe("Standard error code (ERR_TASK_BLOCKED, ERR_DELEGATION_FAIL, ERR_INVARIANT_VIOLATION)"),
+        code: tool.schema.string().describe("Standard error code (ERR_TASK_BLOCKED, ERR_DELEGATION_FAIL, ERR_INVARIANT_VIOLATION, ERR_VERIFICATION_FAIL, ERR_TOOL_EXECUTION_FAILED, ERR_TOOL_LEASE_REQUIRED, ERR_TOOL_MCP_FAILED, ERR_TOOL_INVALID_ARGS)"),
         message: tool.schema.string().describe("Descriptive error message explaining the failure condition"),
         details: tool.schema.string().optional().describe("Extended stack trace, error logs, or failure details"),
         task_id: tool.schema.string().optional().describe("Associated work task ID")

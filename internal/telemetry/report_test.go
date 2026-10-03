@@ -86,3 +86,20 @@ func TestSendReport(t *testing.T) {
 		t.Errorf("expected received code ERR_WORKER_DIED, got %s", receivedReport.ErrorCode)
 	}
 }
+
+func TestValidateReport_ToolErrorCodes(t *testing.T) {
+	secret := "test-secret"
+	codes := []string{
+		"ERR_TOOL_EXECUTION_FAILED",
+		"ERR_TOOL_LEASE_REQUIRED",
+		"ERR_TOOL_MCP_FAILED",
+		"ERR_TOOL_INVALID_ARGS",
+	}
+
+	for _, code := range codes {
+		report := CreateReport("tool-telemetry-plugin", code, "tool failed", "details", "task-1", "", "default", "/ws", "1.0.0", secret)
+		if err := ValidateReport(report); err != nil {
+			t.Errorf("expected code %s to pass ValidateReport, got error: %v", code, err)
+		}
+	}
+}
