@@ -37,7 +37,7 @@ Answers, summaries, handoffs, documentation composed in chat, and read-only diag
 
 ### Tier 2: Bounded Authorized Bootstrap (Single Bounded Code & Operational Tasks)
 
-For localized code changes (`direct-change`, `fast-tdd`, `hotfix`), the orchestrator may directly create one bounded task using `cortex_ia_work_create` and dispatch `implement` -> `reviewer`. SDD DAG creation, multi-task decomposition, and full architectural specifications remain planner-only in Tier 3; `decision-map` creates no board/tasks in any spec plane.
+For localized code changes (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`), the orchestrator may directly create one bounded task using `cortex_ia_work_create` and dispatch `implement` -> `reviewer`. SDD DAG creation, multi-task decomposition, and full architectural specifications remain planner-only in Tier 3; `decision-map` creates no board/tasks in any spec plane.
 
 **Fileless operations policy**:
 - `allowed_files: []` supports read-only investigation or review. An implement dispatch always requires non-empty leased repository paths.
