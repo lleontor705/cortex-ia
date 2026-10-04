@@ -71,9 +71,27 @@ Error codes extracted from reports are mapped to standardized incident severity 
 | `ERR_INVARIANT_VIOLATION` | `critical` | `actionable` | Dirty worktree, lease collision, or expired authority token |
 | `ERR_DELEGATION_FAIL` | `high` | `needs-investigation` | Delegation dispatch or subagent session aborted, crashed, timed out, or exited non-zero |
 | `ERR_DELEGATION_FAILURE` | `high` | `needs-investigation` | Legacy spelling of `ERR_DELEGATION_FAIL`; same classification |
+| `ERR_SUBAGENT_CIRCUIT_OPEN` | `high` | `needs-investigation` | Task-latch circuit breaker opened after repeated terminal subagent failures; orchestrator reconciliation required |
 | `ERR_VERIFICATION_FAIL` | `medium` | `needs-test-evidence` | Test oracle or reviewer returned FAIL |
+| `ERR_TOOL_INVALID_ARGS` | `medium` | `needs-investigation` | Tool invoked with invalid, missing, or malformed parameters |
+| `ERR_TOOL_MCP_FAILED` | `medium` | `needs-investigation` | Durable memory, code intelligence, or MCP communication/persistence failure |
+| `ERR_CORTEX_SAVE_FAILED` | `medium` | `needs-investigation` | Memory save rejected or not persisted by the `cortex` backend |
+| `ERR_CORTEX_MEMORY_WRITE_FAILED` | `medium` | `needs-investigation` | Memory write failed in the `cortex` backend |
+| `ERR_TOOL_EXECUTION_FAILED` | `low` | `operational` | Tool execution failure, unhandled runtime exception, or tool error response |
+| `ERR_TOOL_LEASE_REQUIRED` | `low` | `operational` | Mutating file tool invoked without an active claim or lease |
+| `ERR_SQLITE_TIMEOUT` | `low` | `operational` | SQLite busy/lock timeout in the local authority database |
 | `ERR_TASK_BLOCKED` | `low` | `operational` | Unmet dependencies or attempt exhaustion |
 | *unknown* | `low` | `unclassified` | Any other unrecognized error code |
+
+Severity reflects the triage weight of the class, not its frequency: a code that
+blocks work or loses data needs investigation even when it is rare, while the
+catch-all tool failures that dominate the volume stay operational. The codes come
+from the Standard Taxonomy in
+`internal/assets/skills/_shared/cortex-work-protocol.md`, plus four the protocol
+does not list: the legacy `ERR_DELEGATION_FAILURE` alias, `ERR_SQLITE_TIMEOUT`,
+`ERR_SUBAGENT_CIRCUIT_OPEN` (emitted by the task-latch plugin and weighted like
+`ERR_DELEGATION_FAIL`), and the `ERR_CORTEX_*` pair (emitted by the `cortex`
+memory platform and routed to `lleontor705/cortex` by the reconciler).
 
 ## Output Schema
 
@@ -111,6 +129,7 @@ Test fixtures are maintained under `testdata/report_hub_fixtures/`:
 - `capping.jsonl`: 25 identical group reports verifying ID capping at 20.
 - `redaction.jsonl`: Bearer tokens, GitHub keys, and oversized strings.
 - `delegation_fail.jsonl`: Both `ERR_DELEGATION_FAIL` (emitted) and `ERR_DELEGATION_FAILURE` (legacy) spellings, verifying identical `high` / `needs-investigation` classification.
+- `taxonomy_codes.jsonl`: One report per Standard Taxonomy tool/circuit/cortex code plus an out-of-taxonomy control, verifying every severity/action row of the matrix and that unknown codes still fall to `low` / `unclassified`.
 - `malformed_json.jsonl`: Broken JSON syntax.
 - `malformed_report_missing_fields.jsonl`: Missing required fields in report records.
 - `empty_logs.jsonl`: Zero report records.

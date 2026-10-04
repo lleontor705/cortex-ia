@@ -25,13 +25,22 @@
 #   - Rejects malformed input (invalid JSON, incomplete records) non-zero with terse stderr.
 #   - Redacts sensitive tokens (Bearer tokens, API keys, password/secret params).
 #   - Caps value lengths (ID: 64, Code: 64, Source: 64, Task: 128) and IDs (max 20 IDs/group).
-#   - Maps error codes to severity and action:
-#       ERR_INVARIANT_VIOLATION -> critical / actionable
-#       ERR_DELEGATION_FAIL     -> high     / needs-investigation
-#       ERR_DELEGATION_FAILURE  -> high     / needs-investigation (legacy alias)
-#       ERR_VERIFICATION_FAIL   -> medium   / needs-test-evidence
-#       ERR_TASK_BLOCKED        -> low      / operational
-#       unknown                 -> low      / unclassified
+#   - Maps the Standard Taxonomy (cortex-work-protocol.md, Incident & Error
+#     Reporting) plus the legacy/cortex spellings to severity and action:
+#       ERR_INVARIANT_VIOLATION          -> critical / actionable
+#       ERR_DELEGATION_FAIL              -> high     / needs-investigation
+#       ERR_DELEGATION_FAILURE           -> high     / needs-investigation (legacy alias)
+#       ERR_SUBAGENT_CIRCUIT_OPEN        -> high     / needs-investigation
+#       ERR_VERIFICATION_FAIL            -> medium   / needs-test-evidence
+#       ERR_TOOL_INVALID_ARGS            -> medium   / needs-investigation
+#       ERR_TOOL_MCP_FAILED              -> medium   / needs-investigation
+#       ERR_CORTEX_SAVE_FAILED           -> medium   / needs-investigation
+#       ERR_CORTEX_MEMORY_WRITE_FAILED   -> medium   / needs-investigation
+#       ERR_TOOL_EXECUTION_FAILED        -> low      / operational
+#       ERR_TOOL_LEASE_REQUIRED          -> low      / operational
+#       ERR_SQLITE_TIMEOUT               -> low      / operational
+#       ERR_TASK_BLOCKED                 -> low      / operational
+#       unknown                          -> low      / unclassified
 #   - Emits stable, compact JSON grouped by (code, source, task).
 #   - Omits timestamps.
 #   - Pure read/aggregation: performs NO state writes to disk, DB, or Railway.
@@ -54,7 +63,25 @@ CODE_MAP = {
     # historical reports and fixtures. Both classify identically.
     "ERR_DELEGATION_FAIL": ("high", "needs-investigation"),
     "ERR_DELEGATION_FAILURE": ("high", "needs-investigation"),
+    # Emitted by the task-latch circuit breaker after repeated terminal
+    # failures: continuation is blocked until an orchestrator reconciles, so
+    # it weighs as much as a delegation abort. Read-only roles never latch and
+    # are not counted here.
+    "ERR_SUBAGENT_CIRCUIT_OPEN": ("high", "needs-investigation"),
     "ERR_VERIFICATION_FAIL": ("medium", "needs-test-evidence"),
+    # Schema rejections and durable memory writes are defects, not routine
+    # noise: the protocol defines ERR_TOOL_MCP_FAILED as a persistence failure
+    # and invalid-argument defects must stay visible beside it.
+    "ERR_TOOL_INVALID_ARGS": ("medium", "needs-investigation"),
+    "ERR_TOOL_MCP_FAILED": ("medium", "needs-investigation"),
+    "ERR_CORTEX_SAVE_FAILED": ("medium", "needs-investigation"),
+    "ERR_CORTEX_MEMORY_WRITE_FAILED": ("medium", "needs-investigation"),
+    # The execution catch-all absorbs ordinary tool timeouts and tool errors,
+    # the lease guard fires exactly when a mutating tool runs without a claim,
+    # and SQLite busy timeouts are lock contention: routine operational signal.
+    "ERR_TOOL_EXECUTION_FAILED": ("low", "operational"),
+    "ERR_TOOL_LEASE_REQUIRED": ("low", "operational"),
+    "ERR_SQLITE_TIMEOUT": ("low", "operational"),
     "ERR_TASK_BLOCKED": ("low", "operational"),
 }
 

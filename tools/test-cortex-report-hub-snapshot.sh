@@ -305,6 +305,39 @@ assert legacy["action"] == "needs-investigation", legacy["action"]
 assert_not_contains "$OUT" "GET /health" "Non-report health check omitted from output"
 
 # -----------------------------------------------------------------------------
+# Test 9: Standard Taxonomy codes classify instead of falling to unclassified
+# -----------------------------------------------------------------------------
+log_test "9. Standard Taxonomy tool, circuit and cortex codes classify"
+set +e
+OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/taxonomy_codes.jsonl" bash "$SNAPSHOT_TOOL" 2>&1)
+CODE=$?
+set -e
+assert_exit_code 0 "$CODE" "Runs successfully on taxonomy_codes.jsonl"
+
+python3 -c '
+import json, sys
+data = json.loads(sys.argv[1])
+assert len(data) == 9, data
+by_code = {g["code"]: g for g in data}
+expected = {
+    "ERR_TOOL_EXECUTION_FAILED": ("low", "operational"),
+    "ERR_TOOL_LEASE_REQUIRED": ("low", "operational"),
+    "ERR_SQLITE_TIMEOUT": ("low", "operational"),
+    "ERR_TOOL_MCP_FAILED": ("medium", "needs-investigation"),
+    "ERR_TOOL_INVALID_ARGS": ("medium", "needs-investigation"),
+    "ERR_CORTEX_SAVE_FAILED": ("medium", "needs-investigation"),
+    "ERR_CORTEX_MEMORY_WRITE_FAILED": ("medium", "needs-investigation"),
+    "ERR_SUBAGENT_CIRCUIT_OPEN": ("high", "needs-investigation"),
+    "ERR_NOT_IN_TAXONOMY": ("low", "unclassified"),
+}
+for code, want in expected.items():
+    group = by_code[code]
+    assert (group["severity"], group["action"]) == want, (code, group)
+' "$OUT" && log_pass "Every Standard Taxonomy code maps to its severity/action" || log_fail "Taxonomy mapping assertions failed"
+
+assert_not_contains "$OUT" "GET /health" "Non-report health check omitted from output"
+
+# -----------------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------------
 echo ""
