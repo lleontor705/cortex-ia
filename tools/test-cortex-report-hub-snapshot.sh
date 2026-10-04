@@ -275,6 +275,36 @@ GIT_STATUS_AFTER=$(git status --porcelain)
 [ "$GIT_STATUS_BEFORE" = "$GIT_STATUS_AFTER" ] && log_pass "No unexpected disk or git state mutations" || log_fail "State changed during snapshot run"
 
 # -----------------------------------------------------------------------------
+# Test 8: Emitted delegation vocabulary (ERR_DELEGATION_FAIL) classifies high
+# -----------------------------------------------------------------------------
+log_test "8. ERR_DELEGATION_FAIL classifies as high/needs-investigation"
+set +e
+OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/delegation_fail.jsonl" bash "$SNAPSHOT_TOOL" 2>&1)
+CODE=$?
+set -e
+assert_exit_code 0 "$CODE" "Runs successfully on delegation_fail.jsonl"
+
+python3 -c '
+import json, sys
+data = json.loads(sys.argv[1])
+assert len(data) == 2, data
+
+fail = next(g for g in data if g["code"] == "ERR_DELEGATION_FAIL")
+assert fail["severity"] == "high", fail["severity"]
+assert fail["action"] == "needs-investigation", fail["action"]
+assert fail["count"] == 2, fail["count"]
+assert fail["ids"] == ["rep-delfail-1", "rep-delfail-2"], fail["ids"]
+assert fail["source"] == "orchestrator", fail["source"]
+assert fail["task"] == "task-planner", fail["task"]
+
+legacy = next(g for g in data if g["code"] == "ERR_DELEGATION_FAILURE")
+assert legacy["severity"] == "high", legacy["severity"]
+assert legacy["action"] == "needs-investigation", legacy["action"]
+' "$OUT" && log_pass "Both delegation spellings classify high/needs-investigation" || log_fail "Delegation vocabulary assertion failed"
+
+assert_not_contains "$OUT" "GET /health" "Non-report health check omitted from output"
+
+# -----------------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------------
 echo ""

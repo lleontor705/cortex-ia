@@ -69,7 +69,8 @@ Error codes extracted from reports are mapped to standardized incident severity 
 | Error Code | Severity | Action | Description |
 |---|---|---|---|
 | `ERR_INVARIANT_VIOLATION` | `critical` | `actionable` | Dirty worktree, lease collision, or expired authority token |
-| `ERR_DELEGATION_FAILURE` | `high` | `needs-investigation` | Worker crashed, timed out, or non-zero exit |
+| `ERR_DELEGATION_FAIL` | `high` | `needs-investigation` | Delegation dispatch or subagent session aborted, crashed, timed out, or exited non-zero |
+| `ERR_DELEGATION_FAILURE` | `high` | `needs-investigation` | Legacy spelling of `ERR_DELEGATION_FAIL`; same classification |
 | `ERR_VERIFICATION_FAIL` | `medium` | `needs-test-evidence` | Test oracle or reviewer returned FAIL |
 | `ERR_TASK_BLOCKED` | `low` | `operational` | Unmet dependencies or attempt exhaustion |
 | *unknown* | `low` | `unclassified` | Any other unrecognized error code |
@@ -109,6 +110,7 @@ Test fixtures are maintained under `testdata/report_hub_fixtures/`:
 - `mixed_logs.jsonl`: Interleaved startup, healthcheck, and multiple error reports.
 - `capping.jsonl`: 25 identical group reports verifying ID capping at 20.
 - `redaction.jsonl`: Bearer tokens, GitHub keys, and oversized strings.
+- `delegation_fail.jsonl`: Both `ERR_DELEGATION_FAIL` (emitted) and `ERR_DELEGATION_FAILURE` (legacy) spellings, verifying identical `high` / `needs-investigation` classification.
 - `malformed_json.jsonl`: Broken JSON syntax.
 - `malformed_report_missing_fields.jsonl`: Missing required fields in report records.
 - `empty_logs.jsonl`: Zero report records.

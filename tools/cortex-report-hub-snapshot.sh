@@ -27,7 +27,8 @@
 #   - Caps value lengths (ID: 64, Code: 64, Source: 64, Task: 128) and IDs (max 20 IDs/group).
 #   - Maps error codes to severity and action:
 #       ERR_INVARIANT_VIOLATION -> critical / actionable
-#       ERR_DELEGATION_FAILURE  -> high     / needs-investigation
+#       ERR_DELEGATION_FAIL     -> high     / needs-investigation
+#       ERR_DELEGATION_FAILURE  -> high     / needs-investigation (legacy alias)
 #       ERR_VERIFICATION_FAIL   -> medium   / needs-test-evidence
 #       ERR_TASK_BLOCKED        -> low      / operational
 #       unknown                 -> low      / unclassified
@@ -47,6 +48,11 @@ import json
 
 CODE_MAP = {
     "ERR_INVARIANT_VIOLATION": ("critical", "actionable"),
+    # ERR_DELEGATION_FAIL is the vocabulary advertised by the report_error tool
+    # schema (internal/assets/plugins/cortex-work.ts) and the code actually
+    # emitted by agents; ERR_DELEGATION_FAILURE is the legacy spelling kept for
+    # historical reports and fixtures. Both classify identically.
+    "ERR_DELEGATION_FAIL": ("high", "needs-investigation"),
     "ERR_DELEGATION_FAILURE": ("high", "needs-investigation"),
     "ERR_VERIFICATION_FAIL": ("medium", "needs-test-evidence"),
     "ERR_TASK_BLOCKED": ("low", "operational"),

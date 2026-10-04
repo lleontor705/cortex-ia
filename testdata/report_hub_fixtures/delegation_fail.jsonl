@@ -1,0 +1,4 @@
+{"timestamp":"2026-10-03T20:39:04.000Z","level":"error","message":"2026/10/03 20:39:04 📥 [Report Received] ID=rep-delfail-1 Code=ERR_DELEGATION_FAIL Source=orchestrator Task=task-planner CPU=6 RAM=192MB Goroutines=18"}
+{"timestamp":"2026-10-03T20:41:12.000Z","level":"error","message":"2026/10/03 20:41:12 📥 [Report Received] ID=rep-delfail-2 Code=ERR_DELEGATION_FAIL Source=orchestrator Task=task-planner CPU=6 RAM=200MB Goroutines=19"}
+{"timestamp":"2026-09-12T22:03:05.000Z","level":"error","message":"2026/09/12 22:03:05 📥 [Report Received] ID=rep-dellegacy-1 Code=ERR_DELEGATION_FAILURE Source=delegation Task=task-legacy CPU=8 RAM=256MB Goroutines=20"}
+{"timestamp":"2026-10-03T21:00:00.000Z","level":"info","message":"GET /health 200 OK"}
