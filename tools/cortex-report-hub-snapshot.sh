@@ -31,6 +31,7 @@
 #       ERR_DELEGATION_FAIL              -> high     / needs-investigation
 #       ERR_DELEGATION_FAILURE           -> high     / needs-investigation (legacy alias)
 #       ERR_SUBAGENT_CIRCUIT_OPEN        -> high     / needs-investigation
+#       ERR_SUBAGENT_READONLY_REPEATED_ABORT -> medium / needs-investigation
 #       ERR_VERIFICATION_FAIL            -> medium   / needs-test-evidence
 #       ERR_TOOL_INVALID_ARGS            -> medium   / needs-investigation
 #       ERR_TOOL_MCP_FAILED              -> medium   / needs-investigation
@@ -65,9 +66,13 @@ CODE_MAP = {
     "ERR_DELEGATION_FAILURE": ("high", "needs-investigation"),
     # Emitted by the task-latch circuit breaker after repeated terminal
     # failures: continuation is blocked until an orchestrator reconciles, so
-    # it weighs as much as a delegation abort. Read-only roles never latch and
-    # are not counted here.
+    # it weighs as much as a delegation abort. Read-only roles never latch;
+    # their repeated aborts classify under ERR_SUBAGENT_READONLY_REPEATED_ABORT.
     "ERR_SUBAGENT_CIRCUIT_OPEN": ("high", "needs-investigation"),
+    # Repeated read-only aborts are elevated as telemetry but never block a
+    # dispatch, so they weigh below an opened circuit: a failing diagnostic
+    # loop needs investigation without claiming authority was lost.
+    "ERR_SUBAGENT_READONLY_REPEATED_ABORT": ("medium", "needs-investigation"),
     "ERR_VERIFICATION_FAIL": ("medium", "needs-test-evidence"),
     # Schema rejections and durable memory writes are defects, not routine
     # noise: the protocol defines ERR_TOOL_MCP_FAILED as a persistence failure

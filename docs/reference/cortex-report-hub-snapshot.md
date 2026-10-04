@@ -72,6 +72,7 @@ Error codes extracted from reports are mapped to standardized incident severity 
 | `ERR_DELEGATION_FAIL` | `high` | `needs-investigation` | Delegation dispatch or subagent session aborted, crashed, timed out, or exited non-zero |
 | `ERR_DELEGATION_FAILURE` | `high` | `needs-investigation` | Legacy spelling of `ERR_DELEGATION_FAIL`; same classification |
 | `ERR_SUBAGENT_CIRCUIT_OPEN` | `high` | `needs-investigation` | Task-latch circuit breaker opened after repeated terminal subagent failures; orchestrator reconciliation required |
+| `ERR_SUBAGENT_READONLY_REPEATED_ABORT` | `medium` | `needs-investigation` | Read-only role aborted repeatedly on the same objective; telemetry only — dispatch is never blocked |
 | `ERR_VERIFICATION_FAIL` | `medium` | `needs-test-evidence` | Test oracle or reviewer returned FAIL |
 | `ERR_TOOL_INVALID_ARGS` | `medium` | `needs-investigation` | Tool invoked with invalid, missing, or malformed parameters |
 | `ERR_TOOL_MCP_FAILED` | `medium` | `needs-investigation` | Durable memory, code intelligence, or MCP communication/persistence failure |

@@ -83,15 +83,38 @@ test('recovery alone cannot close a circuit and successes clear it', async () =>
   await h.plugin.dispose();
 });
 
-test('read-only roles never latch and never report', async () => {
+test('read-only roles never latch, never block, and elevate a repeated abort once per streak', async () => {
   const h = await harness();
   for (const role of ['investigate', 'reviewer', 'discovery', 'planner']) {
     const args = dispatch(null, role);
     for (let n = 0; n < 6; n++) await h.after(args, '');
     await h.before(args);
   }
-  assert.equal(h.reports.length, 0, 'read-only aborts raise no circuit signal here');
+  // Signal only: dispatch stays available after any number of aborts, yet each
+  // role's repeated abort is no longer console-only. Read-only envelopes carry
+  // task_id null, so the report must not fabricate a durable identity.
+  assert.equal(h.reports.length, 4, 'each read-only role reports exactly once per streak');
+  for (const report of h.reports) {
+    assert.equal(report[report.indexOf('--code') + 1], 'ERR_SUBAGENT_READONLY_REPEATED_ABORT');
+    assert.equal(report.includes('--task'), false, 'a null task_id stays null in telemetry');
+    assert.equal(report.some(a => a.includes('host-resume-1')), false,
+      'the host resume id must never become a durable identity');
+    assert.equal(report[report.indexOf('--source') + 1], 'task-latch-plugin');
+  }
   await h.before(dispatch('other-work'));
+  await h.plugin.dispose();
+});
+
+test('a successful read-only dispatch resets its abort streak', async () => {
+  const h = await harness(), args = dispatch(null, 'investigate');
+  for (let n = 0; n < 3; n++) await h.after(args, '');
+  assert.equal(h.reports.length, 0, 'below threshold stays console-only');
+  await h.after(args, 'ok');
+  for (let n = 0; n < 3; n++) await h.after(args, '');
+  assert.equal(h.reports.length, 0, 'the success cleared the streak, not just the latch');
+  await h.after(args, '');
+  assert.equal(h.reports.length, 1, 'the fourth abort since the reset elevates');
+  await h.before(args);
   await h.plugin.dispose();
 });
 

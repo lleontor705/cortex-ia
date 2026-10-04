@@ -68,6 +68,7 @@ function resolveCortexExecutable(directory?: string): string | null {
 }
 
 const ROLES = new Set(["discovery", "investigate", "planner", "implement", "reviewer"]);
+const READONLY_ROLES = new Set(["investigate", "reviewer", "discovery", "planner"]);
 const RECOVERY = new Set(["cortex_recover", "cortex_ia_recover", "cortex_ia_work_recover", "cortex_ia_work_retry"]);
 const UNLATCH = new Set(["unlatch", "cortex_unlatch", "cortex_ia_unlatch", "cortex_work_unlatch"]);
 interface Failure {
@@ -186,6 +187,10 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
   const directory = (ctx as any)?.location?.directory || (ctx as any)?.directory || process.cwd();
     const failed = new Map<string, Map<string, Failure>>(), pending = new Map<string, Pending>();
     const retries = new Map<string, string>();
+    // Read-only abort streaks live outside `failed`: they must never block a
+    // dispatch, never count toward latch capacity, and never be releasable by
+    // recovery — they only decide when a repeated abort earns telemetry.
+    const readonlyStreaks = new Map<string, number>();
     const capacity = 256;
     let saturated = false;
     const objective = (role: string, prompt: unknown) => createHash("sha256").update(JSON.stringify([role, prompt ?? null])).digest("hex");
@@ -224,6 +229,23 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
       map.set(key, value);
     }
 
+    // One bounded, non-throwing telemetry call. Reporting availability never
+    // releases a latch and a missing/failing binary never surfaces to the host.
+    function reportSignal(code: string, message: string, details: Record<string, any>, taskId?: string): void {
+      const executable = resolveCortexExecutable(directory);
+      if (!executable) return;
+      const command = ["report", "error", "--code", code, "--message", message,
+        "--details", JSON.stringify(details), "--source", "task-latch-plugin"];
+      if (taskId) command.push("--task", taskId);
+      try {
+        execFileSync(executable, command, { cwd: directory, stdio: "ignore", windowsHide: true, timeout: CIRCUIT_REPORT_TIMEOUT_MS });
+      } catch { /* Reporting availability cannot release the failed-attempt latch. */ }
+    }
+
+    function readonlyStreakKey(parent: string, role: string, key: string): string {
+      return [parent, role, key].join("\0");
+    }
+
     async function root(id: string): Promise<boolean> {
       try {
         const response = await (ctx.session?.get ? ctx.session.get({ path: { id }, sessionID: id } as any) : (ctx as any).client?.session?.get({ path: { id } }));
@@ -249,6 +271,7 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
       }
       if (type === "session.deleted") {
         failed.delete(id);
+        for (const key of readonlyStreaks.keys()) if (key.startsWith(id + "\0")) readonlyStreaks.delete(key);
         for (const [child, item] of pending) if (item.parent === id) pending.delete(child);
         for (const key of retries.keys()) if (key.startsWith(id + ":")) retries.delete(key);
       }
@@ -287,12 +310,13 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
       const taskId = meta.taskId;
       const digest = objective(role, args.prompt);
       const failures = failed.get(sessionID);
-      const readonly = ["investigate", "reviewer", "discovery", "planner"].includes(role);
-      if (readonly) {
-        // Read-only inspection and diagnostic roles NEVER hard-latch
+      if (READONLY_ROLES.has(role)) {
+        // Read-only inspection and diagnostic roles NEVER hard-latch, so they
+        // stay dispatchable no matter how often they abort; their repeated
+        // aborts surface as telemetry in executeAfter instead.
         return;
       }
-      if (saturated && !readonly) throw new Error("CORTEX_LATCH_CAPACITY: explicit reconciliation required; no failures were released");
+      if (saturated) throw new Error("CORTEX_LATCH_CAPACITY: explicit reconciliation required; no failures were released");
       const key = failureKey({ role, taskId, objective: digest });
       const previous = failures?.get(key);
       if (!previous || !previous.tripped) return;
@@ -340,25 +364,38 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
       if (!reason) {
         const successKey = failureKey({ role, taskId, objective: background?.objective || objective(role, args.prompt) });
         failed.get(parent)?.delete(successKey);
+        readonlyStreaks.delete(readonlyStreakKey(parent, role, successKey));
         return;
       }
-      const readonly = ["investigate", "reviewer", "discovery", "planner"].includes(role.toLowerCase());
-      if (readonly) {
-        // Read-only subagents never throw latch exceptions in executeAfter.
-        console.warn(`[CORTEX_TASK_LATCH] Read-only subagent '${role}' ended with reason '${reason}'. Latch exception suppressed.`);
+      if (READONLY_ROLES.has(role)) {
+        // Read-only roles never throw latch exceptions, but a repeated abort
+        // must not vanish behind console.warn either: once per streak, at the
+        // same threshold the graded breaker uses for executing roles, the abort
+        // is elevated as ERR_SUBAGENT_READONLY_REPEATED_ABORT telemetry. Signal
+        // only — dispatch, capacity, and recovery are untouched.
+        const failure: Failure = { role, taskId: typeof taskId === "string" ? taskId : undefined, reason, objective: background?.objective || objective(role, args.prompt) };
+        const streakKey = readonlyStreakKey(parent, role, failureKey(failure));
+        const attempts = (readonlyStreaks.get(streakKey) || 0) + 1;
+        if (attempts === 1 && readonlyStreaks.size >= capacity) {
+          console.warn(`[CORTEX_TASK_LATCH] Read-only streak tracking saturated; '${role}' aborts stay console-only.`);
+        } else {
+          readonlyStreaks.set(streakKey, attempts);
+        }
+        console.warn(`[CORTEX_TASK_LATCH] Read-only subagent '${role}' ended with reason '${reason}'. Latch exception suppressed${attempts >= MAX_CIRCUIT_ATTEMPTS ? `; abort streak at ${attempts}, telemetry emitted at ${MAX_CIRCUIT_ATTEMPTS}` : ""}.`);
+        if (attempts === MAX_CIRCUIT_ATTEMPTS) {
+          reportSignal("ERR_SUBAGENT_READONLY_REPEATED_ABORT",
+            `Read-only subagent '${role}' aborted ${attempts} consecutive times on the same objective (${reason}); dispatch remains available, no circuit opened`,
+            { role, task_id: failure.taskId ?? null, reason, attempts, dispatch_blocked: false }, failure.taskId);
+        }
         return;
       }
       const failure = { role, taskId: typeof taskId === "string" ? taskId : undefined, reason, objective: background?.objective || objective(role, args.prompt) };
       const { tripped, failure: recorded } = latch(parent, failure);
       if (tripped) {
-        const executable = recorded.taskId && resolveCortexExecutable(directory);
-        if (executable) {
-          try {
-            execFileSync(executable, ["report", "error", "--code", "ERR_SUBAGENT_CIRCUIT_OPEN",
-              "--task", recorded.taskId!, "--message", `Subagent circuit tripped after ${recorded.attempts} failures: ${reason}`,
-              "--details", JSON.stringify({ role, task_id: recorded.taskId, reason, attempts: recorded.attempts }), "--source", "task-latch-plugin"],
-              { cwd: directory, stdio: "ignore", windowsHide: true, timeout: CIRCUIT_REPORT_TIMEOUT_MS });
-          } catch { /* Reporting availability cannot release the failed-attempt latch. */ }
+        if (recorded.taskId) {
+          reportSignal("ERR_SUBAGENT_CIRCUIT_OPEN",
+            `Subagent circuit tripped after ${recorded.attempts} failures: ${reason}`,
+            { role, task_id: recorded.taskId, reason, attempts: recorded.attempts }, recorded.taskId);
         }
         throw new Error(`CORTEX_CIRCUIT_OPEN: Repeated terminal failure (${recorded.attempts} attempts: ${reason}); circuit breaker tripped. Supported continuation requires orchestrator reconciliation. ${guidance(recorded)}`);
       }
@@ -375,6 +412,7 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
       failed.clear();
       pending.clear();
       retries.clear();
+      readonlyStreaks.clear();
     };
     (cleanup as any).dispose = cleanup;
     (cleanup as any)["tool.execute.before"] = executeBefore;
