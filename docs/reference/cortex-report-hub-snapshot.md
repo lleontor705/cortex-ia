@@ -82,6 +82,7 @@ Error codes extracted from reports are mapped to standardized incident severity 
 | `ERR_TOOL_EXECUTION_FAILED` | `low` | `operational` | Tool execution failure, unhandled runtime exception, or tool error response |
 | `ERR_TOOL_LEASE_REQUIRED` | `low` | `operational` | Mutating file tool invoked without an active claim or lease |
 | `ERR_SQLITE_TIMEOUT` | `low` | `operational` | SQLite busy/lock timeout in the local authority database |
+| `ERR_TOOL_TIMEOUT` | `low` | `operational` | A tool or its bounded child process exceeded a deadline (snapshot export ceiling, child-process timeout, Go context deadline) |
 | `ERR_TASK_BLOCKED` | `low` | `operational` | Unmet dependencies or attempt exhaustion |
 | *unknown* | `low` | `unclassified` | Any other unrecognized error code |
 

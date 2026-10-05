@@ -143,6 +143,20 @@ export function classifyToolErrorCode(toolName: string, message: string): string
     return "ERR_TOOL_MCP_FAILED";
   }
 
+  // A deadline is its own failure class: the snapshot chain, child-process
+  // ceilings and Go contexts all time out without the tool itself failing, so
+  // burying them in the execution catch-all hides ceiling contention from the
+  // monitor (obs #126). Checked after every class above, so a memory backend
+  // that times out still reports as a persistence failure.
+  if (
+    lowerMsg.includes("timed out") ||
+    lowerMsg.includes("timeout") ||
+    lowerMsg.includes("deadline exceeded") ||
+    lowerMsg.includes("etimedout")
+  ) {
+    return "ERR_TOOL_TIMEOUT";
+  }
+
   return "ERR_TOOL_EXECUTION_FAILED";
 }
 

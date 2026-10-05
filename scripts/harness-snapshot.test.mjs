@@ -37,6 +37,27 @@ test('snapshot rejects failed producer and malformed or drifted receipts without
   }
 });
 
+test('snapshot names the deadline, bound, exit status or missing binary that failed',async()=>{
+  // execFileSync reports every producer failure as one throw; the telemetry
+  // classifier keys on the message, so each cause needs its own sentence.
+  const cases = [
+    [Object.assign(new Error('spawnSync cortex-ia ETIMEDOUT'), {code:'ETIMEDOUT'}), /timed out after 35000ms at the plugin deadline/, false],
+    [Object.assign(new Error('Command failed'), {status:1, stderr:'Error: local Cortex snapshot read timed out: export deadline exceeded\n'}), /timed out at the Cortex-IA export deadline/, false],
+    [Object.assign(new Error('spawnSync cortex-ia ENOBUFS'), {code:'ENOBUFS'}), /exceeded the 8388608 byte stdout bound/, true],
+    [Object.assign(new Error('Command failed'), {status:3, stderr:'Error: local Cortex export failed or exceeded stderr bounds\n'}), /exited with status 3/, true],
+    [Object.assign(new Error('spawnSync cortex-ia ENOENT'), {code:'ENOENT'}), /cortex-ia executable not found/, true],
+  ];
+  for (const [thrown, pattern, noTimeout] of cases) {
+    const h = await snapshot(() => { throw thrown; });
+    await assert.rejects(h.tool.execute({project:'p',observation_id:7,expected_sha256:sha256}), err => {
+      assert.match(err.message, pattern);
+      if (noTimeout) assert.ok(!err.message.includes('timed out'), `non-timeout failure reported a timeout: ${err.message}`);
+      return true;
+    });
+    assert.equal(h.calls.length,1);
+  }
+});
+
 test('snapshot rejects invalid intent before starting producer',async()=>{
   const h=await snapshot(()=>JSON.stringify(receipt));
   for(const args of [{project:'p',observation_id:0},{project:'',observation_id:7},

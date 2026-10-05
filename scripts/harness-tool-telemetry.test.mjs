@@ -201,6 +201,30 @@ test('cortex-tool-telemetry classifies bridge authority failures as ERR_TOOL_AUT
   await plugin.dispose();
 });
 
+test('cortex-tool-telemetry classifies deadline failures as ERR_TOOL_TIMEOUT', async () => {
+  const calls = [];
+  const plugin = await createPlugin(calls);
+
+  // Message produced by cortex-snapshot.ts when an export deadline fires: a
+  // blown ceiling must reach the monitor as its own code, not the catch-all.
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_ia_snapshot_read', sessionID: 'ses-timeout', callID: 'call-timeout-1', args: { project: 'p', observation_id: 7 } },
+    { output: '{"error":"Local Cortex snapshot read timed out at the Cortex-IA export deadline; no verified snapshot available"}' }
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][calls[0].indexOf('--code') + 1], 'ERR_TOOL_TIMEOUT');
+
+  // Precedence: a memory backend that times out is still a persistence failure.
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_save', sessionID: 'ses-timeout', callID: 'call-timeout-2', args: {} },
+    { output: '{"error":"storage write error: cortex_save timed out"}' }
+  );
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1][calls[1].indexOf('--code') + 1], 'ERR_TOOL_MCP_FAILED');
+
+  await plugin.dispose();
+});
+
 test('cortex-tool-telemetry debounces duplicate identical errors', async () => {
   const calls = [];
   const plugin = await createPlugin(calls);

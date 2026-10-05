@@ -40,6 +40,7 @@
 #       ERR_CORTEX_MEMORY_WRITE_FAILED   -> medium   / needs-investigation
 #       ERR_TOOL_EXECUTION_FAILED        -> low      / operational
 #       ERR_TOOL_LEASE_REQUIRED          -> low      / operational
+#       ERR_TOOL_TIMEOUT                 -> low      / operational
 #       ERR_SQLITE_TIMEOUT               -> low      / operational
 #       ERR_TASK_BLOCKED                 -> low      / operational
 #       unknown                          -> low      / unclassified
@@ -88,11 +89,13 @@ CODE_MAP = {
     "ERR_TOOL_AUTHORITY_UNUSABLE": ("medium", "needs-investigation"),
     "ERR_CORTEX_SAVE_FAILED": ("medium", "needs-investigation"),
     "ERR_CORTEX_MEMORY_WRITE_FAILED": ("medium", "needs-investigation"),
-    # The execution catch-all absorbs ordinary tool timeouts and tool errors,
-    # the lease guard fires exactly when a mutating tool runs without a claim,
-    # and SQLite busy timeouts are lock contention: routine operational signal.
+    # The execution catch-all absorbs unclassified tool errors, the lease
+    # guard fires exactly when a mutating tool runs without a claim, and
+    # timeouts (child-process ceiling, snapshot export deadline, SQLite busy)
+    # are contention rather than defects: routine operational signal.
     "ERR_TOOL_EXECUTION_FAILED": ("low", "operational"),
     "ERR_TOOL_LEASE_REQUIRED": ("low", "operational"),
+    "ERR_TOOL_TIMEOUT": ("low", "operational"),
     "ERR_SQLITE_TIMEOUT": ("low", "operational"),
     "ERR_TASK_BLOCKED": ("low", "operational"),
 }

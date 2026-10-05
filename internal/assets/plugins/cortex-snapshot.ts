@@ -12,9 +12,46 @@ import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
+// cortex_snapshot.go emits this phrase when its export deadline expires; the
+// child's own stderr is the only place that reason survives, because
+// execFileSync reports a deadline kill and an ordinary non-zero exit alike.
+const EXPORT_TIMEOUT_MARKER = "snapshot read timed out";
+
+// execFileSync collapses every producer failure into one throw, so the reason
+// must be reconstructed from the error shape before it reaches the telemetry
+// classifier: a blown deadline, an over-bound payload and a non-zero exit are
+// different failures and cannot share one sentence (obs #126). Only this
+// plugin's own stderr phrase is read; the producer's diagnostics stay private.
+function snapshotFailureReason(err: any, timeoutMs: number, stdoutLimit: number): string {
+  const stderr = typeof err?.stderr === "string" ? err.stderr : "";
+  if (stderr.includes(EXPORT_TIMEOUT_MARKER)) {
+    return "Local Cortex snapshot read timed out at the Cortex-IA export deadline; no verified snapshot available";
+  }
+  if (err?.code === "ETIMEDOUT") {
+    return `Local Cortex snapshot timed out after ${timeoutMs}ms at the plugin deadline; no verified snapshot available`;
+  }
+  if (err?.code === "ENOBUFS") {
+    return `Local Cortex snapshot exceeded the ${stdoutLimit} byte stdout bound; no verified snapshot available`;
+  }
+  if (err?.code === "ENOENT") {
+    return "Local Cortex snapshot could not start: cortex-ia executable not found";
+  }
+  if (typeof err?.status === "number") {
+    return `Local Cortex snapshot read exited with status ${err.status} before producing a verified snapshot`;
+  }
+  return "Local Cortex snapshot failed before producing a verified snapshot";
+}
+
 export const CortexSnapshotPlugin = Plugin.define({
   id: "cortex-snapshot",
   async setup(ctx: any) {
+    // The producer has two independent ceilings: this plugin kills the child
+    // after SNAPSHOT_TIMEOUT_MS, while cortex-ia enforces its own export
+    // deadline first (obs #126). Keep both numbers next to the messages that
+    // report them so triage can tell which clock fired.
+    const SNAPSHOT_TIMEOUT_MS = 35000;
+    const SNAPSHOT_STDOUT_LIMIT = 8 * 1024 * 1024;
+
     const toolDef = {
       name: "cortex_ia_snapshot_read",
       description: "Read one exact local Cortex observation through Cortex-IA's bounded streaming project export. Verifies identity and optional SHA-256; returns content and digest. The upstream still exports the project (64 MiB total, 2 MiB per record, 1 MiB selected content, 30 seconds); no project array is retained. Never substitutes for a remote MCP store.",
@@ -36,9 +73,9 @@ export const CortexSnapshotPlugin = Plugin.define({
         if (args.expected_sha256 !== undefined) command.push("--expected-sha256", args.expected_sha256);
         let raw: string;
         try {
-          raw = execFileSync("cortex-ia", command, { encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 35000, windowsHide: true });
-        } catch {
-          throw new Error("Local Cortex snapshot failed, timed out or exceeded bounds; no verified snapshot available");
+          raw = execFileSync("cortex-ia", command, { encoding: "utf8", maxBuffer: SNAPSHOT_STDOUT_LIMIT, timeout: SNAPSHOT_TIMEOUT_MS, windowsHide: true });
+        } catch (err: any) {
+          throw new Error(snapshotFailureReason(err, SNAPSHOT_TIMEOUT_MS, SNAPSHOT_STDOUT_LIMIT));
         }
         let snapshot: any;
         try { snapshot = JSON.parse(raw); } catch { throw new Error("Invalid structured Cortex snapshot"); }

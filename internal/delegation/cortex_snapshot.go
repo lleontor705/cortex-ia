@@ -17,10 +17,17 @@ import (
 )
 
 const (
-	cortexExportLimit  = 64 * 1024 * 1024
-	cortexRecordLimit  = 2 * 1024 * 1024
-	cortexContentLimit = 1024 * 1024
+	cortexExportLimit   = 64 * 1024 * 1024
+	cortexRecordLimit   = 2 * 1024 * 1024
+	cortexContentLimit  = 1024 * 1024
+	cortexExportTimeout = 30 * time.Second
 )
+
+// cortexSnapshotTimeoutMessage is the plugin-visible reason a deadline killed
+// the export. cortex-snapshot.ts matches the phrase, so a blown ceiling is
+// reported as a timeout instead of an opaque non-zero exit (obs #126); the
+// generic export failure must never carry this phrase.
+const cortexSnapshotTimeoutMessage = "local Cortex snapshot read timed out: export deadline exceeded"
 
 type CortexSnapshotRequest struct {
 	ID             int64
@@ -42,11 +49,11 @@ func ReadCortexSnapshots(ctx context.Context, project string, requests []CortexS
 	if err := validateSnapshotRequests(project, requests); err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, cortexExportTimeout)
 	defer cancel()
 	command := exec.CommandContext(ctx, "cortex", "export", "--project", project)
 	command.WaitDelay = time.Second
-	return readCortexSnapshotCommand(command, cancel, project, requests)
+	return readCortexSnapshotCommand(ctx, command, cancel, project, requests)
 }
 
 func validateSnapshotRequests(project string, requests []CortexSnapshotRequest) error {
@@ -69,7 +76,7 @@ func validateSnapshotRequests(project string, requests []CortexSnapshotRequest) 
 	return nil
 }
 
-func readCortexSnapshotCommand(command *exec.Cmd, cancel context.CancelFunc, project string, requests []CortexSnapshotRequest) ([]CortexSnapshot, error) {
+func readCortexSnapshotCommand(ctx context.Context, command *exec.Cmd, cancel context.CancelFunc, project string, requests []CortexSnapshotRequest) ([]CortexSnapshot, error) {
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -86,11 +93,19 @@ func readCortexSnapshotCommand(command *exec.Cmd, cancel context.CancelFunc, pro
 		_ = stdout.Close()
 	}
 	waitErr := command.Wait()
+	failed := readErr != nil || waitErr != nil || stderr.bytes > 64*1024
+	// A blown deadline is why the snapshot never arrived, and it also truncates
+	// the decode above, so it outranks every other failure instead of being
+	// reported as an opaque non-zero exit (obs #126). A stderr-bound overflow
+	// cancels the context rather than expiring it, so it keeps its own error.
+	if failed && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return nil, errors.New(cortexSnapshotTimeoutMessage)
+	}
 	if readErr != nil {
 		return nil, readErr
 	}
-	if waitErr != nil || stderr.bytes > 64*1024 {
-		return nil, errors.New("local Cortex export failed, timed out or exceeded stderr bounds; snapshot remains unverified")
+	if failed {
+		return nil, errors.New("local Cortex export failed or exceeded stderr bounds; snapshot remains unverified")
 	}
 	return snapshots, nil
 }

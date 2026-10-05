@@ -91,13 +91,21 @@ func TestCortexSnapshotProducerCompletion(t *testing.T) {
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCortexSnapshotProducer$")
 			cmd.Env = append(os.Environ(), "CORTEX_SNAPSHOT_TEST_PRODUCER="+mode)
 			cmd.WaitDelay = time.Second
-			got, err := readCortexSnapshotCommand(cmd, cancel, "p", []CortexSnapshotRequest{{ID: 7}})
+			got, err := readCortexSnapshotCommand(ctx, cmd, cancel, "p", []CortexSnapshotRequest{{ID: 7}})
 			if mode == "ok" {
 				if err != nil || len(got) != 1 {
 					t.Fatalf("%v %v", got, err)
 				}
 			} else if err == nil {
 				t.Fatal("accepted unsuccessful producer")
+			} else if mode == "timeout" {
+				// The deadline is the cause, not an opaque exit status: the
+				// plugin matches this exact phrase to emit ERR_TOOL_TIMEOUT.
+				if err.Error() != cortexSnapshotTimeoutMessage {
+					t.Fatalf("timeout reported as %q", err.Error())
+				}
+			} else if strings.Contains(err.Error(), "timed out") {
+				t.Fatalf("%s producer must not report a timeout: %v", mode, err)
 			}
 		})
 	}
