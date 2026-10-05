@@ -176,6 +176,7 @@ Controllers and orchestrators record structured operational error reports when e
   - `ERR_DELEGATION_FAIL`: Delegation dispatch or subagent session aborted, crashed, or exited non-zero mid-flight (host restart, controller crash, or interrupted dispatch).
   - `ERR_TOOL_EXECUTION_FAILED`: Tool execution failure, unhandled runtime exception, or tool error response.
   - `ERR_TOOL_LEASE_REQUIRED`: Mutating file tool invoked without active lease claim or path reservation.
+  - `ERR_TOOL_AUTHORITY_UNUSABLE`: The bridge refused a tool call because live work authority was missing or stale (`WORK_STATUS_UNAVAILABLE`, `BRIDGE_AUTHORITY_UNUSABLE`, `BRIDGE_WRITE_AUTHORITY_UNUSABLE`, `BRIDGE_LEASE_MISSING`): claim expired under active work, host restarted, or the durable status could not be read. Unlike `ERR_TOOL_LEASE_REQUIRED`, authority existed and was lost, so the controller must reconcile work before retrying with fresh authority.
   - `ERR_TOOL_MCP_FAILED`: Durable memory, code intelligence, or MCP tool communication/persistence failure.
   - `ERR_TOOL_INVALID_ARGS`: Tool invoked with invalid, missing, or malformed parameters.
   - `ERR_SUBAGENT_READONLY_REPEATED_ABORT`: A read-only role (`investigate`, `reviewer`, `discovery`, `planner`) aborted terminally on the same objective at the circuit-breaker threshold. Signal only: read-only dispatch is never latched or blocked, so this code carries telemetry, not authority.

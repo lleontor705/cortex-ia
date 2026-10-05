@@ -100,6 +100,26 @@ export function classifyToolErrorCode(toolName: string, message: string): string
     return "ERR_TOOL_LEASE_REQUIRED";
   }
 
+  // The bridge refused the call because live work authority was missing or
+  // stale: cortex-work.ts `authorityFailure` serializes one of
+  // WORK_STATUS_UNAVAILABLE / BRIDGE_(WRITE_)AUTHORITY_UNUSABLE /
+  // BRIDGE_LEASE_MISSING beside `bridge_authority` and the action
+  // RECONCILE_WORK_THEN_RETRY_WITH_FRESH_AUTHORITY. Unlike the lease guard,
+  // which fires when a mutation runs with no claim at all, here authority
+  // existed and was lost (claim expiry under active work, host restart,
+  // stopped heartbeat). Leaving these in the execution catch-all buries them
+  // in the dedupe group of an already-closed generic tool-failure issue, so
+  // the monitor never sees the evidence (obs #118, #123).
+  if (
+    lowerMsg.includes("bridge_authority") ||
+    lowerMsg.includes("bridge_write_authority_unusable") ||
+    lowerMsg.includes("bridge_lease_missing") ||
+    lowerMsg.includes("work_status_unavailable") ||
+    lowerMsg.includes("reconcile_work_then_retry_with_fresh_authority")
+  ) {
+    return "ERR_TOOL_AUTHORITY_UNUSABLE";
+  }
+
   // Argument-validation failures outrank the MCP bucket: a cortex_*/mcp_* tool
   // rejected by its own schema is an invalid-arguments defect, not a backend
   // persistence failure (misrouted reports, obs #115).

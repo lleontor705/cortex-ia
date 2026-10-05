@@ -94,6 +94,7 @@ func TestValidateReport_ToolErrorCodes(t *testing.T) {
 		"ERR_TOOL_LEASE_REQUIRED",
 		"ERR_TOOL_MCP_FAILED",
 		"ERR_TOOL_INVALID_ARGS",
+		"ERR_TOOL_AUTHORITY_UNUSABLE",
 	}
 
 	for _, code := range codes {

@@ -35,6 +35,7 @@
 #       ERR_VERIFICATION_FAIL            -> medium   / needs-test-evidence
 #       ERR_TOOL_INVALID_ARGS            -> medium   / needs-investigation
 #       ERR_TOOL_MCP_FAILED              -> medium   / needs-investigation
+#       ERR_TOOL_AUTHORITY_UNUSABLE      -> medium   / needs-investigation
 #       ERR_CORTEX_SAVE_FAILED           -> medium   / needs-investigation
 #       ERR_CORTEX_MEMORY_WRITE_FAILED   -> medium   / needs-investigation
 #       ERR_TOOL_EXECUTION_FAILED        -> low      / operational
@@ -79,6 +80,12 @@ CODE_MAP = {
     # and invalid-argument defects must stay visible beside it.
     "ERR_TOOL_INVALID_ARGS": ("medium", "needs-investigation"),
     "ERR_TOOL_MCP_FAILED": ("medium", "needs-investigation"),
+    # Live work authority was missing or stale when the bridge evaluated the
+    # call (claim expiry under active work, host restart, stopped heartbeat,
+    # unreadable durable status). The lease guard below covers running a
+    # mutation with no claim at all; this one means authority existed and was
+    # lost, so it needs reconciliation instead of counting as routine noise.
+    "ERR_TOOL_AUTHORITY_UNUSABLE": ("medium", "needs-investigation"),
     "ERR_CORTEX_SAVE_FAILED": ("medium", "needs-investigation"),
     "ERR_CORTEX_MEMORY_WRITE_FAILED": ("medium", "needs-investigation"),
     # The execution catch-all absorbs ordinary tool timeouts and tool errors,

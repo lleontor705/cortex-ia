@@ -76,6 +76,7 @@ Error codes extracted from reports are mapped to standardized incident severity 
 | `ERR_VERIFICATION_FAIL` | `medium` | `needs-test-evidence` | Test oracle or reviewer returned FAIL |
 | `ERR_TOOL_INVALID_ARGS` | `medium` | `needs-investigation` | Tool invoked with invalid, missing, or malformed parameters |
 | `ERR_TOOL_MCP_FAILED` | `medium` | `needs-investigation` | Durable memory, code intelligence, or MCP communication/persistence failure |
+| `ERR_TOOL_AUTHORITY_UNUSABLE` | `medium` | `needs-investigation` | Bridge refused a tool call because live work authority was missing or stale (claim expired under active work, host restart, stopped heartbeat) |
 | `ERR_CORTEX_SAVE_FAILED` | `medium` | `needs-investigation` | Memory save rejected or not persisted by the `cortex` backend |
 | `ERR_CORTEX_MEMORY_WRITE_FAILED` | `medium` | `needs-investigation` | Memory write failed in the `cortex` backend |
 | `ERR_TOOL_EXECUTION_FAILED` | `low` | `operational` | Tool execution failure, unhandled runtime exception, or tool error response |

@@ -317,7 +317,7 @@ assert_exit_code 0 "$CODE" "Runs successfully on taxonomy_codes.jsonl"
 python3 -c '
 import json, sys
 data = json.loads(sys.argv[1])
-assert len(data) == 10, data
+assert len(data) == 11, data
 by_code = {g["code"]: g for g in data}
 expected = {
     "ERR_TOOL_EXECUTION_FAILED": ("low", "operational"),
@@ -325,6 +325,7 @@ expected = {
     "ERR_SQLITE_TIMEOUT": ("low", "operational"),
     "ERR_TOOL_MCP_FAILED": ("medium", "needs-investigation"),
     "ERR_TOOL_INVALID_ARGS": ("medium", "needs-investigation"),
+    "ERR_TOOL_AUTHORITY_UNUSABLE": ("medium", "needs-investigation"),
     "ERR_SUBAGENT_READONLY_REPEATED_ABORT": ("medium", "needs-investigation"),
     "ERR_CORTEX_SAVE_FAILED": ("medium", "needs-investigation"),
     "ERR_CORTEX_MEMORY_WRITE_FAILED": ("medium", "needs-investigation"),

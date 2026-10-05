@@ -137,6 +137,70 @@ test('cortex-tool-telemetry classifies generic tool failures as ERR_TOOL_EXECUTI
   await plugin.dispose();
 });
 
+test('cortex-tool-telemetry classifies bridge authority failures as ERR_TOOL_AUTHORITY_UNUSABLE', async () => {
+  const calls = [];
+  const plugin = await createPlugin(calls);
+
+  // Shape produced by cortex-work.ts authorityFailure(): the code names the
+  // refused authority, bridge_authority carries the view, action tells the
+  // controller to reconcile before retrying.
+  const authorityFailure = code => JSON.stringify({
+    code,
+    task_id: 'task-char-harness',
+    durable_status: 'in_progress',
+    claim_expires_at: '2026-10-05T10:00:00Z',
+    bridge_authority: {
+      handle_present: true,
+      owned_by_current_session: false,
+      durable_claim_live: false,
+      usable: false,
+      action: 'STOP_WRITING_AND_RECONCILE',
+    },
+    action: 'RECONCILE_WORK_THEN_RETRY_WITH_FRESH_AUTHORITY',
+  });
+
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_ia_work_claim', sessionID: 'ses-auth', callID: 'call-auth-1', args: { task_id: 'task-char-harness' } },
+    { output: { isError: true, content: [{ type: 'text', text: authorityFailure('BRIDGE_AUTHORITY_UNUSABLE') }] } }
+  );
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_ia_work_transition', sessionID: 'ses-auth', callID: 'call-auth-2', args: { task_id: 'task-char-harness' } },
+    { output: { isError: true, content: [{ type: 'text', text: authorityFailure('BRIDGE_WRITE_AUTHORITY_UNUSABLE') }] } }
+  );
+  await plugin['tool.execute.after'](
+    { tool: 'cortex_ia_work_status', sessionID: 'ses-auth', callID: 'call-auth-3', args: {} },
+    { output: { isError: true, content: [{ type: 'text', text: authorityFailure('WORK_STATUS_UNAVAILABLE') }] } }
+  );
+
+  assert.equal(calls.length, 3);
+  for (const args of calls) {
+    assert.equal(
+      args[args.indexOf('--code') + 1],
+      'ERR_TOOL_AUTHORITY_UNUSABLE',
+      'a refused authority must not fall into the execution catch-all'
+    );
+  }
+  assert.equal(calls[0][calls[0].indexOf('--task') + 1], 'task-char-harness');
+  assert.ok(
+    calls[0][calls[0].indexOf('--message') + 1].includes("Tool 'cortex_ia_work_claim' failed"),
+    'the report keeps the failing tool name for triage'
+  );
+
+  // The lease guard is a different failure class: no claim exists at all.
+  await plugin['tool.execute.after'](
+    { tool: 'edit', sessionID: 'ses-auth', callID: 'call-auth-4', args: { path: 'main.go' } },
+    { output: 'LEASE_REQUIRED: all native mutation targets require a live session-owned claim' }
+  );
+  assert.equal(calls.length, 4);
+  assert.equal(
+    calls[3][calls[3].indexOf('--code') + 1],
+    'ERR_TOOL_LEASE_REQUIRED',
+    'the lease guard must keep its own classification'
+  );
+
+  await plugin.dispose();
+});
+
 test('cortex-tool-telemetry debounces duplicate identical errors', async () => {
   const calls = [];
   const plugin = await createPlugin(calls);
