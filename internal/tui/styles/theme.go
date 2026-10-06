@@ -145,6 +145,27 @@ const (
      ⠉⠛⠿⠿⣿⣶⣤⣤⣤⣤⣤⣤⣶⣿⠿⠿⠛⠉`
 )
 
+// Responsive logo thresholds. Widths are measured in terminal columns and
+// heights in rows, matching lipgloss.Width semantics for ANSI-styled art.
+const (
+	// LogoFullWidth is the rendered width of the widest Logo row.
+	LogoFullWidth = 37
+	// LogoMinWidth is the narrowest content width that still shows a mark.
+	LogoMinWidth = 24
+	// LogoCompactMaxWidth bounds every compact row so it can never wrap.
+	LogoCompactMaxWidth = 20
+	// LogoMinHeight is the shortest terminal that shows the subtitle line.
+	LogoMinHeight = 16
+	// LogoFullHeight is the shortest terminal where the full logo and the whole
+	// menu fit without scrolling.
+	LogoFullHeight = 24
+)
+
+// LogoCompact is a three-row braille mark for narrow or short terminals.
+const LogoCompact = `  ⢀⣤⣶⣿⣶⣤⡀
+  ⣿⣿⠿⠿⣿⣿ CORTEX·IA
+  ⠙⠛⠛⠛⠛⠋`
+
 // hexToRGB parses a hex string "#RRGGBB" into RGB integers.
 func hexToRGB(hexStr string) (r, g, b int) {
 	if strings.HasPrefix(hexStr, "#") && len(hexStr) == 7 {
@@ -154,13 +175,26 @@ func hexToRGB(hexStr string) (r, g, b int) {
 	return 124, 58, 237 // fallback to default primary
 }
 
-// ShimmerLogo renders the ASCII Logo with a dynamic, wave-interpolated color gradient
-// smoothly moving between Primary and Secondary across columns based on frame index.
-func ShimmerLogo(frame int) string {
+// HomeLogoArt selects the logo variant for the available content width. It
+// returns the empty string when even the compact mark cannot fit, so callers
+// can fall back to a plain header.
+func HomeLogoArt(width int) string {
+	switch {
+	case width > LogoFullWidth:
+		return Logo
+	case width >= LogoMinWidth:
+		return LogoCompact
+	}
+	return ""
+}
+
+// ShimmerLogoArt renders art with a wave-interpolated Primary→Secondary gradient
+// that shifts with frame, preserving each row's display width.
+func ShimmerLogoArt(art string, frame int) string {
 	r1, g1, b1 := hexToRGB(string(Primary))
 	r2, g2, b2 := hexToRGB(string(Secondary))
 
-	lines := strings.Split(Logo, "\n")
+	lines := strings.Split(art, "\n")
 	renderedLines := make([]string, 0, len(lines))
 
 	for _, line := range lines {
@@ -185,6 +219,11 @@ func ShimmerLogo(frame int) string {
 		renderedLines = append(renderedLines, sb.String())
 	}
 	return strings.Join(renderedLines, "\n")
+}
+
+// ShimmerLogo renders the full Logo with the animated color gradient.
+func ShimmerLogo(frame int) string {
+	return ShimmerLogoArt(Logo, frame)
 }
 
 // ToggleTheme switches between dark and light themes.

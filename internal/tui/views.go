@@ -211,16 +211,43 @@ func (m model) upgradeBadge() string {
 
 func (m model) viewHome() string {
 	width := m.contentWidth()
-	var lines []string
+	top := m.homeHeaderBlock(width)
+	content := m.homeMenuLines(width)
+	bottom := []string{"", m.footer(truncate("↑/↓ move · 1-9/enter select · q quit", width))}
 
-	if m.height <= 0 || m.height >= 16 {
-		lines = append(lines, styles.ShimmerLogo(m.logoFrame))
-		lines = append(lines, styleDim.Render("  OpenCode Edition · "+m.version+" · "+m.homeDir), "")
-	} else {
-		lines = append(lines, truncate(m.header("Home"), width), "")
+	offset := 0
+	if m.height > 0 {
+		offset = cursorOffset(m.cursor, len(content), m.bodyHeight(), len(top), len(bottom))
+	}
+	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), offset, "↑/↓"), "\n")
+}
+
+// homeHeaderBlock chooses the logo treatment that fits the terminal: the full
+// wordmark when the whole page fits, the compact mark on medium terminals, and
+// a one-line header when even the compact mark would overflow the width.
+func (m model) homeHeaderBlock(width int) []string {
+	subtitle := func() string {
+		return styleDim.Render(truncate("  OpenCode Edition · "+m.version+" · "+m.homeDir, width))
 	}
 
+	art := styles.HomeLogoArt(width)
+	switch {
+	case art == styles.Logo && (m.height <= 0 || m.height >= styles.LogoFullHeight):
+		return append(strings.Split(styles.ShimmerLogoArt(art, m.logoFrame), "\n"), subtitle(), "")
+	case art != "":
+		lines := strings.Split(styles.ShimmerLogoArt(styles.LogoCompact, m.logoFrame), "\n")
+		if m.height <= 0 || m.height >= styles.LogoMinHeight {
+			lines = append(lines, subtitle())
+		}
+		return append(lines, "")
+	default:
+		return []string{truncate(m.header("Home"), width), ""}
+	}
+}
+
+func (m model) homeMenuLines(width int) []string {
 	badge := m.upgradeBadge()
+	lines := make([]string, 0, len(homeEntries))
 	for i, entry := range homeEntries {
 		prefix := fmt.Sprintf("  [%d] ", i+1)
 		text := entry
@@ -235,8 +262,7 @@ func (m model) viewHome() string {
 		}
 		lines = append(lines, truncate(prefix+text+entryBadge+desc, width))
 	}
-	lines = append(lines, "", m.footer("↑/↓ move · 1-9/enter select · q quit"))
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 func (m model) viewReview() string {
