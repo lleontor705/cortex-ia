@@ -7,7 +7,7 @@ import { createIsolatedSandbox, transpileTS } from './harness-plugin-loader.mjs'
 const source = transpileTS(fs.readFileSync('internal/assets/plugins/cortex-work.ts', 'utf8'));
 const schema = new Proxy(() => schema, { get: () => schema });
 const context = { agent: 'implement', sessionID: 'controller', directory: '/isolated/work' };
-async function harness() {
+async function harness(variant = {}) {
   let now = Date.parse('2026-01-01T00:00:00Z'), next = 0, active = 0, maxActive = 0;
   const timers = new Map(), calls = [], statusCalls = [];
   const controls = { status: async () => ({ data: { controller: { type: 'busy' } } }), release: true, renew: true };
@@ -37,10 +37,14 @@ async function harness() {
   sandbox.setTimeout = (callback, delay) => { const id = ++next; timers.set(id, { at: now + delay, callback }); return id; };
   sandbox.clearTimeout = id => timers.delete(id);
   vm.runInContext(source, sandbox);
-  const plugin = await sandbox.exports.CortexDelegationBridge({ client: { session: { status: async options => {
+  // variant.probe === false reproduces an OpenCode v2 plugin context: no ctx.client
+  // and therefore no session status RPC for the claim heartbeat.
+  const definition = sandbox.exports.CortexDelegationBridge;
+  const ctx = variant.probe === false ? {} : { client: { session: { status: async options => {
     statusCalls.push(options); active++; maxActive = Math.max(maxActive, active);
     try { return await controls.status(); } finally { active--; }
-  } } } });
+  } } } };
+  const plugin = await (typeof definition === 'function' ? definition(ctx) : definition.setup(ctx));
   const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
   const advance = async ms => {
     const target = now + ms;
@@ -51,11 +55,13 @@ async function harness() {
     }
     now = target; await flush();
   };
+  const event = pending => plugin.event({ event: pending });
+  for (const pending of variant.preClaimEvents || []) await event(pending);
   const claim = await plugin.tool.cortex_ia_work_claim.execute({ task_id: 'task', paths: ['a.go', 'b.go'] }, context);
   assert.equal(claim.includes('private-'), false);
   return { plugin, calls, controls, advance, flush, timers, statusCalls, claim: JSON.parse(claim), maxActive: () => maxActive,
     renewals: () => calls.filter(c => c.args[1] === 'controller-renew'),
-    event: event => plugin.event({ event }) };
+    event };
 }
 
 test('fresh host status renews complete authority once and keeps tokens only in stdin', async () => {
@@ -156,5 +162,45 @@ test('failed renewal stops, executable discovery is cached and invalidated on er
   assert.equal(h.renewals().length, count);
   await h.plugin.tool.cortex_ia_work_release_all.execute({ task_id: 'task' }, context);
   assert.ok(h.calls.filter(c => c.args[0] === 'version').length >= 2);
+  await h.plugin.dispose();
+});
+
+test('OpenCode v2 context without a status RPC keeps the heartbeat renewing', async () => {
+  const h = await harness({ probe: false });
+  assert.equal(h.claim.maintenance.active, true);
+  assert.equal(h.claim.maintenance.reason, undefined);
+  await h.event({ type: 'session.status', properties: { sessionID: 'controller', status: { type: 'busy' } } });
+  await h.advance(30000);
+  assert.equal(h.renewals().length, 1);
+  assert.equal(h.statusCalls.length, 0);
+  assert.equal(h.renewals()[0].args.includes('private-claim'), false);
+  assert.deepEqual(JSON.parse(h.renewals()[0].input), { claim_token: 'private-claim', leases: { 'a.go': 'private-a', 'b.go': 'private-b' } });
+  await h.plugin.dispose();
+  assert.equal(h.timers.size, 0);
+});
+
+test('event-tracked idle and terminal events stop the fallback heartbeat', async () => {
+  const stale = await harness({ probe: false, preClaimEvents: [
+    { type: 'session.status', properties: { sessionID: 'controller', status: { type: 'idle' } } }] });
+  assert.equal(stale.claim.maintenance.active, true);
+  await stale.advance(120000);
+  assert.equal(stale.renewals().length, 0);
+  await stale.plugin.dispose();
+
+  const h = await harness({ probe: false });
+  await h.advance(30000);
+  assert.equal(h.renewals().length, 1);
+  await h.event({ type: 'session.idle', properties: { sessionID: 'controller' } });
+  await h.advance(120000);
+  assert.equal(h.renewals().length, 1);
+  await h.plugin.dispose();
+});
+
+test('fallback heartbeat still dies at the stale-progress window without host activity', async () => {
+  const h = await harness({ probe: false });
+  await h.advance(900000);
+  assert.equal(h.renewals().length, 29);
+  await h.advance(600000);
+  assert.equal(h.renewals().length, 29);
   await h.plugin.dispose();
 });

@@ -54,7 +54,7 @@ test('a durable-void retained handle is dropped so the fresh claim proceeds', as
   await bridge.tool.cortex_ia_work_claim.execute({ task_id: 'task-void', paths: [leasedPath] }, context);
   const fresh = await bridge.tool.cortex_ia_work_claim.execute({ task_id: 'task-void', paths: [leasedPath] }, context);
   assert.equal(claimCount(opts), 2);
-  assert.equal(JSON.parse(fresh).maintenance.active, false);
+  assert.equal(JSON.parse(fresh).maintenance.active, true);
 });
 
 test('a live durable claim owned by another session defers to durable authority', async () => {

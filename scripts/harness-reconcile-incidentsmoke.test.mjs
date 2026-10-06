@@ -89,7 +89,7 @@ test('a durable-void retained handle no longer blocks the fresh claim', async ()
   control.claim = null;
   const fresh = await bridge.tool.cortex_ia_work_claim.execute({ task_id: taskID, paths: [leasedPath] }, context);
   assert.equal(callsOf(opts, 'claim').length, 2);
-  assert.equal(JSON.parse(fresh).maintenance.active, false);
+  assert.equal(JSON.parse(fresh).maintenance.active, true);
 });
 
 test('every non-orchestrator role is denied before any CLI invocation', async () => {

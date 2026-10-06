@@ -119,6 +119,12 @@ interface WorkAuthority {
 }
 
 const workAuthority = new Map<string, WorkAuthority>();
+// Last host session status observed on the event bus, keyed by session ID.
+// OpenCode v2 plugin contexts expose no session status RPC (there is no
+// ctx.client and ctx.session has no status method), so the claim heartbeat
+// renews from this event-tracked view instead of going dark and letting every
+// claim expire at its TTL while the controller is still working.
+const sessionStatuses = new Map<string, string>();
 const maintenancePolicy = { interval_ms: 30000, status_timeout_ms: 5000, stale_progress_ms: 900000, ttl: "15m" };
 function stopMaintenance(authority: WorkAuthority, reason: string) {
   const state = authority.maintenance;
@@ -636,7 +642,8 @@ export const CortexWorkPlugin = Plugin.define({
   const startMaintenance = (taskID: string, authority: WorkAuthority, directory: string) => {
     const state: NonNullable<WorkAuthority["maintenance"]> = { active: true, lastProgress: Date.now(), progress: new Map() };
     authority.maintenance = state;
-    if (typeof client.session?.status !== "function" || !directory) {
+    const statusProbe = typeof client.session?.status === "function" ? client.session.status.bind(client.session) : null;
+    if (statusProbe && !directory) {
       stopMaintenance(authority, "host_status_unavailable_manual_renewal_required");
       return;
     }
@@ -650,14 +657,24 @@ export const CortexWorkPlugin = Plugin.define({
       state.abort = abort;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        const response: any = await Promise.race([
-          client.session.status({ query: { directory }, signal: abort.signal }),
-          new Promise((_, reject) => { timeout = setTimeout(() => { abort.abort(); reject(new Error("host_status_timeout")); }, maintenancePolicy.status_timeout_ms); })
-        ]);
-        if (!current()) return;
-        const status = response?.data?.[authority.sessionID]?.type;
-        if (response?.error || !["busy", "retry"].includes(status)) {
-          stopMaintenance(authority, "host_idle_or_unknown"); return;
+        if (statusProbe) {
+          const response: any = await Promise.race([
+            statusProbe({ query: { directory }, signal: abort.signal }),
+            new Promise((_, reject) => { timeout = setTimeout(() => { abort.abort(); reject(new Error("host_status_timeout")); }, maintenancePolicy.status_timeout_ms); })
+          ]);
+          if (!current()) return;
+          const status = response?.data?.[authority.sessionID]?.type;
+          if (response?.error || !["busy", "retry"].includes(status)) {
+            stopMaintenance(authority, "host_idle_or_unknown"); return;
+          }
+        } else {
+          // No status RPC (OpenCode v2 contexts): renew while the event-tracked
+          // status is busy/retry or not observed yet; an observed idle/unknown
+          // status, a terminal session event, or stale progress still stops it.
+          const observed = sessionStatuses.get(authority.sessionID);
+          if (observed !== undefined && !["busy", "retry"].includes(observed)) {
+            stopMaintenance(authority, "host_idle_or_unknown"); return;
+          }
         }
         if (Date.now() - state.lastProgress >= maintenancePolicy.stale_progress_ms) {
           stopMaintenance(authority, "stale_progress"); return;
@@ -715,6 +732,13 @@ export const CortexWorkPlugin = Plugin.define({
     const type = event.type || (event as any).event || "";
     const sessionID = event.sessionID || (event as any).sessionId || event.properties?.sessionID || event.properties?.info?.id || "";
     const progress = type === "message.part.updated" ? event.properties?.part : type === "message.updated" ? event.properties?.info : undefined;
+    if (type === "session.status" && sessionID) {
+      const observed = event.properties?.status?.type;
+      if (typeof observed === "string" && observed) sessionStatuses.set(sessionID, observed);
+      else sessionStatuses.delete(sessionID);
+    } else if (type === "session.deleted" && sessionID) {
+      sessionStatuses.delete(sessionID);
+    }
     for (const authority of workAuthority.values()) {
       const state = authority.maintenance;
       if (!state?.active) continue;
