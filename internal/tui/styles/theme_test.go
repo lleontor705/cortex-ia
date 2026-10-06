@@ -1,6 +1,18 @@
 package styles
 
-import "testing"
+import (
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+var ansiPattern = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func stripANSI(s string) string {
+	return ansiPattern.ReplaceAllString(s, "")
+}
 
 func TestSpinnerChar_Cycles(t *testing.T) {
 	for i := 0; i < 10; i++ {
@@ -86,4 +98,84 @@ func TestApplyTheme_UpdatesStyles(t *testing.T) {
 
 	// Restore
 	ApplyTheme(ThemeDark)
+}
+
+func TestLogo_FullWidthMatchesArt(t *testing.T) {
+	widest := 0
+	for _, line := range strings.Split(Logo, "\n") {
+		if w := lipgloss.Width(line); w > widest {
+			widest = w
+		}
+	}
+	if widest != LogoFullWidth {
+		t.Errorf("LogoFullWidth=%d but widest Logo row is %d", LogoFullWidth, widest)
+	}
+}
+
+func TestLogoCompact_Dimensions(t *testing.T) {
+	lines := strings.Split(LogoCompact, "\n")
+	if len(lines) > 3 {
+		t.Errorf("compact art must be at most 3 rows, got %d", len(lines))
+	}
+	for i, line := range lines {
+		if w := lipgloss.Width(line); w > LogoCompactMaxWidth {
+			t.Errorf("compact row %d width %d exceeds %d: %q", i, w, LogoCompactMaxWidth, line)
+		}
+	}
+}
+
+func TestHomeLogoArt_Selection(t *testing.T) {
+	cases := []struct {
+		width int
+		want  string
+	}{
+		{LogoFullWidth + 10, Logo},
+		{LogoFullWidth + 1, Logo},
+		{LogoFullWidth, LogoCompact},
+		{LogoMinWidth + 1, LogoCompact},
+		{LogoMinWidth, LogoCompact},
+		{LogoMinWidth - 1, ""},
+		{0, ""},
+	}
+	for _, c := range cases {
+		if got := HomeLogoArt(c.width); got != c.want {
+			t.Errorf("HomeLogoArt(%d) = %q, want %q", c.width, got, c.want)
+		}
+	}
+}
+
+func TestShimmerLogoArt_RendersVariants(t *testing.T) {
+	full := ShimmerLogoArt(Logo, 0)
+	if !strings.Contains(stripANSI(full), "C O R T E X · I A") {
+		t.Errorf("ShimmerLogoArt(Logo) lost the wordmark:\n%s", full)
+	}
+
+	compact := ShimmerLogoArt(LogoCompact, 3)
+	if !strings.Contains(stripANSI(compact), "CORTEX·IA") {
+		t.Errorf("ShimmerLogoArt(LogoCompact) lost the wordmark:\n%s", compact)
+	}
+
+	fullRows := strings.Split(full, "\n")
+	artRows := strings.Split(Logo, "\n")
+	if len(fullRows) != len(artRows) {
+		t.Fatalf("styled full art has %d rows, want %d", len(fullRows), len(artRows))
+	}
+	for i := range artRows {
+		if got, want := lipgloss.Width(fullRows[i]), lipgloss.Width(artRows[i]); got != want {
+			t.Errorf("styling changed row %d width: got %d, want %d", i, got, want)
+		}
+	}
+	widest := 0
+	for _, line := range strings.Split(compact, "\n") {
+		if w := lipgloss.Width(line); w > widest {
+			widest = w
+		}
+	}
+	if widest > LogoCompactMaxWidth {
+		t.Errorf("styled compact art width %d exceeds %d", widest, LogoCompactMaxWidth)
+	}
+
+	if ShimmerLogo(4) != ShimmerLogoArt(Logo, 4) {
+		t.Error("ShimmerLogo must delegate to ShimmerLogoArt(Logo, frame)")
+	}
 }

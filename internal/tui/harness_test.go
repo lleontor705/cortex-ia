@@ -2,10 +2,12 @@ package tui
 
 import (
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lleontor705/cortex-ia/internal/backup"
 	"github.com/lleontor705/cortex-ia/internal/install"
@@ -204,4 +206,62 @@ func sized(m model) model {
 // tests can prove the output respects the terminal budget.
 func viewLines(m model) int {
 	return strings.Count(m.View(), "\n") + 1
+}
+
+// sizedAt gives the model a deterministic terminal size, so responsiveness
+// tests can pin exact width and height thresholds.
+func sizedAt(m model, w, h int) model {
+	m.width, m.height = w, h
+	return m
+}
+
+var ansiPattern = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func stripANSI(s string) string {
+	return ansiPattern.ReplaceAllString(s, "")
+}
+
+// TestHomeView_ResponsiveLogo proves the home logo swaps variants on both the
+// width and height axes, never overflows the terminal width, and never exceeds
+// the terminal row budget.
+func TestHomeView_ResponsiveLogo(t *testing.T) {
+	home := t.TempDir()
+	const fullMark = "C O R T E X · I A"
+	const compactMark = "CORTEX·IA"
+
+	cases := []struct {
+		name        string
+		w, h        int
+		wantFull    bool
+		wantCompact bool
+	}{
+		{"large", 100, 40, true, false},
+		{"short-wide", 60, 18, false, true},
+		{"narrow-tall", 40, 40, false, true},
+		{"small", 40, 14, false, true},
+		{"tiny", 26, 10, false, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := sizedAt(newModel(&fakeService{}, home, "vtest"), c.w, c.h)
+			view := m.View()
+			plain := stripANSI(view)
+
+			if got := strings.Contains(plain, fullMark); got != c.wantFull {
+				t.Errorf("full logo present = %v, want %v\n%s", got, c.wantFull, plain)
+			}
+			if got := strings.Contains(plain, compactMark); got != c.wantCompact {
+				t.Errorf("compact logo present = %v, want %v\n%s", got, c.wantCompact, plain)
+			}
+			if got := viewLines(m); got > c.h {
+				t.Errorf("view rendered %d rows, terminal height %d", got, c.h)
+			}
+			for _, line := range strings.Split(view, "\n") {
+				if w := lipgloss.Width(line); w > c.w {
+					t.Errorf("line width %d exceeds terminal width %d: %q", w, c.w, line)
+				}
+			}
+		})
+	}
 }
