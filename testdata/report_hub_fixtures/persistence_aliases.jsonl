@@ -1,0 +1,6 @@
+{"timestamp":"2026-10-05T17:00:00.000Z","level":"info","message":"🚀 Cortex Report Hub started on :8080 (Auth Protected: true, User: admin)"}
+{"timestamp":"2026-10-05T17:00:30.000Z","level":"info","message":"GET /health 200 OK"}
+{"timestamp":"2026-09-21T15:26:56.000Z","level":"error","message":"2026/09/21 15:26:56 📥 [Report Received] ID=rep-persistfail-1 Code=ERR_PERSISTENCE_FAIL Source=orchestrator Task= CPU=16 RAM=1MB Goroutines=1"}
+{"timestamp":"2026-10-05T16:11:19.000Z","level":"error","message":"2026/10/05 16:11:19 📥 [Report Received] ID=rep-persistfail-2 Code=ERR_PERSISTENCE_FAIL Source=orchestrator Task= CPU=16 RAM=1MB Goroutines=1"}
+{"timestamp":"2026-10-01T21:42:09.000Z","level":"error","message":"2026/10/01 21:42:09 📥 [Report Received] ID=rep-infrapersist-1 Code=ERR_INFRA_PERSISTENCE Source=orchestrator Task=task-sgoc-master-switch-001 CPU=16 RAM=1MB Goroutines=1"}
+{"timestamp":"2026-10-05T17:01:00.000Z","level":"error","message":"2026/10/05 17:01:00 📥 [Report Received] ID=rep-stillunknown-1 Code=ERR_SOMETHING_ELSE Source=orchestrator Task=task-unknown-code CPU=16 RAM=1MB Goroutines=1"}

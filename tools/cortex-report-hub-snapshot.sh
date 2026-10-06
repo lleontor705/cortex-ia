@@ -38,6 +38,8 @@
 #       ERR_TOOL_AUTHORITY_UNUSABLE      -> medium   / needs-investigation
 #       ERR_CORTEX_SAVE_FAILED           -> medium   / needs-investigation
 #       ERR_CORTEX_MEMORY_WRITE_FAILED   -> medium   / needs-investigation
+#       ERR_PERSISTENCE_FAIL             -> medium   / needs-investigation (alias)
+#       ERR_INFRA_PERSISTENCE            -> medium   / needs-investigation (alias)
 #       ERR_TOOL_EXECUTION_FAILED        -> low      / operational
 #       ERR_TOOL_LEASE_REQUIRED          -> low      / operational
 #       ERR_TOOL_TIMEOUT                 -> low      / operational
@@ -89,6 +91,16 @@ CODE_MAP = {
     "ERR_TOOL_AUTHORITY_UNUSABLE": ("medium", "needs-investigation"),
     "ERR_CORTEX_SAVE_FAILED": ("medium", "needs-investigation"),
     "ERR_CORTEX_MEMORY_WRITE_FAILED": ("medium", "needs-investigation"),
+    # Same-cause aliases: report_error --code is a free-form string (see
+    # internal/app/report.go runReportError), so agents have filed the very same
+    # "write could not be persisted" cortex_save failure under invented codes.
+    # Neither string has ever existed in this repository, but leaving them
+    # unclassified ranks one root cause (lleontor705/cortex#58/#59) as medium
+    # when the taxonomy names it and low when the agent does. Alias, not
+    # vocabulary: validation at the emitter would break historical reports and
+    # the documented free-string contract of --code.
+    "ERR_PERSISTENCE_FAIL": ("medium", "needs-investigation"),
+    "ERR_INFRA_PERSISTENCE": ("medium", "needs-investigation"),
     # The execution catch-all absorbs unclassified tool errors, the lease
     # guard fires exactly when a mutating tool runs without a claim, and
     # timeouts (child-process ceiling, snapshot export deadline, SQLite busy)

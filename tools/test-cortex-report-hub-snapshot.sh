@@ -341,6 +341,37 @@ for code, want in expected.items():
 assert_not_contains "$OUT" "GET /health" "Non-report health check omitted from output"
 
 # -----------------------------------------------------------------------------
+# Test 10: same-cause persistence aliases classify like ERR_CORTEX_SAVE_FAILED
+# -----------------------------------------------------------------------------
+log_test "10. Agent-invented persistence aliases classify like the taxonomy code"
+set +e
+OUT=$(REPORT_HUB_LOG_SOURCE="$FIXTURES_DIR/persistence_aliases.jsonl" bash "$SNAPSHOT_TOOL" 2>&1)
+CODE=$?
+set -e
+assert_exit_code 0 "$CODE" "Runs successfully on persistence_aliases.jsonl"
+
+python3 -c '
+import json, sys
+data = json.loads(sys.argv[1])
+assert len(data) == 3, data
+by_code = {g["code"]: g for g in data}
+
+persist = by_code["ERR_PERSISTENCE_FAIL"]
+assert (persist["severity"], persist["action"]) == ("medium", "needs-investigation"), persist
+assert persist["count"] == 2, persist
+assert sorted(persist["ids"]) == ["rep-persistfail-1", "rep-persistfail-2"], persist["ids"]
+
+infra = by_code["ERR_INFRA_PERSISTENCE"]
+assert (infra["severity"], infra["action"]) == ("medium", "needs-investigation"), infra
+assert infra["task"] == "task-sgoc-master-switch-001", infra
+
+unknown = by_code["ERR_SOMETHING_ELSE"]
+assert (unknown["severity"], unknown["action"]) == ("low", "unclassified"), unknown
+' "$OUT" && log_pass "Persistence aliases rank medium, unknown codes still fall through" || log_fail "Persistence alias classification assertions failed"
+
+assert_not_contains "$OUT" "GET /health" "Non-report health check omitted from output"
+
+# -----------------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------------
 echo ""

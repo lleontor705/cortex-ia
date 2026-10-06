@@ -79,6 +79,8 @@ Error codes extracted from reports are mapped to standardized incident severity 
 | `ERR_TOOL_AUTHORITY_UNUSABLE` | `medium` | `needs-investigation` | Bridge refused a tool call because live work authority was missing or stale (claim expired under active work, host restart, stopped heartbeat) |
 | `ERR_CORTEX_SAVE_FAILED` | `medium` | `needs-investigation` | Memory save rejected or not persisted by the `cortex` backend |
 | `ERR_CORTEX_MEMORY_WRITE_FAILED` | `medium` | `needs-investigation` | Memory write failed in the `cortex` backend |
+| `ERR_PERSISTENCE_FAIL` | `medium` | `needs-investigation` | Same-cause alias of `ERR_CORTEX_SAVE_FAILED`: `cortex_save` reported `write could not be persisted` under an agent-invented code |
+| `ERR_INFRA_PERSISTENCE` | `medium` | `needs-investigation` | Same-cause alias of `ERR_CORTEX_SAVE_FAILED`: `cortex_save` reported `write could not be persisted` under an agent-invented code |
 | `ERR_TOOL_EXECUTION_FAILED` | `low` | `operational` | Tool execution failure, unhandled runtime exception, or tool error response |
 | `ERR_TOOL_LEASE_REQUIRED` | `low` | `operational` | Mutating file tool invoked without an active claim or lease |
 | `ERR_SQLITE_TIMEOUT` | `low` | `operational` | SQLite busy/lock timeout in the local authority database |
@@ -90,11 +92,14 @@ Severity reflects the triage weight of the class, not its frequency: a code that
 blocks work or loses data needs investigation even when it is rare, while the
 catch-all tool failures that dominate the volume stay operational. The codes come
 from the Standard Taxonomy in
-`internal/assets/skills/_shared/cortex-work-protocol.md`, plus four the protocol
+`internal/assets/skills/_shared/cortex-work-protocol.md`, plus six the protocol
 does not list: the legacy `ERR_DELEGATION_FAILURE` alias, `ERR_SQLITE_TIMEOUT`,
 `ERR_SUBAGENT_CIRCUIT_OPEN` (emitted by the task-latch plugin and weighted like
-`ERR_DELEGATION_FAIL`), and the `ERR_CORTEX_*` pair (emitted by the `cortex`
-memory platform and routed to `lleontor705/cortex` by the reconciler).
+`ERR_DELEGATION_FAIL`), the `ERR_CORTEX_*` pair (emitted by the `cortex`
+memory platform and routed to `lleontor705/cortex` by the reconciler), and the
+`ERR_PERSISTENCE_FAIL` / `ERR_INFRA_PERSISTENCE` aliases (agent-invented
+spellings of the same `ERR_CORTEX_SAVE_FAILED` failure, mapped so one root cause
+does not rank differently depending on who named it).
 
 ## Output Schema
 
@@ -133,6 +138,7 @@ Test fixtures are maintained under `testdata/report_hub_fixtures/`:
 - `redaction.jsonl`: Bearer tokens, GitHub keys, and oversized strings.
 - `delegation_fail.jsonl`: Both `ERR_DELEGATION_FAIL` (emitted) and `ERR_DELEGATION_FAILURE` (legacy) spellings, verifying identical `high` / `needs-investigation` classification.
 - `taxonomy_codes.jsonl`: One report per Standard Taxonomy tool/circuit/cortex code plus an out-of-taxonomy control, verifying every severity/action row of the matrix and that unknown codes still fall to `low` / `unclassified`.
+- `persistence_aliases.jsonl`: The two agent-invented spellings of the `cortex_save` persistence failure plus an unrelated unknown control, verifying they classify `medium` / `needs-investigation` like `ERR_CORTEX_SAVE_FAILED` while a genuinely unknown code still falls through.
 - `malformed_json.jsonl`: Broken JSON syntax.
 - `malformed_report_missing_fields.jsonl`: Missing required fields in report records.
 - `empty_logs.jsonl`: Zero report records.
