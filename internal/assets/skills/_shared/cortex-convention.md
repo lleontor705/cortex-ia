@@ -22,7 +22,7 @@ Never persist secrets, claim/lease tokens, full prompts, transcripts, raw stdout
 
 When running AST ingestion via `cortex_ingest_code(path, project)`, always provide the absolute workspace root path (e.g. `d:/cortex-ia`). Never pass relative `.` because the Cortex MCP daemon executes in its own isolated working directory.
 
-Use this deterministic taxonomy:
+Use this deterministic taxonomy. The only accepted `type` values are the server allowlist enforced fail-closed by `cortex_save` (`manual`, `tool_use`, `decision`, `architecture`, `bugfix`, `pattern`, `config`, `discovery`, `learning`, `session_summary`, `passive`); topic-key prefixes such as `gotchas/`, `rules/`, or `dna/` are never types.
 
 | Subject | Type | Topic key |
 |---|---|---|
@@ -32,7 +32,7 @@ Use this deterministic taxonomy:
 | Domain invariant | `architecture` | `domain/<entity>` |
 | Bug root cause/fix | `bugfix` | `bugfix/<issue>` |
 | Incident containment/debt | `bugfix` | `hotfix/<incident>` |
-| Personal preference | `preference`, personal scope | stable preference key |
+| Personal preference | `config`, personal scope | stable preference key |
 
 OpenSpec evidence uses `sdd/{change}/{artifact}` for `explore`, `proposal`, `spec`, `design`, `tasks`, `apply-progress`, `verify-report`, and `archive-report`. Spec Kit uses `.specify/specs/{change}/` with automatic CQRS state projection to `state.yaml`, `tasks.md`, `evidence.md`, and `.specify/runtime/active-task.json`. In cortex-only, evidence links directly to pinned specification observation IDs. Relate meaningful records only with relations accepted by the active schema.
 
