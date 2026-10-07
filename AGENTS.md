@@ -33,11 +33,11 @@ All role controllers execute in `native` mode under the Cortex-IA Work Authority
 
 | Role | Allowed work-control behavior |
 |---|---|
-| `orchestrator` | Create/query boards and DAGs, recover expired attempts, retry reconciled blockers, dispatch native role controllers, auto-approve low-risk/data/docs/config tasks under the Adaptive Review Policy. Never claim tasks, lease files, or edit product code. |
+| `orchestrator` | Create/query boards and DAGs, recover expired attempts and retry reconciled blockers (unscoped recovery and retry remain orchestrator-only), dispatch native role controllers, auto-approve low-risk/data/docs/config tasks under the Adaptive Review Policy. Never claim tasks, lease files, or edit product code. |
 | `discovery` | Agentic environment discovery: build the skills dictionary (project-local + installed global), run/test execution info, minimal governance list, and quick index into `./.cortex-ia/discovery.md`. Never mutate work state. |
 | `investigate` | Read-only `board list|status` and `work list|status`; diagnose and save bounded evidence. Never mutate work state. |
 | `planner` | Write OpenSpec planning artifacts, create the initiative board, and materialize its same-board dependency DAG. Never claim implementation work. |
-| `implement` | Own exactly one ready task claim, lease every writable path, renew authority, verify, then transition to `in_review`. Stop writing immediately if authority expires. |
+| `implement` | Own exactly one ready task claim, lease every writable path, renew authority, verify, then transition to `in_review`. Stop writing immediately if authority expires. May request scoped self-recovery of its own expired task (`cortex_ia_work_recover_own`); unscoped recovery and retry stay orchestrator-only. |
 | `reviewer` | Independently inspect and rerun checks; its only work-state mutation is `work approve`. Never edit, claim, lease, or self-approve as the active implementation owner. |
 
 All roles execute natively; there is no external execution leaf, and no role may hand work to an external CLI.

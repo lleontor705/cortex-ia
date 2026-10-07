@@ -39,7 +39,7 @@ func runWork(args []string) error {
 		fmt.Println("  retry <task-id> --revision <n>                              Retry a task")
 		fmt.Println("  revise --plan <file|@stdin>                                 Safely revise an unclaimed task definition")
 		fmt.Println("  decompose <task-id> --revision <n> --plan <file|@stdin>       Replace a blocked task with atomic tasks")
-		fmt.Println("  recover                                                     Recover expired claims/leases")
+		fmt.Println("  recover [--task <task-id> --owner <identity>]               Recover expired claims/leases")
 		fmt.Println("  reconcile <task-id> --reason <text> --session <id> --revision <n>  Force-release an orphaned live claim")
 		fmt.Println("  verify-lease --path <file> [--task <id>] [--owner <owner>]  Verify active file lease")
 		return nil
@@ -558,11 +558,27 @@ func runWork(args []string) error {
 		}
 		return printJSON(result)
 	case "recover":
+		const recoverUsage = "recover [--task <task-id> --owner <identity>]"
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("recover", nil)
+			return workUsage(recoverUsage, nil)
 		}
-		if len(args) != 1 {
-			return workUsage("recover", nil)
+		opts, positionals, err := workOptions(args[1:], map[string]bool{"--task": false, "--owner": false})
+		if err != nil {
+			return workUsage(recoverUsage, err)
+		}
+		if len(positionals) != 0 {
+			return workUsage(recoverUsage, nil)
+		}
+		scope := delegation.RecoverScope{TaskID: oneOption(opts, "--task"), Owner: oneOption(opts, "--owner")}
+		if err := scope.Validate(); err != nil {
+			return workUsage(recoverUsage, err)
+		}
+		if scope.Scoped() {
+			count, err := store.RecoverWorkScoped(ctx, scope.TaskID, scope.Owner)
+			if err != nil {
+				return err
+			}
+			return printJSON(map[string]int64{"recovered": count})
 		}
 		count, err := store.RecoverWork(ctx)
 		if err != nil {

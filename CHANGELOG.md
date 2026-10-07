@@ -1,5 +1,64 @@
 # Changelog
 
+## v0.5.8 (2026-10-07) — decoupled claim TTL and scoped self-recovery
+
+### Added
+
+- **Implement-scoped self-recovery** — the bridge exposes `cortex_ia_work_recover_own(task_id)` and the CLI gains `cortex-ia work recover --task <id> --owner <identity>`; both recover only the caller's own expired claim and file leases, with in-memory plus durable ownership verification and fail-closed denials (REQ-WAUTH-002, REQ-WAUTH-003)
+
+### Changed
+
+- **Claim TTL decoupled from the stale-progress window** — the bridge maintenance policy grants a 30-minute claim validity window per heartbeat renewal, while the 15-minute no-host-activity orphan window (`stale_progress_ms`) is unchanged and still stops heartbeats (REQ-WAUTH-001)
+- **Protocol and agent assets** — the canonical work protocol authority table and the `implement` agent guard document the decoupled TTL and the implement-scoped recovery boundary (REQ-WAUTH-004)
+
+## v0.5.7 (2026-10-06) — responsive TUI home logo
+
+### Fixed
+
+- **TUI home logo** — make the logo responsive on small terminals (`79289a2`, PR #139)
+
+## v0.5.6 (2026-10-06) — heartbeat renewal and telemetry classification
+
+### Changed
+
+- **Vendored report-hub reconcile script** — add the coalescing reconcile script (`71bd808`, PR #134)
+
+### Fixed
+
+- **Claim heartbeat renewal without a host status RPC** — the plugin renews the claim from its own maintenance loop instead of requiring a host status call (`7e51860`)
+- **Telemetry error-code classification** — map every Standard Taxonomy code in the snapshot map (`c33e664`), rank `ERR_DELEGATION_FAIL` high (`8c4767f`), give refused work authority its own code (`621d328`), classify invented persistence codes by root cause (`eb9e231`), rank invalid-argument errors above the MCP bucket (`3696a59`, PR #121), classify snapshot timeouts as `ERR_TOOL_TIMEOUT` (`1d40893`, PR #126), and recover failure detail behind boolean error flags (`9832cf5`, PR #117)
+- **Repeated read-only subagent aborts** elevated as telemetry (`3f5628d`)
+- **`work create`** accepts the `ops-task` workflow in the schema and CLI (`ea37862`, PR #120)
+- **`proxy-addr`** bumped to 2.0.8 for CVE-2026-90711 (`dc7d85c`, PR #136)
+
+## v0.5.5 (2026-10-03) — tool execution error telemetry
+
+### Added
+
+- **Tool execution and usage error telemetry** — report tool execution and usage errors through the telemetry hub (`3d25e0d`, PR #114)
+
+## v0.5.4 (2026-10-02) — branch boards, bounded plugin leases
+
+### Added
+
+- **Automatic branch boards, task pruning, hide-completed toggle** — derive per-branch boards, prune expired tasks, and hide completed cards (`31d9af8`, PR #110)
+
+### Changed
+
+- **Dependencies** — GitHub Actions and `modernc.org/sqlite` bumped (`1a086f2`, PR #112)
+
+### Fixed
+
+- **Plugin lease admission bound with latency telemetry** — `d6bae87`
+- **Host-loop child process admission bound** — `2193b78`
+- **Delegation directory fingerprinting outside git work trees** — `e5759e7`
+
+## v0.5.3 (2026-10-02) — updater download host allowlist
+
+### Fixed
+
+- **Updater download allowlist** — permit the GitHub release-assets host when downloading self-update artifacts (`7e8d67f`, PR #98)
+
 ## v0.4.56 (2026-09-26) — merge-safe provider configurator
 
 Merge-safe custom-provider installation (PR #71): the configurator now merges

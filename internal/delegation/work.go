@@ -35,6 +35,11 @@ var ErrWorkConflict = errors.New("work control conflict")
 var ErrWorkAttemptLimit = errors.New("work attempt limit reached")
 var ErrWorkReviewFailStreak = errors.New("review-fail retry circuit breaker")
 
+// ErrScopedRecoverDenied is the fail-closed denial for ownership-verified
+// recovery. The wrapped detail is one of owner_mismatch, claim_not_expired or
+// task_not_found, and a denial guarantees zero durable writes.
+var ErrScopedRecoverDenied = errors.New("scoped recover denied")
+
 // WorkloadPolicy is the per-task churn budget profile. It is persisted on the
 // work item and read by the transition and retry paths, which own the actual
 // budget enforcement.
@@ -1131,6 +1136,24 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 	return approval, err
 }
 
+// RecoverScope is the optional ownership-verified form of `work recover`. A
+// zero scope selects the unscoped path; a partial scope is a usage error.
+type RecoverScope struct {
+	TaskID string
+	Owner  string
+}
+
+func (r RecoverScope) Validate() error {
+	taskSet := strings.TrimSpace(r.TaskID) != ""
+	ownerSet := strings.TrimSpace(r.Owner) != ""
+	if taskSet != ownerSet {
+		return errors.New("scoped recover requires both --task and --owner")
+	}
+	return nil
+}
+
+func (r RecoverScope) Scoped() bool { return strings.TrimSpace(r.TaskID) != "" }
+
 func (s *Store) RecoverWork(ctx context.Context) (int64, error) {
 	now := s.timestamp()
 	var recovered int64
@@ -1166,29 +1189,82 @@ func (s *Store) RecoverWork(ctx context.Context) (int64, error) {
 			return err
 		}
 		for _, it := range items {
-			result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='blocked',revision=revision+1,updated_at=? WHERE id=? AND status=?`, now, it.id, it.status)
+			changed, err := s.recoverWorkItem(ctx, conn, now, it.id, it.status)
 			if err != nil {
 				return err
 			}
-			changed, _ := result.RowsAffected()
 			recovered += changed
-			_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, it.id)
-			_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, it.id)
-			_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, it.id)
-			if changed == 1 {
-				eventReason := "claim_expired"
-				if it.status == WorkInReview {
-					eventReason = "review_abandoned"
-				}
-				if err := s.addWorkEvent(ctx, conn, it.id, eventReason, string(it.status), string(WorkBlocked), ""); err != nil {
-					return err
-				}
-			}
 		}
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE expires_at<=?`, now)
 		return nil
 	})
 	return recovered, err
+}
+
+// RecoverWorkScoped recovers the expired claim and leases of exactly one task
+// when the durable claim owner matches. Any mismatch fails closed with
+// ErrScopedRecoverDenied and leaves durable state untouched.
+func (s *Store) RecoverWorkScoped(ctx context.Context, id, owner string) (int64, error) {
+	id = strings.TrimSpace(id)
+	owner = strings.TrimSpace(owner)
+	now := s.timestamp()
+	var recovered int64
+	err := s.immediate(ctx, func(conn *sql.Conn) error {
+		var status WorkStatus
+		var claimOwner sql.NullString
+		var claimExpired bool
+		scanErr := conn.QueryRowContext(ctx, `
+			SELECT w.status, c.owner, (c.expires_at IS NOT NULL AND c.expires_at <= ?)
+			FROM work_items w
+			LEFT JOIN work_claims c ON c.item_id = w.id
+			WHERE w.id = ?
+		`, now, id).Scan(&status, &claimOwner, &claimExpired)
+		if errors.Is(scanErr, sql.ErrNoRows) {
+			return fmt.Errorf("%w: task_not_found", ErrScopedRecoverDenied)
+		}
+		if scanErr != nil {
+			return scanErr
+		}
+		if !claimOwner.Valid || claimOwner.String != owner {
+			return fmt.Errorf("%w: owner_mismatch", ErrScopedRecoverDenied)
+		}
+		if !claimExpired || status != WorkInProgress {
+			return fmt.Errorf("%w: claim_not_expired", ErrScopedRecoverDenied)
+		}
+		changed, err := s.recoverWorkItem(ctx, conn, now, id, status)
+		if err != nil {
+			return err
+		}
+		recovered = changed
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return recovered, nil
+}
+
+// recoverWorkItem blocks one expired task and drops its claim, leases and
+// review rows. Both recovery paths share it so their semantics stay identical.
+func (s *Store) recoverWorkItem(ctx context.Context, conn *sql.Conn, now, id string, status WorkStatus) (int64, error) {
+	result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='blocked',revision=revision+1,updated_at=? WHERE id=? AND status=?`, now, id, status)
+	if err != nil {
+		return 0, err
+	}
+	changed, _ := result.RowsAffected()
+	_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
+	_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
+	_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
+	if changed == 1 {
+		eventReason := "claim_expired"
+		if status == WorkInReview {
+			eventReason = "review_abandoned"
+		}
+		if err := s.addWorkEvent(ctx, conn, id, eventReason, string(status), string(WorkBlocked), ""); err != nil {
+			return 0, err
+		}
+	}
+	return changed, nil
 }
 
 func (s *Store) RetryWork(ctx context.Context, id string, expectedRevision int64) (WorkItem, error) {

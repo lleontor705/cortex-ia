@@ -178,6 +178,9 @@ permissions:
     resource: "cortex-ia work recover*"
     effect: deny
   - action: shell
+    resource: "cortex-ia work recover --task * --owner *"
+    effect: allow
+  - action: shell
     resource: "cortex-ia rollback*"
     effect: deny
   - action: shell

@@ -204,3 +204,70 @@ test('fallback heartbeat still dies at the stale-progress window without host ac
   assert.equal(h.renewals().length, 29);
   await h.plugin.dispose();
 });
+
+function durationMs(value) {
+  const match = /^(\d+)(ms|s|m|h)$/.exec(String(value));
+  if (!match) return NaN;
+  return Number(match[1]) * { ms: 1, s: 1000, m: 60000, h: 3600000 }[match[2]];
+}
+
+test('TestREQ_WAUTH_001 claim TTL is decoupled from the stale-progress window', async () => {
+  const h = await harness();
+  const policy = h.claim.maintenance;
+  assert.notEqual(policy.ttl, '15m');
+  assert.equal(policy.ttl, '30m');
+  assert.equal(policy.stale_progress_ms, 900000);
+  assert.equal(durationMs(policy.ttl), 1800000);
+  assert.notEqual(durationMs(policy.ttl), policy.stale_progress_ms);
+  const policyLine = source.split('\n').find(line => line.includes('stale_progress_ms')) || '';
+  assert.equal(/ttl\s*:[^,}\n]*stale_progress_ms/.test(policyLine), false);
+  await h.plugin.dispose();
+});
+
+test('TestREQ_WAUTH_002 owning implement session recovers its own task through the scoped CLI', async () => {
+  const h = await harness();
+  const receipt = await h.plugin.tool.cortex_ia_work_recover_own.execute({ task_id: 'task' }, context);
+  const recoverCalls = h.calls.filter(c => c.args[0] === 'work' && c.args[1] === 'recover');
+  assert.equal(recoverCalls.length, 1);
+  assert.deepEqual(recoverCalls[0].args, ['work', 'recover', '--task', 'task', '--owner', 'opencode-session:controller']);
+  assert.equal(recoverCalls[0].args.includes('private-claim'), false);
+  assert.equal(typeof receipt, 'string');
+  await h.plugin.dispose();
+});
+
+test('TestREQ_WAUTH_002 a session without the authority fails closed with no CLI recovery call', async () => {
+  const h = await harness();
+  await assert.rejects(
+    h.plugin.tool.cortex_ia_work_recover_own.execute({ task_id: 'task' }, { ...context, sessionID: 'foreign' }),
+    /scoped recover denied/
+  );
+  await assert.rejects(
+    h.plugin.tool.cortex_ia_work_recover_own.execute({ task_id: 'unclaimed' }, context),
+    /scoped recover denied/
+  );
+  assert.equal(h.calls.filter(c => c.args[0] === 'work' && c.args[1] === 'recover').length, 0);
+  await h.plugin.dispose();
+});
+
+test('TestREQ_WAUTH_002 non-implement roles are rejected by the mutation gate', async () => {
+  const h = await harness();
+  for (const agent of ['orchestrator', 'reviewer', 'planner', 'investigate', 'discovery']) {
+    await assert.rejects(
+      h.plugin.tool.cortex_ia_work_recover_own.execute({ task_id: 'task' }, { ...context, agent }),
+      /BRIDGE_ROLE_DENIED/
+    );
+  }
+  assert.equal(h.calls.filter(c => c.args[0] === 'work' && c.args[1] === 'recover').length, 0);
+  await h.plugin.dispose();
+});
+
+test('TestREQ_WAUTH_002 successful recovery stops maintenance and drops the stale handle', async () => {
+  const h = await harness();
+  assert.equal(h.claim.maintenance.active, true);
+  await h.plugin.tool.cortex_ia_work_recover_own.execute({ task_id: 'task' }, context);
+  const status = JSON.parse(await h.plugin.tool.cortex_ia_work_status.execute({ task_id: 'task' }, context));
+  assert.equal(status.bridge_authority.handle_present, false);
+  assert.equal(status.bridge_authority.maintenance, undefined);
+  assert.equal(h.timers.size, 0);
+  await h.plugin.dispose();
+});

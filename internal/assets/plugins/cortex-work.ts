@@ -125,7 +125,10 @@ const workAuthority = new Map<string, WorkAuthority>();
 // renews from this event-tracked view instead of going dark and letting every
 // claim expire at its TTL while the controller is still working.
 const sessionStatuses = new Map<string, string>();
-const maintenancePolicy = { interval_ms: 30000, status_timeout_ms: 5000, stale_progress_ms: 900000, ttl: "15m" };
+// ttl is the claim validity granted per heartbeat renewal; it is an independent
+// constant, deliberately NOT derived from the no-host-activity orphan window
+// (which stays untouched so stale claims remain detectable by recovery).
+const maintenancePolicy = { interval_ms: 30000, status_timeout_ms: 5000, stale_progress_ms: 900000, ttl: "30m" };
 function stopMaintenance(authority: WorkAuthority, reason: string) {
   const state = authority.maintenance;
   if (!state) return;
@@ -1173,6 +1176,22 @@ export const CortexWorkPlugin = Plugin.define({
       async execute() { return cortex(["work", "recover"]); }
     }),
 
+    cortex_ia_work_recover_own: tool({
+      description: "Recover the caller's own expired work claim and file leases for exactly one task (fail-closed ownership check).",
+      args: { task_id: tool.schema.string() },
+      async execute(args, context) {
+        const authority = workAuthority.get(args.task_id);
+        if (!authority || authority.sessionID !== context.sessionID) {
+          throw new Error("scoped recover denied: session does not own the in-memory authority for this task");
+        }
+        const result = cortex(["work", "recover", "--task", args.task_id, "--owner", controllerIdentity(context.sessionID)]);
+        stopMaintenance(authority, "recovered");
+        workAuthority.delete(args.task_id);
+        saveAuthorityState();
+        return result;
+      }
+    }),
+
     cortex_ia_work_retry: tool({
       description: "Retry a reconciled blocked task using revision CAS.",
       args: { task_id: tool.schema.string(), revision: tool.schema.number() },
@@ -1486,7 +1505,7 @@ export const CortexWorkPlugin = Plugin.define({
   const mutations: Record<string, string[]> = {
     openspec_write: ["planner"], change_archive: ["planner"], discovery_write: ["discovery"],
     board_create: ["planner", "orchestrator"], work_create: ["planner", "orchestrator"],
-    work_recover: ["orchestrator"], work_retry: ["orchestrator"], work_review_refresh: ["orchestrator"], work_decompose: ["planner"],
+    work_recover: ["orchestrator"], work_recover_own: ["implement"], work_retry: ["orchestrator"], work_review_refresh: ["orchestrator"], work_decompose: ["planner"],
     work_reconcile: ["orchestrator"],
     work_claim: ["implement"], work_renew: ["implement"],
     file_reserve: ["implement"], work_lease_renew: ["implement"],
