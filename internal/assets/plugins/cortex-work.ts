@@ -493,6 +493,58 @@ function parseJSON(text: string): any {
   return JSON.parse(text.trim());
 }
 
+// E1 evidence contract: a task whose durable approval history already carries a
+// FAIL verdict cannot re-enter in_review without citing `gotchas/<task_id>`. The
+// bridge has no Cortex observation-read tool, so the gate verifies the CLI
+// approval history and the evidence-ref shape only. A history listing that
+// cannot be read or parsed fails closed; a parseable listing without a FAIL
+// verdict leaves the transition untouched, preserving the Adaptive Review
+// pure-test and generated-artifact exemptions.
+const GOTCHA_EVIDENCE_REQUIRED = "GOTCHA_EVIDENCE_REQUIRED";
+const GOTCHA_EVIDENCE_UNVERIFIED = "GOTCHA_EVIDENCE_UNVERIFIED";
+
+function gotchaEvidenceRef(taskID: string): string {
+  return `gotchas/${taskID}`;
+}
+
+function gotchaEvidenceFailure(code: string, taskID: string, detail: string): Error {
+  const required = gotchaEvidenceRef(taskID);
+  return new Error(JSON.stringify({
+    code,
+    task_id: taskID,
+    detail,
+    required_evidence_ref: required,
+    action: "SAVE_GOTCHA_EVIDENCE_THEN_RETRANSITION",
+  }));
+}
+
+function approvalHistoryHasFail(taskID: string): boolean {
+  let raw: string;
+  try {
+    raw = cortex(["work", "approvals", taskID]);
+  } catch (error: any) {
+    throw gotchaEvidenceFailure(GOTCHA_EVIDENCE_UNVERIFIED, taskID,
+      `approval history could not be read: ${error?.message || error}`);
+  }
+  let approvals: any;
+  try {
+    approvals = parseJSON(raw);
+  } catch {
+    throw gotchaEvidenceFailure(GOTCHA_EVIDENCE_UNVERIFIED, taskID,
+      "approval history output was not valid JSON");
+  }
+  if (!Array.isArray(approvals)) return false;
+  return approvals.some((entry) => String(entry?.verdict || "").toUpperCase() === "FAIL");
+}
+
+function assertInReviewGotchaEvidence(taskID: string, evidenceRefs: unknown): void {
+  if (!approvalHistoryHasFail(taskID)) return;
+  const refs = Array.isArray(evidenceRefs) ? evidenceRefs : [];
+  if (refs.some((ref) => ref === gotchaEvidenceRef(taskID))) return;
+  throw gotchaEvidenceFailure(GOTCHA_EVIDENCE_REQUIRED, taskID,
+    `a FAIL verdict in the approval history requires evidence_refs to include "${gotchaEvidenceRef(taskID)}"`);
+}
+
 function transientRequest(value: object): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-delegation-"));
   const requestPath = path.join(dir, "request.json");
@@ -1584,17 +1636,20 @@ export const CortexWorkPlugin = Plugin.define({
         summary: tool.schema.string().optional().describe("Human-readable execution summary"),
         verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"]).optional().describe("Verification verdict"),
         evidence_refs: tool.schema.array(tool.schema.string()).optional().describe("Pointers to verified test files, commands or observations"),
-        changed_files: tool.schema.array(tool.schema.string()).optional().describe("List of modified workspace files")
+        changed_files: tool.schema.array(tool.schema.string()).optional().describe("List of modified workspace files"),
+        blocked_reason: tool.schema.enum(["authority_expired", "upstream", "needs_user", "env", "scope_drift"]).optional().describe("Structured reason class for blocked transitions")
       },
       async execute(args, context) {
         const targetState = args.to || args.status;
         if (!targetState) throw new Error("'to' or 'status' is required for work transition");
         const authority = authorityForSession(args.task_id, context.sessionID);
+        if (targetState === "in_review") assertInReviewGotchaEvidence(args.task_id, args.evidence_refs);
         const command = ["work", "transition", args.task_id, "--claim-token", "@stdin", "--to", targetState];
         if (targetState !== "in_progress") stopMaintenance(authority, "delivery");
         if (args.revision) command.push("--revision", String(args.revision));
         if (args.summary !== undefined) command.push("--summary", args.summary);
         if (args.verdict !== undefined) command.push("--verdict", args.verdict);
+        if (args.blocked_reason !== undefined) command.push("--blocked-reason", args.blocked_reason);
         for (const ref of args.evidence_refs || []) command.push("--evidence-ref", ref);
         for (const file of args.changed_files || []) command.push("--changed-file", file);
         const result = cortexAuthorized(command, authority.claimToken);

@@ -69,6 +69,10 @@ function resolveCortexExecutable(directory?: string): string | null {
 
 const ROLES = new Set(["discovery", "investigate", "planner", "implement", "reviewer"]);
 const READONLY_ROLES = new Set(["investigate", "reviewer", "discovery", "planner"]);
+// Recovery-request guidance for the orchestrator when a read-only role keeps
+// aborting: the plugin can only escalate telemetry, so the actionable next step
+// must travel with the signal.
+const READONLY_RECOVERY_HINT = "Inspect the repeated abort root cause, then either reconcile the objective natively or re-dispatch it with a narrower scope; read-only roles hold no claim, lease, or transition authority.";
 const RECOVERY = new Set(["cortex_recover", "cortex_ia_recover", "cortex_ia_work_recover", "cortex_ia_work_retry"]);
 const UNLATCH = new Set(["unlatch", "cortex_unlatch", "cortex_ia_unlatch", "cortex_work_unlatch"]);
 interface Failure {
@@ -386,6 +390,15 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
           reportSignal("ERR_SUBAGENT_READONLY_REPEATED_ABORT",
             `Read-only subagent '${role}' aborted ${attempts} consecutive times on the same objective (${reason}); dispatch remains available, no circuit opened`,
             { role, task_id: failure.taskId ?? null, reason, attempts, dispatch_blocked: false }, failure.taskId);
+          // A recovery request targets durable work: without a task identity
+          // there is no durable state to reconcile, so only task-bearing streaks
+          // get the additive structured escalation. Still signal-only — no
+          // latch, no throw, and no durable work mutation for read-only roles.
+          if (failure.taskId) {
+            reportSignal("ERR_SUBAGENT_READONLY_RECOVERY_REQUEST",
+              `Read-only subagent '${role}' aborted ${attempts} consecutive times on the same task (${reason}); structured recovery request emitted, no mutation authority granted`,
+              { role, task_id: failure.taskId, reason, attempts, objective: failure.objective, dispatch_blocked: false, recovery_hint: READONLY_RECOVERY_HINT }, failure.taskId);
+          }
         }
         return;
       }
