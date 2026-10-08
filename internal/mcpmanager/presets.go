@@ -62,7 +62,7 @@ var managedPresets = []Preset{
 			"type":     "local",
 			"command":  []any{"cortex", "mcp", "--tools=agent"},
 			"disabled": false,
-			"codemode": false,
+			"codemode": true,
 		},
 	},
 	{

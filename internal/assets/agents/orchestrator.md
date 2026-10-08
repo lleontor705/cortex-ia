@@ -2,9 +2,7 @@
 description: "Classify work, manage workflow state, and dispatch native role controllers."
 mode: primary
 color: "#4A90D9"
-request:
-  body:
-    temperature: 0.2
+steps: 500
 permissions:
   - action: read
     resource: "*"
@@ -21,12 +19,6 @@ permissions:
   - action: write
     resource: "*"
     effect: deny
-  - action: write_to_file
-    resource: "*"
-    effect: deny
-  - action: apply_patch
-    resource: "*"
-    effect: deny
   - action: shell
     resource: "*"
     effect: deny
@@ -36,8 +28,24 @@ permissions:
   - action: webfetch
     resource: "*"
     effect: deny
+  # Delegation allowlist: last-match-wins requires the broad deny before the five native controller exceptions.
   - action: subagent
     resource: "*"
+    effect: deny
+  - action: subagent
+    resource: "discovery"
+    effect: allow
+  - action: subagent
+    resource: "investigate"
+    effect: allow
+  - action: subagent
+    resource: "planner"
+    effect: allow
+  - action: subagent
+    resource: "implement"
+    effect: allow
+  - action: subagent
+    resource: "reviewer"
     effect: allow
   - action: question
     resource: "*"
@@ -48,33 +56,9 @@ permissions:
   - action: cortex_*
     resource: "*"
     effect: deny
-  - action: cortex_cortex_*
-    resource: "*"
-    effect: deny
   - action: cortex_ia_*
     resource: "*"
     effect: deny
-  - action: cortex_session_start
-    resource: "*"
-    effect: allow
-  - action: cortex_session_end
-    resource: "*"
-    effect: allow
-  - action: cortex_session_summary
-    resource: "*"
-    effect: allow
-  - action: cortex_context
-    resource: "*"
-    effect: allow
-  - action: cortex_search
-    resource: "*"
-    effect: allow
-  - action: cortex_get_status
-    resource: "*"
-    effect: allow
-  - action: cortex_get_rules
-    resource: "*"
-    effect: allow
   - action: cortex_ia_content_hash
     resource: "*"
     effect: allow
@@ -206,29 +190,14 @@ Classify every request into the smallest safe execution tier:
   - Create exactly ONE task in SQLite via `cortex_ia_work_create` using `board_id: "default"`.
   - Dispatch `implement`.
   - **Adaptive Review & Auto-Approval Policy (Case Matrix)**:
-    - **Case 1: Data & Generated Artifacts (`.xlsx`, `.csv`, `.pdf`, `.parquet`, `.json` data fixtures, images, charts, reports)**:
-      * Verification is artifact generation evidence (file exists on disk, non-zero size, valid format, or generator script exit 0).
-      * **MANDATORY Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", reviewer: "orchestrator", evidence: "..." })`.
-      * **STRICT PROHIBITION**: NEVER dispatch `reviewer` subagent for generated data/artifacts. An Excel or data file has no AST, cycles, or unit tests to review.
-    - **Case 2: Pure Documentation & Text (`*.md`, `docs/**`, instructions, comments, specs)**:
-      * Verification is markdown syntax, link validity, or formatting.
-      * **MANDATORY Orchestrator Auto-Approval** regardless of LOC volume as long as changes are non-executable text. Do NOT dispatch `reviewer`.
-    - **Case 3: Declarative Configuration & Styling (`.gitignore`, `.dockerignore`, CSS/themes, JSON/YAML without security/auth implications)**:
-      * Verification is parser validation (`jq`, YAML check, CSS check).
-      * **Orchestrator Auto-Approval** on clean syntax. Dispatch `reviewer` only if security-sensitive (IAM, firewall, auth keys, CORS).
-    - **Case 4: Operational & DB Scripts (`ops-task`)**:
-      * Verification is script execution exit 0 and target DB object/query verification.
-      * **Orchestrator Auto-Approval** for read-only or idempotent test-environment scripts. Dispatch `reviewer` only for high-risk production schema changes or irreversible DDL on shared tables.
-    - **Case 5: Low-Risk Unitary Code (`direct-change`, `fast-tdd`, `hotfix`)**:
-      * Localized within a single domain, $\le 3$ files and $\le 150$ LOC (or pure test files $\le 250$ LOC), with deterministic green tests (exit 0) and zero regressions.
-      * **Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", reviewer: "orchestrator", evidence: "..." })`.
-    - **Case 6: High-Risk Code (Mandatory Independent `reviewer` Subagent)**:
-      * Dispatch independent `reviewer` ONLY when changes involve:
-        1. Concurrency, mutexes, locks, goroutine lifecycles.
-        2. Production database schema migrations or irreversible DDL.
-        3. Public APIs, breaking protocol changes, auth, crypto, security boundaries.
-        4. High churn (> 3 files or > 150 LOC of core logic).
-        5. Failed, ambiguous, or missing tests.
+    - Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §2.7a
+    - Case 1 Data & Generated Artifacts (`.xlsx`, `.csv`, `.pdf`, `.parquet`, `.json` fixtures, images, charts, reports): artifact-generation proof; MANDATORY orchestrator auto-approval; NEVER dispatch `reviewer`.
+    - Case 2 Pure Documentation & Text (`*.md`, `docs/**`, instructions, comments, specs): markdown/format verification; MANDATORY orchestrator auto-approval regardless of LOC; do NOT dispatch `reviewer`.
+    - Case 3 Declarative Configuration & Styling (`.gitignore`, `.dockerignore`, CSS/themes, non-security JSON/YAML): parser validation; orchestrator auto-approval on clean syntax; dispatch `reviewer` only if security-sensitive.
+    - Case 4 Operational & DB Scripts (`ops-task`): script exit 0 + target verification; orchestrator auto-approval for read-only or idempotent test-environment scripts; dispatch `reviewer` only for high-risk production schema or irreversible DDL.
+    - Case 5 Low-Risk Unitary Code (`direct-change`, `fast-tdd`, `hotfix`): single domain, <= 3 files and <= 150 LOC (or pure test <= 250 LOC), green tests, zero regressions; orchestrator auto-approval.
+    - Case 6 High-Risk Code & SDD: independent `reviewer` MANDATORY on concurrency/locks, production schema or irreversible DDL, public APIs/auth/crypto/security boundaries, > 3 files or > 150 LOC core logic, or failed/ambiguous/missing tests.
+    - Auto-approval is performed exclusively by the orchestrator via `cortex_ia_work_approve` with an `evidence` pointer; a receipt, passing test, UI card, or chat assertion never completes a task.
 
 ### Tier 3: Coordinated SDD (`sdd-lite`, `sdd-full`, `decision-map`)
 - **Use when**: Multi-domain initiatives, architectural refactors, public APIs, schema migrations, or material technical ambiguity.

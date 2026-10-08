@@ -2,23 +2,18 @@
 description: "Independently verify requirements, security, regressions, and implementation evidence."
 mode: subagent
 color: "#D32F2F"
-request:
-  body:
-    temperature: 0.1
+steps: 150
 permissions:
   - action: subagent
+    resource: "*"
+    effect: deny
+  - action: question
     resource: "*"
     effect: deny
   - action: edit
     resource: "*"
     effect: deny
   - action: write
-    resource: "*"
-    effect: deny
-  - action: write_to_file
-    resource: "*"
-    effect: deny
-  - action: apply_patch
     resource: "*"
     effect: deny
   - action: cortex_ia_work_claim
@@ -48,67 +43,34 @@ permissions:
   - action: cortex_*
     resource: "*"
     effect: deny
-  - action: cortex_cortex_*
-    resource: "*"
-    effect: deny
   - action: cortex_ia_*
     resource: "*"
     effect: deny
-  - action: cortex_ingest_code
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_ingest_code
-    resource: "*"
-    effect: allow
-  - action: cortex_get_code_symbols
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_code_symbols
     resource: "*"
     effect: allow
-  - action: cortex_get_code_graph
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_code_graph
-    resource: "*"
-    effect: allow
-  - action: cortex_detect_cycles
     resource: "*"
     effect: allow
   - action: cortex_cortex_detect_cycles
     resource: "*"
     effect: allow
-  - action: cortex_analyze_architecture
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_analyze_architecture
-    resource: "*"
-    effect: allow
-  - action: cortex_get_blast_radius
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_blast_radius
     resource: "*"
     effect: allow
-  - action: cortex_get_observation
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_observation
-    resource: "*"
-    effect: allow
-  - action: cortex_get_rules
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_rules
     resource: "*"
     effect: allow
-  - action: cortex_save
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_save
-    resource: "*"
-    effect: allow
-  - action: cortex_relate
     resource: "*"
     effect: allow
   - action: cortex_cortex_relate
@@ -415,7 +377,7 @@ Audit the actual `git diff` of the allowed files across the three mandatory lens
    - Verify deterministic cleanup of resources (goroutines, file handles, connections).
    - In diagnostics/telemetry: verify strict allowlist compliance with zero canary/raw-output leaks.
 3. **Lens 3 (Architecture & Discovery Conformance)**:
-   - Validate changes against `./.cortex-ia/discovery.md` and `codebase-design-contract.md`. Ensure line counts obey the active `workload_policy` (`strict`: <= 350 LOC in Go/Rust, <= 250 LOC in TS/Python with 0.2x deletions, Tests <= 600 LOC; `flexible`: <= 700 LOC in Go/Rust, <= 500 LOC in TS/Python, Tests <= 1200 LOC; `unbounded`: no line ceiling; Data/Schemas exempt). Under `flexible` or `unbounded`, larger coherent diffs are NOT grounds for BLOCKER or FAIL if architecture, modularity, and correctness are sound.
+   - Validate changes against `./.cortex-ia/discovery.md` and `codebase-design-contract.md`. Ensure line counts obey the active `workload_policy`; the canonical LOC budget table is single-sourced in `cortex-work-protocol.md` §4. Under `flexible` or `unbounded`, larger coherent diffs are NOT grounds for BLOCKER or FAIL if architecture, modularity, and correctness are sound.
    - If prompts or skills changed, audit against `agent-writing-contract.md`.
 - **GATE 4 (Early Exit)**: If any BLOCKER is found in any lens:
   - Save failure locality with `cortex_save` (`type: "bugfix"`, `topic_key: "gotchas/<task_id>"`). Link via `cortex_relate` when a meaningful relationship exists; unconditional relate ceremony is not required.

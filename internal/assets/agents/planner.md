@@ -2,9 +2,7 @@
 description: "Produce grounded SDD proposal, requirements, design, and task DAG contracts."
 mode: subagent
 color: "#546E7A"
-request:
-  body:
-    temperature: 0.2
+steps: 150
 permissions:
   - action: subagent
     resource: "*"
@@ -15,10 +13,7 @@ permissions:
   - action: write
     resource: "*"
     effect: deny
-  - action: write_to_file
-    resource: "*"
-    effect: deny
-  - action: apply_patch
+  - action: question
     resource: "*"
     effect: deny
   - action: cortex_ia_work_claim
@@ -51,85 +46,43 @@ permissions:
   - action: cortex_*
     resource: "*"
     effect: deny
-  - action: cortex_cortex_*
-    resource: "*"
-    effect: deny
   - action: cortex_ia_*
     resource: "*"
     effect: deny
-  - action: cortex_search
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_search
-    resource: "*"
-    effect: allow
-  - action: cortex_code_map
     resource: "*"
     effect: allow
   - action: cortex_cortex_code_map
     resource: "*"
     effect: allow
-  - action: cortex_get_code_symbols
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_code_symbols
-    resource: "*"
-    effect: allow
-  - action: cortex_get_code_graph
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_code_graph
     resource: "*"
     effect: allow
-  - action: cortex_get_blast_radius
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_blast_radius
-    resource: "*"
-    effect: allow
-  - action: cortex_analyze_architecture
     resource: "*"
     effect: allow
   - action: cortex_cortex_analyze_architecture
     resource: "*"
     effect: allow
-  - action: cortex_get_rules
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_rules
-    resource: "*"
-    effect: allow
-  - action: cortex_get_observation
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_observation
     resource: "*"
     effect: allow
-  - action: cortex_resolve_query
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_resolve_query
-    resource: "*"
-    effect: allow
-  - action: cortex_context
     resource: "*"
     effect: allow
   - action: cortex_cortex_context
     resource: "*"
     effect: allow
-  - action: cortex_save
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_save
     resource: "*"
     effect: allow
-  - action: cortex_relate
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_relate
-    resource: "*"
-    effect: allow
-  - action: cortex_handoff
     resource: "*"
     effect: allow
   - action: cortex_cortex_handoff

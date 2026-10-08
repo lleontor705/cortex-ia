@@ -102,7 +102,7 @@ Use horizontal prerequisite tasks only for a genuine shared foundation that must
   - *Single Responsibility*: Each task represents exactly ONE conceptual delta or narrow vertical slice. Never combine multiple domains or unrelated refactors into one task node.
   - *Blast Radius Limit*: Restrict `allowed_files` to 1-3 files per task. Never assign monolithic directories or broad globs.
   - *Workload*: Use the active workload_policy from cortex-work-protocol.md. Flexible is the default: larger coherent changes produce an advisory, not mandatory decomposition.
-  - *Modular Test Scaffolding*: Always allocate a dedicated modular test file (`<domain>_<slice>_test.go` <= 250 LOC). Never assign or append test suites to existing test files exceeding 300 LOC.
+  - *Modular Test Scaffolding*: Always allocate a dedicated modular test file (`<domain>_<slice>_test.go`) sized per the normative workload LOC budget in `cortex-work-protocol.md` §4. Never append test suites to an existing oversized test file.
 - **Wave-Based DAG Topology & Parallelism**:
   - *Disjoint Files*: All tasks in the same parallel execution wave MUST have mutually disjoint `allowed_files` to prevent write collisions.
   - *Zero Artificial Serialization*: Do NOT sequence tasks unless there is a genuine compile-time or interface dependency. Keep independent vertical slices parallel so they enter `ready` concurrently for `parallel-dispatch`.
@@ -134,15 +134,8 @@ Use horizontal prerequisite tasks only for a genuine shared foundation that must
 To maintain clarity and protect context windows:
 - **Spec Artifact**: Maximum **650 words**. Prefer structured tables and Given/When/Then lists over verbose narrative. Auto-generates Mermaid visual sequence flows.
 - **Tasks Artifact**: Use concise checklists and clear file references without dropping requirement traceability or acceptance evidence to meet a word count.
-- **Decoupled Semantic Review Workload Guard**:
-  - Calibrated by active `workload_policy`:
-    - **`strict`**: Source Logic <= 350 lines in Go/Rust/Java/C#, <= 250 lines in TS/Python/Ruby (weighted deletions 0.2x); Test & Fixtures <= 600 lines total, keeping individual modular test files <= 250 lines. If overall source change exceeds budget, mandate **Stacked Work Units**.
-    - **`flexible`**: Source Logic <= 700 lines in Go/Rust/Java/C#, <= 500 lines in TS/Python/Ruby; Test & Fixtures <= 1200 lines total.
-    - **`unbounded`**: Sized by cohesive feature boundaries without arbitrary line limits.
-  - **Declarative / Schemas / Data**: Excluded from algorithmic logic budgets in all policies.
-- **Modular Test Scaffolding Policy**:
-  - NEVER assign an existing test file to `allowed_files` if it already exceeds 300 LOC or if adding new test suites risks breaching the per-task line cap.
-  - Planners MUST specify dedicated modular test files (e.g. `<domain>_<slice>_test.go`) bounded to **<= 250 LOC** per task to guarantee verifiable review units and prevent test bloat.
+- **Workload LOC Budget**: Size each task against the active `workload_policy` using the normative budget in `cortex-work-protocol.md` §4 (Workload LOC Budget). Declarative data and schemas are exempt from algorithmic logic budgets.
+- **Modular Test Scaffolding Policy**: Apply the normative modular test partitioning rule in `cortex-work-protocol.md` §4. Planners MUST specify dedicated modular test files (e.g. `<domain>_<slice>_test.go`) and NEVER assign an existing test file to `allowed_files` when the resulting size would breach the per-task test budget.
 
 
 ---

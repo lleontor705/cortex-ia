@@ -80,9 +80,7 @@ task({ subagent_type: "implement", prompt: envelopeTask2, background: true });
 1. **Reactive Completion:**
    Do not poll in a sleep loop. The orchestrator receives completion notifications automatically as each background subagent finishes and transitions its task to `in_review`.
 2. **Adaptive Verification & Approval:**
-   Apply the Adaptive Review Policy to avoid unnecessary reviewer overhead:
-   - **Non-Code & Low-Risk Unitary Tasks:** The orchestrator auto-approves directly (`cortex_ia_work_approve({ task_id, verdict: "PASS", evidence: ... })`) without dispatching a `reviewer` subagent.
-   - **Moderate & High-Risk Tasks:** Dispatch the independent `reviewer` controller to execute verification checks and submit approval.
+   Apply the §2.7a Adaptive Review Case Matrix (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §2.7a) to choose between orchestrator auto-approval (`cortex_ia_work_approve({ task_id, verdict: "PASS", evidence: ... })`) and independent `reviewer` dispatch.
 3. **Atomic DAG Unlocking:**
    Upon reviewer or auto-approval `PASS`, SQLite atomically:
    - Marks the task `done`.
@@ -99,8 +97,7 @@ task({ subagent_type: "implement", prompt: envelopeTask2, background: true });
 |---|---|
 | Multiple tasks `ready` with disjoint `allowed_files` | Launch parallel background subagents (`parallel-dispatch`) |
 | Tasks share any file in `allowed_files` | Execute sequentially in dependency/sorted order |
-| Low-risk / non-code task reaches `in_review` | Orchestrator auto-approves directly without dispatching reviewer |
-| Moderate/high-risk task reaches `in_review` | Dispatch independent `reviewer` controller |
+| Task reaches `in_review` | Choose orchestrator auto-approval vs independent `reviewer` dispatch per the §2.7a Adaptive Review Case Matrix |
 | Task requests `isolated_worktree` or external execution | Fail closed; only native `current_workspace` controllers are supported |
 | Worker fails or hits collision | Worker transitions to `blocked`; other parallel tasks continue unaffected |
 | Reviewer returns `FAIL` | Task transitions to `blocked` for targeted retry; healthy tasks proceed |

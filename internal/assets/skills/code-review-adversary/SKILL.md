@@ -17,23 +17,8 @@ Do not modify files and do not trust implementation receipts as proof; only inde
 
 ## Mandatory AST Delta Synchronization & Verification Gate
 
-The review pipeline adapts dynamically to the target artifact kind:
+The review pipeline adapts to the target artifact kind. Classify the task per the §2.7a Adaptive Review Case Matrix (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §2.7a): non-code kinds (data/artifacts, documentation, declarative configuration, operational/DB work) apply the matching case's verification method and gate exemptions there, while executable code tasks run the full code-intelligence pipeline:
 
-- **Data & Generated Artifact Tasks (`.xlsx`, `.csv`, `.pdf`, `.parquet`, `.json` data fixtures, images, reports)**:
-  - Verify working tree has no unmanaged drift.
-  - **STRICTLY BYPASS** AST re-indexing (`cortex_ingest_code`), structural cycle checks (`cortex_detect_cycles`), and code linters.
-  - Verify artifact existence, non-zero byte size, and format integrity directly.
-  - Unit tests and mutation evidence are **EXEMPT**.
-- **Documentation & Content Tasks (`*.md`, `docs/**`, instructions, comments, specs)**:
-  - Verify clean markdown formatting and link integrity.
-  - **STRICTLY BYPASS** AST re-indexing, cycle checks, code linters, and mutation testing.
-- **Declarative Configuration Tasks (`.gitignore`, `.dockerignore`, CSS/themes, JSON/YAML without executable logic)**:
-  - Verify syntax using standard CLI or parser checks (`jq`, YAML validator, CSS parser).
-  - **STRICTLY BYPASS** AST re-indexing, cycle checks, and mutation testing.
-- **Operational & Database Tasks (`allowed_files: []` or DB/script DDL/DML)**:
-  - Verify that no untracked accidental files were added to the repository. Unrelated pre-existing git drift must NOT cause failure.
-  - Skip AST re-indexing and code cycle checks since no application code was edited.
-  - Validate the live target directly (database routine, table schema, external service state).
 - **Executable Code Tasks (`allowed_files` contains application source code `*.go`, `*.ts`, `*.py`, etc.)**:
   Before deciding on a verdict or gate approval:
   1. **Delta AST Re-Indexing (<50ms)**: Call `cortex_ingest_code(workspace_root_absolute_path, project)` with the absolute workspace root directory path (never `.`) to update `code_symbols` and `code_relations` for the modified files via incremental SHA-256 caching.
@@ -49,7 +34,7 @@ Run three logically independent review passes:
 
 1. **Lens 1: Functional & Structural Regression:** Verify AST delta re-indexing (`cortex_ingest_code`), test execution across callers, zero circular dependency regressions (`cortex_detect_cycles`), and task acceptance criteria (OpenSpec artifacts for openspec/hybrid; when `spec_plane=cortex`, follow `cortex-convention.md`: retrieve the full raw pinned observation and hash its exact content bytes directly; never manually reconstruct or synthesize text).
 2. **Lens 2: Resilience & Security Guardrails:** Inspect boundary conditions, in-memory immutability (verifying that multi-record/batch preflights do not mutate input structures in-place before whole-request validation), code-intelligence noninterference (verifying that privacy/sanitize passes never redact or strip `DocSummary`, `Reasoning`, or AST symbols per `REQ-PRIV-007`), contract fidelity (ensuring no silent error suppression or unauthorized "skip" semantics to force green tests), deterministic resource/lock release, and strict absence of secret or authority token leakage (`claim_token`, `lease_token`).
-3. **Lens 3: Architecture & Discovery Conformance:** Verify diff against confirmed architectural boundaries in `./.cortex-ia/discovery.md` and design contracts in `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. Ensure interfaces remain narrow, line counts obey the active `workload_policy` (`strict`: <= 350 LOC in Go/Rust, <= 250 LOC in TS/Python with 0.2x deletions, Tests <= 600 LOC; `flexible`: <= 700 LOC in Go/Rust, <= 500 LOC in TS/Python, Tests <= 1200 LOC; `unbounded`: no line ceiling; Data/Schemas exempt), and changes stay within modular boundaries. Under `flexible` or `unbounded`, larger coherent diffs are NOT grounds for BLOCKER or FAIL if modularity, architecture, and correctness are sound.
+3. **Lens 3: Architecture & Discovery Conformance:** Verify diff against confirmed architectural boundaries in `./.cortex-ia/discovery.md` and design contracts in `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. Ensure interfaces remain narrow, line counts obey the active `workload_policy` LOC budget (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §4), and changes stay within modular boundaries. Under `flexible` or `unbounded`, larger coherent diffs are NOT grounds for BLOCKER or FAIL if modularity, architecture, and correctness are sound.
 
 Return verdicts for each lens independently. Global `verification_verdict` is `PASS` only when all three lenses are `PASS` and every mandatory executable check succeeds. Any BLOCKER in any lens fails the review.
 

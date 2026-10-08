@@ -668,8 +668,10 @@ export const ERROR_CODE_SEVERITY: Readonly<Record<string, ErrorSeverity>> = {
   ERR_TOOL_LEASE_REQUIRED: "warning",
   ERR_TOOL_INVALID_ARGS: "warning",
   ERR_TOOL_TIMEOUT: "warning",
+  ERR_SQLITE_TIMEOUT: "warning",
   ERR_SUBAGENT_READONLY_REPEATED_ABORT: "warning",
   ERR_SUBAGENT_CIRCUIT_OPEN: "error",
+  ERR_SUBAGENT_EMPTY_OUTPUT: "error",
 };
 
 export const GENERIC_ERROR_CODE = "ERR_TOOL_EXECUTION_FAILED";
@@ -860,20 +862,136 @@ export const CortexWorkPlugin = Plugin.define({
     })();
   }
 
+  const COMPACTION_SNAPSHOT_MARKER = "[CORTEX-IA STATE SNAPSHOT]";
+  const COMPACTION_ROLE_RULE =
+    "Role rule: operate only within your assigned role and live work authority; never persist claim or lease tokens; write only files you have leased.";
+  const COMPACTION_CONTINUATION =
+    "Continuation: re-read this snapshot, run `cortex-ia work status <task_id>`, and reconcile durable authority before any further write.";
+  const RETRY_MAX_ATTEMPTS = 3;
+  const RETRY_BASE_DELAY_MS = 10000;
+  const RETRY_MAX_DELAY_MS = 60000;
+  const TRANSIENT_PROVIDER_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
+  const TRANSIENT_PROVIDER_PATTERN = /(429|\b5\d\d\b|rate.?limit|too many requests|quota|usage limit|resource.?exhausted|overloaded|temporarily unavailable|service.?unavailable|upstream connect error|ECONNRESET|ETIMEDOUT)/i;
+
+  const compactWorkState = (rawState: string): { snapshot: string; blockers: string[] } => {
+    const trimmed = (rawState || "").trim();
+    if (!trimmed) return { snapshot: "(work state unavailable)", blockers: [] };
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        const lines: string[] = [];
+        const blockers: string[] = [];
+        for (const item of parsed) {
+          if (item === null || typeof item !== "object") continue;
+          const taskID = item.task_id === undefined || item.task_id === null ? "" : String(item.task_id);
+          const status = typeof item.status === "string" ? item.status : "unknown";
+          const title = typeof item.title === "string" ? item.title : "";
+          lines.push(`- [${status}] ${taskID}${title ? ` — ${title}` : ""}`);
+          if (status === "blocked") blockers.push(`${taskID}${title ? ` — ${title}` : ""}`);
+        }
+        if (lines.length > 0) return { snapshot: lines.join("\n"), blockers };
+      }
+    } catch {}
+    return { snapshot: trimmed, blockers: [] };
+  };
+
+  const buildCompactionSummary = (rawState: string): string => {
+    const { snapshot, blockers } = compactWorkState(rawState);
+    const sections = [COMPACTION_SNAPSHOT_MARKER, COMPACTION_ROLE_RULE, "Active Work DAG State:", snapshot];
+    if (blockers.length > 0) sections.push("Open blockers:", ...blockers.map(blocker => `- ${blocker}`));
+    sections.push(COMPACTION_CONTINUATION);
+    return sections.join("\n");
+  };
+
+  // A runtime honors event.result only when it exposes the property; anything
+  // else (older hosts, string placeholders) falls open to the injection path.
+  const possessCompaction = (event: any, summary: string): boolean => {
+    if (!event || typeof event !== "object" || !("result" in event)) return false;
+    if (event.result === undefined || event.result === null) {
+      event.result = { summary };
+      return true;
+    }
+    if (typeof event.result === "object") {
+      event.result.summary = summary;
+      return true;
+    }
+    return false;
+  };
+
+  const injectCompactionFallback = (event: any, summary: string): void => {
+    if (!event || typeof event !== "object") return;
+    if (Array.isArray(event.context)) {
+      event.context.push(summary);
+    } else if (Array.isArray(event.messages)) {
+      event.messages.push({ role: "system", content: summary });
+    }
+  };
+
+  const retryErrorText = (event: any): string => {
+    const error = event?.error ?? event?.failure ?? event?.reason;
+    if (typeof error === "string") return error;
+    if (error && typeof error === "object") {
+      return [error.message, error.name, error.code, error.status, error.statusCode,
+        error?.data?.error?.message, error?.data?.error?.type, error?.data?.message, error?.data?.code,
+        error?.cause?.message]
+        .filter(value => value !== undefined && value !== null && value !== "")
+        .map(String).join(" ");
+    }
+    return typeof event?.message === "string" ? event.message : "";
+  };
+
+  const retryAttempt = (event: any): number => {
+    for (const candidate of [event?.attempt, event?.retryCount, event?.retryAttempt, event?.retry?.attempt, event?.error?.attempt]) {
+      const value = Number(candidate);
+      if (Number.isFinite(value) && value > 0) return Math.floor(value);
+    }
+    return 1;
+  };
+
+  const isTransientProviderError = (event: any): boolean => {
+    const text = retryErrorText(event);
+    const status = Number(event?.error?.status ?? event?.error?.statusCode);
+    if (Number.isFinite(status) && TRANSIENT_PROVIDER_STATUS.has(status)) return true;
+    return text !== "" && TRANSIENT_PROVIDER_PATTERN.test(text);
+  };
+
+  const retryDelayMs = (attempt: number): number => {
+    const exponent = Math.max(0, attempt - 1);
+    return Math.min(RETRY_BASE_DELAY_MS * 2 ** exponent, RETRY_MAX_DELAY_MS);
+  };
+
   if (ctx.session?.hook) {
     ctx.session.hook("compaction", async (event: any) => {
       try {
         const activeState = cortex(["work", "list"], hostDirectory);
-        if (activeState) {
-          const text = `[CORTEX-IA STATE SNAPSHOT BEFORE COMPACTION]\nActive Work DAG State:\n${activeState}`;
-          if (Array.isArray(event.context)) {
-            event.context.push(text);
-          } else if (Array.isArray(event.messages)) {
-            event.messages.push({ role: "system", content: text });
-          }
-          logDelegation("🧠 [CORTEX-IA] Snapshot de estado DAG inyectado previo a la compactación de sesión.");
+        const summary = buildCompactionSummary(activeState);
+        if (possessCompaction(event, summary)) {
+          logDelegation("🧠 [CORTEX-IA] Compactación poseída determinísticamente vía event.result.");
+        } else {
+          injectCompactionFallback(event, summary);
+          logDelegation("🧠 [CORTEX-IA] Snapshot de estado DAG inyectado (fallback) previo a la compactación de sesión.");
         }
-      } catch {}
+      } catch {
+        // A read failure degrades to the legacy injection path; the hook must
+        // never surface an exception into the host compaction.
+        injectCompactionFallback(event, buildCompactionSummary(""));
+      }
+    });
+
+    // Retries are granted only for transient provider classes and only below the
+    // cap, so quota exhaustion still surfaces for reconciliation instead of looping.
+    ctx.session.hook("retry", async (event: any) => {
+      if (!isTransientProviderError(event)) return undefined;
+      const decision: any = (event.decision && typeof event.decision === "object") ? event.decision : (event.decision = {});
+      const attempt = retryAttempt(event);
+      if (attempt >= RETRY_MAX_ATTEMPTS) {
+        decision.retry = false;
+        delete decision.delay;
+        return decision;
+      }
+      decision.retry = true;
+      decision.delay = retryDelayMs(attempt);
+      return decision;
     });
   }
 

@@ -2,11 +2,12 @@
 description: "Build a minimal agentic-environment quick index: skills dictionary (project-local + installed global), run/test execution info, minimal Cortex governance, and quick index into ./.cortex-ia/discovery.md."
 mode: subagent
 color: "#26A69A"
-request:
-  body:
-    temperature: 0.2
+steps: 100
 permissions:
   - action: subagent
+    resource: "*"
+    effect: deny
+  - action: question
     resource: "*"
     effect: deny
   - action: edit
@@ -30,49 +31,25 @@ permissions:
   - action: cortex_*
     resource: "*"
     effect: deny
-  - action: cortex_cortex_*
-    resource: "*"
-    effect: deny
   - action: cortex_ia_*
     resource: "*"
     effect: deny
-  - action: cortex_get_rules
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_rules
-    resource: "*"
-    effect: allow
-  - action: cortex_get_status
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_status
     resource: "*"
     effect: allow
-  - action: cortex_get_observation
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_observation
-    resource: "*"
-    effect: allow
-  - action: cortex_search
     resource: "*"
     effect: allow
   - action: cortex_cortex_search
     resource: "*"
     effect: allow
-  - action: cortex_get_code_symbols
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_code_symbols
     resource: "*"
     effect: allow
-  - action: cortex_analyze_architecture
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_analyze_architecture
-    resource: "*"
-    effect: allow
-  - action: cortex_detect_cycles
     resource: "*"
     effect: allow
   - action: cortex_cortex_detect_cycles

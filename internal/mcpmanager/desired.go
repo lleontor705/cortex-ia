@@ -199,7 +199,7 @@ func (d Desired) Entry() (map[string]any, error) {
 			"type":     "local",
 			"command":  commandVector(d.Command),
 			"disabled": false,
-			"codemode": false,
+			"codemode": true,
 		}
 		if len(env) > 0 {
 			entry["env"] = env
@@ -214,7 +214,7 @@ func (d Desired) Entry() (map[string]any, error) {
 			"type":     "remote",
 			"url":      d.URL,
 			"disabled": false,
-			"codemode": false,
+			"codemode": true,
 		}
 		if len(headers) > 0 {
 			entry["headers"] = headers

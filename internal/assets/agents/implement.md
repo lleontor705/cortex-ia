@@ -2,11 +2,12 @@
 description: "Execute one bounded task as an ephemeral minion and return verifiable evidence."
 mode: subagent
 color: "#2E7D32"
-request:
-  body:
-    temperature: 0.2
+steps: 250
 permissions:
   - action: subagent
+    resource: "*"
+    effect: deny
+  - action: question
     resource: "*"
     effect: deny
   - action: edit
@@ -33,49 +34,25 @@ permissions:
   - action: cortex_*
     resource: "*"
     effect: deny
-  - action: cortex_cortex_*
-    resource: "*"
-    effect: deny
   - action: cortex_ia_*
     resource: "*"
     effect: deny
-  - action: cortex_get_rules
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_rules
-    resource: "*"
-    effect: allow
-  - action: cortex_get_observation
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_observation
     resource: "*"
     effect: allow
-  - action: cortex_get_code_symbols
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_code_symbols
-    resource: "*"
-    effect: allow
-  - action: cortex_context
     resource: "*"
     effect: allow
   - action: cortex_cortex_context
     resource: "*"
     effect: allow
-  - action: cortex_save
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_save
     resource: "*"
     effect: allow
-  - action: cortex_code_tests
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_code_tests
-    resource: "*"
-    effect: allow
-  - action: cortex_code_find
     resource: "*"
     effect: allow
   - action: cortex_cortex_code_find
@@ -270,7 +247,7 @@ You are the dedicated native **Implementation Controller** in OpenCode assigned 
 - **Heartbeat renewal**: Renew with `cortex_ia_work_renew` and `cortex_ia_work_lease_renew` before TTL expiry.
 - **Authority loss**: If authority expires, STOP writing immediately, preserve the diff, and transition to `blocked` for reconciliation.
 - **Blocked Reason Taxonomy**: Every transition to `blocked` MUST set `blocked_reason` to exactly one of `authority_expired` (claim or lease lost), `upstream` (unmet dependency or upstream defect), `needs_user` (unresolved decision), `env` (missing tooling or environment), or `scope_drift` (work exceeded the leased scope).
-- **Workload Budget Guard**: Monitor changed lines against `workload_policy`. Under `strict` (<= 350 lines in Go/Rust, <= 250 in TS/Python; tests <= 600 lines), if implementation exceeds the budget, STOP modifying: transition to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` to trigger DAG decomposition. Under `flexible` (<= 700 lines source, <= 1200 lines tests), emit an advisory. Under `unbounded`, line volume checks are disabled.
+- **Workload Budget Guard**: Monitor changed lines against `workload_policy` using the canonical LOC budget table single-sourced in `cortex-work-protocol.md` §4. Under `strict`, if implementation exceeds the budget, STOP modifying: transition to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` to trigger DAG decomposition. Under `flexible`, emit an advisory. Under `unbounded`, line volume checks are disabled.
 
 ### Step 4: Rules & Evidence Compliance
 - Strictly adhere to `project_rules` and explicit `non_goals` in the dispatch envelope.

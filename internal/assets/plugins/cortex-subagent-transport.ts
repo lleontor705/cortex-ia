@@ -32,6 +32,26 @@ const ROLE_DEFAULT_STEPS: Record<string, number> = {
 
 const DEFAULT_MAX_STEPS = 60;
 
+// Single live home for the per-agent request temperature that the v2 runner
+// preserves but never sends from the retired agent-frontmatter
+// request.body.temperature blocks. Only event.options is honored per call.
+const AGENT_TEMPERATURE: Record<string, number> = {
+  orchestrator: 0.2,
+  planner: 0.2,
+  implement: 0.2,
+  discovery: 0.2,
+  investigate: 0.3,
+  reviewer: 0.1,
+};
+
+function applyAgentTemperature(event: any): void {
+  if (!event || typeof event !== "object" || typeof event.agent !== "string") return;
+  const temperature = AGENT_TEMPERATURE[event.agent.trim().toLowerCase()];
+  if (temperature === undefined) return;
+  if (!event.options || typeof event.options !== "object") return;
+  event.options.temperature = temperature;
+}
+
 function validBudget(value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > 1000) {
     throw new Error("SUBAGENT_TRANSPORT_ERROR: invalid step budget");
@@ -888,6 +908,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
 
     const contextHook = async (contextOrEvent: any, maybeEvent?: any) => {
       const event = maybeEvent !== undefined ? { ...contextOrEvent, ...maybeEvent } : contextOrEvent;
+      applyAgentTemperature(event);
       const sessionID = event?.sessionID || event?.sessionId || event?.message?.sessionID;
       if (!sessionID) return;
 
@@ -932,9 +953,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
             const roleLower = String(role).toLowerCase();
             if (roleLower === "orchestrator" || roleLower === "investigate" || roleLower === "reviewer") {
               delete event.tools["edit"];
-              delete event.tools["write_to_file"];
               delete event.tools["write"];
-              delete event.tools["apply_patch"];
               delete event.tools["cortex_ia_work_claim"];
               delete event.tools["cortex_ia_file_reserve"];
             }
@@ -951,9 +970,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
           }
           if (operationalSessions.has(sessionID)) {
             delete event.tools["edit"];
-            delete event.tools["write_to_file"];
             delete event.tools["write"];
-            delete event.tools["apply_patch"];
           }
         }
       }

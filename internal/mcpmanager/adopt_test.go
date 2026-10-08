@@ -187,3 +187,44 @@ func TestAdoptReportsObservedIdentityForNameDivergentEntry(t *testing.T) {
 		t.Fatalf("observed identity env names = %v", result.ObservedIdentity.EnvNames)
 	}
 }
+
+func TestCodemodePresetAlignment(t *testing.T) {
+	cortex, ok := Lookup("cortex")
+	if !ok {
+		t.Fatal("cortex preset is missing from the catalog")
+	}
+	if cortex.Entry["codemode"] != true {
+		t.Errorf("cortex codemode = %v, want true", cortex.Entry["codemode"])
+	}
+	cmd, ok := cortex.Command()
+	if !ok || len(cmd) != 3 || cmd[2] != "--tools=agent" {
+		t.Errorf("cortex command = %v, want the legacy --tools=agent vector", cmd)
+	}
+
+	context7, ok := Lookup("context7")
+	if !ok {
+		t.Fatal("context7 preset is missing from the catalog")
+	}
+	if context7.Entry["codemode"] != false {
+		t.Errorf("context7 codemode = %v, want false", context7.Entry["codemode"])
+	}
+}
+
+func TestDesiredEntriesCarryDefaultCodemode(t *testing.T) {
+	cases := []struct {
+		name    string
+		desired Desired
+	}{
+		{"local", Desired{Name: "codemode-local", Kind: DesiredLocal, Command: []string{"node", "server.js"}}},
+		{"remote", Desired{Name: "codemode-remote", Kind: DesiredRemote, URL: "https://mcp.example.com/sse"}},
+	}
+	for _, tc := range cases {
+		entry, err := tc.desired.Entry()
+		if err != nil {
+			t.Fatalf("%s Entry() failed: %v", tc.name, err)
+		}
+		if entry["codemode"] != true {
+			t.Errorf("%s entry codemode = %v, want true", tc.name, entry["codemode"])
+		}
+	}
+}

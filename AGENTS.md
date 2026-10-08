@@ -33,7 +33,7 @@ All role controllers execute in `native` mode under the Cortex-IA Work Authority
 
 | Role | Allowed work-control behavior |
 |---|---|
-| `orchestrator` | Create/query boards and DAGs, recover expired attempts and retry reconciled blockers (unscoped recovery and retry remain orchestrator-only), dispatch native role controllers, auto-approve low-risk/data/docs/config tasks under the Adaptive Review Policy. Never claim tasks, lease files, or edit product code. |
+| `orchestrator` | Create/query boards and DAGs, recover expired attempts and retry reconciled blockers (unscoped recovery and retry remain orchestrator-only), dispatch native role controllers, auto-approve low-risk/data/docs/config tasks under the Adaptive Review Case Matrix (§2.7a digest below). Never claim tasks, lease files, or edit product code. |
 | `discovery` | Agentic environment discovery: build the skills dictionary (project-local + installed global), run/test execution info, minimal governance list, and quick index into `./.cortex-ia/discovery.md`. Never mutate work state. |
 | `investigate` | Read-only `board list|status` and `work list|status`; diagnose and save bounded evidence. Never mutate work state. |
 | `planner` | Write OpenSpec planning artifacts, create the initiative board, and materialize its same-board dependency DAG. Never claim implementation work. |
@@ -49,6 +49,10 @@ All roles execute natively; there is no external execution leaf, and no role may
 - Reviewer Proportionality & Adaptive Review Policy: Reviewers audit against actual repository diffs and declared acceptance criteria; NEVER fail or block tasks on synthetic test helpers or hypothetical inputs uncalled in the codebase. Non-code tasks (generated data/artifacts like Excel spreadsheets or CSVs, pure documentation, and declarative configs) strictly bypass AST re-indexing, cycle detection, code linters, and mutation testing; their verification is limited to artifact presence, format integrity, and security hygiene. Pure-test tasks must not undergo DAG decomposition upon failure.
 - Zero-Noise Comments & Clean Code Policy: Implementers MUST NOT write narrative echo comments explaining what obvious code does, inline changelogs, or commented-out dead code. Comments explain non-obvious *WHY* or critical invariants only. Chat communication must remain terse, minimal, and surgical without conversational filler or intermediate narration.
 - Orchestrator Executive Synthesis & Zero-Chatter: Orchestrators communicate using the 3-Layer Artifact Pyramid (Header, progressive disclosure synthesis, decoupled deep dossier). Chat is reserved exclusively for interactive decision gates and high-density delivery syntheses. Never emit stream-of-consciousness play-by-play chatter, copy-paste raw subagent receipts, or dump internal SQLite DAG state into chat.
+- Adaptive Review Case Matrix (digest): the orchestrator auto-approves non-code kinds — generated data/artifacts, documentation, declarative config, and operational/DB scripts — per the matching case; an independent `reviewer` is mandatory only for high-risk code (concurrency/locks, production schema or irreversible DDL, public APIs/auth/crypto/security boundaries, > 3 files or > 150 LOC core logic, or failed/ambiguous/missing tests). Auto-approval runs exclusively through `cortex_ia_work_approve` with an evidence pointer.
+  - Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §2.7a
+- Workload LOC budget (digest): `strict` (source logic <= 350/250 LOC Go-family/TS-family, blocked + atomic decomposition), `flexible` (source logic <= 700/500 LOC, non-blocking advisory), or `unbounded` (diff checks bypassed); source logic covers Go/Rust/Java/C# and TS/Python (0.2x deletions), with test/fixture ceilings per tier.
+  - Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §4
 
 ## Verification
 
@@ -79,42 +83,7 @@ All roles execute natively; there is no external execution leaf, and no role may
 
 ## OpenCode v2 (`opencode2`) Knowledge & Search Index
 
-When researching, developing, or debugging capabilities for **OpenCode v2 (`opencode2`)**, use this canonical index to locate authoritative specifications, official documentation, and local inspection commands.
-
-### 1. Official Documentation Mapping
-
-| Topic & URL | Scope & Key Concepts | When to Consult |
-| :--- | :--- | :--- |
-| **[Core Docs](https://opencode.ai/v2/docs/)** | Core runtime architecture, Daemon/Server model, File hierarchy (`.config/opencode/` vs `.opencode/`), Precedence & merging rules, `opencode.jsonc` schema, Permissions array format (`[{ action, resource, effect }]`). | When designing configuration templates, setting permissions, or understanding directory precedence. |
-| **[CLI & TUI](https://opencode.ai/v2/docs/cli/)** | Global CLI commands, TUI navigation (`opencode2`), `cli.json` configuration, Theme switching (`/themes`), Keybindings, Terminal Truecolor requirement (`COLORTERM=truecolor`). | When configuring user TUI preferences, themes, keybindings, or troubleshooting TUI rendering. |
-| **[Build & Plugins](https://opencode.ai/v2/docs/build/)** | Plugin architecture (`@opencode/plugin`), Tool hooks (`ctx.tool.hook`), Transforms (`ctx.tool.transform`), Event subscriptions (`ctx.event`), Context extensions (`ctx.agent`, `ctx.provider`, `ctx.model`, `ctx.mcp`, `ctx.command`), Custom tools. | When authoring plugins, guards, telemetry interceptors, or runtime middleware. |
-| **[API & Server](https://opencode.ai/v2/docs/api/)** | OpenAPI 3.1.0 specification, Background service daemon, HTTP `/api/*` endpoints, WebSocket event streaming, Session compaction, Snapshot management. | When interacting directly with the local OpenCode daemon via HTTP or building client bridges. |
-
-### 2. Live CLI Inspection Helpers (`opencode2`)
-
-Use the native binary (`opencode2`) directly to inspect live runtime state:
-
-- `opencode2 debug paths`: Print active filesystem locations (`home`, `data`, `cache`, `config`, `state`, `log`, `db`).
-- `opencode2 debug config`: Print all resolved configuration sources and the fully merged active configuration tree.
-- `opencode2 models`: List all active AI models and provider connectivity.
-- `opencode2 --print-logs`: Stream real-time diagnostic server logs to stderr.
-- `opencode2 stats`: Output shareable usage statistics.
-
-### 3. Project Skills & Developer Helpers
-
-Project-level skills are located in `.agents/skills/` (ready for use in this repository without asset embedding):
-
-- **`opencode-theme-dev`** (`.agents/skills/opencode-theme-dev/SKILL.md`):
-  - Author and migrate v2 themes (`base`, `dark`, `light`, 9-step `hue` scales, `categorical`).
-  - Validation helper: `node scripts/validate-theme.mjs <theme.json>` (checks all 16 required tokens).
-  - Reference: `.agents/skills/opencode-theme-dev/references/theme-token-spec.md`.
-- **`opencode-plugin-dev`** (`.agents/skills/opencode-plugin-dev/SKILL.md`):
-  - Develop native plugins using `@opencode/plugin` and the universal dual-mode wrapper (`Plugin.define`).
-  - Reference: `.agents/skills/opencode-plugin-dev/references/plugin-api-reference.md`.
-  - Examples: `.agents/skills/opencode-plugin-dev/examples/tool-guard-plugin.ts`.
-- **`opencode-installer-dev`** (`.agents/skills/opencode-installer-dev/SKILL.md`):
-  - Best practices for configuration installers and environment orchestrators targeting `opencode2`.
-  - Reference: `.agents/skills/opencode-installer-dev/references/opencode-v2-precedence.md`.
+OpenCode v2 knowledge index and workflow diagrams moved to the `opencode2-knowledge` skill (`autoinvoke: false`; load explicitly when researching OpenCode v2).
 
 ## Security and Persistence Invariants
 

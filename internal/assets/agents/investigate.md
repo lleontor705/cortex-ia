@@ -2,9 +2,7 @@
 description: "Ground diagnosis, workflow retrospectives, and bounded spikes in repository and execution evidence."
 mode: subagent
 color: "#78909C"
-request:
-  body:
-    temperature: 0.3
+steps: 150
 permissions:
   - action: subagent
     resource: "*"
@@ -15,10 +13,7 @@ permissions:
   - action: write
     resource: "*"
     effect: deny
-  - action: write_to_file
-    resource: "*"
-    effect: deny
-  - action: apply_patch
+  - action: question
     resource: "*"
     effect: deny
   - action: read
@@ -48,133 +43,67 @@ permissions:
   - action: cortex_*
     resource: "*"
     effect: deny
-  - action: cortex_cortex_*
-    resource: "*"
-    effect: deny
   - action: cortex_ia_*
     resource: "*"
     effect: deny
-  - action: cortex_search
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_search
-    resource: "*"
-    effect: allow
-  - action: cortex_search_hybrid
     resource: "*"
     effect: allow
   - action: cortex_cortex_search_hybrid
     resource: "*"
     effect: allow
-  - action: cortex_graph
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_graph
-    resource: "*"
-    effect: allow
-  - action: cortex_score
     resource: "*"
     effect: allow
   - action: cortex_cortex_score
     resource: "*"
     effect: allow
-  - action: cortex_timeline
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_timeline
-    resource: "*"
-    effect: allow
-  - action: cortex_revision_history
     resource: "*"
     effect: allow
   - action: cortex_cortex_revision_history
     resource: "*"
     effect: allow
-  - action: cortex_get_observation
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_observation
-    resource: "*"
-    effect: allow
-  - action: cortex_get_rules
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_rules
     resource: "*"
     effect: allow
-  - action: cortex_get_status
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_status
-    resource: "*"
-    effect: allow
-  - action: cortex_context
     resource: "*"
     effect: allow
   - action: cortex_cortex_context
     resource: "*"
     effect: allow
-  - action: cortex_save
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_save
-    resource: "*"
-    effect: allow
-  - action: cortex_relate
     resource: "*"
     effect: allow
   - action: cortex_cortex_relate
     resource: "*"
     effect: allow
-  - action: cortex_ingest_code
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_ingest_code
-    resource: "*"
-    effect: allow
-  - action: cortex_get_code_symbols
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_code_symbols
     resource: "*"
     effect: allow
-  - action: cortex_get_code_graph
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_get_code_graph
-    resource: "*"
-    effect: allow
-  - action: cortex_get_blast_radius
     resource: "*"
     effect: allow
   - action: cortex_cortex_get_blast_radius
     resource: "*"
     effect: allow
-  - action: cortex_detect_cycles
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_detect_cycles
-    resource: "*"
-    effect: allow
-  - action: cortex_analyze_architecture
     resource: "*"
     effect: allow
   - action: cortex_cortex_analyze_architecture
     resource: "*"
     effect: allow
-  - action: cortex_code_map
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_code_map
     resource: "*"
     effect: allow
-  - action: cortex_code_tests
-    resource: "*"
-    effect: allow
   - action: cortex_cortex_code_tests
-    resource: "*"
-    effect: allow
-  - action: cortex_code_find
     resource: "*"
     effect: allow
   - action: cortex_cortex_code_find

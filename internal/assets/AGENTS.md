@@ -19,56 +19,7 @@
 
 The `orchestrator` is the sole coordinator and delegation authority in OpenCode. Every session or coordinated initiative begins with an operational alignment gate:
 
-```mermaid
-flowchart TD
-    User([User Request / Prompt]) --> StartGate{1. Startup Alignment Gate}
-    
-    subgraph Alignment ["Operating Conditions Alignment"]
-        StartGate -->|Ask if unset| ModeChoice[Execution Mode:\nAuto vs Interactive]
-        StartGate -->|Ask if unset| PlaneChoice[Spec & Memory Plane:\nOpenSpec vs Cortex vs Hybrid]
-        StartGate -->|Ask if unset| WorkloadChoice[Workload Policy:\nStrict vs Flexible vs Unbounded]
-        StartGate -->|Fixed policy| WorkspaceChoice[External Implement Workspace:\nCurrent Workspace]
-        
-        ModeChoice --> AmbiguityCheck{High Design\nUncertainty?}
-        PlaneChoice --> AmbiguityCheck
-        WorkloadChoice --> AmbiguityCheck
-        WorkspaceChoice --> AmbiguityCheck
-        
-        AmbiguityCheck -->|Yes: Unresolved branches| InvFact[Dispatch investigate:\nAutonomous Fact-Finding]
-        InvFact --> GrillMe[Relentless Interview:\ngrill-me Rounds Q1..Qn]
-        GrillMe -->|Frontier Resolved| RouteDecision{2. Assess Scope & Risk}
-        AmbiguityCheck -->|No: Clear intent| RouteDecision
-    end
-
-    subgraph Routing ["Organic Routing Engine"]
-        RouteDecision -->|direct-answer| OrchSelf[Orchestrator: Direct Answer]
-        RouteDecision -->|discovery / onboarding| SubDiscovery[Subagent: discovery]
-        RouteDecision -->|investigate / spike| SubInv[Subagent: investigate]
-        RouteDecision -->|direct-change| SubImpDirect[Subagent: implement]
-        RouteDecision -->|fast-tdd| SubImpTDD[Subagent: implement + fast-tdd]
-        RouteDecision -->|hotfix| SubImpHotfix[Subagent: implement + hotfix-triage]
-        RouteDecision -->|sdd-lite / sdd-full| SubPlan[Subagent: planner]
-    end
-
-    subgraph SDD_Flow ["SDD Task Execution (selected spec plane + cortex-ia work)"]
-        SubPlan -->|Validated contracts & Task DAG| Minions[Ephemeral Implement Minions]
-        Minions -->|Code Changes & Evidence| SubRev[Subagent: reviewer]
-    end
-
-    SubImpDirect --> AutoApproveGate{Adaptive Review:\nLow risk, data, docs, config?}
-    AutoApproveGate -->|Yes: Auto-Approve| OrchFinal
-    AutoApproveGate -->|No: High-risk code| SubRev
-    SubImpTDD --> SubRev
-    SubImpHotfix --> SubRev
-
-    subgraph Convergence ["Convergence & Output"]
-        SubInv -->|Diagnosis / Cortex Evidence| OrchFinal[Orchestrator Receipt Synthesis]
-        SubDiscovery -->|.cortex-ia/discovery.md| OrchFinal
-        SubRev -->|Verdict: PASS / FAIL / BLOCKED| OrchFinal
-        OrchSelf --> OrchFinal
-        OrchFinal --> Done([Final Response to User])
-    end
-```
+> _Flow diagram moved to the `opencode2-knowledge` skill (`autoinvoke: false`). Load it explicitly when the startup/routing topology is needed._
 
 ### Startup Conditioning Rules
 0. **Targeted / On-Demand Discovery (Zero-Waste Lifecycle)**:
@@ -87,10 +38,8 @@ flowchart TD
    - Carry the selected `spec_plane` in every phase dispatch. A one-time exception is scoped to that change, never a replacement for the user's general preference.
 3. **External Implement Workspace Strategy**:
    - **`current_workspace`**: Single supported implementation workspace strategy; `isolated_worktree` is retired. Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_ia_file_reserve` calls made before editing each file. There is no external execution leaf: every controller edits the shared workspace directly under its own claim and per-file leases.
-4. **Workload Policy (Task Line Budget)**:
-   - **`strict`**: Micro-task DAG architecture. Source logic <= 350 LOC (Go/Rust/Java/C#) or <= 250 LOC (TS/Python, deletions 0.2x); test/fixtures <= 600 LOC. Exceeding thresholds triggers mandatory `WORKLOAD_SOURCE_BUDGET_EXCEEDED` block and atomic DAG decomposition into stacked units (<= 250 LOC).
-   - **`flexible`**: *(Recommended / Default)* Standard development units. Source logic <= 700 LOC (Go/Rust/Java/C#) or <= 500 LOC (TS/Python); test/fixtures <= 1200 LOC. Exceeding thresholds emits a non-blocking advisory (`WORKLOAD_ADVISORY`), allowing transition to `in_review` unless reviewer objects on architectural grounds.
-   - **`unbounded`**: Rapid prototyping, spikes, or batch migrations. No LOC limits enforced or checked; preflight transition blocks for diff size are disabled.
+4. **Workload Policy (Task Line Budget)**: `strict` (source logic <= 350/250 LOC Go-family/TS-family → blocked + atomic decomposition), `flexible` *(Recommended / Default)* (source logic <= 700/500 LOC → non-blocking `WORKLOAD_ADVISORY`), or `unbounded` (pre-transition diff checks bypassed). Source logic covers Go/Rust/Java/C# and TS/Python (0.2x deletions); test/fixture ceilings and declarative data/schema exemption follow the canonical table.
+   - Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §4
    - The orchestrator asks the user if unset during Tier 3 SDD preflight. In Tier 1 and Tier 2 (`direct-change`, `ops-task`, `hotfix`), do not ask; default to `flexible` or `unbounded` without DAG overhead.
 5. **Design Grilling (`grill-me`)**:
    - When encountering unstated architectural choices or trade-offs, execute structured interview rounds:
@@ -148,30 +97,15 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 4. **Declarative Configuration Verification vs Synthetic Engines**: For declarative configs (Docker/Compose, YAML, JSON, `.dockerignore`, `.env*`), verification must test syntax validity, target keys/values, or real execution behavior using standard parsers or CLI commands. Agents MUST NEVER build ad-hoc shell lexers, custom grammar parsers, or complex AST tokenizers to inspect declarative files. Single-file declarative or infrastructure edits must route to `ops-task` or `direct-change`, never escalating to full SDD.
 5. **Reviewer Proportionality & Reality Anchor (Anti-Nitpicking)**: Reviewers MUST anchor all findings directly to actual repository code, declared contract requirements, and real execution risks. A reviewer MUST NEVER issue a `BLOCKER` or `FAIL` verdict based on hypothetical inputs to internal test helpers or mocks when the actual repository code and specified contracts do not contain those inputs. Discrepancies on uncalled or unrealistic helper branches (e.g. tabs vs spaces in synthetic shell parsers, unquoted strings never emitted by config, unreached edge cases in test assertions) are strictly `NIT` or `WARNING`, NEVER a blocker.
 6. **Anti-Decomposition of Pure-Test & Tooling Tasks**: Tasks whose `allowed_files` consist purely of tests or test scaffolding (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks, fixtures) MUST NOT undergo DAG decomposition upon failure. If a pure-test or test-helper task fails review or verification, the implementer or planner must simplify or fix the test assertion directly, prune invalid/unrealistic mock assumptions, or revert to a standard CLI oracle. Never decompose a test into more tests.
-7. **Adaptive Review & Proportional Auto-Approval Policy (Case Matrix)**: Review is NOT one-size-fits-all. The orchestrator must dynamically evaluate the task kind before deciding whether an independent reviewer subagent is necessary:
-   - **Case 1: Data & Generated Artifact Tasks (`.xlsx`, `.csv`, `.pdf`, `.parquet`, `.json` data fixtures, images, charts, reports)**:
-     * Verification is artifact generation proof (file exists on disk, non-zero size, valid format, or generator script exit 0).
-     * **MANDATORY Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", reviewer: "orchestrator", evidence: "..." })`.
-     * **STRICT PROHIBITION**: NEVER dispatch `reviewer` subagent for generated data/artifacts. An Excel or data file has no AST, cycles, or unit tests to review. If reviewer is ever dispatched, it must execute the Artifact Integrity Gate and immediately approve without AST/cycles/linters/mutations.
-   - **Case 2: Pure Documentation & Text (`*.md`, `docs/**`, instructions like `AGENTS.md`/`README.md`, comments, specs)**:
-     * Verification is markdown syntax, link validity, or formatting.
-     * **MANDATORY Orchestrator Auto-Approval** regardless of LOC volume as long as changes are non-executable text. Do NOT dispatch `reviewer`.
-   - **Case 3: Declarative Configuration & Styling (`.gitignore`, `.dockerignore`, CSS/themes, JSON/YAML without security/auth implications)**:
-     * Verification is parser validation (`jq`, YAML check, CSS check).
-     * **Orchestrator Auto-Approval** on clean syntax. Dispatch `reviewer` only if security-sensitive (IAM, firewall, auth keys, CORS).
-   - **Case 4: Operational & DB Scripts (`ops-task`)**:
-     * Verification is script execution exit 0 and target DB object/query verification.
-     * **Orchestrator Auto-Approval** for read-only or idempotent test-environment scripts. Dispatch `reviewer` only for high-risk production schema changes or irreversible DDL on shared tables.
-   - **Case 5: Low-Risk Unitary Code (`direct-change`, `fast-tdd`, `hotfix`)**:
-     * Localized within a single domain, $\le 3$ files and $\le 150$ LOC (or pure test files $\le 250$ LOC), with deterministic green tests (exit 0) and zero regressions.
-     * **Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", reviewer: "orchestrator", evidence: "..." })`.
-   - **Case 6: High-Risk Code & SDD (Mandatory Independent `reviewer` Subagent)**:
-     * Dispatch independent `reviewer` ONLY when changes involve:
-       1. Concurrency, mutexes, locks, goroutine lifecycles.
-       2. Production database schema migrations or irreversible DDL.
-       3. Public APIs, breaking protocol changes, auth, crypto, security boundaries.
-       4. High churn (> 3 files or > 150 LOC of core logic).
-       5. Failed, ambiguous, or missing tests.
+7. **Adaptive Review & Proportional Auto-Approval Policy (Case Matrix)**: The orchestrator evaluates the task kind before deciding whether an independent `reviewer` subagent is required.
+   - Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §2.7a
+   - Case 1 Data & Generated Artifacts (`.xlsx`, `.csv`, `.pdf`, `.parquet`, `.json` fixtures, images, charts, reports): artifact-generation proof; MANDATORY orchestrator auto-approval; NEVER dispatch `reviewer`.
+   - Case 2 Pure Documentation & Text (`*.md`, `docs/**`, instructions, comments, specs): markdown/format verification; MANDATORY orchestrator auto-approval regardless of LOC; do NOT dispatch `reviewer`.
+   - Case 3 Declarative Configuration & Styling (`.gitignore`, `.dockerignore`, CSS/themes, non-security JSON/YAML): parser validation; orchestrator auto-approval on clean syntax; dispatch `reviewer` only if security-sensitive.
+   - Case 4 Operational & DB Scripts (`ops-task`): script exit 0 + target verification; orchestrator auto-approval for read-only or idempotent test-environment scripts; dispatch `reviewer` only for high-risk production schema or irreversible DDL.
+   - Case 5 Low-Risk Unitary Code (`direct-change`, `fast-tdd`, `hotfix`): single domain, <= 3 files and <= 150 LOC (or pure test <= 250 LOC), green tests, zero regressions; orchestrator auto-approval.
+   - Case 6 High-Risk Code & SDD: independent `reviewer` MANDATORY on concurrency/locks, production schema or irreversible DDL, public APIs/auth/crypto/security boundaries, > 3 files or > 150 LOC core logic, or failed/ambiguous/missing tests.
+   - Auto-approval is performed exclusively by the orchestrator via `cortex_ia_work_approve` with an `evidence` pointer; a receipt, passing test, UI card, or chat assertion never completes a task.
 8. **Anti-Board Ceremony for Unitary Tasks**: Initiative boards (`cortex-ia board create`) are strictly reserved for Tier 3 SDD initiatives with multiple dependent tasks. Routine work, direct changes, hotfixes, and documentation updates NEVER create a new board; they execute under the existing `"default"` board without board overhead.
 9. **Mutation Evidence Gate**: Fast-TDD-eligible code tasks MUST satisfy the mutation-evidence gate defined once in `cortex-work-protocol.md` §4 (lifecycle) and §8 (evidence composition) — including the `SURVIVED`-blocks-transition rule and the exempt work kinds — before transition to `in_review`. This item is a cross-reference to that normative clause and introduces no independent wording.
 
@@ -181,88 +115,14 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 
 Before any `decision-map`, Lite, or Full phase, apply the phase/plane routing matrix embedded natively in the `orchestrator` role. It routes artifacts and validation through `cortex-convention.md`; decision-map creates no board/tasks in any plane. The following DAG lifecycle starts only after validated Lite/integrated or Full/tasks planning.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as User Request
-    participant Orch as Orchestrator
-    participant Inv as Investigate Subagent
-    participant Cortex as Cortex MCP & AST Graph
-    participant Plan as Planner Subagent
-    participant Work as cortex-ia work CLI
-    participant Imp as Implement Minions
-    participant Rev as Reviewer Subagent
+> _Sequence diagram moved to the `opencode2-knowledge` skill (`autoinvoke: false`)._
 
-    User->>Orch: User Prompt Received
-    Orch->>Cortex: cortex_get_rules(project) (Retrieve Active Governance Directives)
-    Orch->>Inv: Dispatch Fact-Finding & Investigation
-
-    rect rgb(235, 245, 255)
-    Note over Inv,Cortex: Phase 1: Investigation & AST Ingestion Gate
-    Inv->>Cortex: cortex_get_code_symbols(project, limit: 1) (Check AST status)
-    alt AST symbols missing and cortex watch not running
-        Inv->>Cortex: cortex_ingest_code(workspace_root_absolute_path, project) (Trigger 2-Pass Static AST Ingestion)
-    end
-    Inv->>Cortex: filtered code symbols + cortex_search(graph_expand=true)
-    Inv-->>Orch: Diagnostic Evidence & Baseline AST Topology Receipt
-    end
-
-    Note over Orch,Work: Phase 2: Preflight & Planning (if SDD route)
-    Orch->>Plan: Dispatch SDD Plan (intent, project_rules, blast_radius_baseline)
-    Plan->>Plan: Write and validate selected-plane contracts
-    Plan->>Work: work create (dependency DAG nodes <= 350 LOC in stable initiative board)
-    Plan-->>Orch: Planning Receipt (artifact refs, task refs, DAG readiness)
-
-    Note over Orch,Imp: Phase 3: Implementation
-    loop For Each Ready DAG Task
-        Orch->>Imp: Dispatch Minion Envelope (task_id, allowed_files, project_rules, checks)
-        Imp->>Work: work claim + file_reserve per writable file
-        Imp->>Cortex: filtered symbols + bounded caller inspection
-        Imp->>Imp: Implement Code + Proportional Verification (Tests)
-        Imp->>Work: transition in_review (releases leases)
-        Imp-->>Orch: Task Execution Receipt (changed_files)
-    end
-
-    rect rgb(255, 245, 235)
-    Note over Orch,Rev: Phase 4: Adaptive Review Gate (Auto-Approval vs Independent Reviewer)
-    alt Low-Risk / Data Artifacts / Docs / Declarative Config
-        Orch->>Work: work approve PASS (orchestrator auto-approval with evidence)
-    else High-Risk Code Tasks
-        Orch->>Rev: Dispatch Review Envelope (board_id, changed_files, blast_radius_baseline)
-        Rev->>Cortex: cortex_ingest_code(workspace_root_absolute_path, project) [Delta Ingestion: <50ms]
-        Rev->>Cortex: compare symbols/imports/callers (detect unapproved coupling)
-        Rev->>Cortex: cortex_detect_cycles (Verify no circular import regressions)
-        Rev->>Rev: Independent Checks & Mutation Testing
-        alt Verdict is PASS
-            Rev->>Work: work approve PASS (gate approval with evidence)
-            Rev->>Cortex: cortex_save(type: "decision", topic_key: "architecture/feature") + cortex_relate
-            Rev-->>Orch: Review Receipt (Verdict: PASS)
-            Orch->>Plan: Archive selected-plane contract after approval
-        else Verdict is FAIL / BLOCKED
-            Rev->>Cortex: cortex_save(type: "bugfix", topic_key: "gotchas/task_id", content: minimal_failure_locality) + cortex_relate
-            Rev-->>Orch: Review Receipt (Verdict: FAIL, evidence_ref: "gotchas/task_id")
-            Orch->>Imp: Re-dispatch Targeted Fix Minion (with evidence_ref from Cortex)
-        end
-    end
-    end
-
-    Orch-->>User: Final Response + Cortex Session Summary
-```
-
-Phase 4's independent-checks step includes reviewer verification of the implementer's mutation evidence and the perpetually-green test-strength lens; the normative clauses live in `cortex-work-protocol.md` §4 (lifecycle gate) and §8 (evidence composition), and the diagram line above is a pointer to them.
+Phase 4's independent-checks step includes reviewer verification of the implementer's mutation evidence and the perpetually-green test-strength lens; the normative clauses live in `cortex-work-protocol.md` §4 (lifecycle gate) and §8 (evidence composition), and the moved sequence diagram in the `opencode2-knowledge` skill is a pointer to them.
 
 ### Review Workload Guard & Stacked Units
-- **Decoupled Semantic Workload Budget**:
-  - Calibrated by the session's active `workload_policy` (`strict` | `flexible` | `unbounded`):
-    - **`strict`**: Source logic max **<= 350 lines** in Go/Rust/Java/C#, **<= 250 lines** in TS/Python with weighted deletions (0.2x). Test & fixtures max **<= 600 lines** total, with modular test files bounded to <= 250 LOC per task.
-    - **`flexible`**: Source logic max **<= 700 lines** in Go/Rust/Java/C#, **<= 500 lines** in TS/Python (0.2x deletions). Test & fixtures max **<= 1200 lines** total.
-    - **`unbounded`**: No line count constraints enforced.
-  - **Declarative Data / Schemas**: Excluded from algorithmic logic budgets in all policies.
-- **Pre-Transition Workload Preflight**: Implementers MUST check categorized churn (`git diff --numstat`) before calling `cortex_ia_work_transition({ to: "in_review" })`.
-  - Under `strict`: If source logic changed lines exceed the cap, transitioning to `in_review` is strictly forbidden: transition directly to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if test fixtures exceed 600 LOC) to trigger immediate DAG decomposition.
-  - Under `flexible`: If churn exceeds the standard guideline, implementer emits `workload_status: "EXCEEDED_ADVISORY"` in the task receipt and transitions to `in_review`. The reviewer evaluates if the scope is acceptable.
-  - Under `unbounded`: Churn threshold checking is bypassed.
-  - For fast-TDD-eligible code tasks, the preflight also requires the mutation evidence defined by the Mutation Evidence Gate (`cortex-work-protocol.md` §4/§8); a `SURVIVED` outcome blocks the transition until the covering test is strengthened.
+- **Workload LOC budget (digest)**: `strict` (source logic <= 350/250 LOC Go-family/TS-family) → blocked + atomic decomposition, `flexible` (source logic <= 700/500 LOC) → non-blocking advisory, `unbounded` → pre-transition diff checks bypassed; test/fixture ceilings and the declarative data/schema exemption are canonical in the §4 table.
+  - Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §4
+- **Pre-Transition Workload Preflight**: Implementers MUST categorize churn with `git diff --numstat` against the active `workload_policy` budget before calling `cortex_ia_work_transition({ to: "in_review" })`, and follow that tier's over-budget behavior (`strict` → `blocked`; `flexible` → advisory; `unbounded` → bypassed). For fast-TDD-eligible code tasks, the preflight also requires the mutation evidence defined by the Mutation Evidence Gate (`cortex-work-protocol.md` §4/§8); a `SURVIVED` outcome blocks the transition until the covering test is strengthened.
 - **Anti-Revision Loop Circuit Breaker**: If a task accumulates **two (2) consecutive review FAIL verdicts**, the orchestrator MUST NOT re-dispatch an implementer on the same monolithic task node. It MUST route the task to `planner` with `phase: "decompose"` for atomic decomposition into stacked units (<= 250 LOC). **Exception**: Pure-test or tooling tasks (`allowed_files` purely tests) MUST NOT be decomposed; fix or simplify the test assertions directly.
 - **In-Memory Immutability & Contract Preservation Invariants**:
   - Multi-record/batch validation must operate on defensive copies or without mutating caller-owned structs/pointers in-place prior to whole-request validation.
@@ -287,31 +147,7 @@ Phase 4's independent-checks step includes reviewer verification of the implemen
 
 An implementation minion is an ephemeral instance of `implement`. It owns strictly ONE task attempt.
 
-```mermaid
-stateDiagram-v2
-    [*] --> PreClaim: Dispatch Envelope Received
-    PreClaim --> Claimed: work status + work claim
-    Claimed --> Reserved: cortex_ia_file_reserve (exclusive single file)
-    
-    state Execution_Loop {
-        [*] --> Red_Green_Refactor
-        Red_Green_Refactor --> Heartbeat_Renew: work renew + lease-renew
-        Heartbeat_Renew --> Red_Green_Refactor
-    }
-    
-    Reserved --> Execution_Loop: Edit & Test
-    Execution_Loop --> Verifying: Proportional Verification (Unit/Build/Lint)
-    Verifying --> EvidenceSaved: context-distiller -> cortex_save
-    EvidenceSaved --> InReview: work transition --to in_review
-    InReview --> Released: reviewer verifies and work approve PASS
-    Released --> DoneState: CLI atomically releases locks and marks done
-    DoneState --> ReceiptReturned: Return Typed Receipt
-    ReceiptReturned --> [*]
-
-    Execution_Loop --> Blocked: Lease Expired / Unresolvable Conflict
-    Blocked --> Cleanup: work release
-    Cleanup --> ReceiptReturned
-```
+> _State diagram moved to the `opencode2-knowledge` skill (`autoinvoke: false`)._
 
 ### Canonical Minion Invariants
 1. **Live Authority Only**: `claim_token`, `lease_id`, and `lease_token` are kept strictly in live memory; they are NEVER persisted to Cortex or logs.
@@ -381,19 +217,7 @@ Status is tracked across 3 orthogonal dimensions that must never be collapsed:
 
 ## 7. Safety, Shell Boundaries & Guard Plugins
 
-```mermaid
-flowchart LR
-    subgraph Guards ["OpenCode Security & Safety Plugins"]
-        SensGuard[Sensitive Guard Plugin]
-        TelemGuard[Telemetry Guard Plugin]
-        BgSuper[Background Supervisor]
-    end
-
-    Cmd[Shell / Tool Execution] --> SensGuard
-    SensGuard -->|Blocks .env, .pem, id_rsa, keys| TelemGuard
-    TelemGuard -->|Monitors Loops & Token Budget| BgSuper
-    BgSuper -->|Limits Async Worker Concurrency| Execute[OS Workspace Execution]
-```
+> _Guard-flow diagram moved to the `opencode2-knowledge` skill (`autoinvoke: false`)._
 
 ### Shell Permission Boundaries
 - **Pre-Approved (No confirmation needed)**:
@@ -496,20 +320,4 @@ cortex doctor
 cortex setup opencode
 ```
 
-### I. OpenCode v2 (`opencode2`) Knowledge & Search Index
-
-When researching, developing, or debugging capabilities for **OpenCode v2 (`opencode2`)**, use this canonical index:
-
-#### 1. Official Documentation Mapping
-- **[Core Architecture & Config](https://opencode.ai/v2/docs/)**: Runtime architecture, Daemon/Server model, File hierarchy (`.config/opencode/` vs `.opencode/`), Precedence & merging rules, `opencode.jsonc` schema, Permissions array format (`[{ action, resource, effect }]`).
-- **[CLI & TUI Navigation](https://opencode.ai/v2/docs/cli/)**: Global CLI commands, TUI navigation (`opencode2`), `cli.json` configuration, Theme switching (`/themes`), Keybindings, Terminal Truecolor requirement (`COLORTERM=truecolor`).
-- **[Build & Plugin Extensions](https://opencode.ai/v2/docs/build/)**: Plugin architecture (`@opencode/plugin`), Tool hooks (`ctx.tool.hook`), Transforms (`ctx.tool.transform`), Event subscriptions (`ctx.event`), Context extensions (`ctx.agent`, `ctx.provider`, `ctx.model`, `ctx.mcp`, `ctx.command`), Custom tools.
-- **[API & Server Engine](https://opencode.ai/v2/docs/api/)**: OpenAPI 3.1.0 specification, Background service daemon, HTTP `/api/*` endpoints, WebSocket event streaming, Session compaction, Snapshot management.
-
-#### 2. Live CLI Inspection Helpers (`opencode2`)
-- `opencode2 debug paths`: Print active filesystem locations (`home`, `data`, `cache`, `config`, `state`, `log`, `db`).
-- `opencode2 debug config`: Print all resolved configuration sources and the fully merged active configuration tree.
-- `opencode2 models`: List all active AI models and provider connectivity.
-- `opencode2 --print-logs`: Stream real-time diagnostic server logs to stderr.
-- `opencode2 stats`: Output shareable usage statistics.
-
+> OpenCode v2 knowledge index and workflow diagrams moved to the `opencode2-knowledge` skill (`autoinvoke: false`; load explicitly when researching OpenCode v2).
