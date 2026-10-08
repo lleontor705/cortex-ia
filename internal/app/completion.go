@@ -49,7 +49,7 @@ const bashCompletionScript = `_cortex_ia_completions() {
     local cmd="${words[1]}"
     case "$cmd" in
         work)
-            local work_subs="create revise archive list status approvals fingerprint claim renew controller-renew transition approve retry lease reserve lease-renew release release-all verify-lease review-refresh decompose recover reconcile"
+            local work_subs="create revise archive list status approvals fingerprint claim renew controller-renew transition approve retry lease reserve lease-renew release release-all verify-lease review-refresh decompose recover reconcile degrade"
             if [ "$cword" -eq 2 ]; then
                 COMPREPLY=($(compgen -W "$work_subs" -- "$cur"))
             fi
@@ -147,6 +147,7 @@ _cortex_ia() {
                 'recover:Recover expired claims and leases'
                 'reconcile:Force-release orphaned claims'
                 'decompose:Split task into atomic sub-tasks'
+                'degrade:Degrade stale ready/blocked tasks to backlog'
             )
             _describe -t work_commands 'work subcommand' work_commands
             ;;
@@ -214,7 +215,7 @@ complete -c cortex-ia -n "__fish_use_subcommand" -a "version" -d "Show version"
 complete -c cortex-ia -n "__fish_use_subcommand" -a "help" -d "Show help"
 
 # Subcommands: work
-complete -c cortex-ia -n "__fish_seen_subcommand_from work" -a "create list status claim transition approve lease release recover reconcile decompose"
+complete -c cortex-ia -n "__fish_seen_subcommand_from work" -a "create list status claim transition approve lease release recover reconcile decompose degrade"
 
 # Subcommands: board
 complete -c cortex-ia -n "__fish_seen_subcommand_from board" -a "create list status archive unarchive delete serve"

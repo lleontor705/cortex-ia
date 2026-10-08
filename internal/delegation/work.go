@@ -64,6 +64,48 @@ func parseWorkloadPolicy(value WorkloadPolicy) (WorkloadPolicy, error) {
 	}
 }
 
+// BlockedReason taxonomy: the durable class recorded on every transition to
+// blocked. "unclassified" is the read-side class for legacy NULL rows and must
+// never resolve to needs_user, which exempts a task from TTL degradation.
+const (
+	WorkBlockedReasonAuthorityExpired = "authority_expired"
+	WorkBlockedReasonUpstream         = "upstream"
+	WorkBlockedReasonNeedsUser        = "needs_user"
+	WorkBlockedReasonEnv              = "env"
+	WorkBlockedReasonScopeDrift       = "scope_drift"
+	WorkBlockedReasonUnclassified     = "unclassified"
+)
+
+var workBlockedReasonTaxonomy = map[string]struct{}{
+	WorkBlockedReasonAuthorityExpired: {},
+	WorkBlockedReasonUpstream:         {},
+	WorkBlockedReasonNeedsUser:        {},
+	WorkBlockedReasonEnv:              {},
+	WorkBlockedReasonScopeDrift:       {},
+	WorkBlockedReasonUnclassified:     {},
+}
+
+// ValidWorkBlockedReason reports whether a submitted blocked_reason is in the
+// taxonomy. The empty value is accepted as an unspecified legacy reason.
+func ValidWorkBlockedReason(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return true
+	}
+	_, ok := workBlockedReasonTaxonomy[value]
+	return ok
+}
+
+// WorkBlockedReasonClass normalizes a persisted (possibly NULL/empty) reason to
+// its degradation class.
+func WorkBlockedReasonClass(reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return WorkBlockedReasonUnclassified
+	}
+	return reason
+}
+
 type WorkItem struct {
 	Contract *SDDContract `json:"contract,omitempty"`
 	ConversationOwnership
@@ -78,6 +120,7 @@ type WorkItem struct {
 	Replaces       string          `json:"replaces,omitempty"`
 	ReplacedBy     []string        `json:"replaced_by,omitempty"`
 	Status         WorkStatus      `json:"status"`
+	BlockedReason  string          `json:"blocked_reason,omitempty"`
 	WorkloadPolicy WorkloadPolicy  `json:"workload_policy"`
 	Revision       int64           `json:"revision"`
 	Dependencies   []string        `json:"dependencies,omitempty"`
@@ -386,7 +429,7 @@ func (s *Store) listWork(ctx context.Context, boardID string, filtered bool) ([]
 
 func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 	var item WorkItem
-	err := s.db.QueryRowContext(ctx, `SELECT id,board_id,workspace,title,status,workload_policy,revision,created_at,updated_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id FROM work_items WHERE id=?`, id).Scan(&item.ID, &item.BoardID, &item.Workspace, &item.Title, &item.Status, &item.WorkloadPolicy, &item.Revision, &item.CreatedAt, &item.UpdatedAt, &item.OpenCodeSessionID, &item.OpenCodeRootSessionID, &item.OpenCodeParentSessionID)
+	err := s.db.QueryRowContext(ctx, `SELECT id,board_id,workspace,title,status,COALESCE(blocked_reason,''),workload_policy,revision,created_at,updated_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id FROM work_items WHERE id=?`, id).Scan(&item.ID, &item.BoardID, &item.Workspace, &item.Title, &item.Status, &item.BlockedReason, &item.WorkloadPolicy, &item.Revision, &item.CreatedAt, &item.UpdatedAt, &item.OpenCodeSessionID, &item.OpenCodeRootSessionID, &item.OpenCodeParentSessionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WorkItem{}, ErrWorkNotFound
 	}
@@ -930,6 +973,19 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 		if expectedRevision > 0 && revision != expectedRevision {
 			return fmt.Errorf("%w: invalid or stale transition %s@%d -> %s (expected rev %d)", ErrWorkConflict, from, revision, to, expectedRevision)
 		}
+		blockedReason := ""
+		if to == WorkBlocked && len(receipt) == 1 {
+			blockedReason = strings.TrimSpace(receipt[0].BlockedReason)
+		}
+		if !ValidWorkBlockedReason(blockedReason) {
+			return fmt.Errorf("%w: blocked_reason %q is not in the taxonomy", ErrWorkConflict, blockedReason)
+		}
+		// A NULL blocked_reason is the legacy/unspecified class; unlike '', it is
+		// never re-emitted as a stored value.
+		var blockedReasonValue any
+		if blockedReason != "" {
+			blockedReasonValue = blockedReason
+		}
 		var claimOwner string
 		var claimAttempt int64
 		if err := conn.QueryRowContext(ctx, `SELECT owner,attempt FROM work_claims WHERE item_id=? AND token_hash=? AND expires_at>?`, id, tokenHash(claimToken), now).Scan(&claimOwner, &claimAttempt); err != nil {
@@ -969,8 +1025,10 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 		}
 		submissionID := ""
 		if len(receipt) == 1 {
+			submission := WorkSubmission{WorkSubmissionInput: receipt[0], ItemID: id, Attempt: claimAttempt, ImplementationOwner: claimOwner, TransitionRevision: revision + 1, From: from, To: to, ReviewID: reviewID, CreatedAt: now}
+			submission.BlockedReason = blockedReason
 			var err error
-			submissionID, err = s.insertWorkSubmission(ctx, conn, WorkSubmission{WorkSubmissionInput: receipt[0], ItemID: id, Attempt: claimAttempt, ImplementationOwner: claimOwner, TransitionRevision: revision + 1, From: from, To: to, ReviewID: reviewID, CreatedAt: now})
+			submissionID, err = s.insertWorkSubmission(ctx, conn, submission)
 			if err != nil {
 				return err
 			}
@@ -993,12 +1051,15 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 				return err
 			}
 		}
-		if _, err := conn.ExecContext(ctx, `UPDATE work_items SET status=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, to, now, id, revision); err != nil {
+		if _, err := conn.ExecContext(ctx, `UPDATE work_items SET status=?,blocked_reason=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, to, blockedReasonValue, now, id, revision); err != nil {
 			return err
 		}
 		detail := strconv.FormatInt(revision, 10)
 		if submissionID != "" {
 			detail += ":submission=" + submissionID
+		}
+		if blockedReason != "" {
+			detail += ":blocked_reason=" + blockedReason
 		}
 		if workloadAdvisory {
 			detail += ":" + workloadAdvisoryDetail
@@ -1236,7 +1297,7 @@ func (s *Store) RecoverWorkScoped(ctx context.Context, id, owner string) (int64,
 // recoverWorkItem blocks one expired task and drops its claim, leases and
 // review rows. Both recovery paths share it so their semantics stay identical.
 func (s *Store) recoverWorkItem(ctx context.Context, conn *sql.Conn, now, id string, status WorkStatus) (int64, error) {
-	result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='blocked',revision=revision+1,updated_at=? WHERE id=? AND status=?`, now, id, status)
+	result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='blocked',blocked_reason=?,revision=revision+1,updated_at=? WHERE id=? AND status=?`, WorkBlockedReasonAuthorityExpired, now, id, status)
 	if err != nil {
 		return 0, err
 	}
@@ -1312,7 +1373,7 @@ func (s *Store) RetryWork(ctx context.Context, id string, expectedRevision int64
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
-		result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='ready',revision=revision+1,updated_at=? WHERE id=? AND status='blocked' AND revision=?`, now, id, revision)
+		result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='ready',blocked_reason=NULL,revision=revision+1,updated_at=? WHERE id=? AND status='blocked' AND revision=?`, now, id, revision)
 		if err != nil {
 			return err
 		}

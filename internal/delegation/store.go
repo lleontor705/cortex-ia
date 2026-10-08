@@ -550,6 +550,26 @@ func (s *Store) initialize(ctx context.Context) error {
 				return fmt.Errorf("record index optimization migration: %w", err)
 			}
 		}
+		if version < 17 {
+			// The blocked_reason taxonomy is CHECK-enforced at the schema layer so a
+			// future writer cannot bypass the Go validation gate on a blocked transition.
+			blockedReasonCheck := `CHECK(blocked_reason IS NULL OR blocked_reason IN ('authority_expired','upstream','needs_user','env','scope_drift','','unclassified'))`
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE work_items ADD COLUMN blocked_reason TEXT `+blockedReasonCheck); err != nil {
+				return fmt.Errorf("add work item blocked reason: %w", err)
+			}
+			var submissions int
+			if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='work_submissions'`).Scan(&submissions); err != nil {
+				return fmt.Errorf("probe work submissions table: %w", err)
+			}
+			if submissions == 1 {
+				if _, err := conn.ExecContext(ctx, `ALTER TABLE work_submissions ADD COLUMN blocked_reason TEXT `+blockedReasonCheck); err != nil {
+					return fmt.Errorf("add work submission blocked reason: %w", err)
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(17,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record blocked reason migration: %w", err)
+			}
+		}
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE expires_at<=?`, s.timestamp())
 		return nil
 	})

@@ -11,10 +11,11 @@ import (
 
 // WorkSubmissionInput is an implementer's assertion, never a review approval.
 type WorkSubmissionInput struct {
-	Summary      string   `json:"summary"`
-	Verdict      *string  `json:"verdict,omitempty"`
-	EvidenceRefs []string `json:"evidence_refs"`
-	ChangedFiles []string `json:"changed_files"`
+	Summary       string   `json:"summary"`
+	Verdict       *string  `json:"verdict,omitempty"`
+	EvidenceRefs  []string `json:"evidence_refs"`
+	ChangedFiles  []string `json:"changed_files"`
+	BlockedReason string   `json:"blocked_reason,omitempty"`
 }
 
 type WorkSubmission struct {
@@ -141,7 +142,11 @@ func (s *Store) insertWorkSubmission(ctx context.Context, conn *sql.Conn, submis
 	if submission.ReviewID != "" {
 		reviewID = submission.ReviewID
 	}
-	_, err = conn.ExecContext(ctx, `INSERT INTO work_submissions(id,item_id,attempt,implementation_owner,transition_revision,from_status,to_status,review_id,verification_verdict,summary,evidence_refs_json,changed_files_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, submission.ItemID, submission.Attempt, submission.ImplementationOwner, submission.TransitionRevision, submission.From, submission.To, reviewID, input.Verdict, input.Summary, refs, files, submission.CreatedAt)
+	var blockedReason any
+	if strings.TrimSpace(submission.BlockedReason) != "" {
+		blockedReason = strings.TrimSpace(submission.BlockedReason)
+	}
+	_, err = conn.ExecContext(ctx, `INSERT INTO work_submissions(id,item_id,attempt,implementation_owner,transition_revision,from_status,to_status,review_id,verification_verdict,summary,evidence_refs_json,changed_files_json,blocked_reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, submission.ItemID, submission.Attempt, submission.ImplementationOwner, submission.TransitionRevision, submission.From, submission.To, reviewID, input.Verdict, input.Summary, refs, files, blockedReason, submission.CreatedAt)
 	return id, err
 }
 
@@ -153,7 +158,7 @@ func (s *Store) currentWorkSubmission(ctx context.Context, item WorkItem) (*Work
 	var submission WorkSubmission
 	var reviewID, verdict sql.NullString
 	var refs, files string
-	err := s.db.QueryRowContext(ctx, `SELECT id,item_id,attempt,implementation_owner,transition_revision,from_status,to_status,review_id,verification_verdict,summary,evidence_refs_json,changed_files_json,created_at FROM work_submissions WHERE item_id=? AND attempt=(SELECT COUNT(*) FROM work_events WHERE item_id=? AND kind='claimed') ORDER BY transition_revision DESC LIMIT 1`, item.ID, item.ID).Scan(&submission.ID, &submission.ItemID, &submission.Attempt, &submission.ImplementationOwner, &submission.TransitionRevision, &submission.From, &submission.To, &reviewID, &verdict, &submission.Summary, &refs, &files, &submission.CreatedAt)
+	err := s.db.QueryRowContext(ctx, `SELECT id,item_id,attempt,implementation_owner,transition_revision,from_status,to_status,review_id,verification_verdict,summary,evidence_refs_json,changed_files_json,COALESCE(blocked_reason,''),created_at FROM work_submissions WHERE item_id=? AND attempt=(SELECT COUNT(*) FROM work_events WHERE item_id=? AND kind='claimed') ORDER BY transition_revision DESC LIMIT 1`, item.ID, item.ID).Scan(&submission.ID, &submission.ItemID, &submission.Attempt, &submission.ImplementationOwner, &submission.TransitionRevision, &submission.From, &submission.To, &reviewID, &verdict, &submission.Summary, &refs, &files, &submission.BlockedReason, &submission.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

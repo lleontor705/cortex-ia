@@ -23,6 +23,7 @@ func runWork(args []string) error {
 		fmt.Println("  create <id> <title> [--board <board>] [options]              Create a task (defaults to active branch or --board default)")
 		fmt.Println("  list [--board <board-id>] [--current]                       List work items (all boards if omitted, or filter by board/branch)")
 		fmt.Println("  prune [--board <board-id>] [--older-than <dur>] [--dry-run]  Prune old completed tasks")
+		fmt.Println("  degrade [--board <board-id>] [--ttl <duration>] [--dry-run]  Degrade stale ready/blocked tasks to backlog")
 		fmt.Println("  status <task-id>                                            Get task details")
 		fmt.Println("  claim <task-id> --owner <owner> [--path <file> ...] [--ttl <duration>]  Claim task and reserve file lease(s) atomically")
 		fmt.Println("  renew <task-id> --claim-token <token> [--ttl <duration>]    Renew a claim")
@@ -32,7 +33,7 @@ func runWork(args []string) error {
 		fmt.Println("  lease-renew --path <file> --lease-token <token>             Renew a file lease")
 		fmt.Println("  release --path <file> --lease-token <token>                 Release a file lease")
 		fmt.Println("  release-all <task-id> --claim-token <token>                 Release all file leases for a task")
-		fmt.Println("  transition <task-id> --claim-token <token> --to <status>    Transition task state")
+		fmt.Println("  transition <task-id> --claim-token <token> --to <status> [--blocked-reason <enum>]  Transition task state")
 		fmt.Println("  approve <task-id> --reviewer <id> --verdict <PASS|FAIL>     Approve/review a task")
 		fmt.Println("  approvals <task-id>                                         List historical approval records")
 		fmt.Println("  fingerprint <task-id>                                       Calculate current fingerprints and compare with approval")
@@ -240,6 +241,39 @@ func runWork(args []string) error {
 			BoardID:   boardID,
 			OlderThan: olderThan,
 			DryRun:    dryRun,
+		})
+		if err != nil {
+			return err
+		}
+		return printJSON(result)
+	case "degrade":
+		if len(args) > 1 && isHelp(args[1]) {
+			return workUsage("degrade [--board <board-id>] [--ttl <duration>] [--dry-run]", nil)
+		}
+		opts, positionals, err := workOptionsWithFlags(args[1:], map[string]bool{"--board": false, "--ttl": false}, map[string]bool{"--dry-run": true})
+		if err != nil || len(positionals) != 0 {
+			return workUsage("degrade [--board <board-id>] [--ttl <duration>] [--dry-run]", err)
+		}
+		boardID := oneOption(opts, "--board")
+		switch boardID {
+		case "":
+			boardID = delegation.DefaultBoardID
+		case "all":
+			boardID = ""
+		}
+		var ttl time.Duration
+		if raw := oneOption(opts, "--ttl"); raw != "" {
+			parsed, parseErr := time.ParseDuration(raw)
+			if parseErr != nil || parsed <= 0 {
+				return fmt.Errorf("invalid --ttl duration %q", raw)
+			}
+			ttl = parsed
+		}
+		_, dryRun := opts["--dry-run"]
+		result, err := store.DegradeStaleWork(ctx, delegation.DegradeStaleWorkOptions{
+			BoardID: boardID,
+			TTL:     ttl,
+			DryRun:  dryRun,
 		})
 		if err != nil {
 			return err
@@ -456,12 +490,17 @@ func runWork(args []string) error {
 		}
 		return printJSON(map[string]any{"released_all": true, "task_id": id})
 	case "transition":
+		const transitionUsage = "transition <task-id> --claim-token <token|@stdin> [--revision <n>] --to <in_review|in_progress|blocked> [--blocked-reason <enum>] [--summary <text>] [--verdict <verdict>] [--evidence-ref <ref> ...] [--changed-file <path> ...]"
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("transition <task-id> --claim-token <token|@stdin> [--revision <n>] --to <in_review|in_progress|blocked> [--summary <text>] [--verdict <verdict>] [--evidence-ref <ref> ...] [--changed-file <path> ...]", nil)
+			return workUsage(transitionUsage, nil)
 		}
-		id, opts, err := workIDOptions(args[1:], map[string]bool{"--claim-token": false, "--revision": false, "--to": false, "--summary": false, "--verdict": false, "--evidence-ref": true, "--changed-file": true})
+		id, opts, err := workIDOptions(args[1:], map[string]bool{"--claim-token": false, "--revision": false, "--to": false, "--blocked-reason": false, "--summary": false, "--verdict": false, "--evidence-ref": true, "--changed-file": true})
 		if err != nil {
-			return workUsage("transition <task-id> --claim-token <token> [--revision <n>] --to <in_review|in_progress|blocked>", err)
+			return workUsage(transitionUsage, err)
+		}
+		blockedReason := oneOption(opts, "--blocked-reason")
+		if _, provided := opts["--blocked-reason"]; provided && !delegation.ValidWorkBlockedReason(blockedReason) {
+			return workUsage(transitionUsage, fmt.Errorf("unknown --blocked-reason %q", blockedReason))
 		}
 		var revision int64
 		if revStr := oneOption(opts, "--revision"); revStr != "" {
@@ -475,8 +514,8 @@ func runWork(args []string) error {
 			return err
 		}
 		var receipts []delegation.WorkSubmissionInput
-		if opts["--summary"] != nil || opts["--verdict"] != nil || opts["--evidence-ref"] != nil || opts["--changed-file"] != nil {
-			receipt := delegation.WorkSubmissionInput{Summary: oneOption(opts, "--summary"), EvidenceRefs: opts["--evidence-ref"], ChangedFiles: opts["--changed-file"]}
+		if opts["--summary"] != nil || opts["--verdict"] != nil || opts["--evidence-ref"] != nil || opts["--changed-file"] != nil || opts["--blocked-reason"] != nil {
+			receipt := delegation.WorkSubmissionInput{Summary: oneOption(opts, "--summary"), EvidenceRefs: opts["--evidence-ref"], ChangedFiles: opts["--changed-file"], BlockedReason: blockedReason}
 			if opts["--verdict"] != nil {
 				verdict := oneOption(opts, "--verdict")
 				receipt.Verdict = &verdict
