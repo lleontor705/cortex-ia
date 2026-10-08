@@ -80,7 +80,7 @@ Return a compact JSON receipt containing:
   "governance_rule_count": 0,
   "gitignore_hygiene": "applied | already_present | unknown",
   "unknowns": [],
-  "next_route": "orchestrator | investigate | human-input"
+  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
 }
 ```
 

@@ -28,13 +28,13 @@ Format every grilling round strictly as follows:
 ```
 ❓ **Q1** - **<Decision / Question Title>**: <Detailed body, context, trade-offs, and options (A/B/C)>
 
-➡️ **Recomendación**: <Your recommended option and technical justification>
+➡️ **Recommendation**: <Your recommended option and technical justification>
 
 ---
 
 ❓ **Q2** - **<Decision / Question Title>**: <Detailed body, context, trade-offs, and options (A/B/C)>
 
-➡️ **Recomendación**: <Your recommended option and technical justification>
+➡️ **Recommendation**: <Your recommended option and technical justification>
 ```
 
 ## 3. Autonomous Fact-Finding via Subagents (Zero Busywork for User)

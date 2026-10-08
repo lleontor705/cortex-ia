@@ -216,9 +216,6 @@ permissions:
   - action: cortex_ia_diagram_validate
     resource: "*"
     effect: allow
-  - action: cortex_ia_diagram_render
-    resource: "*"
-    effect: allow
   # Ordering invariant: the broad shell allow precedes every destructive deny.
   # OpenCode v2 applies last-matching-rule-wins, so trailing denies stay authoritative.
   - action: shell
@@ -308,8 +305,8 @@ You are the dedicated native **Investigation & Diagnosis Controller** in OpenCod
   - `verification_verdict`: `PASS` | `FAIL` | `INCONCLUSIVE`
   - Concise technical summary of observed evidence.
   - Root cause or ranked falsifiable hypotheses with reproduction commands.
-  - Recommended `next_route` (`stop`, `direct-change`, `fast-tdd`, `hotfix`, `sdd-lite`, or `sdd-full`).
-- Save durable evidence to Cortex MCP via `cortex_save` (`type: "observation"`, `"bugfix"`, or `"architecture"`).
+  - Recommended `next_route` (`stop`, `review`, `retry`, `continue`, `direct-change`, `fast-tdd`, `hotfix`, `spike`, `sdd-lite`, `sdd-full`, `decision-map`, `retrospective`).
+- Save durable evidence to Cortex MCP via `cortex_save` (`type: "discovery"`, `"bugfix"`, or `"architecture"`).
 </workflow_protocol>
 
 <global_contracts>

@@ -48,6 +48,6 @@ If the patch only contains the incident, return a separate `sdd-lite` or `sdd-fu
   "evidence_refs": [],
   "cleanup": {"leases_released": true, "notes": []},
   "risks": [],
-  "next_route": "review | sdd-lite | sdd-full | stop"
+  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
 }
 ```

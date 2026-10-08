@@ -111,9 +111,6 @@ permissions:
   - action: cortex_ia_diagram_validate
     resource: "*"
     effect: allow
-  - action: cortex_ia_diagram_render
-    resource: "*"
-    effect: allow
   - action: shell
     resource: "*"
     effect: deny

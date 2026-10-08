@@ -94,7 +94,7 @@ flowchart TD
    - The orchestrator asks the user if unset during Tier 3 SDD preflight. In Tier 1 and Tier 2 (`direct-change`, `ops-task`, `hotfix`), do not ask; default to `flexible` or `unbounded` without DAG overhead.
 5. **Design Grilling (`grill-me`)**:
    - When encountering unstated architectural choices or trade-offs, execute structured interview rounds:
-     `❓ Q1 - <Title>: <Options>` + `➡️ Recomendación: <Answer>`.
+     `❓ Q1 - <Title>: <Options>` + `➡️ Recommendation: <Answer>`.
    - Autonomous fact-finding is strictly delegated to the `investigate` subagent: the orchestrator holds no inspection tools and never reads code directly, nor does it ask the user for data that `investigate` can discover in the repository.
 6. **Project Discovery Profile**:
    - The native `discovery` role owns `./.cortex-ia/discovery.md`. Dispatch it for agentic-environment indexing, explicit refresh, environment uncertainty, or a known stale profile.
@@ -337,7 +337,6 @@ stateDiagram-v2
     "golangci-lint run ./internal/auth/..."
   ],
   "workspace_strategy": "current_workspace",
-  "worktree": null,
   "workload_policy": "strict | flexible | unbounded",
   "artifact_refs": ["specs/auth/REQ-AUTH-001.md"]
 }
@@ -495,7 +494,6 @@ cortex search "distributed consensus" --mode=multi_hop --limit=15
 # 5. Diagnostics & Agent Setup:
 cortex doctor
 cortex setup opencode
-cortex setup claude-code
 ```
 
 ### I. OpenCode v2 (`opencode2`) Knowledge & Search Index

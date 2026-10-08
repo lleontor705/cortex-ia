@@ -91,3 +91,4 @@ nav:
       - MCP qualification: reference/mcp-qualification.md
       - Qualification inputs: reference/qualification-inputs.md
       - SDK qualification: reference/sdk-qualification.md
+  - Analysis: analysis/harness-improvement-paper.md

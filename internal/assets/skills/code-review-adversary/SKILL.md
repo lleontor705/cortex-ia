@@ -102,7 +102,7 @@ The read-only bar is absolute: never write tests, never mutate files via `sed`/b
   "evidence_refs": [],
   "limitations": [],
   "risks": [],
-  "next_route": "fix | verify | archive | stop"
+  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
 }
 ```
 

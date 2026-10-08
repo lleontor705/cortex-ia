@@ -153,9 +153,6 @@ permissions:
   - action: cortex_ia_diagram_validate
     resource: "*"
     effect: allow
-  - action: cortex_ia_diagram_render
-    resource: "*"
-    effect: allow
   # Ordering invariant: the broad shell allow precedes every destructive deny.
   # OpenCode v2 applies last-matching-rule-wins, so trailing denies stay authoritative.
   - action: shell
@@ -445,6 +442,7 @@ If Phases 1, 2, 3, and 4 ALL PASS without blockers:
    - **Lens Evaluation**: Functional/Structural, Resilience/Security, Architecture/Discovery.
    - **Checks Run**: Raw commands executed, exit codes, and hashes.
    - **Open Questions**: unresolved questions the orchestrator must resolve (omit the line when none remain); never silently default an unresolved question.
+   - **Related Observations**: `related: <obs-ids> | none` citing the gotcha/decision observations created during this review (MANDATORY line; use `none` when no observations were created).
    Do NOT emit raw JSON code blocks in chat.
 4. **TERMINATE IMMEDIATELY**: Do not call any further tools after issuing approval and the final report.
 </workflow_protocol>

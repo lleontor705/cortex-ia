@@ -34,6 +34,6 @@ Use only with an explicit scratch scope and permission to create and execute dis
   "evidence_refs": [],
   "cleanup": {"scratch_removed": true, "production_unchanged": true},
   "risks": [],
-  "next_route": "stop | direct-change | fast-tdd | sdd-lite | sdd-full"
+  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
 }
 ```

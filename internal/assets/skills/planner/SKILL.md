@@ -178,7 +178,7 @@ To maintain clarity and protect context windows:
   "evidence_refs": [],
   "open_decisions": [],
   "risks": [],
-  "next_route": "apply | human-approval | investigate | stop"
+  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
 }
 ```
 

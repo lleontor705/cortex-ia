@@ -5,7 +5,7 @@ This is the single routing and phase matrix for Cortex-IA. Installed path: `~/.c
 | Workflow | Controller route | Required result and exit gate |
 |---|---|---|
 | direct-answer / direct-doc | Orchestrator answers from supplied evidence; investigate reads files | Evidence-backed response; filesystem mutations route to a bounded task |
-| discovery | Native discovery | Mandatory initial task of every session; performs the `/.cortex-ia/` `.gitignore` hygiene append before profiling. Quick agentic environment index: skills dictionary (local + global installed), run/test info, minimal governance, quick index |
+| discovery | Native discovery | On-demand: dispatch only when `./.cortex-ia/discovery.md` is absent (initial onboarding), explicitly requested, or stale before a Tier 3 SDD initiative. Performs the `/.cortex-ia/` `.gitignore` hygiene append before profiling. Quick agentic environment index: skills dictionary (local + global installed), run/test info, minimal governance, quick index |
 | direct-change | Orchestrator creates one task in default; implement; reviewer only if risk warrants | Live claim/leases, proportional checks, independent reviewer or orchestrator auto-approval on low-risk changes, data/artifact generation (Excel, CSV, reports), docs, and declarative config |
 | ops-task | Orchestrator creates one task in default; implement; reviewer only if risk warrants | Script execution exit 0, target DB/infrastructure verification, independent reviewer or orchestrator auto-approval on low-risk/idempotent scripts |
 | fast-tdd | Implement with fast-tdd, then reviewer | Causal RED, same oracle GREEN, mutation evidence (`KILLED` or `STATIC-ANALYSIS` per `cortex-work-protocol.md` §4/§8), independent approval |
@@ -19,7 +19,7 @@ This is the single routing and phase matrix for Cortex-IA. Installed path: `~/.c
 
 ## Planning phases and storage planes
 
-| Workflow / phase | Role | OpenSpec, SpecKit or hybrid artifact | Cortex-only artifact | Exit |
+| Workflow / phase | Role | OpenSpec or hybrid artifact | Cortex-only artifact | Exit |
 |---|---|---|---|---|
 | decision-map / chart or resolve | planner | decision-map.md | Pinned decision snapshot | Decisions and unresolved questions; no tasks |
 | sdd-lite / integrated | planner | plan.md | Pinned integrated contract | Intent, requirements, design, task traceability and checks |
@@ -42,7 +42,7 @@ Use `REQ-{DOMAIN}-{NNN}` requirement headings. ADDED/MODIFIED requirements have 
 
 ## Binding, review and closure
 
-Each new `cortex_ia_work_create` call declares `workflow` (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`, `sdd-lite` or `sdd-full`). SDD workflows require a matching `sdd_contract`: `version: 1`, `workflow`, `change_id`, `spec_plane` (`openspec`, `speckit`, `hybrid` or `cortex`), `pins` and `requirement_ids`. Each pin contains `transport`, `project`, `locator`, and lowercase SHA-256. Native workspace-file pins are checked against bytes (including `.specify/specs/<change_id>/*.md` under `speckit`, with automatic CQRS state projection to `.specify/`). Local Cortex CLI pins are re-read through a bounded export and compared during runtime checks. Remote MCP pins require independent retrieval and comparison by the controller through the selected transport; runtime does not contact arbitrary remote providers or certify semantic truth. Legacy CLI creation without a declared workflow remains direct-compatible; it does not certify an SDD execution.
+Each new `cortex_ia_work_create` call declares `workflow` (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`, `sdd-lite` or `sdd-full`). SDD workflows require a matching `sdd_contract`: `version: 1`, `workflow`, `change_id`, `spec_plane` (`openspec`, `hybrid` or `cortex`), `pins` and `requirement_ids`. Each pin contains `transport`, `project`, `locator`, and lowercase SHA-256. Native workspace-file pins are checked against bytes. Local Cortex CLI pins are re-read through a bounded export and compared during runtime checks. Remote MCP pins require independent retrieval and comparison by the controller through the selected transport; runtime does not contact arbitrary remote providers or certify semantic truth. Legacy CLI creation without a declared workflow remains direct-compatible; it does not certify an SDD execution.
 
 Runtime-generated fingerprints bind the task definition and sorted writable-file contents/deletion markers to review and historical approval. A changed fingerprint rejects stale acceptance. Direct and historical tasks remain compatible without fabricated SDD bindings. Shell access is not an OS sandbox; native mutation-tool admission and per-file lease reservations are specific safeguards with explicit limits.
 

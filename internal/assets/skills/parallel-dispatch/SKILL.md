@@ -15,13 +15,11 @@ Execute independent tasks concurrently instead of forcing sequential execution. 
 
 **Core Principle:** Parallelism is valid ONLY when tasks are `ready` and their writable `allowed_files` are strictly disjoint (zero intersection).
 
-**Announce at start:** "I am using the parallel-dispatch skill to execute independent tasks concurrently."
-
 ---
 
 ## Step 1: Detect Independent Ready Tasks
 
-1. Run `cortex_ia_work_list` with `--status ready`.
+1. Call `tools.cortex_ia_work_list({ board_id })` and filter the returned items for `status == "ready"` in code.
 2. Inspect the `allowed_files` array for each candidate task.
 3. Compute the intersection of `allowed_files` across all candidates:
    - If sets are **disjoint**: The tasks can be executed in parallel.
@@ -42,22 +40,26 @@ Execute independent tasks concurrently instead of forcing sequential execution. 
 
 ## Step 3: Concurrent Dispatch
 
-For each task in the parallel wave, dispatch an `implement` controller in the same orchestrator turn using native background subagents and formal `<minion-contract>`:
+For each task in the parallel wave, dispatch an `implement` controller in the same orchestrator turn using native background subagents and the canonical `<minion-dispatch>` envelope (v2.0 schema; `cortex-work-protocol.md` §6):
 
 ```json
-<minion-contract>
+<minion-dispatch>
 {
+  "contract_version": "2.0",
+  "role": "implement",
+  "workflow": "direct-change",
+  "phase": "apply",
+  "spec_plane": "hybrid",
+  "workload_policy": "flexible",
   "task_id": "task-auth-jwt",
   "objective": "Implement JWT validation middleware with claims checking",
   "allowed_files": ["internal/auth/jwt.go", "internal/auth/jwt_test.go"],
+  "non_goals": ["Do not modify token issuance or the login handler"],
   "acceptance_checks": ["go test -v ./internal/auth/... -run TestJWT"],
-  "workspace_strategy": "current_workspace",
-  "worktree": null,
   "artifact_refs": ["specs/auth/spec.md"],
-  "max_steps": 30,
-  "budget_tier": "medium"
+  "max_steps": 30
 }
-</minion-contract>
+</minion-dispatch>
 ```
 
 When using OpenCode's `task` tool:

@@ -187,9 +187,6 @@ permissions:
     resource: "cortex-ia uninstall*"
     effect: deny
   - action: shell
-    resource: "npm install*"
-    effect: deny
-  - action: shell
     resource: "npm --prefix web install*"
     effect: deny
   - action: shell
@@ -262,7 +259,7 @@ You are the dedicated native **Implementation Controller** in OpenCode assigned 
 - **Inspect discovery**: Read `./.cortex-ia/discovery.md` when present; preserve its evidence-backed architecture, engine, and verification guardrails.
 - **Inspect design**: For tasks changing module boundaries or interfaces, read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` and implement only the selected design.
 - **Verify task readiness**: Call `cortex_ia_work_status({ task_id })` and confirm the expected `board_id`, status `ready`, and satisfied dependencies.
-- **Acquire claim & file leases**: Call `cortex_ia_work_claim({ task_id, paths: allowed_files, ttl: "15m" })` to atomically claim the task and reserve all target files in a single step. Do NOT invoke `cortex_ia_file_reserve` separately unless reserving an additional unexpected file mid-run.
+- **Acquire claim & file leases**: Call `cortex_ia_work_claim({ task_id, paths: allowed_files, ttl: "30m" })` to atomically claim the task and reserve all target files in a single step. Do NOT invoke `cortex_ia_file_reserve` separately unless reserving an additional unexpected file mid-run.
 - **Conflict handling**: If any file conflicts, do not write it; transition the claimed task to `blocked` to release authority and return `BLOCKED` for reconciliation. Tokens remain hidden in the bridge.
 
 ### Step 2: Workspace Alignment & File Authority
@@ -272,6 +269,7 @@ You are the dedicated native **Implementation Controller** in OpenCode assigned 
 ### Step 3: Execution, Heartbeat & Workload Budget Guard
 - **Heartbeat renewal**: Renew with `cortex_ia_work_renew` and `cortex_ia_work_lease_renew` before TTL expiry.
 - **Authority loss**: If authority expires, STOP writing immediately, preserve the diff, and transition to `blocked` for reconciliation.
+- **Blocked Reason Taxonomy**: Every transition to `blocked` MUST set `blocked_reason` to exactly one of `authority_expired` (claim or lease lost), `upstream` (unmet dependency or upstream defect), `needs_user` (unresolved decision), `env` (missing tooling or environment), or `scope_drift` (work exceeded the leased scope).
 - **Workload Budget Guard**: Monitor changed lines against `workload_policy`. Under `strict` (<= 350 lines in Go/Rust, <= 250 in TS/Python; tests <= 600 lines), if implementation exceeds the budget, STOP modifying: transition to `blocked` with reason `WORKLOAD_SOURCE_BUDGET_EXCEEDED` to trigger DAG decomposition. Under `flexible` (<= 700 lines source, <= 1200 lines tests), emit an advisory. Under `unbounded`, line volume checks are disabled.
 
 ### Step 4: Rules & Evidence Compliance
@@ -292,7 +290,7 @@ You are the dedicated native **Implementation Controller** in OpenCode assigned 
 
 ### Step 7: Transition & Review
 - **Pre-Transition Workload Preflight**: Run `git diff --numstat` to categorize churn (logic vs tests vs declarative data). If `strict` thresholds are breached, transition to `blocked` with `WORKLOAD_SOURCE_BUDGET_EXCEEDED`.
-- Call `cortex_ia_work_transition` with `task_id`, `to: "in_review"` (or `"blocked"` on failure), `verdict`, `summary`, `changed_files`, `evidence_refs`, and `open_questions` when any question remains unresolved.
+- Call `cortex_ia_work_transition` with `task_id`, `to: "in_review"` (or `"blocked"` on failure), `verdict`, `summary`, `changed_files`, `evidence_refs`, `blocked_reason` (required when `to: "blocked"`, drawn from the taxonomy above), and `open_questions` when any question remains unresolved.
 - File leases are automatically released upon transition to `in_review`.
 </workflow_protocol>
 

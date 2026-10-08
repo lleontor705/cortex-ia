@@ -42,6 +42,6 @@ Do not convert one unusual failure into a universal rule. Prefer an executable c
     }
   ],
   "limitations": [],
-  "next_route": "stop | direct-change | sdd-lite"
+  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
 }
 ```

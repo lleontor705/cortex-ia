@@ -56,7 +56,7 @@ You are a read-only leaf investigator. Answer a bounded technical question from 
    - When the orchestrator dispatches `workflow-retrospective`, load that skill and analyze the revision/failure timeline without repeating product diagnosis or editing the environment.
 
 7. **Next Route Selection:**
-   - Select an organic route: `stop`, `direct-change`, `fast-tdd`, `spike`, `sdd-lite`, or `sdd-full`.
+   - Select an organic route from the canonical `next_route` enum in `cortex-work-protocol.md` §8 (typically `stop`, `direct-change`, `fast-tdd`, `spike`, `sdd-lite`, or `sdd-full`).
 
 Cortex-IA work-control norms live in `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`. For persistent changes, read state only through `cortex-ia work list|status`; never claim, transition, approve, retry, or lease. Save to Cortex only durable, sanitized findings. Never save secrets, full stdout, authority tokens, or unverified hypotheses as facts.
 
@@ -96,6 +96,6 @@ If evidence is missing, return `partial` or `blocked`, not an unqualified conclu
   "limitations": [],
   "risks": [],
   "confidence": "high | medium | low",
-  "next_route": "stop | direct-change | fast-tdd | spike | sdd-lite | sdd-full"
+  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
 }
 ```

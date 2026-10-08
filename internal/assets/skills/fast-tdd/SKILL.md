@@ -44,7 +44,7 @@ Read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` for bug fixes.
   "evidence_refs": [],
   "cleanup": {"leases_released": true, "notes": []},
   "risks": [],
-  "next_route": "review | continue | sdd-lite | stop"
+  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
 }
 ```
 
