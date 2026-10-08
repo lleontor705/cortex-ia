@@ -50,7 +50,7 @@ var requirementPattern = regexp.MustCompile(`^REQ[-A-Za-z0-9_]{1,95}$`)
 func normalizePinTransport(transport string) string {
 	t := strings.ToLower(strings.TrimSpace(transport))
 	switch t {
-	case "workspace_file", "workspace-file", "workspace", "file", "local_file", "local-file", "openspec", "speckit", "fs", "filesystem", "workspace_path", "path":
+	case "workspace_file", "workspace-file", "workspace", "file", "local_file", "local-file", "openspec", "fs", "filesystem", "workspace_path", "path":
 		return "workspace_file"
 	case "local_cortex_cli", "local-cortex-cli", "cortex_cli", "cortex-cli", "cortex_local", "cli":
 		return "local_cortex_cli"
@@ -66,7 +66,7 @@ func encodeContract(contract *SDDContract) (string, error) {
 		return "", nil
 	}
 	if contract.Version != 1 || (contract.Workflow != "sdd-lite" && contract.Workflow != "sdd-full") ||
-		(contract.SpecPlane != "cortex" && contract.SpecPlane != "openspec" && contract.SpecPlane != "hybrid" && contract.SpecPlane != "speckit") ||
+		(contract.SpecPlane != "cortex" && contract.SpecPlane != "openspec" && contract.SpecPlane != "hybrid") ||
 		!regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`).MatchString(contract.ChangeID) ||
 		len(contract.Pins) == 0 || len(contract.Pins) > 32 || len(contract.RequirementIDs) == 0 || len(contract.RequirementIDs) > 128 {
 		return "", errors.New("invalid bounded SDD contract identity, pins, or requirement IDs")
@@ -98,7 +98,7 @@ func encodeContract(contract *SDDContract) (string, error) {
 		default:
 			return "", errors.New("unsupported contract pin transport")
 		}
-		if (contract.SpecPlane == "openspec" || contract.SpecPlane == "speckit") && pin.Transport != "workspace_file" || contract.SpecPlane == "cortex" && pin.Transport == "workspace_file" {
+		if contract.SpecPlane == "openspec" && pin.Transport != "workspace_file" || contract.SpecPlane == "cortex" && pin.Transport == "workspace_file" {
 			return "", errors.New("pin transport does not match specification plane")
 		}
 		key := pin.Transport + "\x00" + pin.Project + "\x00" + pin.Locator

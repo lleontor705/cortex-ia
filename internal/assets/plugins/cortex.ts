@@ -328,7 +328,7 @@ Call \`cortex_save\` IMMEDIATELY after any of these:
 
 Format for \`cortex_save\`:
 - **title**: Verb + object — short, searchable (e.g. "Fixed N+1 query in PgBouncer pool")
-- **type**: ${CANONICAL_SAVE_TYPES.join(" | ")} (any other value is rejected by \`cortex_save\`)
+- **type**: ${CANONICAL_SAVE_TYPES.join(" | ")} (the agent-facing durable subset; the server remains the fail-closed authority for the full allowlist)
 - **scope**: \`project\` (default) | \`personal\`
 - **topic_key** (optional): stable key for evolving topics (e.g. \`auth/jwt-rotation\`)
 - **content**: What was done, Why it was done, Affected files, and Lessons learned.
@@ -388,7 +388,7 @@ Call \`cortex_save\` IMMEDIATELY after any of these:
 
 Format for \`cortex_save\`:
 - **title**: Verb + object — short, searchable (e.g. "Fixed N+1 query in UserList")
-- **type**: ${CANONICAL_SAVE_TYPES.join(" | ")} (any other value is rejected by \`cortex_save\`)
+- **type**: ${CANONICAL_SAVE_TYPES.join(" | ")} (the agent-facing durable subset; the server remains the fail-closed authority for the full allowlist)
 - **scope**: \`project\` (default) | \`personal\`
 - **topic_key** (optional, recommended): stable key like \`architecture/auth-model\`
 - **content**: What was done, Why, Where (files affected), and Gotchas.
