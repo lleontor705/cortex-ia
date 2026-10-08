@@ -31,7 +31,8 @@ async function harness(variant = {}) {
       }
       if (args[1] === 'transition') return JSON.stringify({ task_id: 'task', status: 'in_review', leases: [] });
       return '{}';
-    } }
+    } },
+    globals: variant.globals
   });
   sandbox.Date = class extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } };
   sandbox.setTimeout = (callback, delay) => { const id = ++next; timers.set(id, { at: now + delay, callback }); return id; };
@@ -270,4 +271,97 @@ test('TestREQ_WAUTH_002 successful recovery stops maintenance and drops the stal
   assert.equal(status.bridge_authority.maintenance, undefined);
   assert.equal(h.timers.size, 0);
   await h.plugin.dispose();
+});
+
+// ─── Plugin policy sync (spec_plane, save types, error codes) ────────────────
+
+const CANONICAL_SAVE_TYPES = ['bugfix', 'decision', 'architecture', 'pattern', 'discovery', 'config', 'learning'];
+
+function loadWorkModuleExports() {
+  const sandbox = createIsolatedSandbox({
+    mockPluginSDK: { tool: Object.assign(x => x, { schema }) },
+    childProcess: { execFileSync: () => '{}', execFile: () => {} }
+  });
+  vm.runInContext(source, sandbox);
+  return sandbox.exports;
+}
+
+function loadCortexModuleExports() {
+  const cortexSource = transpileTS(fs.readFileSync('internal/assets/plugins/cortex.ts', 'utf8'));
+  const sandbox = createIsolatedSandbox({ env: { CORTEX_HTTP_TOKEN: 'harness-token' } });
+  vm.runInContext(cortexSource, sandbox);
+  return sandbox.exports;
+}
+
+test('TestREQ_PLUGIN_001 spec_plane drops speckit and unknown planes fail closed', async () => {
+  const work = loadWorkModuleExports();
+  assert.deepEqual([...work.SPEC_PLANES], ['openspec', 'cortex', 'hybrid']);
+  for (const plane of ['openspec', 'cortex', 'hybrid']) {
+    assert.equal(work.assertSpecPlane(plane), plane);
+  }
+  for (const bad of ['speckit', 'Speckit', '', 'manual', undefined]) {
+    assert.throws(() => work.assertSpecPlane(bad), /SPEC_PLANE_INVALID/, String(bad));
+  }
+  assert.equal(source.includes('speckit'), false);
+
+  const h = await harness();
+  await assert.rejects(
+    h.plugin.tool.cortex_ia_work_create.execute({
+      workflow: 'sdd-lite', board_id: 'board', task_id: 'task', title: 'T',
+      sdd_contract: { version: 1, workflow: 'sdd-lite', change_id: 'change', spec_plane: 'speckit', pins: [], requirement_ids: [] }
+    }, { ...context, agent: 'planner' }),
+    /SPEC_PLANE_INVALID/
+  );
+  assert.equal(h.calls.filter(c => c.args[0] === 'work' && c.args[1] === 'create').length, 0);
+  await h.plugin.dispose();
+});
+
+test('TestREQ_PLUGIN_002 cortex_save type list matches the convention allowlist', async () => {
+  const cortex = loadCortexModuleExports();
+  assert.deepEqual([...cortex.CANONICAL_SAVE_TYPES], CANONICAL_SAVE_TYPES);
+  for (const type of CANONICAL_SAVE_TYPES) {
+    assert.equal(cortex.isCanonicalSaveType(type), true, type);
+    assert.doesNotThrow(() => cortex.assertCanonicalSaveType(type));
+  }
+  for (const rejected of ['speckit', 'manual', 'tool_use', 'session_summary', 'passive', 'bogus', '']) {
+    assert.equal(cortex.isCanonicalSaveType(rejected), false, rejected);
+    assert.throws(() => cortex.assertCanonicalSaveType(rejected), /SAVE_TYPE_INVALID/, rejected);
+  }
+  for (const mode of ['server', 'local']) {
+    const instructions = cortex.Cortex.buildMemoryInstructions(mode);
+    assert.match(instructions, /bugfix \| decision \| architecture \| pattern \| discovery \| config \| learning/, mode);
+    assert.equal(instructions.includes('external leaves'), false, mode);
+  }
+});
+
+test('TestREQ_PLUGIN_003 unknown error codes are logged and downgraded, never propagated', async () => {
+  const work = loadWorkModuleExports();
+  assert.equal(work.resolveErrorCode('ERR_DELEGATION_FAIL').downgraded, false);
+  assert.equal(work.resolveErrorCode('ERR_DELEGATION_FAIL').code, 'ERR_DELEGATION_FAIL');
+  const warnings = [];
+  const drifted = work.resolveErrorCode('ERR_DELEGATION_FAILURE', message => warnings.push(message));
+  assert.equal(drifted.downgraded, true);
+  assert.equal(drifted.code, work.GENERIC_ERROR_CODE);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /ERR_DELEGATION_FAILURE/);
+  for (const unknown of ['__proto__', 'constructor', 'toString', '', undefined]) {
+    assert.equal(work.resolveErrorCode(unknown, () => {}).downgraded, true, String(unknown));
+  }
+
+  const reported = [];
+  const consoleStub = { log() {}, info() {}, error() {}, warn: message => reported.push(message) };
+  const h = await harness({ globals: { console: consoleStub } });
+  await h.plugin.tool.cortex_ia_report_error.execute({ code: 'ERR_DELEGATION_FAILURE', message: 'boom' }, context);
+  const reportCall = h.calls.find(c => c.args[0] === 'report' && c.args[1] === 'error');
+  assert.ok(reportCall);
+  assert.ok(reportCall.args.includes(work.GENERIC_ERROR_CODE));
+  assert.equal(reportCall.args.includes('ERR_DELEGATION_FAILURE'), false);
+  assert.ok(reported.some(message => message.includes('ERR_DELEGATION_FAILURE')));
+  await h.plugin.dispose();
+
+  const known = await harness();
+  await known.plugin.tool.cortex_ia_report_error.execute({ code: 'ERR_TASK_BLOCKED', message: 'blocked' }, context);
+  const knownCall = known.calls.find(c => c.args[0] === 'report' && c.args[1] === 'error');
+  assert.ok(knownCall.args.includes('ERR_TASK_BLOCKED'));
+  await known.plugin.dispose();
 });

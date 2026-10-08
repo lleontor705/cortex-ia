@@ -637,6 +637,55 @@ function extractCompactReceipt(job: any, res: any, jobID: string): any {
   return compactResult;
 }
 
+// Contract planes accepted by an SDD contract. The retired Spec Kit plane is
+// gone: only OpenSpec, Cortex, and hybrid are represented, so any other value
+// fails closed instead of silently binding a contract the runtime cannot honor.
+export const SPEC_PLANES = ["openspec", "cortex", "hybrid"] as const;
+
+export function assertSpecPlane(rawPlane: unknown): string {
+  const plane = String(rawPlane ?? "").trim();
+  if (!(SPEC_PLANES as readonly string[]).includes(plane)) {
+    throw new Error(`SPEC_PLANE_INVALID: ${JSON.stringify(plane)} is not an accepted spec_plane (${SPEC_PLANES.join("|")})`);
+  }
+  return plane;
+}
+
+export type ErrorSeverity = "critical" | "error" | "warning";
+
+// Single canonical map of the operational error codes emitted by the bridge,
+// the tool-telemetry classifier, and the subagent latch. An unlisted code is
+// downgraded to GENERIC_ERROR_CODE so a typo such as ERR_DELEGATION_FAILURE for
+// ERR_DELEGATION_FAIL can never silently propagate a wrong severity (obs #364).
+export const ERROR_CODE_SEVERITY: Readonly<Record<string, ErrorSeverity>> = {
+  ERR_TASK_BLOCKED: "error",
+  ERR_DELEGATION_FAIL: "error",
+  ERR_INVARIANT_VIOLATION: "critical",
+  ERR_VERIFICATION_FAIL: "error",
+  ERR_WORKER_DIED: "critical",
+  ERR_TOOL_AUTHORITY_UNUSABLE: "error",
+  ERR_TOOL_EXECUTION_FAILED: "error",
+  ERR_TOOL_MCP_FAILED: "error",
+  ERR_TOOL_LEASE_REQUIRED: "warning",
+  ERR_TOOL_INVALID_ARGS: "warning",
+  ERR_TOOL_TIMEOUT: "warning",
+  ERR_SUBAGENT_READONLY_REPEATED_ABORT: "warning",
+  ERR_SUBAGENT_CIRCUIT_OPEN: "error",
+};
+
+export const GENERIC_ERROR_CODE = "ERR_TOOL_EXECUTION_FAILED";
+
+export function resolveErrorCode(
+  rawCode: unknown,
+  warn: (message: string) => void = message => console.warn(message)
+): { code: string; severity: ErrorSeverity; downgraded: boolean } {
+  const code = String(rawCode ?? "").trim();
+  if (Object.prototype.hasOwnProperty.call(ERROR_CODE_SEVERITY, code)) {
+    return { code, severity: ERROR_CODE_SEVERITY[code], downgraded: false };
+  }
+  warn(`[cortex-work] unknown error code ${JSON.stringify(code)}; downgrading to ${GENERIC_ERROR_CODE} (severity: ${ERROR_CODE_SEVERITY[GENERIC_ERROR_CODE]})`);
+  return { code: GENERIC_ERROR_CODE, severity: ERROR_CODE_SEVERITY[GENERIC_ERROR_CODE], downgraded: true };
+}
+
 export const CortexWorkPlugin = Plugin.define({
   id: "cortex-work",
   async setup(ctx) {
@@ -1041,7 +1090,7 @@ export const CortexWorkPlugin = Plugin.define({
         dependencies: tool.schema.array(tool.schema.string()).optional(),
         sdd_contract: tool.schema.object({
           version: tool.schema.number(), workflow: tool.schema.enum(["sdd-lite", "sdd-full"]),
-          change_id: tool.schema.string(), spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid", "speckit"]),
+          change_id: tool.schema.string(), spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid"]),
           pins: tool.schema.array(tool.schema.object({
             transport: tool.schema.string().describe("Pin transport ('workspace_file', 'local_cortex_cli', 'cortex_mcp')"),
             project: tool.schema.string().describe("Workspace root directory or project path"),
@@ -1054,11 +1103,12 @@ export const CortexWorkPlugin = Plugin.define({
       async execute(args, context) {
         const sdd = args.workflow === "sdd-lite" || args.workflow === "sdd-full";
         if (sdd ? args.sdd_contract?.workflow !== args.workflow : args.sdd_contract !== undefined) throw new Error("SDD_CONTRACT_REQUIRED: workflow and typed contract must agree; direct workflows cannot carry SDD bindings");
+        if (args.sdd_contract) assertSpecPlane(args.sdd_contract.spec_plane);
         if (args.sdd_contract?.pins) {
           for (const pin of args.sdd_contract.pins) {
             if (pin.transport) {
               const t = String(pin.transport).toLowerCase().trim();
-              if (["workspace_file", "workspace-file", "workspace", "file", "local_file", "local-file", "openspec", "speckit", "fs", "filesystem", "workspace_path", "path"].includes(t)) {
+              if (["workspace_file", "workspace-file", "workspace", "file", "local_file", "local-file", "openspec", "fs", "filesystem", "workspace_path", "path"].includes(t)) {
                 pin.transport = "workspace_file";
               } else if (["local_cortex_cli", "local-cortex-cli", "cortex_cli", "cortex-cli", "cortex_local", "cli"].includes(t)) {
                 pin.transport = "local_cortex_cli";
@@ -1483,7 +1533,8 @@ export const CortexWorkPlugin = Plugin.define({
         task_id: tool.schema.string().optional().describe("Associated work task ID")
       },
       async execute(args, context) {
-        const cmd = ["report", "error", "--code", args.code, "--message", args.message, "--session-id", context.sessionID, "--role", context.agent, "--source", context.agent, "--workspace", context.directory];
+        const { code } = resolveErrorCode(args.code);
+        const cmd = ["report", "error", "--code", code, "--message", args.message, "--session-id", context.sessionID, "--role", context.agent, "--source", context.agent, "--workspace", context.directory];
         if (args.details) cmd.push("--details", args.details);
         if (args.task_id) cmd.push("--task", args.task_id);
         try {

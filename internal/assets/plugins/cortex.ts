@@ -285,6 +285,23 @@ const CORTEX_TOOLS = new Set([
 
 // ─── Mode-Aware Memory Instructions ──────────────────────────────────────────
 
+// Canonical observation types an agent may pass to `cortex_save`, mirrored from
+// the convention allowlist. The server enforces the full allowlist fail-closed;
+// this agent-facing subset exists so instruction text and runtime checks cannot
+// drift into accepting a non-canonical type.
+export const CANONICAL_SAVE_TYPES = ["bugfix", "decision", "architecture", "pattern", "discovery", "config", "learning"] as const;
+
+export function isCanonicalSaveType(value: unknown): boolean {
+  return (CANONICAL_SAVE_TYPES as readonly string[]).includes(String(value ?? ""));
+}
+
+export function assertCanonicalSaveType(value: unknown): string {
+  if (!isCanonicalSaveType(value)) {
+    throw new Error(`SAVE_TYPE_INVALID: ${JSON.stringify(value)} is not a canonical cortex_save type (${CANONICAL_SAVE_TYPES.join("|")})`);
+  }
+  return String(value);
+}
+
 function buildMemoryInstructions(mode: CortexMode = "server"): string {
   if (mode === "server") {
     return `## Cortex Persistent Memory — Protocol (Mode: SERVER / PostgreSQL Multi-Tenant)
@@ -311,7 +328,7 @@ Call \`cortex_save\` IMMEDIATELY after any of these:
 
 Format for \`cortex_save\`:
 - **title**: Verb + object — short, searchable (e.g. "Fixed N+1 query in PgBouncer pool")
-- **type**: bugfix | decision | pattern | discovery | config | learning
+- **type**: ${CANONICAL_SAVE_TYPES.join(" | ")} (any other value is rejected by \`cortex_save\`)
 - **scope**: \`project\` (default) | \`personal\`
 - **topic_key** (optional): stable key for evolving topics (e.g. \`auth/jwt-rotation\`)
 - **content**: What was done, Why it was done, Affected files, and Lessons learned.
@@ -331,7 +348,7 @@ Format for \`cortex_save\`:
 ### 5. SESSION CLOSE PROTOCOL (Orchestrator only)
 If and only if the current role is the root orchestrator, before saying "done" or finishing a session:
 1. Call \`cortex_session_summary\` with: Goal, Discoveries, Accomplished, Next Steps, Relevant Files.
-Subagents and external leaves must never call session lifecycle or session summary tools.
+Dispatched OpenCode subagents must never call session lifecycle or session summary tools.
 
 ### 6. AFTER COMPACTION
 1. The root orchestrator may call \`cortex_session_summary\` with compacted context.
@@ -371,7 +388,7 @@ Call \`cortex_save\` IMMEDIATELY after any of these:
 
 Format for \`cortex_save\`:
 - **title**: Verb + object — short, searchable (e.g. "Fixed N+1 query in UserList")
-- **type**: bugfix | decision | pattern | discovery | config | learning
+- **type**: ${CANONICAL_SAVE_TYPES.join(" | ")} (any other value is rejected by \`cortex_save\`)
 - **scope**: \`project\` (default) | \`personal\`
 - **topic_key** (optional, recommended): stable key like \`architecture/auth-model\`
 - **content**: What was done, Why, Where (files affected), and Gotchas.
@@ -395,7 +412,7 @@ Format for \`cortex_save\`:
 ### 7. SESSION CLOSE PROTOCOL (Orchestrator only)
 If and only if the current role is the root orchestrator, before saying "done" or finishing a session:
 1. Call \`cortex_session_summary\` with: Goal, Discoveries, Accomplished, Next Steps, Relevant Files.
-Subagents and external leaves must never call session lifecycle or summary tools.
+Dispatched OpenCode subagents must never call session lifecycle or summary tools.
 
 ### 8. AFTER COMPACTION
 1. The root orchestrator may call \`cortex_session_summary\` with compacted context.
