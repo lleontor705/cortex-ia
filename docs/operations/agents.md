@@ -21,7 +21,7 @@
 | **`orchestrator`** | Primary / Interactive Coordinator | Request intake, startup alignment, Cortex session management, DAG dispatch, and final receipt synthesis. | `discovery`, `investigate`, `planner`, `implement`, `reviewer` |
 | **`discovery`** | Subagent / Discovery Controller | Project onboarding, skills inventory, environment readiness, engine requirements, and maintains `.cortex-ia/discovery.md`. | None (strictly native) |
 | **`investigate`** | Subagent / Read-Only Controller | Diagnostic audits, root-cause identification, exploratory spikes, and AST blast radius inspection. | None (native-only) |
-| **`planner`** | Subagent / Spec Controller | OpenSpec delta specifications (RFC 2119), Given/When/Then scenarios, and task DAG decomposition (≤350 LOC). | None (native-only) |
+| **`planner`** | Subagent / Spec Controller | OpenSpec delta specifications (RFC 2119), Given/When/Then scenarios, and task DAG decomposition sized by the active `workload_policy` tier (`strict` / `flexible` / `unbounded`) and the resume test. | None (native-only) |
 | **`implement`** | Subagent / Mutating Controller | Single task claim, exclusive file leases, TDD oracle execution, and review transition. | None (native-only) |
 | **`reviewer`** | Subagent / Adversarial Gate | Independent test verification, mutation checks, invariant auditing, and `PASS` gate approval. | None (native-only) |
 
@@ -67,9 +67,14 @@ Instead of printing JSON in chat, workers and reviewers invoke typed tools whose
     changed_files: [
       "internal/auth/middleware.go",
       "internal/auth/middleware_test.go"
+    ],
+    verdicts: [
+      { req_id: "REQ-AUTH-001", verdict: "PASS", evidence_ref: "cortex_topic_or_id" }
     ]
   })
   ```
+
+  When an envelope references S#/REQ IDs verbatim, the receipt returns exactly one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`, reusing the verbatim ID string; executable results override worker verdicts on conflict.
 
 - **Reviewers** call `cortex_ia_work_approve`:
   ```typescript
@@ -99,3 +104,26 @@ Saving observations or evidence to Cortex (`cortex_save`) or updating SQLite sta
 - **Checks**:
   - `go test -v ./internal/auth/...` (exit 0)
 ```
+
+---
+
+## 4. Adaptive Review & Authority Deltas (pointer digests)
+
+- **Adaptive Review Case Matrix**: non-code kinds — generated data/artifacts, pure documentation/text, declarative config, and operational/DB scripts — are orchestrator auto-approved with an evidence pointer; an independent `reviewer` is mandatory only for high-risk code (concurrency/locks, production schema or irreversible DDL, public APIs/auth/crypto/security boundaries, more than 3 files or more than 150 LOC of core logic, or failed/ambiguous/missing tests). Auto-approval runs exclusively through `cortex_ia_work_approve`.
+  - Digest — normative source: `cortex-work-protocol.md` §2.7a Adaptive Review Case Matrix.
+- **Escalate-only tier**: the review tier assigned by the matrix is a floor, never a ceiling; an implementer or reviewer MAY raise it with a stated reason, and lowering below the assigned tier is refused fail-closed.
+- **Per-spec verdict receipt shape**: when a dispatch carries S#/REQ IDs verbatim, the receipt returns exactly one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`; executable results override worker verdicts on conflict.
+  - Digest — normative source: `cortex-work-protocol.md` §8.1 Per-spec verdict protocol.
+- **Verbatim L1 provenance**: the original request is captured verbatim with secret redaction, and RED/GREEN appends carry commit hashes.
+  - Pointer: `cortex-convention.md` § Verbatim provenance.
+
+---
+
+## 5. Workflow & Repository Evidence Pointers
+
+- **SDD repositioning**: Tier 1/2 specs are a short paragraph plus executable tests; SDD-lite/full is reserved for Tier 3 / multi-session / regulated domains; living specs evolve by delta (propose → apply → archive), never by an in-place base-spec rewrite.
+  - Pointer: `workflow-map.md` § Spec-plane repositioning.
+- **Resume test**: a task must be resumable from the request text plus `git diff` alone; when it conflicts with a tier or LOC budget, the stricter outcome governs.
+  - Pointer: `workflow-map.md` § Task sizing: the resume test.
+- **Ratchets (advisory)**: dead-code and refusal-string drift are pinned to baselines under `.cortex-ia/ratchet/` and compared by `scripts/ratchet-deadcode.sh` and `scripts/ratchet-refusals.sh`; both run advisory-only in `.github/workflows/ratchets.yml` (`continue-on-error: true`) and never block a merge.
+- **Dated audits & evidence**: in-repo reports live under `docs/audits/<YYYY-MM-DD>-<topic>.md` and `docs/evidence/`, carrying a two-way reference rule against their Cortex observations; see `docs/audits/README.md` and `docs/evidence/README.md`.

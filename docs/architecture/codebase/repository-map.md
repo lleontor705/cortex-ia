@@ -65,6 +65,10 @@ Directory-by-directory map of the active `cortex-ia` codebase.
 - **Role**: Embedded runtime source assets (`go:embed`).
 - **Key Files**: `assets.go`, `opencode.jsonc`, `AGENTS.md`, `agents/`, `commands/`, `skills/`, `plugins/`, `themes/`, `tui/`.
 
+### `internal/assets/skills`
+- **Role**: Embedded agent skill procedures shipped to OpenCode and loaded on their matching task trigger.
+- **Key Files**: `opencode2-knowledge/SKILL.md` (OpenCode v2 research index, `autoinvoke: false`), `_shared/skill-style-guide.md`, `_shared/` (cross-role contracts).
+
 ---
 
 ## 3. Supported Platforms
@@ -78,10 +82,16 @@ Directory-by-directory map of the active `cortex-ia` codebase.
 | Path | Purpose |
 | :--- | :--- |
 | `docs/` | Comprehensive documentation (`architecture.md`, `agents.md`, `components.md`, `mcp.md`, `codebase/`). |
+| `docs/audits/` | Dated audit reports convention (`<YYYY-MM-DD>-<topic>.md`), two-way referenced with their Cortex observations. |
+| `docs/evidence/` | Evidence store convention: durable proof artifacts referenced by audits and contracts. |
+| `docs/proposals/` | Proposals backlog; currently the gentle-ai authority adoption backlog. |
 | `scripts/install.sh` | Curl-pipe installer for Unix systems. |
+| `scripts/ratchet-deadcode.sh` | Advisory dead-code ratchet: toolchain symbol diff against a committed baseline. |
+| `scripts/ratchet-refusals.sh` | Advisory ratchet pinning CLI refusal/error strings to a committed baseline. |
+| `.cortex-ia/ratchet/` | Committed ratchet baselines (`deadcode-baseline.txt`, `refusals-baseline.txt`). |
 | `.goreleaser.yaml` | Cross-platform release build automation. |
 | `Makefile` | Build, test, lint, coverage, and install targets. |
-| `.github/workflows/` | CI test gates and automated release pipelines. |
+| `.github/workflows/` | CI test gates, advisory ratchets, and automated release pipelines. |
 
 ---
 

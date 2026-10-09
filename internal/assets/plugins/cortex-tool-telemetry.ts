@@ -76,11 +76,73 @@ function shouldEmitReport(key: string, now: number): boolean {
   return true;
 }
 
+// ─── Typed secret redaction ──────────────────────────────────────────────────
+
+export type RedactionKind =
+  | "private"
+  | "token"
+  | "apikey"
+  | "password"
+  | "secret"
+  | "connection-string"
+  | "credential-url";
+
+// Ordered narrowest-first so high-signal shapes (private blocks, credential
+// URIs, bearer/basic headers) are replaced before the generic key=value rules.
+// Every rule keeps the surrounding text and swaps only the secret span for a
+// typed [REDACTED:<kind>] placeholder, so position context survives for anyone
+// reading the sanitized value.
+const REDACTION_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/<private>[\s\S]*?<\/private>/gi, "[REDACTED:private]"],
+  [/((?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|amqp|amqps|mssql|sqlserver|clickhouse|cassandra|kafka|smtp|smtps|ftp|ftps|ldap|ldaps):\/\/)[^@\s/]+@/gi, "$1[REDACTED:connection-string]@"],
+  [/(https?:\/\/)[^@\s/]+@/gi, "$1[REDACTED:credential-url]@"],
+  [/(\bBearer\s+)[^\s,;"']+/gi, "$1[REDACTED:token]"],
+  [/(\bBasic\s+)[A-Za-z0-9+/=]{8,}/gi, "$1[REDACTED:token]"],
+  [/(["']?\b(?:api[_\-\s]?key|apikey|access[_\-\s]?key|secret[_\-\s]?key|subscription[_\-\s]?key)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&)]+)/gi, "$1[REDACTED:apikey]"],
+  [/(["']?\b(?:password|passwd|pwd|passphrase)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&)]+)/gi, "$1[REDACTED:password]"],
+  [/(["']?\b(?:client[_\-\s]?secret|secret)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&)]+)/gi, "$1[REDACTED:secret]"],
+  [/(["']?\b(?:auth[_\-\s]?token|access[_\-\s]?token|refresh[_\-\s]?token|id[_\-\s]?token|session[_\-\s]?token|bearer[_\-\s]?token|token)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&)]+)/gi, "$1[REDACTED:token]"],
+];
+
+// Unmistakable secret material the rules above deliberately do not rewrite
+// (unlabeled provider tokens, PEM keys). The prompt path fails closed on a hit:
+// a partially relabeled token can still leak, so the content is dropped rather
+// than persisted.
+const UNREDACTABLE_SECRET_PATTERNS: readonly RegExp[] = [
+  /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/,
+  /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
+  /\bAKIA[0-9A-Z]{16}\b/,
+  /\bASIA[0-9A-Z]{16}\b/,
+  /\bAIza[0-9A-Za-z_\-]{35}\b/,
+  /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/,
+  /\bxox[baprs]-[A-Za-z0-9-]{10,}/,
+  /\bsk-ant-[A-Za-z0-9_-]{16,}/,
+  /\bsk-proj-[A-Za-z0-9_-]{16,}/,
+  /\bsk-[A-Za-z0-9]{32,}/,
+  /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}/,
+  /\bnpm_[A-Za-z0-9]{36}\b/,
+  /\bglpat-[A-Za-z0-9_-]{20,}\b/,
+];
+
+export function redactSecrets(text: string): string {
+  if (!text) return "";
+  let out = text;
+  for (const [pattern, replacement] of REDACTION_RULES) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
+export function hasUnredactableSecret(text: string): boolean {
+  if (!text) return false;
+  return UNREDACTABLE_SECRET_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 function sanitizeValue(val: unknown, maxLen = 2048): string {
   if (val === undefined || val === null) return "";
   let str = typeof val === "string" ? val : JSON.stringify(val);
-  str = str.replace(/(Bearer\s+)[^\s,;"']+/gi, "$1[REDACTED]");
-  str = str.replace(/(["']?(?:token|password|secret|api_key|apikey)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi, "$1[REDACTED]");
+  str = redactSecrets(str);
   if (str.length > maxLen) {
     str = str.slice(0, maxLen) + "... (truncated)";
   }
@@ -270,6 +332,54 @@ function extractTaskID(args: Record<string, any>): string | undefined {
   return undefined;
 }
 
+function dispatchReport(executable: string, directory: string, cliArgs: string[]): void {
+  try {
+    execFile(
+      executable,
+      cliArgs,
+      {
+        cwd: directory,
+        timeout: TOOL_REPORT_TIMEOUT_MS,
+        windowsHide: true,
+        stdio: ["ignore", "ignore", "ignore"],
+      },
+      () => {}
+    );
+  } catch {}
+}
+
+// Prompt capture is dropped when redaction cannot remove every secret shape.
+// The note reuses the same bounded report-error CLI and debounce window as
+// tool-failure telemetry, so repeated drops collapse into a single report.
+export function reportPromptRedactionDrop(directory: string, sessionID: string, detail: string): void {
+  const executable = resolveCortexExecutable(directory);
+  if (!executable) return;
+
+  const now = Date.now();
+  const signature = createHash("sha256")
+    .update(`prompt-redaction:${sessionID}:${detail}`)
+    .digest("hex");
+  if (!shouldEmitReport(signature, now)) {
+    return;
+  }
+
+  const cliArgs = [
+    "report", "error",
+    "--code", "ERR_PROMPT_UNREDACTABLE",
+    "--message", `Prompt capture dropped: ${detail}`,
+    "--details", JSON.stringify({
+      session_id: sessionID,
+      reason: detail,
+      timestamp: new Date(now).toISOString(),
+    }),
+    "--source", "cortex-prompt-capture",
+    "--workspace", directory,
+  ];
+  if (sessionID) cliArgs.push("--session-id", sessionID);
+
+  dispatchReport(executable, directory, cliArgs);
+}
+
 export function emitToolErrorReport(
   directory: string,
   toolName: string,
@@ -316,19 +426,7 @@ export function emitToolErrorReport(
   if (role) cliArgs.push("--role", role);
   if (taskID) cliArgs.push("--task", taskID);
 
-  try {
-    execFile(
-      executable,
-      cliArgs,
-      {
-        cwd: directory,
-        timeout: TOOL_REPORT_TIMEOUT_MS,
-        windowsHide: true,
-        stdio: ["ignore", "ignore", "ignore"],
-      },
-      () => {}
-    );
-  } catch {}
+  dispatchReport(executable, directory, cliArgs);
 }
 
 export const CortexToolTelemetryPlugin = async (ctx: any) => {

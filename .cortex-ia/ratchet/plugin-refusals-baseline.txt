@@ -1,0 +1,117 @@
+# ratchet-plugin-refusals baseline — normalized plugin refusal/error strings.
+# Sources: internal/assets/plugins/*.ts.
+# Regenerate: scripts/ratchet-plugin-refusals.sh --regen --confirm
+# Format: <repo-relative plugin file>\t<normalized message>
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_CHECK_FAILED: a single verifiable target path is required
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_CHECK_FAILED: an output path is required
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_CHECK_FAILED: bounded patchText is required
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_CHECK_FAILED: host session identity is required
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_CHECK_FAILED: invalid target path
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_CHECK_FAILED: patch must expose 1-128 target paths
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_CHECK_FAILED: symlink targets are not verifiable
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_CHECK_FAILED: target is outside the workspace
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_CHECK_FAILED: unrecognized patch framing
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_CHECK_FAILED: unrecognized patch operation
+internal/assets/plugins/cortex-lease-guard.ts	LEASE_REQUIRED${suffix} (target: '${targetsStr}')${recoveryGuidance}
+internal/assets/plugins/cortex-lease-guard.ts	SECURITY_ERROR: cortex-ia executable found inside workspace directory is untrusted
+internal/assets/plugins/cortex-lease-guard.ts	claim owner mismatch for targets: expected 'opencode-session:${sessionID}', got '${result.owner}'
+internal/assets/plugins/cortex-lease-guard.ts	cortex-ia executable not found
+internal/assets/plugins/cortex-lease-guard.ts	executable lookup for '${cmd}' timed out after ${EXECUTABLE_LOOKUP_TIMEOUT_MS}ms
+internal/assets/plugins/cortex-lease-guard.ts	lease for targets has expired
+internal/assets/plugins/cortex-lease-guard.ts	missing task identity in lease verification response
+internal/assets/plugins/cortex-permission-fence.ts	CORTEX_PERMISSION_FENCE: Path '${targetPath}' is protected by Cortex-IA governance policy.
+internal/assets/plugins/cortex-permission-fence.ts	CORTEX_PERMISSION_FENCE: Role '${role}' is restricted to read-only operations. File mutations are forbidden.
+internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: explicit locator not found or unreadable: ${locator}
+internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: invalid locator path
+internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: same-precedence collision for skill '${name}': candidates [${combined.get(name)!.path}, ${skill.path}]
+internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: same-precedence collision for skill '${name}': candidates [${map.get(name)!.path}, ${canonical}]
+internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: skill '${name}' not found in any inventory
+internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: skill name is required
+internal/assets/plugins/cortex-snapshot.ts	Invalid snapshot content or byte length
+internal/assets/plugins/cortex-snapshot.ts	Invalid structured Cortex snapshot
+internal/assets/plugins/cortex-snapshot.ts	Snapshot digest mismatch
+internal/assets/plugins/cortex-snapshot.ts	Snapshot identity mismatch
+internal/assets/plugins/cortex-snapshot.ts	expected_sha256 must be a lowercase SHA-256 digest
+internal/assets/plugins/cortex-snapshot.ts	observation_id must be a positive safe integer
+internal/assets/plugins/cortex-snapshot.ts	project must contain 1-512 UTF-8 bytes
+internal/assets/plugins/cortex-snapshot.ts	snapshot read timed out
+internal/assets/plugins/cortex-subagent-transport.ts	AGENT_EMERGENCY_LIMIT: reached ${ceiling} tool attempts. Return a partial receipt and reconcile prior work before an explicitly authorized continuation; task status is unchanged. Up to five cleanup tools remain available.
+internal/assets/plugins/cortex-subagent-transport.ts	No session get API available
+internal/assets/plugins/cortex-subagent-transport.ts	No session messages API available
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_AMBIGUOUS: cannot verify complete resume identity and budget; explicitly dispatch a fresh bounded task without task_id/session_id after reconciling prior work (reason: ${reason})
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_AMBIGUOUS: missing or conflicting child identity (reason: ${reason})
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_AMBIGUOUS: task requires a unique parent and callID pair
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_CONFIG: ${name} must be an integer from ${minimum} to ${maximum}
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: ambiguous budget object in ${source}; multiple forms even equal are rejected
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: ambiguous dispatch envelope
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: ambiguous step budgets; multiple forms even equal are rejected
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: dispatch agent does not match host task target
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: dispatch role does not match host task target
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: duplicate decoded key in dispatch envelope: ${lastString}
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: implementation requires a non-empty file scope; external-effect authority is unavailable, route read-only operations to investigate or reviewer
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid common dispatch contract: ${contractErrors.join("; ")}
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid planning phase for ${envelope.workflow} (${envelope.phase}; allowed: [${phases[envelope.workflow].join(", ")}])
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid planning workflow (${envelope.workflow}; allowed: decision-map, sdd-lite, sdd-full)
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid step budget
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid step budget integer in ${source}
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: malformed budget object in ${source}
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: malformed dispatch envelope
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: missing budget count in ${source}
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: repository write tools are forbidden for operational tasks; operations execute against target systems only
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: specification plane cannot be null for planner
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: task dispatch requires a non-empty prompt or envelope
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: workload_policy must be strict, flexible or unbounded
+internal/assets/plugins/cortex-subagent-transport.ts	identity lookup timeout
+internal/assets/plugins/cortex-task-latch.ts	CORTEX_CIRCUIT_OPEN:
+internal/assets/plugins/cortex-task-latch.ts	CORTEX_CIRCUIT_OPEN: Repeated terminal failure (${recorded.attempts} attempts: ${reason}); circuit breaker tripped. Supported continuation requires orchestrator reconciliation. ${guidance(recorded)}
+internal/assets/plugins/cortex-task-latch.ts	CORTEX_DISPATCH_IDENTITY_INVALID: conflicting envelope role vs argument
+internal/assets/plugins/cortex-task-latch.ts	CORTEX_DISPATCH_IDENTITY_INVALID: oversized work identity
+internal/assets/plugins/cortex-task-latch.ts	CORTEX_LATCH_CAPACITY: explicit reconciliation required; no failures were released
+internal/assets/plugins/cortex-task-latch.ts	CORTEX_LATCH_CAPACITY: reconciliation tracking capacity exhausted; no failures were released
+internal/assets/plugins/cortex-task-latch.ts	CORTEX_RECOVERY_UNAUTHORIZED: Leaf subagents cannot perform recovery or retry
+internal/assets/plugins/cortex-task-latch.ts	CORTEX_UNLATCH_UNAVAILABLE: Unlatch tools do not exist
+internal/assets/plugins/cortex-task-latch.ts	Inspect the repeated abort root cause, then either reconcile the objective natively or re-dispatch it with a narrower scope; read-only roles hold no claim, lease, or transition authority.
+internal/assets/plugins/cortex-task-latch.ts	SUBAGENT_ATTEMPT_FAILED: Attempt ${recorded.attempts} for role '${role}' encountered ${reason}. Circuit breaker allows self-healing retry (${MAX_CIRCUIT_ATTEMPTS - recorded.attempts} remaining) before latching.
+internal/assets/plugins/cortex-task-latch.ts	SUBAGENT_TRANSPORT_ERROR: duplicate decoded key in dispatch envelope: ${lastString}
+internal/assets/plugins/cortex-task-latch.ts	role mismatch
+internal/assets/plugins/cortex-work.ts	${name} executable not found
+internal/assets/plugins/cortex-work.ts	'to' or 'status' is required for work transition
+internal/assets/plugins/cortex-work.ts	BRIDGE_POLICY_UNCLASSIFIED: ${name}
+internal/assets/plugins/cortex-work.ts	BRIDGE_ROLE_DENIED: ${name} requires an authorized host role and session
+internal/assets/plugins/cortex-work.ts	BRIDGE_ROLE_DENIED: artifact output requires the host implement controller
+internal/assets/plugins/cortex-work.ts	ERR_TOOL_EXECUTION_FAILED
+internal/assets/plugins/cortex-work.ts	GOTCHA_EVIDENCE_REQUIRED
+internal/assets/plugins/cortex-work.ts	GOTCHA_EVIDENCE_UNVERIFIED
+internal/assets/plugins/cortex-work.ts	LEASE_CHECK_FAILED: artifact output must be inside the workspace
+internal/assets/plugins/cortex-work.ts	LEASE_REQUIRED: artifact output path is not reserved by this controller
+internal/assets/plugins/cortex-work.ts	LEASE_REQUIRED: artifact output requires one live task claim
+internal/assets/plugins/cortex-work.ts	OpenCode conversation ancestry is unavailable
+internal/assets/plugins/cortex-work.ts	OpenSpec path escaped its managed root
+internal/assets/plugins/cortex-work.ts	OpenSpec write requires well-formed Unicode for exact UTF-8 encoding
+internal/assets/plugins/cortex-work.ts	OpenSpec writes must target a Markdown file under openspec/changes/
+internal/assets/plugins/cortex-work.ts	SDD_CONTRACT_REQUIRED: workflow and typed contract must agree; direct workflows cannot carry SDD bindings
+internal/assets/plugins/cortex-work.ts	SPEC_PLANE_INVALID: ${JSON.stringify(plane)} is not an accepted spec_plane (${SPEC_PLANES.join("|")})
+internal/assets/plugins/cortex-work.ts	WORK_RELEASE_UNCONFIRMED: reservations retained locally; query task status before retrying
+internal/assets/plugins/cortex-work.ts	WORK_TRANSITION_UNCONFIRMED: durable transition acknowledgement is missing or inconsistent; query task status before retrying
+internal/assets/plugins/cortex-work.ts	[CORTEX-IA STATE SNAPSHOT]
+internal/assets/plugins/cortex-work.ts	authority for ${args.task_id} is already held by this controller
+internal/assets/plugins/cortex-work.ts	content hash input exceeds 1 MiB (1048576 UTF-8 bytes)
+internal/assets/plugins/cortex-work.ts	content hash requires well-formed Unicode for exact UTF-8 encoding
+internal/assets/plugins/cortex-work.ts	controller_renewal_unconfirmed
+internal/assets/plugins/cortex-work.ts	cortex-ia returned no claim token
+internal/assets/plugins/cortex-work.ts	discovery report escaped the project-local .cortex-ia directory
+internal/assets/plugins/cortex-work.ts	discovery report must contain 1-131072 UTF-8 bytes
+internal/assets/plugins/cortex-work.ts	discovery report must start with the canonical heading \"# Cortex-IA Project Discovery\"
+internal/assets/plugins/cortex-work.ts	either 'path' or 'paths' must be provided to release files
+internal/assets/plugins/cortex-work.ts	either 'path' or 'paths' must be provided to reserve files
+internal/assets/plugins/cortex-work.ts	host_status_timeout
+internal/assets/plugins/cortex-work.ts	implementation session cannot approve its own task
+internal/assets/plugins/cortex-work.ts	incomplete reservation receipt; reconcile durable authority before retry
+internal/assets/plugins/cortex-work.ts	invalid reservation receipt; reconcile durable authority before retry
+internal/assets/plugins/cortex-work.ts	only the discovery agent may write the project discovery report
+internal/assets/plugins/cortex-work.ts	paths must be an array
+internal/assets/plugins/cortex-work.ts	reservation requires 1-128 nonempty paths
+internal/assets/plugins/cortex-work.ts	scoped recover denied: session does not own the in-memory authority for this task
+internal/assets/plugins/cortex-work.ts	this implement session already owns one work task; dispatch a separate controller for additional work
+internal/assets/plugins/cortex.ts	SAVE_TYPE_INVALID: ${JSON.stringify(value)} is not a canonical cortex_save type (${CANONICAL_SAVE_TYPES.join("|")})
+internal/assets/plugins/cortex.ts	deadline elapsed

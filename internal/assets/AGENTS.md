@@ -8,10 +8,11 @@
 - **Task-board plane**: `cortex-ia board` (durable grouping + embedded loopback web view; never an authority substitute)
 - **Evidence & Graph plane**: Cortex (durable SQLite memory and AST knowledge graph; the active MCP schema is authoritative for tool count and arguments)
 - **Canonical work protocol**: `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md` (single normative source for roles, authority, delegation, and completion)
-- **Evidence convention**: `~/.cortex-ia/opencode/contracts/cortex-convention.md` (durable memory, lineage, taxonomy, and recovery)
+- **Evidence convention**: `~/.cortex-ia/opencode/contracts/cortex-convention.md` (durable memory, lineage, taxonomy, recovery, and verbatim provenance with secret redaction)
 - **Codebase design contract**: `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` (shared architecture vocabulary, dependency seams, design comparison, and task-graph boundaries)
 - **Diagnosis loop contract**: `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` (red-capable reproduction, minimization, falsifiable hypotheses, and regression-seam rules)
-- **Agent writing contract**: `~/.cortex-ia/opencode/contracts/agent-writing-contract.md` (4-layer XML anatomy, intent preservation with non-goals, double-blind review, KV-cache prefix stability, context pointers, progressive disclosure, completion criteria, and single-source instruction design)
+- **Agent writing contract**: `~/.cortex-ia/opencode/contracts/agent-writing-contract.md` (4-layer XML anatomy, intent preservation with non-goals, double-blind review, KV-cache prefix stability, context pointers, progressive disclosure, completion criteria, Skill Body Budget, and single-source instruction design)
+- **Canonical workflow map**: `~/.cortex-ia/opencode/contracts/workflow-map.md` (phase matrix, spec-plane repositioning, the resume test, feature-doc Log + mirror read-back, and the advisory delivery forecast)
 
 ---
 
@@ -105,6 +106,7 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
    - Case 4 Operational & DB Scripts (`ops-task`): script exit 0 + target verification; orchestrator auto-approval for read-only or idempotent test-environment scripts; dispatch `reviewer` only for high-risk production schema or irreversible DDL.
    - Case 5 Low-Risk Unitary Code (`direct-change`, `fast-tdd`, `hotfix`): single domain, <= 3 files and <= 150 LOC (or pure test <= 250 LOC), green tests, zero regressions; orchestrator auto-approval.
    - Case 6 High-Risk Code & SDD: independent `reviewer` MANDATORY on concurrency/locks, production schema or irreversible DDL, public APIs/auth/crypto/security boundaries, > 3 files or > 150 LOC core logic, or failed/ambiguous/missing tests.
+   - Escalate-only tier: the assigned tier is a floor; an implementer or reviewer MAY raise it with a stated reason, and lowering below the matrix tier is refused fail-closed.
    - Auto-approval is performed exclusively by the orchestrator via `cortex_ia_work_approve` with an `evidence` pointer; a receipt, passing test, UI card, or chat assertion never completes a task.
 8. **Anti-Board Ceremony for Unitary Tasks**: Initiative boards (`cortex-ia board create`) are strictly reserved for Tier 3 SDD initiatives with multiple dependent tasks. Routine work, direct changes, hotfixes, and documentation updates NEVER create a new board; they execute under the existing `"default"` board without board overhead.
 9. **Mutation Evidence Gate**: Fast-TDD-eligible code tasks MUST satisfy the mutation-evidence gate defined once in `cortex-work-protocol.md` §4 (lifecycle) and §8 (evidence composition) — including the `SURVIVED`-blocks-transition rule and the exempt work kinds — before transition to `in_review`. This item is a cross-reference to that normative clause and introduces no independent wording.
@@ -114,6 +116,12 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 ## 3. SDD Lifecycle & Preflight Gate
 
 Before any `decision-map`, Lite, or Full phase, apply the phase/plane routing matrix embedded natively in the `orchestrator` role. It routes artifacts and validation through `cortex-convention.md`; decision-map creates no board/tasks in any plane. The following DAG lifecycle starts only after validated Lite/integrated or Full/tasks planning.
+
+Canonical workflow-map digests (normative source: `workflow-map.md`; pointers only, never restated):
+- **Spec-plane repositioning** — § Spec-plane repositioning.
+- **Resume test** — § Task sizing: the resume test.
+- **Feature-doc Log + mirror read-back** — § Feature-doc Log and mirror reconciliation.
+- **Advisory delivery forecast** — § Delivery forecast (advisory).
 
 > _Sequence diagram moved to the `opencode2-knowledge` skill (`autoinvoke: false`)._
 
@@ -194,6 +202,8 @@ Workers execute the transition tool (`cortex_ia_work_transition({ to: "in_review
   - `go test -v ./internal/auth/...` (exit 0)
 ```
 
+Per-spec verdict round-trip (digest): when an envelope carries S#/REQ IDs verbatim, the receipt returns exactly one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`; executable results override worker verdicts on conflict. Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §8.1 Per-spec verdict protocol.
+
 ---
 
 ## 6. Status Dimensions
@@ -247,3 +257,10 @@ Mandatory per-session rules:
 Reference skill: `cortex-protocol` (`autoinvoke: false`; load explicitly when applying the Cortex protocol).
 
 > OpenCode v2 knowledge index and workflow diagrams moved to the `opencode2-knowledge` skill (`autoinvoke: false`; load explicitly when researching OpenCode v2).
+
+---
+
+## 9. Repository Hygiene Digests (pointer-only)
+
+- **Ratchets (advisory)**: dead-code and refusal-string drift are pinned to baselines under `.cortex-ia/ratchet/` and compared by `scripts/ratchet-deadcode.sh` and `scripts/ratchet-refusals.sh`; both run advisory-only in `.github/workflows/ratchets.yml` (`continue-on-error: true`) and never block a merge.
+- **Dated audits & evidence**: in-repo reports live under `docs/audits/<YYYY-MM-DD>-<topic>.md` and `docs/evidence/`, carrying a two-way reference rule against their Cortex observations; see `docs/audits/README.md` and `docs/evidence/README.md`.

@@ -100,3 +100,18 @@ OpenCode v2 knowledge index and workflow diagrams moved to the `opencode2-knowle
 - Commit first lines are enforced only to 10-72 characters by Husky, but repository convention is Conventional Commits; release changelog inclusion depends on `feat`, `fix`, `refactor`, and `perf` prefixes.
 
 The canonical workflow/phase matrix is `internal/assets/skills/_shared/workflow-map.md` (installed as `~/.cortex-ia/opencode/contracts/workflow-map.md`). Use it before routing SDD; do not assume one agent or skill per phase. `orchestrator` routes, `discovery` indexes the agentic environment, `investigate` diagnoses, `planner` owns proposal/spec/design/tasks/archive, `implement` executes, and `reviewer` independently verifies using `code-review-adversary`. Other installed utility skills are discovered from `internal/assets/skills/*/SKILL.md` and loaded only for their actual task trigger.
+
+## Contract Digests (pointer-only)
+
+Authoritative wording lives in the shared contracts under `internal/assets/skills/_shared/` (installed as `~/.cortex-ia/opencode/contracts/`). Each entry below is a digest: it points at the single normative section and never restates its rules.
+
+- **Verbatim provenance** — L1 request captured verbatim with secret redaction, plus RED/GREEN appends carrying commit hashes: `cortex-convention.md` § Verbatim provenance.
+- **Per-spec verdicts** — the per-spec verdict round-trip returns one verdict per referenced REQ ID (`verdicts: [{ req_id, verdict, evidence_ref }]`), with executable results overriding worker verdicts on conflict: `cortex-work-protocol.md` §8.1 Per-spec verdict protocol.
+- **Escalate-only review tier** — the §2.7a matrix tier is a floor that may be raised with a stated reason and never lowered: `cortex-work-protocol.md` §2.7a Adaptive Review Case Matrix.
+- **Resume test** — the resume test requires a task be resumable from the request text plus `git diff` alone: `workflow-map.md` § Task sizing: the resume test.
+- **SDD repositioning** — Tier 1/2 spec is a short paragraph plus executable tests; SDD-lite/full is reserved for Tier 3 / multi-session / regulated domains; living specs evolve by delta (propose→apply→archive): `workflow-map.md` § Spec-plane repositioning.
+- **Feature-doc Log + mirror read-back** — append-only `## Log` on sdd-lite plan docs; mirrored writes are read back and the authoritative copy is named on mismatch: `workflow-map.md` § Feature-doc Log and mirror reconciliation.
+- **Advisory delivery forecast** — per-slice authored LOC from the task DAG, labeled advisory with no gate authority: `workflow-map.md` § Delivery forecast (advisory).
+- **Skill Body Budget** — the single governing sizing rule for `SKILL.md` bodies, scoped away from the 4-layer XML anatomy that governs role prompts: `agent-writing-contract.md` § Skill Body Budget.
+- **Ratchets (advisory)** — dead-code and refusal-string drift scripts under `scripts/`, baselines under `.cortex-ia/ratchet/`, advisory-only CI in `.github/workflows/ratchets.yml`.
+- **Dated audits & evidence** — in-repo reports under `docs/audits/<YYYY-MM-DD>-<topic>.md` and `docs/evidence/`, two-way referenced with their Cortex observations: `docs/audits/README.md`, `docs/evidence/README.md`.

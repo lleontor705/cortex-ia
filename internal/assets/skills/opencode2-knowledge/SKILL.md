@@ -137,7 +137,7 @@ sequenceDiagram
     Note over Orch,Work: Phase 2: Preflight & Planning (if SDD route)
     Orch->>Plan: Dispatch SDD Plan (intent, project_rules, blast_radius_baseline)
     Plan->>Plan: Write and validate selected-plane contracts
-    Plan->>Work: work create (dependency DAG nodes <= 350 LOC in stable initiative board)
+    Plan->>Work: work create (workload_policy strict/flexible/unbounded sets per-task LOC budget, stable initiative board)
     Plan-->>Orch: Planning Receipt (artifact refs, task refs, DAG readiness)
 
     Note over Orch,Imp: Phase 3: Implementation

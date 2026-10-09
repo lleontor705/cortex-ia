@@ -30,4 +30,7 @@ Thumbs.db
 vendor/
 node_modules/
 .opencode/themes/
-/.cortex-ia/
+
+# Ratchet baselines are committed regression baselines, unlike local Cortex session state.
+/.cortex-ia/*
+!/.cortex-ia/ratchet/

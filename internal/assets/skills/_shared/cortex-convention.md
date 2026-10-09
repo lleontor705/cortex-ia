@@ -36,6 +36,14 @@ Use this deterministic taxonomy. The only accepted `type` values are the server 
 
 OpenSpec evidence uses `sdd/{change}/{artifact}` for `explore`, `proposal`, `spec`, `design`, `tasks`, `apply-progress`, `verify-report`, and `archive-report`. In cortex-only, evidence links directly to pinned specification observation IDs. Relate meaningful records only with relations accepted by the active schema.
 
+## Verbatim provenance
+
+Evidence records carry L1 provenance: the original user request for the bounded task, stored verbatim with no paraphrase, summary, or reconstruction. L1 is the immutable intent anchor a fresh reader uses when the request text plus `git diff` alone must reconstruct the task; it is the user request itself, never a license to persist agent transcripts, system prompts, or raw conversation, which the persistence rule above continues to bar.
+
+L1 is bounded by the "never persist secrets" rule above and never weakens it. Before persistence, scan the captured request for secret-shaped content (tokens, keys, passwords, connection strings, credential-bearing URLs) and replace each hit with a typed placeholder `[REDACTED:<kind>]`, preserving length and position context without the secret. Persist only the redacted L1: the raw secret never enters Cortex, logs, receipts, or in-repo evidence files. A record that could not be redacted is not persisted.
+
+RED/GREEN evidence appends follow the same L1 pattern. Record one line per run carrying the observed command, its outcome, and the commit hash, so each run is a re-verifiable fact tied to the exact tree it was observed on rather than a retold narrative.
+
 ## Spec-plane contracts and pinned Cortex references
 
 When `spec_plane=cortex`, Cortex observations serve as the authoritative specification plane; OpenSpec files (`openspec/`) and tools (`cortex_ia_openspec_write`, `cortex_ia_openspec_validate`) are neither written nor required in any phase (decision-map, Lite, or any Full phase).
