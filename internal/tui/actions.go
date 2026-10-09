@@ -182,36 +182,6 @@ func installRunCmd(svc ServiceAPI, mode string, opts install.Options) tea.Cmd {
 	}
 }
 
-// --- Custom providers screen ---
-
-// openProviders enters the custom providers screen and loads the catalog
-// through the cp-04 seam, mirroring the models screen wiring: Home owns only
-// the transition and the screen keeps its own phase machine.
-func (m model) openProviders() (tea.Model, tea.Cmd) {
-	m.screen = screenProviders
-	m.providers = newProvidersState(m.homeDir)
-	return m, providersLoadCmd(m.homeDir)
-}
-
-// updateProviders delegates key handling to the self-contained providers
-// state and applies the screen-level action it requests. The state cannot
-// change the active screen on its own; the wiring layer interprets the action.
-func (m model) updateProviders(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	var action providersAction
-	var cmd tea.Cmd
-	m.providers, action, cmd = m.providers.update(msg)
-	switch action {
-	case providersActionHome:
-		m.screen = screenHome
-		m.cursor = providersEntryIndex
-		return m, homeTick()
-	case providersActionQuit:
-		m.quitting = true
-		return m, tea.Quit
-	}
-	return m, cmd
-}
-
 // --- Software upgrade screen ---
 
 // openUpgrade enters the software upgrade screen and triggers an initial

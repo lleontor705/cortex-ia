@@ -31,7 +31,6 @@ const (
 	screenAgentStudio
 	screenStats
 	screenModels
-	screenProviders
 	screenUpgrade
 )
 
@@ -62,7 +61,6 @@ var homeEntries = []string{
 	"Install / Sync",
 	"Manage MCPs",
 	"Configuración de modelos",
-	"Install custom provider",
 	"CortexIA Web Console",
 	"Estadísticas de uso",
 	"Agent Studio (Create Sub-agent)",
@@ -75,14 +73,13 @@ var homeEntries = []string{
 // Menu index constants for Home entries.
 const (
 	modelsEntryIndex    = 2
-	providersEntryIndex = 3
-	webEntryIndex       = 4
-	statsEntryIndex     = 5
-	studioEntryIndex    = 6
-	doctorEntryIndex    = 7
-	upgradeEntryIndex   = 8
-	uninstallEntryIndex = 9
-	quitEntryIndex      = 10
+	webEntryIndex       = 3
+	statsEntryIndex     = 4
+	studioEntryIndex    = 5
+	doctorEntryIndex    = 6
+	upgradeEntryIndex   = 7
+	uninstallEntryIndex = 8
+	quitEntryIndex      = 9
 )
 
 // managedNames lists the managed MCP presets in toggle order.
@@ -189,9 +186,6 @@ type model struct {
 	// Models configuration state
 	models modelsState
 
-	// Custom providers screen state
-	providers providersState
-
 	// Software upgrade screen state
 	upgrade upgradeState
 
@@ -220,7 +214,6 @@ func newModel(svc ServiceAPI, homeDir, version string) model {
 		screen:        bootScreen,
 		stats:         newStatsState(),
 		models:        newModelsState(homeDir),
-		providers:     newProvidersState(homeDir),
 		upgrade:       newUpgradeState(homeDir, version),
 		opts:          install.DefaultOptions(),
 		delegationCfg: cfg,
@@ -294,16 +287,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.models = m.models.onMutated(msg)
 		}
 		return m, nil
-	case providersCatalogMsg:
-		if m.screen == screenProviders {
-			m.providers = m.providers.onLoaded(msg)
-		}
-		return m, nil
-	case providersResultMsg:
-		if m.screen == screenProviders {
-			m.providers = m.providers.onResult(msg)
-		}
-		return m, nil
 	case upgradeCheckMsg, upgradeApplyMsg, upgradeTickMsg:
 		var cmd tea.Cmd
 		m.upgrade, cmd = m.upgrade.updateUpgradeScreen(msg)
@@ -349,8 +332,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateStats(msg)
 		case screenModels:
 			return m.updateModels(msg)
-		case screenProviders:
-			return m.updateProviders(msg)
 		case screenUpgrade:
 			return m.updateUpgrade(msg)
 		}
@@ -393,8 +374,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "m", "M":
 		return m.openModels()
-	case "p", "P":
-		return m.openProviders()
 	case "u", "U":
 		return m.openUpgrade()
 	case "enter":
@@ -436,9 +415,7 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		return m, mcpListCmd(m.svc)
 	case modelsEntryIndex: // 2: Configuración de modelos
 		return m.openModels()
-	case providersEntryIndex: // 3: Install custom provider
-		return m.openProviders()
-	case webEntryIndex: // 4: CortexIA Web Console
+	case webEntryIndex: // 3: CortexIA Web Console
 		m.screen = screenWeb
 		if m.webReady {
 			return m, nil
@@ -446,24 +423,24 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		m.webStarting = true
 		m.webErr = nil
 		return m, startWebCmd(m.homeDir)
-	case statsEntryIndex: // 5: Estadísticas de uso
+	case statsEntryIndex: // 4: Estadísticas de uso
 		m.screen = screenStats
 		m.stats = newStatsState()
 		return m, statsLoadCmd()
-	case studioEntryIndex: // 6: Agent Studio (Create Sub-agent)
+	case studioEntryIndex: // 5: Agent Studio (Create Sub-agent)
 		m.screen = screenAgentStudio
 		m.studioStep = 0
 		m.studioArchIdx = 0
 		m.studioResultMsg = ""
 		return m, nil
-	case doctorEntryIndex: // 7: Doctor / Recovery
+	case doctorEntryIndex: // 6: Doctor / Recovery
 		return m.startRunning("Doctor", []string{"Inspect state", "Compare digests", "Assess MCPs", "Report"}, doctorCmd(m.svc))
-	case upgradeEntryIndex: // 8: Actualizar software (Upgrade)
+	case upgradeEntryIndex: // 7: Actualizar software (Upgrade)
 		return m.openUpgrade()
-	case uninstallEntryIndex: // 9: Uninstall (destructive: explicit confirmation first)
+	case uninstallEntryIndex: // 8: Uninstall (destructive: explicit confirmation first)
 		m.confirm = confirmState{kind: confirmUninstall}
 		return m, nil
-	case quitEntryIndex: // 10: Quit
+	case quitEntryIndex: // 9: Quit
 		m.quitting = true
 		return m, tea.Quit
 	}

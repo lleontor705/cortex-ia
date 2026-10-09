@@ -118,10 +118,10 @@ func TestStatsBootEscAndHotkeyReopen(t *testing.T) {
 		t.Fatalf("esc = screen %v cursor %d, want home/%d", m.screen, m.cursor, statsEntryIndex)
 	}
 
-	updated, cmd := m.Update(key("6"))
+	updated, cmd := m.Update(key("5"))
 	m = updated.(model)
 	if m.screen != screenStats || !m.stats.loading || cmd == nil {
-		t.Fatalf("hotkey 6 = screen %v loading %v cmd present %v, want stats/loading/command", m.screen, m.stats.loading, cmd != nil)
+		t.Fatalf("hotkey 5 = screen %v loading %v cmd present %v, want stats/loading/command", m.screen, m.stats.loading, cmd != nil)
 	}
 	m = drive(t, m, cmd)
 	if loads != 2 || m.stats.loading || m.stats.err != nil {

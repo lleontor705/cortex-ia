@@ -15,10 +15,10 @@ import (
 // resets bootScreen to productionBootScreen.
 func init() { bootScreen = screenHome }
 
-// TestHomeMenuEntries proves Home offers exactly the required actions and maintains 11-element invariant parity.
+// TestHomeMenuEntries proves Home offers exactly the required actions and maintains 10-element invariant parity.
 func TestHomeMenuEntries(t *testing.T) {
-	if len(homeEntries) != 11 || len(homeDescriptions) != 11 {
-		t.Fatalf("expected 11 entries and descriptions, got entries=%d descriptions=%d", len(homeEntries), len(homeDescriptions))
+	if len(homeEntries) != 10 || len(homeDescriptions) != 10 {
+		t.Fatalf("expected 10 entries and descriptions, got entries=%d descriptions=%d", len(homeEntries), len(homeDescriptions))
 	}
 	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
 	view := m.View()
@@ -26,7 +26,6 @@ func TestHomeMenuEntries(t *testing.T) {
 		"Install / Sync",
 		"Manage MCPs",
 		"Configuración de modelos",
-		"Install custom provider",
 		"CortexIA Web Console",
 		"Estadísticas de uso",
 		"Agent Studio (Create Sub-agent)",
@@ -103,19 +102,8 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 		t.Fatalf("expected esc to return home on the models entry, got screen=%v cursor=%d", m.screen, m.cursor)
 	}
 
-	// Home → Custom Providers.
-	m = press(m, "down") // cursor 3: Install custom provider
-	m = press(m, "enter")
-	if m.screen != screenProviders {
-		t.Fatalf("expected screenProviders, got %v", m.screen)
-	}
-	m = press(m, "esc")
-	if m.screen != screenHome || m.cursor != providersEntryIndex {
-		t.Fatalf("expected esc to return home on the providers entry, got screen=%v cursor=%d", m.screen, m.cursor)
-	}
-
 	// Home → Web Console → Home.
-	m = press(m, "down") // cursor 4: CortexIA Web Console
+	m = press(m, "down") // cursor 3: CortexIA Web Console
 	m = press(m, "enter")
 	if m.screen != screenWeb {
 		t.Fatalf("expected screenWeb, got %v", m.screen)
@@ -126,7 +114,7 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Home → Usage Stats → Home (esc rests the cursor on the stats entry).
-	m = press(m, "down") // cursor 5: Estadísticas de uso
+	m = press(m, "down") // cursor 4: Estadísticas de uso
 	statsUpdated, _ := m.Update(key("enter"))
 	m = statsUpdated.(model)
 	if m.screen != screenStats {
@@ -138,7 +126,7 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Home → Agent Studio → Home.
-	m = press(m, "down") // cursor 6: Agent Studio
+	m = press(m, "down") // cursor 5: Agent Studio
 	m = press(m, "enter")
 	if m.screen != screenAgentStudio {
 		t.Fatalf("expected screenAgentStudio, got %v", m.screen)
@@ -149,7 +137,7 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Home → Doctor/Recovery (running) → Result → Home.
-	m = press(m, "down") // cursor 7: Doctor / Recovery
+	m = press(m, "down") // cursor 6: Doctor / Recovery
 	updated, cmd := m.Update(key("enter"))
 	m = updated.(model)
 	if m.screen != screenRunning || m.running.title != "Doctor" {
@@ -171,7 +159,7 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Home → Upgrade Screen → Home.
-	// (Result returns Home with cursor 0; Upgrade is entry 8.)
+	// (Result returns Home with cursor 0; Upgrade is entry 7.)
 	for i := 0; i < upgradeEntryIndex; i++ {
 		m = press(m, "down")
 	}
@@ -188,8 +176,8 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Uninstall opens a confirmation overlay, not the running screen.
-	// (Uninstall is entry 9; 1 down from entry 8.)
-	m = press(m, "down") // cursor 9: Uninstall
+	// (Uninstall is entry 8; 1 down from entry 7.)
+	m = press(m, "down") // cursor 8: Uninstall
 	m = press(m, "enter")
 	if m.confirm.kind != confirmUninstall || m.screen != screenHome {
 		t.Fatalf("expected uninstall confirmation on home, got screen=%v confirm=%v", m.screen, m.confirm.kind)
@@ -200,7 +188,7 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 	}
 
 	// Quit entry quits.
-	m = press(m, "down") // cursor 10: Quit (cursor stayed on 9 after cancel)
+	m = press(m, "down") // cursor 9: Quit (cursor stayed on 8 after cancel)
 	updated, cmd = m.Update(key("enter"))
 	if cmd == nil || !updated.(model).quitting {
 		t.Fatal("expected Quit entry to quit")
@@ -232,7 +220,7 @@ func TestQuitKeyQuitsFromHome(t *testing.T) {
 }
 
 // TestHomeNumericHotkeys verifies keys 1-9 jump directly to actions from Home,
-// and dedicated single-key hotkeys (m/M, p/P, u/U) route properly.
+// and dedicated single-key hotkeys (m/M, u/U) route properly.
 func TestHomeNumericHotkeys(t *testing.T) {
 	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
 
@@ -257,52 +245,48 @@ func TestHomeNumericHotkeys(t *testing.T) {
 		t.Fatalf("expected key 3 to render the models frame, got:\n%s", m3.View())
 	}
 
-	// Key '4' opens custom providers (index 3).
+	// Key '4' opens Web Console (index 3).
 	m4 := press(m, "4")
-	if m4.screen != screenProviders {
-		t.Fatalf("key 4 should open custom providers, got %v", m4.screen)
+	if m4.screen != screenWeb {
+		t.Fatalf("key 4 should open Web Console, got %v", m4.screen)
 	}
 
-	// Key '5' opens Web Console (index 4).
+	// Key '5' opens the usage stats screen (index 4).
 	m5 := press(m, "5")
-	if m5.screen != screenWeb {
-		t.Fatalf("key 5 should open Web Console, got %v", m5.screen)
+	if m5.screen != screenStats {
+		t.Fatalf("key 5 should open the usage stats screen, got %v", m5.screen)
 	}
 
-	// Key '6' opens the usage stats screen (index 5).
+	// Key '6' opens Agent Studio (index 5).
 	m6 := press(m, "6")
-	if m6.screen != screenStats {
-		t.Fatalf("key 6 should open the usage stats screen, got %v", m6.screen)
+	if m6.screen != screenAgentStudio {
+		t.Fatalf("key 6 should open Agent Studio, got %v", m6.screen)
 	}
 
-	// Key '7' opens Agent Studio (index 6).
-	m7 := press(m, "7")
-	if m7.screen != screenAgentStudio {
-		t.Fatalf("key 7 should open Agent Studio, got %v", m7.screen)
+	// Key '7' starts Doctor (running) (index 6).
+	updated7, _ := m.Update(key("7"))
+	m7 := updated7.(model)
+	if m7.screen != screenRunning || m7.running.title != "Doctor" {
+		t.Fatalf("key 7 should start Doctor, got %v %q", m7.screen, m7.running.title)
 	}
 
-	// Key '8' starts Doctor (running) (index 7).
-	updated8, _ := m.Update(key("8"))
-	m8 := updated8.(model)
-	if m8.screen != screenRunning || m8.running.title != "Doctor" {
-		t.Fatalf("key 8 should start Doctor, got %v %q", m8.screen, m8.running.title)
+	// Key '8' opens Upgrade screen (index 7).
+	m8 := press(m, "8")
+	if m8.screen != screenUpgrade {
+		t.Fatalf("key 8 should open the upgrade screen, got %v", m8.screen)
 	}
 
-	// Key '9' opens Upgrade screen (index 8).
-	m9 := press(m, "9")
-	if m9.screen != screenUpgrade {
-		t.Fatalf("key 9 should open the upgrade screen, got %v", m9.screen)
+	// Key '9' opens the uninstall confirmation overlay (index 8).
+	updated9, _ := m.Update(key("9"))
+	m9 := updated9.(model)
+	if m9.confirm.kind != confirmUninstall || m9.screen != screenHome {
+		t.Fatalf("key 9 should open the uninstall confirmation, got screen=%v confirm=%v", m9.screen, m9.confirm.kind)
 	}
 
-	// Dedicated hotkeys: 'm'/'M' for models, 'p'/'P' for providers, 'u'/'U' for upgrade.
+	// Dedicated hotkeys: 'm'/'M' for models and 'u'/'U' for upgrade.
 	for _, hk := range []string{"m", "M"} {
 		if press(m, hk).screen != screenModels {
 			t.Fatalf("hotkey %s should open screenModels", hk)
-		}
-	}
-	for _, hk := range []string{"p", "P"} {
-		if press(m, hk).screen != screenProviders {
-			t.Fatalf("hotkey %s should open screenProviders", hk)
 		}
 	}
 	for _, hk := range []string{"u", "U"} {

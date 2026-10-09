@@ -34,7 +34,6 @@ var homeDescriptions = []string{
 	"Deploy or reconcile skills, agents, commands & MCPs",
 	"Inspect and configure managed OpenCode MCP server presets",
 	"Modelo y esfuerzo por agente con vista previa dry-run",
-	"Instalar un proveedor personalizado con token enmascarado",
 	"Open interactive local web dashboard (http://127.0.0.1:7331)",
 	"Resumen de uso de OpenCode: tokens, heatmap y ranking de modelos",
 	"Create custom subagents with Cortex-IA safety guardrails",
@@ -158,8 +157,6 @@ func (m model) View() string {
 		body = m.stats.view(m.contentWidth())
 	case screenModels:
 		body = m.models.view(m.contentWidth())
-	case screenProviders:
-		body = m.providers.view(m.contentWidth())
 	case screenUpgrade:
 		body = m.viewUpgrade()
 	}
