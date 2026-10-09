@@ -43,7 +43,7 @@ const GLYPH = {
   warn: "▲",
   row: "▸",
   web: "◈",
-  brand: "🧠",
+  brand: "◆",
 } as const;
 const MARK_EXPANDED = "▾";
 const MARK_COLLAPSED = "▸";
@@ -61,7 +61,7 @@ const KANBAN_READY_LIMIT = 3;
 const KANBAN_COLUMN_BORDER = ["left"] as ("left")[];
 
 const TASKS_EXPANDED_KEY = "cortex.sidebar.tasks.expanded";
-const DELEGATIONS_EXPANDED_KEY = "cortex.sidebar.delegations.expanded";
+const MINIONS_EXPANDED_KEY = "cortex.sidebar.minions.expanded";
 const ATTENTION_EXPANDED_KEY = "cortex.sidebar.attention.expanded";
 const DENSITY_KEY = "cortex.sidebar.density";
 const ETA_HISTORY_KEY = "cortex.dashboard.eta.completions";
@@ -96,6 +96,10 @@ type CortexPalette = {
   textSoft: ColorInput;
   accent: ColorInput;
   accentAlt: ColorInput;
+  // Decoration-only violet for borders, rules, and markers. The Nan Ink
+  // accent-border hex fails AA on the dark canvas, so it must never become a
+  // text foreground; keeping it a distinct role enforces that structurally.
+  accentBorder: ColorInput;
   primary: ColorInput;
   sky: ColorInput;
   success: ColorInput;
@@ -110,29 +114,51 @@ type CortexPalette = {
   background: ColorInput;
 };
 
-// Defensive flat hex fallbacks aligned to the cortex identity. They are consulted
+// Nan Ink palette mirrored from internal/tui/styles/tokens.go. This is the
+// plugin's single palette literal: every widget reads roles off the resolved
+// palette, so a host theme that omits a role still renders the operator identity.
+const NAN_INK = {
+  background: "#0B0B0C",
+  panel: "#121214",
+  element: "#121214",
+  border: "#3A3A3D",
+  borderSubtle: "#252527",
+  accentBorder: "#7D39EB",
+  accent: "#9B6BF0",
+  text: "#FFFFFF",
+  textSoft: "#C9C9CC",
+  textMuted: "#9A9A9E",
+  success: "#22C55E",
+  warning: "#F59E0B",
+  error: "#EF4444",
+} as const;
+
+// Defensive flat hex fallbacks aligned to the Nan Ink identity. They are consulted
 // only when the active theme omits a role, so an unknown theme still renders.
 const PALETTE_FALLBACK = {
-  text: "#f8fafc",
-  textMuted: "#94a3b8",
-  accent: "#a855f7",
-  accentAlt: "#22d3ee",
-  primary: "#6366f1",
-  sky: "#38bdf8",
-  success: "#34d399",
-  warning: "#fbbf24",
-  error: "#fb7185",
-  info: "#22d3ee",
-  border: "#334155",
-  panel: "#111927",
-  element: "#1e293b",
-  background: "#0a0e17",
+  text: NAN_INK.text,
+  textMuted: NAN_INK.textMuted,
+  accent: NAN_INK.accent,
+  accentAlt: NAN_INK.accent,
+  accentBorder: NAN_INK.accentBorder,
+  primary: NAN_INK.accentBorder,
+  sky: NAN_INK.textSoft,
+  success: NAN_INK.success,
+  warning: NAN_INK.warning,
+  error: NAN_INK.error,
+  info: NAN_INK.accent,
+  border: NAN_INK.border,
+  borderSubtle: NAN_INK.borderSubtle,
+  panel: NAN_INK.panel,
+  element: NAN_INK.element,
+  background: NAN_INK.background,
 } as const;
 
 // Share of the primary text color in the derived soft-text blend; the remainder
 // comes from the theme background, so secondary copy follows any theme without a
-// hardcoded literal.
-const SOFT_TEXT_WEIGHT = 0.65;
+// hardcoded literal. The weight is tuned so the derived step lands near the Nan
+// Ink body tone (#C9C9CC) on the #0B0B0C canvas.
+const SOFT_TEXT_WEIGHT = 0.78;
 
 type RgbBytes = { r: number; g: number; b: number };
 
@@ -193,7 +219,8 @@ function buildPalette(theme?: TuiThemeCurrent): CortexPalette {
     textMuted: read("textMuted", PALETTE_FALLBACK.textMuted),
     textSoft: blendColor(text, background, SOFT_TEXT_WEIGHT),
     accent: read("accent", PALETTE_FALLBACK.accent),
-    accentAlt: read("secondary", PALETTE_FALLBACK.accentAlt),
+    accentAlt: read("accent", PALETTE_FALLBACK.accentAlt),
+    accentBorder: readColor(source["borderActive"]) ?? PALETTE_FALLBACK.accentBorder,
     primary: read("primary", PALETTE_FALLBACK.primary),
     sky: read("info", PALETTE_FALLBACK.sky),
     success: read("success", PALETTE_FALLBACK.success),
@@ -201,7 +228,7 @@ function buildPalette(theme?: TuiThemeCurrent): CortexPalette {
     error: read("error", PALETTE_FALLBACK.error),
     info: read("info", PALETTE_FALLBACK.info),
     border,
-    borderSubtle: readColor(source["borderSubtle"]) ?? border,
+    borderSubtle: readColor(source["borderSubtle"]) ?? PALETTE_FALLBACK.borderSubtle,
     borderActive: readColor(source["borderActive"]) ?? border,
     panel: read("backgroundPanel", PALETTE_FALLBACK.panel),
     element: read("backgroundElement", PALETTE_FALLBACK.element),
@@ -224,27 +251,6 @@ function resolvePalette(theme?: TuiThemeCurrent): CortexPalette {
   }
   return (themelessPalette ??= buildPalette());
 }
-
-type DelegationEvent = {
-  timestamp?: string;
-  kind?: string;
-  job_id?: string;
-  role?: string;
-  status?: string;
-  transport?: string;
-  pane_id?: string;
-  workspace?: string;
-};
-
-type DelegationJob = Required<Pick<DelegationEvent, "job_id" | "status">> &
-  DelegationEvent & {
-    sequence: number;
-    task_id?: string;
-    error_code?: string;
-    error_message?: string;
-    updated_at?: string;
-    attempt?: number;
-  };
 
 type DashboardTask = {
   task_id: string;
@@ -563,11 +569,11 @@ type RoleChip = { color: ColorInput; tag: string };
 
 function roleChip(role: string, palette: CortexPalette): RoleChip {
   const r = (role || "").toLowerCase();
-  if (r.includes("orch")) return { color: palette.primary, tag: "ORCH" };
+  if (r.includes("orch")) return { color: palette.accent, tag: "ORCH" };
   if (r.includes("impl")) return { color: palette.warning, tag: "IMPL" };
-  if (r.includes("rev")) return { color: palette.accent, tag: "REVW" };
-  if (r.includes("inv")) return { color: palette.sky, tag: "INVS" };
-  if (r.includes("plan")) return { color: palette.info, tag: "PLAN" };
+  if (r.includes("rev")) return { color: palette.accentAlt, tag: "REVW" };
+  if (r.includes("inv")) return { color: palette.textSoft, tag: "INVS" };
+  if (r.includes("plan")) return { color: palette.textSoft, tag: "PLAN" };
   if (r.includes("disc")) return { color: palette.success, tag: "DISC" };
   return { color: palette.textMuted, tag: r.slice(0, 4).toUpperCase() || "WORK" };
 }
@@ -939,8 +945,8 @@ function CortexCockpitHeader(props: {
   return (
     <box
       flexDirection="column"
-      borderStyle="rounded"
-      borderColor={props.isExecuting() ? palette.warning : palette.primary}
+      borderStyle="single"
+      borderColor={props.isExecuting() ? palette.warning : palette.accentBorder}
       title={
         props.isExecuting()
           ? `${GLYPH.brand} CORTEX·IA v2.0 [${props.spinner()} ACTIVE]`
@@ -1034,12 +1040,12 @@ function Section(props: {
 
   return (
     <box flexDirection="column" marginTop={1}>
-      <box flexDirection="row" onMouseDown={props.onToggle}>
-        <text fg={props.expanded() ? palette.info : palette.textMuted} selectable={false}>
+      <box flexDirection="row" border={["bottom"]} borderColor={palette.border} onMouseDown={props.onToggle}>
+        <text fg={props.expanded() ? palette.accent : palette.textMuted} selectable={false}>
           {props.expanded() ? `${MARK_EXPANDED} ` : `${MARK_COLLAPSED} `}
         </text>
-        <text fg={palette.text} selectable={false}>
-          {displayTitle()}
+        <text fg={palette.text} attributes={TextAttributes.BOLD} selectable={false}>
+          {displayTitle().toUpperCase()}
         </text>
         <Show when={displayBadge()}>
           <text fg={palette.sky}>{` [${displayBadge()}]`}</text>
@@ -1076,7 +1082,7 @@ function MultiColorProgressBar(props: {
   );
   const showLegend = createMemo(() => !props.compact && props.textLimit >= 34);
   const palette = resolvePalette(props.theme);
-  const block = "█";
+  const block = "▰";
 
   return (
     <box flexDirection="column" marginTop={1}>
@@ -1107,7 +1113,6 @@ function MultiColorProgressBar(props: {
 
 function ActiveTaskHero(props: {
   task: DashboardTask;
-  activeDelegation?: DelegationJob;
   now: () => number;
   spinner: () => string;
   densityCompact: boolean;
@@ -1135,8 +1140,8 @@ function ActiveTaskHero(props: {
       marginTop={1}
       paddingLeft={1}
       paddingRight={1}
-      borderStyle="rounded"
-      borderColor={props.activeDelegation ? palette.warning : palette.borderSubtle}
+      borderStyle="single"
+      borderColor={palette.accentBorder}
       title={clipped(`${props.spinner()} TASK IN PROGRESS`, props.textLimit)}
       titleColor={palette.warning}
       titleAlignment="left"
@@ -1169,20 +1174,9 @@ function ActiveTaskHero(props: {
 
       <Show when={!props.densityCompact}>
         <box flexDirection="row">
-          <Show
-            when={props.activeDelegation}
-            fallback={
-              <text fg={palette.accent}>
-                {clipped(`${GLYPH.row} Durable task${props.task.owner ? ` (${props.task.owner})` : ""}`, props.textLimit)}
-              </text>
-            }
-          >
-            {(del: () => DelegationJob) => (
-              <text fg={palette.info}>
-                {`${GLYPH.working} ${del().transport || "direct"}${del().pane_id ? ` · ${del().pane_id}` : ""}${del().attempt ? ` · int #${del().attempt}` : ""}`}
-              </text>
-            )}
-          </Show>
+          <text fg={palette.accent}>
+            {clipped(`${GLYPH.row} Durable task${props.task.owner ? ` (${props.task.owner})` : ""}`, props.textLimit)}
+          </text>
         </box>
 
         <box
@@ -1242,47 +1236,47 @@ function TaskRows(props: {
   );
 }
 
-function DelegationRows(props: {
-  jobs: DelegationJob[];
+function MinionRows(props: {
+  rows: SubagentRow[];
   spinner: () => string;
-  now: () => number;
   theme?: TuiThemeCurrent;
   compact?: boolean;
   textLimit: number;
+  onActivate?: (index: number) => void;
 }) {
   const palette = resolvePalette(props.theme);
   return (
-    <Show when={props.jobs.length > 0} fallback={<EmptyState palette={palette} label="No active workers" />}>
-      <For each={props.jobs.slice(0, MAX_VISIBLE_ROWS)}>
-        {(job) => {
-          const isRunning = ["running", "starting", "accepted"].includes(job.status);
-          const chip = roleChip(job.role || "", palette);
-          const elapsed = createMemo(() => {
-            if (!isRunning || !job.updated_at) return "";
-            const t = Date.parse(job.updated_at);
-            return Number.isFinite(t) ? ` +${formatDuration(props.now() - t)}` : "";
-          });
-          const statusCol = isRunning
-            ? palette.warning
-            : job.status === "succeeded"
-            ? palette.success
-            : palette.error;
-
+    <Show when={props.rows.length > 0} fallback={<EmptyState palette={palette} label="No live minions" />}>
+      <For each={props.rows.slice(0, MAX_VISIBLE_ROWS)}>
+        {(row, index) => {
+          const glyph = () =>
+            row.retryAttempt
+              ? `${GLYPH.warn}${row.retryAttempt}`
+              : row.status === "busy"
+              ? props.spinner()
+              : row.status === "idle"
+              ? GLYPH.idle
+              : row.status === "unknown"
+              ? GLYPH.active
+              : GLYPH.working;
+          const activity = row.step || row.tool || "";
           return (
             <box flexDirection="column" marginTop={0}>
-              <box flexDirection="row" paddingLeft={2}>
-                <text fg={statusCol}>
-                  {`${isRunning ? props.spinner() : job.status === "succeeded" ? GLYPH.done : GLYPH.fail} `}
+              <box flexDirection="row" paddingLeft={2} onMouseDown={() => props.onActivate?.(index())}>
+                <text fg={subagentStatusColor(row.status, palette)}>{`${glyph()} `}</text>
+                <text fg={roleChip(row.agent || "agent", palette).color}>
+                  {`${fitWidth(row.agent || "agent", 10)} `}
                 </text>
-                <text fg={chip.color}>{`[${chip.tag}] `}</text>
-                <text fg={isRunning ? palette.text : palette.textSoft}>
-                  {clipped(job.role || "worker", Math.max(6, props.textLimit - 12))}
+                <text fg={row.status === "busy" ? palette.text : palette.textSoft}>
+                  {clipped(row.title, Math.max(8, props.textLimit - 16))}
                 </text>
-                <text fg={statusCol}>{elapsed()}</text>
               </box>
               <box flexDirection="row" paddingLeft={5}>
                 <text fg={palette.textMuted}>
-                  {clipped(`${shortID(job.job_id)} · ${job.transport || "direct"}${job.pane_id ? ` · ${job.pane_id}` : ""}${job.attempt ? ` · int #${job.attempt}` : ""}`, props.textLimit)}
+                  {clipped(
+                    `${row.status}${activity ? ` · ${activity}` : ""}${row.tokens !== undefined ? ` · ${formatTokens(row.tokens)} tok` : ""}${row.taskID ? ` · ${shortID(row.taskID)}` : ""}`,
+                    props.textLimit
+                  )}
                 </text>
               </box>
             </box>
@@ -1316,7 +1310,6 @@ function AttentionRows(props: { items: AttentionItem[]; theme?: TuiThemeCurrent;
 
 function OperationalStatusBlock(props: {
   snapshot: UISnapshot;
-  jobs: DelegationJob[];
   activeExecutions: number;
   inReview: number;
   attentionCount: number;
@@ -1329,15 +1322,6 @@ function OperationalStatusBlock(props: {
   layout: SidebarLayout;
 }) {
   const palette = resolvePalette(props.theme);
-  const succeededJobs = createMemo(
-    () => props.jobs.filter((j) => j.status === "succeeded").length
-  );
-  const failedJobs = createMemo(
-    () => props.jobs.filter((j) => ["failed", "timed_out", "lost", "cancelled"].includes(j.status)).length
-  );
-  const activeJobs = createMemo(
-    () => props.jobs.filter((j) => ["running", "starting", "accepted"].includes(j.status)).length
-  );
 
   const doneTasks = createMemo(() => props.snapshot.summary.done || 0);
   const totalTasks = createMemo(() => props.snapshot.summary.total_tasks || props.snapshot.tasks.length);
@@ -1361,10 +1345,7 @@ function OperationalStatusBlock(props: {
       doneTasks() > 0 ||
       totalTasks() > 0 ||
       totalLeases() > 0 ||
-      blockedTasks() > 0 ||
-      succeededJobs() > 0 ||
-      failedJobs() > 0 ||
-      activeJobs() > 0
+      blockedTasks() > 0
   );
 
   const etaLabel = createMemo(() => {
@@ -1385,10 +1366,12 @@ function OperationalStatusBlock(props: {
     props.eta().remaining === 0 ? palette.success : palette.sky
   );
 
+  // The retired delegation feed never reported completion, so health derives from
+  // the board's own closed set: tasks that finished versus tasks that blocked.
   const successRate = createMemo(() => {
-    const closed = succeededJobs() + failedJobs();
+    const closed = doneTasks() + blockedTasks();
     if (closed === 0) return undefined;
-    return Math.round((succeededJobs() / closed) * 100);
+    return Math.round((doneTasks() / closed) * 100);
   });
 
   const syncAgeSec = createMemo(() => {
@@ -1402,8 +1385,8 @@ function OperationalStatusBlock(props: {
     const filled = rate === undefined ? 0 : Math.round((rate / 100) * props.layout.gaugeWidth);
     const empty = rate === undefined ? 0 : Math.max(0, props.layout.gaugeWidth - filled);
     return {
-      filled: "■".repeat(filled),
-      empty: "□".repeat(empty),
+      filled: "▰".repeat(filled),
+      empty: "▱".repeat(empty),
     };
   });
 
@@ -1424,7 +1407,7 @@ function OperationalStatusBlock(props: {
   });
 
   const synapseValue = createMemo(() =>
-    activeJobs() > 0 ? `${props.spinner()} active · ${activeJobs()} runs` : `${props.pulse()} synced`
+    props.activeExecutions > 0 ? `${props.spinner()} active · ${props.activeExecutions} runs` : `${props.pulse()} synced`
   );
 
   const authorityValue = createMemo(() => (totalLeases() > 0 ? `sqlite · ${totalLeases()} lk` : "sqlite"));
@@ -1449,7 +1432,7 @@ function OperationalStatusBlock(props: {
         palette={palette}
         label="synapse"
         value={synapseValue}
-        color={() => (activeJobs() > 0 ? palette.warning : palette.text)}
+        color={() => (props.activeExecutions > 0 ? palette.warning : palette.text)}
       />
       {healthCell()}
       <StatusCell palette={palette} label="authority" value={authorityValue} />
@@ -1463,8 +1446,8 @@ function OperationalStatusBlock(props: {
       marginTop={1}
       paddingLeft={1}
       paddingRight={1}
-      borderStyle="rounded"
-      borderColor={failedJobs() > 0 ? palette.error : props.stale ? palette.borderSubtle : palette.borderActive}
+      borderStyle="single"
+      borderColor={blockedTasks() > 0 ? palette.error : props.stale ? palette.borderSubtle : palette.borderActive}
       title={props.layout.compact ? `${GLYPH.brand} CONTROL` : `${GLYPH.brand} CONTROL MATRIX`}
       titleColor={palette.accent}
       titleAlignment="left"
@@ -1483,7 +1466,7 @@ function OperationalStatusBlock(props: {
             {(metric) => (
               <box flexDirection="row" gap={1}>
                 <text fg={palette.textMuted}>{metric.label}</text>
-                <text fg={palette.accent}>{padMetric(metric.value)}</text>
+                <text fg={palette.text}>{padMetric(metric.value)}</text>
               </box>
             )}
           </For>
@@ -1499,7 +1482,7 @@ function OperationalStatusBlock(props: {
                 palette={palette}
                 label="synapse"
                 value={synapseValue}
-                color={() => (activeJobs() > 0 ? palette.warning : palette.text)}
+                color={() => (props.activeExecutions > 0 ? palette.warning : palette.text)}
               />
               {healthCell()}
             </box>
@@ -1528,7 +1511,8 @@ export function SidebarStatus(props: {
   nativeActivity: () => NativeActivity | undefined;
   scopeReady: () => boolean;
   snapshot: () => UISnapshot;
-  jobs: () => DelegationJob[];
+  minions: () => SubagentRow[];
+  onActivateMinion: (index: number) => void;
   snapshotError: () => string;
   sessionElapsed: () => string | undefined;
   eta: () => Tier1Eta;
@@ -1538,10 +1522,10 @@ export function SidebarStatus(props: {
   density: () => DensityMode;
   toggleDensity: () => void;
   tasksExpanded: () => boolean;
-  delegationsExpanded: () => boolean;
+  minionsExpanded: () => boolean;
   attentionExpanded: () => boolean;
   toggleTasks: () => void;
-  toggleDelegations: () => void;
+  toggleMinions: () => void;
   toggleAttention: () => void;
   theme?: TuiThemeCurrent;
 }) {
@@ -1565,28 +1549,17 @@ export function SidebarStatus(props: {
   });
 
   const activeTask = createMemo(() => props.snapshot().tasks.find((t) => t.status === "in_progress"));
-  const activeDelegation = createMemo(() =>
-    props.jobs().find((j) => ["running", "starting", "accepted"].includes(j.status))
+  const runningMinions = createMemo(
+    () => props.minions().filter((row) => row.status === "busy" || row.status === "retry").length
   );
 
   const activeExecutionsCount = createMemo(() => {
     const s = props.snapshot().summary;
     if (typeof s.active_executions === "number") return s.active_executions;
-    const inProg = s.in_progress || 0;
-    const actDel = s.active_delegations || 0;
-    return Math.max(inProg, actDel);
+    return s.in_progress || 0;
   });
 
-  const isExecuting = createMemo(() => props.nativeActivity() === "busy" || Boolean(activeDelegation()));
-
-  const activeDelegationsCount = createMemo(() => {
-    if (typeof props.snapshot().summary.active_delegations === "number") {
-      return props.snapshot().summary.active_delegations;
-    }
-    return props.jobs().filter((j) => ["running", "starting", "accepted"].includes(j.status)).length;
-  });
-
-  const totalDelegationsCount = createMemo(() => props.snapshot().summary.total_delegations || props.jobs().length);
+  const isExecuting = createMemo(() => props.nativeActivity() === "busy" || runningMinions() > 0);
 
   const doneTasks = createMemo(() => props.snapshot().summary.done || 0);
   const inReviewTasks = createMemo(() => props.snapshot().summary.in_review || 0);
@@ -1630,7 +1603,6 @@ export function SidebarStatus(props: {
       <Show when={props.scopeReady() && Boolean(props.snapshot().generated_at)}>
         <OperationalStatusBlock
           snapshot={props.snapshot()}
-          jobs={props.jobs()}
           activeExecutions={activeExecutionsCount()}
           inReview={counts().review}
           attentionCount={counts().attention}
@@ -1661,7 +1633,6 @@ export function SidebarStatus(props: {
           {(task: () => DashboardTask) => (
             <ActiveTaskHero
               task={task()}
-              activeDelegation={activeDelegation()}
               now={props.now}
               spinner={props.spinner}
               densityCompact={props.density() === "compact"}
@@ -1687,18 +1658,18 @@ export function SidebarStatus(props: {
         </Section>
 
         <Section
-          title="Workers & Delegation"
-          shortTitle="Workers"
-          badge={totalDelegationsCount() > 0 ? `${activeDelegationsCount()} act / ${totalDelegationsCount()} tot` : undefined}
-          shortBadge={totalDelegationsCount() > 0 ? `${activeDelegationsCount()}/${totalDelegationsCount()}` : undefined}
-          summary={`${activeDelegationsCount()} act · ${totalDelegationsCount()} tot`}
+          title="Live Minions"
+          shortTitle="Minions"
+          badge={props.minions().length > 0 ? `${runningMinions()} run / ${props.minions().length} tot` : undefined}
+          shortBadge={props.minions().length > 0 ? `${runningMinions()}/${props.minions().length}` : undefined}
+          summary={`${runningMinions()} run · ${props.minions().length} tot`}
           compact={layout().compact}
           densityCompact={props.density() === "compact"}
-          expanded={props.delegationsExpanded}
-          onToggle={props.toggleDelegations}
+          expanded={props.minionsExpanded}
+          onToggle={props.toggleMinions}
           theme={props.theme}
         >
-          <DelegationRows jobs={props.jobs()} spinner={props.spinner} now={props.now} theme={props.theme} compact={layout().compact} textLimit={layout().textLimit} />
+          <MinionRows rows={props.minions()} spinner={props.spinner} theme={props.theme} compact={layout().compact} textLimit={layout().textLimit} onActivate={props.onActivateMinion} />
         </Section>
 
         <Section
@@ -1735,7 +1706,7 @@ function SidebarFooterMetrics(props: { metrics: () => SidebarMetrics; theme?: Tu
     if (pct === undefined) return undefined;
     const segments = gaugeSegments();
     const filled = Math.max(0, Math.min(segments, Math.round((pct / 100) * segments)));
-    return { filled: "█".repeat(filled), empty: "░".repeat(segments - filled) };
+    return { filled: "▰".repeat(filled), empty: "▱".repeat(segments - filled) };
   });
 
   const palette = resolvePalette(props.theme);
@@ -1785,14 +1756,16 @@ function SidebarFooterMetrics(props: { metrics: () => SidebarMetrics; theme?: Tu
 
 function HomeBottomStatus(props: {
   snapshot: () => UISnapshot;
-  jobs: () => DelegationJob[];
+  minions: () => SubagentRow[];
   spinner: () => string;
   snapshotError: () => string;
   theme?: TuiThemeCurrent;
 }) {
   const activeTask = createMemo(() => props.snapshot().tasks.find((t) => t.status === "in_progress"));
   const counts = createMemo(() => operationalCounts(props.snapshot(), props.snapshotError()));
-  const visible = createMemo(() => counts().active > 0 || counts().review > 0 || counts().attention > 0);
+  const visible = createMemo(
+    () => counts().active > 0 || counts().review > 0 || counts().attention > 0 || props.minions().length > 0
+  );
   const palette = resolvePalette(props.theme);
 
   return (
@@ -1810,6 +1783,10 @@ function HomeBottomStatus(props: {
               <text fg={palette.warning}>{`● ${counts().active} active`}</text>
               <text fg={palette.border}> · </text>
               <text fg={palette.accent}>{`◆ ${counts().review} rev`}</text>
+              <Show when={props.minions().length > 0}>
+                <text fg={palette.border}> · </text>
+                <text fg={palette.textSoft}>{`▸ ${props.minions().length} minions`}</text>
+              </Show>
               <Show when={counts().attention > 0}>
                 <text fg={palette.border}> · </text>
                 <text fg={palette.error}>{`✕ ${counts().attention} alert`}</text>
@@ -1859,7 +1836,7 @@ const KANBAN_COLUMNS_STACKED: KanbanGroupKind[][] = [["in_progress", "in_review"
 function KanbanCard(props: { task: DashboardTask; kind: KanbanGroupKind; palette: CortexPalette }) {
   const meta = KANBAN_GROUP_META[props.kind];
   return (
-    <box flexDirection="column" marginTop={1}>
+    <box flexDirection="column" marginTop={1} border={["bottom"]} borderColor={props.palette.borderSubtle}>
       <text fg={props.palette[meta.id]} attributes={TextAttributes.BOLD} wrapMode="none" truncate={true}>
         {`${meta.glyph} ${props.task.task_id}`}
       </text>
@@ -1896,7 +1873,7 @@ function KanbanGroup(props: { kind: KanbanGroupKind; tasks: () => DashboardTask[
 
 function SessionKanbanPanel(props: {
   snapshot: () => UISnapshot;
-  jobs: () => DelegationJob[];
+  minions: () => SubagentRow[];
   now: () => number;
   spinner: () => string;
   pulse: () => string;
@@ -1937,7 +1914,7 @@ function SessionKanbanPanel(props: {
           {`${GLYPH.web} CORTEX · IA KANBAN DECK [${props.pulse()}] `}
         </text>
         <text fg={palette.textMuted}>
-          {`(${tasks().length} tasks · ${props.jobs().length} workers)`}
+          {`(${tasks().length} tasks · ${props.minions().length} minions)`}
         </text>
       </box>
 
@@ -1980,8 +1957,8 @@ const CORTEX_LOGO_BRAILLE = [
 ];
 
 // Top-to-bottom banner gradient: the braille brain shifts across the accent pair
-// while the ASCII shadow resolves into primary/sky, keeping one purple-to-blue
-// family that stays legible under both dark and light resolved palettes.
+// while the ASCII shadow fades into the soft body tone, keeping one violet family
+// that stays legible under both dark and light resolved palettes.
 const CORTEX_LOGO_GRADIENT = ["accent", "accentAlt", "primary", "sky"] as const;
 const CORTEX_LOGO_GRADIENT_STOPS = [4, 9, 12] as const;
 
@@ -2085,7 +2062,7 @@ function HomeStatsWidget(props: {
         return (
           <box
             flexDirection="column"
-            borderStyle="rounded"
+            borderStyle="single"
             borderColor={palette.border}
             paddingLeft={1}
             paddingRight={1}
@@ -2094,7 +2071,6 @@ function HomeStatsWidget(props: {
             width="100%"
             onMouseDown={() => openStatsView()}
           >
-            {/* Header row */}
             <box flexDirection="row" justifyContent="space-between">
               <box flexDirection="row">
                 <text fg={palette.accent} attributes={TextAttributes.BOLD}>
@@ -2111,14 +2087,13 @@ function HomeStatsWidget(props: {
               </Show>
             </box>
 
-            {/* Metrics Row 1 */}
             <box flexDirection="row" marginTop={0} gap={isNarrow() ? 1 : 2}>
               <text fg={palette.sky}>
                 {`● ${formatInteger(s().sessions)} sesiones`}
               </text>
               <text fg={palette.border}>{"│"}</text>
               <text fg={palette.info}>
-                {`✉ ${formatInteger(s().messages)} mensajes`}
+                {`▸ ${formatInteger(s().messages)} mensajes`}
               </text>
               <text fg={palette.border}>{"│"}</text>
               <text fg={palette.success} attributes={TextAttributes.BOLD}>
@@ -2127,24 +2102,23 @@ function HomeStatsWidget(props: {
               <Show when={!isNarrow()}>
                 <text fg={palette.border}>{"│"}</text>
                 <text fg={palette.warning}>
-                  {`📅 ${s().active_days} días activos`}
+                  {`▸ ${s().active_days} días activos`}
                 </text>
               </Show>
             </box>
 
-            {/* Metrics Row 2 */}
             <box flexDirection="row" marginTop={0} gap={isNarrow() ? 1 : 2}>
               <text fg={palette.accentAlt}>
-                {`★ Top: ${s().favorite_model || "-"} (${(s().favorite_model_share ?? 0).toFixed(1)}%)`}
+                {`◆ Top: ${s().favorite_model || "-"} (${(s().favorite_model_share ?? 0).toFixed(1)}%)`}
               </text>
               <text fg={palette.border}>{"│"}</text>
               <text fg={palette.sky}>
-                {`⚡ Pico: ${String(s().peak_hour).padStart(2, "0")}:00`}
+                {`▸ Pico: ${String(s().peak_hour).padStart(2, "0")}:00`}
               </text>
               <Show when={isNarrow()}>
                 <text fg={palette.border}>{"│"}</text>
                 <text fg={palette.warning}>
-                  {`📅 ${s().active_days}d`}
+                  {`▸ ${s().active_days}d`}
                 </text>
               </Show>
               <text fg={palette.textMuted}>
@@ -2275,7 +2249,7 @@ function NanUsageStrip(props: {
     <Show when={props.view()}>
       {(view: () => NanStripView) => (
         <box flexDirection="row" paddingLeft={1} paddingRight={1}>
-          <text fg={palette.accentAlt}>{`${GLYPH.active} nan `}</text>
+          <text fg={palette.accent}>{`${GLYPH.active} nan `}</text>
           <Show
             when={view().percent !== undefined}
             fallback={<text fg={palette.textMuted}>{"quota n/a "}</text>}
@@ -2292,7 +2266,7 @@ function NanUsageStrip(props: {
               theme={props.theme}
             />
           </Show>
-          <text fg={palette.border}>{" · "}</text>
+          <text fg={palette.borderSubtle}>{" · "}</text>
           <text fg={palette.textMuted}>{"24h "}</text>
           <text fg={palette.sky}>{formatLargeTokens(view().burn)}</text>
         </box>
@@ -2337,7 +2311,7 @@ function NanModelPickerPanel(props: NanModelPickerProps) {
       </Show>
 
       <Show when={props.loadError() === "" && props.models().length > 0}>
-        <text fg={palette.textSoft} attributes={TextAttributes.BOLD}>{"model"}</text>
+        <text fg={palette.textSoft} attributes={TextAttributes.BOLD}>{"MODEL"}</text>
         <For each={props.models()}>
           {(model) => (
             <box flexDirection="row" onMouseDown={() => { setModelID(model.model); setLevel(""); props.onSelectionChange(); }}>
@@ -2354,7 +2328,7 @@ function NanModelPickerPanel(props: NanModelPickerProps) {
           )}
         </For>
 
-        <text fg={palette.textSoft} attributes={TextAttributes.BOLD}>{"effort"}</text>
+        <text fg={palette.textSoft} attributes={TextAttributes.BOLD}>{"EFFORT"}</text>
         <Show
           when={needsEffort()}
           fallback={<text fg={palette.textMuted}>{`no adjustable depth for nan/${activeModel()?.model ?? ""} · the reference is written without --effort`}</text>}
@@ -2370,7 +2344,7 @@ function NanModelPickerPanel(props: NanModelPickerProps) {
           </box>
         </Show>
 
-        <text fg={palette.textSoft} attributes={TextAttributes.BOLD}>{`agent · effective mapping (${agents().length})`}</text>
+        <text fg={palette.textSoft} attributes={TextAttributes.BOLD}>{`AGENT · EFFECTIVE MAPPING (${agents().length})`}</text>
         <For each={agents()}>
           {(agent) => (
             <text fg={activeAgent()?.agent === agent.agent ? palette.info : palette.textMuted} onMouseDown={() => { setAgentID(agent.agent); props.onSelectionChange(); }}>
@@ -2428,13 +2402,13 @@ function NanDetailPanel(props: NanDetailProps) {
       </Show>
       <Show when={days().length > 0}>
         <box flexDirection="row" marginTop={1}>
-          <text fg={palette.textSoft}>{"daily tokens "}</text>
+          <text fg={palette.textSoft}>{"DAILY TOKENS "}</text>
           <text fg={palette.accentAlt}>{sparkline()}</text>
           <text fg={palette.textMuted}>{`  ${days()[0].date} → ${days()[days().length - 1].date}`}</text>
         </box>
       </Show>
       <Show when={props.rows().length > 0}>
-        <text fg={palette.textSoft} attributes={TextAttributes.BOLD} marginTop={1}>{"month-to-date against monthly quota"}</text>
+        <text fg={palette.textSoft} attributes={TextAttributes.BOLD} marginTop={1}>{"MONTH-TO-DATE AGAINST MONTHLY QUOTA"}</text>
         <For each={props.rows()}>
           {(row) => (
             <box flexDirection="row">
@@ -2559,17 +2533,17 @@ function CortexAgentsPanel(props: {
   const header = () => (
     <box flexDirection="row">
       <text fg={palette.textMuted} selectable={false}>{`${fitWidth("", 1)} `}</text>
-      <text fg={palette.textMuted} selectable={false}>{`${fitWidth("st", AGENTS_STATUS_WIDTH)} `}</text>
-      <text fg={palette.textMuted} selectable={false}>{`${fitWidth("agent", layout().agent)} `}</text>
-      <text fg={palette.textMuted} selectable={false}>{fitWidth("objective", layout().title)}</text>
-      <text fg={palette.textMuted} selectable={false}>{` ${fitWidth("elapsed", AGENTS_ELAPSED_WIDTH)}`}</text>
+      <text fg={palette.textMuted} selectable={false}>{`${fitWidth("ST", AGENTS_STATUS_WIDTH)} `}</text>
+      <text fg={palette.textMuted} selectable={false}>{`${fitWidth("AGENT", layout().agent)} `}</text>
+      <text fg={palette.textMuted} selectable={false}>{fitWidth("OBJECTIVE", layout().title)}</text>
+      <text fg={palette.textMuted} selectable={false}>{` ${fitWidth("ELAPSED", AGENTS_ELAPSED_WIDTH)}`}</text>
       <Show when={layout().activity > 0}>
-        <text fg={palette.textMuted} selectable={false}>{` ${fitWidth("activity", layout().activity)}`}</text>
+        <text fg={palette.textMuted} selectable={false}>{` ${fitWidth("ACTIVITY", layout().activity)}`}</text>
       </Show>
-      <text fg={palette.textMuted} selectable={false}>{` ${fitWidth("tokens", AGENTS_TOKENS_WIDTH)}`}</text>
-      <text fg={palette.textMuted} selectable={false}>{` ${fitWidth("cost", AGENTS_COST_WIDTH)}`}</text>
+      <text fg={palette.textMuted} selectable={false}>{` ${fitWidth("TOKENS", AGENTS_TOKENS_WIDTH)}`}</text>
+      <text fg={palette.textMuted} selectable={false}>{` ${fitWidth("COST", AGENTS_COST_WIDTH)}`}</text>
       <Show when={layout().task > 0}>
-        <text fg={palette.textMuted} selectable={false}>{` ${fitWidth("task", layout().task)}`}</text>
+        <text fg={palette.textMuted} selectable={false}>{` ${fitWidth("TASK", layout().task)}`}</text>
       </Show>
     </box>
   );
@@ -2577,8 +2551,8 @@ function CortexAgentsPanel(props: {
   return (
     <box
       flexDirection="column"
-      borderStyle="rounded"
-      borderColor={palette.primary}
+      borderStyle="single"
+      borderColor={palette.accentBorder}
       title={`${GLYPH.brand} SUBAGENTS [${running()} running · ${props.rows().length} total]`}
       titleColor={palette.accent}
       titleAlignment="left"
@@ -2692,8 +2666,8 @@ function initialize(api: any, disposeRoot: () => void): () => void {
   const [tasksExpanded, setTasksExpanded] = createSignal(
     getPref(TASKS_EXPANDED_KEY, startingDensity === "expanded")
   );
-  const [delegationsExpanded, setDelegationsExpanded] = createSignal(
-    getPref(DELEGATIONS_EXPANDED_KEY, startingDensity === "expanded")
+  const [minionsExpanded, setMinionsExpanded] = createSignal(
+    getPref(MINIONS_EXPANDED_KEY, startingDensity === "expanded")
   );
   const [attentionExpanded, setAttentionExpanded] = createSignal(
     getPref(ATTENTION_EXPANDED_KEY, startingDensity === "expanded")
@@ -2709,7 +2683,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
     setPref(DENSITY_KEY, next);
     const open = next === "expanded";
     setSectionExpanded(TASKS_EXPANDED_KEY, setTasksExpanded, open);
-    setSectionExpanded(DELEGATIONS_EXPANDED_KEY, setDelegationsExpanded, open);
+    setSectionExpanded(MINIONS_EXPANDED_KEY, setMinionsExpanded, open);
     setSectionExpanded(ATTENTION_EXPANDED_KEY, setAttentionExpanded, open);
   };
 
@@ -2725,7 +2699,6 @@ function initialize(api: any, disposeRoot: () => void): () => void {
 
   const spinner = createMemo(() => SPINNER_FRAMES[frame() % SPINNER_FRAMES.length]);
   const pulse = createMemo(() => NEURAL_PULSE_FRAMES[pulseFrame() % NEURAL_PULSE_FRAMES.length]);
-  const jobs = createMemo(() => snapshot().delegations.map((job, sequence) => ({ ...job, sequence })));
 
   const sessionElapsed = createMemo(() => {
     const scope = conversationScope(api, activeSessionOverride());
@@ -3244,8 +3217,9 @@ function initialize(api: any, disposeRoot: () => void): () => void {
     return conversationScope(api, activeSessionOverride())?.rootSessionID || "";
   };
 
-  // The panel never polls on its own: the child list refreshes with the existing
-  // snapshot cadence so concurrent authority writers are never contended faster.
+  // The child list refreshes with the existing snapshot cadence so concurrent
+  // authority writers are never contended faster, and it stays warm while the
+  // sidebar renders the live minion section without the panel being open.
   const readSubagentChildren = (): void => {
     if (disposed || agentsPending) return;
     const root = subagentRootSessionID();
@@ -3294,7 +3268,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
   };
 
   const patchSubagentLive = (sessionID: unknown, patch: SubagentLive): void => {
-    if (typeof sessionID !== "string" || sessionID === "" || !agentsOpen()) return;
+    if (typeof sessionID !== "string" || sessionID === "") return;
     if (!agentsKnownChildren.has(sessionID)) return;
     setAgentsLive((previous) => {
       const next = new Map(previous);
@@ -3475,6 +3449,13 @@ function initialize(api: any, disposeRoot: () => void): () => void {
     openSubagentSession(row.sessionID);
   };
 
+  // Sidebar minion rows jump straight to the owning child session; panel-scoped
+  // selection stays untouched so a later panel open starts clean.
+  const activateMinionRow = (index: number): void => {
+    const row = agentRows()[index];
+    if (row) openSubagentSession(row.sessionID);
+  };
+
   const agentsPanelView = () => (
     <CortexAgentsPanel
       rows={agentRows}
@@ -3565,9 +3546,8 @@ function initialize(api: any, disposeRoot: () => void): () => void {
   }
 
   createEffect(() => {
-    const open = agentsOpen();
     const stamp = snapshot().generated_at;
-    if (!open || !stamp) return;
+    if (!stamp) return;
     untrack(() => readSubagentChildren());
   });
 
@@ -3601,7 +3581,8 @@ function initialize(api: any, disposeRoot: () => void): () => void {
             nativeActivity={nativeActivity}
             scopeReady={scopeReady}
             snapshot={snapshot}
-            jobs={jobs}
+            minions={agentRows}
+            onActivateMinion={activateMinionRow}
             snapshotError={snapshotError}
             sessionElapsed={sessionElapsed}
             eta={boardEta}
@@ -3611,10 +3592,10 @@ function initialize(api: any, disposeRoot: () => void): () => void {
             density={density}
             toggleDensity={toggleDensity}
             tasksExpanded={tasksExpanded}
-            delegationsExpanded={delegationsExpanded}
+            minionsExpanded={minionsExpanded}
             attentionExpanded={attentionExpanded}
             toggleTasks={() => togglePreference(TASKS_EXPANDED_KEY, tasksExpanded, setTasksExpanded)}
-            toggleDelegations={() => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded)}
+            toggleMinions={() => togglePreference(MINIONS_EXPANDED_KEY, minionsExpanded, setMinionsExpanded)}
             toggleAttention={() => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded)}
             theme={ctx?.theme?.current || ctx?.theme || api.theme}
           />
@@ -3657,7 +3638,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
         return (
           <HomeBottomStatus
             snapshot={snapshot}
-            jobs={jobs}
+            minions={agentRows}
             spinner={spinner}
             snapshotError={snapshotError}
             theme={ctx?.theme?.current || ctx?.theme || api.theme}
@@ -3681,7 +3662,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
                   <Show when={!panel?.name || panel?.name === "cortex.dashboard" || panel?.name === "session.panel" || panel?.name === "cortex.board" || panel?.name === "cortex"}>
                     <SessionKanbanPanel
                       snapshot={snapshot}
-                      jobs={jobs}
+                      minions={agentRows}
                       now={now}
                       spinner={spinner}
                       pulse={pulse}
@@ -3878,7 +3859,8 @@ function initialize(api: any, disposeRoot: () => void): () => void {
           nativeActivity={nativeActivity}
           scopeReady={scopeReady}
           snapshot={snapshot}
-          jobs={jobs}
+          minions={agentRows}
+          onActivateMinion={activateMinionRow}
           snapshotError={snapshotError}
           sessionElapsed={sessionElapsed}
           eta={boardEta}
@@ -3888,10 +3870,10 @@ function initialize(api: any, disposeRoot: () => void): () => void {
           density={density}
           toggleDensity={toggleDensity}
           tasksExpanded={tasksExpanded}
-          delegationsExpanded={delegationsExpanded}
+          minionsExpanded={minionsExpanded}
           attentionExpanded={attentionExpanded}
           toggleTasks={() => togglePreference(TASKS_EXPANDED_KEY, tasksExpanded, setTasksExpanded)}
-          toggleDelegations={() => togglePreference(DELEGATIONS_EXPANDED_KEY, delegationsExpanded, setDelegationsExpanded)}
+          toggleMinions={() => togglePreference(MINIONS_EXPANDED_KEY, minionsExpanded, setMinionsExpanded)}
           toggleAttention={() => togglePreference(ATTENTION_EXPANDED_KEY, attentionExpanded, setAttentionExpanded)}
           theme={ctx?.theme?.current || ctx?.theme || api.theme}
         />
@@ -3908,7 +3890,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
           />
           <HomeBottomStatus
             snapshot={snapshot}
-            jobs={jobs}
+            minions={agentRows}
             spinner={spinner}
             snapshotError={snapshotError}
             theme={ctx?.theme?.current || ctx?.theme || api.theme}
@@ -3921,7 +3903,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
       return (
         <HomeBottomStatus
           snapshot={snapshot}
-          jobs={jobs}
+          minions={agentRows}
           spinner={spinner}
           snapshotError={snapshotError}
           theme={ctx?.theme?.current || ctx?.theme || api.theme}
@@ -3933,7 +3915,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
       return (
         <SessionKanbanPanel
           snapshot={snapshot}
-          jobs={jobs}
+          minions={agentRows}
           now={now}
           spinner={spinner}
           pulse={pulse}
@@ -3955,7 +3937,7 @@ function initialize(api: any, disposeRoot: () => void): () => void {
       return (
         <SessionKanbanPanel
           snapshot={snapshot}
-          jobs={jobs}
+          minions={agentRows}
           now={now}
           spinner={spinner}
           pulse={pulse}
