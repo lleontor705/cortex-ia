@@ -23,11 +23,14 @@ var (
 	styleSubtitle = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
 	styleDim      = lipgloss.NewStyle().Foreground(styles.Muted)
 	styleSelected = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
+	styleRow      = lipgloss.NewStyle().Bold(true).Foreground(styles.White).Background(styles.SelectedBG)
 	stylePass     = lipgloss.NewStyle().Bold(true).Foreground(styles.Success)
 	styleFail     = lipgloss.NewStyle().Bold(true).Foreground(styles.Error)
 	styleWarn     = lipgloss.NewStyle().Bold(true).Foreground(styles.Warning)
 	styleConflict = lipgloss.NewStyle().Bold(true).Foreground(styles.Error)
-	styleFrame    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(styles.Primary).Padding(0, 1)
+	styleSection  = lipgloss.NewStyle().Bold(true).Foreground(styles.Primary)
+	styleCaret    = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
+	styleFrame    = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(styles.Line).Padding(0, 1)
 )
 
 var homeDescriptions = []string{
@@ -175,7 +178,7 @@ func (m model) viewUpgrade() string {
 }
 
 func (m model) header(name string) string {
-	return styleTitle.Render("cortex-ia "+m.version) + styleDim.Render(" · "+name+" · "+m.homeDir)
+	return styleTitle.Render("cortex-ia "+m.version) + styleCaret.Render(" _") + styleDim.Render(" · "+name+" · "+m.homeDir)
 }
 
 func (m model) footer(keys string) string {
@@ -255,7 +258,7 @@ func (m model) homeMenuLines(width int) []string {
 		}
 		if i == m.cursor {
 			prefix = fmt.Sprintf("▸ [%d] ", i+1)
-			text = styleSelected.Render(entry)
+			text = styleRow.Render(entry)
 		}
 		lines = append(lines, truncate(prefix+text+entryBadge+desc, width))
 	}
@@ -269,11 +272,11 @@ func (m model) viewReview() string {
 		"",
 	}
 	if m.replanning {
-		top = append(top, styleSubtitle.Render("⚡ planning…"))
+		top = append(top, styleSubtitle.Render("● planning…"))
 	} else if m.planErr != nil {
-		top = append(top, styleFail.Render("✖ plan error: "+m.planErr.Error()))
+		top = append(top, styleFail.Render("✗ plan error: "+m.planErr.Error()))
 	}
-	top = append(top, "Selection (space toggles, replans):")
+	top = append(top, styleSection.Render("01 / Selection (space toggles, replans):"))
 	states := []bool{m.opts.Cortex, m.opts.Context7}
 	for i, name := range managedNames {
 		mark := " "
@@ -288,7 +291,7 @@ func (m model) viewReview() string {
 		}
 		if i == m.mcpCursor {
 			prefix = "> "
-			text = styleSelected.Render(text)
+			text = styleRow.Render(text)
 		}
 		top = append(top, truncate(prefix+text+desc, width))
 	}
@@ -301,7 +304,7 @@ func (m model) viewReview() string {
 	themeDesc := " · " + styleDim.Render("opt-in; your theme is left untouched unless you select this")
 	if m.mcpCursor == themeRowIndex {
 		themePrefix = "> "
-		themeText = styleSelected.Render(themeText)
+		themeText = styleRow.Render(themeText)
 	}
 	top = append(top, truncate(themePrefix+themeText+themeDesc, width))
 	top = append(top, "")
@@ -371,7 +374,7 @@ func conflictNotice(conflicts []pipeline.Conflict) string {
 
 // planSummary renders the plan effects and conflicts read-only.
 func (m model) planSummary(width int) []string {
-	lines := []string{fmt.Sprintf("Effects (%d, plan %s):", len(m.plan.Effects), shortDigest(m.plan.Digest))}
+	lines := []string{styleSection.Render(fmt.Sprintf("02 / Effects (%d, plan %s):", len(m.plan.Effects), shortDigest(m.plan.Digest)))}
 	noops := 0
 	listed := 0
 	for _, effect := range m.plan.Effects {
@@ -386,7 +389,7 @@ func (m model) planSummary(width int) []string {
 		listed++
 		effectTag := stylePass.Render(fmt.Sprintf("  + %s", effect.Kind))
 		if effect.Kind == "safe-merge" {
-			effectTag = styleSubtitle.Render(fmt.Sprintf("  ⚡ %s", effect.Kind))
+			effectTag = styleSubtitle.Render(fmt.Sprintf("  → %s", effect.Kind))
 		}
 		lines = append(lines, truncate(fmt.Sprintf("%s %s", effectTag, effect.Dest), width))
 	}
@@ -394,7 +397,7 @@ func (m model) planSummary(width int) []string {
 		lines = append(lines, fmt.Sprintf("  … plus %d already converged", noops))
 	}
 	if len(m.plan.Conflicts) > 0 {
-		lines = append(lines, fmt.Sprintf("Conflicts (%d):", len(m.plan.Conflicts)))
+		lines = append(lines, styleSection.Render(fmt.Sprintf("03 / Conflicts (%d):", len(m.plan.Conflicts))))
 		for _, conflict := range m.plan.Conflicts {
 			suffix := ""
 			if !conflict.OverwriteAuthorized {
@@ -551,7 +554,7 @@ func (m model) viewConfirm() string {
 		return ""
 	}
 	lines := []string{
-		styleWarn.Render("⚠ " + title),
+		styleWarn.Render("● " + title),
 		truncate(prompt, width),
 		styleDim.Render("[y] yes, proceed   [n]/esc no, cancel"),
 	}
@@ -563,21 +566,21 @@ func (m model) viewWeb() string {
 	var lines []string
 
 	lines = append(lines, truncate(m.header("CortexIA Web Console"), width), "")
-	lines = append(lines, styleSubtitle.Render("🌐 Tablero Kanban y Supervisión en Tiempo Real"))
+	lines = append(lines, styleSection.Render("TABLERO KANBAN Y SUPERVISIÓN EN TIEMPO REAL"))
 	lines = append(lines, "")
 	var statusText string
 	var actionText string
 	if m.webStarting {
-		statusText = styleSubtitle.Render("🟡 Iniciando Servidor...")
+		statusText = styleWarn.Render("● Iniciando Servidor...")
 		actionText = styleDim.Render("  [ Iniciando servidor web... apertura de navegador en espera ]")
 	} else if m.webErr != nil {
-		statusText = styleFail.Render(fmt.Sprintf("🔴 Error de Inicio: %s", m.webErr.Error()))
+		statusText = styleFail.Render(fmt.Sprintf("✗ Error de Inicio: %s", m.webErr.Error()))
 		actionText = styleFail.Render("  [ Error en servidor web — apertura de navegador deshabilitada ]")
 	} else if m.webReady {
-		statusText = stylePass.Render("🟢 Servidor Activo")
+		statusText = stylePass.Render("✓ Servidor Activo")
 		actionText = styleSelected.Render("  [ Presiona 'o' o 'Enter' para abrir en tu navegador predeterminado ]")
 	} else {
-		statusText = styleDim.Render("⚪ Servidor Inactivo")
+		statusText = styleDim.Render("● Servidor Inactivo")
 		actionText = styleDim.Render("  [ Servidor no disponible — apertura de navegador deshabilitada ]")
 	}
 
@@ -590,10 +593,10 @@ func (m model) viewWeb() string {
 	lines = append(lines, fmt.Sprintf("  • Storage: %s", styleDim.Render(delegation.DefaultDBPath(m.homeDir))))
 	lines = append(lines, "")
 	lines = append(lines, styleDim.Render("Funcionalidades disponibles en el navegador:"))
-	lines = append(lines, "  📊 Tablero de Tareas (Kanban DAG: backlog, ready, in_progress, in_review, done)")
-	lines = append(lines, "  ⚡ Monitor de Subagentes (Background subagents, duración en vivo y receipts)")
-	lines = append(lines, "  🛡️ Control de Concurrencia (Active File Leases y Claims)")
-	lines = append(lines, "  🧠 Grafo de Conocimiento Cortex (AST, símbolos y memoria episódica)")
+	lines = append(lines, "  "+styleSection.Render("→")+" Tablero de Tareas (Kanban DAG: backlog, ready, in_progress, in_review, done)")
+	lines = append(lines, "  "+styleSection.Render("→")+" Monitor de Subagentes (Background subagents, duración en vivo y receipts)")
+	lines = append(lines, "  "+styleSection.Render("→")+" Control de Concurrencia (Active File Leases y Claims)")
+	lines = append(lines, "  "+styleSection.Render("→")+" Grafo de Conocimiento Cortex (AST, símbolos y memoria episódica)")
 	lines = append(lines, "")
 	lines = append(lines, actionText)
 	lines = append(lines, "", m.footer("enter / o abrir navegador · b / esc volver al menú inicio · q salir"))

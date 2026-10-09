@@ -55,9 +55,9 @@ const (
 )
 
 var (
-	statsCardStyle   = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(styles.Muted).Padding(0, 1)
-	statsValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
-	statsFooterStyle = lipgloss.NewStyle().Italic(true).Foreground(styles.Warning)
+	statsCardStyle   = styles.Panel.Border(lipgloss.NormalBorder()).BorderForeground(styles.Line)
+	statsValueStyle  = styles.Subtitle
+	statsFooterStyle = styles.StatusWarn.Italic(true)
 )
 
 // statsState keeps the statistics screen self-contained so it renders and
@@ -173,12 +173,23 @@ func (s statsState) view(width int) string {
 
 	body := []string{statsTitle(), "", tabsRow(s.tab), windowsRow(s.window), ""}
 	if s.tab == statsTabModels {
-		body = append(body, s.modelsView())
+		body = append(body, statsSectionHeader(1, "MODELOS"), "", s.modelsView())
 	} else {
-		body = append(body, s.cardGrid(w), "", renderHeatmap(s.report.Days, s.summary()), "", s.gatsbyFooter())
+		body = append(body,
+			statsSectionHeader(1, "MÉTRICAS"), "",
+			s.cardGrid(w), "",
+			statsSectionHeader(2, "ACTIVIDAD"), "",
+			renderHeatmap(s.report.Days, s.summary()), "",
+			s.gatsbyFooter())
 	}
 	body = append(body, "", styleDim.Render(statsKeyHints))
 	return strings.Join(body, "\n")
+}
+
+// statsSectionHeader renders the bold, uppercase numbered heading shared by the
+// stats sections, mirroring the Review screen's "NN / Label" convention.
+func statsSectionHeader(number int, label string) string {
+	return styleSection.Render(fmt.Sprintf("%02d / %s", number, label))
 }
 
 func statsTitle() string {
@@ -190,7 +201,7 @@ func tabsRow(active statsTab) string {
 	rendered := make([]string, len(labels))
 	for i, label := range labels {
 		if statsTab(i) == active {
-			rendered[i] = styleSelected.Render("[ " + label + " ]")
+			rendered[i] = styles.Selected.Render("[ " + label + " ]")
 			continue
 		}
 		rendered[i] = styleDim.Render("  " + label + "  ")
@@ -203,7 +214,7 @@ func windowsRow(active ocstats.Window) string {
 	for i, entry := range statsWindows {
 		label := fmt.Sprintf("%d %s", i+1, entry.label)
 		if entry.window == active {
-			rendered = append(rendered, styleSelected.Render("[ "+label+" ]"))
+			rendered = append(rendered, styles.Selected.Render("[ "+label+" ]"))
 			continue
 		}
 		rendered = append(rendered, styleDim.Render("  "+label+"  "))

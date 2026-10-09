@@ -16,7 +16,7 @@ const (
 	ThemeLight ThemeID = "light"
 )
 
-// Theme holds all color values for a TUI theme.
+// Theme holds the eight color roles the global styles are rebuilt from.
 type Theme struct {
 	Primary   lipgloss.Color
 	Secondary lipgloss.Color
@@ -28,101 +28,91 @@ type Theme struct {
 	BgColor   lipgloss.Color
 }
 
-var darkTheme = Theme{
-	Primary:   lipgloss.Color("#7C3AED"),
-	Secondary: lipgloss.Color("#06B6D4"),
-	Success:   lipgloss.Color("#10B981"),
-	Warning:   lipgloss.Color("#F59E0B"),
-	Error:     lipgloss.Color("#F43F5E"),
-	Muted:     lipgloss.Color("#64748B"),
-	White:     lipgloss.Color("#F8FAFC"),
-	BgColor:   lipgloss.Color("#0A0E17"),
-}
-
-var lightTheme = Theme{
-	Primary:   lipgloss.Color("#6D28D9"),
-	Secondary: lipgloss.Color("#0891B2"),
-	Success:   lipgloss.Color("#059669"),
-	Warning:   lipgloss.Color("#D97706"),
-	Error:     lipgloss.Color("#E11D48"),
-	Muted:     lipgloss.Color("#64748B"),
-	White:     lipgloss.Color("#1E293B"),
-	BgColor:   lipgloss.Color("#F8FAFC"),
+// themeFromTokens maps the canonical Nan Ink palette onto the eight TUI color
+// roles. Nan Ink defines a single accent, so Secondary and White resolve to the
+// neutral text roles; AccentBorder is decoration-only (it fails AA on the dark
+// canvas) and is never promoted into a text foreground.
+func themeFromTokens(t NanInkTokens) Theme {
+	return Theme{
+		Primary:   t.AccentText,
+		Secondary: t.Body,
+		Success:   t.Success,
+		Warning:   t.Warning,
+		Error:     t.Danger,
+		Muted:     t.Muted,
+		White:     t.Text,
+		BgColor:   t.BG,
+	}
 }
 
 // ActiveTheme tracks the currently active theme.
 var ActiveTheme ThemeID = ThemeDark
 
-// Current color variables — updated by ApplyTheme.
+// Current color roles and global styles — rebuilt by applyRoles.
 var (
-	Primary   = darkTheme.Primary
-	Secondary = darkTheme.Secondary
-	Success   = darkTheme.Success
-	Warning   = darkTheme.Warning
-	Error     = darkTheme.Error
-	Muted     = darkTheme.Muted
-	White     = darkTheme.White
+	Primary    lipgloss.Color
+	Secondary  lipgloss.Color
+	Success    lipgloss.Color
+	Warning    lipgloss.Color
+	Error      lipgloss.Color
+	Muted      lipgloss.Color
+	White      lipgloss.Color
+	Line       lipgloss.Color
+	SelectedBG lipgloss.Color
+
+	Title          lipgloss.Style
+	Subtitle       lipgloss.Style
+	Description    lipgloss.Style
+	Selected       lipgloss.Style
+	Cursor         lipgloss.Style
+	StatusOK       lipgloss.Style
+	StatusFail     lipgloss.Style
+	StatusWarn     lipgloss.Style
+	Help           lipgloss.Style
+	Box            lipgloss.Style
+	Frame          lipgloss.Style
+	Panel          lipgloss.Style
+	ProgressFilled lipgloss.Style
+	ProgressEmpty  lipgloss.Style
+	Percent        lipgloss.Style
 )
 
-// Styles — rebuilt by ApplyTheme.
-var (
-	Title = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(Primary).
-		MarginBottom(1)
+// applyRoles rebuilds every color role and global style from one Nan Ink token
+// set. Box, Frame, and the global view frame carry the hairline normal border in
+// the Line token; Panel is borderless because inactive panels are separated by
+// gutters rather than chrome.
+func applyRoles(t NanInkTokens) {
+	roles := themeFromTokens(t)
+	Primary = roles.Primary
+	Secondary = roles.Secondary
+	Success = roles.Success
+	Warning = roles.Warning
+	Error = roles.Error
+	Muted = roles.Muted
+	White = roles.White
+	Line = t.Line
+	SelectedBG = t.Selected
 
-	Subtitle = lipgloss.NewStyle().
-			Foreground(Secondary).
-			Bold(true)
-
-	Description = lipgloss.NewStyle().
-			Foreground(Muted)
-
-	Selected = lipgloss.NewStyle().
-			Foreground(Success).
-			Bold(true)
-
-	Cursor = lipgloss.NewStyle().
-		Foreground(Primary).
-		Bold(true)
-
-	StatusOK = lipgloss.NewStyle().
-			Foreground(Success)
-
-	StatusFail = lipgloss.NewStyle().
-			Foreground(Error)
-
-	StatusWarn = lipgloss.NewStyle().
-			Foreground(Warning)
-
-	Help = lipgloss.NewStyle().
-		Foreground(Muted).
-		MarginTop(1)
-
-	Box = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(Primary).
-		Padding(1, 2)
-
-	// Frame is an alias for Box (kept for backwards compatibility).
+	Title = lipgloss.NewStyle().Bold(true).Foreground(Primary).MarginBottom(1)
+	Subtitle = lipgloss.NewStyle().Foreground(Secondary).Bold(true)
+	Description = lipgloss.NewStyle().Foreground(Muted)
+	Selected = lipgloss.NewStyle().Foreground(White).Bold(true).Background(SelectedBG)
+	Cursor = lipgloss.NewStyle().Foreground(Primary).Bold(true)
+	StatusOK = lipgloss.NewStyle().Foreground(Success)
+	StatusFail = lipgloss.NewStyle().Foreground(Error)
+	StatusWarn = lipgloss.NewStyle().Foreground(Warning)
+	Help = lipgloss.NewStyle().Foreground(Muted).MarginTop(1)
+	Box = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(Line).Padding(1, 2)
 	Frame = Box
+	Panel = lipgloss.NewStyle().Padding(0, 1)
+	ProgressFilled = lipgloss.NewStyle().Foreground(Success).Bold(true)
+	ProgressEmpty = lipgloss.NewStyle().Foreground(Muted)
+	Percent = lipgloss.NewStyle().Foreground(Secondary).Bold(true)
+}
 
-	Panel = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(Muted).
-		Padding(0, 1)
-
-	ProgressFilled = lipgloss.NewStyle().
-			Foreground(Success).
-			Bold(true)
-
-	ProgressEmpty = lipgloss.NewStyle().
-			Foreground(Muted)
-
-	Percent = lipgloss.NewStyle().
-		Foreground(Secondary).
-		Bold(true)
-)
+func init() {
+	applyRoles(NanInkDark)
+}
 
 // CursorPrefix is the cursor indicator string used in selection lists.
 const CursorPrefix = "> "
@@ -172,7 +162,7 @@ func hexToRGB(hexStr string) (r, g, b int) {
 		_, _ = fmt.Sscanf(hexStr[1:], "%02x%02x%02x", &r, &g, &b)
 		return
 	}
-	return 124, 58, 237 // fallback to default primary
+	return 155, 107, 240 // Nan Ink accent-text #9B6BF0
 }
 
 // HomeLogoArt selects the logo variant for the available content width. It
@@ -235,39 +225,8 @@ func ToggleTheme() {
 	}
 }
 
-// ApplyTheme sets all color and style variables to match the given theme.
+// ApplyTheme rebuilds every color role and global style for the given mode.
 func ApplyTheme(id ThemeID) {
 	ActiveTheme = id
-
-	var t Theme
-	switch id {
-	case ThemeLight:
-		t = lightTheme
-	default:
-		t = darkTheme
-	}
-
-	Primary = t.Primary
-	Secondary = t.Secondary
-	Success = t.Success
-	Warning = t.Warning
-	Error = t.Error
-	Muted = t.Muted
-	White = t.White
-
-	Title = lipgloss.NewStyle().Bold(true).Foreground(Primary).MarginBottom(1)
-	Subtitle = lipgloss.NewStyle().Foreground(Secondary).Bold(true)
-	Description = lipgloss.NewStyle().Foreground(Muted)
-	Selected = lipgloss.NewStyle().Foreground(Success).Bold(true)
-	Cursor = lipgloss.NewStyle().Foreground(Primary).Bold(true)
-	StatusOK = lipgloss.NewStyle().Foreground(Success)
-	StatusFail = lipgloss.NewStyle().Foreground(Error)
-	StatusWarn = lipgloss.NewStyle().Foreground(Warning)
-	Help = lipgloss.NewStyle().Foreground(Muted).MarginTop(1)
-	Box = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(Primary).Padding(1, 2)
-	Frame = Box
-	Panel = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(Muted).Padding(0, 1)
-	ProgressFilled = lipgloss.NewStyle().Foreground(Success).Bold(true)
-	ProgressEmpty = lipgloss.NewStyle().Foreground(Muted)
-	Percent = lipgloss.NewStyle().Foreground(Secondary).Bold(true)
+	applyRoles(NanInkFor(id))
 }

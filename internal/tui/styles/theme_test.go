@@ -179,3 +179,59 @@ func TestShimmerLogoArt_RendersVariants(t *testing.T) {
 		t.Error("ShimmerLogo must delegate to ShimmerLogoArt(Logo, frame)")
 	}
 }
+
+// TestApplyTheme_RebuildsFromNanInkTokens pins every rebuilt color role to the
+// canonical Nan Ink token set so a palette drift or a role remap fails loudly.
+func TestApplyTheme_RebuildsFromNanInkTokens(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		id   ThemeID
+		want NanInkTokens
+	}{
+		{"dark", ThemeDark, NanInkDark},
+		{"light", ThemeLight, NanInkLight},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ApplyTheme(tc.id)
+			for _, role := range []struct {
+				name      string
+				got, want lipgloss.Color
+			}{
+				{"Primary", Primary, tc.want.AccentText},
+				{"Secondary", Secondary, tc.want.Body},
+				{"Success", Success, tc.want.Success},
+				{"Warning", Warning, tc.want.Warning},
+				{"Error", Error, tc.want.Danger},
+				{"Muted", Muted, tc.want.Muted},
+				{"White", White, tc.want.Text},
+				{"Line", Line, tc.want.Line},
+				{"SelectedBG", SelectedBG, tc.want.Selected},
+			} {
+				if role.got != role.want {
+					t.Errorf("%s role = %s, want Nan Ink %s", role.name, role.got, role.want)
+				}
+			}
+		})
+	}
+	ApplyTheme(ThemeDark)
+}
+
+// TestApplyTheme_HairlineBorders pins the square-corner hairline discipline: the
+// active Box/Frame carry a 1px normal border and the inactive Panel is
+// borderless, so no rounded double-border combination can survive.
+func TestApplyTheme_HairlineBorders(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	box := Box.Render("x")
+	if !strings.Contains(box, "┌") || !strings.Contains(box, "└") {
+		t.Errorf("Box must render a hairline normal border, got %q", box)
+	}
+	if strings.ContainsAny(box, "╭╮╰╯") {
+		t.Errorf("Box must not use rounded corners, got %q", box)
+	}
+	if Frame.Render("x") != box {
+		t.Error("Frame must alias the Box hairline style")
+	}
+	if panel := Panel.Render("x"); strings.ContainsAny(panel, "┌│└─") {
+		t.Errorf("Panel must be borderless, got %q", panel)
+	}
+}

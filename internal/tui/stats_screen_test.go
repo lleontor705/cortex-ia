@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lleontor705/cortex-ia/internal/ocstats"
+	"github.com/lleontor705/cortex-ia/internal/tui/styles"
 )
 
 func statsFixtureReport() ocstats.Report {
@@ -84,10 +85,20 @@ func TestStatsCardsRenderWindowValues(t *testing.T) {
 	for _, want := range []string{
 		"Sesiones", "Mensajes", "Tokens totales", "Días activos", "Hora pico", "Modelo favorito",
 		"12,345", "10:00", "model-x", "[ 1 Todo ]", "[ Resumen ]",
+		"01 / MÉTRICAS", "02 / ACTIVIDAD",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("summary view missing %q", want)
 		}
+	}
+	if got := statsCardStyle.GetBorderTopForeground(); got != styles.NanInkDark.Line {
+		t.Errorf("card border foreground = %v, want the Nan Ink Line token %v", got, styles.NanInkDark.Line)
+	}
+	if got := statsValueStyle.GetForeground(); got != styles.NanInkDark.Body {
+		t.Errorf("value foreground = %v, want the Nan Ink body token %v", got, styles.NanInkDark.Body)
+	}
+	if got := styles.Selected.GetBackground(); got != styles.SelectedBG {
+		t.Errorf("selected chip background = %v, want the Nan Ink selected token %v", got, styles.SelectedBG)
 	}
 }
 
@@ -160,7 +171,7 @@ func TestStatsModelsTabRanksByOrder(t *testing.T) {
 	if !strings.Contains(out, "[ Modelos ]") {
 		t.Fatalf("view = %q, want the Modelos tab active", out)
 	}
-	for _, want := range []string{"Modelo", "Sesiones", "Tokens", "Share", "70.0%", "30.0%"} {
+	for _, want := range []string{"01 / MODELOS", "Modelo", "Sesiones", "Tokens", "Share", "70.0%", "30.0%"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("ranking view missing %q", want)
 		}
