@@ -2,6 +2,7 @@ package tui
 
 import (
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -139,8 +140,11 @@ type model struct {
 	planErr      error
 	reviewStatus string // transient feedback when Review input cannot proceed
 	overwrite    bool   // explicit overwrite authorization
-	hadConflict  bool   // the initial plan carried conflicts
-	replanning   bool
+	hadConflict  bool   // the initial plan carried a clearable conflict
+	// overwriteRefused records an 'o' press that found only non-overwritable
+	// conflicts, so the next replan can explain the inert key.
+	overwriteRefused bool
+	replanning       bool
 	// cortexPrompted records that the missing-cortex consent was already
 	// offered for this Review entry, so replans never re-prompt.
 	cortexPrompted bool
@@ -398,6 +402,7 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		}
 		m.overwrite = false
 		m.hadConflict = false
+		m.overwriteRefused = false
 		m.installMode = ""
 		m.plan = nil
 		m.planErr = nil
@@ -507,18 +512,29 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.replanning = true
 		return m, planCmd(m.svc, m.reviewOptions())
 	case "o", "O":
-		if m.plan != nil && (len(m.plan.Conflicts) > 0 || m.overwrite || m.hadConflict) {
+		if m.plan == nil {
+			return m, nil
+		}
+		clearable, blocked := conflictBreakdown(m.plan.Conflicts)
+		switch {
+		case m.overwrite || m.hadConflict || clearable > 0:
 			m.overwrite = !m.overwrite
 			if !m.overwrite {
 				// Deauthorizing drops the sticky hint so a conflict-free replan
 				// never keeps advertising an overwrite the user withdrew.
 				m.hadConflict = false
 			}
-			m.plan = nil
-			m.reviewStatus = ""
-			m.replanning = true
-			return m, planCmd(m.svc, m.reviewOptions())
+		case len(blocked) > 0:
+			// Only conflicts an overwrite can never clear remain; record the
+			// refusal so the replan surfaces why 'o' authorized nothing.
+			m.overwriteRefused = true
+		default:
+			return m, nil
 		}
+		m.plan = nil
+		m.reviewStatus = ""
+		m.replanning = true
+		return m, planCmd(m.svc, m.reviewOptions())
 	case "b", "B":
 		m.screen = screenHome
 		m.cursor = 0
@@ -572,14 +588,20 @@ func (m model) onPlan(msg planMsg) (tea.Model, tea.Cmd) {
 	m.plan = msg.plan
 	m.reviewScroll = 0
 	m.reviewStatus = ""
+	refused := m.overwriteRefused
+	m.overwriteRefused = false
 	if msg.plan != nil {
 		if m.plan.MetadataPresence == state.PresenceV2 {
 			m.installMode = "sync"
 		} else {
 			m.installMode = "install"
 		}
-		if len(msg.plan.Conflicts) > 0 && !m.overwrite {
+		clearable, blocked := conflictBreakdown(msg.plan.Conflicts)
+		if clearable > 0 && !m.overwrite {
 			m.hadConflict = true
+		}
+		if refused && len(blocked) > 0 {
+			m.reviewStatus = "overwrite cannot clear " + strings.Join(blocked, ", ") + ": resolve manually or deselect the entry"
 		}
 	}
 	if msg.cortexMissing && m.opts.Cortex && !m.cortexPrompted {

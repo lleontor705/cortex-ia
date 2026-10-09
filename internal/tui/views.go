@@ -314,8 +314,10 @@ func (m model) viewReview() string {
 		content = m.planSummary(width)
 	}
 	var bottom []string
+	clearable := 0
 	if m.plan != nil {
-		clearable, blocked := conflictBreakdown(m.plan.Conflicts)
+		var blocked []string
+		clearable, blocked = conflictBreakdown(m.plan.Conflicts)
 		switch {
 		case len(blocked) > 0 && clearable == 0:
 			bottom = append(bottom, styleConflict.Render("manual resolution required: "+strings.Join(blocked, ", ")+" (overwrite cannot clear)"))
@@ -333,7 +335,11 @@ func (m model) viewReview() string {
 	if m.cortexStatus != "" {
 		bottom = append(bottom, styleSubtitle.Render(truncate(m.cortexStatus, width)))
 	}
-	bottom = append(bottom, m.footer("enter run · b back to wizard · o overwrite · pgup/pgdn scroll · esc home"))
+	footerHint := "enter run · b back to wizard · pgup/pgdn scroll · esc home"
+	if clearable > 0 {
+		footerHint = "enter run · b back to wizard · o overwrite · pgup/pgdn scroll · esc home"
+	}
+	bottom = append(bottom, m.footer(footerHint))
 	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), m.reviewScroll, "pgup/pgdn"), "\n")
 }
 
@@ -343,7 +349,7 @@ func (m model) viewReview() string {
 func conflictBreakdown(conflicts []pipeline.Conflict) (clearable int, blocked []string) {
 	seen := make(map[string]struct{}, len(conflicts))
 	for _, conflict := range conflicts {
-		if conflict.OverwriteAuthorized {
+		if overwritable(conflict) {
 			clearable++
 			continue
 		}
@@ -356,6 +362,22 @@ func conflictBreakdown(conflicts []pipeline.Conflict) (clearable int, blocked []
 	}
 	sort.Strings(blocked)
 	return clearable, blocked
+}
+
+// overwritable reports whether an explicit overwrite authorization can clear
+// this conflict. The plan's OverwriteAuthorized bit is authoritative, but the
+// file-ownership kinds cortex-ia records as overwritable stay clearable even
+// when a hash-derived plan omitted the bit.
+func overwritable(conflict pipeline.Conflict) bool {
+	if conflict.OverwriteAuthorized {
+		return true
+	}
+	switch conflict.Kind {
+	case pipeline.ConflictUnmanagedExisting, pipeline.ConflictUnmanagedDrift:
+		return true
+	default:
+		return false
+	}
 }
 
 // conflictNotice explains why a plan carrying conflicts cannot run yet,
@@ -400,7 +422,7 @@ func (m model) planSummary(width int) []string {
 		lines = append(lines, styleSection.Render(fmt.Sprintf("03 / Conflicts (%d):", len(m.plan.Conflicts))))
 		for _, conflict := range m.plan.Conflicts {
 			suffix := ""
-			if !conflict.OverwriteAuthorized {
+			if !overwritable(conflict) {
 				suffix = styleConflict.Render("  [overwrite cannot clear this]")
 			}
 			lines = append(lines, truncate(fmt.Sprintf("  %s: %s (%s)", conflict.Target, conflict.Kind, conflict.Reason), width)+suffix)
