@@ -16,16 +16,6 @@ const NODE_Y_SPACING = 190;
 
 const safeStatus = value => /^[a-z_]+$/.test(value || '') ? value : 'unknown';
 
-const statusColors = {
-  done: '#10b981',
-  in_progress: '#8b5cf6',
-  in_review: '#6366f1',
-  ready: '#06b6d4',
-  blocked: '#f43f5e',
-  backlog: '#64748b',
-  superseded: '#475569'
-};
-
 const statusLabels = {
   done: 'Completada',
   in_progress: 'En progreso',
@@ -128,6 +118,7 @@ export function FlowCanvas({
   onNewTask = null
 }) {
   const containerRef = useRef(null);
+  const viewportRef = useRef(null);
   const [viewport, setViewport] = useState({ x: 40, y: 40, zoom: 0.85 });
   const [positions, setPositions] = useState({});
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
@@ -160,6 +151,16 @@ export function FlowCanvas({
       setPositions(defaultLayout);
     }
   }, [items, boardId]);
+
+  // Drive the pan/zoom transform through CSS custom properties (CSSOM) so the
+  // markup never carries a style attribute and style-src 'self' stays valid.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    el.style.setProperty('--flow-x', `${viewport.x}px`);
+    el.style.setProperty('--flow-y', `${viewport.y}px`);
+    el.style.setProperty('--flow-zoom', String(viewport.zoom));
+  }, [viewport]);
 
   // Persist positions when updated
   const savePositions = useCallback((newPositions) => {
@@ -434,43 +435,37 @@ export function FlowCanvas({
     >
       {/* Interactive Canvas Plane */}
       <div
+        ref={viewportRef}
         class="flow-viewport"
-        style={{
-          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`
-        }}
       >
         {/* SVG Cable Layer */}
-        <svg class="flow-edges-layer" style={{ width: '100%', height: '100%' }}>
+        <svg class="flow-edges-layer">
           <defs>
-            <marker id="flow-arrow-done" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M 0 1 L 7 4 L 0 7 z" fill="#10b981" />
+            <marker id="flow-arrow-done" class="flow-marker marker-done" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+              <path d="M 0 1 L 7 4 L 0 7 z" />
             </marker>
-            <marker id="flow-arrow-active" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M 0 1 L 7 4 L 0 7 z" fill="#8b5cf6" />
+            <marker id="flow-arrow-active" class="flow-marker marker-active" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+              <path d="M 0 1 L 7 4 L 0 7 z" />
             </marker>
-            <marker id="flow-arrow-ready" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M 0 1 L 7 4 L 0 7 z" fill="#06b6d4" />
+            <marker id="flow-arrow-ready" class="flow-marker marker-ready" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+              <path d="M 0 1 L 7 4 L 0 7 z" />
             </marker>
-            <marker id="flow-arrow-blocked" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M 0 1 L 7 4 L 0 7 z" fill="#f43f5e" />
+            <marker id="flow-arrow-blocked" class="flow-marker marker-blocked" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+              <path d="M 0 1 L 7 4 L 0 7 z" />
             </marker>
-            <marker id="flow-arrow-default" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M 0 1 L 7 4 L 0 7 z" fill="#475569" />
+            <marker id="flow-arrow-default" class="flow-marker marker-default" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+              <path d="M 0 1 L 7 4 L 0 7 z" />
             </marker>
           </defs>
 
           {edges.map(edge => {
-            let strokeColor = '#475569';
             let markerId = 'flow-arrow-default';
 
             if (edge.isBlocked) {
-              strokeColor = '#f43f5e';
               markerId = 'flow-arrow-blocked';
             } else if (edge.isResolved) {
-              strokeColor = '#10b981';
               markerId = 'flow-arrow-done';
             } else if (edge.isActive) {
-              strokeColor = '#8b5cf6';
               markerId = 'flow-arrow-active';
             }
 
@@ -499,7 +494,6 @@ export function FlowCanvas({
                 <path
                   d={edge.path}
                   fill="none"
-                  stroke={strokeColor}
                   stroke-width={edge.isHighlighted ? '3.5' : '2'}
                   marker-end={`url(#${markerId})`}
                   class="flow-cable-path"
@@ -531,11 +525,12 @@ export function FlowCanvas({
             return (
               <div
                 key={item.task_id}
-                class={cardClasses}
-                style={{
-                  transform: `translate3d(${pos.x}px, ${pos.y}px, 0px)`,
-                  width: `${NODE_WIDTH}px`
+                ref={el => {
+                  if (!el) return;
+                  el.style.setProperty('--node-x', `${pos.x}px`);
+                  el.style.setProperty('--node-y', `${pos.y}px`);
                 }}
+                class={cardClasses}
                 onPointerDown={(e) => onNodePointerDown(e, item.task_id)}
                 onMouseEnter={() => setHoveredNodeId(item.task_id)}
                 onMouseLeave={() => setHoveredNodeId(null)}
@@ -683,16 +678,14 @@ export function FlowCanvas({
             {items.map(item => {
               const p = positions[item.task_id];
               if (!p) return null;
-              const color = statusColors[item.status] || '#64748b';
               return (
                 <rect
                   key={item.task_id}
+                  class={`minimap-node status-${safeStatus(item.status)}`}
                   x={p.x}
                   y={p.y}
                   width={NODE_WIDTH}
                   height={NODE_HEIGHT}
-                  rx="18"
-                  fill={color}
                   opacity={hoveredNodeId === item.task_id ? 1 : 0.65}
                 />
               );
@@ -701,14 +694,12 @@ export function FlowCanvas({
             {/* Viewport Box */}
             {containerRef.current && (
               <rect
+                class="minimap-viewport"
                 x={-viewport.x / viewport.zoom}
                 y={-viewport.y / viewport.zoom}
                 width={containerRef.current.clientWidth / viewport.zoom}
                 height={containerRef.current.clientHeight / viewport.zoom}
-                fill="rgba(139, 92, 246, 0.12)"
-                stroke="#8b5cf6"
                 stroke-width={4 / viewport.zoom}
-                rx="6"
               />
             )}
           </svg>

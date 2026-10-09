@@ -737,8 +737,8 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
         <div class="board-identity">
           <p class="eyebrow">
             DURABLE TASK BOARD · <code>{board.board_id}</code>
-            {board.board_id?.startsWith('branch-') && <span class="status-chip branch-chip" style="margin-left: 8px;">Rama Git</span>}
-            {board.status === 'archived' && <span class="status-chip archived" style="margin-left: 8px;">Archivado</span>}
+            {board.board_id?.startsWith('branch-') && <span class="status-chip branch-chip chip-inline">Rama Git</span>}
+            {board.status === 'archived' && <span class="status-chip archived chip-inline">Archivado</span>}
           </p>
           <h1>{board.title}</h1>
           <p>{board.description || 'Iniciativa del plano de control local.'}</p>
@@ -751,7 +751,7 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
         </div>
         <div class="board-progress">
           <span><b>{progress}%</b> completado</span>
-          <div class="progress-track"><i style={{ width: `${progress}%` }}></i></div>
+          <progress class="progress-track" value={progress} max="100" aria-label={`${progress}% completado`}></progress>
           <small>{completed} de {items.length} tareas aprobadas</small>
           <div class="board-actions-row">
             {board.status !== 'archived' ? (
@@ -820,7 +820,7 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
                 onClick={() => setMode('graph')}
                 title="Grafo DAG interactivo estilo ComfyUI / React Flow"
               >
-                <IconFlow size={14} style="margin-right: 5px; vertical-align: -2px;" />
+                <span class="view-switch-icon"><IconFlow size={14} /></span>
                 Grafo DAG
               </button>
               <button
@@ -829,7 +829,7 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
                 onClick={() => setMode('kanban')}
                 title="Tablero de columnas Kanban"
               >
-                <IconKanban size={14} style="margin-right: 5px; vertical-align: -2px;" />
+                <span class="view-switch-icon"><IconKanban size={14} /></span>
                 Kanban
               </button>
               <button
@@ -838,7 +838,7 @@ function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBo
                 onClick={() => setMode('list')}
                 title="Lista de dependencias"
               >
-                <IconList size={14} style="margin-right: 5px; vertical-align: -2px;" />
+                <span class="view-switch-icon"><IconList size={14} /></span>
                 Lista
               </button>
             </div>
