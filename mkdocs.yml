@@ -91,4 +91,5 @@ nav:
       - MCP qualification: reference/mcp-qualification.md
       - Qualification inputs: reference/qualification-inputs.md
       - SDK qualification: reference/sdk-qualification.md
+      - Nan Ink theme: reference/nan-ink-theme.md
   - Analysis: analysis/harness-improvement-paper.md

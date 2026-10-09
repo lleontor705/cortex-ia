@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## v0.6.0 (2026-10-08)
+
+### Added
+
+- **Nan Ink visual identity** — a new `cortex-ia` theme for the OpenCode v2 TUI (dark and light) plus the Nan Ink redesign of the cortex-ia Bubble Tea TUI, the web console, and the OpenCode TUI plugin panels. Canonical tokens live in `internal/tui/styles/tokens.go`; see [`docs/reference/nan-ink-theme.md`](docs/reference/nan-ink-theme.md)
+
+### Changed
+
+- **Plugin Workers section becomes Live Minions** — the OpenCode TUI plugin's dead delegation projection is replaced by a Live Minions section fed by live subagent events; the control health bar, Kanban footer, and home status now count live minions
+- **Web console light mode** — the console defaults to the Nan Ink dark palette and follows `prefers-color-scheme: light` for the light snow palette
+- **Web console CSP inline-style remediation** — inline styles in `main.jsx` and `flow-canvas.jsx` are replaced with CSS classes and data-attribute custom properties; the Content-Security-Policy `style-src 'self'` directive is unchanged
 
 ### Removed
 
