@@ -31,6 +31,7 @@ External tooling integrations: release pipeline, CI workflows, installer script,
 | Release | `.github/workflows/release.yml` | Tag push | Published release artifacts |
 | PR Check | `.github/workflows/pr-check.yml` | PR opened/edited | Pass/fail on issue ref, labels, branch name |
 | Stale | `.github/workflows/stale.yml` | Schedule (daily) | Stale/closed issue & PR labels |
+| Ratchets (advisory) | `.github/workflows/ratchets.yml` | Pull request | Advisory drift report (never blocks merges) |
 | Installer | `scripts/install.sh` | User curl-pipe | Binary download + SHA-256 verify + install |
 | Homebrew | `lleontor705/homebrew-tap` | GoReleaser publish | `brew install` formula |
 
@@ -95,6 +96,23 @@ Enforces contribution rules on every PR.
 | Close stale | 14 days after stale label (total 44 days) |
 
 **Trigger**: scheduled (daily).
+
+### ratchets.yml — Advisory Ratchets
+
+Advisory CI that reports drift for review but never blocks a merge.
+
+| Aspect | Detail |
+|--------|--------|
+| Trigger | `pull_request` |
+| Blocking | Never — `continue-on-error: true` on the job and on each step |
+| Permissions | `contents: read`; the only action is first-party `actions/checkout`, pinned to a commit SHA |
+| Ratchets | `scripts/ratchet-deadcode.sh`, `scripts/ratchet-refusals.sh` |
+| Baselines | Committed under `.cortex-ia/ratchet/` |
+| Baseline update | `--regen` prints a unified diff; only `--regen --confirm` swaps the baseline |
+
+Both ratchets always exit 0, so a drift signal is informational. A committed baseline is never replaced by a plain `--regen`: the diff is meant to be reviewed first, and only an explicit `--confirm` atomically writes the new baseline.
+
+**Trigger**: pull request.
 
 ## Installer Script
 

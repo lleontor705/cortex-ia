@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 570" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 570" width="100%" height="100%" role="img" aria-labelledby="orchTitle orchDesc">
+  <title id="orchTitle">OpenCode 6-Role Topology &amp; Delegation Architecture</title>
+  <desc id="orchDesc">Native OpenCode agent topology: one orchestrator coordinator delegating to five ephemeral role controllers (discovery, investigate, planner, implement, reviewer) under Cortex-IA work authority with claims, file leases and approvals. Shows tiered workload budgets, the orchestrator auto-approval lane for data, docs and config, independent adversarial review for high-risk code with an escalate-only floor, and advisory CI ratchets that never block transitions.</desc>
   <defs>
     <linearGradient id="bgOrch" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#080B11"/>
@@ -26,7 +28,7 @@
   <rect width="1080" height="570" rx="14" fill="url(#bgOrch)" stroke="#1E293B" stroke-width="1.5"/>
 
   <text x="540" y="38" class="title-orch">OpenCode 6-Role Topology &amp; Delegation Architecture</text>
-  <text x="540" y="58" class="sub-orch">Single Orchestrator Coordinator · Ephemeral Subagent Controllers · Typed SQLite Authority · Sandboxed Herdr Workers</text>
+  <text x="540" y="58" class="sub-orch">Single Orchestrator Coordinator · Ephemeral Subagent Controllers · Typed SQLite Authority · Native Work Authority: Claims · Leases · Approvals</text>
 
   <!-- Orchestrator Box (Top Center) -->
   <g transform="translate(390, 80)" filter="url(#shadowOrch)">
@@ -77,7 +79,7 @@
     <text x="12" y="104" class="tool-item">cortex_save (gotchas)</text>
     <text x="12" y="122" class="tool-item">read-only bash probes</text>
     <rect x="10" y="132" width="174" height="16" rx="4" fill="#854D0E" fill-opacity="0.3"/>
-    <text x="97" y="143" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="8" fill="#FDE047">Delegable ➔ AGY (plan mode)</text>
+    <text x="97" y="143" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="8" fill="#FDE047">Native Only · No External Leaf</text>
   </g>
 
   <!-- Role 3: PLANNER -->
@@ -86,7 +88,7 @@
     <rect width="194" height="26" rx="8" fill="#3730A3" fill-opacity="0.2"/>
     <path d="M 0 18 L 0 26 L 194 26 L 194 18 Z" fill="#3730A3" fill-opacity="0.2"/>
     <text x="12" y="18" class="role-title" fill="#A5B4FC">📐 PLANNER</text>
-    <text x="12" y="44" class="role-sub">OpenSpec specs, DAG (≤350 LOC)</text>
+    <text x="12" y="44" class="role-sub">Specs + DAG budgets: strict / flexible / unbounded</text>
     <text x="12" y="68" class="tool-item">cortex_ia_openspec_val</text>
     <text x="12" y="86" class="tool-item">cortex_ia_work_create</text>
     <text x="12" y="104" class="tool-item">cortex_ia_board_create</text>
@@ -107,7 +109,7 @@
     <text x="12" y="104" class="tool-item">cortex_ia_work_transition</text>
     <text x="12" y="122" class="tool-item">typed receipt ➔ in_review</text>
     <rect x="10" y="132" width="174" height="16" rx="4" fill="#064E3B" fill-opacity="0.4"/>
-    <text x="97" y="143" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="8" fill="#6EE7B7">Delegable ➔ AGY (current_ws)</text>
+    <text x="97" y="143" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="8" fill="#6EE7B7">Native Only · Claims + Leases</text>
   </g>
 
   <!-- Role 5: REVIEWER -->
@@ -121,11 +123,13 @@
     <text x="12" y="86" class="tool-item">git diff &amp; AST verification</text>
     <text x="12" y="104" class="tool-item">cortex_ia_work_approve</text>
     <text x="12" y="122" class="tool-item">verdict: PASS ➔ done</text>
-    <rect x="10" y="132" width="174" height="16" rx="4" fill="#881337" fill-opacity="0.4"/>
-    <text x="97" y="143" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="8" fill="#FDA4AF">Sole Authority to Mark DONE</text>
+    <rect x="10" y="125" width="174" height="13" rx="4" fill="#881337" fill-opacity="0.15" stroke="#FDA4AF" stroke-width="1" stroke-dasharray="4 3"/>
+    <text x="97" y="134" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="6.8" fill="#FDA4AF">AUTO-APPROVE · data/docs/config/low-risk</text>
+    <rect x="10" y="139" width="174" height="15" rx="4" fill="#881337" fill-opacity="0.45" stroke="#F43F5E" stroke-width="1.4"/>
+    <text x="97" y="150" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="6.8" fill="#FB7185">REVIEWER · high-risk · escalate-only floor</text>
   </g>
 
-  <!-- Bottom Section: Herdr Worker Multiplexing Layer -->
+  <!-- Bottom Section: Native Execution + Advisory CI Ratchets -->
   <g transform="translate(27, 425)" filter="url(#shadowOrch)">
     <rect width="1026" height="115" rx="10" fill="#090D16" stroke="#334155" stroke-width="1.5"/>
     
@@ -135,14 +139,22 @@
     <circle cx="16" cy="13" r="4" fill="#EF4444"/>
     <circle cx="30" cy="13" r="4" fill="#F59E0B"/>
     <circle cx="44" cy="13" r="4" fill="#10B981"/>
-    <text x="60" y="17" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#38BDF8">CORTEX-IA WORK CONTROL PLANE &amp; DELEGATION ENGINE</text>
+    <text x="60" y="17" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#38BDF8">CORTEX-IA NATIVE EXECUTION + ADVISORY CI RATCHETS (CONTINUE-ON-ERROR)</text>
 
     <!-- Subprocess Info -->
     <g transform="translate(20, 38)">
       <text x="0" y="15" font-family="'JetBrains Mono', monospace" font-size="11" fill="#F8FAFC">⚡ Typed Task Authority &amp; Receipts:</text>
       <text x="240" y="15" font-family="'JetBrains Mono', monospace" font-size="10.5" fill="#A855F7">cortex_ia_work_transition / cortex_ia_work_approve (Zero raw JSON in chat)</text>
-      <text x="0" y="38" font-family="system-ui" font-size="10.5" fill="#94A3B8">Runs in dedicated Herdr terminal pane or native subagent with real-time streaming (tool calls, live spinner, token metrics).</text>
+      <text x="0" y="38" font-family="system-ui" font-size="10.5" fill="#94A3B8">Runs natively inside the OpenCode session with real-time streaming (tool calls, live spinner, token metrics).</text>
       <text x="0" y="56" font-family="system-ui" font-size="10.5" fill="#94A3B8">Receipts persist transactionally in SQLite (~/.cortex-ia/delegation.db). Chat output renders clean human-readable Markdown.</text>
+    </g>
+
+    <!-- Advisory Lane: dashed/muted, never blocks transitions -->
+    <g transform="translate(720, 40)">
+      <rect width="286" height="62" rx="8" fill="#0F172A" fill-opacity="0.35" stroke="#64748B" stroke-width="1.25" stroke-dasharray="5 4"/>
+      <text x="14" y="19" font-family="'JetBrains Mono', monospace" font-size="9.5" font-weight="700" fill="#94A3B8">⚠ ADVISORY ONLY · CONTINUE-ON-ERROR</text>
+      <text x="14" y="36" font-family="'JetBrains Mono', monospace" font-size="8.5" fill="#64748B">CI ratchets: dead-code · refusal-string drift</text>
+      <text x="14" y="51" font-family="'JetBrains Mono', monospace" font-size="8.5" fill="#64748B">No gate authority · never blocks transitions</text>
     </g>
   </g>
 </svg>

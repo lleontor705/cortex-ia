@@ -48,12 +48,12 @@ Built as a single portable Go binary, Cortex-IA solves the fundamental challenge
   Prevents agents from overwriting each other's code. Agents must atomically reserve exclusive workspace-relative file paths with TTL leases before editing. Parallel native implementers safely share the workspace via disjoint file reservations (`cortex_ia_file_reserve`).
 - 🎯 **Deterministic Task DAG with Optimistic CAS Locking (`work claim` / `transition`)**  
   Tasks transition through strict state machines (`backlog ➔ ready ➔ in_progress ➔ in_review ➔ done`). Downstream dependencies automatically unlock only when prior dependencies receive an independent review approval.
-- 🛡️ **Mandatory Independent Review Gates (`work approve`)**  
-  Implementers cannot self-approve. An independent reviewer agent must verify test suites and recorded evidence before marking any task complete.
+- 🛡️ **Tiered Review Gates (`work approve`)**  
+  Implementers cannot self-approve. High-risk changes (concurrency, schema migrations, public APIs, auth/crypto, or wide churn) require an independent reviewer agent; data, documentation, configuration, and low-risk unitary changes use orchestrator auto-approval. The tier is an **escalate-only floor**: it may be raised with a stated reason but never lowered.
 - 🧹 **Zero Raw JSON Chat Hygiene & Typed Tool Authority**  
   Eliminates token bloat and hallucinated text parsing. Structured receipts are passed directly via typed tool calls (`cortex_ia_work_transition` and `cortex_ia_work_approve`) stored atomically in SQLite, while chat displays clean, readable Markdown summaries.
 - 📐 **Native OpenSpec SDD Integration (`cortex-ia openspec`)**  
-  Built-in support for Specification-Driven Development proposals, RFC 2119 delta specifications, and task decompositions bounded to ≤350 LOC.
+  Built-in support for Specification-Driven Development with RFC 2119 delta specifications and a tiered workload policy (`strict` / `flexible` / `unbounded`). Tier 1/2 specs stay a short paragraph plus executable tests; full OpenSpec ceremony (propose → spec → design → tasks → archive) is reserved for Tier 3 SDD-lite/SDD-full.
 - 📊 **Real-time Web Operations Dashboard (`cortex-ia web`)**  
   Embedded, single-binary Web UI with real-time SSE streaming for live board state visualization, task creation, and audit logging.
 
@@ -276,7 +276,7 @@ The former `cortex-ia hook` subcommand is retired and fails closed with a retire
 1. **`orchestrator` (Primary)**: Triage, startup alignment, Cortex session lifecycle, and DAG dispatch. Never claims tasks or holds file leases.
 2. **`discovery` (Subagent)**: Inspects skills, toolchains, engines, and project architecture into the durable `.cortex-ia/discovery.md` profile.
 3. **`investigate` (Subagent)**: Root-cause diagnosis, AST blast radius inspection, spikes, and read-only diagnostic audits.
-4. **`planner` (Subagent)**: Writes OpenSpec delta specifications (RFC 2119), Given/When/Then contracts, and decomposes task DAGs (≤350 LOC).
+4. **`planner` (Subagent)**: Writes OpenSpec delta specifications (RFC 2119), Given/When/Then contracts, and decomposes task DAGs under the tiered workload policy.
 5. **`implement` (Subagent)**: Atomically claims one task, reserves exclusive file leases, runs fast TDD loops, and transitions to review via typed tools.
 6. **`reviewer` (Subagent)**: Independently verifies git diffs, executes test oracles, and grants `PASS` approval to unlock downstream dependencies.
 
@@ -290,7 +290,7 @@ Cortex-IA matches user requests to the smallest, safest workflow using a three-t
 |---|---|---|---|
 | **Tier 1: Fast Path** | `direct-answer`, `discovery`, `investigate`, `spike`, `hotfix`, `fast-tdd`, `ops-task` | Direct execution without task DAG overhead. Specialized for Q&A, onboarding, root-cause diagnosis, or fast unit TDD. | Single-turn dispatch via `orchestrator ➔ subagent ➔ orchestrator`. |
 | **Tier 2: Bounded Unitary Task** | `direct-change` | Single-domain, low-risk changes with fast verification. Uses `board_id: "default"`. | Claim task ➔ exclusive file lease ➔ edit & test ➔ `cortex_ia_work_transition` ➔ independent review gate. |
-| **Tier 3: Coordinated SDD** | `sdd-lite`, `sdd-full` | High-complexity, multi-file features or cross-domain architectural changes. | Stable initiative board ➔ OpenSpec delta specs ➔ DAG decomposition (≤350 LOC) ➔ parallel implementation minions ➔ adversarial review. |
+| **Tier 3: Coordinated SDD** | `sdd-lite`, `sdd-full` | High-complexity, multi-file features or cross-domain architectural changes. | Stable initiative board ➔ OpenSpec delta specs ➔ DAG decomposition under the tiered workload policy ➔ parallel implementation minions ➔ adversarial review. |
 
 ---
 

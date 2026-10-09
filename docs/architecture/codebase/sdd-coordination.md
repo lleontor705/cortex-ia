@@ -22,13 +22,20 @@ Only independent approval PASS produces `done`. Failure enters `blocked`; recove
 |---|---|---|
 | `direct-answer` / `direct-doc` | Orchestrator answers from evidence | Filesystem mutations route to a bounded task |
 | `discovery` | Native discovery (mandatory first task of every session) | Quick agentic-environment index |
-| `direct-change` | Orchestrator creates one `default` task; implement; reviewer only if risk warrants | Live claim/leases, proportional checks |
-| `fast-tdd` | Implement with fast-tdd, then reviewer | Causal RED, same oracle GREEN, independent approval |
-| `hotfix` | Implement with hotfix-triage, then reviewer | Containment, regression evidence, structural follow-up |
+| `decision-map` | Investigate plus human input; planner materializes one decision | Decision artifact only; no board, DAG, or implementation authority |
+| `spike` | Investigate with spike-prototype | Disposable evidence answering one named uncertainty; no production code |
+| `direct-change` | Orchestrator creates one `default` task; implement; reviewer only if risk warrants | Live claim/leases, proportional checks, review tier per §2.7a |
+| `fast-tdd` | Implement with fast-tdd, then reviewer | Causal RED, same oracle GREEN, independent approval, review tier per §2.7a |
+| `hotfix` | Implement with hotfix-triage, then reviewer | Containment, regression evidence, structural follow-up, review tier per §2.7a |
+| `ops-task` | Implement one `default` task; reviewer only if risk warrants | Script exit 0 and target verification; orchestrator auto-approval for read-only or idempotent test-environment scripts |
 | `sdd-lite` | Investigate; planner integrated; implement; reviewer; planner archive | Integrated contract, typed SDD task bindings, independent approval |
 | `sdd-full` | Investigate; planner propose/spec/design/tasks; implement; reviewer; planner archive | Phase contracts, typed SDD task bindings, durable closure |
 | `review` | Independent reviewer | Only work approval PASS produces `done` |
 | `retrospective` | Investigate with workflow-retrospective | Diagnosis and recommendations; no state mutation |
+
+Review tier follows the §2.7a Adaptive Review Case Matrix: non-code kinds (generated data/artifacts, documentation, declarative config, and operational/DB scripts) are orchestrator auto-approved via `cortex_ia_work_approve` with an evidence pointer, while high-risk code requires an independent `reviewer`. The assigned tier is a floor, never a ceiling — an implementer or reviewer MAY escalate with a stated reason, and lowering below the matrix tier is refused fail-closed.
+
+Spec-plane and sizing pointers (normative source: `workflow-map.md`): living specs evolve by delta (propose → apply → archive) and are never rewritten in place; task sizing applies the resume test (resumable from request text plus `git diff` alone, with the stricter outcome governing on conflict); planning records an advisory delivery forecast (authored LOC per slice and total) that carries no gate authority.
 
 Only the planner materializes the SDD DAG, after integrated/tasks validation. Decision-map creates no board; one stable board groups a materialized initiative.
 
@@ -54,8 +61,8 @@ For OpenSpec/hybrid use `cortex_ia_openspec_validate` with explicit `relative_di
 ## Typed controller operations
 
 - Planner: `cortex_ia_openspec_validate({relative_directory,workflow,phase})` for OpenSpec/hybrid structural checks, `cortex_ia_work_create` for bound tasks, and `cortex_ia_change_archive` for closure.
-- Implement: claim one ready task, reserve every writable path, renew authority, verify and transition to review via `cortex_ia_work_transition` with typed parameters (`summary`, `verdict`, `evidence_refs`, `changed_files`). Raw JSON text blocks in chat are strictly forbidden.
-- Reviewer: inspect the exact contracts and diff, run relevant checks, and approve using current revision and bounded evidence via `cortex_ia_work_approve` with typed parameters (`verdict`, `reason`, `summary`, `findings`). The implementation owner's identity cannot serve as reviewer.
+- Implement: claim one ready task, reserve every writable path, renew authority, verify and transition to review via `cortex_ia_work_transition` with typed parameters (`summary`, `verdict`, `evidence_refs`, `changed_files`). When the envelope carries S#/REQ IDs verbatim, the receipt returns one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`. Raw JSON text blocks in chat are strictly forbidden.
+- Reviewer: inspect the exact contracts and diff, run relevant checks, and approve using current revision and bounded evidence via `cortex_ia_work_approve` with typed parameters (`verdict`, `reason`, `summary`, `findings`); per-spec verdicts follow the same `verdicts: [{ req_id, verdict, evidence_ref }]` shape, with executable results overriding worker verdicts on conflict. The implementation owner's identity cannot serve as reviewer.
 - Discovery: inspect project skills, stack, engines, and architecture; maintain `.cortex-ia/discovery.md` via `cortex_ia_discovery_write`. Strictly native and read-only.
 - Orchestrator: select routes across the 3-tier model, dispatch controllers, reconcile failures and deliver the result. It does not claim, implement or approve.
 

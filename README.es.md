@@ -48,12 +48,12 @@ Construido como un único binario portable de Go, Cortex-IA resuelve los desafí
   Evita que los agentes sobrescriban el código de los demás. Los agentes deben reservar de forma atómica rutas de archivo exclusivas relativas al espacio de trabajo mediante concesiones con TTL antes de editar. Los implementadores nativos en paralelo comparten el espacio de trabajo de forma segura mediante reservas de archivo disjuntas (`cortex_ia_file_reserve`).
 - 🎯 **DAG de tareas determinista con bloqueo optimista por CAS (`work claim` / `transition`)**  
   Las tareas transicionan a través de máquinas de estado estrictas (`backlog ➔ ready ➔ in_progress ➔ in_review ➔ done`). Las dependencias posteriores se desbloquean automáticamente solo cuando las dependencias previas reciben una aprobación de revisión independiente.
-- 🛡️ **Barreras de revisión independiente obligatorias (`work approve`)**  
-  Los implementadores no pueden autoaprobarse. Un agente revisor independiente debe verificar las suites de pruebas y la evidencia registrada antes de marcar cualquier tarea como completada.
+- 🛡️ **Barreras de revisión por niveles (`work approve`)**  
+  Los implementadores no pueden autoaprobarse. Los cambios de alto riesgo (concurrencia, migraciones de esquema, APIs públicas, auth/cripto o churn amplio) requieren un agente revisor independiente; los datos, la documentación, la configuración y los cambios unitarios de bajo riesgo usan la autoaprobación del orquestador. El nivel es un **piso de solo escalado** (escalate-only): puede subirse con una razón declarada, pero nunca bajarse.
 - 🧹 **Higiene de chat sin JSON en crudo y autoridad por herramientas tipadas**  
   Elimina la inflación de tokens y el análisis de texto alucinado. Los recibos estructurados se pasan directamente mediante llamadas a herramientas tipadas (`cortex_ia_work_transition` y `cortex_ia_work_approve`) almacenadas atómicamente en SQLite, mientras que el chat muestra resúmenes Markdown limpios y legibles.
 - 📐 **Integración nativa de OpenSpec SDD (`cortex-ia openspec`)**  
-  Soporte integrado para propuestas de Desarrollo Guiado por Especificaciones, especificaciones delta RFC 2119 y descomposiciones de tareas acotadas a ≤350 LOC.
+  Soporte integrado para Desarrollo Guiado por Especificaciones con especificaciones delta RFC 2119 y una política de carga de trabajo por niveles (`strict` / `flexible` / `unbounded`). Las especificaciones de Nivel 1/2 siguen siendo un párrafo corto más pruebas ejecutables; la ceremonia completa de OpenSpec (propose → spec → design → tasks → archive) se reserva para SDD-lite/SDD-full de Nivel 3.
 - 📊 **Panel de operaciones web en tiempo real (`cortex-ia web`)**  
   Interfaz web embebida en un único binario con transmisión SSE en tiempo real para la visualización del estado del tablero en vivo, la creación de tareas y el registro de auditoría.
 
@@ -270,7 +270,7 @@ El antiguo subcomando `cortex-ia hook` está retirado y falla de forma cerrada c
 1. **`orchestrator` (Primario)**: Triaje, alineación inicial, ciclo de vida de la sesión de Cortex y despacho del DAG. Nunca reclama tareas ni mantiene concesiones de archivo.
 2. **`discovery` (Subagente)**: Inspecciona skills, cadenas de herramientas, motores y arquitectura del proyecto en el perfil duradero `.cortex-ia/discovery.md`.
 3. **`investigate` (Subagente)**: Diagnóstico de causa raíz, inspección del radio de explosión de AST, spikes y auditorías de diagnóstico de solo lectura.
-4. **`planner` (Subagente)**: Escribe especificaciones delta de OpenSpec (RFC 2119), contratos Dado/Cuando/Entonces y descompone DAG de tareas (≤350 LOC).
+4. **`planner` (Subagente)**: Escribe especificaciones delta de OpenSpec (RFC 2119), contratos Dado/Cuando/Entonces y descompone DAG de tareas bajo la política de carga de trabajo por niveles.
 5. **`implement` (Subagente)**: Reclama atómicamente una tarea, reserva concesiones de archivo exclusivas, ejecuta bucles de TDD rápidos y transiciona a revisión mediante herramientas tipadas.
 6. **`reviewer` (Subagente)**: Verifica de forma independiente los diffs de git, ejecuta oráculos de prueba y otorga la aprobación `PASS` para desbloquear las dependencias posteriores.
 
@@ -284,7 +284,7 @@ Cortex-IA adapta las solicitudes del usuario al flujo de trabajo más pequeño y
 |---|---|---|---|
 | **Nivel 1: Ruta rápida** | `direct-answer`, `discovery`, `investigate`, `spike`, `hotfix`, `fast-tdd`, `ops-task` | Ejecución directa sin la sobrecarga del DAG de tareas. Especializado para preguntas y respuestas, onboarding, diagnóstico de causa raíz o TDD de unidades rápidas. | Despacho de un solo turno mediante `orchestrator ➔ subagent ➔ orchestrator`. |
 | **Nivel 2: Tarea unitaria acotada** | `direct-change` | Cambios de dominio único y bajo riesgo con verificación rápida. Usa `board_id: "default"`. | Reclamar tarea ➔ concesión de archivo exclusiva ➔ editar y probar ➔ `cortex_ia_work_transition` ➔ barrera de revisión independiente. |
-| **Nivel 3: SDD coordinado** | `sdd-lite`, `sdd-full` | Funciones de alta complejidad y múltiples archivos, o cambios arquitectónicos entre dominios. | Tablero de iniciativa estable ➔ especificaciones delta de OpenSpec ➔ descomposición de DAG (≤350 LOC) ➔ minions de implementación en paralelo ➔ revisión adversarial. |
+| **Nivel 3: SDD coordinado** | `sdd-lite`, `sdd-full` | Funciones de alta complejidad y múltiples archivos, o cambios arquitectónicos entre dominios. | Tablero de iniciativa estable ➔ especificaciones delta de OpenSpec ➔ descomposición de DAG bajo la política de carga de trabajo por niveles ➔ minions de implementación en paralelo ➔ revisión adversarial. |
 
 ---
 

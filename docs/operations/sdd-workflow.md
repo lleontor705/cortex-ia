@@ -12,16 +12,18 @@ Cortex-IA separates the specification plane (OpenSpec, Cortex, or hybrid), durab
 
 ```mermaid
 flowchart LR
-  A[User intent] --> B[Orchestrator routes]
-  B --> C[Investigate]
-  C --> D[Planner: phased or integrated contract]
+  A[User intent] --> B[Orchestrator routes by tier]
+  B -->|Tier 1 / Tier 2 bounded task| C[Short paragraph + executable tests]
+  B -->|Tier 3 / multi-session / regulated| D[Investigate, then planner: phased or integrated contract]
   D --> E[Structural validation and semantic contract review]
   E --> F[Typed SDD task DAG]
-  F --> G[Implement: claim, leases, change and checks]
-  G --> H[Independent reviewer]
-  H -->|PASS with current fingerprints| I[Done]
+  C --> G[Implement: claim, leases, change and checks]
+  F --> G
+  G --> H[Independent reviewer with current fingerprints]
+  H -->|PASS| I[Done]
   H -->|FAIL| J[Reconcile or replan]
   I --> K[Planner: durable closure]
+  K --> L[Living spec evolves by delta: propose -> apply -> archive]
 ```
 
 ## Verification is layered
