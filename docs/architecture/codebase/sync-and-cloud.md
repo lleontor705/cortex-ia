@@ -27,7 +27,7 @@ All state lives under `~/.cortex-ia/`. Owned by `internal/state/`.
 
 | File | Purpose | Owner | Written by |
 |------|---------|-------|-----------|
-| `state.json` | Install selection (asset groups, Cortex/Context7 flags), managed artifacts, MCP entries, agent-model pins, and custom providers. Source of truth for `sync`. | `internal/state/` | `pipeline.Apply` on install/sync |
+| `state.json` | Install selection (asset groups, Cortex/Context7 flags), managed artifacts, MCP entries, and agent-model pins. Source of truth for `sync`. | `internal/state/` | `pipeline.Apply` on install/sync |
 | `cortex-ia.lock` | Concrete list of files written to disk (checksums + paths). Enables drift detection and clean uninstall. | `internal/state/` | `pipeline.Apply`, `filemerge` |
 | `install-status.json` | Crash-detection marker. Written before apply, cleared after success. Presence at startup triggers repair prompt. | `internal/state/` | `pipeline` runner |
 

@@ -69,7 +69,6 @@ Retired surfaces: `delegate`, `herdr`, and `hook` belong to the removed external
 | OpenCode layout | `internal/agents/opencode/` | Declarative home-relative layout + pure asset mapping and collision checks |
 | MCP manager | `internal/mcpmanager/` | Managed MCP presets, ownership accreditation, qualification, conflict errors |
 | Model manager | `internal/modelmgr/` | Global-config agent model assignment, doctor, and catalog |
-| Provider manager | `internal/providermgr/` | Per-provider JSON catalogs under `~/.cortex-ia/` |
 | OpenSpec | `internal/openspec/` | Planning-structure validation; never approves semantics or work |
 | Diagram | `internal/diagram/` | System diagram validate, render, compare, and reach |
 | Doc conversion | `internal/docconv/` | Office/PDF conversion to Markdown plus metadata inspection |

@@ -38,8 +38,7 @@ The TUI exposes **ten** conceptual screens (`internal/tui/model.go`) with a glob
   ├── 6. Doctor / Recovery         ──▶ [ Running Pipeline ]     ──▶ [ Result Receipt ]
   ├── 7. Uninstall                 ──▶ (Confirm Modal)          ──▶ [ Running Pipeline ] ──▶ [ Result Receipt ]
   ├── 8. Quit
-  ├── 9. Model Configuration       ──▶ [ Models Screen ]
-  └── 10. Install Custom Provider  ──▶ [ Providers Screen ]
+  └── 9. Model Configuration       ──▶ [ Models Screen ]
 ```
 
 ### Screen Details
@@ -53,7 +52,6 @@ The TUI exposes **ten** conceptual screens (`internal/tui/model.go`) with a glob
 7. **`screenAgentStudio`**: Two-step sub-agent authoring flow — archetype selection, then a preview/confirm step (with an overwrite confirmation modal) that installs the generated agent asset and renders its result.
 8. **`screenStats`**: Usage stats panel and the production boot surface. Shows per-model month-to-date and 24h usage against the nan catalog quota, with the `:model` picker for model and effort selection.
 9. **`screenModels`**: Model-configuration screen for inspecting and assigning agent models, including variants and effective sources.
-10. **`screenProviders`**: Custom-provider install flow. Catalog-driven provider selection with masked input for credentials and a preview/confirm step before the provider entry is written.
 
 ---
 

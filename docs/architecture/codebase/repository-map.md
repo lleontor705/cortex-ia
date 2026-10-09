@@ -31,7 +31,7 @@ Directory-by-directory map of the active `cortex-ia` codebase.
 ### `internal/tui` & `internal/tui/styles`
 - **Role**: Bubble Tea interactive terminal user interface (10 screens).
 - **Key Files**: `tui.go`, `model.go`, `views.go`, `actions.go`, `styles/theme.go`.
-- **Screens**: `Home`, `Review`, `Running`, `Result`, `MCP Manager`, `CortexIA Web`, `Agent Studio`, `Stats`, `Models`, `Providers`.
+- **Screens**: `Home`, `Review`, `Running`, `Result`, `MCP Manager`, `CortexIA Web`, `Agent Studio`, `Stats`, `Models`.
 
 ### `internal/install`
 - **Role**: High-level service facade orchestrating all install, sync, doctor, rollback, uninstall, and MCP operations.

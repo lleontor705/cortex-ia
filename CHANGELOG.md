@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- **Custom provider installer retired** — the custom provider installer is removed because provider installation is now native in nan/OpenCode. The retired surface spans the `internal/providermgr` catalog package, the `install.Service` provider transaction (twin reconciliation and provider identity digest), the TUI Providers screen with its Home entry and `p`/`P` hotkey, and the state v2 `Providers` family. Breaking change for users who relied on the TUI installer; the replacement is native nan/OpenCode provider support. Existing `state.json` provider rows are passively retired: the schema version stays pinned at 2, existing documents keep loading, the stale `providers` key drops on the next state commit, and previously written provider blocks in `opencode.json(c)` remain valid native OpenCode config.
+
 ## v0.5.8 (2026-10-07) — decoupled claim TTL and scoped self-recovery
 
 ### Added

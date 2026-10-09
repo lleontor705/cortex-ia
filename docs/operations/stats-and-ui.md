@@ -45,7 +45,6 @@ The cockpit surfaces include:
 
 - **Stats** — read-only usage analytics broken down by day, hour, and model.
 - **Models** — resolves each agent's effective model, variant, and source, and lets you assign an agent model through the catalog picker.
-- **Providers** — the custom provider catalogs and their transactional install flow (see [`custom-providers.md`](../getting-started/custom-providers.md)).
 - **MCP**, **Web**, **Review/Install**, and **Agent Studio** — managed MCP entries, the embedded web console launcher, the install plan/review pipeline, and the agent configuration studio.
 
 ## `cortex-ia ui snapshot`
@@ -60,6 +59,7 @@ The command opens the delegation store **read-only** (`OpenStoreReadOnly`): it n
 
 ## See Also
 
+- [`custom-providers.md`](../getting-started/custom-providers.md) — retired custom-provider installer (provider installation is now native in OpenCode)
 - [`web-console.md`](web-console.md) — embedded Preact operations console
 - [`codebase/dashboard.md`](../architecture/codebase/dashboard.md) — Bubble Tea TUI architecture
 - [`configuration.md`](../getting-started/configuration.md) — environment variables and managed state
