@@ -194,7 +194,6 @@ type MetadataV2 struct {
 	Artifacts     []ArtifactV2         `json:"artifacts"`
 	MCPs          []MCPV2              `json:"mcps"`
 	AgentModels   []AgentModelV2       `json:"agent_models"`
-	Providers     []ProviderV2         `json:"providers,omitempty"`
 	TransactionID string               `json:"transaction_id"`
 	BackupID      string               `json:"backup_id,omitempty"`
 	Migration     *MigrationProvenance `json:"migration,omitempty"`
@@ -230,9 +229,9 @@ func NewLockFromMetadataV2(meta MetadataV2) LockV2 {
 	}
 }
 
-// Normalize sorts artifacts by path, MCPs by name, agent models by agent, and
-// providers by name so serialized documents and agreement checks are
-// deterministic. Nil slices become empty slices.
+// Normalize sorts artifacts by path, MCPs by name, and agent models by agent
+// so serialized documents and agreement checks are deterministic. Nil slices
+// become empty slices.
 func (m *MetadataV2) Normalize() {
 	if m == nil {
 		return
@@ -246,9 +245,6 @@ func (m *MetadataV2) Normalize() {
 	if m.AgentModels == nil {
 		m.AgentModels = []AgentModelV2{}
 	}
-	if m.Providers == nil {
-		m.Providers = []ProviderV2{}
-	}
 	sort.SliceStable(m.Artifacts, func(i, j int) bool {
 		return m.Artifacts[i].Path < m.Artifacts[j].Path
 	})
@@ -257,9 +253,6 @@ func (m *MetadataV2) Normalize() {
 	})
 	sort.SliceStable(m.AgentModels, func(i, j int) bool {
 		return m.AgentModels[i].Agent < m.AgentModels[j].Agent
-	})
-	sort.SliceStable(m.Providers, func(i, j int) bool {
-		return m.Providers[i].Name < m.Providers[j].Name
 	})
 }
 
@@ -301,22 +294,20 @@ func (e *ValidationError) Error() string {
 
 // ValidateV2 enforces the canonical form of the v2 state document: required
 // identifiers, a canonical absolute and cleaned OpenCode root, closed enums,
-// unique artifact paths, MCP names, agent-model agents, and provider names,
-// canonical artifact sha256 and versioned MCP/agent-model digests, and
-// relative paths without absolute, traversal, ambiguous Win32, or alias
-// forms. Uniqueness follows the platform's path case policy:
-// case-fold-equivalent artifact paths, MCP config paths/names, agent-model
-// config paths/agents, and provider names/config paths collide
-// on case-insensitive platforms (Windows, macOS) while remaining distinct on
-// case-sensitive ones. MCP and agent-model digests must be exactly the
-// encoding of the supported installmeta version: legacy raw-hex or
-// unknown-version values are rejected so consumers fail closed instead of
-// degrading. Invalid documents are rejected before any write; Save and Load
-// both pass through this single validation.
+// unique artifact paths, MCP names, and agent-model agents, canonical artifact
+// sha256 and versioned MCP/agent-model digests, and relative paths without
+// absolute, traversal, ambiguous Win32, or alias forms. Uniqueness follows the
+// platform's path case policy: case-fold-equivalent artifact paths, MCP config
+// paths/names, and agent-model config paths/agents collide on case-insensitive
+// platforms (Windows, macOS) while remaining distinct on case-sensitive ones.
+// MCP and agent-model digests must be exactly the encoding of the supported
+// installmeta version: legacy raw-hex or unknown-version values are rejected so
+// consumers fail closed instead of degrading. Invalid documents are rejected
+// before any write; Save and Load both pass through this single validation.
 func ValidateV2(meta MetadataV2) error {
 	meta.Normalize()
 	if err := validateCore(meta.SchemaVersion, meta.OpencodeRoot, meta.TransactionID,
-		meta.Artifacts, meta.MCPs, meta.AgentModels, meta.Providers); err != nil {
+		meta.Artifacts, meta.MCPs, meta.AgentModels); err != nil {
 		return err
 	}
 	if meta.Migration != nil && meta.Migration.Source == "" {
@@ -328,13 +319,11 @@ func ValidateV2(meta MetadataV2) error {
 // ValidateLockV2 enforces the same canonical form for the v2 lock document.
 func ValidateLockV2(lock LockV2) error {
 	lock.Normalize()
-	// Provider ownership is state-only evidence; the lock document mirrors
-	// artifacts, MCPs, and agent models, so no provider records are inspected.
 	return validateCore(lock.SchemaVersion, lock.OpencodeRoot, lock.TransactionID,
-		lock.Artifacts, lock.MCPs, lock.AgentModels, nil)
+		lock.Artifacts, lock.MCPs, lock.AgentModels)
 }
 
-func validateCore(schema int, root, txnID string, artifacts []ArtifactV2, mcps []MCPV2, agentModels []AgentModelV2, providers []ProviderV2) error {
+func validateCore(schema int, root, txnID string, artifacts []ArtifactV2, mcps []MCPV2, agentModels []AgentModelV2) error {
 	if schema != MetadataSchemaV2 {
 		return &ValidationError{Field: "schema_version",
 			Reason: fmt.Sprintf("expected %d, got %d", MetadataSchemaV2, schema)}
@@ -494,7 +483,7 @@ func validateCore(schema int, root, txnID string, artifacts []ArtifactV2, mcps [
 			return &ValidationError{Field: field + ".ownership", Reason: "unknown ownership " + string(am.Ownership)}
 		}
 	}
-	return validateProviders(providers)
+	return nil
 }
 
 // validateRelPath enforces the canonical relative path form used by every
