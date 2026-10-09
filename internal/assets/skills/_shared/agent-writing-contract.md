@@ -69,6 +69,17 @@ System prompts must be organized into four distinct, semantically tagged layers 
 
 Shared operational policies that must remain identical across all roles (`Language Domain Contract`, `Delivery Guarantee`, `Format & Transport Separation`) are grouped under a canonical `<global_contracts>` section to maximize KV-cache reuse.
 
+## Skill Body Budget
+
+This section is the single source of truth for `SKILL.md` body sizing. It governs `SKILL.md` procedure documents only.
+
+- **Scope split**: role system prompts remain governed exclusively by the 4-layer XML anatomy above; the Skill Body Budget never applies to them. Conversely, the XML anatomy does not size `SKILL.md` bodies — this section does. No text is governed by both rules.
+- **Target**: 180–450 tokens per `SKILL.md` body, frontmatter excluded. Inside this band is the steer; slightly outside is acceptable when the procedure genuinely needs it.
+- **Hard max**: 1000 tokens. A body that meets or exceeds the hard max must be split or trimmed before the change is accepted.
+- **Trigger-first descriptions**: the frontmatter `description` must open with what the skill does and the conditions that require loading it, so routing decides from the description alone.
+- **Advisory estimation**: estimate size as the word count divided by 4. This is an authoring and review aid; no runtime validator counts tokens.
+- **Review-time enforcement**: the hard max is checked when a `SKILL.md` body is created or materially changed, at the same review gate that accepts the change — never by tooling.
+
 ## Intent-Preserving Delegation Protocol (IPDP) & Non-Goals
 
 Delegation is a sociotechnical transfer of authority and accountability, not merely mechanical task decomposition. To prevent **Cascade Amplification** (where orchestrator ambiguities compound down worker chains):
@@ -149,5 +160,7 @@ The orchestrator is the human interface and executive synthesizer of the system,
 ## Review gate
 
 Before accepting an instruction change, verify that every new pointer has a real trigger, every normative rule has one source of truth, conditional detail is disclosed only when needed, and completion can be distinguished from premature stopping.
+
+Any rule that sizes skill bodies MUST live in the single `Skill Body Budget` section. A change that introduces skill-body sizing guidance anywhere else is rejected until that guidance is relocated into `Skill Body Budget`; the numbers are stated there once and referenced, never restated.
 
 

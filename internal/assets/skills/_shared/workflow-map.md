@@ -34,6 +34,46 @@ This is the single routing and phase matrix for Cortex-IA. Installed path: `~/.c
 
 Only the planner materializes the SDD DAG, after integrated/tasks validation. Direct tasks may omit SDD bindings; do not omit a binding to bypass an SDD gate. Decision-map creates no board. One stable board groups a materialized initiative.
 
+## Spec-plane repositioning
+
+The routing table above defines *which* workflow executes; the table below repositions *what spec form* a workload warrants, so tiers and storage planes do not drift. It is guidance layered on the routing and phase-matrix rows, which remain authoritative for the SDD mechanics themselves.
+
+| Workload | Spec form |
+|---|---|
+| Tier 1 / Tier 2 bounded task | Short paragraph plus executable tests; no SDD change directory |
+| Tier 3 / multi-session / regulated domain | `sdd-lite` (integrated contract) or `sdd-full` (phased gates) |
+| Living spec evolution | Delta spec: propose→apply→archive; never in-place base-spec rewrites |
+| "Spec fulfilled" judgment | Executable verification first (mutation gate where applicable); narrative review second |
+
+A Tier 1 or Tier 2 bounded task carries its specification as a short paragraph plus executable tests rather than a change directory. An SDD change directory is reserved for Tier 3 initiatives, multi-session work, and regulated domains. When a living spec evolves after archive, the change is recorded as a delta spec (propose→apply→archive) instead of rewriting the base spec in place. Judging a spec fulfilled centers on executable verification — including the mutation gate where applicable — ahead of narrative review. The phase-matrix, binding and closure rules above still govern how SDD artifacts are produced, validated and closed.
+
+## Task sizing: the resume test
+
+Alongside the tier rules and LOC budgets, task sizing MUST apply the resume test as a criterion:
+
+> **resume test**: Could a fresh agent resume this task from the request text plus `git diff` alone, without asking a question?
+
+- A task whose request text plus `git diff` lets a fresh agent resume unaided **passes** the oracle.
+- A task whose diff cannot be interpreted without conversation context **fails** the oracle and MUST be re-scoped or split.
+- When the resume test conflicts with a tier or LOC budget conclusion, the **stricter outcome governs** and the conflict is recorded in the plan.
+
+## Feature-doc Log and mirror reconciliation
+
+sdd-lite plan docs carry a fixed, append-only `## Log` section. Its shape and write rules are:
+
+- **L1 — request**: the original user request stored verbatim, guarded so secrets are never persisted (secret-shaped content is replaced with a typed placeholder per the guard in `cortex-convention.md`). L1 is written once and is never rewritten.
+- **Dated entries**: every subsequent decision and phase transition appends one dated entry, in chronological order. Entries are only appended; existing entries are never edited, reordered, or deleted.
+
+When a plan doc is mirrored to a second store (for example a repo `plan.md` plus a pinned Cortex snapshot), the mirror is a dual write: both copies are read back and compared before success is claimed. If the copies disagree after read-back, the mismatch is reported and the authoritative copy is explicitly named — never silently chosen. A mirror write that is not read back is an incomplete write.
+
+## Delivery forecast (advisory)
+
+Planning records a delivery forecast authored from the materialized task DAG: estimated authored LOC per slice plus a total, together with the slice boundaries. The forecast is a labeled advisory artifact with no gate authority:
+
+- It may flag that a slice exceeds a budget, but it records the breach as advisory only.
+- It never relaxes `strict`, `flexible`, or `unbounded`, never changes the workload-policy tier, and never blocks a task.
+- It carries no gate authority over the §4 workload table in `cortex-work-protocol.md`; enforcement authority stays exclusively with the pre-transition preflight.
+
 ## Structural validation contract
 
 For OpenSpec/hybrid use `cortex_ia_openspec_validate` with explicit `relative_directory`, `workflow`, and `phase`. Lite uses one `plan.md`; Full validates only artifacts due at that phase. Decision-map uses `decision-map.md`. The JSON result is structural evidence, not a semantic PASS or product acceptance.

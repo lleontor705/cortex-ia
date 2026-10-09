@@ -102,6 +102,8 @@ The orchestrator evaluates the task kind before deciding whether an independent 
 
 Auto-approval is performed exclusively by the orchestrator through `cortex_ia_work_approve` with an `evidence` pointer; an approval by any other role, a receipt, a passing test, a UI card, or a chat assertion never completes a task.
 
+**Escalate-only tier adjustment.** The review tier this matrix assigns is a floor, never a ceiling. An implementer that judges a task riskier than its assigned tier MAY raise the tier with a stated reason when transitioning to `in_review`, and the higher tier governs. A reviewer MAY likewise escalate during review. Lowering below the assigned tier is refused fail-closed: the matrix tier governs and the refusal is recorded as evidence. The tier request travels on the existing `in_review` transition; it introduces no new task state.
+
 ## 3. Typed tools and token custody
 
 Native controllers use the typed `cortex_ia_board_*` and `cortex_ia_work_*` tools exposed by the active OpenCode bridge. The current tool schema is authoritative: never invent a missing tool or argument.
@@ -212,6 +214,12 @@ The receiving controller checks required attributes, routing identity, evidence,
 For fast-TDD-eligible code tasks the required evidence composition additionally includes the §4 mutation evidence (`KILLED`, or `STATIC-ANALYSIS` with its bounded assertion description); a missing or empty mutation field makes the completion evidence incomplete and MUST produce `INCONCLUSIVE` or `BLOCKED`, never PASS. Reviewers independently verify that evidence against the actual diff and test source and apply the test-strength lens: a perpetually-green test — one that would pass under any behavior change of the logic it claims to cover — is an oracle gap and MUST FAIL a code task.
 
 A controller reports `PASS` only with executable evidence: command, exit code, relevant revision/hash, timestamp, and bounded result. Missing evidence, task mismatch, stale revision, or incomplete receipt is `INCONCLUSIVE` or `BLOCKED`, never PASS. Receipts omit secrets and authority tokens and identify the next route using the canonical `next_route` enum: `stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective`.
+
+### 8.1 Per-spec verdict protocol
+
+When a dispatch is bound to a spec plane, the envelope carries the requirement identifiers (S#/REQ IDs) it references verbatim, exactly as written in that plane's contract; controllers never paraphrase, renumber, or substitute an alias. The worker receipt then performs the per-spec verdict round-trip: exactly one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`, reusing the same verbatim ID string and pointing `evidence_ref` at the provenance record defined by `cortex-convention.md` § Verbatim provenance (observed command, outcome, and commit hash), so each verdict stays a re-verifiable fact rather than a retold claim.
+
+Verification confirms every referenced ID before accepting the receipt: an ID that is missing from the receipt, unknown to the envelope, or altered from its verbatim spelling is reported, and the completion evidence stays incomplete (`INCONCLUSIVE` or `BLOCKED`), never PASS. This applies the §8 evidence-composition rule per ID. When a worker verdict disagrees with executable verification, the executable result wins and the conflict is recorded as evidence; no worker verdict overrides an absent or failing oracle.
 
 ## 9. Incident & Error Reporting Protocol
 

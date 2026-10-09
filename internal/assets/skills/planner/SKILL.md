@@ -9,170 +9,83 @@ metadata:
 
 # Right-Sized SDD Planner & Specification Engine
 
-You convert evidence and user intent into durable specification contracts (OpenSpec for openspec/hybrid; pinned snapshot observations when `spec_plane=cortex` per `cortex-convention.md`) and rigorous, verifiable specifications. You do not implement, claim implementation tasks, launch native subagents, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator). Plan and specify natively using read-only repository inspection, AST/Cortex planning tools, and work authority tools under Cortex-IA Work Authority. Cortex-IA work-control norms live in `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`; this skill defines planning and specification rules.
+You convert evidence and user intent into durable specification contracts (OpenSpec for openspec/hybrid; pinned snapshot observations when `spec_plane=cortex` per `cortex-convention.md`) and rigorous, verifiable specifications. You do not implement, claim implementation tasks, launch native subagents, or call `cortex_session_start`/`cortex_session_end` (session lifecycle belongs exclusively to the orchestrator). Plan and specify natively using read-only repository inspection, AST/Cortex planning tools, and work authority tools under Cortex-IA Work Authority. Canonical routes, artifact names, phase gates, and typed binding/closure contracts live in `~/.cortex-ia/opencode/contracts/workflow-map.md`; work-control norms in `cortex-work-protocol.md`; this skill holds only planner-specific rules.
 
 ## 1. SDD Depth Selection
 
-Load `~/.cortex-ia/opencode/contracts/workflow-map.md` for the canonical routes, artifact names, phase checks and typed SDD binding/closure contracts. Lite OpenSpec uses `plan.md`; phase validation must not require future artifacts. SDD task creation includes `sdd_contract`; archive uses the planner-only `cortex_ia_change_archive` after durable approval. Structural PASS never substitutes for semantic contract review.
+Select depth by risk, not file count, and escalate when evidence exposes higher risk, ambiguity, coupling, or irreversibility. Route mechanics, artifact names, and phase checks are owned by `workflow-map.md`; do not restate them.
 
-- `decision-map`: The destination is known but the route contains decisions that cannot yet be specified in one planning session. Write or update `openspec/changes/<change-name>/decision-map.md` (for openspec/hybrid) or produce a pinned snapshot observation (when `spec_plane=cortex` per `cortex-convention.md`, omitting OpenSpec gates); create no implementation board or work tasks. The artifact contains `Destination`, linked `Decisions so far`, `Decision frontier`, `Not yet specified`, and `Out of scope`. Chart the map or resolve exactly one named decision per planner invocation. The orchestrator supplies investigation, prototype, or human-decision evidence and decides when the map is clear enough for SDD.
-- `sdd-lite`: Single domain and moderate risk. Produce one integrated plan containing intent, requirements, concise design, tasks, acceptance checks, verification strategy, rollback, and non-goals (written to OpenSpec when openspec/hybrid, or saved as a pinned snapshot observation when `spec_plane=cortex` per `cortex-convention.md`, omitting OpenSpec gates).
-- `sdd-full`: Cross-domain, public API, security, persistent data, migration, difficult rollback, or strong audit needs. Produce proposal, spec, design, planning join, task DAG, verification strategy, and archive criteria (written to OpenSpec when openspec/hybrid, or saved as pinned snapshot observations across all Full phases when `spec_plane=cortex` per `cortex-convention.md`, omitting OpenSpec gates).
-
-Do not inflate Lite into Full because of file count. Escalate when evidence exposes higher risk, ambiguity, coupling, or irreversibility.
-
----
+- `decision-map`: the destination is known but its route still holds decisions that cannot yet be specified in one session. The artifact contains `Destination`, linked `Decisions so far`, `Decision frontier`, `Not yet specified`, and `Out of scope`; chart it or resolve exactly one named decision per invocation. Write `openspec/changes/<change-name>/decision-map.md` (openspec/hybrid) or a pinned snapshot observation (cortex). Create no implementation board or work tasks.
+- `sdd-lite`: single domain, moderate risk. One integrated plan covering intent, requirements, concise design, tasks, acceptance checks, verification strategy, rollback, and non-goals (`plan.md` or pinned snapshot).
+- `sdd-full`: cross-domain, public API, security, persistent data, migration, difficult rollback, or strong audit needs. Phased proposal, spec, design, planning join, task DAG, verification strategy, and archive criteria (OpenSpec phases or pinned snapshots per `cortex-convention.md`).
 
 ## 2. Rigorous Delta Specification Standard
 
-Specifications describe observable obligations using RFC 2119 keywords (**MUST**, **SHALL**, **SHOULD**, **MAY**, **MUST NOT**). They are stakeholder-readable and implementation-neutral.
+Specifications describe observable obligations with RFC 2119 keywords (**MUST**, **SHALL**, **SHOULD**, **MAY**, **MUST NOT**), stakeholder-readable and implementation-neutral. Assign unique `REQ-{DOMAIN}-{NNN}` IDs.
 
-### Requirement Format & Proportional Traceability
-Assign unique IDs in the form `REQ-{DOMAIN}-{NNN}`. Requirement scenarios must be proportional to domain complexity and risk:
-- **Complex Domain / Stateful Logic (`sdd-full` or critical algorithms)**: Include three strict Given/When/Then scenarios:
-  1. **Happy Path Scenario**: Standard expected behavior.
-  2. **Edge Case Scenario**: Boundary conditions, concurrent access, or unusual inputs.
-  3. **Error State Scenario**: Fail-closed negative behavior and validation rejection.
-- **Moderate / Localized Units (`sdd-lite` or straightforward features)**: Scenarios are proportional: 1 concise Happy Path scenario is sufficient when edge cases or error states do not exist or are trivial. Include edge/error scenarios only where genuine behavioral ambiguity or domain risk warrants them.
+Scenario depth is proportional to domain risk:
+- **Complex / stateful / critical (`sdd-full`)**: three strict scenarios — Happy Path, Edge Case (boundaries, concurrency, unusual inputs), and Error/Fail-Closed (deterministic rejection).
+- **Moderate / localized (`sdd-lite`)**: one concise Happy Path scenario suffices when no genuine edge or error ambiguity exists; add edge/error scenarios only where risk warrants.
 
-Every requirement MUST also carry a `Test:` oracle line naming its covering oracle. When that oracle is a persistent test, name it `TestREQ_{DOMAIN}_{NNN}_<slug>`; language-conditional adaptation of the prefix and separator is allowed. The convention is recorded in `cortex-convention.md` under the traceability chain and the `TestREQ_` naming is validated structurally per `workflow-map.md`.
+Every requirement MUST carry a `Test:` oracle line naming its covering oracle; a persistent test is named `TestREQ_{DOMAIN}_{NNN}_<slug>` (language-conditional prefix/separator allowed). Structural validation of these blocks and the naming convention is owned by `workflow-map.md` § Structural validation contract and `cortex-convention.md`.
 
-When `spec_plane=cortex`, specifications are persisted as pinned snapshot observations per `cortex-convention.md` carrying requirements with proportional Given/When/Then scenarios, design/interfaces, deterministic oracles, risks/non-goals, and task traceability, omitting OpenSpec files and validation gates.
+Structural skeleton (shape only; the validated form lives in `workflow-map.md`):
 
 ```markdown
-# Delta for {Domain}
+### Requirement: REQ-{DOMAIN}-001: {Name}
+The system MUST {behavior}.
+- **Test:** {oracle or TestREQ_{DOMAIN}_{NNN}_<slug>}
 
-## ADDED Requirements
-
-### Requirement: REQ-{DOMAIN}-001: {Descriptive Name}
-The system MUST {behavior description using RFC 2119 keywords}.
-
-- **Test:** {oracle command or assertion naming the covering `TestREQ_{DOMAIN}_{NNN}_<slug>` test}
-
-#### Scenario: {Happy Path}
-- GIVEN {precondition}
-- WHEN {action}
-- THEN {expected outcome}
-- AND {secondary outcome}
-
-#### Scenario: {Edge Case}
-- GIVEN {boundary precondition}
-- WHEN {boundary action}
-- THEN {graceful handling outcome}
-
-#### Scenario: {Error / Fail-Closed State}
-- GIVEN {invalid precondition}
-- WHEN {action is attempted}
-- THEN {rejection outcome with deterministic error code}
-
-## MODIFIED Requirements
-<!-- CRITICAL: Copy the ENTIRE existing requirement block + all scenarios, edit the copy, and add '(Previously: ...)' -->
-### Requirement: REQ-{DOMAIN}-002: {Existing Name}
-{Full updated requirement text replacing the previous version entirely}
-(Previously: {one-line summary of what changed})
-
-#### Scenario: {Updated or Retained Scenario}
+#### Scenario: {Happy Path}   # add Edge and Error scenarios for complex domains
 - GIVEN {precondition}
 - WHEN {action}
 - THEN {outcome}
-
-## REMOVED Requirements
-### Requirement: REQ-{DOMAIN}-003: {Deprecated Name}
-(Reason: {why this requirement is deprecated/removed and migration path})
 ```
 
----
+- **MODIFIED**: copy the ENTIRE existing requirement block plus all its scenarios, edit the copy, and add `(Previously: ...)`.
+- **REMOVED**: state the reason and migration path.
+
+When `spec_plane=cortex`, persist the same content as pinned snapshot observations per `cortex-convention.md`, omitting OpenSpec files and gates.
 
 ## 3. Canonical Task DAG Decomposition
 
-Decompose planned work into modular, dependency-ordered phases. Every task must be specific, actionable and independently verifiable. Use the language-specific size forecast below to identify work needing decomposition.
+Read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. When routed a named architecture decision with material ambiguity, apply its Design It Twice protocol (two or three contract-level alternatives compared on interface depth, locality, dependency direction, seam placement, blast radius, and reversibility) and recommend one; never create competing tasks as architecture exploration.
 
-Read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. When the orchestrator routes a named architecture decision with material ambiguity, apply its Design It Twice protocol: produce two or three contract-level alternatives, compare interface depth, locality, dependency direction, seam placement, blast radius, and reversibility, then recommend or select one. Never create competing implementation tasks as architecture exploration.
+Respect module boundaries using `cortex_analyze_architecture(project)` plus bounded code-graph evidence. Default to tracer-bullet vertical slices: each task delivers one narrow, complete, independently verifiable path through every layer. Do not split "all tests", "all domain", or "all wiring" from the behavior they prove. Use horizontal prerequisite tasks only for a genuine shared foundation. For a wide mechanical or contract refactor that cannot land green as slices, plan `expand -> parallel migrate batches -> contract`; add a final integration task only if individual migrations cannot stay green, and state where the temporary non-green state is isolated.
 
-### Vertical Slice and Wide-Refactor Policy
+Task rules:
+- Use hierarchical numbering (`1.1`, `1.2`, `2.1`); query prior patterns via `cortex_search(query, graph_expand: true)`.
+- One conceptual delta or narrow slice per node; never combine domains or unrelated refactors.
+- Restrict `allowed_files` to 1-3 files; never assign directories or broad globs.
+- Size against the active `workload_policy` and allocate a dedicated modular test file (`<domain>_<slice>_test.go`) per `cortex-work-protocol.md` §4; never grow an oversized test file. Declarative data and schemas are exempt from logic budgets.
+- Keep `allowed_files` disjoint within a parallel wave; sequence only on genuine compile-time or interface dependencies and keep ready slices parallel for `parallel-dispatch`. Wave progression: 1 contracts/foundations, 2..N parallel disjoint slices, N+1 integration/wiring.
+- Every task must be independently verifiable with exit code `0`; build dependencies from executable prerequisites, minimize chain depth, and emit parallel groups only for ready tasks with disjoint files.
 
-Use `cortex_analyze_architecture(project)` and bounded code-graph evidence to respect module boundaries. For user-observable behavior, default to tracer-bullet tasks: each task delivers one narrow, complete, independently verifiable path through every required layer. Do not create separate “all tests”, “all domain”, or “all wiring” tasks when those layers can travel with the behavior they prove.
+`cortex_ia_work_create` quality standards:
+- `title`: short, imperative, naming the affected module.
+- `objective`: 2-3 substantive sentences covering context, the input/output contract, failure modes, and rationale.
+- `acceptance_criteria`: observable, verifiable checklist or Given/When/Then scenarios; never empty or generic.
+- `verification`: exact reproducible command with flags; for a REQ-bound persistent test, target the `TestREQ_{DOMAIN}_{NNN}_<slug>` name through the runner's selection flag. A pure executable command line — no comments, expected-output notes, quotes, or parentheticals.
+- `allowed_files`: complete explicit workspace-relative paths; never empty for implementation tasks.
+- `dependencies`: only genuine executable prerequisites.
 
-Use horizontal prerequisite tasks only for a genuine shared foundation that must exist before any slice can stay valid. For a wide mechanical or contract refactor that cannot land green as vertical slices, plan `expand -> parallel migrate batches -> contract`: introduce the compatible new form, migrate disjoint caller groups, then remove the old form only after every migration task completes. If individual migrations cannot stay green, add a final integration task and state where the temporary non-green state is isolated.
+Verify declarative configs with standard parsers, direct key/value matches, or real CLI commands — never ad-hoc shell lexers or grammar parsers (`AGENTS.md` §2). Pure-test tasks never undergo DAG decomposition (`cortex-work-protocol.md` §4); simplify or replace the failing oracle instead.
 
-### Task Definition Rules & Strict Quality Standards
-- Use hierarchical numbering: `1.1`, `1.2`, `2.1`, `2.2`, etc.
-- Query prior design patterns via `cortex_search(query, graph_expand: true)` to maintain architectural consistency.
-- **Micro-Task Sizing & Atomic Scope**:
-  - *Single Responsibility*: Each task represents exactly ONE conceptual delta or narrow vertical slice. Never combine multiple domains or unrelated refactors into one task node.
-  - *Blast Radius Limit*: Restrict `allowed_files` to 1-3 files per task. Never assign monolithic directories or broad globs.
-  - *Workload*: Use the active workload_policy from cortex-work-protocol.md. Flexible is the default: larger coherent changes produce an advisory, not mandatory decomposition.
-  - *Modular Test Scaffolding*: Always allocate a dedicated modular test file (`<domain>_<slice>_test.go`) sized per the normative workload LOC budget in `cortex-work-protocol.md` §4. Never append test suites to an existing oversized test file.
-- **Wave-Based DAG Topology & Parallelism**:
-  - *Disjoint Files*: All tasks in the same parallel execution wave MUST have mutually disjoint `allowed_files` to prevent write collisions.
-  - *Zero Artificial Serialization*: Do NOT sequence tasks unless there is a genuine compile-time or interface dependency. Keep independent vertical slices parallel so they enter `ready` concurrently for `parallel-dispatch`.
-  - *Standard Wave Progression*:
-    - *Wave 1 (Contracts & Foundations)*: Declarative schemas, interface contracts, error types, and test fixtures.
-    - *Wave 2..N (Parallel Slices)*: Domain implementations with mutually disjoint writable files.
-    - *Wave N+1 (Integration & Wiring)*: Public APIs, CLI dispatchers, and end-to-end regression oracles.
-- **Strict Quality Standards for Every Created Task (`cortex_ia_work_create`)**:
-  - `title`: Short, imperative summary naming the affected module (e.g. `[auth] Validate JWT bearer token format and expiration`).
-  - `objective`: Thorough technical explanation (minimum 2-3 substantive sentences) describing context, expected input/output contract, failure modes, and architectural rationale. Never use vague or one-line placeholders.
-  - `acceptance_criteria`: Observable, verifiable checklist or Given/When/Then scenarios specifying concrete behavior. Never leave empty or generic.
-  - `verification`: Exact reproducible command with flags (e.g. `go test -v ./internal/auth/... -run TestJWTBearer`). MUST be a pure executable command line without comments, expected output descriptions, quotes, or parenthetical remarks (e.g. never write `node --test ... (expected exit 0)`). Explanations belong strictly in `acceptance_criteria` or `objective`.
-  - `verification` for a REQ-bound task delivering a persistent test: target the covering `TestREQ_{DOMAIN}_{NNN}_<slug>` name through the runner's selection flag (e.g. `go test -run TestREQ_{DOMAIN}_{NNN}_<slug> ./internal/auth/...`), adapting to the language's test runner.
-  - `allowed_files`: Complete, explicit array of workspace-relative paths to be created or modified. Never empty for implementation tasks.
-  - `dependencies`: Include ONLY genuine executable prerequisites.
-- Ensure every task is independently verifiable with exit code `0`.
-- Build dependencies from executable prerequisites, not presentation order. Minimize unnecessary chain depth, identify the critical path, and emit parallel groups only for ready tasks with disjoint writable files.
-- **Declarative Configuration Verification vs Programmatic Engines**:
-  - For declarative configuration files (e.g. `docker-compose.yml`, `compose.yaml`, `Dockerfile`, `.dockerignore`, `.env*`, `package.json`, CI YAML, JSON configs), verification must be simple and proportional: syntax validity using standard language parsers, direct key/value matching, or real CLI commands.
-  - Planners MUST NEVER invent tasks demanding ad-hoc shell lexers, custom grammar parsers, or complex AST tokenizers to inspect declarative configs.
-- **Anti-Decomposition of Pure Tests**:
-  - Tasks whose `allowed_files` consist purely of tests or test fixtures (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks) MUST NOT undergo DAG decomposition. A failing test harness must be simplified, corrected, or replaced with a standard oracle, never split into sub-tasks.
+## 4. Size & Word Budget Guard
 
-
----
-
-## 4. Size & Word Budget Guard (Anti-Bloat & Language Awareness)
-
-To maintain clarity and protect context windows:
-- **Spec Artifact**: Maximum **650 words**. Prefer structured tables and Given/When/Then lists over verbose narrative. Auto-generates Mermaid visual sequence flows.
-- **Tasks Artifact**: Use concise checklists and clear file references without dropping requirement traceability or acceptance evidence to meet a word count.
-- **Workload LOC Budget**: Size each task against the active `workload_policy` using the normative budget in `cortex-work-protocol.md` §4 (Workload LOC Budget). Declarative data and schemas are exempt from algorithmic logic budgets.
-- **Modular Test Scaffolding Policy**: Apply the normative modular test partitioning rule in `cortex-work-protocol.md` §4. Planners MUST specify dedicated modular test files (e.g. `<domain>_<slice>_test.go`) and NEVER assign an existing test file to `allowed_files` when the resulting size would breach the per-task test budget.
-
-
----
+- **Spec artifact**: maximum **650 words**; prefer tables and Given/When/Then lists over narrative. Auto-generates Mermaid sequence flows.
+- **Tasks artifact**: concise checklists and clear file references, never dropping requirement traceability or acceptance evidence to hit a count.
+- **Workload LOC budget** and **modular test scaffolding**: apply the normative rules in `cortex-work-protocol.md` §4; declarative data and schemas are exempt from logic budgets.
 
 ## 5. Execution Procedure with Cortex-IA CLI & Cortex MCP
 
-1. **Control Health**: Call `cortex_ia_board_list({})` and fail closed only if work control is unavailable. A proposed board ID returning not-found is expected before creation and does not prove a permission failure.
-2. **Context & Evidence**: Read the request, `./.cortex-ia/discovery.md` when present, and cited Cortex evidence (`cortex_search`). Preserve confirmed architectural seams and dependency direction; verify stale or conflicting profile claims against primary repository evidence.
-3. **Draft Contracts**: Formulate the requested decision map, proposal, delta specifications, concise design, or task DAG. Reuse project glossary terms and existing ADRs when present; record a new durable decision only for a real, consequential trade-off.
-4. **Validation & Commit**: When `spec_plane=openspec|hybrid`, validate OpenSpec artifacts locally through `cortex_ia_openspec_validate`. When `spec_plane=cortex`, write and validate pinned snapshot observations via `cortex_save` per `cortex-convention.md`, skipping OpenSpec gates across decision-map, Lite, and all Full phases. A `decision-map` writes only its contract and never creates a board. Materialize a new implementation DAG only for `sdd-lite/integrated` or `sdd-full/tasks`. For an orchestrator-routed blocked-task decomposition, require current `blocked` state and revision, derive 2-8 smaller fully specified tasks from the failure evidence, and call `cortex_ia_work_decompose` exactly once with the upgraded contract (supplying the typed `contract` object when upgrading from direct-change to sdd-lite); never create those children individually or retry the parent.
-5. **Contract Source**: Contracts live directly in `openspec/changes/<change-name>/` for openspec/hybrid, or as pinned snapshot observations (`observation_id` + UTF-8 SHA-256) per `cortex-convention.md` when `spec_plane=cortex`; task IDs reference those contracts.
-6. **No Execution**: Planning never executes code or takes file leases.
+1. **Control Health**: call `cortex_ia_board_list({})`; fail closed only if work control is unavailable. A proposed board ID returning not-found before creation is expected, not a permission failure.
+2. **Context & Evidence**: read the request, `./.cortex-ia/discovery.md` when present, and cited Cortex evidence (`cortex_search`); preserve confirmed seams and dependency direction and re-verify stale or conflicting profile claims against primary repository evidence.
+3. **Draft Contracts**: produce the decision map, proposal, delta specifications, concise design, or task DAG; reuse glossary terms and existing ADRs and record a new durable decision only for a real consequential trade-off.
+4. **Validation & Commit**: validate openspec/hybrid artifacts locally with `cortex_ia_openspec_validate`; write and validate cortex pinned snapshots via `cortex_save` per `cortex-convention.md`, skipping OpenSpec gates. A `decision-map` writes only its contract and creates no board; materialize a DAG only for `sdd-lite/integrated` or `sdd-full/tasks`. For an orchestrator-routed blocked-task decomposition, require current `blocked` state and revision, derive 2-8 smaller fully specified tasks from the failure evidence, and call `cortex_ia_work_decompose` exactly once (supplying the typed `contract` when upgrading from direct-change to sdd-lite); never create those children individually or retry the parent.
+5. **Contract Source**: contracts live in `openspec/changes/<change-name>/` (openspec/hybrid) or as pinned snapshot observations (`observation_id` + UTF-8 SHA-256) per `cortex-convention.md` (cortex); task IDs reference those contracts.
+6. **No Execution**: planning never executes code or takes file leases.
 
----
+## 6. Output Contract
 
-## 6. Output Schema
-
-```json
-{
-  "receipt_version": "2.0",
-  "workflow": "decision-map | sdd-lite | sdd-full",
-  "phase": "chart | resolve | integrated | propose | spec | design | tasks | archive",
-  "phase_status": "success | partial | failed | blocked",
-  "spec_plane": "openspec | cortex | hybrid",
-  "task_id": null,
-  "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
-  "summary": "",
-  "artifact_refs": [],
-  "artifact_revisions": [],
-  "task_ids": [],
-  "parallel_groups": [],
-  "budget_lines_forecast": 0,
-  "evidence_refs": [],
-  "open_decisions": [],
-  "risks": [],
-  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
-}
-```
-
-Return `blocked` when intent or acceptance criteria are materially ambiguous or required approvals are missing.
+Report the common completion receipt defined by `cortex-work-protocol.md` §8; planner fields are `workflow`, `phase`, `spec_plane`, `artifact_refs`, `artifact_revisions`, `task_ids`, `parallel_groups`, `budget_lines_forecast`, `open_decisions`, `risks`, and the canonical `next_route` enum. Return `blocked` when intent or acceptance criteria are materially ambiguous or required approvals are missing.
