@@ -719,9 +719,34 @@ export function extractProjectName(directory: string): string {
   return directory.split("/").pop() ?? "unknown"
 }
 
-function stripPrivateTags(str: string): string {
-  if (!str) return ""
-  return str.replace(/<private>[\s\S]*?<\/private>/gi, "[REDACTED]").trim()
+// ─── Typed secret redaction ──────────────────────────────────────────────────
+
+// The typed-redaction helper is owned by the tool-telemetry plugin, whose
+// sanitizeValue is its other consumer. It is resolved lazily, not via a static
+// import, so this module stays loadable by the isolated harness sandbox, which
+// rejects relative imports between plugin files.
+type RedactionApi = {
+  redactSecrets: (text: string) => string;
+  hasUnredactableSecret: (text: string) => boolean;
+  reportPromptRedactionDrop: (directory: string, sessionID: string, detail: string) => void;
+};
+
+let redactionApiPromise: Promise<RedactionApi> | null = null;
+
+function redactionApi(): Promise<RedactionApi> {
+  if (!redactionApiPromise) {
+    redactionApiPromise = import("./cortex-tool-telemetry")
+      .then((mod) => ({
+        redactSecrets: mod.redactSecrets,
+        hasUnredactableSecret: mod.hasUnredactableSecret,
+        reportPromptRedactionDrop: mod.reportPromptRedactionDrop,
+      }))
+      .catch((err) => {
+        redactionApiPromise = null;
+        throw err;
+      });
+  }
+  return redactionApiPromise;
 }
 
 // ─── Durable handoff neutrality ──────────────────────────────────────────────
@@ -888,7 +913,14 @@ export const Cortex = Plugin.define({
             // later host event.
             const session = await ensureSession(sessionId)
             if (!session.confirmed) return
-            const redacted = stripPrivateTags(finalContent)
+            const redactor = await redactionApi()
+            const redacted = redactor.redactSecrets(finalContent).trim()
+            if (redactor.hasUnredactableSecret(redacted)) {
+              // Fail closed: a secret shape redaction could not rewrite is never
+              // persisted; the drop rides the shared telemetry channel.
+              redactor.reportPromptRedactionDrop(directory, sessionId, "unredactable secret shape")
+              return
+            }
             const record = truncateUtf8(redacted)
             await deliver(
               "prompt",
@@ -1006,7 +1038,8 @@ export const Cortex = Plugin.define({
           if ((tool === "task" || tool === "subagent") && output && sessionId && sessionConfirmed) {
             const text = typeof output === "string" ? output : JSON.stringify(output)
             if (text.length > 50) {
-              const redacted = stripPrivateTags(text)
+              const redactor = await redactionApi()
+              const redacted = redactor.redactSecrets(text).trim()
               const record = truncateUtf8(redacted)
               const sent = {
                 content: record.content,

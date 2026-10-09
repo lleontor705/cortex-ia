@@ -81,24 +81,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-const receiptSchema = {
-  type: "object",
-  required: ["phase_status", "execution_status", "verification_verdict", "summary"],
-  properties: {
-    phase_status: { type: "string" },
-    execution_status: { type: "string", enum: ["completed", "partial", "failed", "blocked", "unverified"] },
-    verification_verdict: { type: "string" },
-    summary: { type: "string" },
-    changed_files: { type: "array", items: { type: "string" } },
-    checks: { type: "array", items: { type: "string" } },
-    evidence_refs: { type: "array", items: { type: "string" } },
-    task_ids: { type: "array", items: { type: "string" } },
-    artifact_refs: { type: "array", items: { type: "string" } },
-    risks: { type: "array", items: { type: "string" } },
-    next_route: { type: "string" }
-  }
-};
-
 interface SubagentTrack {
   id: string;
   role?: string;
@@ -598,6 +580,25 @@ function safeUnicodeSlice(str: string, maxChars: number): string {
   return chars.slice(0, maxChars).join("") + "...";
 }
 
+const PER_SPEC_VERDICTS = new Set(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"]);
+
+// Per-spec verdicts ride additively into the compact projection. Malformed
+// entries are dropped instead of failing the whole receipt so a partially-bad
+// producer can never suppress an otherwise valid compaction.
+function normalizeVerdicts(raw: any): Array<{ req_id: string; verdict: string; evidence_ref: string }> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const verdicts: Array<{ req_id: string; verdict: string; evidence_ref: string }> = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const reqId = typeof entry.req_id === "string" ? entry.req_id.trim() : "";
+    const verdict = typeof entry.verdict === "string" ? entry.verdict.trim() : "";
+    if (reqId.length === 0 || !PER_SPEC_VERDICTS.has(verdict)) continue;
+    if (typeof entry.evidence_ref !== "string") continue;
+    verdicts.push({ req_id: reqId, verdict, evidence_ref: entry.evidence_ref });
+  }
+  return verdicts;
+}
+
 function extractCompactReceipt(job: any, res: any, jobID: string): any {
   const authoritativeStatus = job?.status || res?.status || "unknown";
   const isSuccess = authoritativeStatus === "succeeded";
@@ -649,6 +650,11 @@ function extractCompactReceipt(job: any, res: any, jobID: string): any {
   const changed_files = Array.isArray(candidate?.changed_files) ? candidate.changed_files.map(String) : undefined;
   const checks = Array.isArray(candidate?.checks) ? candidate.checks.map(String) : undefined;
 
+  const verdictSource = candidate
+    ?? (rawOutput && typeof rawOutput === "object" ? rawOutput : null)
+    ?? (res && typeof res === "object" ? res : null);
+  const verdicts = normalizeVerdicts(verdictSource?.verdicts);
+
   const output: any = {
     summary,
     details_omitted: true
@@ -658,6 +664,7 @@ function extractCompactReceipt(job: any, res: any, jobID: string): any {
   if (verification_verdict !== undefined) output.verification_verdict = verification_verdict;
   if (changed_files !== undefined) output.changed_files = changed_files;
   if (checks !== undefined) output.checks = checks;
+  if (verdicts !== undefined) output.verdicts = verdicts;
   if (summaryTruncated) output.truncated = true;
 
   const id = job?.job_id || res?.job_id || jobID;
