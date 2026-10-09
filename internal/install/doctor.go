@@ -599,13 +599,18 @@ func configHasPlugin(config map[string]any, target string) bool {
 	return false
 }
 
+// configHasCortexTheme reports whether the configuration selects a shipped
+// cortex theme. The installer selects cortexThemeName (cortex-ia); the legacy
+// legacyCortexThemeName (cortex) is still accepted because both theme assets
+// ship and a configuration written before the rename is migrated to the managed
+// name on the next install or sync.
 func configHasCortexTheme(config map[string]any) bool {
 	theme, ok := config["theme"].(map[string]any)
 	if !ok {
 		return false
 	}
 	name, _ := theme["name"].(string)
-	return name == cortexThemeName
+	return name == cortexThemeName || name == legacyCortexThemeName
 }
 
 // ownershipEvidence projects recorded MCP ownership onto manager records.

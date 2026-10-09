@@ -111,6 +111,10 @@ func TestInstall_CopiesEmbeddedAssetsToOpenCode(t *testing.T) {
 	engineAssertRegular(t, engineJoin(home, ".config/opencode/commands/sdd.md"))
 	engineAssertRegular(t, engineJoin(home, ".config/opencode/commands/discover.md"))
 	engineAssertRegular(t, engineJoin(home, ".config/opencode/tui-plugins/cortex-ia-tui.js"))
+	// The Nan Ink theme is a data asset the client selects by name; the managed
+	// cortex-ia.json must land where OpenCode resolves theme.name=cortex-ia.
+	engineAssertRegular(t, engineJoin(home, ".config/opencode/themes/cortex-ia.json"))
+	engineAssertRegular(t, engineJoin(home, ".config/opencode/themes/cortex.json"))
 
 	// Selected MCP entries exist in the OpenCode config; context7 stays out.
 	config := engineAssertRegular(t, engineJoin(home, ".config/opencode/opencode.jsonc"))

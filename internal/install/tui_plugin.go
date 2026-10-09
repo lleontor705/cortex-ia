@@ -25,7 +25,14 @@ const (
 	tuiSchemaV1        = "https://opencode.ai/tui.json"
 	cliSchemaV2        = "https://opencode.ai/v2/cli.json"
 	opencodeSchemaV2   = "https://opencode.ai/config.json"
-	cortexThemeName    = "cortex"
+	// cortexThemeName is the OpenCode theme the installer selects, resolving to
+	// the bundled themes/cortex-ia.json asset.
+	cortexThemeName = "cortex-ia"
+	// legacyCortexThemeName is the theme name earlier installs selected, still
+	// backed by the bundled themes/cortex.json. Doctor accepts it so a
+	// configuration written before the rename is not reported as unwired; the
+	// next install or sync rewrites the key to cortexThemeName.
+	legacyCortexThemeName = "cortex"
 )
 
 // OpenCode configuration generations the installer distinguishes. V2 loads
@@ -133,12 +140,13 @@ func ConfigureTUIPlugin(homeDir string) (string, error) {
 // superseded OpenCode built-in agents there, and never writes tui.json(c). V1
 // keeps the tui.jsonc/tui.json target and leaves opencode.jsonc alone.
 //
-// The theme is applied unconditionally: OpenCode only loads a theme named in
-// the configuration, so a skipped write let an external client rewrite drop the
-// key and silently revert the cortex theme. applyTheme is retained for call-site
-// compatibility but no longer gates the write.
+// The theme is always selected: OpenCode only loads a theme named in the
+// configuration, so a skipped write let an external client rewrite drop the key
+// and silently unload the cortex-ia theme. applyTheme names the managed theme
+// when the caller opts in; an install or sync that leaves the request unset
+// still selects the same managed default, so the key is always written.
 func ConfigureTUIPluginWithResult(homeDir string, applyTheme bool) (string, bool, ThemeApplyOutcome, error) {
-	_ = applyTheme
+	themeName := requestedThemeName(applyTheme)
 	if homeDir == "" {
 		var err error
 		homeDir, err = os.UserHomeDir()
@@ -155,9 +163,9 @@ func ConfigureTUIPluginWithResult(homeDir string, applyTheme bool) (string, bool
 	var changed bool
 	var err error
 	if detectOpenCodeConfigMajor(homeDir, configDir) >= opencodeMajorV2 {
-		primaryPath, changed, err = configureV2TUI(configDir)
+		primaryPath, changed, err = configureV2TUI(configDir, themeName)
 	} else {
-		primaryPath, changed, err = configureV1TUI(configDir)
+		primaryPath, changed, err = configureV1TUI(configDir, themeName)
 	}
 	if err != nil {
 		return "", false, ThemeOutcomeError, err
@@ -168,11 +176,19 @@ func ConfigureTUIPluginWithResult(homeDir string, applyTheme bool) (string, bool
 	return primaryPath, changed, ThemeOutcomeApplied, nil
 }
 
+// requestedThemeName resolves the OpenCode theme a configuration pass selects.
+// The bundle ships a single managed theme, so an explicit --theme request and an
+// install or sync that omits the request both select cortex-ia; the request is
+// accepted here so the selection stays a single, explicit decision point.
+func requestedThemeName(_ bool) string {
+	return cortexThemeName
+}
+
 // configureV2TUI writes the plugin and theme to cli.json and registers the
 // plugin plus the built-in agent disablement in the managed opencode.jsonc.
-func configureV2TUI(configDir string) (string, bool, error) {
+func configureV2TUI(configDir, themeName string) (string, bool, error) {
 	cliPath := filepath.Join(configDir, cliConfigName)
-	cliChanged, err := configureSingleTUIFile(cliPath)
+	cliChanged, err := configureSingleTUIFile(cliPath, themeName)
 	if err != nil {
 		return "", false, err
 	}
@@ -185,7 +201,7 @@ func configureV2TUI(configDir string) (string, bool, error) {
 
 // configureV1TUI preserves the v1 tui.jsonc/tui.json target cascade and never
 // touches the managed opencode.jsonc.
-func configureV1TUI(configDir string) (string, bool, error) {
+func configureV1TUI(configDir, themeName string) (string, bool, error) {
 	primaryPath := v1TUIConfigPath(configDir)
 	secondaryPaths := []string{}
 	if primaryPath == filepath.Join(configDir, tuiConfigName) {
@@ -193,13 +209,13 @@ func configureV1TUI(configDir string) (string, bool, error) {
 			secondaryPaths = append(secondaryPaths, secondary)
 		}
 	}
-	primaryChanged, err := configureSingleTUIFile(primaryPath)
+	primaryChanged, err := configureSingleTUIFile(primaryPath, themeName)
 	if err != nil {
 		return "", false, err
 	}
 	anyChanged := primaryChanged
 	for _, secondary := range secondaryPaths {
-		secondaryChanged, secondaryErr := configureSingleTUIFile(secondary)
+		secondaryChanged, secondaryErr := configureSingleTUIFile(secondary, themeName)
 		if secondaryErr == nil && secondaryChanged {
 			anyChanged = true
 		}
@@ -336,7 +352,7 @@ func writeFileIfChanged(path string, content []byte) error {
 	return os.WriteFile(path, content, 0o644)
 }
 
-func configureSingleTUIFile(tuiPath string) (bool, error) {
+func configureSingleTUIFile(tuiPath, themeName string) (bool, error) {
 	plugins := []any{}
 	current := map[string]any{}
 	isCLI := filepath.Base(tuiPath) == cliConfigName
@@ -405,7 +421,7 @@ func configureSingleTUIFile(tuiPath string) (bool, error) {
 	overlayMap := map[string]any{
 		"$schema": schemaURL,
 		pluginKey: plugins,
-		"theme":   cortexThemeOverlay(current),
+		"theme":   cortexThemeOverlay(current, themeName),
 	}
 
 	overlay, err := json.Marshal(overlayMap)
@@ -419,13 +435,13 @@ func configureSingleTUIFile(tuiPath string) (bool, error) {
 	return mutated.Changed || mutated.Created, nil
 }
 
-// cortexThemeOverlay builds the cortex theme entry. An explicit light/dark
+// cortexThemeOverlay builds the managed theme entry. An explicit light/dark
 // preference is preserved because it encodes the user's terminal contrast
 // choice, which is unrelated to the theme name. Anything else — including a
-// theme name left behind by an earlier install — is refreshed to the cortex
-// theme, since a stale name is what silently prevented the cortex theme from
+// theme name left behind by an earlier install — is refreshed to themeName,
+// since a stale name is what silently prevented the cortex-ia theme from
 // ever loading.
-func cortexThemeOverlay(current map[string]any) map[string]any {
+func cortexThemeOverlay(current map[string]any, themeName string) map[string]any {
 	mode := "dark"
 	if existing, ok := current["theme"].(map[string]any); ok {
 		if value, ok := existing["mode"].(string); ok && (value == "light" || value == "dark") {
@@ -433,7 +449,7 @@ func cortexThemeOverlay(current map[string]any) map[string]any {
 		}
 	}
 	return map[string]any{
-		"name": cortexThemeName,
+		"name": themeName,
 		"mode": mode,
 	}
 }
