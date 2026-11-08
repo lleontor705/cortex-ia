@@ -96,8 +96,8 @@ func TestConfigureTUIPluginV2(t *testing.T) {
 	}
 
 	managed := decodeTestConfig(t, filepath.Join(configDir, opencodeConfigName))
-	if got := stringValues(managed, "plugins"); countString(got, TUIPluginDirV2) != 1 {
-		t.Errorf("expected the plugin registered in opencode.jsonc, got %v", got)
+	if got := stringValues(managed, "plugins"); countString(got, TUIPluginDirV2) != 0 {
+		t.Errorf("TUI plugin must not appear in opencode.jsonc (server runtime), got %v", got)
 	}
 	for _, name := range builtinAgentsDisabled {
 		if entry := agentEntry(managed, name); entry["disabled"] != true {
@@ -154,8 +154,11 @@ func TestConfigureTUIPluginV2PreservesThirdParty(t *testing.T) {
 
 	managed := decodeTestConfig(t, filepath.Join(configDir, opencodeConfigName))
 	managedPlugins := stringValues(managed, "plugins")
-	if countString(managedPlugins, "other-plugin.js") != 1 || countString(managedPlugins, TUIPluginDirV2) != 1 {
-		t.Errorf("expected third-party preserved and one cortex entry, got %v", managedPlugins)
+	if countString(managedPlugins, "other-plugin.js") != 1 {
+		t.Errorf("expected third-party preserved in opencode.jsonc, got %v", managedPlugins)
+	}
+	if countString(managedPlugins, TUIPluginDirV2) != 0 {
+		t.Errorf("cortex TUI plugin must not appear in opencode.jsonc, got %v", managedPlugins)
 	}
 	if countString(managedPlugins, TUIPluginPath) != 0 {
 		t.Errorf("legacy flat plugin must be removed from opencode.jsonc, got %v", managedPlugins)

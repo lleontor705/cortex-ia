@@ -252,12 +252,14 @@ func managedOpenCodeConfigPath(configDir string) string {
 }
 
 // configureManagedOpenCodeConfig applies the durable OpenCode v2 channel: it
-// registers the TUI plugin in the managed opencode.jsonc plugins array and
-// disables the built-in agents cortex-ia supersedes. The plugins array is
-// rebuilt as a union so third-party entries survive and exactly one cortex-ia
-// entry remains; the agents overlay only sets the disabled flag, so unrelated
-// agent entries and any keys already on the built-ins are preserved by the
-// value-level merge.
+// disables the built-in agents cortex-ia supersedes and cleans any stale
+// cortex-ia TUI plugin entry from the opencode.jsonc plugins array.
+//
+// OpenCode v2.2+ loads opencode.jsonc plugins with the server runtime; the
+// cortex-ia plugin is TUI-only and must live exclusively in cli.json. Earlier
+// installers incorrectly registered it here, causing a "Plugin failed to load"
+// error with runtime=server. This function now strips those entries instead of
+// adding them.
 func configureManagedOpenCodeConfig(configDir string) (bool, error) {
 	path := managedOpenCodeConfigPath(configDir)
 	current := map[string]any{}
@@ -271,16 +273,21 @@ func configureManagedOpenCodeConfig(configDir string) (bool, error) {
 		return false, err
 	}
 
-	plugins, err := cortexPluginUnion(current["plugins"])
+	overlayMap := map[string]any{
+		"$schema": opencodeSchemaV2,
+		"agents":  builtinAgentDisableOverlay(),
+	}
+
+	// Strip stale cortex TUI plugin entries from the existing plugins array.
+	plugins, err := stripCortexTUIPlugins(current["plugins"])
 	if err != nil {
 		return false, err
 	}
+	if plugins != nil {
+		overlayMap["plugins"] = plugins
+	}
 
-	overlay, err := json.Marshal(map[string]any{
-		"$schema": opencodeSchemaV2,
-		"plugins": plugins,
-		"agents":  builtinAgentDisableOverlay(),
-	})
+	overlay, err := json.Marshal(overlayMap)
 	if err != nil {
 		return false, err
 	}
@@ -291,25 +298,25 @@ func configureManagedOpenCodeConfig(configDir string) (bool, error) {
 	return mutated.Changed || mutated.Created, nil
 }
 
-// cortexPluginUnion rebuilds the plugins array so every third-party entry is
-// preserved and the v2 cortex-ia entry appears exactly once at the end.
-func cortexPluginUnion(configured any) ([]any, error) {
-	plugins := []any{}
-	if configured != nil {
-		values, ok := configured.([]any)
-		if !ok {
-			return nil, errors.New("OpenCode config plugins must be an array")
-		}
-		plugins = append(plugins, values...)
+// stripCortexTUIPlugins removes any cortex-ia TUI plugin paths from the
+// plugins array while preserving third-party entries. Returns nil when the
+// configured value is absent (no plugins key existed).
+func stripCortexTUIPlugins(configured any) ([]any, error) {
+	if configured == nil {
+		return nil, nil
 	}
-	union := make([]any, 0, len(plugins)+1)
-	for _, entry := range plugins {
+	values, ok := configured.([]any)
+	if !ok {
+		return nil, errors.New("OpenCode config plugins must be an array")
+	}
+	cleaned := make([]any, 0, len(values))
+	for _, entry := range values {
 		if value, ok := entry.(string); ok && isCortexPluginPath(value) {
 			continue
 		}
-		union = append(union, entry)
+		cleaned = append(cleaned, entry)
 	}
-	return append(union, TUIPluginDirV2), nil
+	return cleaned, nil
 }
 
 func isCortexPluginPath(value string) bool {
