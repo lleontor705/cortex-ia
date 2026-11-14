@@ -76,13 +76,14 @@ const MUTATING_TOOLS = new Set([
 ]);
 
 function isProtectedPath(filePath: string): boolean {
-  const norm = filePath.replace(/\\/g, "/");
-  return (
-    norm.includes(".git/") ||
-    norm.endsWith("/.git") ||
-    norm.includes(".env") ||
-    norm.includes("delegation.db") ||
-    norm.includes(".cortex-ia/delegation.db")
+  // Segment matching keeps names like `.environment.ts` writable while still
+  // covering SQLite sidecars (`delegation.db-wal`, `delegation.db-shm`).
+  const segments = filePath.replace(/\\/g, "/").toLowerCase().split("/");
+  return segments.some(segment =>
+    segment === ".git" ||
+    segment === ".env" ||
+    segment.startsWith(".env.") ||
+    /^delegation\.db([-.].*)?$/.test(segment)
   );
 }
 
@@ -191,7 +192,7 @@ export const CortexPermissionFencePlugin = Plugin.define({
     if ((ctx as any).permission?.hook) {
       await (ctx as any).permission.hook("evaluate", async (event: any) => {
         const toolName = String(event?.tool || "").toLowerCase();
-        const targetPath = String(event?.path || event?.input?.TargetFile || event?.input?.path || "");
+        const targetPath = String(event?.path || event?.input?.TargetFile || event?.input?.targetFile || event?.input?.path || event?.input?.filePath || event?.input?.file_path || event?.input?.target_path || "");
 
         // Protected system paths check
         if (targetPath && isProtectedPath(targetPath)) {
@@ -240,7 +241,7 @@ export const CortexPermissionFencePlugin = Plugin.define({
               }
               const result = JSON.parse(raw);
               if (result?.valid === true && result?.owner === `opencode-session:${sessionID}`) {
-                verifiedPermLeaseCache.set(cacheKey, Date.now() + 30_000);
+                verifiedPermLeaseCache.set(cacheKey, Date.now() + 5_000);
                 return { effect: "allow", reason: "Verified active lease" };
               }
             } catch {}

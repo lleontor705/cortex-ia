@@ -1489,12 +1489,20 @@ export const CortexWorkPlugin = Plugin.define({
         if (args.ttl) command.push("--ttl", args.ttl);
         const claim = parseJSON(cortex(command));
         if (!claim?.claim_token) throw new Error("cortex-ia returned no claim token");
-        const reserved = reservationReceipt(claim.reserved_files || [], targetPaths);
-        const leases = new Map<string, string>(reserved.map(lease => [lease.path, lease.lease_token]));
+        const claimedLeases: any[] = Array.isArray(claim.reserved_files) ? claim.reserved_files : [];
+        const leases = new Map<string, string>(claimedLeases
+          .filter(lease => typeof lease?.path === "string" && typeof lease?.lease_token === "string")
+          .map((lease): [string, string] => [lease.path, lease.lease_token]));
         const authority: WorkAuthority = { claimToken: claim.claim_token, leases, sessionID: context.sessionID };
         workAuthority.set(args.task_id, authority);
         startMaintenance(args.task_id, authority, context.directory);
         saveAuthorityState();
+        let reserved: any[];
+        try {
+          reserved = reservationReceipt(claim.reserved_files || [], targetPaths);
+        } catch (error: any) {
+          throw new Error(`${error?.message || "invalid reservation receipt"} — the claim is held by this session; call cortex_ia_work_release_all or cortex_ia_work_recover_own before retrying`);
+        }
         return JSON.stringify({ ...withoutToken(claim, "claim_token"), reserved_files: reserved.map(lease => withoutToken(lease, "lease_token")), maintenance: { ...maintenancePolicy, active: authority.maintenance?.active, reason: authority.maintenance?.reason } });
       }
     }),
@@ -1523,7 +1531,9 @@ export const CortexWorkPlugin = Plugin.define({
         const authority = authorityForSession(args.task_id, context.sessionID);
         const command = ["work", "renew", args.task_id, "--claim-token", "@stdin"];
         if (args.ttl) command.push("--ttl", args.ttl);
-        return JSON.stringify(withoutToken(parseJSON(cortexAuthorized(command, authority.claimToken)), "claim_token"));
+        const renewed = JSON.stringify(withoutToken(parseJSON(cortexAuthorized(command, authority.claimToken)), "claim_token"));
+        if (!authority.maintenance?.active) startMaintenance(args.task_id, authority, context.directory);
+        return renewed;
       }
     }),
 
@@ -1578,11 +1588,11 @@ export const CortexWorkPlugin = Plugin.define({
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID);
         const released = [...authority.leases.keys()];
-        stopMaintenance(authority, "release_all");
         const receipt = parseJSON(cortexAuthorized(["work", "release-all", args.task_id, "--claim-token", "@stdin"], authority.claimToken));
         if (receipt?.task_id !== args.task_id || receipt?.released_all !== true) {
           throw new Error("WORK_RELEASE_UNCONFIRMED: reservations retained locally; query task status before retrying");
         }
+        stopMaintenance(authority, "release_all");
         authority.leases.clear();
         saveAuthorityState();
         return JSON.stringify({ released, failures: [], ...receipt });
@@ -1639,7 +1649,7 @@ export const CortexWorkPlugin = Plugin.define({
         task_id: tool.schema.string(),
         to: tool.schema.enum(["in_review", "in_progress", "blocked"]).optional(),
         status: tool.schema.enum(["in_review", "in_progress", "blocked"]).optional().describe("Alias for 'to'"),
-        revision: tool.schema.number().optional(),
+        revision: tool.schema.number().describe("Current task revision, from the claim receipt or cortex_ia_work_status"),
         summary: tool.schema.string().optional().describe("Human-readable execution summary"),
         verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"]).optional().describe("Verification verdict"),
         evidence_refs: tool.schema.array(tool.schema.string()).optional().describe("Pointers to verified test files, commands or observations"),
@@ -1652,8 +1662,7 @@ export const CortexWorkPlugin = Plugin.define({
         const authority = authorityForSession(args.task_id, context.sessionID);
         if (targetState === "in_review") assertInReviewGotchaEvidence(args.task_id, args.evidence_refs);
         const command = ["work", "transition", args.task_id, "--claim-token", "@stdin", "--to", targetState];
-        if (targetState !== "in_progress") stopMaintenance(authority, "delivery");
-        if (args.revision) command.push("--revision", String(args.revision));
+        command.push("--revision", String(args.revision));
         if (args.summary !== undefined) command.push("--summary", args.summary);
         if (args.verdict !== undefined) command.push("--verdict", args.verdict);
         if (args.blocked_reason !== undefined) command.push("--blocked-reason", args.blocked_reason);
@@ -1666,6 +1675,7 @@ export const CortexWorkPlugin = Plugin.define({
             (targetState !== "in_progress" && delivered?.leases?.length)) {
           throw new Error("WORK_TRANSITION_UNCONFIRMED: durable transition acknowledgement is missing or inconsistent; query task status before retrying");
         }
+        if (targetState !== "in_progress") stopMaintenance(authority, "delivery");
         if (targetState === "in_review" || targetState === "blocked") {
           authority.leases.clear();
         }
@@ -1683,8 +1693,8 @@ export const CortexWorkPlugin = Plugin.define({
         task_id: tool.schema.string(),
         reviewer: tool.schema.string().optional().describe("Reviewer identity; defaults to host session"),
         verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"]),
-        evidence: tool.schema.string().optional(),
-        revision: tool.schema.number().optional(),
+        evidence: tool.schema.string().optional().describe("Evidence pointer (test output, observation id, commit). Required for PASS unless summary is given"),
+        revision: tool.schema.number().describe("Current task revision, from the claim receipt or cortex_ia_work_status"),
         summary: tool.schema.string().optional().describe("Independent review summary and lens verdict"),
         findings: tool.schema.array(tool.schema.string()).optional().describe("List of review findings or blockers")
       },
@@ -1694,8 +1704,9 @@ export const CortexWorkPlugin = Plugin.define({
         const verdict = ["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"].includes(rawVerdict) ? rawVerdict : args.verdict;
         const command = ["work", "approve", args.task_id, "--reviewer", controllerIdentity(context.sessionID), "--verdict", verdict];
         const evidenceStr = args.evidence || (args.summary ? (args.summary + (args.findings && args.findings.length ? ` (Findings: ${args.findings.join("; ")})` : "")) : "");
+        if (verdict === "PASS" && !evidenceStr) throw new Error("EVIDENCE_REQUIRED: a PASS approval needs `evidence` (a pointer to test output, an observation id, or a commit) or a `summary`");
         if (evidenceStr) command.push("--evidence", evidenceStr);
-        if (args.revision) command.push("--revision", String(args.revision));
+        command.push("--revision", String(args.revision));
         const result = cortex(command);
         workAuthority.delete(args.task_id);
         saveAuthorityState();
@@ -1754,7 +1765,7 @@ export const CortexWorkPlugin = Plugin.define({
     const execute = definition.execute;
     definition.execute = async (args: any, context: any) => {
       if (!allowed.includes(context?.agent) || typeof context?.sessionID !== "string" ||
-          !/^[A-Za-z0-9_-]{1,256}$/.test(context.sessionID)) throw new Error(`BRIDGE_ROLE_DENIED: ${name} requires an authorized host role and session`);
+          !/^[A-Za-z0-9_-]{1,256}$/.test(context.sessionID)) throw new Error(`BRIDGE_ROLE_DENIED: ${name} is available to roles [${allowed.join(", ")}]; caller role is "${context?.agent || "unknown"}"`);
       return execute(args, context);
     };
   }

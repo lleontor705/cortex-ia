@@ -72,7 +72,7 @@ function targetFiles(toolName: string, args: Record<string, any>): string[] {
     if (typeof args?.output_path !== "string" || !args.output_path) throw new Error("LEASE_CHECK_FAILED: an output path is required");
     return [args.output_path];
   }
-  if (toolName === "apply_patch") {
+  if (toolName === "apply_patch" || (toolName === "patch" && typeof args?.patchText === "string")) {
     if (typeof args?.patchText !== "string" || args.patchText.length > 1024 * 1024) throw new Error("LEASE_CHECK_FAILED: bounded patchText is required");
     const lines = args.patchText.replace(/\r\n/g, "\n").trim().split("\n");
     if (lines.shift() !== "*** Begin Patch" || lines.pop() !== "*** End Patch") throw new Error("LEASE_CHECK_FAILED: unrecognized patch framing");
@@ -133,7 +133,7 @@ async function verifyLeasesForTool(
   role: string
 ) {
   if (toolName === "cortex_ia_doc_convert" && !(rawArgs as any)?.output_path) return;
-  if (!["edit", "write_to_file", "write", "apply_patch", "cortex_ia_doc_convert", "cortex_ia_diagram_render"].includes(toolName)) return;
+  if (!["edit", "write_to_file", "write", "apply_patch", "patch", "multiedit", "delete_file", "replace_file_content", "notebook_edit", "cortex_ia_doc_convert", "cortex_ia_diagram_render"].includes(toolName)) return;
 
   if (typeof sessionID !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(sessionID)) throw new Error("LEASE_CHECK_FAILED: host session identity is required");
   const rawTargets = targetFiles(toolName, (rawArgs || {}) as Record<string, any>);
@@ -207,7 +207,7 @@ async function verifyLeasesForTool(
     if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
       throw new Error("lease for targets has expired");
     }
-    const cacheTtl = Math.min(expiresAt - 5000, Date.now() + 300_000);
+    const cacheTtl = Math.min(expiresAt - 5000, Date.now() + 5_000);
     if (cacheTtl > Date.now()) {
       verifiedLeaseCache.set(cacheKey, cacheTtl);
     }
@@ -239,7 +239,7 @@ async function verifyLeasesForTool(
     }
     const targetsStr = targets.join(", ");
     const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";
-    const recoveryGuidance = `\n[RECOVERY GUIDANCE] If you already own an active task claim, run cortex_ia_file_reserve({ task_id, paths: ['${targets.join("', '")}'] }) to reserve this path. If starting work on a task, run cortex_ia_work_claim({ task_id, paths: ['${targets.join("', '")}'] }). If lease expired, run cortex_ia_work_lease_renew({ task_id }). If authority was lost, run cortex_ia_work_recover.`;
+    const recoveryGuidance = `\n[RECOVERY GUIDANCE] If you already own an active task claim, run cortex_ia_file_reserve({ task_id, paths: ['${targets.join("', '")}'] }) to reserve this path. If starting work on a task, run cortex_ia_work_claim({ task_id, paths: ['${targets.join("', '")}'] }). If lease expired, run cortex_ia_work_lease_renew({ task_id, path }). If authority was lost, run cortex_ia_work_recover_own({ task_id }).`;
     throw new Error(`LEASE_REQUIRED${suffix} (target: '${targetsStr}')${recoveryGuidance}`);
   }
 }
@@ -282,6 +282,8 @@ export const CortexLeaseGuardPlugin = Plugin.define({
           event.env.CORTEX_SESSION_ID = sessionID;
           event.env.CORTEX_WORKSPACE_ROOT = directory;
         }
+        // The Go CLI refuses authority-mutating verbs from agent shells on this marker.
+        if (event?.env) event.env.CORTEX_IA_AGENT_SHELL = "1";
         if (event?.timeout && typeof event.timeout === "number") {
           event.timeout = Math.min(event.timeout, 300_000);
         }

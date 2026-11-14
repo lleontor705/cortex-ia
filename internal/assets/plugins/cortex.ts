@@ -368,7 +368,7 @@ TRANSPORT IDENTIFIERS:
 - Call \`cortex_save_rule(title, content, topic_key, scope)\` ONLY for permanent architectural directives or coding invariants. Never save task notes, test outputs, or worktree logs in rules.
 
 ### 2. CODEBASE AST & INTELLIGENCE
-- Call \`cortex_ingest_code(path, project)\` with the **absolute workspace root path** (e.g. \`d:/cortex-ia\`, never \`.\`) to scan local files with the Zero-CGO Static AST Extractor and index symbols into the knowledge graph.
+- Call \`cortex_ingest_code(path, project)\` with the **absolute workspace root path** (e.g. \`/path/to/project\`, never \`.\`) to scan local files with the Zero-CGO Static AST Extractor and index symbols into the knowledge graph.
 - Call \`cortex_code_map(path, budget)\` or \`cortex_get_code_map\` to retrieve a token-budgeted PageRank repository map.
 - Call \`cortex_code_tests(target, project, hops)\` or \`cortex_get_impacted_tests\` to pinpoint precisely which test suites are impacted by modified symbols or files.
 - Call \`cortex_code_find(query, project)\` or \`cortex_find_symbols\` to search AST symbols across the repository.

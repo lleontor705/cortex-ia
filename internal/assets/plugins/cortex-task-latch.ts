@@ -196,7 +196,8 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
     // recovery — they only decide when a repeated abort earns telemetry.
     const readonlyStreaks = new Map<string, number>();
     const capacity = 256;
-    let saturated = false;
+    const saturated = () => pending.size >= capacity || retries.size >= capacity ||
+      [...failed.values()].reduce((total, items) => total + items.size, 0) >= capacity;
     const objective = (role: string, prompt: unknown) => createHash("sha256").update(JSON.stringify([role, prompt ?? null])).digest("hex");
     const failureKey = (failure: Failure) => failure.taskId ? "task:" + failure.taskId : "objective:" + failure.objective;
 
@@ -218,7 +219,6 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
 
       const count = [...failed.values()].reduce((total, items) => total + items.size, 0);
       if (!existingSession.has(key) && count >= capacity) {
-        saturated = true;
         return { failure, tripped: true };
       }
       existingSession.set(key, failure);
@@ -227,7 +227,6 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
 
     function boundedSet<T>(map: Map<string, T>, key: string, value: T): void {
       if (key.length > 512 || (!map.has(key) && map.size >= capacity)) {
-        saturated = true;
         throw new Error("CORTEX_LATCH_CAPACITY: reconciliation tracking capacity exhausted; no failures were released");
       }
       map.set(key, value);
@@ -320,7 +319,7 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
         // aborts surface as telemetry in executeAfter instead.
         return;
       }
-      if (saturated) throw new Error("CORTEX_LATCH_CAPACITY: explicit reconciliation required; no failures were released");
+      if (saturated()) throw new Error("CORTEX_LATCH_CAPACITY: explicit reconciliation required; no failures were released");
       const key = failureKey({ role, taskId, objective: digest });
       const previous = failures?.get(key);
       if (!previous || !previous.tripped) return;
