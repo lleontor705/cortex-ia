@@ -64,9 +64,7 @@ To register a new managed preset available in `cortex-ia mcp add <name> --preset
 
 ## 4. Target Support Contract
 
-New extensions target **OpenCode** only. The multi-platform adapter surface is retired and fails closed, and no additional platform targets are planned.
-
-The legacy `claude` target is MCP-only: `--target claude` writes Cortex's `mcpServers.cortex` entry into `~/.claude.json` and installs no skills, agents, commands, or plugins.
+New OpenCode extensions target **OpenCode** only. The product supports exactly three hosts (OpenCode, Claude Code, Antigravity CLI); the multi-platform adapter surface is retired and fails closed. Host bundles for `claude` and `agy` are generated from the same embedded assets and are described in [platforms](../getting-started/platforms.md).
 
 ---
 

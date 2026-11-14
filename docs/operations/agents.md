@@ -25,7 +25,7 @@
 | **`implement`** | Subagent / Mutating Controller | Single task claim, exclusive file leases, TDD oracle execution, and review transition. | None (native-only) |
 | **`reviewer`** | Subagent / Adversarial Gate | Independent test verification, mutation checks, invariant auditing, and `PASS` gate approval. | None (native-only) |
 
-The external `agy` execution leaf and its `delegate` / `herdr` delegation bridge are retired. Every role controller is native: no external CLI receives work-control tokens, approvals, session lifecycle, or MCP authority. `internal/herdr` remains in the tree as an optional diagnostics-only helper whose sole production consumer is the web console status display.
+The external `agy` execution leaf and its `delegate` / `herdr` delegation bridge are retired. Claude Code and Antigravity CLI (agy) are install targets (`--target claude`, `--target agy`) whose role agents run natively inside that host. Every role controller is native: no external CLI receives work-control tokens, approvals, session lifecycle, or MCP authority. `internal/herdr` remains in the tree as an optional diagnostics-only helper whose sole production consumer is the web console status display.
 
 ---
 

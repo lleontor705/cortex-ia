@@ -27,7 +27,7 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | Command | Purpose |
 |---------|---------|
 | `cortex-ia` (no args) | Launch interactive TUI dashboard |
-| `cortex-ia install` | Install assets + plugins for `opencode`, `claude`, or `all` |
+| `cortex-ia install` | Install assets + plugins for `opencode` (default), `claude`, `agy`, or `all` |
 | `cortex-ia sync` | Reconcile an installed home with the current asset set |
 | `cortex-ia snapshot` | Read and verify one bounded local Cortex snapshot (`read`) |
 | `cortex-ia work` | Manage the local task DAG, claims, leases, transitions, approvals |
@@ -39,7 +39,8 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | `cortex-ia web` | Launch the local operations dashboard |
 | `cortex-ia doc` | Convert office/PDF documents to Markdown or inspect metadata (`convert`, `inspect`) |
 | `cortex-ia diagram` | Validate, render, compare, or trace system diagrams (`validate`, `render`, `compare`, `reach`) |
-| `cortex-ia mcp` | Manage MCP entries (`add`, `remove`, `list`, `adopt`) |
+| `cortex-ia mcp` | Manage MCP entries (`add`, `remove`, `list`, `adopt`); `serve --host claude\|agy` runs the host MCP server |
+| `cortex-ia hook` | Host pre-tool guard (`pre-tool --host claude\|agy`), invoked by host hooks |
 | `cortex-ia model` | Manage global-config agent model assignments (`list`, `get`, `set`, `unset`, `doctor`, `catalog`) |
 | `cortex-ia stats` | Print bounded read-only usage statistics (`[--json]`) |
 | `cortex-ia report` | Report errors or manage reporting config (`error`/`send`, `config`, `flush`, `status`) |
@@ -51,7 +52,7 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | `cortex-ia version` | Show version |
 | `cortex-ia help` | Show usage |
 
-Retired surfaces: `delegate`, `herdr`, and `hook` belong to the removed external AGY plane. They are not dispatched and fail closed with a retired-surface error. `internal/herdr` remains in the tree only as an optional diagnostics helper for the web console status display.
+Retired surfaces: `delegate` and `herdr` belong to the removed external AGY execution plane. They are not dispatched and fail closed with a retired-surface error. `hook` is not retired: it is the host guard entry point. `internal/herdr` remains in the tree only as an optional diagnostics helper for the web console status display.
 
 ## Go Packages
 
@@ -74,7 +75,9 @@ Retired surfaces: `delegate`, `herdr`, and `hook` belong to the removed external
 | Doc conversion | `internal/docconv/` | Office/PDF conversion to Markdown plus metadata inspection |
 | Telemetry | `internal/telemetry/` | Bounded error-report outbox |
 | Updater | `internal/updater/` | Release check, authenticated download, checksum/trust verification, atomic replacement |
-| Targets | `internal/targets/` | Install target parsing and Claude target configuration |
+| Targets | `internal/targets/` | Install target parsing, host bundle engine (manifest, backups, owned-key uninstall), Claude Code and agy renderers |
+| Host guard | `internal/hostbridge/` | Shared host identity contract, caller binding, role-to-tool policy, and pre-tool guard logic (`internal/app/hook.go` dispatches it) |
+| Host MCP server | `internal/mcpserve/` | Stdio MCP server `cortex_ia` for Claude Code and agy; invokes the CLI and keeps tokens in process memory |
 | CLI detection | `internal/clidetect/` | Host CLI availability detection for target recommendations |
 | Home lock | `internal/homelock/` | Cross-process, per-home exclusive lock |
 | Logging | `internal/logging/` | Debug tracing sink (stderr + file); never writes to stdout |
@@ -89,7 +92,7 @@ Retired surfaces: `delegate`, `herdr`, and `hook` belong to the removed external
 
 | Type | Location | Purpose |
 |------|----------|---------|
-| `TargetID` | `internal/targets/targets.go` | Install target identifier (`opencode`, `claude`, `all`) |
+| `TargetID` | `internal/targets/targets.go` | Install target identifier (`opencode`, `claude`, `agy`, `all`) |
 | `TargetResult` | `internal/targets/targets.go` | Outcome of installing or updating one target |
 | `Layout` | `internal/agents/opencode/layout.go` | Home-relative OpenCode discovery and Cortex-IA workflow roots |
 | `Mapping` | `internal/agents/opencode/assetmap.go` | Embedded asset → managed destination pair with content hash |

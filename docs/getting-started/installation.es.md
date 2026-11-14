@@ -4,7 +4,7 @@
 
 ## Requisitos previos
 
-- **OpenCode** — objetivo soportado para la orquestación de agentes de IA.
+- **OpenCode** — objetivo principal de instalación para la orquestación de agentes de IA. Claude Code y Antigravity CLI (agy) también son objetivos de instalación; ver [plataformas](platforms.md) (solo en inglés).
 - **Herdr** (opcional) — integración solo para diagnóstico; su único consumidor en producción es la visualización de estado de la consola web.
 - **Node.js 18+** — para el runtime de los plugins de OpenCode.
 - **`cortex` en el PATH** (opcional) — para el servidor MCP del Grafo de Conocimiento de Cortex.

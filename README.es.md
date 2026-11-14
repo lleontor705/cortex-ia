@@ -16,7 +16,7 @@
 
 ## ⚡ ¿Qué es Cortex-IA?
 
-**Cortex-IA** es el **Plano de Control Multiagente y Motor de Orquestación** determinista, de nivel empresarial, diseñado para el desarrollo de software autónomo con **OpenCode**.
+**Cortex-IA** es el **Plano de Control Multiagente y Motor de Orquestación** determinista, de nivel empresarial, diseñado para el desarrollo de software autónomo con **OpenCode** (principal) y bundles de host para **Claude Code** y **Antigravity CLI**.
 
 Construido como un único binario portable de Go, Cortex-IA resuelve los desafíos fundamentales de la codificación multiagente: **condiciones de carrera**, **ediciones de archivos en conflicto**, **disponibilidad de tareas alucinada**, **tareas en segundo plano sin supervisión** y **coordinación no estructurada**.
 
@@ -88,7 +88,10 @@ cortex-ia
 cortex-ia install         # Installs agents, skills, plugins & registers Cortex MCP
 cortex-ia sync            # Converges installed home with embedded assets
 cortex-ia doctor          # Verifies health, environment paths & tool dependencies
+cortex-ia install --target claude,agy   # Bundles de host opcionales (ver abajo)
 ```
+
+Hosts soportados: **OpenCode** (principal, conjunto completo de activos), **Claude Code** (`--target claude`) y **Antigravity CLI** (`--target agy`). Los bundles de Claude Code y agy aún no se han ejercitado en una sesión real del host. Destinos, rutas y limitaciones conocidas en [Plataformas soportadas](docs/getting-started/platforms.md) (solo en inglés).
 
 ### 3. Lanza el panel web en tiempo real
 ```bash
@@ -228,7 +231,7 @@ Los comandos que emiten recibos legibles por máquina imprimen JSON en stdout; l
 | **Vaciar informes** | `cortex-ia report flush` | Reintenta informes en cola acotados |
 | **Estado de informes** | `cortex-ia report status` | Muestra la configuración actual de informes |
 
-El antiguo subcomando `cortex-ia hook` está retirado y falla de forma cerrada con un error de superficie retirada.
+`cortex-ia hook pre-tool --host <claude|agy>` es el guardián pre-tool del host, invocado por los hooks de Claude Code y agy y no por usuarios. Los antiguos subcomandos `delegate` y `herdr` están retirados y fallan de forma cerrada.
 
 ### 11. Gestión de modelos (`cortex-ia model`)
 | Comando | Sintaxis | Propósito |
@@ -248,7 +251,7 @@ El antiguo subcomando `cortex-ia hook` está retirado y falla de forma cerrada c
 ### 13. Mantenimiento y ciclo de vida (`install` / `sync` / `doctor` / `rollback` / `recover` / `uninstall` / `update`)
 | Comando | Sintaxis | Propósito |
 |---|---|---|
-| **Instalar** | `cortex-ia install [--target <list>] [--dry-run] [--overwrite] [--theme]` | Instala activos y plugins (objetivo predeterminado: `opencode`); `--theme` aplica el tema cortex incluido (solo objetivo opencode) |
+| **Instalar** | `cortex-ia install [--target <list>] [--dry-run] [--overwrite] [--theme]` | Instala activos y plugins para `opencode` (predeterminado), `claude`, `agy` o `all`; `--theme` aplica el tema cortex incluido (solo objetivo opencode) |
 | **Sincronizar** | `cortex-ia sync [--target <list>] [--dry-run] [--overwrite]` | Reconcilia el home instalado con el conjunto de activos actual |
 | **Doctor** | `cortex-ia doctor` | Informe de salud de la instalación de solo lectura |
 | **Revertir** | `cortex-ia rollback [backup-id]` / `cortex-ia rollback list` | Restaura una copia de seguridad o lista las copias disponibles |

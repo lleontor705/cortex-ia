@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **OpenCode** — supported target for AI agent orchestration.
+- **OpenCode** — primary install target for AI agent orchestration. Claude Code and Antigravity CLI (agy) are also install targets; see [platforms](platforms.md).
 - **Herdr** (optional) — diagnostics-only integration; its only production consumer is the web console status display.
 - **Node.js >= 20.18.1** — required by the qualified Context7 MCP package engine range (`@upstash/context7-mcp@4.1.0`; see [`mcp-qualification.md`](../reference/mcp-qualification.md)) and sufficient for the OpenCode plugin runtime.
 - **`cortex` on PATH** (optional) — for Cortex Knowledge Graph MCP server.

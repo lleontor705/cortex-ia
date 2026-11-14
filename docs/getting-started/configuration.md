@@ -27,26 +27,26 @@ cortex-ia version                      # Show version
 cortex-ia help                         # Show usage
 ```
 
-The remaining commands — `snapshot`, `work`, `worktree`, `board`, `ledger`, `ui`, `openspec`, `web`, `doc`, `diagram`, `model`, `stats`, and `report` — are part of the operations surface. See [`codebase/reference-map.md`](../architecture/codebase/reference-map.md) and `cortex-ia help` for their subcommands. The former `delegate`, `herdr`, and `hook` subcommands are retired and fail closed.
+The remaining commands — `snapshot`, `work`, `worktree`, `board`, `ledger`, `ui`, `openspec`, `web`, `doc`, `diagram`, `model`, `stats`, and `report` — are part of the operations surface. See [`codebase/reference-map.md`](../architecture/codebase/reference-map.md) and `cortex-ia help` for their subcommands. The former `delegate` and `herdr` subcommands are retired and fail closed. `hook` is the host pre-tool guard entry point (`hook pre-tool --host <claude|agy>`), invoked by host hooks rather than by users.
 
 ### Install and sync flags
 
 | Flag | Description |
 |------|-------------|
-| `--target <list>` | Comma-separated targets: `opencode` (primary), `claude` (secondary legacy MCP-only target), or `all`. Defaults to `opencode` |
+| `--target <list>` | Comma-separated targets: `opencode` (primary), `claude` (alias `claude-code`), `agy` (alias `antigravity`), or `all`. Defaults to `opencode` |
 | `--dry-run` | Preview the plan without writing; no backup is created |
 | `--overwrite` | Replace unmanaged conflicting files (explicit; a verified backup is captured first) |
 | `--theme` | Apply the bundled cortex theme to the OpenCode configuration. Install only, `opencode` target only, and opt-in: without it the theme key is never touched and an explicit light/dark mode is kept |
 
 Install and sync preview the final plan — including every `--overwrite` replacement — and bind the real run to that exact plan digest. If anything drifts between preview and apply, the run aborts with a stale-plan error and nothing is written.
 
-> **Target contract**: OpenCode is the primary supported target and the only platform the Cortex-IA asset set is installed for. The `claude` target is a secondary, legacy integration that writes only Cortex's MCP entry (`mcpServers.cortex`) into `~/.claude.json`; it installs no agents, commands, skills, plugins, or themes. Multi-platform adapters are retired and fail closed.
+> **Target contract**: OpenCode is the primary target and the only one that receives the full Cortex-IA native asset set. The `claude` and `agy` targets install host bundles (role agents, skills, commands or their equivalents, contracts, MCP registration, and a pre-tool guard) that are not yet exercised in a real host session. See [platforms](platforms.md) for what each target writes and its known limits. Persona, profile, and adapter surfaces stay retired and fail closed.
 
 ### Uninstall flags
 
 | Flag | Description |
 |------|-------------|
-| `--target <list>` | Comma-separated targets: `opencode` (primary), `claude` (secondary legacy MCP-only target), or `all`. Defaults to `opencode` |
+| `--target <list>` | Comma-separated targets: `opencode` (primary), `claude` (alias `claude-code`), `agy` (alias `antigravity`), or `all`. Defaults to `opencode` |
 | `--dry-run` | Print the planned operations without writing |
 
 Uninstall is destructive and requires an interactive terminal and an explicit confirmation. A snapshot tagged `BackupSourceUninstall` is captured before any change, so `cortex-ia rollback` restores the pre-uninstall state. See [`rollback.md`](../operations/rollback.md).

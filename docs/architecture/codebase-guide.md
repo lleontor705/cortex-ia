@@ -58,8 +58,9 @@ Skills, prompts, commands, and plugins under `internal/assets/` are runtime sour
 ## 4. Platform Support Status
 
 - **OpenCode**: The primary supported native target (`~/.config/opencode/`).
-- **Claude Code**: Secondary legacy MCP-only target — `--target claude` writes Cortex's `mcpServers.cortex` entry to `~/.claude.json`; no asset set.
-- No additional platform targets are planned; the multi-platform adapter surface is retired and fails closed.
+- **Claude Code**: Host bundle — `--target claude` writes role agents, skills, commands, contracts, and the `cortex` and `cortex_ia` MCP servers (`~/.claude.json`), guarded by a pre-tool hook. Not yet exercised in a real Claude Code session.
+- **Antigravity CLI (agy)**: Host bundle — `--target agy` writes a native plugin under `~/.gemini/config/plugins/cortex-ia/`. Not yet exercised in a real agy session.
+- The product targets exactly these three hosts; the multi-platform adapter surface is retired and fails closed.
 
 ---
 

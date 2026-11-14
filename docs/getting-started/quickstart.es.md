@@ -25,10 +25,12 @@ Inicia la interfaz de terminal enriquecida:
 ```bash
 cortex-ia
 ```
+Instalar y desinstalar abren una pantalla de selección de host (OpenCode, Claude Code, agy), con preseleccionados los hosts cuya CLI está detectada.
 
 ### Opción B: Instalación automatizada
 ```bash
-cortex-ia install
+cortex-ia install                          # solo OpenCode
+cortex-ia install --target opencode,claude # o: agy, all
 ```
 
 Esto instala de forma transaccional el conjunto de assets embebidos en sus raíces declaradas de OpenCode (`~/.config/opencode/` y `~/.agents/skills/`):

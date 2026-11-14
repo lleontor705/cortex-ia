@@ -16,7 +16,7 @@
 
 ## ⚡ What is Cortex-IA?
 
-**Cortex-IA** is the enterprise-grade, deterministic **Multi-Agent Control Plane & Orchestration Engine** designed for autonomous software development with **OpenCode**. 
+**Cortex-IA** is the enterprise-grade, deterministic **Multi-Agent Control Plane & Orchestration Engine** designed for autonomous software development with **OpenCode** (primary), and host bundles for **Claude Code** and **Antigravity CLI**. 
 
 Built as a single portable Go binary, Cortex-IA solves the fundamental challenges of multi-agent coding: **race conditions**, **conflicting file edits**, **hallucinated task readiness**, **unmonitored background tasks**, and **unstructured coordination**.
 
@@ -88,7 +88,10 @@ cortex-ia
 cortex-ia install         # Installs agents, skills, plugins & registers Cortex MCP
 cortex-ia sync            # Converges installed home with embedded assets
 cortex-ia doctor          # Verifies health, environment paths & tool dependencies
+cortex-ia install --target claude,agy   # Optional host bundles (see below)
 ```
+
+Supported hosts: **OpenCode** (primary, full asset set), **Claude Code** (`--target claude`), and **Antigravity CLI** (`--target agy`). The Claude Code and agy bundles are not yet exercised in a real host session. Targets, paths, and known limits are in [Supported Platforms](docs/getting-started/platforms.md).
 
 ### 3. Launch the Real-Time Web Dashboard
 ```bash
@@ -234,7 +237,7 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 | **Report Flush** | `cortex-ia report flush` | Retry bounded queued reports |
 | **Report Status** | `cortex-ia report status` | Show the current reporting configuration |
 
-The former `cortex-ia hook` subcommand is retired and fails closed with a retired-surface error.
+`cortex-ia hook pre-tool --host <claude|agy>` is the host pre-tool guard, invoked by Claude Code and agy hooks rather than by users. The former `delegate` and `herdr` subcommands are retired and fail closed.
 
 ### 11. Model Management (`cortex-ia model`)
 | Command | Syntax | Purpose |
@@ -254,7 +257,7 @@ The former `cortex-ia hook` subcommand is retired and fails closed with a retire
 ### 13. Maintenance & Lifecycle (`install` / `sync` / `doctor` / `rollback` / `recover` / `uninstall` / `update`)
 | Command | Syntax | Purpose |
 |---|---|---|
-| **Install** | `cortex-ia install [--target <list>] [--dry-run] [--overwrite] [--theme]` | Install assets and plugins (default target: `opencode`); `--theme` applies the bundled cortex theme (opencode target only) |
+| **Install** | `cortex-ia install [--target <list>] [--dry-run] [--overwrite] [--theme]` | Install assets and plugins for `opencode` (default), `claude`, `agy`, or `all`; `--theme` applies the bundled cortex theme (opencode target only) |
 | **Sync** | `cortex-ia sync [--target <list>] [--dry-run] [--overwrite]` | Reconcile the installed home with the current asset set |
 | **Doctor** | `cortex-ia doctor` | Read-only installation health report |
 | **Rollback** | `cortex-ia rollback [backup-id]` / `cortex-ia rollback list` | Restore a backup or list available backups |

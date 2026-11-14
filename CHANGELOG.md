@@ -1,5 +1,42 @@
 # Changelog
 
+## v0.7.0 (2026-11-14) — three hosts and work-authority hardening
+
+### Added
+
+- **Claude Code and Antigravity CLI (agy) install targets** — `cortex-ia install --target opencode,claude,agy` (or `all`) and a host selection screen in the TUI for Install and Uninstall. Claude Code receives role agents, skills and commands under `~/.claude/`; agy receives a native plugin under `~/.gemini/config/plugins/cortex-ia/` with commands installed as `cmd-<name>` skills. Role prompts, skills and contracts are the same embedded assets on every host
+- **Host bundle engine** — `internal/targets` installs host bundles with an ownership manifest, backups before any overwrite, fail-closed conflict detection (`--overwrite` to replace) and uninstall limited to unmodified owned files and keys
+- **`cortex-ia mcp serve --host <claude|agy>`** — a stdio MCP server exposing the `cortex_ia_*` tools; claim and lease tokens stay in the server process and are stripped from every result
+- **`cortex-ia hook pre-tool --host <claude|agy>`** — the host pre-tool guard: denies file writes without a live session-owned lease, denies work-authority CLI verbs from the shell, and gates `cortex_ia_*` tools by role. `hook` is no longer a retired command
+
+### Changed
+
+- **Breaking: `--revision` is required** on `work transition`, `work approve` and `work retry`, in the store, the CLI and the bridge tools; a stale revision is refused
+- **Breaking: delegation schema v18** — file leases are keyed by `(workspace, path)` instead of the workspace-relative path alone, so unrelated repositories no longer collide on files such as `go.mod`. The migration is one-way: older binaries refuse the migrated database
+- **Review policy unified on the Adaptive Review Case Matrix** — `direct-change`, `fast-tdd` and `hotfix` follow §2.7a in every contract, skill and command; `ops-task` always leases its script and runs it against an external target only with explicit user authorisation
+- **Installed prompts are host- and repository-neutral** — repository-specific test rules, private paths and stale references to retired mechanisms are removed; skill receipts are Markdown; skill descriptions state when to use them
+- **Controller renewal accepts up to 30 minutes**, matching the 30-minute claim window the bridge heartbeat requests
+
+### Fixed
+
+- **Lease admission accepted files that were never leased** — a lease now matches only when workspace and relative path denote the same file
+- **Bridge heartbeat never renewed** — its 30-minute renewal was rejected by a 15-minute bound, so claims expired during long tasks
+- **Authority tokens in the debug log** — `--debug` redacts token and authority flag values
+- **Work-authority verbs from an agent shell** — the CLI refuses claim, transition, approve and similar verbs when invoked from an agent shell
+- **`board archive` / `board delete` destroyed live authority**, and `work prune` / `board delete` failed with a raw foreign-key error once a task had a review submission; both now refuse or skip with a typed result
+- **Web console ran unscoped recovery every two minutes**, blocking reviews longer than 30 minutes
+- **Reviewer FAIL verdicts were never recorded**, so the two-FAIL circuit breaker could not trip
+- **Bridge plugin**: the claim token is retained when the reservation receipt fails validation; the heartbeat stops only after a confirmed transition; a PASS approval requires evidence; the lease admission cache is 5 seconds instead of 5 minutes; more mutating tools are intercepted; the permission fence matches path segments
+- **Read-only database opens fail closed on a newer schema**
+
+### Removed
+
+- Dead managed-worktree code and the unreachable `herdr` installer
+
+### Known limits
+
+- The Claude Code and agy targets are verified by automated tests, `agy plugin validate` and scripted end-to-end smokes in a temporary home; they have not yet been exercised inside a live Claude Code or agy session. See `docs/getting-started/platforms.md`
+
 ## v0.6.0 (2026-10-08)
 
 ### Added

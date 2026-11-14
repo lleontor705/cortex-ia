@@ -2,11 +2,11 @@
 
 ## Project Contract
 
-- `cortex-ia` is the local bridge and control plane for the OpenCode ecosystem. It installs the native OpenCode asset set, manages MCP configuration, and owns durable task authority in SQLite. Execution is native-only: there is no external execution leaf, and nothing is supervised through Herdr.
-- OpenCode native agents are the only controllers and executors. The external AGY execution path is removed: no external CLI receives a Cortex session lifecycle, `cortex-ia work` claim/lease tokens, approval authority, or nested-delegation capability.
+- `cortex-ia` is the local bridge and control plane for the OpenCode ecosystem. It installs the native OpenCode asset set (primary) and host bundles for Claude Code and Antigravity CLI (agy), manages MCP configuration, and owns durable task authority in SQLite. Execution is native-only: there is no external execution leaf, and nothing is supervised through Herdr.
+- The native agents of the installed host (OpenCode, Claude Code, or agy) are the only controllers and executors. No external CLI is shelled out to as an execution leaf, and no host hands another host a Cortex session lifecycle, `cortex-ia work` claim/lease tokens, approval authority, or nested-delegation capability.
 - The selected specification plane owns SDD contracts: OpenSpec for `openspec|hybrid`, pinned Cortex observations for `cortex`. Cortex MCP also owns durable evidence, memories, AST knowledge, and relationships. Neither replaces SQLite task authority. The canonical phase matrix is `internal/assets/skills/_shared/workflow-map.md`.
 - ForgeSpec and the external task-board MCP are retired. Do not restore their plugin, protocol, tools, or runtime dependency. Task boards are built into this binary through `cortex-ia board`.
-- The product targets OpenCode only. Do not reintroduce platform adapters, personas, profiles, model routing, or SDD compiler/registry surfaces; retired commands and flags fail closed in `internal/app/app.go`.
+- The product targets exactly three hosts: OpenCode, Claude Code, and Antigravity CLI (agy). Adding a fourth host requires an owner decision. Do not reintroduce personas, profiles, model routing, or SDD compiler/registry surfaces; retired commands and flags fail closed in `internal/app/app.go`.
 
 ## Toolchain
 
@@ -14,11 +14,11 @@
 - This is a Go CLI/TUI. The root `package.json` only installs Husky; `npm test` intentionally fails and is not the test runner. `web/package.json` is the isolated Preact/Vite toolchain for CortexIA Web.
 - Build with `go build -o bin/cortex-ia ./cmd/cortex-ia`; run with `go run ./cmd/cortex-ia`. No arguments launch the Bubble Tea TUI; arguments use the hand-written dispatcher in `internal/app/`.
 - Build frontend assets with `npm --prefix web run build` before the Go build whenever `web/src/` changes. Vite writes only compiled assets to `internal/cortexiaweb/static/`; commit both source and generated output so Go builds do not require Node.
-- Important built-in surfaces are `install`, `sync`, `mcp`, `model`, `work`, `board`, `openspec`, `web`, `doctor`, `rollback`, `recover`, and `uninstall`. `cortex-ia model list|get|set|unset|doctor` is global-config-only in v1; `model doctor` surfaces markdown-frontmatter model pins as WARNING findings and never silently rewrites them. `model catalog` is a read-only receipt of provider/model/variant identifiers only. Keep lifecycle and ownership policy out of the dispatcher.
+- Important built-in surfaces are `install`, `sync`, `mcp` (including `mcp serve --host <claude|agy>`, the stdio MCP server for host bundles), `hook` (`hook pre-tool --host <claude|agy>`, the host pre-tool guard), `model`, `work`, `board`, `openspec`, `web`, `doctor`, `rollback`, `recover`, and `uninstall`. `cortex-ia model list|get|set|unset|doctor` is global-config-only in v1; `model doctor` surfaces markdown-frontmatter model pins as WARNING findings and never silently rewrites them. `model catalog` is a read-only receipt of provider/model/variant identifiers only. Keep lifecycle and ownership policy out of the dispatcher.
 
 ## Execution Modes
 
-All role controllers execute in `native` mode under the Cortex-IA Work Authority. OpenCode subagents proceed directly with local execution using their available tools, acquired claims, and file leases.
+All role controllers execute in `native` mode under the Cortex-IA Work Authority. Subagents of the installed host proceed directly with local execution using their available tools, acquired claims, and file leases.
 
 ## Task Boards and Work Authority
 
@@ -40,7 +40,7 @@ All role controllers execute in `native` mode under the Cortex-IA Work Authority
 | `implement` | Own exactly one ready task claim, lease every writable path, renew authority, verify, then transition to `in_review`. Stop writing immediately if authority expires. May request scoped self-recovery of its own expired task (`cortex_ia_work_recover_own`); unscoped recovery and retry stay orchestrator-only. |
 | `reviewer` | Independently inspect and rerun checks; its only work-state mutation is `work approve`. Never edit, claim, lease, or self-approve as the active implementation owner. |
 
-All roles execute natively; there is no external execution leaf, and no role may hand work to an external CLI.
+All roles execute natively in the installed host; there is no external execution leaf, and no role may hand work to an external CLI.
 
 - Only the orchestrator owns `cortex_session_start`, summaries, and session end. All dispatched roles are ephemeral subagents within that session.
 - Parallel native writers may share one workspace without Git worktrees only when each controller owns a distinct live task claim and reserves each writable file individually with `cortex_ia_file_reserve` before editing that file. Acquire multiple files in deterministic sorted order, release each with `cortex_ia_file_release`, clean partial acquisition immediately on conflict, and stop writing on conflict or expiry. Mailbox/resource locks do not replace file reservations.
@@ -61,6 +61,7 @@ All roles execute natively; there is no external execution leaf, and no role may
   1. Interfaz TUI (`internal/tui/...`).
   2. Validación simple de existencia y copia de archivos/carpetas hacia OpenCode (`internal/pipeline/install_test.go`).
   3. Pruebas de regresión críticas acotadas y autorizadas para verificación de autoridad (`internal/delegation/...`), transporte (`internal/assets/plugins/...`), recuperación (`internal/install/...`) y actualizador (`internal/updater/...`).
+  4. Pruebas acotadas del motor de bundles y renderizadores de host (`internal/targets/...`), del guardián pre-tool y contrato de identidad (`internal/hostbridge/...`) y del servidor MCP de host (`internal/mcpserve/...`).
 - Persistent tests protect the TUI, clean asset installation/copying into OpenCode, and user-approved critical boundaries (authority, transport, recovery, updater). Deeper SQLite, delegation, CLI, and embedded-web transactional oracles run as isolated ephemeral smokes and are deleted after execution.
 - Tests must remain modular: dedicated new test files at most 250 lines, and never append new suites to existing test files exceeding 300 lines.
 - Tests use temporary home directories and synthetic inputs. Never point tests at the developer's real agent configuration or user state, and never weaken contracts by silently skipping invalid records.
@@ -78,6 +79,9 @@ All roles execute natively; there is no external execution leaf, and no role may
 - `internal/herdr` retains optional Herdr setup and detection helpers for diagnostics; its only production consumer is the web console status display. Herdr never owns task state or approval.
 - `internal/cortexiaweb` owns the Preact operations console compiled by Vite, embedded by `go:embed`, and served through its loopback-only HTTP/API server. It shows task-board sessions, work/claim/lease state, delegation jobs/transports, and the append-only activity stream. It may create boards/tasks but must not expose claim, lease, transition, retry, recovery, or approval mutations. Preserve CSP, request limits, server timeouts, auto-refresh, and the non-loopback rejection.
 - `internal/agents/opencode` declares the OpenCode native layout (`layout.go`) and the pure asset mapping (`assetmap.go`): every destination is `path.Join(config root, source)`, validated against the single layout declaration, failing closed on unsafe paths, off-surface destinations, and collisions (including case-insensitive ones on Windows/macOS).
+- `internal/targets` owns host target parsing (`ParseTargets`), the host bundle engine (ownership manifests, backups, conflict detection, atomic writes, owned-key uninstall), and the Claude Code and agy renderers (`claude.go`, `agy.go`, `render.go`); it writes no OpenCode assets.
+- `internal/hostbridge` owns the shared host identity contract (session key, owner string, caller binding, role-to-tool policy) and the pre-tool guard logic invoked by `cortex-ia hook pre-tool`.
+- `internal/mcpserve` implements the stdio MCP server `cortex_ia` (`cortex-ia mcp serve --host`), which exposes the `cortex_ia_*` tools by invoking the cortex-ia CLI and keeps claim and lease tokens in process memory.
 - `internal/components/filemerge` owns JSONC decode/merge and atomic writes; reuse it instead of writing ad-hoc merge code.
 - Skills, prompts, commands, and plugins under `internal/assets/` are runtime source files embedded by `go:embed`; changing them requires rebuilding the binary. Shared skill contracts under `internal/assets/skills/_shared/` support installed agent instructions and must stay aligned with role files.
 
@@ -88,7 +92,8 @@ OpenCode v2 knowledge index and workflow diagrams moved to the `opencode2-knowle
 ## Security and Persistence Invariants
 
 - SQLite uses `STRICT` tables, WAL, foreign keys, `busy_timeout`, a migration ledger, bounded values, and hashed authority tokens. Never store plaintext claim/lease tokens, secrets, full prompts, or unbounded stdout.
-- External CLI execution is retired: there is no argv-based worker, temporary home, workspace-baseline acceptance, or external permission-skip path. All role controllers execute natively through OpenCode tools under work authority, and `isolated_worktree` requests fail closed. Do not enable unsafe permission bypasses by default.
+- External CLI execution is retired: there is no argv-based worker, temporary home, workspace-baseline acceptance, or external permission-skip path. All role controllers execute natively through the installed host's tools under work authority, and `isolated_worktree` requests fail closed. Do not enable unsafe permission bypasses by default.
+- Host bundle installs (Claude Code, agy) are manifest-accredited under `~/.cortex-ia/targets/<target>/` and fail closed on files cortex-ia did not write unless `--overwrite` is given. Claim and lease tokens never leave the `mcpserve` process except on the CLI's stdin, and caller bindings contain no secrets.
 - The embedded board server accepts only `localhost` or loopback IP addresses. Do not add CORS, remote binding, external assets, CDN dependencies, or browser endpoints that bypass work-control authority.
 - Install/sync/uninstall ownership remains accreditation-based. Preserve verified backups, stale-plan detection, atomic writes, rollback on apply failure, and fail-closed behavior for unmanaged drift.
 - Tests and smokes must use temporary homes. Never aim pipeline, delegation, board, or TUI verification at the developer's real OpenCode or Cortex state.

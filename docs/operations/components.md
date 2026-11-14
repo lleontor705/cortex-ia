@@ -65,7 +65,7 @@ cortex-ia mcp list
 
 ## 4. Target Support Contract
 
-OpenCode is the only target the Cortex-IA asset set is installed for (`~/.config/opencode/`). Multi-platform adapters were retired: the external execution leaf, the platform adapter registry, and their configuration surfaces all fail closed rather than being silently accepted.
+OpenCode is the only target that receives the full Cortex-IA native asset set (`~/.config/opencode/`). The Claude Code and Antigravity CLI (agy) targets install host bundles, described in [platforms](../getting-started/platforms.md). The external execution leaf, the platform adapter registry, and their configuration surfaces remain retired and fail closed rather than being silently accepted.
 
-The one secondary integration is the legacy `claude` target, which writes only Cortex's MCP entry (`mcpServers.cortex`) into `~/.claude.json` on `install --target claude` and removes it on `uninstall --target claude`. It installs no agents, commands, skills, plugins, or themes, and no additional platform targets are planned.
+The host bundles for `claude` and `agy` are owned by the target engine (`internal/targets/`) with an ownership manifest per target, and `uninstall --target <host>` removes only the files and JSON keys cortex-ia owns. They install no OpenCode TUI plugin or themes and do not run the OpenCode transport plugin's latch or telemetry (see [platforms](../getting-started/platforms.md)).
 

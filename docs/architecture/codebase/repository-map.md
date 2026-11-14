@@ -74,8 +74,8 @@ Directory-by-directory map of the active `cortex-ia` codebase.
 ## 3. Supported Platforms
 
 - **Primary Platform**: **OpenCode** (`~/.config/opencode/`, `~/.agents/skills/`, `~/.cortex-ia/opencode/`)
-- **Secondary (legacy)**: **Claude Code** (`~/.claude.json`) — MCP-only `--target claude`; no asset set
-- No additional platform targets are planned; the multi-platform adapter surface is retired and fails closed.
+- **Host bundles**: **Claude Code** (`--target claude`; `~/.claude/`, `~/.claude.json`, `~/.cortex-ia/claude/`) and **Antigravity CLI** (`--target agy`; `~/.gemini/config/plugins/cortex-ia/`, `~/.cortex-ia/agy/`), both not yet exercised in a real host session
+- The product targets exactly three hosts; the multi-platform adapter surface is retired and fails closed.
 
 ## 4. Project-Level Files
 

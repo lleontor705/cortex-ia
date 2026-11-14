@@ -12,7 +12,7 @@ cortex-ia está pensado primero para la TUI, pero cada operación también tiene
 cortex-ia install --target opencode,claude
 ```
 
-`--target` acepta una lista separada por comas de `opencode`, `claude` o `all`. Por defecto es `opencode`.
+`--target` acepta `opencode`, `claude` (alias `claude-code`), `agy` (alias `antigravity`), una lista separada por comas de ellos, o `all`. Sin `--target` solo se instala `opencode`. `--overwrite` permite que un destino de host reemplace archivos en conflicto que cortex-ia no escribió; sin él, los conflictos fallan de forma cerrada. `--theme` aplica solo al destino `opencode`. (La referencia de cada destino está solo en inglés en [platforms](platforms.md).)
 
 ### Ejecución en seco (previsualizar sin tocar el disco)
 

@@ -10,9 +10,9 @@ cortex-ia is TUI-first but every operation also has a CLI flag set, so you can d
 cortex-ia install --target opencode,claude
 ```
 
-`--target` accepts a comma-separated list of `opencode` (primary), `claude` (secondary legacy MCP-only target), or `all`. It defaults to `opencode`.
+`--target` accepts `opencode`, `claude` (alias `claude-code`), `agy` (alias `antigravity`), a comma-separated list of them, or `all`. With no `--target`, only `opencode` is installed. `--overwrite` lets a host target replace conflicting files it did not write; without it, conflicts fail closed. `--theme` applies to the `opencode` target only.
 
-> OpenCode is the primary supported target; the `claude` target only writes Cortex's MCP entry (`mcpServers.cortex`) into `~/.claude.json`. Multi-platform adapters are retired and fail closed.
+OpenCode is the primary target with the full asset set. The `claude` and `agy` targets install host bundles; see [platforms](platforms.md) for what each writes and its known limits.
 
 ### Dry run (preview without touching disk)
 
