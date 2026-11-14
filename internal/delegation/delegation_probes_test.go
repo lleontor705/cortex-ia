@@ -179,7 +179,7 @@ func seedProbeClaim(t *testing.T, store *Store, itemID string, expires time.Time
 func seedProbeLease(t *testing.T, store *Store, itemID, path string, expires time.Time) {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := store.db.Exec(`INSERT INTO work_leases(path,item_id,token_hash,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?)`,
+	if _, err := store.db.Exec(`INSERT INTO work_leases(workspace,path,item_id,token_hash,expires_at,created_at,updated_at) VALUES('',?,?,?,?,?,?)`,
 		path, itemID, "hash", expires.UTC().Format(time.RFC3339Nano), now, now); err != nil {
 		t.Fatalf("seed lease %s: %v", path, err)
 	}

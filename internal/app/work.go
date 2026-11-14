@@ -33,8 +33,8 @@ func runWork(args []string) error {
 		fmt.Println("  lease-renew --path <file> --lease-token <token>             Renew a file lease")
 		fmt.Println("  release --path <file> --lease-token <token>                 Release a file lease")
 		fmt.Println("  release-all <task-id> --claim-token <token>                 Release all file leases for a task")
-		fmt.Println("  transition <task-id> --claim-token <token> --to <status> [--blocked-reason <enum>]  Transition task state")
-		fmt.Println("  approve <task-id> --reviewer <id> --verdict <PASS|FAIL>     Approve/review a task")
+		fmt.Println("  transition <task-id> --claim-token <token> --revision <n> --to <status> [--blocked-reason <enum>]  Transition task state")
+		fmt.Println("  approve <task-id> --reviewer <id> --revision <n> --verdict <PASS|FAIL>  Approve/review a task")
 		fmt.Println("  approvals <task-id>                                         List historical approval records")
 		fmt.Println("  fingerprint <task-id>                                       Calculate current fingerprints and compare with approval")
 		fmt.Println("  retry <task-id> --revision <n>                              Retry a task")
@@ -51,6 +51,9 @@ func runWork(args []string) error {
 	}
 	dbPath := delegation.DefaultDBPath(home)
 	sub := strings.ToLower(args[0])
+	if err := denyAgentShellVerb("work", sub, agentShellDeniedWorkVerbs, "use the matching cortex_ia_work_* tool for your role"); err != nil {
+		return err
+	}
 	var store *delegation.Store
 	if sub == "verify-lease" || sub == "check-lease" || sub == "status" || sub == "list" || sub == "approvals" || sub == "fingerprint" {
 		store, err = delegation.OpenStoreReadOnly(dbPath)
@@ -490,7 +493,7 @@ func runWork(args []string) error {
 		}
 		return printJSON(map[string]any{"released_all": true, "task_id": id})
 	case "transition":
-		const transitionUsage = "transition <task-id> --claim-token <token|@stdin> [--revision <n>] --to <in_review|in_progress|blocked> [--blocked-reason <enum>] [--summary <text>] [--verdict <verdict>] [--evidence-ref <ref> ...] [--changed-file <path> ...]"
+		const transitionUsage = "transition <task-id> --claim-token <token|@stdin> --revision <n> --to <in_review|in_progress|blocked> [--blocked-reason <enum>] [--summary <text>] [--verdict <verdict>] [--evidence-ref <ref> ...] [--changed-file <path> ...]"
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage(transitionUsage, nil)
 		}
@@ -502,12 +505,12 @@ func runWork(args []string) error {
 		if _, provided := opts["--blocked-reason"]; provided && !delegation.ValidWorkBlockedReason(blockedReason) {
 			return workUsage(transitionUsage, fmt.Errorf("unknown --blocked-reason %q", blockedReason))
 		}
-		var revision int64
-		if revStr := oneOption(opts, "--revision"); revStr != "" {
-			revision, err = positiveRevision(revStr)
-			if err != nil {
-				return err
-			}
+		if oneOption(opts, "--revision") == "" {
+			return workUsage(transitionUsage, errors.New("--revision is required"))
+		}
+		revision, err := positiveRevision(oneOption(opts, "--revision"))
+		if err != nil {
+			return workUsage(transitionUsage, err)
 		}
 		claimToken, err := workAuthorityOption(opts, "--claim-token")
 		if err != nil {
@@ -533,14 +536,14 @@ func runWork(args []string) error {
 		}
 		id, opts, err := workIDOptions(args[1:], map[string]bool{"--reviewer": false, "--verdict": false, "--evidence": false, "--revision": false})
 		if err != nil {
-			return workUsage("approve <task-id> --reviewer <id> [--revision <n>] --verdict <PASS|FAIL|BLOCKED|INCONCLUSIVE> [--evidence <ref>]", err)
+			return workUsage("approve <task-id> --reviewer <id> --revision <n> --verdict <PASS|FAIL|BLOCKED|INCONCLUSIVE> [--evidence <ref>]", err)
 		}
-		var revision int64
-		if revStr := oneOption(opts, "--revision"); revStr != "" {
-			revision, err = positiveRevision(revStr)
-			if err != nil {
-				return err
-			}
+		if oneOption(opts, "--revision") == "" {
+			return workUsage("approve <task-id> --reviewer <id> --revision <n> --verdict <PASS|FAIL|BLOCKED|INCONCLUSIVE> [--evidence <ref>]", errors.New("--revision is required"))
+		}
+		revision, err := positiveRevision(oneOption(opts, "--revision"))
+		if err != nil {
+			return workUsage("approve <task-id> --reviewer <id> --revision <n> --verdict <PASS|FAIL|BLOCKED|INCONCLUSIVE> [--evidence <ref>]", err)
 		}
 		approval, err := store.ApproveWork(ctx, id, oneOption(opts, "--reviewer"), oneOption(opts, "--verdict"), oneOption(opts, "--evidence"), revision)
 		if err != nil {
@@ -549,18 +552,18 @@ func runWork(args []string) error {
 		return printJSON(approval)
 	case "retry":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("retry <task-id> [--revision <n>]", nil)
+			return workUsage("retry <task-id> --revision <n>", nil)
 		}
 		id, opts, err := workIDOptions(args[1:], map[string]bool{"--revision": false})
 		if err != nil {
-			return workUsage("retry <task-id> [--revision <n>]", err)
+			return workUsage("retry <task-id> --revision <n>", err)
 		}
-		var revision int64
-		if revStr := oneOption(opts, "--revision"); revStr != "" {
-			revision, err = positiveRevision(revStr)
-			if err != nil {
-				return err
-			}
+		if oneOption(opts, "--revision") == "" {
+			return workUsage("retry <task-id> --revision <n>", errors.New("--revision is required"))
+		}
+		revision, err := positiveRevision(oneOption(opts, "--revision"))
+		if err != nil {
+			return workUsage("retry <task-id> --revision <n>", err)
 		}
 		item, err := store.RetryWork(ctx, id, revision)
 		if err != nil {
@@ -889,6 +892,29 @@ func oneWorkID(args []string) (string, error) {
 		return "", errors.New("exactly one task id is required")
 	}
 	return args[0], nil
+}
+
+// agentShellDeniedWorkVerbs are authority-bearing work verbs. Agents reach them
+// through plugin tools, which run on the host without CORTEX_IA_AGENT_SHELL.
+var agentShellDeniedWorkVerbs = map[string]bool{
+	"claim": true, "controller-renew": true, "renew": true, "lease": true, "reserve": true,
+	"file-reserve": true, "lease-renew": true, "release": true, "release-all": true,
+	"transition": true, "approve": true, "retry": true, "decompose": true, "recover": true,
+	"reconcile": true, "prune": true, "degrade": true, "revise": true, "review-refresh": true,
+	"archive": true,
+}
+
+// agentShellDeniedBoardVerbs are the board verbs that archive, unarchive or delete.
+var agentShellDeniedBoardVerbs = map[string]bool{"archive": true, "unarchive": true, "delete": true}
+
+// denyAgentShellVerb refuses a denied verb when the process runs inside an agent
+// shell. The check is a plain env marker injected by the plugin, not a security
+// boundary by itself; the authority checks in internal/delegation still apply.
+func denyAgentShellVerb(surface, verb string, denied map[string]bool, hint string) error {
+	if os.Getenv("CORTEX_IA_AGENT_SHELL") != "1" || !denied[verb] {
+		return nil
+	}
+	return fmt.Errorf("AGENT_SHELL_DENIED: %s %s is not available from an agent shell; %s", surface, verb, hint)
 }
 
 func workUsage(usage string, cause error) error {

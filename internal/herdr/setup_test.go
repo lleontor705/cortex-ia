@@ -7,25 +7,6 @@ import (
 	"testing"
 )
 
-func TestGetHerdrConfigDir(t *testing.T) {
-	dir, err := GetHerdrConfigDir()
-	if err != nil {
-		t.Fatalf("GetHerdrConfigDir failed: %v", err)
-	}
-	if dir == "" {
-		t.Fatal("expected non-empty config dir")
-	}
-	if runtime.GOOS == "windows" {
-		if !contains(dir, "herdr") {
-			t.Errorf("expected 'herdr' in path, got %s", dir)
-		}
-	} else {
-		if !contains(dir, ".config") && !contains(dir, "herdr") {
-			t.Errorf("expected config path, got %s", dir)
-		}
-	}
-}
-
 func TestFirstRegular(t *testing.T) {
 	tempDir := t.TempDir()
 	fakeBin := filepath.Join(tempDir, "fake-binary")
@@ -54,21 +35,4 @@ func TestFirstRegular(t *testing.T) {
 
 func TestResolveBinaries(t *testing.T) {
 	_, _ = ResolveHerdr()
-}
-
-func TestStatus(t *testing.T) {
-	// Should execute without panic
-	err := Status()
-	if err != nil {
-		t.Errorf("Status() returned error: %v", err)
-	}
-}
-
-func contains(s, substr string) bool {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

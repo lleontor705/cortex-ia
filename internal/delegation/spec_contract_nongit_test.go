@@ -165,7 +165,7 @@ func TestTransitionToInReviewWithoutGitWorkspace(t *testing.T) {
 	if len(fp.Files) != 1 || !strings.HasPrefix(fp.Files[0].Digest, "tree:") {
 		t.Fatalf("fingerprint did not record a tree digest: %+v", fp.Files)
 	}
-	if _, err := store.ApproveWork(ctx, item.ID, "independent-reviewer", "PASS", "verified", 0); err != nil {
+	if _, err := store.ApproveWork(ctx, item.ID, "independent-reviewer", "PASS", "verified", currentWorkRevision(t, ctx, store, item.ID)); err != nil {
 		t.Fatalf("approve task: %v", err)
 	}
 	done, err := store.GetWork(ctx, item.ID)

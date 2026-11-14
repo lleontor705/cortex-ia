@@ -56,7 +56,7 @@ func TestReconciliationPriorBootPreservesHistory(t *testing.T) {
 	ctx := context.Background()
 	before, _ := s.Get(ctx, jobID)
 	receiptBefore, _ := s.Result(ctx, jobID)
-	_, err := s.db.Exec(`INSERT INTO work_items(id,title,status,created_at,updated_at) VALUES('fixture','fixture','in_progress','old','old'); INSERT INTO work_claims(item_id,owner,token_hash,attempt,expires_at,created_at,updated_at) VALUES('fixture','owner','synthetic-hash',1,'expired','old','old'); INSERT INTO work_leases(path,item_id,token_hash,expires_at,created_at,updated_at) VALUES('fixture.go','fixture','synthetic-hash','expired','old','old')`)
+	_, err := s.db.Exec(`INSERT INTO work_items(id,title,status,created_at,updated_at) VALUES('fixture','fixture','in_progress','old','old'); INSERT INTO work_claims(item_id,owner,token_hash,attempt,expires_at,created_at,updated_at) VALUES('fixture','owner','synthetic-hash',1,'expired','old','old'); INSERT INTO work_leases(workspace,path,item_id,token_hash,expires_at,created_at,updated_at) VALUES('','fixture.go','fixture','synthetic-hash','expired','old','old')`)
 	if err != nil {
 		t.Fatal(err)
 	}

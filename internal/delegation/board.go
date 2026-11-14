@@ -183,6 +183,13 @@ func (s *Store) ArchiveBoard(ctx context.Context, id string) (WorkBoard, error) 
 		if status == "archived" {
 			return nil
 		}
+		active, err := boardHasActiveWork(ctx, conn, id, now)
+		if err != nil {
+			return fmt.Errorf("check board active work: %w", err)
+		}
+		if active {
+			return fmt.Errorf("%w: board %q has active work (in_progress/in_review tasks or live claims); finish or recover it first", ErrWorkConflict, id)
+		}
 		res, err := conn.ExecContext(ctx, `UPDATE work_boards SET status='archived', revision=revision+1, updated_at=? WHERE id=?`, now, id)
 		if err != nil {
 			return fmt.Errorf("archive task board: %w", err)
@@ -241,6 +248,7 @@ func (s *Store) DeleteBoard(ctx context.Context, id string) error {
 	if id == DefaultBoardID {
 		return errors.New("cannot delete the default task board")
 	}
+	now := s.timestamp()
 	return s.immediate(ctx, func(conn *sql.Conn) error {
 		var status string
 		err := conn.QueryRowContext(ctx, `SELECT COALESCE(status, 'active') FROM work_boards WHERE id=?`, id).Scan(&status)
@@ -252,6 +260,20 @@ func (s *Store) DeleteBoard(ctx context.Context, id string) error {
 		}
 		if status != "archived" {
 			return errors.New("only archived boards can be deleted; archive the board first")
+		}
+		active, err := boardHasActiveWork(ctx, conn, id, now)
+		if err != nil {
+			return fmt.Errorf("check board active work: %w", err)
+		}
+		if active {
+			return fmt.Errorf("%w: board %q has active work (in_progress/in_review tasks or live claims); finish or recover it first", ErrWorkConflict, id)
+		}
+		var submitted bool
+		if err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM work_submissions s JOIN work_items w ON w.id=s.item_id WHERE w.board_id=?)`, id).Scan(&submitted); err != nil {
+			return fmt.Errorf("check board review submissions: %w", err)
+		}
+		if submitted {
+			return fmt.Errorf("%w: board %q has review submissions; its audit trail is retained and the board cannot be deleted", ErrWorkConflict, id)
 		}
 		// 1. Delete dependencies referencing items in this board
 		if _, err := conn.ExecContext(ctx, `DELETE FROM work_dependencies WHERE item_id IN (SELECT id FROM work_items WHERE board_id=?) OR depends_on IN (SELECT id FROM work_items WHERE board_id=?)`, id, id); err != nil {
@@ -276,6 +298,15 @@ func (s *Store) DeleteBoard(ctx context.Context, id string) error {
 		}
 		return nil
 	})
+}
+
+func boardHasActiveWork(ctx context.Context, conn *sql.Conn, id, now string) (bool, error) {
+	var active bool
+	err := conn.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM work_items w
+		WHERE w.board_id=? AND (w.status IN ('in_progress','in_review')
+		  OR EXISTS(SELECT 1 FROM work_claims c WHERE c.item_id=w.id AND c.expires_at>?)))`, id, now).Scan(&active)
+	return active, err
 }
 
 func (s *Store) BoardSnapshot(ctx context.Context, id string) (BoardSnapshot, error) {

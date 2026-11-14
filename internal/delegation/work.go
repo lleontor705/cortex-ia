@@ -723,8 +723,12 @@ func (s *Store) claimWork(ctx context.Context, conn *sql.Conn, id, owner string,
 			return workAttemptLimitError(id, attempts)
 		}
 		attempt := attempts + 1
-		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
-		_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id); err != nil {
+			return err
+		}
 		if _, err := conn.ExecContext(ctx, `INSERT INTO work_claims(item_id,owner,token_hash,attempt,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`, id, owner, tokenHash(plain), attempt, expires, now, now); err != nil {
 			return fmt.Errorf("%w: task already claimed", ErrWorkConflict)
 		}
@@ -820,17 +824,21 @@ func (s *Store) reserveWorkLease(ctx context.Context, conn *sql.Conn, id, claimT
 		if claimCount != 1 {
 			return fmt.Errorf("%w: active claim required to lease files", ErrWorkConflict)
 		}
+		var workspace string
+		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(workspace,'') FROM work_items WHERE id=?`, id).Scan(&workspace); err != nil {
+			return err
+		}
 		var activeLease int
-		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_leases WHERE path=? AND expires_at>?`, leasePath, now).Scan(&activeLease); err != nil {
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_leases WHERE workspace=? AND path=? AND expires_at>?`, workspace, leasePath, now).Scan(&activeLease); err != nil {
 			return err
 		}
 		if activeLease != 0 {
 			return fmt.Errorf("%w: file %s is already leased", ErrWorkConflict, leasePath)
 		}
-		if _, err := conn.ExecContext(ctx, `DELETE FROM work_leases WHERE path=?`, leasePath); err != nil {
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_leases WHERE workspace=? AND path=?`, workspace, leasePath); err != nil {
 			return err
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO work_leases(path,item_id,token_hash,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?)`, leasePath, id, tokenHash(plain), expires, now, now); err != nil {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO work_leases(workspace,path,item_id,token_hash,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`, workspace, leasePath, id, tokenHash(plain), expires, now, now); err != nil {
 			return fmt.Errorf("create lease: %w", err)
 		}
 		return s.addWorkEvent(ctx, conn, id, "lease_acquired", "", "", leasePath)
@@ -857,7 +865,7 @@ func (s *Store) RenewWorkLease(ctx context.Context, path, leaseToken string, ttl
 		if changed != 1 {
 			return fmt.Errorf("%w: stale or expired lease", ErrWorkConflict)
 		}
-		if err := conn.QueryRowContext(ctx, `SELECT path,item_id,expires_at FROM work_leases WHERE path=?`, leasePath).Scan(&lease.Path, &lease.ItemID, &lease.ExpiresAt); err != nil {
+		if err := conn.QueryRowContext(ctx, `SELECT path,item_id,expires_at FROM work_leases WHERE path=? AND token_hash=?`, leasePath, tokenHash(leaseToken)).Scan(&lease.Path, &lease.ItemID, &lease.ExpiresAt); err != nil {
 			return err
 		}
 		lease.Token = leaseToken
@@ -954,6 +962,9 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 	if claimToken == "" {
 		return WorkItem{}, errors.New("claim token is required")
 	}
+	if expectedRevision <= 0 {
+		return WorkItem{}, errors.New("transition requires an explicit positive revision")
+	}
 	if len(receipt) > 1 {
 		return WorkItem{}, errors.New("only one submission is allowed per transition")
 	}
@@ -970,7 +981,7 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 		if !validWorkTransition(from, to) {
 			return fmt.Errorf("%w: invalid transition %s@%d -> %s", ErrWorkConflict, from, revision, to)
 		}
-		if expectedRevision > 0 && revision != expectedRevision {
+		if revision != expectedRevision {
 			return fmt.Errorf("%w: invalid or stale transition %s@%d -> %s (expected rev %d)", ErrWorkConflict, from, revision, to, expectedRevision)
 		}
 		blockedReason := ""
@@ -1051,8 +1062,12 @@ func (s *Store) TransitionWork(ctx context.Context, id, claimToken string, expec
 				return err
 			}
 		}
-		if _, err := conn.ExecContext(ctx, `UPDATE work_items SET status=?,blocked_reason=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, to, blockedReasonValue, now, id, revision); err != nil {
+		result, err := conn.ExecContext(ctx, `UPDATE work_items SET status=?,blocked_reason=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?`, to, blockedReasonValue, now, id, revision)
+		if err != nil {
 			return err
+		}
+		if changed, _ := result.RowsAffected(); changed != 1 {
+			return fmt.Errorf("%w: stale transition revision", ErrWorkConflict)
 		}
 		detail := strconv.FormatInt(revision, 10)
 		if submissionID != "" {
@@ -1081,6 +1096,9 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 	if reviewer == "" || (verdict != "PASS" && verdict != "FAIL" && verdict != "BLOCKED" && verdict != "INCONCLUSIVE") {
 		return WorkApproval{}, errors.New("reviewer and valid verdict are required")
 	}
+	if expectedRevision <= 0 {
+		return WorkApproval{}, errors.New("approval requires an explicit positive revision")
+	}
 	now := s.timestamp()
 	approval := WorkApproval{ItemID: id, Revision: expectedRevision, Reviewer: reviewer, Verdict: verdict, Evidence: evidence, CreatedAt: now}
 	err := s.immediate(ctx, func(conn *sql.Conn) error {
@@ -1094,7 +1112,7 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 		if status != WorkInReview {
 			return fmt.Errorf("%w: task must be in_review, currently %s", ErrWorkConflict, status)
 		}
-		if expectedRevision > 0 && revision != expectedRevision {
+		if revision != expectedRevision {
 			return fmt.Errorf("%w: task is in_review at revision %d, not %d", ErrWorkConflict, revision, expectedRevision)
 		}
 		approval.Revision = revision
@@ -1134,11 +1152,6 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 			}
 		}
 		if verdict == "PASS" {
-			// Only a contract review is pin-backed and therefore revision-critical; a
-			// fingerprints-only direct binding keeps the revision-optional legacy flow.
-			if approval.Binding != nil && approval.Binding.Contract != nil && expectedRevision <= 0 {
-				return errors.New("SDD approval requires an explicit positive revision")
-			}
 			current, err := currentReviewBinding(ctx, conn, id)
 			if err != nil {
 				return err
@@ -1172,9 +1185,15 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 		if changed != 1 {
 			return fmt.Errorf("%w: stale approval revision", ErrWorkConflict)
 		}
-		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
-		_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
-		_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id); err != nil {
+			return err
+		}
 		if err := s.addWorkEvent(ctx, conn, id, "approval", string(WorkInReview), string(to), verdict+":"+bounded(evidence, 128)); err != nil {
 			return err
 		}
@@ -1302,9 +1321,15 @@ func (s *Store) recoverWorkItem(ctx context.Context, conn *sql.Conn, now, id str
 		return 0, err
 	}
 	changed, _ := result.RowsAffected()
-	_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
-	_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
-	_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
+	if _, err := conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id); err != nil {
+		return 0, err
+	}
+	if _, err := conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id); err != nil {
+		return 0, err
+	}
+	if _, err := conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id); err != nil {
+		return 0, err
+	}
 	if changed == 1 {
 		eventReason := "claim_expired"
 		if status == WorkInReview {
@@ -1318,6 +1343,9 @@ func (s *Store) recoverWorkItem(ctx context.Context, conn *sql.Conn, now, id str
 }
 
 func (s *Store) RetryWork(ctx context.Context, id string, expectedRevision int64) (WorkItem, error) {
+	if expectedRevision <= 0 {
+		return WorkItem{}, errors.New("retry requires an explicit positive revision")
+	}
 	now := s.timestamp()
 	err := s.immediate(ctx, func(conn *sql.Conn) error {
 		var status WorkStatus
@@ -1330,7 +1358,7 @@ func (s *Store) RetryWork(ctx context.Context, id string, expectedRevision int64
 		if status != WorkBlocked {
 			return fmt.Errorf("%w: task is %s, not blocked", ErrWorkConflict, status)
 		}
-		if expectedRevision > 0 && revision != expectedRevision {
+		if revision != expectedRevision {
 			return fmt.Errorf("%w: task is blocked at revision %d, not %d", ErrWorkConflict, revision, expectedRevision)
 		}
 		var unresolved int
@@ -1370,9 +1398,15 @@ func (s *Store) RetryWork(ctx context.Context, id string, expectedRevision int64
 				return err
 			}
 		}
-		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id)
-		_, _ = conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id)
-		_, _ = conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id)
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_leases WHERE item_id=?`, id); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_claims WHERE item_id=?`, id); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, `DELETE FROM work_reviews WHERE item_id=?`, id); err != nil {
+			return err
+		}
 		result, err := conn.ExecContext(ctx, `UPDATE work_items SET status='ready',blocked_reason=NULL,revision=revision+1,updated_at=? WHERE id=? AND status='blocked' AND revision=?`, now, id, revision)
 		if err != nil {
 			return err
@@ -1533,7 +1567,9 @@ func (s *Store) VerifyWorkLease(ctx context.Context, filePath, taskID, owner str
 		FROM work_leases l
 		LEFT JOIN work_claims c ON c.item_id = l.item_id AND c.expires_at > ?
 		WHERE l.path = ? AND l.expires_at > ?
-	`, now, clean, now)
+		ORDER BY (l.item_id = ?) DESC
+		LIMIT 1
+	`, now, clean, now, taskID)
 	err = row.Scan(&itemID, &expiresAt, &claimOwner)
 	if errors.Is(err, sql.ErrNoRows) {
 		return LeaseVerification{Valid: false, Path: clean, Reason: "no active lease found for file"}, nil
@@ -1562,10 +1598,12 @@ type PruneWorkResult struct {
 	BoardID       string   `json:"board_id,omitempty"`
 	PrunedCount   int      `json:"pruned_count"`
 	PrunedTaskIDs []string `json:"pruned_task_ids"`
+	RetainedCount int      `json:"retained_count,omitempty"`
 	DryRun        bool     `json:"dry_run"`
 }
 
 // PruneWork safely removes completed tasks ('done') that have no active dependents.
+// Tasks with review submissions are retained: the submission trail is append-only.
 func (s *Store) PruneWork(ctx context.Context, opts PruneWorkOptions) (PruneWorkResult, error) {
 	boardID := strings.TrimSpace(opts.BoardID)
 	result := PruneWorkResult{
@@ -1578,52 +1616,28 @@ func (s *Store) PruneWork(ctx context.Context, opts PruneWorkOptions) (PruneWork
 		cutoff = s.now().Add(-opts.OlderThan).UTC().Format(time.RFC3339Nano)
 	}
 
-	// Query candidate tasks: status == 'done', optional board filter, optional cutoff,
-	// and NOT depended on by any non-done task, and NOT a child in active decomposition.
-	query := `SELECT id FROM work_items
-		WHERE status = 'done'
-		  AND (? = '' OR board_id = ?)
-		  AND (? = '' OR updated_at <= ?)
-		  AND id NOT IN (
-			  SELECT wd.depends_on
-			  FROM work_dependencies wd
-			  JOIN work_items wi ON wd.item_id = wi.id
-			  WHERE wi.status != 'done'
-		  )
-		  AND id NOT IN (
-			  SELECT d.child_id
-			  FROM work_decomposition_steps d
-			  JOIN work_items p ON d.parent_id = p.id
-			  WHERE p.status != 'done'
-		  )
-		ORDER BY updated_at ASC`
-
-	rows, err := s.db.QueryContext(ctx, query, boardID, boardID, cutoff, cutoff)
-	if err != nil {
-		return result, fmt.Errorf("query prune candidates: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var candidateIDs []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+	if opts.DryRun {
+		candidateIDs, retained, err := pruneCandidates(ctx, s.db, boardID, cutoff)
+		if err != nil {
 			return result, err
 		}
-		candidateIDs = append(candidateIDs, id)
-	}
-	if err := rows.Err(); err != nil {
-		return result, err
-	}
-
-	result.PrunedCount = len(candidateIDs)
-	result.PrunedTaskIDs = candidateIDs
-
-	if opts.DryRun || len(candidateIDs) == 0 {
+		result.PrunedCount = len(candidateIDs)
+		result.PrunedTaskIDs = candidateIDs
+		result.RetainedCount = retained
 		return result, nil
 	}
 
-	err = s.immediate(ctx, func(conn *sql.Conn) error {
+	var candidateIDs []string
+	err := s.immediate(ctx, func(conn *sql.Conn) error {
+		ids, retained, err := pruneCandidates(ctx, conn, boardID, cutoff)
+		if err != nil {
+			return err
+		}
+		result.RetainedCount = retained
+		if len(ids) == 0 {
+			return nil
+		}
+		candidateIDs = ids
 		if _, err := conn.ExecContext(ctx, `CREATE TEMP TABLE IF NOT EXISTS _prune_candidates (id TEXT PRIMARY KEY)`); err != nil {
 			return fmt.Errorf("create temp prune table: %w", err)
 		}
@@ -1656,5 +1670,59 @@ func (s *Store) PruneWork(ctx context.Context, opts PruneWorkOptions) (PruneWork
 		return result, fmt.Errorf("execute prune: %w", err)
 	}
 
+	result.PrunedCount = len(candidateIDs)
+	result.PrunedTaskIDs = candidateIDs
 	return result, nil
+}
+
+type pruneQuerier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// pruneCandidates returns prunable task IDs and the count of otherwise-prunable
+// tasks kept because they have review submissions.
+func pruneCandidates(ctx context.Context, q pruneQuerier, boardID, cutoff string) ([]string, int, error) {
+	const eligible = `status = 'done'
+		  AND (? = '' OR board_id = ?)
+		  AND (? = '' OR updated_at <= ?)
+		  AND id NOT IN (
+			  SELECT wd.depends_on
+			  FROM work_dependencies wd
+			  JOIN work_items wi ON wd.item_id = wi.id
+			  WHERE wi.status != 'done'
+		  )
+		  AND id NOT IN (
+			  SELECT d.child_id
+			  FROM work_decomposition_steps d
+			  JOIN work_items p ON d.parent_id = p.id
+			  WHERE p.status != 'done'
+		  )`
+	args := []any{boardID, boardID, cutoff, cutoff}
+
+	rows, err := q.QueryContext(ctx, `SELECT id FROM work_items WHERE `+eligible+`
+		  AND id NOT IN (SELECT item_id FROM work_submissions)
+		ORDER BY updated_at ASC`, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query prune candidates: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, 0, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	var retained int
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_items WHERE `+eligible+`
+		  AND id IN (SELECT item_id FROM work_submissions)`, args...).Scan(&retained); err != nil {
+		return nil, 0, fmt.Errorf("count retained prune candidates: %w", err)
+	}
+	return ids, retained, nil
 }

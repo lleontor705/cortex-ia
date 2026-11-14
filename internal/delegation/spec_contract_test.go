@@ -169,7 +169,7 @@ func TestDirectApprovalBindingAcceptsDirectoryAllowedFiles(t *testing.T) {
 		t.Fatalf("fingerprint did not record a tree digest: %+v", fp.Files)
 	}
 
-	if _, err := store.ApproveWork(ctx, item.ID, "independent-reviewer", "PASS", "verified", 0); err != nil {
+	if _, err := store.ApproveWork(ctx, item.ID, "independent-reviewer", "PASS", "verified", currentWorkRevision(t, ctx, store, item.ID)); err != nil {
 		t.Fatalf("approve task with a directory entry failed: %v", err)
 	}
 	done, err := store.GetWork(ctx, item.ID)

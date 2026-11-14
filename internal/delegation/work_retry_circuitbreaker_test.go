@@ -15,15 +15,15 @@ func TestRetryWorkCircuitBreakerRefusesConsecutiveFails(t *testing.T) {
 	item := cbCreateTask(t, ctx, store, workspace, "cb-fails", []string{"internal/delegation/src.go"})
 
 	cbReviewOutcome(t, ctx, store, item.ID, "FAIL")
-	if _, err := store.RetryWork(ctx, item.ID, 0); err != nil {
+	if _, err := store.RetryWork(ctx, item.ID, currentWorkRevision(t, ctx, store, item.ID)); err != nil {
 		t.Fatalf("retry after one FAIL refused: %v", err)
 	}
 	cbReviewOutcome(t, ctx, store, item.ID, "BLOCKED")
-	if _, err := store.RetryWork(ctx, item.ID, 0); err != nil {
+	if _, err := store.RetryWork(ctx, item.ID, currentWorkRevision(t, ctx, store, item.ID)); err != nil {
 		t.Fatalf("retry with ignored BLOCKED refused: %v", err)
 	}
 	cbReviewOutcome(t, ctx, store, item.ID, "INCONCLUSIVE")
-	if _, err := store.RetryWork(ctx, item.ID, 0); err != nil {
+	if _, err := store.RetryWork(ctx, item.ID, currentWorkRevision(t, ctx, store, item.ID)); err != nil {
 		t.Fatalf("retry with ignored INCONCLUSIVE refused: %v", err)
 	}
 	cbReviewOutcome(t, ctx, store, item.ID, "FAIL")
@@ -74,7 +74,7 @@ func TestRetryWorkCircuitBreakerPassResetsStreak(t *testing.T) {
 	cbInsertApproval(t, store, item.ID, "PASS", "2026-01-01T00:00:03Z")
 	cbBlockTask(t, store, item.ID)
 
-	item, err := store.RetryWork(ctx, item.ID, 0)
+	item, err := store.RetryWork(ctx, item.ID, currentWorkRevision(t, ctx, store, item.ID))
 	if err != nil {
 		t.Fatalf("trailing PASS must not trip the breaker: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestRetryWorkCircuitBreakerPureTestExemption(t *testing.T) {
 	cbInsertApproval(t, store, item.ID, "FAIL", "2026-01-01T00:00:02Z")
 	cbBlockTask(t, store, item.ID)
 
-	item, err := store.RetryWork(ctx, item.ID, 0)
+	item, err := store.RetryWork(ctx, item.ID, currentWorkRevision(t, ctx, store, item.ID))
 	if err != nil {
 		t.Fatalf("pure-test task must stay retryable: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestRetryWorkCircuitBreakerEmptyAllowedFilesNotExempt(t *testing.T) {
 	cbInsertApproval(t, store, item.ID, "FAIL", "2026-01-01T00:00:02Z")
 	cbBlockTask(t, store, item.ID)
 
-	if _, err := store.RetryWork(ctx, item.ID, 0); !errors.Is(err, ErrWorkReviewFailStreak) {
+	if _, err := store.RetryWork(ctx, item.ID, currentWorkRevision(t, ctx, store, item.ID)); !errors.Is(err, ErrWorkReviewFailStreak) {
 		t.Fatalf("undeclared scope must not be exempt, got %v", err)
 	}
 }
@@ -160,7 +160,7 @@ func cbReviewOutcome(t *testing.T, ctx context.Context, store *Store, id, verdic
 	if _, err := store.TransitionWork(ctx, id, claimed.Token, claimed.Revision, WorkInReview); err != nil {
 		t.Fatalf("transition in_review: %v", err)
 	}
-	if _, err := store.ApproveWork(ctx, id, "reviewer", verdict, "evidence", 0); err != nil {
+	if _, err := store.ApproveWork(ctx, id, "reviewer", verdict, "evidence", currentWorkRevision(t, ctx, store, id)); err != nil {
 		t.Fatalf("approve %s: %v", verdict, err)
 	}
 }
@@ -181,8 +181,8 @@ func cbBlockTask(t *testing.T, store *Store, id string) {
 
 func cbInsertSentinelLease(t *testing.T, store *Store, id string) {
 	t.Helper()
-	if _, err := store.db.Exec(`INSERT INTO work_leases(path,item_id,token_hash,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?)`,
-		"internal/delegation/sentinel.go", id, "sentinel", "2999-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"); err != nil {
+	if _, err := store.db.Exec(`INSERT INTO work_leases(workspace,path,item_id,token_hash,expires_at,created_at,updated_at) SELECT COALESCE(workspace,''),?,?,?,?,?,? FROM work_items WHERE id=?`,
+		"internal/delegation/sentinel.go", id, "sentinel", "2999-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", id); err != nil {
 		t.Fatal(err)
 	}
 }

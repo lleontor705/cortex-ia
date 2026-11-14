@@ -26,8 +26,8 @@ type ControllerRenewal struct {
 // and its live claim in one transaction. It cannot revive expired authority.
 func (s *Store) RenewControllerAuthority(ctx context.Context, id, owner string, auth ControllerAuthority, ttl time.Duration) (ControllerRenewal, error) {
 	result := ControllerRenewal{}
-	if id == "" || owner == "" || len(owner) > 1024 || auth.ClaimToken == "" || len(auth.ClaimToken) > 128 || len(auth.Leases) > 1024 || ttl < time.Second || ttl > 15*time.Minute {
-		return result, errors.New("controller renewal requires bounded live authority and ttl between 1s and 15m")
+	if id == "" || owner == "" || len(owner) > 1024 || auth.ClaimToken == "" || len(auth.ClaimToken) > 128 || len(auth.Leases) > 1024 || ttl < time.Second || ttl > 30*time.Minute {
+		return result, errors.New("controller renewal requires bounded live authority and ttl between 1s and 30m")
 	}
 	leases := make(map[string]string, len(auth.Leases))
 	for path, token := range auth.Leases {

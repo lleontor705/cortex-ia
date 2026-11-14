@@ -54,6 +54,15 @@ func drDirectTask(t *testing.T, ctx context.Context, store *Store, workspace, id
 	return item
 }
 
+func currentWorkRevision(t *testing.T, ctx context.Context, store *Store, id string) int64 {
+	t.Helper()
+	item, err := store.GetWork(ctx, id)
+	if err != nil {
+		t.Fatalf("get work %s: %v", id, err)
+	}
+	return item.Revision
+}
+
 func drDoneDirectTask(t *testing.T, ctx context.Context, store *Store, id string) WorkItem {
 	t.Helper()
 	claim, err := store.ClaimWork(ctx, id, "impl-owner", time.Minute)
@@ -63,7 +72,7 @@ func drDoneDirectTask(t *testing.T, ctx context.Context, store *Store, id string
 	if _, err := store.TransitionWork(ctx, id, claim.Token, claim.Revision, WorkInReview); err != nil {
 		t.Fatalf("transition %s in_review: %v", id, err)
 	}
-	if _, err := store.ApproveWork(ctx, id, "independent-reviewer", "PASS", "verified", 0); err != nil {
+	if _, err := store.ApproveWork(ctx, id, "independent-reviewer", "PASS", "verified", currentWorkRevision(t, ctx, store, id)); err != nil {
 		t.Fatalf("approve direct task %s: %v", id, err)
 	}
 	done, err := store.GetWork(ctx, id)

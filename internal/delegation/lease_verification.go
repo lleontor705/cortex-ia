@@ -26,8 +26,8 @@ func matchLease(filePath, workspaceKey string, leases []activeSessionLease, foun
 			continue
 		}
 
-		// 1. Direct path match
-		if l.leasePath == clean {
+		// 1. Direct path match within the same canonical workspace
+		if SameWorkspace(l.taskWorkspace, workspaceKey) && l.leasePath == clean {
 			result.TaskID = l.itemID
 			result.ExpiresAt = l.expiresAt
 			result.Owner = l.owner
@@ -57,17 +57,6 @@ func matchLease(filePath, workspaceKey string, leases []activeSessionLease, foun
 			}
 		}
 
-		// 4. Either leasePath or clean includes the sub-repository directory name
-		baseName := filepath.Base(l.taskWorkspace)
-		if baseName != "" && baseName != "." && baseName != "/" {
-			if l.leasePath == baseName+"/"+clean || clean == baseName+"/"+l.leasePath {
-				result.TaskID = l.itemID
-				result.ExpiresAt = l.expiresAt
-				result.Owner = l.owner
-				result.Valid = true
-				return result
-			}
-		}
 	}
 
 	if !foundAnyForSession {
@@ -191,4 +180,37 @@ func (s *Store) HasActiveWorkspaceWork(ctx context.Context, workspace string) (b
 		  AND (w.status = 'in_progress' OR (c.expires_at IS NOT NULL AND c.expires_at > ?))
 	`, workspace, workspaceKey, now).Scan(&count)
 	return count > 0, err
+}
+
+// HasLiveWorkspaceLease reports whether any in-progress task of this workspace
+// holds a live lease on the workspace-relative path. It proves the path is
+// leased, not who holds it; hosts that cannot identify the caller use it as the
+// degraded admission check.
+func (s *Store) HasLiveWorkspaceLease(ctx context.Context, filePath, workspace string) (bool, error) {
+	clean, err := canonicalLeasePath(filePath)
+	if err != nil {
+		return false, nil
+	}
+	now := s.timestamp()
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT w.workspace
+		FROM work_leases l
+		JOIN work_claims c ON c.item_id = l.item_id
+		JOIN work_items w ON w.id = l.item_id
+		WHERE l.path = ? AND l.expires_at > ? AND c.expires_at > ? AND w.status = 'in_progress'
+	`, clean, now, now)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var taskWorkspace string
+		if err := rows.Scan(&taskWorkspace); err != nil {
+			return false, err
+		}
+		if SameWorkspace(taskWorkspace, workspace) {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }

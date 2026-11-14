@@ -142,6 +142,9 @@ func OpenStoreReadOnly(path string) (*Store, error) {
 		}
 		return nil, err
 	}
+	if err := CheckSchemaDriftBeforeOpen(path); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open read-only delegation database: %w", err)
@@ -570,6 +573,32 @@ func (s *Store) initialize(ctx context.Context) error {
 				return fmt.Errorf("record blocked reason migration: %w", err)
 			}
 		}
+		if version < 18 {
+			for _, stmt := range []string{
+				`CREATE TABLE work_leases_v18 (
+					workspace TEXT NOT NULL,
+					path TEXT NOT NULL,
+					item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+					token_hash TEXT NOT NULL,
+					expires_at TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					PRIMARY KEY (workspace, path)
+				) STRICT`,
+				`INSERT INTO work_leases_v18(workspace,path,item_id,token_hash,expires_at,created_at,updated_at) SELECT COALESCE(w.workspace,''), l.path, l.item_id, l.token_hash, l.expires_at, l.created_at, l.updated_at FROM work_leases l JOIN work_items w ON w.id = l.item_id`,
+				`DROP TABLE work_leases`,
+				`ALTER TABLE work_leases_v18 RENAME TO work_leases`,
+				`CREATE INDEX IF NOT EXISTS work_leases_item_idx ON work_leases(item_id, expires_at)`,
+				`CREATE INDEX IF NOT EXISTS work_leases_expires_at_idx ON work_leases(expires_at)`,
+			} {
+				if _, err := conn.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("rebuild work leases keyed by workspace: %w", err)
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(18,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record work lease workspace migration: %w", err)
+			}
+		}
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE expires_at<=?`, s.timestamp())
 		return nil
 	})
@@ -800,119 +829,4 @@ func bounded(value string, limit int) string {
 		return value[:limit]
 	}
 	return value
-}
-
-// ManagedWorktree represents a tracked worktree entry in SQLite.
-type ManagedWorktree struct {
-	ID           string `json:"id"`
-	RepoPath     string `json:"repo_path"`
-	WorktreePath string `json:"worktree_path"`
-	Branch       string `json:"branch,omitempty"`
-	BaseRef      string `json:"base_ref,omitempty"`
-	TaskID       string `json:"task_id,omitempty"`
-	JobID        string `json:"job_id,omitempty"`
-	Status       string `json:"status"` // active, released, pruned
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
-}
-
-// RegisterManagedWorktree inserts or updates a tracked worktree entry.
-func (s *Store) RegisterManagedWorktree(ctx context.Context, m ManagedWorktree) error {
-	if strings.TrimSpace(m.ID) == "" {
-		m.ID = fmt.Sprintf("wt-%d", time.Now().UnixNano())
-	}
-	canonicalRepo, err := CanonicalWorkspace(m.RepoPath)
-	if err == nil && canonicalRepo != "" {
-		m.RepoPath = canonicalRepo
-	}
-	canonicalWT, err := CanonicalWorkspace(m.WorktreePath)
-	if err == nil && canonicalWT != "" {
-		m.WorktreePath = canonicalWT
-	}
-	if m.Status == "" {
-		m.Status = "active"
-	}
-	now := s.timestamp()
-	if m.CreatedAt == "" {
-		m.CreatedAt = now
-	}
-	m.UpdatedAt = now
-
-	return s.immediate(ctx, func(conn *sql.Conn) error {
-		_, err := conn.ExecContext(ctx, `
-			INSERT INTO managed_worktrees(id, repo_path, worktree_path, branch, base_ref, task_id, job_id, status, created_at, updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?)
-			ON CONFLICT(worktree_path) DO UPDATE SET
-				branch=excluded.branch,
-				base_ref=excluded.base_ref,
-				task_id=excluded.task_id,
-				job_id=excluded.job_id,
-				status=excluded.status,
-				updated_at=excluded.updated_at
-		`, m.ID, m.RepoPath, m.WorktreePath, m.Branch, m.BaseRef, m.TaskID, m.JobID, m.Status, m.CreatedAt, m.UpdatedAt)
-		return err
-	})
-}
-
-// GetManagedWorktree retrieves a tracked worktree by its path.
-func (s *Store) GetManagedWorktree(ctx context.Context, worktreePath string) (*ManagedWorktree, error) {
-	canonicalWT, err := CanonicalWorkspace(worktreePath)
-	if err != nil || canonicalWT == "" {
-		canonicalWT = filepath.ToSlash(filepath.Clean(worktreePath))
-	}
-	var m ManagedWorktree
-	err = s.db.QueryRowContext(ctx, `
-		SELECT id, repo_path, worktree_path, branch, base_ref, task_id, job_id, status, created_at, updated_at
-		FROM managed_worktrees WHERE worktree_path=?
-	`, canonicalWT).Scan(&m.ID, &m.RepoPath, &m.WorktreePath, &m.Branch, &m.BaseRef, &m.TaskID, &m.JobID, &m.Status, &m.CreatedAt, &m.UpdatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &m, nil
-}
-
-// ListManagedWorktrees returns tracked worktrees for a repository, optionally filtered by status.
-func (s *Store) ListManagedWorktrees(ctx context.Context, repoPath, status string) ([]ManagedWorktree, error) {
-	canonicalRepo, err := CanonicalWorkspace(repoPath)
-	if err != nil || canonicalRepo == "" {
-		canonicalRepo = filepath.ToSlash(filepath.Clean(repoPath))
-	}
-	query := `SELECT id, repo_path, worktree_path, branch, base_ref, task_id, job_id, status, created_at, updated_at FROM managed_worktrees WHERE repo_path=?`
-	args := []any{canonicalRepo}
-	if status != "" {
-		query += ` AND status=?`
-		args = append(args, status)
-	}
-	query += ` ORDER BY created_at DESC`
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	var list []ManagedWorktree
-	for rows.Next() {
-		var m ManagedWorktree
-		if err := rows.Scan(&m.ID, &m.RepoPath, &m.WorktreePath, &m.Branch, &m.BaseRef, &m.TaskID, &m.JobID, &m.Status, &m.CreatedAt, &m.UpdatedAt); err != nil {
-			return nil, err
-		}
-		list = append(list, m)
-	}
-	return list, rows.Err()
-}
-
-// UpdateManagedWorktreeStatus updates the lifecycle status of a managed worktree.
-func (s *Store) UpdateManagedWorktreeStatus(ctx context.Context, worktreePath, status string) error {
-	canonicalWT, err := CanonicalWorkspace(worktreePath)
-	if err != nil || canonicalWT == "" {
-		canonicalWT = filepath.ToSlash(filepath.Clean(worktreePath))
-	}
-	return s.immediate(ctx, func(conn *sql.Conn) error {
-		_, err := conn.ExecContext(ctx, `UPDATE managed_worktrees SET status=?, updated_at=? WHERE worktree_path=?`, status, s.timestamp(), canonicalWT)
-		return err
-	})
 }

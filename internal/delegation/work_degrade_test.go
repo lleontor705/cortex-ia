@@ -119,7 +119,7 @@ func TestREQ_DEGRADE_004_LiveClaimUntouched(t *testing.T) {
 	if _, err := s.db.Exec(`INSERT INTO work_claims(item_id,owner,token_hash,attempt,expires_at,created_at,updated_at) VALUES('r-live','owner','hash',1,?,?,?)`, future, stamp, stamp); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(`INSERT INTO work_leases(path,item_id,token_hash,expires_at,created_at,updated_at) VALUES('src/a.go','r-live','hash',?,?,?)`, future, stamp, stamp); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO work_leases(workspace,path,item_id,token_hash,expires_at,created_at,updated_at) SELECT COALESCE(workspace,''),'src/a.go','r-live','hash',?,?,? FROM work_items WHERE id='r-live'`, future, stamp, stamp); err != nil {
 		t.Fatal(err)
 	}
 	ageTask(t, s, "r-live", base.Add(-200*time.Hour))

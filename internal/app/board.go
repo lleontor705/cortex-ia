@@ -37,6 +37,9 @@ func runBoard(args []string) error {
 		fmt.Println("  serve [--addr <host:port>]   Serve the local web operations dashboard")
 		return nil
 	}
+	if err := denyAgentShellVerb("board", strings.ToLower(args[0]), agentShellDeniedBoardVerbs, "board archive, unarchive and delete are operator actions"); err != nil {
+		return err
+	}
 	home, err := cortexStateHome()
 	if err != nil {
 		return err
