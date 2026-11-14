@@ -1,6 +1,6 @@
 ---
 name: property-based-testing
-description: Generate invariant-driven generative test suites and fuzz vectors using Hypothesis, fast-check, or language equivalents.
+description: Generate invariant-driven generative test suites and fuzz vectors using Hypothesis, fast-check, or language equivalents. Use for critical parsers, serializers, and algorithms where example tests miss edge cases.
 license: MIT
 metadata:
   author: OpenCode Engine

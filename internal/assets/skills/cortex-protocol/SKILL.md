@@ -28,7 +28,7 @@ When searching memory or repository context:
 
 ## B. Incremental Delta AST Ingestion & Watcher Synergy
 
-1. **Absolute Workspace Root**: Always pass the absolute project directory path (e.g. `d:/cortex-ia` or `D:/ITC/APIs_Externos`) to `cortex_ingest_code(path, project)`. NEVER pass relative `.` because the Cortex MCP server runs in an isolated process directory.
+1. **Absolute Workspace Root**: Always pass the absolute project directory path (e.g. `/path/to/project`) to `cortex_ingest_code(path, project)`. NEVER pass relative `.` because the Cortex MCP server runs in an isolated process directory.
 2. **Startup Check**: `investigate` queries `cortex_get_code_symbols(project, limit: 1)`. If empty and `cortex watch` is not running, run `cortex_ingest_code(workspace_root_absolute_path, project)` once to establish the AST baseline.
 3. **Review Delta Ingestion (<50ms)**: `reviewer` executes `cortex_ingest_code(workspace_root_absolute_path, project)` upon receiving edited files, utilizing SHA-256 incremental caching to re-index only the modified files without full repository scan penalty.
 4. **Watcher Daemon**: When `cortex watch` is running in background, all file edits are indexed continuously in <500ms debounce.
@@ -48,7 +48,7 @@ When searching memory or repository context:
 ## E. Closed-Loop Failure Memory & Knowledge Graph
 
 1. **Failure Extraction**: When `reviewer` or tests detect a failure, `reviewer` persists the minimal failure locality in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"`).
-2. **Graph Linking**: Always call `cortex_relate(from_id, to_id, relation_type)` to connect the bugfix/decision to the relevant entity, task, or previous observation.
+2. **Graph Linking**: Call `cortex_relate(from_id, to_id, relation_type)` when the bugfix/decision has a real relationship to an entity, task, or previous observation; relating is not required on every save.
 3. **Targeted Fix Minion**: `orchestrator` includes `evidence_refs: ["gotchas/<task_id>"]` in the fix minion envelope so the next minion avoids repeating the same root cause.
 
 ## F. Proactive Save & Topic Taxonomy (MANDATORY)

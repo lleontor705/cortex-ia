@@ -65,23 +65,19 @@ Never install packages, change configuration, run builds or tests, connect to da
 
 ## Receipt
 
-Return a compact JSON receipt containing:
+Return the receipt as a Markdown list of `field: value` lines (not JSON), with these fields:
 
-```json
-{
-  "phase_status": "success | partial | blocked",
-  "artifact": ".cortex-ia/discovery.md",
-  "project": "",
-  "skills_dictionary_count": 0,
-  "global_skills_count": 0,
-  "run_command": "",
-  "test_command": "",
-  "has_tests": "true | false | unknown",
-  "governance_rule_count": 0,
-  "gitignore_hygiene": "applied | already_present | unknown",
-  "unknowns": [],
-  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
-}
-```
+- phase_status: success | partial | blocked
+- artifact: .cortex-ia/discovery.md
+- project: <project name>
+- skills_dictionary_count: <count>
+- global_skills_count: <count>
+- run_command: <command or empty>
+- test_command: <command or empty>
+- has_tests: true | false | unknown
+- governance_rule_count: <count>
+- gitignore_hygiene: applied | already_present | unknown
+- unknowns: <list>
+- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective
 
 Use `partial` when useful evidence was produced but Cortex or a filesystem source was unavailable. Use `blocked` only when the project root cannot be established or the report cannot be written safely.

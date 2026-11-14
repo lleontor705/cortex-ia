@@ -1,6 +1,6 @@
 ---
 name: system-diagrams
-description: "Author, validate, render interactive HTML/SVG, and compare system architecture, workflow, sequence, dataflow, and lifecycle diagrams using cortex_ia_diagram_* tools."
+description: "Author, validate, render interactive HTML/SVG, and compare system architecture, workflow, sequence, dataflow, and lifecycle diagrams using cortex_ia_diagram_* tools. Use when a codebase, workflow, or state machine needs a diagram."
 license: MIT
 metadata:
   author: cortex-ia

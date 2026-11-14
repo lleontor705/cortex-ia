@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Execute one bounded direct change or Cortex-IA work task with proportional verification and a recoverable minion lifecycle.
+description: Execute one bounded direct change or Cortex-IA work task with proportional verification and a recoverable minion lifecycle. Use when one claimed task or bounded direct change must be implemented and verified.
 license: MIT
 metadata:
   author: lleontor705
@@ -16,7 +16,7 @@ You are an ephemeral native implementation controller. Complete exactly one assi
 - `direct-change`: clear and reversible; use the smallest relevant parse, lint, build, test, smoke, or diff check.
 - `sdd-apply`: implement an approved task against its artifact references and acceptance checks.
 - `fast-tdd`: follow the `fast-tdd` skill when a fast deterministic oracle exists.
-- `hotfix`: follow `hotfix-triage`; contain first, keep the patch atomic, and require later review.
+- `hotfix`: follow `hotfix-triage`; contain first, keep the patch atomic, and leave review to the review matrix (`cortex-work-protocol.md` §2.7a).
 
 TDD is not mandatory for documentation, declarative configuration, generated output, or work without a reliable fast oracle. Record the reason and use a proportional check. Never claim correctness from inspection alone.
 
@@ -56,12 +56,12 @@ For SDD work, compare the task's stored contract pins and requirement IDs with t
    - Review the diff for scope creep, secrets, unsafe paths, and accidental generated drift.
    - **In-Memory Immutability & Contract Integrity**: Ensure multi-record validations do not mutate caller input in-place, and never weaken contracts by silently skipping invalid records to force green tests.
    - **Code-Intelligence Noninterference (REQ-PRIV-007)**: Code intelligence and AST metadata (`DocSummary`, `Reasoning`, syntax symbols, callers, relationships) are structural codebase components and must NEVER be redacted or mutated by privacy/sanitize routines.
-    - **Test Policy & Scaffolding Hygiene**: Persistent tests are strictly limited to TUI, simple install-copy, and user-authorized critical regression boundaries (authority, transport, recovery, updater verification) using temporary homes and synthetic inputs. Deeper unrelated transactional exploration remains ephemeral. Do not append new test suites to an existing test file if that file already has > 300 LOC; create dedicated modular test files bounded to <= 250 LOC per file. Tests must never access real developer state or weaken contracts (no silently skipping invalid records).
+    - **Test Policy & Scaffolding Hygiene**: Follow the target repository's own test policy, as declared in its root AGENTS.md or in `./.cortex-ia/discovery.md`; when none is declared, add tests proportional to the change. Do not append new test suites to an existing test file if that file already has > 300 LOC; create dedicated modular test files bounded to <= 250 LOC per file. Tests must never access real developer state or weaken contracts (no silently skipping invalid records).
    - Persist any bug root cause, discovery, gotcha, or decision made in Cortex (`cortex_save` with standard taxonomies: `bugfix/*`, `gotchas/*`, `architecture/*`). Never dump full stdout.
 6. **Pre-Transition Workload Preflight & Cleanup:**
-   - Run `git diff --numstat` to categorize churn by path (logic files evaluate against the source budget, `*_test.*` and `test/**` against the test budget, declarative data/schemas/docs are exempt) and compare it against the active `workload_policy` LOC budget (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §4). Under an over-budget category, follow the §4 behavior: `strict` forbids `in_review` and requires `WORKLOAD_SOURCE_BUDGET_EXCEEDED`/`WORKLOAD_TEST_BUDGET_EXCEEDED` with DAG decomposition, `flexible` records `workload_status: "EXCEEDED_ADVISORY"` and proceeds, and `unbounded` bypasses diff checks.
+   - Run `git diff --numstat` to categorize churn by path (logic files evaluate against the source budget, `*_test.*` and `test/**` against the test budget, declarative data/schemas/docs are exempt) and compare it against the active `workload_policy` LOC budget (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §4). Under an over-budget category, follow the §4 behavior: `strict` forbids `in_review` and requires a `blocked` transition with `blocked_reason: "scope_drift"` and `WORKLOAD_SOURCE_BUDGET_EXCEEDED`/`WORKLOAD_TEST_BUDGET_EXCEEDED` at the start of the `summary`, followed by DAG decomposition, `flexible` records `workload_status: "EXCEEDED_ADVISORY"` and proceeds, and `unbounded` bypasses diff checks.
    - **Pre-Transition Mutation Evidence**: For fast-TDD-eligible code tasks (a persistent test delta in a testable unit), complete the mutation-evidence gate defined in `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md` §4/§8 via the `mutation-testing` skill: accepted outcomes are `KILLED` and `STATIC-ANALYSIS`, `SURVIVED` blocks the transition until the covering test is strengthened and re-run, and a missing field on eligible work is `INCONCLUSIVE`, never `PASS`. TDD exemptions (documentation, declarative configuration, generated data/output like spreadsheets/reports, no reliable fast oracle) apply, with the reason recorded.
-   - Complete the CLI lifecycle: verify -> `cortex_ia_work_transition({ to: "in_review" })` (auto-releases leases) -> PASS approval (orchestrator auto-approval on low-risk/data/docs/config tasks, or independent reviewer on high-risk code). Only an approved PASS verdict produces `done`.
+   - Complete the CLI lifecycle: verify -> `cortex_ia_work_transition({ to: "in_review", revision: <n> })` (auto-releases leases) -> PASS approval (orchestrator auto-approval on low-risk/data/docs/config tasks, or independent reviewer on high-risk code). Only an approved PASS verdict produces `done`.
 
 ### Repository database scripts (non-empty leased file scope)
 - **Fail-Closed Migrations & Scripts**: Database scripts must use transactional semantics (`BEGIN ... COMMIT / ROLLBACK`) and must explicitly fail closed upon unmet preconditions or invariant violations (`SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '...'` in MySQL/MariaDB; `RAISE EXCEPTION '...'` in PostgreSQL). Never rely on benign query outputs like `SELECT 'FAIL'`, which exit with status code 0 and fool CI/CD into passing broken states.

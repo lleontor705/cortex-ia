@@ -77,7 +77,7 @@ This section is the single source of truth for `SKILL.md` body sizing. It govern
 - **Target**: 180–450 tokens per `SKILL.md` body, frontmatter excluded. Inside this band is the steer; slightly outside is acceptable when the procedure genuinely needs it.
 - **Hard max**: 1000 tokens. A body that meets or exceeds the hard max must be split or trimmed before the change is accepted.
 - **Trigger-first descriptions**: the frontmatter `description` must open with what the skill does and the conditions that require loading it, so routing decides from the description alone.
-- **Advisory estimation**: estimate size as the word count divided by 4. This is an authoring and review aid; no runtime validator counts tokens.
+- **Advisory estimation**: estimate size as the character count divided by 4 (roughly words × 1.3). This is an authoring and review aid; no runtime validator counts tokens.
 - **Review-time enforcement**: the hard max is checked when a `SKILL.md` body is created or materially changed, at the same review gate that accepts the change — never by tooling.
 
 ## Intent-Preserving Delegation Protocol (IPDP) & Non-Goals
@@ -139,12 +139,12 @@ To eliminate AI code bloat and maintain long-term codebase health:
 
 ## Orchestrator Executive Synthesis Standard (Artifact Pyramid)
 
-The orchestrator is the human interface and executive synthesizer of the system, not a transcript echo chamber. All user-facing communications from the orchestrator must follow the **3-Layer Artifact Pyramid** (Zhang et al., AAMAS 2024; Nielsen Norman Group / DeepMind 2026):
+The orchestrator is the human interface and executive synthesizer of the system, not a transcript echo chamber. All user-facing communications from the orchestrator must follow the **3-Layer Artifact Pyramid** (Zhang et al., AAMAS 2024):
 
 1. **Layer 1: Executive Action Line (Header)**:
    - High-contrast, scannable headline communicating final verdict, routing tier, and status (e.g. `### 🎯 Objective Achieved — {Route Tier} | Verdict: {PASS}`).
 2. **Layer 2: Progressive Disclosure Synthesis**:
-   - Structured summary tailored to human working memory limits ($4 \pm 1$ cognitive units):
+   - Structured summary tailored to human working memory limits (4 ± 1 cognitive units):
      - **Architectural Deltas**: High-level structural changes ($\le 3-5$ bullets) naming modified subsystems, not line-by-line diffs.
      - **Empirical Verification Evidence**: Exact deterministic test/verification command, exit code `0`, passing test count, and linter status.
      - **Actionable Next Steps / Gates**: Unambiguous path forward, or lossless choice envelope for interactive decisions.

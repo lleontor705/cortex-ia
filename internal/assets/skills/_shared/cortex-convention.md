@@ -20,7 +20,7 @@ When saving an observation with `cortex_save`, call `cortex_relate` to connect i
 
 Never persist secrets, claim/lease tokens, full prompts, transcripts, raw stdout, routine progress, or unverified hypotheses as facts. Handoffs carry topic keys, work task IDs, and artifact references instead of copied transcripts.
 
-When running AST ingestion via `cortex_ingest_code(path, project)`, always provide the absolute workspace root path (e.g. `d:/cortex-ia`). Never pass relative `.` because the Cortex MCP daemon executes in its own isolated working directory.
+When running AST ingestion via `cortex_ingest_code(path, project)`, always provide the absolute workspace root path (e.g. `/path/to/project`). Never pass relative `.` because the Cortex MCP daemon executes in its own isolated working directory.
 
 Use this deterministic taxonomy. The only accepted `type` values are the server allowlist enforced fail-closed by `cortex_save` (`manual`, `tool_use`, `decision`, `architecture`, `bugfix`, `pattern`, `config`, `discovery`, `learning`, `session_summary`, `passive`); topic-key prefixes such as `gotchas/`, `rules/`, or `dna/` are never types.
 

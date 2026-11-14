@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Produce grounded SDD contracts, rigorous Given/When/Then delta specifications, and dependency-safe task DAGs without implementing them.
+description: Produce grounded SDD contracts, rigorous Given/When/Then delta specifications, and dependency-safe task DAGs without implementing them. Use when work needs a spec or task plan before implementation.
 license: MIT
 metadata:
   author: lleontor705
@@ -25,7 +25,7 @@ Specifications describe observable obligations with RFC 2119 keywords (**MUST**,
 
 Scenario depth is proportional to domain risk:
 - **Complex / stateful / critical (`sdd-full`)**: three strict scenarios — Happy Path, Edge Case (boundaries, concurrency, unusual inputs), and Error/Fail-Closed (deterministic rejection).
-- **Moderate / localized (`sdd-lite`)**: one concise Happy Path scenario suffices when no genuine edge or error ambiguity exists; add edge/error scenarios only where risk warrants.
+- **Moderate / localized (`sdd-lite`)**: at least three scenarios per requirement (Happy Path, Edge Case, Error/Fail-Closed), the same minimum as `sdd-full`.
 
 Every requirement MUST carry a `Test:` oracle line naming its covering oracle; a persistent test is named `TestREQ_{DOMAIN}_{NNN}_<slug>` (language-conditional prefix/separator allowed). Structural validation of these blocks and the naming convention is owned by `workflow-map.md` § Structural validation contract and `cortex-convention.md`.
 
@@ -36,7 +36,7 @@ Structural skeleton (shape only; the validated form lives in `workflow-map.md`):
 The system MUST {behavior}.
 - **Test:** {oracle or TestREQ_{DOMAIN}_{NNN}_<slug>}
 
-#### Scenario: {Happy Path}   # add Edge and Error scenarios for complex domains
+#### Scenario: {Happy Path}   # add Edge and Error scenarios (three minimum)
 - GIVEN {precondition}
 - WHEN {action}
 - THEN {outcome}
@@ -88,4 +88,4 @@ Verify declarative configs with standard parsers, direct key/value matches, or r
 
 ## 6. Output Contract
 
-Report the common completion receipt defined by `cortex-work-protocol.md` §8; planner fields are `workflow`, `phase`, `spec_plane`, `artifact_refs`, `artifact_revisions`, `task_ids`, `parallel_groups`, `budget_lines_forecast`, `open_decisions`, `risks`, and the canonical `next_route` enum. Return `blocked` when intent or acceptance criteria are materially ambiguous or required approvals are missing.
+Report the common completion receipt defined by `cortex-work-protocol.md` §8; planner fields are `workflow`, `phase`, `spec_plane`, `artifact_refs`, `artifact_revisions`, `task_ids`, `parallel_groups`, `budget_lines_forecast`, `open_questions`, `risks`, and the canonical `next_route` enum. Return `blocked` when intent or acceptance criteria are materially ambiguous or required approvals are missing.

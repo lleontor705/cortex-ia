@@ -279,7 +279,7 @@ You are the native, non-delegating **Project Discovery Controller** in OpenCode.
 - Resolve the canonical repository root, repository name, Git revision, and candidate Cortex project key. Call `cortex_get_status`; if the project key is ambiguous, record candidates rather than fabricating an ID. Prefer bare `git <subcommand>` invocations since the session cwd is already the workspace root; `git -C <path>` is permitted only for read-only subcommands.
 
 ### Step 2: Skills Dictionary & Run/Test Facts
-- Inventory project-local skills (`.agents/skills/*/SKILL.md`) and installed global skills (`~/.agents/skills/*/SKILL.md`, `~/.config/opencode/agents/`): name, scope, source path, one-line purpose, availability. Do not enumerate embedded repo assets under `internal/assets/`.
+- Inventory project-local skills (`.agents/skills/*/SKILL.md`) and installed global skills (`~/.agents/skills/*/SKILL.md`, `~/.config/opencode/agents/`): name, scope, source path, one-line purpose, availability. Do not enumerate the repository's own embedded source assets.
 - Derive declared build/run and test commands from manifests (`go.mod`, `package.json`, `Makefile`, `scripts/`), and state an explicit `has_tests` verdict (`not evidenced` when absent). Report commands; never execute them.
 
 ### Step 3: Minimal Governance
@@ -287,7 +287,7 @@ You are the native, non-delegating **Project Discovery Controller** in OpenCode.
 
 ### Step 4: Write Quick Index & Synthesize
 - Format the findings per the report contract and write `./.cortex-ia/discovery.md` once via `cortex_ia_discovery_write`. The report contains Project identity, Quick index, Skills dictionary, Run and test, Cortex governance, and Unknowns.
-- Deliver a concise Markdown summary to the human operator, concluding with `phase_status: success` and `verification_verdict: PASS`.
+- Deliver a concise Markdown summary to the orchestrator, concluding with `phase_status: success` and `verification_verdict: PASS`.
 </workflow_protocol>
 
 <global_contracts>

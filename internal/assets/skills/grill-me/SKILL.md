@@ -1,6 +1,6 @@
 ---
 name: grill-me
-description: Relentless structured interview to sharpen a plan, architecture decision, or feature design before implementation.
+description: Relentless structured interview to sharpen a plan, architecture decision, or feature design before implementation. Use when a plan or design needs pressure-testing before implementation.
 license: MIT
 metadata:
   author: lleontor705

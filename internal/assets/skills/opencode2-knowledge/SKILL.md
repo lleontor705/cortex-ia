@@ -63,7 +63,7 @@ flowchart TD
         StartGate -->|Ask if unset| ModeChoice[Execution Mode:\nAuto vs Interactive]
         StartGate -->|Ask if unset| PlaneChoice[Spec & Memory Plane:\nOpenSpec vs Cortex vs Hybrid]
         StartGate -->|Ask if unset| WorkloadChoice[Workload Policy:\nStrict vs Flexible vs Unbounded]
-        StartGate -->|Fixed policy| WorkspaceChoice[External Implement Workspace:\nCurrent Workspace]
+        StartGate -->|Fixed policy| WorkspaceChoice[Implement Workspace:\nCurrent Workspace]
         
         ModeChoice --> AmbiguityCheck{High Design\nUncertainty?}
         PlaneChoice --> AmbiguityCheck
@@ -94,8 +94,8 @@ flowchart TD
     SubImpDirect --> AutoApproveGate{Adaptive Review:\nLow risk, data, docs, config?}
     AutoApproveGate -->|Yes: Auto-Approve| OrchFinal
     AutoApproveGate -->|No: High-risk code| SubRev
-    SubImpTDD --> SubRev
-    SubImpHotfix --> SubRev
+    SubImpTDD --> AutoApproveGate
+    SubImpHotfix --> AutoApproveGate
 
     subgraph Convergence ["Convergence & Output"]
         SubInv -->|Diagnosis / Cortex Evidence| OrchFinal[Orchestrator Receipt Synthesis]

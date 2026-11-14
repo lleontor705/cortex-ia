@@ -37,10 +37,10 @@ The `orchestrator` is the sole coordinator and delegation authority in OpenCode.
    - **`openspec`**: Human-readable markdown files under `openspec/specs/` and `openspec/changes/<name>/` (`proposal.md`, `specs/`, `design.md`, `tasks.md`, `archive/`).
    - **`cortex`**: Authoritative pinned specification snapshots plus durable evidence, following `cortex-convention.md`; no OpenSpec writes, validation, or archival in any phase.
    - Carry the selected `spec_plane` in every phase dispatch. A one-time exception is scoped to that change, never a replacement for the user's general preference.
-3. **External Implement Workspace Strategy**:
+3. **Implement Workspace Strategy**:
    - **`current_workspace`**: Single supported implementation workspace strategy; `isolated_worktree` is retired. Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_ia_file_reserve` calls made before editing each file. There is no external execution leaf: every controller edits the shared workspace directly under its own claim and per-file leases.
 4. **Workload Policy (Task Line Budget)**: `strict` (source logic <= 350/250 LOC Go-family/TS-family → blocked + atomic decomposition), `flexible` *(Recommended / Default)* (source logic <= 700/500 LOC → non-blocking `WORKLOAD_ADVISORY`), or `unbounded` (pre-transition diff checks bypassed). Source logic covers Go/Rust/Java/C# and TS/Python (0.2x deletions); test/fixture ceilings and declarative data/schema exemption follow the canonical table.
-   - Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §4
+   - Digest — normative source: ~/.cortex-ia/opencode/contracts/cortex-work-protocol.md §4
    - The orchestrator asks the user if unset during Tier 3 SDD preflight. In Tier 1 and Tier 2 (`direct-change`, `ops-task`, `hotfix`), do not ask; default to `flexible` or `unbounded` without DAG overhead.
 5. **Design Grilling (`grill-me`)**:
    - When encountering unstated architectural choices or trade-offs, execute structured interview rounds:
@@ -76,30 +76,30 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 
 | Route | Use when | Execution Sequence | Typical Skills |
 |---|---|---|---|
-| `direct-answer` | Read-only questions, documentation lookup, simple status | `orchestrator` | `orchestrator` |
+| `direct-answer` | Read-only questions, documentation lookup, simple status | `orchestrator` | none |
 | `discovery` | Indexes the agentic environment: skills dictionary, run/test info, minimal governance, and quick index refresh | `orchestrator -> discovery -> orchestrator` | `discovery` |
 | `investigate` | Diagnosis, root-cause audit without immediate file edits | `orchestrator -> investigate -> orchestrator` | `investigate`, `context-distiller` |
 | `decision-map` | Multi-session destination whose decision frontier is not yet specifiable as an implementation DAG | `orchestrator -> investigate/human input -> planner (one decision) -> orchestrator` | `planner`, `investigate`, `grill-me`, `spike-prototype` |
 | `spike` | Bounded experiment to reduce material technical uncertainty | `orchestrator -> investigate (spike) -> orchestrator` | `spike-prototype`, `investigate` |
-| `direct-change` | Clear, reversible change, data/artifact generation (Excel, CSV, reports), docs, or low-risk fix | `orchestrator -> implement -> (auto-approval / reviewer) -> orchestrator` | `implement` |
-| `fast-tdd` | Localized functional unit with deterministic oracle | `orchestrator -> implement -> (auto-approval / reviewer) -> orchestrator` | `fast-tdd`, `ast-impact-analysis` |
-| `hotfix` | Urgent production or service containment | `orchestrator -> implement -> (auto-approval / reviewer) -> orchestrator` | `hotfix-triage`, `implement` |
+| `direct-change` | Clear, reversible change, data/artifact generation (Excel, CSV, reports), docs, or low-risk fix | `orchestrator -> implement -> approval per review matrix -> orchestrator` | `implement` |
+| `fast-tdd` | Localized functional unit with deterministic oracle | `orchestrator -> implement -> approval per review matrix -> orchestrator` | `fast-tdd`, `ast-impact-analysis` |
+| `hotfix` | Urgent production or service containment | `orchestrator -> implement -> approval per review matrix -> orchestrator` | `hotfix-triage`, `implement` |
 | `ops-task` | Standalone DB script, SQL migration, stored procedure, or direct infrastructure command | `orchestrator -> implement -> (auto-approval / reviewer) -> orchestrator` | `implement` |
 | `sdd-lite` | Moderate risk, single domain, multi-file feature | `orchestrator -> planner -> implement minions (parallel waves) -> reviewer -> orchestrator` | `planner`, `parallel-dispatch`, `implement`, `reviewer` |
-| `sdd-full` | High risk, cross-domain, public API, security, migration | `orchestrator -> investigate -> planner -> implement minions (parallel waves) -> dual reviewer -> orchestrator` | Full SDD skill suite, `parallel-dispatch` |
+| `sdd-full` | High risk, cross-domain, public API, security, migration | `orchestrator -> investigate -> planner -> implement minions (parallel waves) -> reviewer -> orchestrator` | Full SDD skill suite, `parallel-dispatch` |
 
-| `review` | Dedicated independent audit of an existing diff or branch | `orchestrator -> reviewer -> orchestrator` | `code-review-adversary`, `mutation-testing` |
+| `review` | Dedicated independent audit of an existing diff or branch | `orchestrator -> reviewer -> orchestrator` | `code-review-adversary` |
 | `retrospective` | Repeated evidenced failure, exhausted durable attempts, or explicit workflow analysis | `orchestrator -> investigate (retrospective) -> orchestrator` | `workflow-retrospective`, `investigate` |
 
 ### Pragmatic Execution & Anti-Overengineering Invariants
-1. **Zero-Redundancy Transition**: When the user explicitly authorizes executing or applying a change/script that was already investigated in the preceding turn (e.g. "aplícalo en la bd test"), proceed DIRECTLY to `implement`. Never dispatch a redundant `investigate` pass to re-verify protocols or re-diagnose.
+1. **Zero-Redundancy Transition**: When the user explicitly authorizes executing or applying a change/script that was already investigated in the preceding turn (e.g. "apply it to the test database"), proceed DIRECTLY to `implement`. Never dispatch a redundant `investigate` pass to re-verify protocols or re-diagnose.
 2. **Targeted Inspection Budget**: When `investigate` is tasked with verifying a specific artifact (SP, table, single file), enforce a strict budget of $\le 5$ tool calls, query only the direct target, and bypass full AST re-ingestion, broad repo `grep`, or caller traversal.
-3. **Decoupled Working Tree for Operational/DB Tasks**: Operational/database tasks (`allowed_files: []`) verify live external targets (procedure existence, signature, body, test queries). Reviewers must NOT fail or halt on pre-existing unrelated git modifications.
+3. **Decoupled Working Tree for Operational/DB Tasks**: Read-only verification of live external targets (procedure existence, signature, body, test queries) carries `allowed_files: []` and routes to `investigate` or `reviewer`; an `ops-task` that authors or runs a script leases that script. Reviewers must NOT fail or halt on pre-existing unrelated git modifications.
 4. **Declarative Configuration Verification vs Synthetic Engines**: For declarative configs (Docker/Compose, YAML, JSON, `.dockerignore`, `.env*`), verification must test syntax validity, target keys/values, or real execution behavior using standard parsers or CLI commands. Agents MUST NEVER build ad-hoc shell lexers, custom grammar parsers, or complex AST tokenizers to inspect declarative files. Single-file declarative or infrastructure edits must route to `ops-task` or `direct-change`, never escalating to full SDD.
 5. **Reviewer Proportionality & Reality Anchor (Anti-Nitpicking)**: Reviewers MUST anchor all findings directly to actual repository code, declared contract requirements, and real execution risks. A reviewer MUST NEVER issue a `BLOCKER` or `FAIL` verdict based on hypothetical inputs to internal test helpers or mocks when the actual repository code and specified contracts do not contain those inputs. Discrepancies on uncalled or unrealistic helper branches (e.g. tabs vs spaces in synthetic shell parsers, unquoted strings never emitted by config, unreached edge cases in test assertions) are strictly `NIT` or `WARNING`, NEVER a blocker.
 6. **Anti-Decomposition of Pure-Test & Tooling Tasks**: Tasks whose `allowed_files` consist purely of tests or test scaffolding (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks, fixtures) MUST NOT undergo DAG decomposition upon failure. If a pure-test or test-helper task fails review or verification, the implementer or planner must simplify or fix the test assertion directly, prune invalid/unrealistic mock assumptions, or revert to a standard CLI oracle. Never decompose a test into more tests.
 7. **Adaptive Review & Proportional Auto-Approval Policy (Case Matrix)**: The orchestrator evaluates the task kind before deciding whether an independent `reviewer` subagent is required.
-   - Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §2.7a
+   - Digest — normative source: ~/.cortex-ia/opencode/contracts/cortex-work-protocol.md §2.7a
    - Case 1 Data & Generated Artifacts (`.xlsx`, `.csv`, `.pdf`, `.parquet`, `.json` fixtures, images, charts, reports): artifact-generation proof; MANDATORY orchestrator auto-approval; NEVER dispatch `reviewer`.
    - Case 2 Pure Documentation & Text (`*.md`, `docs/**`, instructions, comments, specs): markdown/format verification; MANDATORY orchestrator auto-approval regardless of LOC; do NOT dispatch `reviewer`.
    - Case 3 Declarative Configuration & Styling (`.gitignore`, `.dockerignore`, CSS/themes, non-security JSON/YAML): parser validation; orchestrator auto-approval on clean syntax; dispatch `reviewer` only if security-sensitive.
@@ -115,7 +115,7 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 
 ## 3. SDD Lifecycle & Preflight Gate
 
-Before any `decision-map`, Lite, or Full phase, apply the phase/plane routing matrix embedded natively in the `orchestrator` role. It routes artifacts and validation through `cortex-convention.md`; decision-map creates no board/tasks in any plane. The following DAG lifecycle starts only after validated Lite/integrated or Full/tasks planning.
+Before any `decision-map`, Lite, or Full phase, apply the phase/plane routing matrix in the workflow map contract (`workflow-map.md`). It routes artifacts and validation through `cortex-convention.md`; decision-map creates no board/tasks in any plane. The following DAG lifecycle starts only after validated Lite/integrated or Full/tasks planning.
 
 Canonical workflow-map digests (normative source: `workflow-map.md`; pointers only, never restated):
 - **Spec-plane repositioning** — § Spec-plane repositioning.
@@ -129,8 +129,8 @@ Phase 4's independent-checks step includes reviewer verification of the implemen
 
 ### Review Workload Guard & Stacked Units
 - **Workload LOC budget (digest)**: `strict` (source logic <= 350/250 LOC Go-family/TS-family) → blocked + atomic decomposition, `flexible` (source logic <= 700/500 LOC) → non-blocking advisory, `unbounded` → pre-transition diff checks bypassed; test/fixture ceilings and the declarative data/schema exemption are canonical in the §4 table.
-  - Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §4
-- **Pre-Transition Workload Preflight**: Implementers MUST categorize churn with `git diff --numstat` against the active `workload_policy` budget before calling `cortex_ia_work_transition({ to: "in_review" })`, and follow that tier's over-budget behavior (`strict` → `blocked`; `flexible` → advisory; `unbounded` → bypassed). For fast-TDD-eligible code tasks, the preflight also requires the mutation evidence defined by the Mutation Evidence Gate (`cortex-work-protocol.md` §4/§8); a `SURVIVED` outcome blocks the transition until the covering test is strengthened.
+  - Digest — normative source: ~/.cortex-ia/opencode/contracts/cortex-work-protocol.md §4
+- **Pre-Transition Workload Preflight**: Implementers MUST categorize churn with `git diff --numstat` against the active `workload_policy` budget before calling `cortex_ia_work_transition({ to: "in_review", revision: <n> })`, and follow that tier's over-budget behavior (`strict` → `blocked`; `flexible` → advisory; `unbounded` → bypassed). For fast-TDD-eligible code tasks, the preflight also requires the mutation evidence defined by the Mutation Evidence Gate (`cortex-work-protocol.md` §4/§8); a `SURVIVED` outcome blocks the transition until the covering test is strengthened.
 - **Anti-Revision Loop Circuit Breaker**: If a task accumulates **two (2) consecutive review FAIL verdicts**, the orchestrator MUST NOT re-dispatch an implementer on the same monolithic task node. It MUST route the task to `planner` with `phase: "decompose"` for atomic decomposition into stacked units (<= 250 LOC). **Exception**: Pure-test or tooling tasks (`allowed_files` purely tests) MUST NOT be decomposed; fix or simplify the test assertions directly.
 - **In-Memory Immutability & Contract Preservation Invariants**:
   - Multi-record/batch validation must operate on defensive copies or without mutating caller-owned structs/pointers in-place prior to whole-request validation.
@@ -188,7 +188,7 @@ An implementation minion is an ephemeral instance of `implement`. It owns strict
 ```
 
 ### Minion Completion Summary & Transition
-Workers execute the transition tool (`cortex_ia_work_transition({ to: "in_review" })`) and return a concise summary:
+Workers execute the transition tool (`cortex_ia_work_transition({ to: "in_review", revision: <n> })`) and return a concise summary:
 ```markdown
 ### Implementation Summary
 - **Task**: task-auth-001
@@ -202,7 +202,7 @@ Workers execute the transition tool (`cortex_ia_work_transition({ to: "in_review
   - `go test -v ./internal/auth/...` (exit 0)
 ```
 
-Per-spec verdict round-trip (digest): when an envelope carries S#/REQ IDs verbatim, the receipt returns exactly one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`; executable results override worker verdicts on conflict. Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §8.1 Per-spec verdict protocol.
+Per-spec verdict round-trip (digest): when an envelope carries S#/REQ IDs verbatim, the receipt returns exactly one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`; executable results override worker verdicts on conflict. Digest — normative source: ~/.cortex-ia/opencode/contracts/cortex-work-protocol.md §8.1 Per-spec verdict protocol.
 
 ---
 
@@ -252,15 +252,8 @@ Mandatory per-session rules:
 - **Never persist tokens or noise**: claim/lease tokens, secrets, diff hashes, lease states, and routine progress notes never enter Cortex; `cortex_save_rule` is reserved for permanent governance directives, not ephemeral notes.
 - **Single stable session & board**: exactly one session ID and one board ID per initiative; never spawn derivative boards, and decompose blocked tasks in place.
 - **Orchestrator-only session lifecycle**: only the orchestrator calls `cortex_session_start` / `cortex_session_summary` / `cortex_session_end`; subagents never do.
-- **AST & rules discipline**: ingest with the absolute workspace root, and `reviewer` runs `cortex_detect_cycles` before emitting `PASS`.
+- **AST & rules discipline**: ingest with the absolute workspace root, and `reviewer` runs `cortex_detect_cycles` before emitting `PASS` for code tasks.
 
 Reference skill: `cortex-protocol` (`autoinvoke: false`; load explicitly when applying the Cortex protocol).
 
 > OpenCode v2 knowledge index and workflow diagrams moved to the `opencode2-knowledge` skill (`autoinvoke: false`; load explicitly when researching OpenCode v2).
-
----
-
-## 9. Repository Hygiene Digests (pointer-only)
-
-- **Ratchets (advisory)**: dead-code and refusal-string drift are pinned to baselines under `.cortex-ia/ratchet/` and compared by `scripts/ratchet-deadcode.sh` and `scripts/ratchet-refusals.sh`; both run advisory-only in `.github/workflows/ratchets.yml` (`continue-on-error: true`) and never block a merge.
-- **Dated audits & evidence**: in-repo reports live under `docs/audits/<YYYY-MM-DD>-<topic>.md` and `docs/evidence/`, carrying a two-way reference rule against their Cortex observations; see `docs/audits/README.md` and `docs/evidence/README.md`.

@@ -1,6 +1,6 @@
 ---
 name: mutation-testing
-description: Inject syntactic and semantic faults into delivered code to verify whether test suites are genuine verifiers or shallow 'vibe tests'.
+description: Inject syntactic and semantic faults into delivered code to verify whether test suites are genuine verifiers or shallow 'vibe tests'. Use when judging whether tests would catch real behavior changes.
 license: MIT
 metadata:
   author: OpenCode Engine

@@ -1,6 +1,6 @@
 ---
 name: parallel-dispatch
-description: Detect and execute independent task groups concurrently in OpenCode background subagents when dependencies are satisfied and allowed_files are disjoint.
+description: Detect and execute independent task groups concurrently in OpenCode background subagents when dependencies are satisfied and allowed_files are disjoint. Use when several ready tasks could run at the same time.
 license: MIT
 metadata:
   author: lleontor705
@@ -80,7 +80,7 @@ task({ subagent_type: "implement", prompt: envelopeTask2, background: true });
 1. **Reactive Completion:**
    Do not poll in a sleep loop. The orchestrator receives completion notifications automatically as each background subagent finishes and transitions its task to `in_review`.
 2. **Adaptive Verification & Approval:**
-   Apply the §2.7a Adaptive Review Case Matrix (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §2.7a) to choose between orchestrator auto-approval (`cortex_ia_work_approve({ task_id, verdict: "PASS", evidence: ... })`) and independent `reviewer` dispatch.
+   Apply the §2.7a Adaptive Review Case Matrix (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §2.7a) to choose between orchestrator auto-approval (`cortex_ia_work_approve({ task_id, verdict: "PASS", revision: <n>, evidence: ... })`) and independent `reviewer` dispatch.
 3. **Atomic DAG Unlocking:**
    Upon reviewer or auto-approval `PASS`, SQLite atomically:
    - Marks the task `done`.

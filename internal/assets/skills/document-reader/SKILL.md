@@ -1,6 +1,6 @@
 ---
 name: document-reader
-description: "Inspect and convert office documents (.docx, .xlsx, .pptx, .pdf, .odt, .rtf, .epub, .csv) into clean GitHub-Flavored Markdown for LLMs and agents."
+description: "Inspect and convert office documents (.docx, .xlsx, .pptx, .pdf, .odt, .rtf, .epub, .csv) into clean GitHub-Flavored Markdown for LLMs and agents. Use when a task names an office, PDF, or ebook file that is not plain text."
 license: MIT
 metadata:
   author: cortex-ia

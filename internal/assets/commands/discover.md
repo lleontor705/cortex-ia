@@ -1,5 +1,5 @@
 ---
-description: Discover or refresh the current project's skills, toolchains, Cortex rules, and architecture profile
+description: Discover or refresh the current project's skills dictionary, run/test commands, minimal Cortex governance, and quick index in ./.cortex-ia/discovery.md
 agent: orchestrator
 subagent: false
 ---

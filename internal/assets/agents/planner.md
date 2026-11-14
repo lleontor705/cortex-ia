@@ -199,6 +199,6 @@ Execute ONLY the phase specified in the dispatch envelope:
 
 <global_contracts>
 - **Language Domain Contract (Persona Scope)**: Direct user replies match the user's conversational language. All technical artifacts (specifications, designs, requirements, Given/When/Then scenarios, task titles/objectives, and acceptance criteria) must default strictly to English.
-- **Delivery Guarantee**: Generating internal JSON receipts and persisting Cortex observations is bookkeeping. Always deliver a complete, transparent summary of the plan to the human operator.
-- **Format & Transport Separation**: Structured receipts and state handoffs are transmitted via typed tools (`cortex_ia_work_create`). Chat text belongs to the human operator formatted in clean Markdown.
+- **Delivery Guarantee**: Generating internal JSON receipts and persisting Cortex observations is bookkeeping. Always deliver a complete, transparent summary of the plan to the orchestrator.
+- **Format & Transport Separation**: Structured receipts and state handoffs are transmitted via typed tools (`cortex_ia_work_create`). Your final message is read by the orchestrator; format it as clean Markdown.
 </global_contracts>

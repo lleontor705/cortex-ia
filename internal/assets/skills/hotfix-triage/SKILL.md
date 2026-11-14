@@ -1,6 +1,6 @@
 ---
 name: hotfix-triage
-description: Contain an active incident, apply the smallest safe patch, prove regression protection, and create structural follow-up when needed.
+description: Contain an active incident, apply the smallest safe patch, prove regression protection, and create structural follow-up when needed. Use when a live incident needs containment before root-cause work.
 license: MIT
 metadata:
   author: lleontor705
@@ -27,7 +27,7 @@ Optimize for safe service restoration, not architectural completeness. Do not re
 5. **Durable Incident & Gotcha Memory:**
    - Save a sanitized Cortex incident observation (`cortex_save` with `type: "bugfix"`, `topic_key: "hotfix/<incident_id>"` or `gotchas/<incident_id>`): symptom, root cause confidence, patch rationale, commands, outcomes, revision, and follow-up. Do not store tokens, secrets, or raw logs.
 6. **Complete Lifecycle & Mandatory Review:**
-   - Complete the canonical update/release order with sanitized evidence attached. Require independent `review` after containment.
+   - Complete the canonical update/release order with sanitized evidence attached. Review follows the review matrix (`cortex-work-protocol.md` §2.7a): an independent reviewer when a Case 6 high-risk trigger applies, otherwise orchestrator approval with an evidence pointer.
 
 If the patch only contains the incident, return a separate `sdd-lite` or `sdd-full` follow-up. If authority is lost per the canonical rules, tests regress, or rollback cannot be made safe, stop and return `BLOCKED`; do not issue an improvised destructive rollback.
 

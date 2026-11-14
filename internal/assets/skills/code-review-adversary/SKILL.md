@@ -1,6 +1,6 @@
 ---
 name: code-review-adversary
-description: Independently audit a change for correctness, security, regression, concurrency, performance, and contract compliance without editing.
+description: Independently audit a change for correctness, security, regression, concurrency, performance, and contract compliance without editing. Use when an independent reviewer must verify a completed change.
 license: MIT
 metadata:
   author: lleontor705
@@ -60,35 +60,18 @@ The read-only bar is absolute: never write tests, never mutate files via `sed`/b
 - **On PASS**: Record durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`, `topic_key: "architecture/<module>"` and link with `cortex_relate`). NEVER use `cortex_save_rule` for review findings, task completions, or worktree maintenance.
 - Never store secrets found during review, raw output, or work-control authority tokens.
 
-```json
-{
-  "workflow": "review",
-  "phase_status": "success | partial | failed | blocked",
-  "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
-  "lens_verdicts": {
-    "functional_and_structural": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
-    "resilience_and_security": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
-    "architecture_and_discovery": "PASS | FAIL | BLOCKED | INCONCLUSIVE"
-  },
-  "findings": [
-    {
-      "lens": "functional_and_structural | resilience_and_security | architecture_and_discovery",
-      "severity": "BLOCKER | WARNING | NIT",
-      "rule_or_requirement": "",
-      "file": "",
-      "line": null,
-      "evidence": "",
-      "impact": "",
-      "remediation": ""
-    }
-  ],
-  "checks": [{"command": "", "exit_code": 0, "result": ""}],
-  "artifact_refs": [],
-  "evidence_refs": [],
-  "limitations": [],
-  "risks": [],
-  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
-}
-```
+Return the receipt as a Markdown list of `field: value` lines (not JSON), with these fields:
+
+- workflow: review
+- phase_status: success | partial | failed | blocked
+- verification_verdict: PASS | FAIL | BLOCKED | INCONCLUSIVE
+- lens_verdicts: functional_and_structural, resilience_and_security, and architecture_and_discovery, each `PASS | FAIL | BLOCKED | INCONCLUSIVE`
+- findings: list; each item has lens (functional_and_structural | resilience_and_security | architecture_and_discovery), severity (BLOCKER | WARNING | NIT), rule_or_requirement, file, line, evidence, impact, and remediation
+- checks: list; each item has command, exit_code, and result
+- artifact_refs: <list>
+- evidence_refs: <list>
+- limitations: <list>
+- risks: <list>
+- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective
 
 PASS requires all 3 lenses to pass, zero blockers, and successful mandatory evidence. FAIL means observed non-compliance. BLOCKED means a required prerequisite is absent. INCONCLUSIVE means a lens or mandatory verification ran only partially.

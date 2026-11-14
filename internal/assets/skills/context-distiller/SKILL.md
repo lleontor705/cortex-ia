@@ -1,6 +1,6 @@
 ---
 name: context-distiller
-description: Condense verbose shell output, compiler diagnostics, and test traces into compact, structured evidence for Cortex and receipts.
+description: Condense verbose shell output, compiler diagnostics, and test traces into compact, structured evidence for Cortex and receipts. Use when raw logs or traces would flood context.
 license: MIT
 metadata:
   author: OpenCode Engine
@@ -15,7 +15,7 @@ Use this skill to prevent context pollution and attention degradation (*Lost-in-
 1. **Never Dump Full STDOUT:** Never paste 100+ lines of raw build/test logs into Cortex observations or typed receipts.
 2. **Retain Exact Failure Locality:** Preserve file path, line number, column, exception class, and exact error message.
 3. **Filter Third-Party Noise:** Strip runtime internals from external dependencies (e.g. `node_modules/`, `site-packages/`, standard library internals) unless directly related to the defect.
-4. **Capture Deterministic Metrics:** Record command line, exit code, execution duration, test count passed/failed, and git diff hash.
+4. **Capture Deterministic Metrics:** Record command line, exit code, execution duration, and test count passed/failed.
 
 ## 2. Extraction Templates
 
@@ -25,14 +25,16 @@ Transform:
 [Raw 80 lines of TypeScript errors...]
 ```
 Into:
-```json
-{
-  "kind": "linter_error",
-  "file": "src/services/auth.ts",
-  "line": 42,
-  "code": "TS2345",
-  "message": "Argument of type 'string | null' is not assignable to parameter of type 'string'."
-}
+```xml
+<failure_trace>
+  <target_file>src/services/auth.ts</target_file>
+  <location>line 42</location>
+  <error_code>TS2345</error_code>
+  <minimal_repro>npx tsc --noEmit</minimal_repro>
+  <diagnostic_snippet>
+    Argument of type 'string | null' is not assignable to parameter of type 'string'.
+  </diagnostic_snippet>
+</failure_trace>
 ```
 
 ### Test Suite Execution Output

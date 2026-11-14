@@ -1,6 +1,6 @@
 ---
 name: investigate
-description: Produce a bounded evidence-backed diagnosis, architecture assessment, migration analysis, workflow retrospective, or input to SDD without production edits.
+description: Produce a bounded evidence-backed diagnosis, architecture assessment, migration analysis, workflow retrospective, or input to SDD without production edits. Use when a question needs read-only evidence before any change.
 license: MIT
 metadata:
   author: lleontor705
@@ -72,30 +72,28 @@ If evidence is missing, return `partial` or `blocked`, not an unqualified conclu
 
 ## Output
 
-```json
-{
-  "receipt_version": "2.0",
-  "workflow": "investigate",
-  "phase": "diagnose | assess | retrospective | spike",
-  "spec_plane": null,
-  "task_id": null,
-  "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
-  "summary": "",
-  "phase_status": "success | partial | failed | blocked",
-  "topic": "",
-  "facts": [],
-  "inferences": [],
-  "root_cause": null,
-  "reproduction_command": null,
-  "reproduction_verdict": "RED | GREEN | UNAVAILABLE | NOT_APPLICABLE",
-  "hypotheses": [],
-  "approaches": [],
-  "recommendation": "",
-  "artifact_refs": [],
-  "evidence_refs": [],
-  "limitations": [],
-  "risks": [],
-  "confidence": "high | medium | low",
-  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
-}
-```
+Return the receipt as a Markdown list of `field: value` lines (not JSON), with these fields:
+
+- receipt_version: 2.0
+- workflow: investigate
+- phase: diagnose | assess | retrospective | spike
+- spec_plane: null
+- task_id: null
+- verification_verdict: PASS | FAIL | BLOCKED | INCONCLUSIVE
+- summary: <text>
+- phase_status: success | partial | failed | blocked
+- topic: <text>
+- facts: <list>
+- inferences: <list>
+- root_cause: null
+- reproduction_command: null
+- reproduction_verdict: RED | GREEN | UNAVAILABLE | NOT_APPLICABLE
+- hypotheses: <list>
+- approaches: <list>
+- recommendation: <text>
+- artifact_refs: <list>
+- evidence_refs: <list>
+- limitations: <list>
+- risks: <list>
+- confidence: high | medium | low
+- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective

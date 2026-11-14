@@ -1,6 +1,6 @@
 ---
 name: ast-impact-analysis
-description: Map code dependencies, AST call-graphs, and impacted test suites to execute targeted oracles during Fast-TDD and direct changes.
+description: Map code dependencies, AST call-graphs, and impacted test suites to execute targeted oracles during Fast-TDD and direct changes. Use before costly test runs or interface changes.
 license: MIT
 metadata:
   author: OpenCode Engine

@@ -4,4 +4,4 @@ agent: orchestrator
 subagent: false
 ---
 
-Run Cortex structural code analysis (`cortex code graph`, `cortex code blast-radius <target>`, `cortex code cycles`, `cortex code architecture`, or `cortex code search <query>`). Report detailed call hierarchy and impact analysis: $ARGUMENTS
+Dispatch the native `investigate` subagent to run Cortex structural code analysis (`cortex code graph`, `cortex code blast-radius <target>`, `cortex code cycles`, `cortex code architecture`, or `cortex code search <query>`). Have it report detailed call hierarchy and impact analysis: $ARGUMENTS

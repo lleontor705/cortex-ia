@@ -1,6 +1,6 @@
 ---
 name: spike-prototype
-description: Run a disposable time-bounded technical, logic/state, or UI experiment to answer one named uncertainty without producing production code.
+description: Run a disposable time-bounded technical, logic/state, or UI experiment to answer one named uncertainty without producing production code. Use when one uncertainty must be answered by a throwaway experiment.
 license: MIT
 metadata:
   author: lleontor705
