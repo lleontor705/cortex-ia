@@ -201,7 +201,7 @@ func TestUpgradeScreen_Keybindings(t *testing.T) {
 
 func TestUpgradeScreen_HomeBadge(t *testing.T) {
 	home := t.TempDir()
-	m := sized(newModel(&fakeService{}, home, "v0.4.50"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, home, "v0.4.50"))
 
 	if b := m.upgradeBadge(); b != "" {
 		t.Fatalf("expected empty badge initially, got %q", b)

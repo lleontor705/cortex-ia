@@ -65,6 +65,9 @@ func runCLI(args []string) error {
 	case "ledger":
 		return runLedger(rest)
 
+	case "hook":
+		return runHook(rest)
+
 	case "ui":
 		return runUI(rest)
 
@@ -224,11 +227,41 @@ func enableDebugLogging(args []string) {
 	stateHome, err := cortexStateHome()
 	if err != nil {
 		logging.Enable("")
-		logging.Debugf("cortex-ia invocation args=%q version=%s state_home=<unresolved: %v>", args, Version, err)
+		logging.Debugf("cortex-ia invocation args=%q version=%s state_home=<unresolved: %v>", redactArgs(args), Version, err)
 		return
 	}
 	logging.Enable(stateHome)
-	logging.Debugf("cortex-ia invocation args=%q version=%s state_home=%s", args, Version, stateHome)
+	logging.Debugf("cortex-ia invocation args=%q version=%s state_home=%s", redactArgs(args), Version, stateHome)
+}
+
+// redactArgs returns a copy of args with authority flag values replaced, so the
+// debug log never persists claim, lease, or authority secrets. The "@stdin"
+// marker is not a secret and stays visible.
+func redactArgs(args []string) []string {
+	const redacted = "<redacted>"
+	out := make([]string, len(args))
+	copy(out, args)
+	for i := 0; i < len(out); i++ {
+		name, value, hasEquals := strings.Cut(out[i], "=")
+		if !isSensitiveFlag(name) {
+			continue
+		}
+		if hasEquals {
+			if value != "@stdin" {
+				out[i] = name + "=" + redacted
+			}
+			continue
+		}
+		if i+1 < len(out) && out[i+1] != "@stdin" {
+			out[i+1] = redacted
+			i++
+		}
+	}
+	return out
+}
+
+func isSensitiveFlag(name string) bool {
+	return strings.HasPrefix(name, "--") && (strings.HasSuffix(name, "-token") || name == "--authority")
 }
 
 // retiredCommands are removed legacy surfaces. They fail clearly instead of
@@ -249,7 +282,6 @@ var retiredCommands = map[string]bool{
 	"profile":        true,
 	"delegate":       true,
 	"herdr":          true,
-	"hook":           true,
 }
 
 // retiredFlagPrefixes are removed legacy flags. Any argument starting with
@@ -304,7 +336,8 @@ Usage:
   cortex-ia                          Launch the interactive TUI
   cortex-ia install [--target <list>] [--dry-run] [--overwrite] [--theme]
                                       Install the assets and plugins for
-                                      the specified targets (opencode, claude, all)
+                                      the specified targets (opencode | claude | agy | all;
+                                      default opencode)
   cortex-ia sync [--target <list>] [--dry-run] [--overwrite]
                                       Reconcile an installed home with the
                                       current asset set for targets
@@ -324,6 +357,9 @@ Usage:
                                       without modifying the config file
   cortex-ia mcp remove <name> [--dry-run]
                                       Deregister a managed MCP entry
+  cortex-ia mcp serve --host <claude|agy>
+                                      Stdio MCP server for host bundles (invoked by
+                                      the host, not by users)
   cortex-ia model list [--json]       List agents with their effective models,
                                       variants, sources, and ownership
   cortex-ia model get <agent> [--json]
@@ -369,6 +405,8 @@ Usage:
   cortex-ia report error|send|config|flush|status
                                       Report errors or manage reporting configuration
   cortex-ia stats [--json]            Print bounded read-only usage statistics
+  cortex-ia hook pre-tool --host <claude|agy> [--role <role>]
+                                      host pre-tool guard (invoked by Claude Code / agy hooks, not by users)
   cortex-ia doctor                   Assess installation health (read-only)
   cortex-ia rollback [backup-id]|list  Restore a backup or list available backups
   cortex-ia recover [list]           List pending recovery journals (read-only)

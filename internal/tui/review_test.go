@@ -15,8 +15,9 @@ import (
 // and drains the returned plan command, so the model sits on a loaded Review screen.
 func openReview(t *testing.T, svc ServiceAPI) model {
 	t.Helper()
-	m := sized(newModel(svc, "/home/test", "vtest"))
-	m = pressDrive(t, m, "enter") // Home -> screenReview (draining planCmd)
+	m := sized(newModel(svc, &fakeHosts{}, "/home/test", "vtest"))
+	m = pressDrive(t, m, "enter") // Home -> host picker
+	m = pressDrive(t, m, "enter") // host picker -> screenReview (draining planCmd)
 	if m.screen != screenReview {
 		t.Fatalf("expected review screen, got %v", m.screen)
 	}

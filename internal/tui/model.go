@@ -33,6 +33,7 @@ const (
 	screenStats
 	screenModels
 	screenUpgrade
+	screenHostPicker
 )
 
 // productionBootScreen is the surface shipped to users: launched with zero
@@ -55,6 +56,7 @@ const (
 	confirmMCPRemove
 	confirmRollback
 	confirmCortexInstall
+	confirmHostUninstall
 )
 
 // homeEntries are the fixed Home menu actions, in display order.
@@ -124,6 +126,7 @@ type opResult struct {
 // model is the whole TUI state.
 type model struct {
 	svc     ServiceAPI
+	hosts   TargetAPI
 	homeDir string
 	version string
 
@@ -193,6 +196,11 @@ type model struct {
 	// Software upgrade screen state
 	upgrade upgradeState
 
+	// Host picker state: the Install/Uninstall checklist and the multi-host
+	// run it routes into.
+	hostPick hostPicker
+	hostRun  hostRun
+
 	// Animation state
 	logoFrame int
 }
@@ -205,14 +213,16 @@ type webErrMsg struct {
 	err error
 }
 
-// newModel builds the model bound to a service implementation.
-func newModel(svc ServiceAPI, homeDir, version string) model {
+// newModel builds the model bound to a service implementation and the host
+// adapter used for Claude Code and Antigravity.
+func newModel(svc ServiceAPI, hosts TargetAPI, homeDir, version string) model {
 	cfg, err := delegation.Load(filepath.Join(homeDir, ".config", "opencode"))
 	if err != nil {
 		cfg = delegation.NormalConfig()
 	}
 	m := model{
 		svc:           svc,
+		hosts:         hosts,
 		homeDir:       homeDir,
 		version:       version,
 		screen:        bootScreen,
@@ -266,6 +276,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onCortexInstall(msg)
 	case installMsg:
 		return m.onInstallDone(msg)
+	case hostStepMsg:
+		return m.onHostStep(msg)
 	case doctorMsg:
 		return m.onDoctorDone(msg)
 	case uninstallMsg:
@@ -338,6 +350,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateModels(msg)
 		case screenUpgrade:
 			return m.updateUpgrade(msg)
+		case screenHostPicker:
+			return m.updateHostPicker(msg)
 		}
 	}
 	return m, nil
@@ -389,30 +403,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 	m.cursor = index
 	switch index {
-	case 0: // Install / Sync → Direct to Review / Plan
-		m.screen = screenReview
-		m.wizardCursor = 0
-		m.opts = install.DefaultOptions()
-		m.opts.Version = m.version
-		m.opts.DelegationConfig = &m.delegationCfg
-		meta := state.LoadMetadataV2(m.homeDir)
-		if meta.Presence == state.PresenceV2 {
-			m.opts.Cortex = meta.Metadata.Selection.Cortex
-			m.opts.Context7 = meta.Metadata.Selection.Context7
-		}
-		m.overwrite = false
-		m.hadConflict = false
-		m.overwriteRefused = false
-		m.installMode = ""
-		m.plan = nil
-		m.planErr = nil
-		m.reviewStatus = ""
-		m.replanning = false
-		m.cortexPrompted = false
-		m.cortexInstalling = false
-		m.cortexStatus = ""
-		m.mcpCursor = 0
-		return m, planCmd(m.svc, m.reviewOptions())
+	case 0: // Install / Sync → host picker, then Review for OpenCode
+		return m.openHostPicker(false)
 	case 1: // Manage MCPs
 		m.screen = screenMCP
 		m.mcpReport = nil
@@ -442,14 +434,41 @@ func (m model) selectHomeEntry(index int) (tea.Model, tea.Cmd) {
 		return m.startRunning("Doctor", []string{"Inspect state", "Compare digests", "Assess MCPs", "Report"}, doctorCmd(m.svc))
 	case upgradeEntryIndex: // 7: Actualizar software (Upgrade)
 		return m.openUpgrade()
-	case uninstallEntryIndex: // 8: Uninstall (destructive: explicit confirmation first)
-		m.confirm = confirmState{kind: confirmUninstall}
-		return m, nil
+	case uninstallEntryIndex: // 8: Uninstall → host picker, then explicit confirmation
+		return m.openHostPicker(true)
 	case quitEntryIndex: // 9: Quit
 		m.quitting = true
 		return m, tea.Quit
 	}
 	return m, nil
+}
+
+// openInstallReview starts the OpenCode install wizard: it resets the Review
+// state and plans the current selection.
+func (m model) openInstallReview() (tea.Model, tea.Cmd) {
+	m.screen = screenReview
+	m.wizardCursor = 0
+	m.opts = install.DefaultOptions()
+	m.opts.Version = m.version
+	m.opts.DelegationConfig = &m.delegationCfg
+	meta := state.LoadMetadataV2(m.homeDir)
+	if meta.Presence == state.PresenceV2 {
+		m.opts.Cortex = meta.Metadata.Selection.Cortex
+		m.opts.Context7 = meta.Metadata.Selection.Context7
+	}
+	m.overwrite = false
+	m.hadConflict = false
+	m.overwriteRefused = false
+	m.installMode = ""
+	m.plan = nil
+	m.planErr = nil
+	m.reviewStatus = ""
+	m.replanning = false
+	m.cortexPrompted = false
+	m.cortexInstalling = false
+	m.cortexStatus = ""
+	m.mcpCursor = 0
+	return m, planCmd(m.svc, m.reviewOptions())
 }
 
 func (m model) updateWeb(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -481,6 +500,9 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "esc":
+		if m.hostRun.active {
+			return m.finishHostRun()
+		}
 		m.screen = screenHome
 		m.cursor = 0
 		return m, homeTick()
@@ -536,6 +558,9 @@ func (m model) updateReview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.replanning = true
 		return m, planCmd(m.svc, m.reviewOptions())
 	case "b", "B":
+		if m.hostRun.active {
+			return m.finishHostRun()
+		}
 		m.screen = screenHome
 		m.cursor = 0
 		return m, homeTick()
@@ -769,6 +794,8 @@ func (m model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cortexInstallCmd()
 		case confirmUninstall:
 			return m.startRunning("Uninstall", uninstallPhases, uninstallCmd(m.svc))
+		case confirmHostUninstall:
+			return m.startHostStep()
 		case confirmMCPRemove:
 			return m.startRunning("MCP remove "+arg, mcpPhases, mcpMutateCmd(m.svc, arg, false))
 		case confirmRollback:

@@ -14,13 +14,16 @@ func TestParseTargets(t *testing.T) {
 		wantErr  bool
 	}{
 		{"", []TargetID{TargetOpenCode, TargetClaude}, false},
-		{"all", []TargetID{TargetOpenCode, TargetClaude}, false},
+		{"all", []TargetID{TargetOpenCode, TargetClaude, TargetAGY}, false},
 		{"opencode", []TargetID{TargetOpenCode}, false},
 		{"claude", []TargetID{TargetClaude}, false},
+		{"claude-code", []TargetID{TargetClaude}, false},
+		{"agy", []TargetID{TargetAGY}, false},
+		{"antigravity", []TargetID{TargetAGY}, false},
 		{"opencode,claude", []TargetID{TargetOpenCode, TargetClaude}, false},
-		{"agy", nil, true},
-		{"opencode,agy", nil, true},
+		{"opencode,agy,agy", []TargetID{TargetOpenCode, TargetAGY}, false},
 		{"invalid", nil, true},
+		{"opencode,invalid", nil, true},
 	}
 
 	for _, tc := range cases {
@@ -29,9 +32,28 @@ func TestParseTargets(t *testing.T) {
 			t.Errorf("ParseTargets(%q) error = %v, wantErr %v", tc.input, err, tc.wantErr)
 			continue
 		}
-		if !tc.wantErr && len(got) != len(tc.expected) {
-			t.Errorf("ParseTargets(%q) len = %d, want %d", tc.input, len(got), len(tc.expected))
+		if tc.wantErr {
+			continue
 		}
+		if len(got) != len(tc.expected) {
+			t.Errorf("ParseTargets(%q) = %v, want %v", tc.input, got, tc.expected)
+			continue
+		}
+		for i := range got {
+			if got[i] != tc.expected[i] {
+				t.Errorf("ParseTargets(%q) = %v, want %v", tc.input, got, tc.expected)
+				break
+			}
+		}
+	}
+}
+
+func TestTargetLabel(t *testing.T) {
+	if got := TargetLabel(TargetAGY); got != "Antigravity (agy)" {
+		t.Errorf("TargetLabel(agy) = %q", got)
+	}
+	if got := len(AllTargets()); got != 3 {
+		t.Errorf("AllTargets() len = %d, want 3", got)
 	}
 }
 

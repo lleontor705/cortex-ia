@@ -33,8 +33,8 @@ func TestCortexConsentOfferedAtPlanTime(t *testing.T) {
 		return install.CortexInstallResult{}
 	})
 
-	m := sized(newModel(&fakeService{}, t.TempDir(), "v0"))
-	m = pressDrive(t, m, "1")
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, t.TempDir(), "v0"))
+	m = pressDrive(t, pressDrive(t, m, "1"), "enter") // host picker -> Review
 
 	if m.screen != screenReview {
 		t.Fatalf("screen = %v, want review", m.screen)
@@ -54,8 +54,8 @@ func TestCortexConsentDeclineIsNonFatalAndNotRepeated(t *testing.T) {
 	})
 
 	fake := &fakeService{}
-	m := sized(newModel(fake, t.TempDir(), "v0"))
-	m = pressDrive(t, m, "1")
+	m := sized(newModel(fake, &fakeHosts{}, t.TempDir(), "v0"))
+	m = pressDrive(t, pressDrive(t, m, "1"), "enter") // host picker -> Review
 	m = press(m, "n")
 
 	if m.confirm.kind != confirmNone {
@@ -84,8 +84,8 @@ func TestCortexConsentInstallReplansAndRebindsDigest(t *testing.T) {
 			return &pipeline.Plan{Digest: "digest-after-replan"}, nil
 		},
 	}
-	m := sized(newModel(fake, t.TempDir(), "v0"))
-	m = pressDrive(t, m, "1")
+	m := sized(newModel(fake, &fakeHosts{}, t.TempDir(), "v0"))
+	m = pressDrive(t, pressDrive(t, m, "1"), "enter") // host picker -> Review
 	plannedBefore := len(fake.planCalls)
 
 	updated, cmd := m.Update(key("y"))

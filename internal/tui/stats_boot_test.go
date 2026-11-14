@@ -26,7 +26,7 @@ func TestStatsBootProductionScreenLoadingFrame(t *testing.T) {
 		t.Fatalf("production boot surface = %v, want screenStats", productionBootScreen)
 	}
 
-	m := sized(newModel(&fakeService{}, t.TempDir(), "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, t.TempDir(), "vtest"))
 	if m.screen != screenStats || !m.stats.loading {
 		t.Fatalf("zero-arg boot = screen %v loading %v, want screenStats/loading", m.screen, m.stats.loading)
 	}
@@ -49,7 +49,7 @@ func TestStatsBootLoadRendersSyntheticReport(t *testing.T) {
 	statsLoadReport = func() (ocstats.Report, error) { return statsFixtureReport(), nil }
 	t.Cleanup(func() { statsLoadReport = previous })
 
-	m := sized(newModel(&fakeService{}, t.TempDir(), "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, t.TempDir(), "vtest"))
 	m = drive(t, m, m.Init())
 
 	if m.screen != screenStats || m.stats.loading || m.stats.err != nil {
@@ -75,7 +75,7 @@ func TestStatsBootDegradesOnMissingDatabase(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing-opencode.db")
 	t.Setenv("CORTEX_IA_OPENCODE_DB", missing)
 
-	m := sized(newModel(&fakeService{}, t.TempDir(), "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, t.TempDir(), "vtest"))
 	if view := m.View(); !strings.Contains(view, "Cargando") {
 		t.Fatalf("degraded boot must still render its loading frame:\n%s", view)
 	}
@@ -111,7 +111,7 @@ func TestStatsBootEscAndHotkeyReopen(t *testing.T) {
 	}
 	t.Cleanup(func() { statsLoadReport = previous })
 
-	m := sized(newModel(&fakeService{}, t.TempDir(), "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, t.TempDir(), "vtest"))
 	m = drive(t, m, m.Init())
 	m = press(m, "esc")
 	if m.screen != screenHome || m.cursor != statsEntryIndex {

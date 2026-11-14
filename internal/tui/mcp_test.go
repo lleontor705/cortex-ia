@@ -12,7 +12,7 @@ import (
 // openMCP drives Home → Manage MCPs and drains the list command.
 func openMCP(t *testing.T, svc ServiceAPI) model {
 	t.Helper()
-	m := sized(newModel(svc, "/home/test", "vtest"))
+	m := sized(newModel(svc, &fakeHosts{}, "/home/test", "vtest"))
 	m = press(m, "down") // cursor 1: Manage MCPs
 	m = pressDrive(t, m, "enter")
 	if m.screen != screenMCP {

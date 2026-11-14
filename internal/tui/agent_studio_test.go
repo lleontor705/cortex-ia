@@ -22,7 +22,7 @@ func initStudioTest(t *testing.T, initial string) (model, string, string, Studio
 			t.Fatalf("write initial file: %v", err)
 		}
 	}
-	m := sized(newModel(&fakeService{}, dir, "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, dir, "vtest"))
 	m = press(m, "6")
 	return m, targetDir, targetPath, arch
 }
@@ -177,7 +177,7 @@ func TestAgentStudioWriteFailureNoFalseSuccess(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, ".config"), []byte("blocker"), 0o644); err != nil {
 			t.Fatalf("failed to create blocker: %v", err)
 		}
-		m := sized(newModel(&fakeService{}, dir, "vtest"))
+		m := sized(newModel(&fakeService{}, &fakeHosts{}, dir, "vtest"))
 		m = press(m, "6")
 		m = press(m, "enter")
 		m = press(m, "enter")
@@ -198,7 +198,7 @@ func TestAgentStudioWriteFailureNoFalseSuccess(t *testing.T) {
 			t.Fatalf("failed to create directory target: %v", err)
 		}
 
-		m := sized(newModel(&fakeService{}, dir, "vtest"))
+		m := sized(newModel(&fakeService{}, &fakeHosts{}, dir, "vtest"))
 		m = press(m, "6")
 		m = press(m, "enter") // Step 0 -> Step 1
 		m = press(m, "enter") // Step 1 -> Step 3

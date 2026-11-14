@@ -267,10 +267,7 @@ func (m model) onInstallDone(msg installMsg) (tea.Model, tea.Cmd) {
 		}
 		res.detail = append(res.detail, "error: "+msg.err.Error())
 	}
-	m.result = res
-	m.resultScroll = 0
-	m.screen = screenResult
-	return m, nil
+	return m.finishOpStep(res)
 }
 
 func receiptHasSeparateFailure(receipt *install.InstallReceipt) bool {
@@ -406,10 +403,7 @@ func (m model) onUninstallDone(msg uninstallMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		res.detail = append(res.detail, "error: "+msg.err.Error())
 	}
-	m.result = res
-	m.resultScroll = 0
-	m.screen = screenResult
-	return m, nil
+	return m.finishOpStep(res)
 }
 
 func uninstallDetail(receipt *install.UninstallReceipt) []string {

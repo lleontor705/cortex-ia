@@ -262,7 +262,7 @@ func TestModelsDefaultPersistenceFailsClosedWithoutInstallation(t *testing.T) {
 func TestModelsScreenReachableFromHomeAndReturns(t *testing.T) {
 	var seen string
 	stubModelsLoad(t, modelsFixtureReport(), &seen)
-	m := sized(newModel(&fakeService{}, t.TempDir(), "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, t.TempDir(), "vtest"))
 
 	m = pressDrive(t, m, "m")
 	if m.screen != screenModels || seen == "" {

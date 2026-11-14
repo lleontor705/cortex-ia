@@ -1,11 +1,14 @@
-// Package tui renders the minimal OpenCode-only installation interface: a
-// five-screen Bubble Tea program (Home, Review, Running, Result, MCP Manager, Web)
-// over internal/install.Service.
+// Package tui renders the installation interface: a Bubble Tea program whose
+// Home screen leads to the host picker, Review, Running, Result, MCP Manager
+// and Web screens. OpenCode is installed through internal/install.Service;
+// Claude Code and Antigravity (agy) are installed through internal/targets
+// behind TargetAPI.
 //
 // The TUI owns no installation logic of its own. Every operation — plan,
 // install, sync, doctor, rollback, uninstall, and managed MCP add/list/remove
-// — goes through the same Service API the CLI uses; the TUI only adapts
-// keyboard input to typed requests and renders typed receipts. Destructive
+// — goes through the same Service API the CLI uses, and host installs go
+// through the targets package; the TUI only adapts keyboard input to typed
+// requests and renders typed receipts. Destructive
 // actions (overwrite, uninstall, rollback, and removal of MCP entries that
 // are not ownership-accredited) always require an explicit per-action
 // confirmation before the service is called.
@@ -29,6 +32,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/delegation"
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/internal/targets"
 )
 
 // ServiceAPI is the exact service surface the TUI consumes. It is satisfied
@@ -47,6 +51,16 @@ type ServiceAPI interface {
 	MCPRemove(name string, opts install.MCPOptions) (*install.MCPReceipt, error)
 }
 
+// TargetAPI is the host surface for Claude Code and Antigravity (agy),
+// backed by internal/targets. Its OpenCode install and uninstall are refused:
+// OpenCode always goes through ServiceAPI.
+type TargetAPI interface {
+	Detected(id targets.TargetID) bool
+	Installed(id targets.TargetID) bool
+	Install(id targets.TargetID, opts targets.ApplyOptions) (*targets.TargetResult, error)
+	Uninstall(id targets.TargetID) (*targets.TargetResult, error)
+}
+
 // Run starts the interactive TUI against the user's real home directory. The
 // entry signature is fixed by internal/app: no arguments launch the TUI.
 func Run(version string) error {
@@ -61,7 +75,7 @@ func Run(version string) error {
 	if err := MaybePromptUpdate(homeDir, version, bufio.NewReader(os.Stdin), os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "aviso de actualización: %v\n", err)
 	}
-	program := tea.NewProgram(newModel(service, homeDir, version), tea.WithAltScreen())
+	program := tea.NewProgram(newModel(service, hostTargets{home: homeDir}, homeDir, version), tea.WithAltScreen())
 	_, err = program.Run()
 	return err
 }

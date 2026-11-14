@@ -20,7 +20,7 @@ func TestHomeMenuEntries(t *testing.T) {
 	if len(homeEntries) != 10 || len(homeDescriptions) != 10 {
 		t.Fatalf("expected 10 entries and descriptions, got entries=%d descriptions=%d", len(homeEntries), len(homeDescriptions))
 	}
-	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, "/home/test", "vtest"))
 	view := m.View()
 	for _, want := range []string{
 		"Install / Sync",
@@ -60,9 +60,10 @@ func TestScreenSet(t *testing.T) {
 // TestNavigationWalksAllScreens exercises reachability of every screen with
 // plain keyboard navigation, and their return paths.
 func TestNavigationWalksAllScreens(t *testing.T) {
-	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, "/home/test", "vtest"))
 
-	// Home → Review (draining planCmd).
+	// Home → host picker → Review (draining planCmd).
+	m = pressDrive(t, m, "enter")
 	m = pressDrive(t, m, "enter")
 	if m.screen != screenReview {
 		t.Fatalf("expected review screen, got %v", m.screen)
@@ -175,16 +176,24 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 		t.Fatalf("expected esc to return home on upgrade entry, got screen=%v cursor=%d", m.screen, m.cursor)
 	}
 
-	// Uninstall opens a confirmation overlay, not the running screen.
-	// (Uninstall is entry 8; 1 down from entry 7.)
+	// Uninstall opens the host picker, then a confirmation overlay, never the
+	// running screen. (Uninstall is entry 8; 1 down from entry 7.)
 	m = press(m, "down") // cursor 8: Uninstall
 	m = press(m, "enter")
-	if m.confirm.kind != confirmUninstall || m.screen != screenHome {
-		t.Fatalf("expected uninstall confirmation on home, got screen=%v confirm=%v", m.screen, m.confirm.kind)
+	if m.screen != screenHostPicker || !m.hostPick.uninstall {
+		t.Fatalf("expected uninstall host picker, got screen=%v", m.screen)
+	}
+	m = press(m, "enter") // OpenCode is pre-checked
+	if m.confirm.kind != confirmUninstall {
+		t.Fatalf("expected uninstall confirmation, got confirm=%v", m.confirm.kind)
 	}
 	m = press(m, "n")
-	if m.confirm.kind != confirmNone || m.cursor != uninstallEntryIndex {
-		t.Fatalf("expected n to cancel confirmation with cursor at %d, got confirm=%v cursor=%d", uninstallEntryIndex, m.confirm.kind, m.cursor)
+	if m.confirm.kind != confirmNone || m.screen != screenHostPicker {
+		t.Fatalf("expected n to cancel confirmation on the picker, got screen=%v confirm=%v", m.screen, m.confirm.kind)
+	}
+	m = press(m, "esc")
+	if m.screen != screenHome || m.cursor != uninstallEntryIndex {
+		t.Fatalf("expected esc to return home on uninstall entry, got screen=%v cursor=%d", m.screen, m.cursor)
 	}
 
 	// Quit entry quits.
@@ -197,7 +206,7 @@ func TestNavigationWalksAllScreens(t *testing.T) {
 
 // TestHomeCursorBounds keeps the cursor inside the menu.
 func TestHomeCursorBounds(t *testing.T) {
-	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, "/home/test", "vtest"))
 	m = press(m, "up")
 	if m.cursor != 0 {
 		t.Fatalf("cursor above menu: %d", m.cursor)
@@ -212,7 +221,7 @@ func TestHomeCursorBounds(t *testing.T) {
 
 // TestQuitKeyQuitsFromHome verifies the global quit key.
 func TestQuitKeyQuitsFromHome(t *testing.T) {
-	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, "/home/test", "vtest"))
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	if cmd == nil {
 		t.Fatal("ctrl+c should quit")
@@ -222,10 +231,10 @@ func TestQuitKeyQuitsFromHome(t *testing.T) {
 // TestHomeNumericHotkeys verifies keys 1-9 jump directly to actions from Home,
 // and dedicated single-key hotkeys (m/M, u/U) route properly.
 func TestHomeNumericHotkeys(t *testing.T) {
-	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, "/home/test", "vtest"))
 
 	// Key '1' opens Review directly (index 0).
-	m1 := pressDrive(t, m, "1")
+	m1 := pressDrive(t, pressDrive(t, m, "1"), "enter")
 	if m1.screen != screenReview {
 		t.Fatalf("key 1 should open Review directly, got %v", m1.screen)
 	}
@@ -276,11 +285,11 @@ func TestHomeNumericHotkeys(t *testing.T) {
 		t.Fatalf("key 8 should open the upgrade screen, got %v", m8.screen)
 	}
 
-	// Key '9' opens the uninstall confirmation overlay (index 8).
+	// Key '9' opens the uninstall host picker (index 8).
 	updated9, _ := m.Update(key("9"))
 	m9 := updated9.(model)
-	if m9.confirm.kind != confirmUninstall || m9.screen != screenHome {
-		t.Fatalf("key 9 should open the uninstall confirmation, got screen=%v confirm=%v", m9.screen, m9.confirm.kind)
+	if m9.screen != screenHostPicker || !m9.hostPick.uninstall || m9.confirm.kind != confirmNone {
+		t.Fatalf("key 9 should open the uninstall host picker, got screen=%v confirm=%v", m9.screen, m9.confirm.kind)
 	}
 
 	// Dedicated hotkeys: 'm'/'M' for models and 'u'/'U' for upgrade.
@@ -298,7 +307,7 @@ func TestHomeNumericHotkeys(t *testing.T) {
 
 // TestWebReadinessEnablesBrowser proves that ready server state enables browser opening and reflects active state.
 func TestWebReadinessEnablesBrowser(t *testing.T) {
-	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, "/home/test", "vtest"))
 	m.screen = screenWeb
 
 	// Simulate readiness message
@@ -332,7 +341,7 @@ func TestWebReadinessEnablesBrowser(t *testing.T) {
 
 // TestWebStartupFailureDisablesBrowser proves that store/listen/serve startup failure disables browser opening.
 func TestWebStartupFailureDisablesBrowser(t *testing.T) {
-	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, "/home/test", "vtest"))
 	m.screen = screenWeb
 
 	// Simulate startup failure
@@ -367,7 +376,7 @@ func TestWebStartupFailureDisablesBrowser(t *testing.T) {
 
 // TestWebBrowserGatingBeforeReadiness proves that browser opening is gated before readiness reports.
 func TestWebBrowserGatingBeforeReadiness(t *testing.T) {
-	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, "/home/test", "vtest"))
 	m.screen = screenWeb
 	m.webStarting = true
 	m.webReady = false
@@ -395,7 +404,7 @@ func TestWebBrowserGatingBeforeReadiness(t *testing.T) {
 
 // TestIndeterminateProgressNoFabricatedPhases proves that long operations render an indeterminate running indicator without fabricated completion percentages.
 func TestIndeterminateProgressNoFabricatedPhases(t *testing.T) {
-	m := sized(newModel(&fakeService{}, "/home/test", "vtest"))
+	m := sized(newModel(&fakeService{}, &fakeHosts{}, "/home/test", "vtest"))
 	updated, _ := m.startRunning("Long Operation", []string{"Step One", "Step Two", "Step Three"}, nil)
 	m = updated.(model)
 

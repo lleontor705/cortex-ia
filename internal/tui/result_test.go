@@ -11,7 +11,8 @@ import (
 )
 
 func driveFromHomeToReview(t *testing.T, m model) model {
-	m = pressDrive(t, m, "enter") // Home -> Review (plan)
+	m = pressDrive(t, m, "enter") // Home -> host picker
+	m = pressDrive(t, m, "enter") // host picker -> Review (plan)
 	if m.screen != screenReview {
 		t.Fatalf("expected review screen, got %v", m.screen)
 	}
@@ -35,7 +36,7 @@ func installToResult(t *testing.T, fake *fakeService) model {
 			BackupVerified: true,
 		}, nil
 	}
-	m := sized(newModel(fake, "/home/test", "vtest"))
+	m := sized(newModel(fake, &fakeHosts{}, "/home/test", "vtest"))
 	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter") // Review → Running → Result
 	if m.screen != screenResult {
@@ -76,7 +77,7 @@ func TestResultShowsFailReceipt(t *testing.T) {
 	fake.installFn = func(install.Options) (*install.InstallReceipt, error) {
 		return nil, errors.New("apply failed; restoration verified")
 	}
-	m := sized(newModel(fake, "/home/test", "vtest"))
+	m := sized(newModel(fake, &fakeHosts{}, "/home/test", "vtest"))
 	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter")
 
@@ -115,7 +116,7 @@ func TestResultInstallUnqualifiedMCPIsVisibleFail(t *testing.T) {
 			Warnings:       []string{`MCP "forgespec" configured without valid qualification evidence`},
 		}, nil
 	}
-	m := sized(newModel(fake, "/home/test", "vtest"))
+	m := sized(newModel(fake, &fakeHosts{}, "/home/test", "vtest"))
 	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter")
 
@@ -155,7 +156,7 @@ func TestResultSyncUnqualifiedMCPIsVisibleFail(t *testing.T) {
 			Qualified:  nil,
 		}, nil
 	}
-	m := sized(newModel(fake, "/home/test", "vtest"))
+	m := sized(newModel(fake, &fakeHosts{}, "/home/test", "vtest"))
 	m.screen = screenRunning
 	m.running = runningState{title: "Sync", phases: installPhases}
 	m = drive(t, m, installRunCmd(m.svc, "sync", install.DefaultOptions()))
@@ -182,7 +183,7 @@ func TestResultInstallEmptySelectionPassesVacuously(t *testing.T) {
 	fake.installFn = func(install.Options) (*install.InstallReceipt, error) {
 		return &install.InstallReceipt{PlanDigest: "digest0001", Changed: []string{"create .config/opencode/AGENTS.md"}}, nil
 	}
-	m := sized(newModel(fake, "/home/test", "vtest"))
+	m := sized(newModel(fake, &fakeHosts{}, "/home/test", "vtest"))
 	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter")
 
@@ -230,7 +231,7 @@ func TestResultPlanDriftIsVisibleFail(t *testing.T) {
 		}
 		return nil, &pipeline.PlanDriftError{Expected: "digest0001", Observed: "drifted9999"}
 	}
-	m := sized(newModel(fake, "/home/test", "vtest"))
+	m := sized(newModel(fake, &fakeHosts{}, "/home/test", "vtest"))
 	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter")
 
@@ -272,7 +273,7 @@ func TestResultLowHeightClipsDetailsKeepsVerdict(t *testing.T) {
 		}
 		return receipt, nil
 	}
-	m := sized(newModel(fake, "/home/test", "vtest"))
+	m := sized(newModel(fake, &fakeHosts{}, "/home/test", "vtest"))
 	m = driveFromHomeToReview(t, m)
 	m = pressDrive(t, m, "enter")
 	m.height = 20
@@ -319,12 +320,13 @@ func TestUninstallRequiresConfirmationFromHome(t *testing.T) {
 			BackupID:     "bkp-uninstall",
 		}, nil
 	}
-	m := sized(newModel(fake, "/home/test", "vtest"))
+	m := sized(newModel(fake, &fakeHosts{}, "/home/test", "vtest"))
 
 	for i := 0; i < uninstallEntryIndex; i++ {
 		m = press(m, "down")
 	}
 	m = press(m, "enter")
+	m = press(m, "enter") // host picker (OpenCode pre-checked) -> confirmation
 	if m.confirm.kind != confirmUninstall || fake.uninstallCals != 0 {
 		t.Fatalf("uninstall must wait for confirmation, got confirm=%v calls=%d", m.confirm.kind, fake.uninstallCals)
 	}

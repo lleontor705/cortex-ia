@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"github.com/lleontor705/cortex-ia/internal/clidetect"
 	"github.com/lleontor705/cortex-ia/internal/install"
 	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
+	"github.com/lleontor705/cortex-ia/internal/mcpserve"
 	"github.com/lleontor705/cortex-ia/internal/pipeline"
 	"github.com/lleontor705/cortex-ia/internal/targets"
 )
@@ -59,7 +61,7 @@ func parseRunFlags(args []string, command string, allowOverwrite bool) (runFlags
 				i++
 				flags.Target = args[i]
 			} else {
-				return flags, fmt.Errorf("flag --target requires an argument (e.g. --target opencode,claude)")
+				return flags, fmt.Errorf("flag --target requires an argument (e.g. --target opencode,claude,agy)")
 			}
 		default:
 			if strings.HasPrefix(arg, "-") {
@@ -132,14 +134,9 @@ func runInstall(args []string) error {
 			if err := previewAndApply("install", flags, opts, service.Install); err != nil {
 				return err
 			}
-		case targets.TargetClaude:
-			res, err := targets.InstallClaude(service.HomeDir(), flags.DryRun)
-			if err != nil {
-				return fmt.Errorf("install Claude target: %w", err)
-			}
-			fmt.Printf("Claude target: %s\n", res.Message)
-			for _, ch := range res.Changes {
-				fmt.Printf("  %s\n", ch)
+		case targets.TargetClaude, targets.TargetAGY:
+			if err := applyHostTarget("install", target, service.HomeDir(), flags); err != nil {
+				return err
 			}
 		}
 	}
@@ -175,14 +172,9 @@ func runSync(args []string) error {
 			if err := previewAndApply("sync", flags, opts, service.Sync); err != nil {
 				return err
 			}
-		case targets.TargetClaude:
-			res, err := targets.InstallClaude(service.HomeDir(), flags.DryRun)
-			if err != nil {
-				return fmt.Errorf("sync Claude target: %w", err)
-			}
-			fmt.Printf("Claude target: %s\n", res.Message)
-			for _, ch := range res.Changes {
-				fmt.Printf("  %s\n", ch)
+		case targets.TargetClaude, targets.TargetAGY:
+			if err := applyHostTarget("sync", target, service.HomeDir(), flags); err != nil {
+				return err
 			}
 		}
 	}
@@ -340,10 +332,17 @@ func printInstallReceipt(title string, receipt *install.InstallReceipt) {
 // manager.
 func runMCP(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: cortex-ia mcp <add|adopt|list|remove> [name] [options] (see 'cortex-ia help')")
+		return fmt.Errorf("usage: cortex-ia mcp <add|adopt|list|remove|serve> [name] [options] (see 'cortex-ia help')")
 	}
 
 	switch strings.ToLower(args[0]) {
+	case "serve":
+		host, err := mcpserve.ParseServeArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		mcpserve.Version = Version
+		return mcpserve.Serve(context.Background(), host, os.Stdin, os.Stdout)
 	case "add":
 		spec, err := parseMCPAdd(args[1:])
 		if err != nil {
@@ -385,7 +384,7 @@ func runMCP(args []string) error {
 		}
 		return runMCPList(service, asJSON)
 	default:
-		return fmt.Errorf("unknown mcp action: %s (use: add, adopt, list, remove)", args[0])
+		return fmt.Errorf("unknown mcp action: %s (use: add, adopt, list, remove, serve)", args[0])
 	}
 }
 
@@ -1046,12 +1045,10 @@ func runUninstall(args []string) error {
 				fmt.Printf("  Backup: %s\n", receipt.BackupID)
 			}
 			fmt.Printf("  State removed: %v  Complete: %v\n", receipt.StateRemoved, receipt.Complete)
-		case targets.TargetClaude:
-			res, err := targets.UninstallClaude(service.HomeDir(), flags.DryRun)
-			if err != nil {
-				return fmt.Errorf("uninstall Claude target: %w", err)
+		case targets.TargetClaude, targets.TargetAGY:
+			if err := removeHostTarget(target, service.HomeDir(), flags.DryRun); err != nil {
+				return err
 			}
-			fmt.Printf("Claude target: %s\n", res.Message)
 		}
 	}
 	return nil

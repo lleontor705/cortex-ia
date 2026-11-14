@@ -11,7 +11,7 @@ import (
 
 func TestInstallEffectsTUI(t *testing.T) {
 	applyInstall := func(fake *fakeService, msg installMsg) model {
-		m := sized(newModel(fake, "/home/test", "vtest"))
+		m := sized(newModel(fake, &fakeHosts{}, "/home/test", "vtest"))
 		res, _ := m.onInstallDone(msg)
 		return res.(model)
 	}

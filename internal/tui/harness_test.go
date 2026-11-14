@@ -244,7 +244,7 @@ func TestHomeView_ResponsiveLogo(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			m := sizedAt(newModel(&fakeService{}, home, "vtest"), c.w, c.h)
+			m := sizedAt(newModel(&fakeService{}, &fakeHosts{}, home, "vtest"), c.w, c.h)
 			view := m.View()
 			plain := stripANSI(view)
 
