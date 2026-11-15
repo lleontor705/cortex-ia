@@ -26,8 +26,7 @@ internal/app/cli.go	flag --env requires a KEY=VALUE argument
 internal/app/cli.go	flag --header requires a KEY=VALUE argument
 internal/app/cli.go	flag --remote may be given only once
 internal/app/cli.go	flag --remote requires a URL argument
-internal/app/cli.go	flag --target requires an argument (e.g. --target opencode,claude)
-internal/app/cli.go	install Claude target: %w
+internal/app/cli.go	flag --target requires an argument (e.g. --target opencode,claude,agy)
 internal/app/cli.go	mcp add %q failed closed (nothing was written): %w
 internal/app/cli.go	mcp add %q: %w
 internal/app/cli.go	mcp add %q: exactly one of --preset, --local, or --remote is required (they are mutually exclusive)
@@ -42,11 +41,9 @@ internal/app/cli.go	recover %s: confirmation did not match the journal ID; refus
 internal/app/cli.go	recover %s: no confirmation was read; refusing to proceed (nothing was written)
 internal/app/cli.go	recover: %w
 internal/app/cli.go	rollback: %w
-internal/app/cli.go	sync Claude target: %w
 internal/app/cli.go	unexpected argument: %s (cortex-ia %s takes no positional arguments)
 internal/app/cli.go	unexpected argument: %s (cortex-ia recover takes 'list' or exactly one journal ID)
 internal/app/cli.go	unexpected argument: %s (cortex-ia rollback takes at most one backup ID)
-internal/app/cli.go	uninstall Claude target: %w
 internal/app/cli.go	uninstall: %w
 internal/app/cli.go	unknown argument: %s (cortex-ia mcp add supports --preset, --local, --remote <url>, --env KEY=VALUE, --header KEY=VALUE, --dry-run, and '--' before the command vector)
 internal/app/cli.go	unknown argument: %s (cortex-ia mcp list takes no arguments besides --json)
@@ -56,8 +53,8 @@ internal/app/cli.go	unknown flag: %s (cortex-ia mcp adopt supports only --dry-ru
 internal/app/cli.go	unknown flag: %s (cortex-ia mcp remove supports only --dry-run)
 internal/app/cli.go	unknown flag: %s (cortex-ia recover takes 'list' or exactly one journal ID; see 'cortex-ia recover list')
 internal/app/cli.go	unknown flag: %s (cortex-ia rollback takes an optional backup ID or 'list')
-internal/app/cli.go	unknown mcp action: %s (use: add, adopt, list, remove)
-internal/app/cli.go	usage: cortex-ia mcp <add|adopt|list|remove> [name] [options] (see 'cortex-ia help')
+internal/app/cli.go	unknown mcp action: %s (use: add, adopt, list, remove, serve)
+internal/app/cli.go	usage: cortex-ia mcp <add|adopt|list|remove|serve> [name] [options] (see 'cortex-ia help')
 internal/app/cli.go	usage: cortex-ia mcp add <name> (--preset | --local [--env KEY=VALUE]... -- <command...> | --remote <url> [--header KEY=VALUE]...) [--dry-run]
 internal/app/cli.go	usage: cortex-ia mcp adopt <name> [--dry-run] (accredits an existing entry that already equals a managed preset)
 internal/app/cli.go	usage: cortex-ia mcp remove <name> [--dry-run] (real removal is destructive and asks for interactive confirmation)
@@ -81,6 +78,14 @@ internal/app/doc.go	doc inspect requires an input file path
 internal/app/doc.go	unknown doc subcommand %q (see 'cortex-ia doc --help')
 internal/app/doc.go	usage: cortex-ia doc convert <file> [-o <out.md>] [--format <fmt>] [--max-lines <n>] [--json]
 internal/app/doc.go	usage: cortex-ia doc inspect <file> [--json]
+internal/app/hook.go	%s requires a value
+internal/app/hook.go	%w; %s
+internal/app/hook.go	--host is required
+internal/app/hook.go	open delegation database: %w
+internal/app/hook.go	read hook payload: %w
+internal/app/hook.go	stat delegation database: %w
+internal/app/hook.go	unknown hook flag %q
+internal/app/hook.go	write hook decision: %w
 internal/app/ledger.go	cortex executable not found on PATH: %w
 internal/app/ledger.go	cortex save failed: %w (output: %s)
 internal/app/ledger.go	fact text is required: cortex-ia ledger fact add <text> [--board <id>] [--sync-cortex]
@@ -104,15 +109,6 @@ internal/app/model.go	unknown model action: %s (use: list, get, set, unset, doct
 internal/app/model.go	usage: cortex-ia model get <agent> [--json]
 internal/app/model.go	usage: cortex-ia model set <agent> <provider/model[#variant]> [--effort <level>] [--json] [--dry-run]
 internal/app/model.go	usage: cortex-ia model unset <agent> [--json] [--dry-run]
-internal/app/openspec.go	OpenSpec structural validation failed
-internal/app/openspec.go	archive requires one change and --board/--workflow/--spec-plane
-internal/app/openspec.go	change directory %q already exists
-internal/app/openspec.go	change name cannot be empty
-internal/app/openspec.go	create change directory structure: %w
-internal/app/openspec.go	duplicate --json
-internal/app/openspec.go	unknown openspec subcommand %q (see 'cortex-ia openspec --help')
-internal/app/openspec.go	usage: cortex-ia openspec new <change-name> [domain]
-internal/app/openspec.go	validate requires one explicit change and --workflow/--phase
 internal/app/report.go	report %s retained in local outbox: %w
 internal/app/report.go	report error requires --code and --message
 internal/app/report.go	save telemetry config: %w
@@ -120,6 +116,9 @@ internal/app/report.go	unknown report subcommand %q (see 'cortex-ia report --hel
 internal/app/report.go	usage: cortex-ia report config [--endpoint <url>] [--secret <key>] [--enable|--disable]
 internal/app/report.go	usage: cortex-ia report error --code <code> --message <msg> [--details <text|@stdin>] [--task <id>] [--job <id>] [--source <source>]
 internal/app/stats.go	failed to load usage statistics: %w
+internal/app/targets.go	%s %s target: %w
+internal/app/targets.go	target %s is not a host bundle target
+internal/app/targets.go	uninstall %s target: %w
 internal/app/ui.go	invalid ui snapshot arguments (usage: cortex-ia ui snapshot [--project <path>])
 internal/app/ui.go	resolve TUI project: %w
 internal/app/ui.go	unknown ui command (usage: cortex-ia ui snapshot [--project <path>])
@@ -139,7 +138,8 @@ internal/app/work.go	%s requires a value
 internal/app/work.go	%v (usage: cortex-ia work %s)
 internal/app/work.go	--owner-session-inactive must be true or false
 internal/app/work.go	--project must not be empty
-internal/app/work.go	SDD workflow requires a matching --contract-file
+internal/app/work.go	--revision is required
+internal/app/work.go	AGENT_SHELL_DENIED: %s %s is not available from an agent shell; %s
 internal/app/work.go	controller authority exceeds 1 MiB
 internal/app/work.go	controller authority must contain one JSON object
 internal/app/work.go	controller renewal authority must use @stdin
@@ -148,7 +148,6 @@ internal/app/work.go	decomposition plan exceeds 64 KiB
 internal/app/work.go	decomposition plan is required
 internal/app/work.go	decomposition plan must contain exactly one JSON object
 internal/app/work.go	decomposition plan requires at least one task
-internal/app/work.go	direct workflow cannot carry an SDD contract
 internal/app/work.go	exactly one task id is required
 internal/app/work.go	invalid --older-than duration %q: %w
 internal/app/work.go	invalid --ttl duration %q
@@ -165,8 +164,7 @@ internal/app/work.go	ttl must be a duration between 1s and 24h
 internal/app/work.go	unknown --blocked-reason %q
 internal/app/work.go	unknown work create option %q
 internal/app/work.go	unknown work subcommand %q (see 'cortex-ia work --help')
-internal/app/work.go	unsupported work create workflow
-internal/app/work.go	work archive requires %s
+internal/app/work.go	unsupported work create workflow; use direct-change, fast-tdd, hotfix or ops-task
 internal/app/work.go	work create requires an id and title; see cortex-ia work create --help
 internal/app/work.go	work create requires exactly an id and title
 internal/app/work.go	work create requires one workflow
@@ -182,29 +180,6 @@ internal/app/work_revise.go	unknown work revise argument %q
 internal/app/worktree.go	unknown worktree subcommand %q (see 'cortex-ia worktree --help')
 internal/app/worktree.go	usage: cortex-ia worktree validate <worktree-path> [--repo <repo-path>] [--head <commit>]
 internal/app/worktree.go	worktree %s is retired; isolated_worktree strategy is retired; use current_workspace. Existing worktrees are preserved; use worktree list or validate for read-only inspection
-internal/delegation/archive.go	archive approval binding changed; fresh review is required
-internal/delegation/archive.go	archive bytes changed during move; prepared recovery required
-internal/delegation/archive.go	archive bytes changed since prepared intent
-internal/delegation/archive.go	archive bytes changed without a fresh approval binding
-internal/delegation/archive.go	archive contains nonregular file
-internal/delegation/archive.go	archive destination already exists or cannot be inspected
-internal/delegation/archive.go	archive destination conflicts with prepared intent
-internal/delegation/archive.go	archive directory may not traverse symbolic links
-internal/delegation/archive.go	archive exceeds 1000 entries
-internal/delegation/archive.go	archive exceeds 16 MiB
-internal/delegation/archive.go	archive path must be a real directory
-internal/delegation/archive.go	archive paths conflict with durable intent
-internal/delegation/archive.go	archive requires exactly one of source or destination to exist
-internal/delegation/archive.go	archive structural validation failed: %s: %s
-internal/delegation/archive.go	archive tree contains symbolic link
-internal/delegation/archive.go	archive tree may not traverse symbolic links
-internal/delegation/archive.go	board and valid change ID are required
-internal/delegation/archive.go	completed archive destination is missing
-internal/delegation/archive.go	invalid specification plane
-internal/delegation/archive.go	move OpenSpec change: %w
-internal/delegation/archive.go	only SDD Lite/Full initiatives can be archived
-internal/delegation/archive.go	planned task %s is not materialized in archive board
-internal/delegation/archive.go	unknown archive state
 internal/delegation/artifact_authority.go	artifact authority store unavailable
 internal/delegation/artifact_authority.go	artifact output blocked by external execution or unresolved authority
 internal/delegation/artifact_authority.go	artifact output cannot traverse a symlink
@@ -219,6 +194,8 @@ internal/delegation/artifact_authority.go	invalid artifact authority envelope
 internal/delegation/artifact_authority.go	invalid artifact path
 internal/delegation/artifact_authority.go	invalid bounded artifact authority
 internal/delegation/artifact_authority.go	standalone output cannot include controller authority
+internal/delegation/board.go	%w: board %q has active work (in_progress/in_review tasks or live claims); finish or recover it first
+internal/delegation/board.go	%w: board %q has review submissions; its audit trail is retained and the board cannot be deleted
 internal/delegation/board.go	archive task board: %w
 internal/delegation/board.go	board id and title are required
 internal/delegation/board.go	board id is required
@@ -226,6 +203,8 @@ internal/delegation/board.go	board id must not contain path separators or contro
 internal/delegation/board.go	board id, title, or description exceeds size limit
 internal/delegation/board.go	cannot archive the default task board
 internal/delegation/board.go	cannot delete the default task board
+internal/delegation/board.go	check board active work: %w
+internal/delegation/board.go	check board review submissions: %w
 internal/delegation/board.go	create task board: %w
 internal/delegation/board.go	delete board decomposition steps: %w
 internal/delegation/board.go	delete board dependencies: %w
@@ -275,7 +254,6 @@ internal/delegation/decompose.go	%w: stale decomposition revision
 internal/delegation/decompose.go	%w: task %s is %s, not blocked
 internal/delegation/decompose.go	%w: task %s is already decomposed
 internal/delegation/decompose.go	%w: task is blocked at revision %d, not %d
-internal/delegation/decompose.go	SDD decomposition requires at least one child with a writable scope when parent has writable scope
 internal/delegation/decompose.go	create decomposition definition %q: %w
 internal/delegation/decompose.go	create decomposition task %q: %w
 internal/delegation/decompose.go	decomposition requires 2-%d atomic tasks
@@ -320,40 +298,17 @@ internal/delegation/process_identity_windows.go	windows boot observation unavail
 internal/delegation/process_unix.go	external process group exit unconfirmed (including unreaped descendants)
 internal/delegation/process_windows.go	cannot find suspended external process thread: %w
 internal/delegation/process_windows.go	external process tree termination unconfirmed
-internal/delegation/spec_contract.go	%w: review refresh requires done at the observed revision
-internal/delegation/spec_contract.go	SDD change is archived; use a new change and board instead of reopening it
-internal/delegation/spec_contract.go	SDD contract exceeds 32 KiB
-internal/delegation/spec_contract.go	SDD review requires complete task definition and writable file scope
-internal/delegation/spec_contract.go	archive board contains an unbound legacy/direct task
-internal/delegation/spec_contract.go	archive board contract or workspace mismatch
-internal/delegation/spec_contract.go	archive requires at least one approved bound task
-internal/delegation/spec_contract.go	archive requires durable PASS binding
-internal/delegation/spec_contract.go	archive task %s changed after approval; fresh review required
-internal/delegation/spec_contract.go	archive task %s is not done
-internal/delegation/spec_contract.go	change has tasks outside the archive board
-internal/delegation/spec_contract.go	decode allowed files: %w
-internal/delegation/spec_contract.go	direct review requires a bounded file scope
-internal/delegation/spec_contract.go	directory fingerprint %s covers more than %d files in a workspace that is not a git work tree; narrow allowed_files or initialize git
-internal/delegation/spec_contract.go	duplicate SDD contract pin
-internal/delegation/spec_contract.go	fingerprint %s: %w
-internal/delegation/spec_contract.go	fingerprint paths must not contain symlinks
-internal/delegation/spec_contract.go	fingerprint requires explicit regular files or directories
-internal/delegation/spec_contract.go	finish active board writes and reviews before refreshing review
-internal/delegation/spec_contract.go	invalid SDD contract pin
-internal/delegation/spec_contract.go	invalid bounded SDD contract identity, pins, or requirement IDs
-internal/delegation/spec_contract.go	invalid local Cortex observation ID
-internal/delegation/spec_contract.go	invalid or duplicate SDD requirement ID
-internal/delegation/spec_contract.go	list git-tracked files for %s: %w: %s
-internal/delegation/spec_contract.go	pin transport does not match specification plane
-internal/delegation/spec_contract.go	review refresh requires a prior typed SDD approval with implementation identity
-internal/delegation/spec_contract.go	review refresh requires an SDD contract
-internal/delegation/spec_contract.go	review refresh requires an explicit positive revision
-internal/delegation/spec_contract.go	task id is required
-internal/delegation/spec_contract.go	trailing contract JSON
-internal/delegation/spec_contract.go	unsupported contract pin transport
-internal/delegation/spec_contract.go	workspace pin project mismatch
-internal/delegation/spec_contract.go	workspace specification pin changed; fresh contract review required
-internal/delegation/speckit_projector.go	speckit specification plane is retired; use openspec, cortex, or hybrid
+internal/delegation/review_binding.go	%w: review refresh requires done at the observed revision
+internal/delegation/review_binding.go	decode allowed files: %w
+internal/delegation/review_binding.go	directory fingerprint %s covers more than %d files in a workspace that is not a git work tree; narrow allowed_files or initialize git
+internal/delegation/review_binding.go	fingerprint %s: %w
+internal/delegation/review_binding.go	fingerprint paths must not contain symlinks
+internal/delegation/review_binding.go	fingerprint requires explicit regular files or directories
+internal/delegation/review_binding.go	finish active board writes and reviews before refreshing review
+internal/delegation/review_binding.go	list git-tracked files for %s: %w: %s
+internal/delegation/review_binding.go	review refresh requires an explicit positive revision
+internal/delegation/review_binding.go	review requires a bounded file scope
+internal/delegation/review_binding.go	task id is required
 internal/delegation/store.go	%w: %s -> %s
 internal/delegation/store.go	SDD contract migration: %w
 internal/delegation/store.go	add conversation ownership: %w
@@ -364,6 +319,7 @@ internal/delegation/store.go	add work project ownership: %w
 internal/delegation/store.go	add work submission blocked reason: %w
 internal/delegation/store.go	backfill board project ownership: %w
 internal/delegation/store.go	backfill work project ownership from delegations: %w
+internal/delegation/store.go	clear retired SDD contracts: %w
 internal/delegation/store.go	configure read-only delegation database: %w
 internal/delegation/store.go	create default task board: %w
 internal/delegation/store.go	create delegation state directory: %w
@@ -377,6 +333,7 @@ internal/delegation/store.go	delegation database not found: %w
 internal/delegation/store.go	delegation database path is required
 internal/delegation/store.go	delegation job %s has not completed (current status: %s)
 internal/delegation/store.go	delegation job not found
+internal/delegation/store.go	drop retired change archives: %w
 internal/delegation/store.go	guard conversation ownership: %w
 internal/delegation/store.go	index progress evaluations: %w
 internal/delegation/store.go	index task board items: %w
@@ -392,9 +349,12 @@ internal/delegation/store.go	migrate delegation database: %w
 internal/delegation/store.go	open delegation database: %w
 internal/delegation/store.go	open read-only delegation database: %w
 internal/delegation/store.go	optimize cortex database: %w
+internal/delegation/store.go	probe work definitions table: %w
 internal/delegation/store.go	probe work submissions table: %w
 internal/delegation/store.go	query index optimization migration: %w
 internal/delegation/store.go	read migration ledger: %w
+internal/delegation/store.go	rebuild work leases keyed by workspace: %w
+internal/delegation/store.go	record SDD retirement migration: %w
 internal/delegation/store.go	record blocked reason migration: %w
 internal/delegation/store.go	record board status migration: %w
 internal/delegation/store.go	record conversation ownership migration: %w
@@ -404,6 +364,7 @@ internal/delegation/store.go	record dual ledger migration: %w
 internal/delegation/store.go	record index optimization migration: %w
 internal/delegation/store.go	record task-board migration: %w
 internal/delegation/store.go	record work decomposition migration: %w
+internal/delegation/store.go	record work lease workspace migration: %w
 internal/delegation/store.go	record work project migration: %w
 internal/delegation/store.go	record work review lineage migration: %w
 internal/delegation/store.go	record work-control migration: %w
@@ -426,6 +387,7 @@ internal/delegation/work.go	%w: stale or expired claim
 internal/delegation/work.go	%w: stale or expired lease
 internal/delegation/work.go	%w: stale retry revision
 internal/delegation/work.go	%w: stale task revision
+internal/delegation/work.go	%w: stale transition revision
 internal/delegation/work.go	%w: task %s claim is expired
 internal/delegation/work.go	%w: task %s has 2 consecutive review FAIL verdicts; route it to planner decomposition via cortex_ia_work_decompose
 internal/delegation/work.go	%w: task %s has no active claim
@@ -443,13 +405,13 @@ internal/delegation/work.go	%w: task is in_review at revision %d, not %d
 internal/delegation/work.go	%w: task must be in_progress to lease files
 internal/delegation/work.go	%w: task must be in_review, currently %s
 internal/delegation/work.go	%w: task_not_found
+internal/delegation/work.go	EVIDENCE_REQUIRED: a PASS approval requires non-empty evidence
 internal/delegation/work.go	PASS approval requires evidence
-internal/delegation/work.go	SDD approval requires an explicit positive revision
-internal/delegation/work.go	SDD review binding changed; fresh review required
-internal/delegation/work.go	SDD task requires objective, acceptance and verification
 internal/delegation/work.go	add dependency %q: %w
+internal/delegation/work.go	approval requires an explicit positive revision
 internal/delegation/work.go	claim token and positive ttl are required
 internal/delegation/work.go	claim token is required
+internal/delegation/work.go	count retained prune candidates: %w
 internal/delegation/work.go	create lease: %w
 internal/delegation/work.go	create temp prune table: %w
 internal/delegation/work.go	create work definition: %w
@@ -479,6 +441,8 @@ internal/delegation/work.go	query prune candidates: %w
 internal/delegation/work.go	read dependency %q: %w
 internal/delegation/work.go	record work review: %w
 internal/delegation/work.go	resolve task project: %w
+internal/delegation/work.go	retry requires an explicit positive revision
+internal/delegation/work.go	review binding changed; fresh review required
 internal/delegation/work.go	review-fail retry circuit breaker
 internal/delegation/work.go	reviewer and valid verdict are required
 internal/delegation/work.go	scoped recover denied
@@ -491,6 +455,7 @@ internal/delegation/work.go	task id is required
 internal/delegation/work.go	task id or title exceeds size limit
 internal/delegation/work.go	task objective, acceptance criteria, or verification exceeds size limit
 internal/delegation/work.go	task project root is required
+internal/delegation/work.go	transition requires an explicit positive revision
 internal/delegation/work.go	update work item ready status: %w
 internal/delegation/work.go	work attempt limit reached
 internal/delegation/work.go	work control conflict
@@ -500,7 +465,7 @@ internal/delegation/work_controller_authority.go	%w: controller claim is not liv
 internal/delegation/work_controller_authority.go	%w: controller claim unavailable
 internal/delegation/work_controller_authority.go	%w: controller lease set is incomplete or expired
 internal/delegation/work_controller_authority.go	controller renewal contains invalid or duplicate lease authority
-internal/delegation/work_controller_authority.go	controller renewal requires bounded live authority and ttl between 1s and 15m
+internal/delegation/work_controller_authority.go	controller renewal requires bounded live authority and ttl between 1s and 30m
 internal/delegation/work_degrade.go	degrade task %s: %w
 internal/delegation/work_degrade.go	execute degrade: %w
 internal/delegation/work_degrade.go	query degrade candidates: %w
@@ -520,7 +485,6 @@ internal/delegation/work_reconcile.go	work reconcile refused
 internal/delegation/work_reservations.go	a reservation supports at most 128 paths
 internal/delegation/work_reservations.go	at least one reservation path is required
 internal/delegation/work_reservations.go	duplicate reservation path %q
-internal/delegation/work_revise.go	%w: live SDD identity mismatch
 internal/delegation/work_revise.go	%w: stale revision
 internal/delegation/work_revise.go	%w: task %s is %s, not revisable
 internal/delegation/work_revise.go	%w: task has active file leases
@@ -529,19 +493,12 @@ internal/delegation/work_revise.go	%w: task has an active review
 internal/delegation/work_revise.go	%w: task identity mismatch
 internal/delegation/work_revise.go	%w: task is at revision %d, not %d
 internal/delegation/work_revise.go	%w: task was superseded by decomposition
-internal/delegation/work_revise.go	SDD binding cannot be removed by revision
-internal/delegation/work_revise.go	SDD requirement identity changed; fresh planning required
-internal/delegation/work_revise.go	SDD revision requires expected workflow, change, and spec plane
-internal/delegation/work_revise.go	SDD workflow, change, and spec plane are immutable for revision
-internal/delegation/work_revise.go	done task accepts contract pins only; SDD identity is frozen
-internal/delegation/work_revise.go	done task accepts contract pins only; full redefinition requires a new task
-internal/delegation/work_revise.go	done task rebind requires an existing SDD contract
 internal/delegation/work_revise.go	invalid allowed file %q: %w
 internal/delegation/work_revise.go	resolve revision project: %w
 internal/delegation/work_revise.go	revision allowed file count exceeds limit
 internal/delegation/work_revise.go	revision definition exceeds size limit
 internal/delegation/work_revise.go	revision definition requires bounded title, objective, acceptance and verification
-internal/delegation/work_revise.go	revision plan expected status must be ready, backlog, or done
+internal/delegation/work_revise.go	revision plan expected status must be ready or backlog
 internal/delegation/work_revise.go	revision plan requires version, identity, project and positive revision
 internal/delegation/work_revise.go	trailing revise plan JSON
 internal/delegation/work_submission.go	invalid submission verification verdict
@@ -560,18 +517,7 @@ internal/delegation/workload_budget.go	WORKLOAD_TEST_BUDGET_EXCEEDED
 internal/delegation/workload_budget.go	read workspace churn: %w: %s
 internal/delegation/workload_budget.go	task workspace is required to compute churn
 internal/delegation/workspace.go	project root must be a directory
-internal/delegation/worktree.go	clean existing worktree: %w
-internal/delegation/worktree.go	create worktree parent directory: %w
-internal/delegation/worktree.go	generate default worktree dir: %w
-internal/delegation/worktree.go	git clean in worktree failed: %w: %s
-internal/delegation/worktree.go	git reset in worktree failed: %w: %s
-internal/delegation/worktree.go	git worktree add failed: %w: %s
 internal/delegation/worktree.go	git worktree list --porcelain failed: %w: %s
-internal/delegation/worktree.go	git worktree prune failed: %w: %s
-internal/delegation/worktree.go	resolve repo path: %w
-internal/delegation/worktree.go	resolve user home directory: %w
-internal/delegation/worktree.go	resolve worktree path: %w
-internal/delegation/worktree.go	target worktree directory %q already exists and is not empty
 internal/delegation/worktree.go	target worktree path %q is not a directory
 internal/delegation/worktree.go	target worktree path does not exist: %w
 internal/delegation/worktree.go	target worktree path is required
