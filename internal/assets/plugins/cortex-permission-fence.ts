@@ -181,6 +181,13 @@ export function auditWorkload(
   };
 }
 
+function isPlannerPlanTarget(directory: string, target: string): boolean {
+  if (!target || target.includes("\0")) return false;
+  const root = path.resolve(directory);
+  const rel = path.relative(root, path.resolve(root, target)).split(path.sep).join("/");
+  return /^docs\/plans\/[a-z0-9][a-z0-9._-]{0,127}\.md$/.test(rel);
+}
+
 const verifiedPermLeaseCache = new Map<string, number>();
 
 export const CortexPermissionFencePlugin = Plugin.define({
@@ -207,7 +214,9 @@ export const CortexPermissionFencePlugin = Plugin.define({
         if (READ_ONLY_ROLES.has(role) && MUTATING_TOOLS.has(toolName)) {
           const isDiscoveryGitignore = role === "discovery" && toolName === "edit" &&
             targetPath.replace(/\\/g, "/").split("/").pop() === ".gitignore";
-          if (!isDiscoveryGitignore) {
+          // planner's only sanctioned mutation is its plan file
+          const isPlannerPlan = role === "planner" && isPlannerPlanTarget(directory, targetPath);
+          if (!isDiscoveryGitignore && !isPlannerPlan) {
             return {
               effect: "deny",
               reason: `CORTEX_PERMISSION_FENCE: Role '${role}' is restricted to read-only operations. File mutations are forbidden.`,

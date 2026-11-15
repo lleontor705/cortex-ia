@@ -145,6 +145,8 @@ async function verifyLeasesForTool(
   // Sole leaseless sanctioned mutation: discovery's bounded .gitignore hygiene append (Step-0).
   if (role === "discovery" && targets.length === 1 &&
       String(targets[0]).replace(/\\/g, "/").split("/").pop() === ".gitignore") return;
+  // planner's only sanctioned mutation is its plan file
+  if (role === "planner" && targets.length === 1 && /^docs\/plans\/[a-z0-9][a-z0-9._-]{0,127}\.md$/.test(String(targets[0]))) return;
 
   const cacheKey = `${sessionID}:${targets.join(";")}`;
   const cachedExpiresAt = verifiedLeaseCache.get(cacheKey);

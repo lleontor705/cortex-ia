@@ -132,3 +132,41 @@ test('permission fence falls through without auto-allow when executable lookup s
   assert.match(lookups[0].file, /^(where\.exe|which)$/);
   assert.equal(lookups[0].opts.timeout, 3000);
 });
+
+test('lease guard admits planner writes only to its flat plan file without a lease', async () => {
+  const calls = [];
+  const hook = await guardHook(guardOptions({
+    found: true,
+    execFileSync: (_file, args) => {
+      calls.push(args);
+      return JSON.stringify({ valid: false, reason: 'not leased' });
+    },
+  }));
+  await hook({ tool: 'write', sessionID: 'test', session: { role: 'planner' } }, { args: { filePath: 'docs/plans/board-1.md' } });
+  assert.equal(calls.filter(args => args[1] === 'verify-lease').length, 0);
+  for (const filePath of ['docs/plans/sub/x.md', 'docs/plans/../x.md', 'docs/other.md', 'src/main.go']) {
+    await assert.rejects(
+      hook({ tool: 'write', sessionID: 'test', session: { role: 'planner' } }, { args: { filePath } }),
+      err => {
+        assert.match(err.message, /^LEASE_REQUIRED|outside the workspace/);
+        return true;
+      },
+      filePath
+    );
+  }
+});
+
+test('permission fence admits planner plan writes and denies every other planner mutation', async () => {
+  let evaluate;
+  const mod = await loadPluginFile(fencePath, guardOptions({ found: false, execFileSync: () => '' }));
+  await mod.instantiate({
+    directory: root,
+    permission: { hook: (_name, callback) => { evaluate = callback; } },
+  });
+  const planner = { session: { role: 'planner' } };
+  assert.equal(await evaluate({ tool: 'edit', path: 'docs/plans/board-1.md', sessionID: 'test', ...planner }), undefined);
+  for (const target of ['docs/plans/sub/x.md', 'docs/plans/../x.md', 'docs/other.md', 'src/main.go', path.join(home, 'docs', 'plans', 'board-1.md')]) {
+    const decision = await evaluate({ tool: 'edit', path: target, sessionID: 'test', ...planner });
+    assert.equal(decision?.effect, 'deny', target);
+  }
+});

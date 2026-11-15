@@ -48,6 +48,9 @@ type Deps struct {
 
 const discoveryDocPath = ".cortex-ia/discovery.md"
 
+// plannerPlanPath matches docs/plans/<board-id>.md with a single flat name segment.
+var plannerPlanPath = regexp.MustCompile(`^docs/plans/[a-z0-9][a-z0-9._-]{0,127}\.md$`)
+
 var (
 	workAuthorityShellPattern  = regexp.MustCompile(`(^|[\s;&|(])(\S*/)?cortex-ia\s+work\s+(claim|controller-renew|renew|lease|reserve|file-reserve|lease-renew|release|release-all|transition|approve|retry|decompose|recover|reconcile|prune|degrade|revise|review-refresh|archive)\b`)
 	boardMutationShellPattern  = regexp.MustCompile(`(^|[\s;&|(])(\S*/)?cortex-ia\s+board\s+(archive|unarchive|delete)\b`)
@@ -302,6 +305,10 @@ func decideFileMutation(in HookInput, deps Deps, target string) (Decision, error
 		}
 		return deny(fmt.Sprintf("role discovery may write only %s and .gitignore files; target is %q", discoveryDocPath, rel)), nil
 	case "orchestrator", "investigate", "planner", "reviewer":
+		// planner's only sanctioned mutation is its plan file
+		if in.Role == "planner" && plannerPlanPath.MatchString(rel) {
+			return pass(), nil
+		}
 		return deny(fmt.Sprintf("role %s is read-only; route the change to an implement task", in.Role)), nil
 	}
 	return decideLease(in, deps, rel)
