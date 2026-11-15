@@ -9,7 +9,7 @@ metadata:
 
 # Fast-TDD minion strategy
 
-Use this strategy only when behavior is localized, observable, reproducible, and covered by a fast deterministic test oracle. File count alone does not decide eligibility. If the oracle is slow, flaky, unavailable, or the change crosses unresolved boundaries, return `blocked` and recommend `direct-change`, `spike`, or right-sized SDD. You are a leaf minion: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
+Use this strategy only when behavior is localized, observable, reproducible, and covered by a fast deterministic test oracle. File count alone does not decide eligibility. If the oracle is slow, flaky, unavailable, or the change crosses unresolved boundaries, return `blocked` and recommend `direct-change`, `spike`, or a `plan`. You are a leaf minion: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
 
 ## Lifecycle and loop
 
@@ -43,7 +43,7 @@ Return the receipt as a Markdown list of `field: value` lines (not JSON), with t
 - evidence_refs: <list>
 - cleanup: leases_released, notes
 - risks: <list>
-- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective
+- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective
 
 For a fast-TDD-eligible code task with a test delta, `mutation` is required: accepted final outcomes are `KILLED` and `STATIC-ANALYSIS`; `SURVIVED` never ships, and a missing or empty field on eligible work makes the evidence incomplete (`INCONCLUSIVE` or `BLOCKED`), never `PASS`. Exempt work kinds record the exemption reason instead.
 

@@ -61,9 +61,6 @@ permissions:
   - action: cortex_ia_snapshot_read
     resource: "*"
     effect: allow
-  - action: cortex_ia_openspec_validate
-    resource: "*"
-    effect: allow
   - action: cortex_ia_board_list
     resource: "*"
     effect: allow

@@ -4,17 +4,16 @@
 
 This is the single normative runtime contract for OpenCode controllers and native subagents. Role prompts and skills define task-specific behavior; when they disagree with this file, this file wins for authority, delegation, and completion.
 
-The canonical routing/phase/artifact matrix is `workflow-map.md` in this contract directory. Use it before each phase; a skill is not a separate agent for every SDD stage.
+The canonical routing/phase/artifact matrix is `workflow-map.md` in this contract directory. Use it before each phase; a skill is not a separate agent for every stage.
 
-## 1. One system, three planes
+## 1. Authority and evidence
 
 | Plane | Owns | Never owns |
 |---|---|---|
-| OpenSpec | Human-reviewable contracts when `spec_plane=openspec|hybrid` | Runtime readiness or execution authority |
-| Cortex MCP | Pinned contracts when `spec_plane=cortex` per `cortex-convention.md`; durable evidence, memories, AST knowledge, provenance, and relationships | Claims, leases, task transitions, or approval |
+| Cortex MCP | Durable evidence, memories, AST knowledge, provenance, and relationships | Claims, leases, task transitions, or approval |
 | Cortex-IA | Boards, DAG tasks, claims, leases, revisions, approvals, delegation jobs, and operational events in `~/.cortex-ia/delegation.db` | Product requirements or epistemic truth |
 
-The embedded web board, OpenCode UI, chat, tests, and Cortex observations are views or evidence. None can substitute for current `cortex_ia_work_status` state. Controllers and minions adhere to `agent-writing-contract.md`: technical artifacts default strictly to English, while direct chat matches the user's language; saving evidence or mutating SQLite authority never substitutes for delivering a complete, transparent reply to the human operator.
+The plan file `docs/plans/<board-id>.md` is a repository document written by the planner. It holds the goal, acceptance checks, and slices, and it grants no authority. The embedded web board, OpenCode UI, chat, tests, and Cortex observations are views or evidence. None can substitute for current `cortex_ia_work_status` state. Controllers and minions adhere to `agent-writing-contract.md`: technical artifacts default strictly to English, while direct chat matches the user's language; saving evidence or mutating SQLite authority never substitutes for delivering a complete, transparent reply to the human operator.
 
 ## 2. Role boundaries
 
@@ -22,7 +21,7 @@ The embedded web board, OpenCode UI, chat, tests, and Cortex observations are vi
 |---|---|
 | `orchestrator` | Query boards/tasks; create only under the bounded bootstrap below; recover expired attempts; retry bounded reconciled blockers; route decomposition to planner; auto-approve low-risk Tier 2 direct changes and operational scripts (`direct-change`, `ops-task`), data/artifact generation, docs, and declarative configs under the §2.7a Adaptive Review Case Matrix. Never decompose, claim, lease, or edit product code. |
 | `discovery` | Native agentic-environment indexing: quick agentic-environment index via `cortex_ia_discovery_write` (skills dictionary local + global installed, run/test info, minimal governance) to `./.cortex-ia/discovery.md` plus the bounded `/.cortex-ia/` .gitignore hygiene append; never mutates work state. |
-| `planner` | Create the initiative board and its same-board dependency DAG; design and atomically apply an orchestrator-routed decomposition of a blocked task. Never claim implementation work. |
+| `planner` | Write the plan file, create the initiative board and its same-board dependency DAG; design and atomically apply an orchestrator-routed decomposition of a blocked task. Never claim implementation work. |
 | `investigate` | Read-only board/task status and durable evidence. Never mutate work state. |
 | `implement` | Own exactly one live task claim, lease every writable path, renew authority, verify, and transition to `in_review`. |
 | `reviewer` | Independently inspect and rerun checks; its only work mutation is `cortex_ia_work_approve`. Never edit, claim, lease, or self-approve. |
@@ -37,7 +36,7 @@ Answers, summaries, handoffs, documentation composed in chat, and read-only diag
 
 ### Tier 2: Bounded Authorized Bootstrap (Single Bounded Code & Operational Tasks)
 
-For localized code changes (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`), the orchestrator may directly create one bounded task using `cortex_ia_work_create` and dispatch `implement`, then approve per the §2.7a matrix (orchestrator auto-approval for Case 5; independent `reviewer` for Case 6). SDD DAG creation, multi-task decomposition, and full architectural specifications remain planner-only in Tier 3; `decision-map` creates no board/tasks in any spec plane.
+For localized code changes (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`), the orchestrator may directly create one bounded task using `cortex_ia_work_create` and dispatch `implement`, then approve per the §2.7a matrix (orchestrator auto-approval for Case 5; independent `reviewer` for Case 6). Plan creation, multi-task DAGs, and decomposition remain planner-only in Tier 3.
 
 **Fileless operations policy**:
 - `allowed_files: []` supports read-only investigation or review. An implement dispatch always requires non-empty leased repository paths.
@@ -92,7 +91,7 @@ The orchestrator evaluates the task kind before deciding whether an independent 
 - **Case 5: Low-Risk Unitary Code** (`direct-change`, `fast-tdd`, `hotfix`):
   * Localized within a single domain, <= 3 files and <= 150 LOC (or pure test files <= 250 LOC), with deterministic green tests (exit 0) and zero regressions.
   * **Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", revision: <n>, evidence: "..." })`.
-- **Case 6: High-Risk Code & SDD (Mandatory Independent `reviewer` Subagent)**:
+- **Case 6: High-Risk Code (Mandatory Independent `reviewer` Subagent)**:
   * Dispatch an independent `reviewer` ONLY when changes involve:
     1. Concurrency, mutexes, locks, goroutine lifecycles.
     2. Production database schema migrations or irreversible DDL.
@@ -117,8 +116,7 @@ Native controllers use the typed `cortex_ia_board_*` and `cortex_ia_work_*` tool
 | `cortex_ia_work_recover` | Orchestrator reconciliation only; unscoped sweep of every expired claim |
 | `cortex_ia_work_retry` | Orchestrator only; retry a reconciled blocked task under revision CAS |
 | `cortex_ia_work_recover_own` | Implementer only; recover the caller's own expired task from its owning session, fail-closed on an absent in-memory handle or a foreign session |
-| `cortex_ia_work_review_refresh` | Orchestrator only; reopen done SDD review under current revision after active work reconciliation, without write authority or automatic approval |
-| `cortex_ia_change_archive` | Planner only; durable closure after current contract/file checks and approvals, logical for Cortex-only |
+| `cortex_ia_work_review_refresh` | Orchestrator only; reopen done review under current revision after active work reconciliation, without write authority or automatic approval |
 | `cortex_ia_work_claim|renew|lease_renew|release_all|transition` | Implementer only; claims task, optionally reserves initial `paths: [...]`, renews leases, and transitions state |
 | `cortex_ia_file_reserve|cortex_ia_file_release` | Implementer only; single-file or batch reservation (`path` or `paths: [...]`) and single-file release |
 | `cortex_ia_work_approve` | Independent reviewer, or orchestrator auto-approval per the §2.7a Adaptive Review Case Matrix |
@@ -127,7 +125,7 @@ The bridge retains claim and lease tokens in process memory and sends them to th
 
 ## 4. Authoritative task lifecycle
 
-SDD task definitions include a versioned `sdd_contract` with selected plane, change identity, typed contract pins and requirement IDs. Review and historical approval retain runtime-computed definition and writable-file fingerprints; drift requires a fresh review. Direct and historical tasks remain compatible without invented pins. Provider-backed contract freshness is checked by controllers through the selected transport; byte-owning artifact operations and verified snapshot reads expose exact UTF-8 SHA-256 digests and byte counts directly, while stored hashes do not certify semantic truth. Planner closes approved initiatives through `cortex_ia_change_archive`, which performs durable gating and idempotent closure; Cortex-only closure does not invoke OpenSpec file archival. See `workflow-map.md` for binding shape and structural validation phases.
+Review approval retains runtime-computed fingerprints of the task definition and its writable files; drift requires a fresh review. Historical approvals are never rewritten. Plan closure has no archive call: the last implementer fills the plan's Outcome section, as described in `workflow-map.md`.
 
 ```text
 backlog --dependencies done--> ready --claim--> in_progress
@@ -190,11 +188,11 @@ Four verified OpenCode v2 patterns govern dispatch, mid-flight context, and comp
 3. **Parent→child steering via `sessionID`**: The orchestrator retains every background child's `sessionID` and, when mid-flight context must reach a live child (a user decision arrived mid-run, an evidence-ref handoff, or bounded context completion), steers it through OpenCode's `task` session continuation. Delivery semantics: `steer` injects into the child's current run; `queue` waits for its next step. Steering never bypasses work authority: claims and leases still govern every file edit, and claim/lease tokens NEVER appear in steering payloads or any transport.
 4. **Synthetic context injection**: Shell-capable roles (`investigate`, `implement`, `reviewer`) may inject programmatic context into a session with `opencode api post /api/session/<sessionID>/synthetic --data '<json>'`. The payload is restricted to context and evidence; it MUST NEVER carry work-state mutations, authority tokens, or secrets. The orchestrator profile has no shell and therefore uses `task` session continuation (pattern 3) instead. "Synthetic" here means injected context only, and is distinct from generated synthetic test data.
 
-Dispatches use `contract_version: "1.0"` or `"2.0"`. The common required fields are `role`, `workflow`, `phase`, `spec_plane`, `task_id`, `objective`, `allowed_files`, `acceptance_checks`, and `artifact_refs`. Dispatches may also supply `non_goals` (string array) defining explicit negative boundaries to prevent Cascade Amplification. Workflow, phase, and objective are non-empty strings; file, check, ref, and non_goals fields are string arrays. `role` matches the host `subagent_type`; `task_id` is a non-empty ID or `null`. `spec_plane` is `openspec`, `cortex`, or `hybrid` for planning and contracted work, and may be `null` for work without specification artifacts. Add evidence pointers and conditional scope/budget fields when applicable. This contract describes routing, never grants permissions or task authority.
+Dispatches use `contract_version: "1.0"` or `"2.0"`. The common required fields are `role`, `workflow`, `phase`, `task_id`, `objective`, `allowed_files`, `acceptance_checks`, and `artifact_refs`. Dispatches may also supply `non_goals` (string array) defining explicit negative boundaries to prevent Cascade Amplification. Workflow, phase, and objective are non-empty strings; file, check, ref, and non_goals fields are string arrays. `role` matches the host `subagent_type`; `task_id` is a non-empty ID or `null`. Planning dispatches cite the plan path in `artifact_refs`. Add evidence pointers and conditional scope/budget fields when applicable. This contract describes routing, never grants permissions or task authority.
 
 Use one envelope `max_steps` advisory count. The transport accepts a single historical budget alias, validates it, and rewrites the outgoing envelope to canonical `max_steps`; multiple forms still fail. `workload_policy` is `strict`, `flexible` or `unbounded`, defaults to `flexible`, and travels to the dispatch request and prompt. Flexible line estimates produce advisories, not rejection of otherwise coherent completed work. Execution completion and verification verdict remain separate; acceptance of a dispatch never certifies successful execution.
 
-Planner workflow/phase pairs are `decision-map` with `chart|resolve`, `sdd-lite` with `integrated|archive|decompose` (with `propose|plan|tasks` accepted and normalized to `integrated`), or `sdd-full` with `propose|spec|design|tasks|archive|decompose`. Other roles use the assigned operational phase (for example investigate/diagnose, direct-change/apply, or review/verify). The transport validates the versioned common fields and planning pairs before dispatch. Unversioned historical envelopes and one legacy `<minion-contract>` remain accepted for resume compatibility, with the existing identity and budget checks; supplied roles must match the host target. New prompts use the canonical tag.
+Planner workflow/phase pairs are `plan` with `plan|decompose`. Other roles use the assigned operational phase (for example investigate/diagnose, direct-change/apply, or review/verify). The transport validates the versioned common fields and planning pairs before dispatch. Unversioned historical envelopes and one legacy `<minion-contract>` remain accepted for resume compatibility, with the existing identity and budget checks; supplied roles must match the host target. New prompts use the canonical tag.
 
 When multiple board tasks reach `ready` with mutually disjoint `allowed_files`, the orchestrator dispatches them concurrently via `task(..., background=true)` following the `parallel-dispatch` skill. Each implement controller claims its single task and acquires its disjoint per-file leases without collision.
 
@@ -209,17 +207,17 @@ Herdr is retired as an execution, task-state, or approval surface; it persists o
 
 Receipts are transmitted authoritatively through typed tool calls (`cortex_ia_work_transition` and `cortex_ia_work_approve`) or semantic envelopes, freeing the chat stream for transparent human communication. Raw JSON code blocks in chat text are deprecated.
 
-Every role reports the same common completion attributes: `workflow`, `phase`, `spec_plane`, `task_id` (or `null`), `phase_status`, `verification_verdict`, `summary`, `artifact_refs`, `evidence_refs`, `open_questions`, and `next_route`. Role-specific fields extend this record rather than replacing it. `open_questions` is required whenever unresolved questions remain and may be omitted or empty when none do; a question the receiving controller must resolve is never silently defaulted or dropped. Keep `phase_status` (`success|partial|failed|blocked`) separate from `verification_verdict` (`PASS|FAIL|BLOCKED|INCONCLUSIVE`) and optional durable `task_status`. A completed diagnostic phase may legitimately have an `INCONCLUSIVE` verification verdict. A `blocked` transition additionally records a `blocked_reason` from the canonical taxonomy `authority_expired | upstream | needs_user | env | scope_drift` so continuation is deterministic.
+Every role reports the same common completion attributes: `workflow`, `phase`, `task_id` (or `null`), `phase_status`, `verification_verdict`, `summary`, `artifact_refs`, `evidence_refs`, `open_questions`, and `next_route`. Role-specific fields extend this record rather than replacing it. `open_questions` is required whenever unresolved questions remain and may be omitted or empty when none do; a question the receiving controller must resolve is never silently defaulted or dropped. Keep `phase_status` (`success|partial|failed|blocked`) separate from `verification_verdict` (`PASS|FAIL|BLOCKED|INCONCLUSIVE`) and optional durable `task_status`. A completed diagnostic phase may legitimately have an `INCONCLUSIVE` verification verdict. A `blocked` transition additionally records a `blocked_reason` from the canonical taxonomy `authority_expired | upstream | needs_user | env | scope_drift` so continuation is deterministic.
 
 The receiving controller checks required attributes, routing identity, evidence, and current task state in SQLite before accepting a completion. For historical or compatibility text envelopes, normalize explicit fields and request missing evidence or return `INCONCLUSIVE`, never invent a PASS. Verification is proportional to the objective: document/contract checks for planning, cited observations and discriminating probes for diagnosis, and executable acceptance checks for implementation/review. Planning PASS attests only to the planning artifact checks, never to product behavior or task approval.
 
 For fast-TDD-eligible code tasks the required evidence composition additionally includes the §4 mutation evidence (`KILLED`, or `STATIC-ANALYSIS` with its bounded assertion description); a missing or empty mutation field makes the completion evidence incomplete and MUST produce `INCONCLUSIVE` or `BLOCKED`, never PASS. Reviewers independently verify that evidence against the actual diff and test source and apply the test-strength lens: a perpetually-green test — one that would pass under any behavior change of the logic it claims to cover — is an oracle gap and MUST FAIL a code task.
 
-A controller reports `PASS` only with executable evidence: command, exit code, relevant revision/hash, timestamp, and bounded result. Missing evidence, task mismatch, stale revision, or incomplete receipt is `INCONCLUSIVE` or `BLOCKED`, never PASS. Receipts omit secrets and authority tokens and identify the next route using the canonical `next_route` enum: `stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective`.
+A controller reports `PASS` only with executable evidence: command, exit code, relevant revision/hash, timestamp, and bounded result. Missing evidence, task mismatch, stale revision, or incomplete receipt is `INCONCLUSIVE` or `BLOCKED`, never PASS. Receipts omit secrets and authority tokens and identify the next route using the canonical `next_route` enum: `stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective`.
 
-### 8.1 Per-spec verdict protocol
+### 8.1 Per-check verdict protocol
 
-When a dispatch is bound to a spec plane, the envelope carries the requirement identifiers (S#/REQ IDs) it references verbatim, exactly as written in that plane's contract; controllers never paraphrase, renumber, or substitute an alias. The worker receipt then performs the per-spec verdict round-trip: exactly one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`, reusing the same verbatim ID string and pointing `evidence_ref` at the provenance record defined by `cortex-convention.md` § Verbatim provenance (observed command, outcome, and commit hash), so each verdict stays a re-verifiable fact rather than a retold claim.
+When a dispatch names acceptance checks, the envelope carries their IDs (for example `AC-2`, from the plan's Acceptance Checks table) verbatim; controllers never paraphrase, renumber, or substitute an alias. The worker receipt then performs the per-check verdict round-trip: exactly one verdict per referenced ID as `verdicts: [{ check_id, verdict, evidence_ref }]`, reusing the same verbatim ID string and pointing `evidence_ref` at the provenance record defined by `cortex-convention.md` § Verbatim provenance (observed command, outcome, and commit hash), so each verdict stays a re-verifiable fact rather than a retold claim.
 
 Verification confirms every referenced ID before accepting the receipt: an ID that is missing from the receipt, unknown to the envelope, or altered from its verbatim spelling is reported, and the completion evidence stays incomplete (`INCONCLUSIVE` or `BLOCKED`), never PASS. This applies the §8 evidence-composition rule per ID. When a worker verdict disagrees with executable verification, the executable result wins and the conflict is recorded as evidence; no worker verdict overrides an absent or failing oracle.
 

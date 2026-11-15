@@ -49,14 +49,13 @@ For each task in the parallel wave, dispatch an `implement` controller in the sa
   "role": "implement",
   "workflow": "direct-change",
   "phase": "apply",
-  "spec_plane": "hybrid",
   "workload_policy": "flexible",
   "task_id": "task-auth-jwt",
   "objective": "Implement JWT validation middleware with claims checking",
   "allowed_files": ["internal/auth/jwt.go", "internal/auth/jwt_test.go"],
   "non_goals": ["Do not modify token issuance or the login handler"],
   "acceptance_checks": ["go test -v ./internal/auth/... -run TestJWT"],
-  "artifact_refs": ["specs/auth/spec.md"],
+  "artifact_refs": ["docs/plans/auth-jwt.md"],
   "max_steps": 30
 }
 </minion-dispatch>

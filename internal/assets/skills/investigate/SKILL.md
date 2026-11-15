@@ -1,6 +1,6 @@
 ---
 name: investigate
-description: Produce a bounded evidence-backed diagnosis, architecture assessment, migration analysis, workflow retrospective, or input to SDD without production edits. Use when a question needs read-only evidence before any change.
+description: Produce a bounded evidence-backed diagnosis, architecture assessment, migration analysis, workflow retrospective, or input to a plan without production edits. Use when a question needs read-only evidence before any change.
 license: MIT
 metadata:
   author: lleontor705
@@ -56,7 +56,7 @@ You are a read-only leaf investigator. Answer a bounded technical question from 
    - When the orchestrator dispatches `workflow-retrospective`, load that skill and analyze the revision/failure timeline without repeating product diagnosis or editing the environment.
 
 7. **Next Route Selection:**
-   - Select an organic route from the canonical `next_route` enum in `cortex-work-protocol.md` §8 (typically `stop`, `direct-change`, `fast-tdd`, `spike`, `sdd-lite`, or `sdd-full`).
+   - Select an organic route from the canonical `next_route` enum in `cortex-work-protocol.md` §8 (typically `stop`, `direct-change`, `fast-tdd`, `spike`, or `plan`).
 
 Cortex-IA work-control norms live in `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`. For persistent changes, read state only through `cortex-ia work list|status`; never claim, transition, approve, retry, or lease. Save to Cortex only durable, sanitized findings. Never save secrets, full stdout, authority tokens, or unverified hypotheses as facts.
 
@@ -77,7 +77,6 @@ Return the receipt as a Markdown list of `field: value` lines (not JSON), with t
 - receipt_version: 2.0
 - workflow: investigate
 - phase: diagnose | assess | retrospective | spike
-- spec_plane: null
 - task_id: null
 - verification_verdict: PASS | FAIL | BLOCKED | INCONCLUSIVE
 - summary: <text>
@@ -96,4 +95,4 @@ Return the receipt as a Markdown list of `field: value` lines (not JSON), with t
 - limitations: <list>
 - risks: <list>
 - confidence: high | medium | low
-- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective
+- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective
