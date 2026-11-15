@@ -18,7 +18,7 @@ type claudeRole struct {
 const claudeHookMatcher = "Write|Edit|MultiEdit|NotebookEdit|Bash|mcp__cortex_ia__.*"
 
 var claudeRoles = []claudeRole{
-	{"orchestrator", "Agent(discovery, investigate, planner, implement, reviewer), Read", "Read|mcp__cortex_ia__.*"},
+	{"orchestrator", "Agent(discovery, investigate, planner, implement, reviewer), Read, Grep, Glob", "Read|Grep|Glob|mcp__cortex_ia__.*"},
 	{"discovery", "Read, Grep, Glob, Bash, Edit, Write", claudeHookMatcher},
 	{"investigate", "Read, Grep, Glob, Bash", claudeHookMatcher},
 	{"planner", "Read, Grep, Glob", claudeHookMatcher},
