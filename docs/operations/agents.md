@@ -67,12 +67,12 @@ Instead of printing JSON in chat, workers and reviewers invoke typed tools whose
       "internal/auth/middleware_test.go"
     ],
     verdicts: [
-      { req_id: "REQ-AUTH-001", verdict: "PASS", evidence_ref: "cortex_topic_or_id" }
+      { check_id: "AC-1", verdict: "PASS", evidence_ref: "cortex_topic_or_id" }
     ]
   })
   ```
 
-  When an envelope references S#/REQ IDs verbatim, the receipt returns exactly one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`, reusing the verbatim ID string; executable results override worker verdicts on conflict.
+  When an envelope names acceptance-check IDs from the plan (for example `AC-1`), the receipt returns exactly one verdict per referenced ID as `verdicts: [{ check_id, verdict, evidence_ref }]`, reusing the verbatim ID string; executable results override worker verdicts on conflict.
 
 - **Reviewers** call `cortex_ia_work_approve`:
   ```typescript
@@ -110,8 +110,8 @@ Saving observations or evidence to Cortex (`cortex_save`) or updating SQLite sta
 - **Adaptive Review Case Matrix**: non-code kinds — generated data/artifacts, pure documentation/text, declarative config, and operational/DB scripts — are orchestrator auto-approved with an evidence pointer; an independent `reviewer` is mandatory only for high-risk code (concurrency/locks, production schema or irreversible DDL, public APIs/auth/crypto/security boundaries, more than 3 files or more than 150 LOC of core logic, or failed/ambiguous/missing tests). Auto-approval runs exclusively through `cortex_ia_work_approve`.
   - Digest — normative source: `cortex-work-protocol.md` §2.7a Adaptive Review Case Matrix.
 - **Escalate-only tier**: the review tier assigned by the matrix is a floor, never a ceiling; an implementer or reviewer MAY raise it with a stated reason, and lowering below the assigned tier is refused fail-closed.
-- **Per-spec verdict receipt shape**: when a dispatch carries S#/REQ IDs verbatim, the receipt returns exactly one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`; executable results override worker verdicts on conflict.
-  - Digest — normative source: `cortex-work-protocol.md` §8.1 Per-spec verdict protocol.
+- **Per-check verdict receipt shape**: when a dispatch carries acceptance-check IDs verbatim, the receipt returns exactly one verdict per referenced ID as `verdicts: [{ check_id, verdict, evidence_ref }]`; executable results override worker verdicts on conflict.
+  - Digest — normative source: `cortex-work-protocol.md` §8.1 Per-check verdict protocol.
 - **Verbatim L1 provenance**: the original request is captured verbatim with secret redaction, and RED/GREEN appends carry commit hashes.
   - Pointer: `cortex-convention.md` § Verbatim provenance.
 
