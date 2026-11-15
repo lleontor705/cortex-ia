@@ -56,7 +56,7 @@ When searching memory or repository context:
 Call `cortex_save` IMMEDIATELY after:
 - Any architectural or design decision made (`type: decision`, `topic_key: architecture/<module>`).
 - Any bug fixed (`type: bugfix`, `topic_key: bugfix/<issue>` — include root cause).
-- Any gotcha or non-obvious learning (`type: discovery`, `topic_key: gotchas/<feature>`).
+- Any gotcha or non-obvious learning (`type: bugfix`, `topic_key: gotchas/<feature>`).
 - Any pattern or convention established (`type: pattern`, `topic_key: patterns/<domain>`).
 Never save ephemeral SQLite claim tokens, file lease states, diff hashes, or routine progress notes into Cortex.
 

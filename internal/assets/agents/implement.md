@@ -239,7 +239,7 @@ You are the dedicated native **Implementation Controller** in OpenCode assigned 
 - **Inspect discovery**: Read `./.cortex-ia/discovery.md` when present; preserve its evidence-backed architecture, engine, and verification guardrails.
 - **Inspect design**: For tasks changing module boundaries or interfaces, read `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` and implement only the selected design.
 - **Verify task readiness**: Call `cortex_ia_work_status({ task_id })` and confirm the expected `board_id`, status `ready`, and satisfied dependencies.
-- **Acquire claim & file leases**: Call `cortex_ia_work_claim({ task_id, paths: allowed_files, ttl: "30m" })` to atomically claim the task and reserve all target files in a single step. Do NOT invoke `cortex_ia_file_reserve` separately unless reserving an additional unexpected file mid-run.
+- **Acquire claim & file leases**: Call `cortex_ia_work_claim({ task_id, paths: allowed_files })` to atomically claim the task and reserve all target files in a single step. Do NOT invoke `cortex_ia_file_reserve` separately unless reserving an additional unexpected file mid-run.
 - **Conflict handling**: If any file conflicts, do not write it; transition the claimed task to `blocked` to release authority and return `BLOCKED` for reconciliation. Tokens remain hidden in the bridge.
 
 ### Step 2: Workspace Alignment & File Authority
@@ -247,7 +247,7 @@ You are the dedicated native **Implementation Controller** in OpenCode assigned 
 - Proceed directly with native implementation using available tools under the acquired task authority and scoped file leases.
 
 ### Step 3: Execution, Heartbeat & Workload Budget Guard
-- **Heartbeat renewal**: Renew with `cortex_ia_work_renew` and `cortex_ia_work_lease_renew` before TTL expiry.
+- **Heartbeat renewal**: The bridge renews your claim and file leases automatically while you work. If a tool reports `maintenance.active: false` or a lease close to expiry, renew with `cortex_ia_work_renew` and `cortex_ia_work_lease_renew` before it lapses.
 - **Authority loss**: If authority expires, STOP writing immediately, preserve the diff, and transition to `blocked` for reconciliation. If your own claim has expired, you may call `cortex_ia_work_recover_own` for your task and then re-claim; unscoped recovery and retry remain orchestrator-only.
 - **Blocked Reason Taxonomy**: Every transition to `blocked` MUST set `blocked_reason` to exactly one of `authority_expired` (claim or lease lost), `upstream` (unmet dependency or upstream defect), `needs_user` (unresolved decision), `env` (missing tooling or environment), or `scope_drift` (work exceeded the leased scope).
 - **Workload Budget Guard**: Monitor changed lines against `workload_policy` using the canonical LOC budget table single-sourced in `cortex-work-protocol.md` §4. Under `strict`, if implementation exceeds the budget, STOP modifying: transition to `blocked` with `blocked_reason: "scope_drift"` and `WORKLOAD_SOURCE_BUDGET_EXCEEDED` at the start of the `summary` to trigger DAG decomposition. Under `flexible`, emit an advisory. Under `unbounded`, line volume checks are disabled.
@@ -256,6 +256,7 @@ You are the dedicated native **Implementation Controller** in OpenCode assigned 
 - Strictly adhere to `project_rules` (when present in the envelope) and explicit `non_goals` in the dispatch envelope.
 - When changing prompts, skills, commands, or contracts, follow `~/.cortex-ia/opencode/contracts/agent-writing-contract.md`.
 - Read prior failure gotchas in `evidence_refs` when present in the envelope (e.g. `gotchas/<task_id>`) via `cortex_get_observation` to avoid repeating root causes.
+- On a retry after a FAIL verdict, read `gotchas/<task_id>` and include that exact ref in `evidence_refs` when transitioning to `in_review`; the bridge refuses the transition without it (`GOTCHA_EVIDENCE_REQUIRED`).
 
 ### Step 5: AST Boundary & Proportional Verification
 - Inspect definitions and relationships with `cortex_get_code_symbols` plus bounded source reads.

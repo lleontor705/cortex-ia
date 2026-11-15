@@ -27,7 +27,7 @@ Use this deterministic taxonomy. The only accepted `type` values are the server 
 | Subject | Type | Topic key |
 |---|---|---|
 | Architecture/ADR | `decision` or `architecture` | `architecture/<module>` |
-| Gotcha/quirk | `discovery` | `gotchas/<issue>` |
+| Gotcha/quirk | `bugfix` | `gotchas/<issue>` |
 | Project stack/convention | `config` | `dna/<project>` |
 | Domain invariant | `architecture` | `domain/<entity>` |
 | Bug root cause/fix | `bugfix` | `bugfix/<issue>` |

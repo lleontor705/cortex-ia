@@ -62,7 +62,7 @@ test('orchestrator is authorized to call work_approve for Tier 2 auto-approval',
   const mod = await loadPluginFile(bridgePath, opts);
   const bridge = await mod.instantiate({ client: {} });
   await bridge.tool.cortex_ia_work_approve.execute(
-    { task_id: 'task-tier2', verdict: 'PASS', summary: 'Auto-approved low-risk change' },
+    { task_id: 'task-tier2', verdict: 'PASS', evidence: 'npm run lint exit 0', summary: 'Auto-approved low-risk change' },
     { agent: 'orchestrator', sessionID: 'test-orch' }
   );
   assert.ok(opts.calls.some(args => args[0] === 'work' && args[1] === 'approve' && args[2] === 'task-tier2'));

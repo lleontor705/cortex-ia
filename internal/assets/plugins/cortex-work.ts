@@ -1644,7 +1644,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_transition: tool({
-      description: "Transition claimed task state (in_review, in_progress, blocked) with evidence.",
+      description: "Transition claimed task state (in_review, in_progress, blocked) with evidence. Transitioning to in_review fails with GOTCHA_EVIDENCE_REQUIRED when the task's approval history contains a FAIL unless evidence_refs includes \"gotchas/<task_id>\".",
       args: {
         task_id: tool.schema.string(),
         to: tool.schema.enum(["in_review", "in_progress", "blocked"]).optional(),
@@ -1691,9 +1691,8 @@ export const CortexWorkPlugin = Plugin.define({
       description: "Record independent task review verdict. PASS transitions task to done.",
       args: {
         task_id: tool.schema.string(),
-        reviewer: tool.schema.string().optional().describe("Reviewer identity; defaults to host session"),
         verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"]),
-        evidence: tool.schema.string().optional().describe("Evidence pointer (test output, observation id, commit). Required for PASS unless summary is given"),
+        evidence: tool.schema.string().optional().describe("Evidence pointer (test output, observation id, commit). Required for PASS; summary and findings are appended to it"),
         revision: tool.schema.number().describe("Current task revision, from the claim receipt or cortex_ia_work_status"),
         summary: tool.schema.string().optional().describe("Independent review summary and lens verdict"),
         findings: tool.schema.array(tool.schema.string()).optional().describe("List of review findings or blockers")
@@ -1703,8 +1702,9 @@ export const CortexWorkPlugin = Plugin.define({
         const rawVerdict = String(args.verdict || "").toUpperCase();
         const verdict = ["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"].includes(rawVerdict) ? rawVerdict : args.verdict;
         const command = ["work", "approve", args.task_id, "--reviewer", controllerIdentity(context.sessionID), "--verdict", verdict];
-        const evidenceStr = args.evidence || (args.summary ? (args.summary + (args.findings && args.findings.length ? ` (Findings: ${args.findings.join("; ")})` : "")) : "");
-        if (verdict === "PASS" && !evidenceStr) throw new Error("EVIDENCE_REQUIRED: a PASS approval needs `evidence` (a pointer to test output, an observation id, or a commit) or a `summary`");
+        if (verdict === "PASS" && !args.evidence) throw new Error("EVIDENCE_REQUIRED: a PASS approval needs `evidence` (a pointer to test output, an observation id, or a commit). Pass it as the `evidence` argument; `summary` and `findings` are optional and are appended to it.");
+        const notes = [args.summary || "", args.findings && args.findings.length ? `Findings: ${args.findings.join("; ")}` : ""].filter(Boolean).join(" ");
+        const evidenceStr = args.evidence ? [args.evidence, notes].filter(Boolean).join(" | ") : notes;
         if (evidenceStr) command.push("--evidence", evidenceStr);
         command.push("--revision", String(args.revision));
         const result = cortex(command);

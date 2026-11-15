@@ -1099,6 +1099,9 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 	if expectedRevision <= 0 {
 		return WorkApproval{}, errors.New("approval requires an explicit positive revision")
 	}
+	if verdict == "PASS" && evidence == "" {
+		return WorkApproval{}, errors.New("EVIDENCE_REQUIRED: a PASS approval requires non-empty evidence")
+	}
 	now := s.timestamp()
 	approval := WorkApproval{ItemID: id, Revision: expectedRevision, Reviewer: reviewer, Verdict: verdict, Evidence: evidence, CreatedAt: now}
 	err := s.immediate(ctx, func(conn *sql.Conn) error {

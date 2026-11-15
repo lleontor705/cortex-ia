@@ -157,20 +157,26 @@ func workApprove(ctx context.Context, s *session, args map[string]any) (string, 
 		verdict = upper
 	}
 	evidence := optString(args, "evidence")
-	if evidence == "" {
-		if summary := optString(args, "summary"); summary != "" {
-			evidence = summary
-			findings, err := optStringList(args, "findings")
-			if err != nil {
-				return "", err
-			}
-			if len(findings) > 0 {
-				evidence += " (Findings: " + strings.Join(findings, "; ") + ")"
-			}
-		}
-	}
 	if verdict == "PASS" && evidence == "" {
-		return "", errors.New("EVIDENCE_REQUIRED: a PASS approval needs `evidence` (a pointer to test output, an observation id, or a commit) or a `summary`")
+		return "", errors.New("EVIDENCE_REQUIRED: a PASS approval needs `evidence` (a pointer to test output, an observation id, or a commit). Pass it as the `evidence` argument; `summary` and `findings` are optional and are appended to it")
+	}
+	findings, err := optStringList(args, "findings")
+	if err != nil {
+		return "", err
+	}
+	var notes []string
+	if summary := optString(args, "summary"); summary != "" {
+		notes = append(notes, summary)
+	}
+	if len(findings) > 0 {
+		notes = append(notes, "Findings: "+strings.Join(findings, "; "))
+	}
+	if note := strings.Join(notes, " "); note != "" {
+		if evidence != "" {
+			evidence += " | " + note
+		} else {
+			evidence = note
+		}
 	}
 	revision, err := reqRevision(args)
 	if err != nil {

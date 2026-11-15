@@ -78,7 +78,7 @@ func authorityTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_work_transition",
-			Description: "Transition claimed task state (in_review, in_progress, blocked) with evidence. The revision is required and is compared durably.",
+			Description: "Transition claimed task state (in_review, in_progress, blocked) with evidence. The revision is required and is compared durably. Transitioning to in_review fails with GOTCHA_EVIDENCE_REQUIRED when the task's approval history contains a FAIL unless evidence_refs includes \"gotchas/<task_id>\".",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Claimed task identifier"),
 				"to", schemaEnum("Target state", claimStatus...),
@@ -94,12 +94,11 @@ func authorityTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_work_approve",
-			Description: "Record independent task review verdict. PASS transitions task to done. A PASS needs evidence or summary; the claiming controller of the same task cannot approve it.",
+			Description: "Record independent task review verdict. PASS transitions task to done. A PASS needs evidence (summary and findings are appended); the claiming controller of the same task cannot approve it.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Task identifier"),
-				"reviewer", schemaString("Accepted for compatibility; the reviewer identity is the calling controller"),
 				"verdict", schemaEnum("Review verdict", approvalVerdicts...),
-				"evidence", schemaString("Evidence pointer (test output, observation id, commit)"),
+				"evidence", schemaString("Evidence pointer (test output, observation id, commit). Required for PASS"),
 				"revision", schemaNumber("Current task revision, from the claim receipt or cortex_ia_work_status"),
 				"summary", schemaString("Independent review summary and lens verdict"),
 				"findings", schemaStrings("List of review findings or blockers"),

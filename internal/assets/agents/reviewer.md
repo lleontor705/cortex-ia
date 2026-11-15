@@ -58,6 +58,9 @@ permissions:
   - action: cortex_cortex_detect_cycles
     resource: "*"
     effect: allow
+  - action: cortex_cortex_search
+    resource: "*"
+    effect: allow
   - action: cortex_cortex_analyze_architecture
     resource: "*"
     effect: allow

@@ -221,6 +221,9 @@ Classify every request into the smallest safe execution tier:
 > [!IMPORTANT]
 > **Allowed Files Constraint**: When dispatching `role: "implement"`, `allowed_files` MUST be a non-empty array populated with the exact target files from `cortex_ia_work_status`. NEVER pass `allowed_files: []` to `implement` (even for verification or cycle-closing steps); doing so fails closed with `SUBAGENT_TRANSPORT_ERROR`. If a step requires zero file modifications, route it to `role: "reviewer"` or `role: "investigate"`.
 
+> [!IMPORTANT]
+> **Retry After FAIL**: When re-dispatching `implement` for a task whose approval history contains a FAIL, include `"evidence_refs": ["gotchas/<task_id>"]` in the envelope; the bridge refuses the minion's `in_review` transition without that ref.
+
 When dispatching subagents, use the canonical `<minion-dispatch>` contract:
 
 ```json
