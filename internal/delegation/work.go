@@ -107,7 +107,6 @@ func WorkBlockedReasonClass(reason string) string {
 }
 
 type WorkItem struct {
-	Contract *SDDContract `json:"contract,omitempty"`
 	ConversationOwnership
 	ID             string          `json:"task_id"`
 	BoardID        string          `json:"board_id"`
@@ -134,7 +133,6 @@ type WorkItem struct {
 }
 
 type WorkDefinition struct {
-	Contract *SDDContract
 	ConversationOwnership
 	Project        string
 	Objective      string
@@ -292,21 +290,6 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 	if err != nil || workspace == "" {
 		return WorkItem{}, errors.New("task project root is required")
 	}
-	contractJSON, err := encodeContract(definition.Contract)
-	if err != nil {
-		return WorkItem{}, err
-	}
-	if definition.Contract != nil {
-		if definition.Objective == "" || definition.Acceptance == "" || definition.Verification == "" {
-			return WorkItem{}, errors.New("SDD task requires objective, acceptance and verification")
-		}
-		if err := verifyWorkspacePins(workspace, definition.Contract, "", ""); err != nil {
-			return WorkItem{}, err
-		}
-		if err := verifyLocalCortexPins(ctx, definition.Contract); err != nil {
-			return WorkItem{}, err
-		}
-	}
 	allowedFilesJSON, err := json.Marshal(allowedFiles)
 	if err != nil {
 		return WorkItem{}, fmt.Errorf("encode allowed files: %w", err)
@@ -317,9 +300,6 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 		status = WorkBacklog
 	}
 	err = s.immediate(ctx, func(conn *sql.Conn) error {
-		if err := requireOpenSDDChange(ctx, conn, boardID, definition.Contract); err != nil {
-			return err
-		}
 		var boardExists int
 		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_boards WHERE id=?`, boardID).Scan(&boardExists); err != nil {
 			return err
@@ -330,7 +310,7 @@ func (s *Store) createWorkInBoardWithDefinition(ctx context.Context, workspace, 
 		if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id,workspace,opencode_session_id,opencode_root_session_id,opencode_parent_session_id,workload_policy) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, id, title, status, now, now, boardID, workspace, definition.OpenCodeSessionID, definition.OpenCodeRootSessionID, definition.OpenCodeParentSessionID, string(workloadPolicy)); err != nil {
 			return fmt.Errorf("create work item: %w", err)
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO work_definitions(item_id,objective,acceptance_criteria,verification,allowed_files_json,contract_json) VALUES(?,?,?,?,?,?)`, id, definition.Objective, definition.Acceptance, definition.Verification, string(allowedFilesJSON), contractJSON); err != nil {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO work_definitions(item_id,objective,acceptance_criteria,verification,allowed_files_json) VALUES(?,?,?,?,?)`, id, definition.Objective, definition.Acceptance, definition.Verification, string(allowedFilesJSON)); err != nil {
 			return fmt.Errorf("create work definition: %w", err)
 		}
 		seen := map[string]bool{}
@@ -439,13 +419,9 @@ func (s *Store) GetWork(ctx context.Context, id string) (WorkItem, error) {
 	if canonical, canonicalErr := CanonicalWorkspace(item.Workspace); canonicalErr == nil {
 		item.Workspace = canonical
 	}
-	var allowedFilesJSON, contractJSON string
-	err = s.db.QueryRowContext(ctx, `SELECT objective,acceptance_criteria,verification,allowed_files_json,contract_json FROM work_definitions WHERE item_id=?`, id).Scan(&item.Objective, &item.Acceptance, &item.Verification, &allowedFilesJSON, &contractJSON)
+	var allowedFilesJSON string
+	err = s.db.QueryRowContext(ctx, `SELECT objective,acceptance_criteria,verification,allowed_files_json FROM work_definitions WHERE item_id=?`, id).Scan(&item.Objective, &item.Acceptance, &item.Verification, &allowedFilesJSON)
 	if err == nil {
-		item.Contract, err = decodeContract(contractJSON)
-		if err != nil {
-			return WorkItem{}, err
-		}
 		if err := json.Unmarshal([]byte(allowedFilesJSON), &item.AllowedFiles); err != nil {
 			return WorkItem{}, fmt.Errorf("decode task allowed files: %w", err)
 		}
@@ -1159,8 +1135,8 @@ func (s *Store) ApproveWork(ctx context.Context, id, reviewer, verdict, evidence
 			if err != nil {
 				return err
 			}
-			if binding != current {
-				return errors.New("SDD review binding changed; fresh review required")
+			if !sameReviewBinding(binding, current) {
+				return errors.New("review binding changed; fresh review required")
 			}
 		}
 
