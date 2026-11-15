@@ -7,71 +7,48 @@ metadata:
   version: "2.0.0"
 ---
 
-# Independent adversarial reviewer
+# Independent review lenses
 
-Do not modify files and do not trust implementation receipts as proof; only independent current-revision SQLite approval/evidence yields done. Inspect the actual diff, affected interfaces, tests, the task's plan file and its Acceptance Checks (`docs/plans/<board-id>.md`, named in `artifact_refs`), `./.cortex-ia/discovery.md` when present, `cortex-ia work` state, and repository conventions. Verify that confirmed architectural seams, dependency direction, required engines, and canonical checks remain intact; primary repository evidence wins over a stale profile. Re-run proportionate checks where allowed. You are an audit role: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
+The `reviewer` agent owns the verdict flow (`agents/reviewer.md`). This skill is the checklist for the three lenses. The case matrix (`_shared/cortex-work-protocol.md` §2.7a) decides which lenses apply, and the LOC budget and receipt are in §4 and §8.
 
-### Strict Anti-Patterns & Deterministic Pipeline
-- **Never Write or Mutate Code**: You possess read-only permissions. Never clone the repo to `%TEMP%` or write tests via bash scripts (`echo/cat > ..._test.go`). Never attempt file mutations using `sed`/bash.
-- **5-Phase Execution**: Execute the 5-phase deterministic pipeline (1: Contract/Pins ➔ 2: Static/Cleanliness ➔ 3: Test Oracles ➔ 4: Adversarial Audit ➔ 5: Approval). Any gate failure triggers an immediate early exit.
+Judge the actual diff against the task objective and its acceptance checks. Treat the implementer's receipt as a claim to verify, not as proof.
 
-## Mandatory AST Delta Synchronization & Verification Gate
+## Lens 1: Functional and structural
 
-The review pipeline adapts to the target artifact kind. Classify the task per the §2.7a Adaptive Review Case Matrix (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §2.7a): non-code kinds (data/artifacts, documentation, declarative configuration, operational/DB work) apply the matching case's verification method and gate exemptions there, while executable code tasks run the full code-intelligence pipeline:
+- Rerun each acceptance check the task references, from the plan's Acceptance Checks in `docs/plans/<board-id>.md`. Record the command and exit code.
+- Run the tests for the changed packages and their direct callers.
+- For code tasks, run `cortex_ingest_code` on the absolute workspace root, then `cortex_detect_cycles` for the project. A new cycle is a BLOCKER.
+- Check that tests assert what the objective needs: error branches, return payloads, boundaries. A test that would pass under any change to the logic is an oracle gap. Name the assertion that cannot fail.
 
-- **Executable Code Tasks (`allowed_files` contains application source code `*.go`, `*.ts`, `*.py`, etc.)**:
-  Before deciding on a verdict or gate approval:
-  1. **Delta AST Re-Indexing (<50ms)**: Call `cortex_ingest_code(workspace_root_absolute_path, project)` with the absolute workspace root directory path (never `.`) to update `code_symbols` and `code_relations` for the modified files via incremental SHA-256 caching.
-  2. **AST Delta Auditing**: Compare filtered symbols, imports, source callers, and cycle detection before and after the change. Do not pass code symbols to the observation-only `cortex_get_blast_radius` tool.
-  3. **Structural Cycle Invariant**: Run `cortex_detect_cycles(project)` to guarantee no circular dependencies or import cycles were introduced by the diff.
-  4. **Independent Test Reruns**: Execute targeted tests across all callers in the updated blast radius.
+## Lens 2: Resilience and security
 
-## Audit & Verification Scope (3-Lens Architecture)
+- No secret, credential, or authority token (`claim_token`, `lease_token`) appears in the diff, fixtures, logs, or receipts.
+- Locks, goroutines, file handles, and connections are released on every path.
+- Errors are not silently swallowed, and no "skip" path is added to make tests pass. Contracts stay as they are.
+- Check the code-intelligence and privacy rules in `_shared/cortex-work-protocol.md` §4 only when the diff touches them.
 
-Audit correctness, security, resilience, and architectural conformance. A tool unavailable in the environment is `INCONCLUSIVE`, not a defect and not PASS. Report only actionable issues tied to exact evidence; avoid speculative checklists and stylistic churn.
+## Lens 3: Architecture and discovery
 
-Run three logically independent review passes:
+- The diff respects the boundaries in `./.cortex-ia/discovery.md` (when present) and the design contract in `_shared/codebase-design-contract.md`.
+- Interfaces stay narrow, and dependency direction holds.
+- Size is checked against the active `workload_policy` (§4). Under `flexible` or `unbounded`, a larger coherent diff is not a finding by itself.
 
-1. **Lens 1: Functional & Structural Regression:** Verify AST delta re-indexing (`cortex_ingest_code`), test execution across callers, zero circular dependency regressions (`cortex_detect_cycles`), and the plan's acceptance checks, rerunning each check ID the task references.
-2. **Lens 2: Resilience & Security Guardrails:** Inspect boundary conditions, in-memory immutability (verifying that multi-record/batch preflights do not mutate input structures in-place before whole-request validation), code-intelligence noninterference (verifying that privacy/sanitize passes never redact or strip `DocSummary`, `Reasoning`, or AST symbols per `REQ-PRIV-007`), contract fidelity (ensuring no silent error suppression or unauthorized "skip" semantics to force green tests), deterministic resource/lock release, and strict absence of secret or authority token leakage (`claim_token`, `lease_token`).
-3. **Lens 3: Architecture & Discovery Conformance:** Verify diff against confirmed architectural boundaries in `./.cortex-ia/discovery.md` and design contracts in `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. Ensure interfaces remain narrow, line counts obey the active `workload_policy` LOC budget (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §4), and changes stay within modular boundaries. Under `flexible` or `unbounded`, larger coherent diffs are NOT grounds for BLOCKER or FAIL if modularity, architecture, and correctness are sound.
+## Severity
 
-Return verdicts for each lens independently. Global `verification_verdict` is `PASS` only when all three lenses are `PASS` and every mandatory executable check succeeds. Any BLOCKER in any lens fails the review.
+- **BLOCKER**: a secret or destructive data risk, an unmet acceptance criterion, a new dependency cycle, or a reproducible regression in a real caller.
+- **WARNING**: a real but bounded risk the task can accept.
+- **NIT**: style or preference. Hypothetical inputs to test helpers, mocks, or branches no caller reaches are NIT at most.
 
-For every finding include severity (`BLOCKER`, `WARNING`, `NIT`), lens (`functional_and_structural | resilience_and_security | architecture_and_discovery`), path and line where applicable, evidence, impact, and remediation. A secret in the diff, destructive data risk, unmet acceptance criterion, circular dependency regression, or reproducible critical regression is a BLOCKER.
+Each finding names the lens, file and line, the evidence, the impact, and a remediation.
 
-### Test-Strength Lens (Reviewer Phase 3 — elaborated single source)
+## Non-code tasks
 
-A test that would pass under any behavior change of the logic it claims to cover is a **perpetually-green** test: an oracle gap, not evidence. Under Lens 1 such an oracle fails a code task — name the specific unfailable assertion (one asserting only a non-error outcome without a boundary, payload, or failure-branch discriminator).
+For generated artifacts, documentation, and declarative configuration, check artifact presence, non-zero size, format validity, and secret hygiene. Skip AST, cycle, and linter checks.
 
-Independently verify the implementer's claimed `mutation` evidence against the actual diff and test source, read-only:
-- `KILLED`: confirm the named mutation would flip an actual assertion in the delivered test; a contradiction or unfalsifiable claim fails, and the reviewer writes and executes no test to check it.
-- `STATIC-ANALYSIS`: when execution was impossible, verify the cited assertions cover the changed unit's error boundaries, return payloads, and failure branches; accept the evidence when that bar is met and do not fail solely because no executed mutation was available.
+## Verdict per lens
 
-The read-only bar is absolute: never write tests, never mutate files via `sed`/bash, never clone into a temporary directory. The normative gate lives in `_shared/cortex-work-protocol.md` §4/§8.
+Give each lens PASS, FAIL, BLOCKED, or INCONCLUSIVE with its evidence. A tool that is unavailable makes that check INCONCLUSIVE, which is neither a defect nor a PASS.
 
-### Reviewer Proportionality & Reality Anchor (Anti-Nitpicking)
-- **Reality Anchor**: Reviewers MUST anchor all findings directly to actual repository code, declared contract requirements, and real execution risks. Never evaluate or demand handling of hypothetical, theoretical, or out-of-scope inputs.
-- **Forbidding BLOCKERs on Synthetic Test Harness Edge Cases**: A reviewer MUST NEVER issue a `BLOCKER` or `FAIL` verdict based on hypothetical inputs to internal test helpers, test harnesses, or mocks when the actual repository code and specified contracts do not contain those inputs. Discrepancies on uncalled or unrealistic helper branches (e.g. tabs vs spaces in synthetic shell parsers, unquoted strings never emitted by config, unreached edge cases in test assertions) are strictly `NIT` or `WARNING`, NEVER a blocker.
-- **Contract & Scope Fidelity**: The review evaluates whether the task objective and acceptance criteria were satisfied. Reviewers must NOT invent new unstated requirements or demand generalized parsing engines when verifying concrete declarative configuration changes.
+## Memory
 
-## Closed-Loop Memory & Durable Evidence
-- **On FAIL**: Use `context-distiller` to extract minimal failure locality (path, exact line, error signature) and save it in Cortex (`cortex_save` with `type: "bugfix"`, `topic_key: "gotchas/<task_id>"` and link with `cortex_relate`). Return `verification_verdict: "FAIL"` and link `evidence_ref: "gotchas/<task_id>"` so the subsequent fix minion avoids the same defect.
-- **On PASS**: Record durable architectural decisions in Cortex (`cortex_save` with `type: "decision"`, `topic_key: "architecture/<module>"` and link with `cortex_relate`). NEVER use `cortex_save_rule` for review findings, task completions, or worktree maintenance.
-- Never store secrets found during review, raw output, or work-control authority tokens.
-
-Return the receipt as a Markdown list of `field: value` lines (not JSON), with these fields:
-
-- workflow: review
-- phase_status: success | partial | failed | blocked
-- verification_verdict: PASS | FAIL | BLOCKED | INCONCLUSIVE
-- lens_verdicts: functional_and_structural, resilience_and_security, and architecture_and_discovery, each `PASS | FAIL | BLOCKED | INCONCLUSIVE`
-- findings: list; each item has lens (functional_and_structural | resilience_and_security | architecture_and_discovery), severity (BLOCKER | WARNING | NIT), rule_or_requirement, file, line, evidence, impact, and remediation
-- checks: list; each item has command, exit_code, and result
-- artifact_refs: <list>
-- evidence_refs: <list>
-- limitations: <list>
-- risks: <list>
-- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective
-
-PASS requires all 3 lenses to pass, zero blockers, and successful mandatory evidence. FAIL means observed non-compliance. BLOCKED means a required prerequisite is absent. INCONCLUSIVE means a lens or mandatory verification ran only partially.
+On FAIL, the reviewer saves the root cause as a gotcha (see `agents/reviewer.md`). On PASS for an architectural change, record the decision with `cortex_save` (`type: "decision"`, `topic_key: "architecture/<module>"`). Topic keys and observation types are in `_shared/cortex-convention.md`. Never store secrets, raw output, or authority tokens.

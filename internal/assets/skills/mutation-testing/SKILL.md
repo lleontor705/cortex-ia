@@ -7,47 +7,38 @@ metadata:
   version: "1.1.0"
 ---
 
-# Mutation Testing & Adversarial Verification
+# Mutation testing
 
-Use this skill to validate the effectiveness of tests submitted by implementation minions and eliminate shallow 'vibe tests'.
+Use this skill to check that a test suite fails when the behaviour it covers changes. Evidence rules (what a receipt must contain, and when a transition is allowed) are in `_shared/cortex-work-protocol.md` §4 and §8.
 
-## 1. Role Boundaries & Execution Context
-- **Invocation Contract**: Mutation execution is **implementer-side only**, performed in `current_workspace` under a live claim and per-file lease BEFORE `transition in_review`. The reviewer never executes mutations.
-- **Implementer Role (`implement`)**: Applies 1–2 minimal reversible mutations during TDD and verification to prove test sensitivity, then reverts to clean git state. The normative obligation and exemptions live in `_shared/cortex-work-protocol.md` §4 (lifecycle) and §8 (evidence composition).
-- **Reviewer Role (`reviewer`)**: Possesses strictly read-only authority (`edit: false`, `write: false`). **DO NOT** attempt to edit files via bash (`sed`, `cat`) or clone repositories into temporary directories. Verify test resistance read-only via:
-  1. **Static Assertion Analysis**: Inspect test source to confirm explicit assertion of error boundaries, return payloads, and failure branches.
-  2. **Independent Evidence Verification**: Confirm the receipt's named mutation would flip an actual assertion in the delivered diff and test source; a contradiction or unfalsifiable claim is a FAIL.
-  3. **Dedicated AST Mutation Tooling**: Use specialized tooling (e.g. `go-mutesting`) if installed, for reading results only — never to mutate source yourself.
+## Who runs what
 
-## 2. Mutation Evidence Receipt Field
+- **Implementer**: applies one or two small, reversible mutations to the code under test, runs the covering test, and reverts. This happens before the task moves to `in_review`.
+- **Reviewer**: read-only. It checks the claimed result against the diff and the test source. It does not edit files or run mutations. It may read output from a mutation tool such as `go-mutesting` if one already ran.
 
-The `mutation` receipt field records the implementer's evidence outcome; the normative gate is stated once in `_shared/cortex-work-protocol.md` §4/§8.
+## Operators
 
-| Value | Meaning | Consequence |
-|---|---|---|
-| `KILLED` | covering test failed under the mutation | genuine verifier; transition allowed |
-| `SURVIVED` | test passed despite broken logic | shallow test; strengthen and re-run; never ships in a transition |
-| `STATIC-ANALYSIS` | environment/tool cannot compile or execute mutations | minimum bar: explicit recorded assertion of the changed unit's error boundaries, return payloads, and failure branches; required, never silently skipped |
+Pick one or two that fit the change:
 
-`SKIPPED_UNSUPPORTED` is not a valid outcome: when execution is impossible, record `STATIC-ANALYSIS` with the three-part assertion bar instead.
+1. Boundary and operator: `>` to `>=` or `<`; `==` to `!=`; `+` to `-`.
+2. Boolean: invert a returned boolean; negate an `if` predicate.
+3. Return value: replace a returned payload with `nil`, `false`, or an empty value.
 
-## 3. Mutation Operators to Apply (Implementer / AST Tools)
-Apply 1 or 2 minimal, reversible mutations to the target implementation:
-1. **Boundary / Operator Mutator:**
-   - Change `>` to `>=` or `<`.
-   - Change `===` to `!==` or `==` to `!=`.
-   - Change `+` to `-`.
-2. **Boolean / Inversion Mutator:**
-   - Invert boolean return value (`return true` -> `return false`).
-   - Negate conditional predicate (`if (isValid)` -> `if (!isValid)`).
-3. **Void / Return Statement Mutator:**
-   - Replace return payload with `nil`, `false`, or empty struct.
+## Procedure
 
-## 4. Strict Verification Protocol
-1. **Baseline Run:** Execute test suite on delivered code. Must PASS ($ExitCode = 0$).
-2. **Compilation Guardrail:** In compiled languages (Go, Rust, C++), the mutation MUST compile cleanly. A compilation error (e.g. `declared and not used`, type mismatch) is **NOT** a killed mutation. If a mutation fails to compile on the first attempt, discard it immediately—never iterate in open-ended bash debugging.
-3. **Execute Mutated Run:** Rerun the specific test covering that logic:
-   - **KILLED MUTATION (PASS):** Test fails with exit code $\neq 0$ due to assertion failure. The test is rigorous and genuine.
-   - **SURVIVED MUTATION (FAIL):** Test passes ($ExitCode = 0$) despite broken logic. The test is a shallow/vibe test.
-4. **Revert Mutation:** Instantly revert the file back to clean git state (`git checkout -- [file]`).
-5. **Report:** If any mutation survived, emit `verification_verdict: FAIL` with the exact surviving mutation scenario.
+1. Run the covering test on the unmodified code. It must pass.
+2. Apply one mutation. If the code no longer compiles, discard that mutation and choose another. A compile error does not count as a kill.
+3. Rerun the covering test.
+   - Test fails on an assertion: the mutation is **KILLED**. The test is doing its job.
+   - Test still passes: the mutation **SURVIVED**. Strengthen the test and repeat.
+4. Revert with `git checkout -- <file>` and confirm the tree is clean for that file.
+
+If execution is impossible in the environment, record **STATIC-ANALYSIS** instead. Then name the assertions that cover the changed unit's error boundaries, return payloads, and failure branches. A bare claim does not meet that bar.
+
+## Reviewer check
+
+For each claimed result:
+
+- KILLED: confirm the named mutation would flip an assertion in the delivered test. A contradiction, or a claim the test cannot falsify, fails the task.
+- STATIC-ANALYSIS: confirm the cited assertions cover the boundaries described above. Accept the evidence if they do. Do not fail the task only because no mutation was executed.
+- Any test that would pass under any behaviour change of the logic it covers is an oracle gap, and it fails a code task.
