@@ -19,7 +19,7 @@ async function snapshot(producer) {
 
 test('snapshot uses one bounded Cortex-IA stream request and preserves exact bytes',async()=>{
   const h=await snapshot(()=>JSON.stringify(receipt));
-  const result=JSON.parse((await h.tool.execute({project:'p',observation_id:7,expected_sha256:sha256})).content);
+  const result=JSON.parse(await h.tool.execute({project:'p',observation_id:7,expected_sha256:sha256}));
   assert.deepEqual(result,receipt);
   assert.equal(h.calls.length,1);
   assert.equal(h.calls[0].file,'cortex-ia');
