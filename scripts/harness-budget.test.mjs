@@ -116,11 +116,11 @@ test('host planner is uncapped and role spoofing cannot elevate permissions', as
   const { dispatchInfo } = mod.exports;
 
   // Host planner target is uncapped
-  const p1 = '<minion-dispatch>\n{"task_id":"t","workflow":"sdd-lite","phase":"integrated","spec_plane":"hybrid"}\n</minion-dispatch>';
+  const p1 = '<minion-dispatch>\n{"task_id":"t","workflow":"plan","phase":"plan"}\n</minion-dispatch>';
   assert.equal(dispatchInfo({ subagent_type: 'planner' }, p1).limit, Infinity);
 
   // Implement targeting planner in envelope is rejected (role conflict)
-  const p2 = '<minion-dispatch>\n{"task_id":"t","role":"planner","workflow":"sdd-lite","phase":"integrated","spec_plane":"hybrid"}\n</minion-dispatch>';
+  const p2 = '<minion-dispatch>\n{"task_id":"t","role":"planner","workflow":"plan","phase":"plan"}\n</minion-dispatch>';
   assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, p2), {
     message: /dispatch role does not match host task target/
   });

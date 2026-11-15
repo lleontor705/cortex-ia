@@ -139,18 +139,17 @@ test('dispatchInfo enforces role alignment and boundaries', async () => {
   });
 });
 
-test('planner sdd-lite accepts propose, plan, tasks aliases and normalizes to integrated', async () => {
+test('planner plan workflow passes plan and decompose phases through unchanged', async () => {
   const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
   const { dispatchInfo } = mod.exports;
 
-  for (const phase of ['propose', 'plan', 'tasks', 'spec', 'design']) {
+  for (const phase of ['plan', 'decompose']) {
     const prompt = `<minion-dispatch>
 {
   "contract_version": "1.0",
   "role": "planner",
-  "workflow": "sdd-lite",
+  "workflow": "plan",
   "phase": "${phase}",
-  "spec_plane": "hybrid",
   "workload_policy": "flexible",
   "task_id": null,
   "objective": "Plan feature",
@@ -162,89 +161,67 @@ test('planner sdd-lite accepts propose, plan, tasks aliases and normalizes to in
 
     const res = dispatchInfo({ subagent_type: 'planner' }, prompt);
     const normalized = JSON.parse(res.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
-    assert.equal(normalized.phase, 'integrated', `phase ${phase} should normalize to integrated`);
-    assert.equal(normalized.workflow, 'sdd-lite');
-    assert.equal(normalized.spec_plane, 'hybrid');
+    assert.equal(normalized.phase, phase);
+    assert.equal(normalized.workflow, 'plan');
   }
+});
 
-  // Verify sdd-full accepts plan and integrated aliases and normalizes to propose
-  for (const phase of ['plan', 'integrated']) {
-    const prompt = `<minion-dispatch>
-{
-  "contract_version": "2.0",
-  "role": "planner",
-  "workflow": "sdd-full",
-  "phase": "${phase}",
-  "spec_plane": "hybrid",
-  "workload_policy": "flexible",
-  "task_id": null,
-  "objective": "Plan multitenancy-hardening SDD initiative",
-  "allowed_files": [],
-  "acceptance_checks": ["Check 1"],
-  "artifact_refs": []
-}
+test('planner envelope defaults to the plan workflow and rejects retired planning workflows', async () => {
+  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
+  const { dispatchInfo } = mod.exports;
+
+  const defaulted = `<minion-dispatch>
+{"contract_version": "1.0", "role": "planner", "task_id": null, "objective": "Plan feature", "allowed_files": [], "acceptance_checks": ["Check 1"], "artifact_refs": []}
 </minion-dispatch>`;
+  const res = dispatchInfo({ subagent_type: 'planner' }, defaulted);
+  const normalized = JSON.parse(res.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
+  assert.equal(normalized.workflow, 'plan');
+  assert.equal(normalized.phase, 'plan');
 
-    const res = dispatchInfo({ subagent_type: 'planner' }, prompt);
-    const normalized = JSON.parse(res.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
-    assert.equal(normalized.phase, 'propose', `phase ${phase} should normalize to propose in sdd-full`);
-    assert.equal(normalized.workflow, 'sdd-full');
-    assert.equal(normalized.spec_plane, 'hybrid');
+  for (const workflow of ['sdd-lite', 'sdd-full', 'decision-map']) {
+    const retired = `<minion-dispatch>
+{"contract_version": "1.0", "role": "planner", "workflow": "${workflow}", "phase": "plan", "task_id": null, "objective": "Plan feature", "allowed_files": [], "acceptance_checks": ["Check 1"], "artifact_refs": []}
+</minion-dispatch>`;
+    assert.throws(() => dispatchInfo({ subagent_type: 'planner' }, retired), {
+      message: /invalid planning workflow/
+    }, workflow);
   }
+});
 
-  // Verify spec_plane cannot be null for planner
-  const nullPlanePrompt = `<minion-dispatch>
-{
-  "contract_version": "1.0",
-  "role": "planner",
-  "workflow": "sdd-lite",
-  "phase": "integrated",
-  "spec_plane": null,
-  "workload_policy": "flexible",
-  "task_id": null,
-  "objective": "Plan feature",
-  "allowed_files": [],
-  "acceptance_checks": ["Check 1"],
-  "artifact_refs": []
-}
-</minion-dispatch>`;
-  assert.throws(() => dispatchInfo({ subagent_type: 'planner' }, nullPlanePrompt), {
-    message: /specification plane cannot be null for planner/
-  });
+test('planner plan workflow rejects phases outside plan and decompose', async () => {
+  const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
+  const { dispatchInfo } = mod.exports;
 
-  // Verify invalid phase for decision-map throws descriptive error
   const invalidPhasePrompt = `<minion-dispatch>
 {
   "contract_version": "1.0",
   "role": "planner",
-  "workflow": "decision-map",
+  "workflow": "plan",
   "phase": "propose",
-  "spec_plane": "hybrid",
   "workload_policy": "flexible",
   "task_id": null,
-  "objective": "Chart decision map",
+  "objective": "Plan feature",
   "allowed_files": [],
   "acceptance_checks": ["Check 1"],
   "artifact_refs": []
 }
 </minion-dispatch>`;
   assert.throws(() => dispatchInfo({ subagent_type: 'planner' }, invalidPhasePrompt), {
-    message: /invalid planning phase for decision-map/
+    message: /invalid planning phase for plan/
   });
 });
 
-test('dispatchInfo normalizes investigate envelope with description fallback and spec_plane none', async () => {
+test('dispatchInfo normalizes investigate envelope with description fallback', async () => {
   const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
   const { dispatchInfo } = mod.exports;
 
-  // Emulates OpenCode task call where model provides description instead of objective and spec_plane "none"
+  // Emulates OpenCode task call where model provides description instead of objective
   const prompt = `<minion-dispatch>
 {
   "contract_version": "2.0",
   "role": "investigate",
   "workflow": "investigate",
   "phase": "diagnose",
-  "spec_plane": "none",
   "task_id": null,
   "description": "Mapear arquitectura inventario actual",
   "allowed_files": [],
@@ -259,7 +236,6 @@ test('dispatchInfo normalizes investigate envelope with description fallback and
   assert.equal(normalized.contract_version, '2.0');
   assert.equal(normalized.role, 'investigate');
   assert.equal(normalized.objective, 'Mapear arquitectura inventario actual');
-  assert.equal(normalized.spec_plane, null);
   assert.deepEqual(normalized.non_goals, ['Do not modify repository files']);
 });
 

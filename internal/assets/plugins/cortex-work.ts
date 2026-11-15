@@ -78,7 +78,6 @@ tool.schema = {
 import { execFileSync, execSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 
 interface SubagentTrack {
@@ -527,17 +526,6 @@ function assertInReviewGotchaEvidence(taskID: string, evidenceRefs: unknown): vo
     `a FAIL verdict in the approval history requires evidence_refs to include "${gotchaEvidenceRef(taskID)}"`);
 }
 
-function transientRequest(value: object): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-delegation-"));
-  const requestPath = path.join(dir, "request.json");
-  fs.writeFileSync(requestPath, JSON.stringify(value), { encoding: "utf-8", mode: 0o600, flag: "wx" });
-  return requestPath;
-}
-
-function cleanupRequest(requestPath: string) {
-  try { fs.rmSync(path.dirname(requestPath), { recursive: true, force: true }); } catch {}
-}
-
 function parseTabCreateResult(output: string): { paneID: string; tabID: string } {
   const parsed = parseJSON(output);
   const paneID = parsed?.result?.root_pane?.pane_id || parsed?.result?.pane?.pane_id || parsed?.result?.pane_id || "";
@@ -694,19 +682,6 @@ function extractCompactReceipt(job: any, res: any, jobID: string): any {
   if (!res && isSuccess) compactResult.receipt_missing = true;
 
   return compactResult;
-}
-
-// Contract planes accepted by an SDD contract. The retired Spec Kit plane is
-// gone: only OpenSpec, Cortex, and hybrid are represented, so any other value
-// fails closed instead of silently binding a contract the runtime cannot honor.
-export const SPEC_PLANES = ["openspec", "cortex", "hybrid"] as const;
-
-export function assertSpecPlane(rawPlane: unknown): string {
-  const plane = String(rawPlane ?? "").trim();
-  if (!(SPEC_PLANES as readonly string[]).includes(plane)) {
-    throw new Error(`SPEC_PLANE_INVALID: ${JSON.stringify(plane)} is not an accepted spec_plane (${SPEC_PLANES.join("|")})`);
-  }
-  return plane;
 }
 
 export type ErrorSeverity = "critical" | "error" | "warning";
@@ -1067,78 +1042,6 @@ export const CortexWorkPlugin = Plugin.define({
       }
     }),
 
-    cortex_ia_openspec_validate: tool({
-      description: "Validate OpenSpec planning artifacts from the active workspace without exposing a shell.",
-      args: {
-        relative_directory: tool.schema.string(),
-        workflow: tool.schema.enum(["sdd-lite", "sdd-full", "decision-map"]),
-        phase: tool.schema.enum(["integrated", "propose", "spec", "design", "tasks", "chart", "resolve"])
-      },
-      async execute(args, context) {
-        const command = ["openspec", "validate", args.relative_directory, "--workflow", args.workflow, "--phase", args.phase, "--json"];
-        if (context.directory) {
-          command.push("--project", path.resolve(context.directory));
-        }
-        try {
-          return cortex(command, context.directory);
-        } catch (err: any) {
-          const stdout = err?.stdout ? String(err.stdout).trim() : "";
-          if (stdout.startsWith("{") && stdout.endsWith("}")) {
-            return stdout;
-          }
-          throw err;
-        }
-      }
-    }),
-
-    cortex_ia_change_archive: tool({
-      description: "Close an approved SDD change after durable task approval and fingerprint verification (Planner only).",
-      args: {
-        board_id: tool.schema.string(), change_id: tool.schema.string(),
-        workflow: tool.schema.enum(["sdd-lite", "sdd-full"]),
-        spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid"])
-      },
-      async execute(args, context) {
-        return cortex(["work", "archive", "--board", args.board_id, "--project", path.resolve(context.directory),
-          "--change", args.change_id, "--workflow", args.workflow, "--spec-plane", args.spec_plane], context.directory);
-      }
-    }),
-
-    cortex_ia_openspec_write: tool({
-      description: "Write a Markdown planning artifact under openspec/changes/.",
-      args: { relative_path: tool.schema.string(), content: tool.schema.string() },
-      async execute(args, context) {
-        const relative = args.relative_path.replaceAll("\\", "/");
-        const clean = path.posix.normalize(relative);
-        if ((relative.startsWith("openspec/changes/") && !clean.startsWith("openspec/changes/")) ||
-            relative.includes("../") || relative.includes("/..") || relative.startsWith("../") || relative === "..") {
-          throw new Error("OpenSpec writes must target a Markdown file under openspec/changes/");
-        }
-        const normalized = clean.startsWith("openspec/changes/") ? clean : path.posix.join("openspec/changes", clean);
-        if (!normalized.startsWith("openspec/changes/") || !normalized.endsWith(".md") || normalized.includes("/../") || normalized.includes("..")) {
-          throw new Error("OpenSpec writes must target a Markdown file under openspec/changes/");
-        }
-        const root = path.resolve(context.directory);
-        const target = path.resolve(root, ...normalized.split("/"));
-        const allowedRoot = path.resolve(root, "openspec", "changes") + path.sep;
-        const comparableTarget = process.platform === "win32" || process.platform === "darwin" ? target.toLowerCase() : target;
-        const comparableRoot = process.platform === "win32" || process.platform === "darwin" ? allowedRoot.toLowerCase() : allowedRoot;
-        if (!comparableTarget.startsWith(comparableRoot)) throw new Error("OpenSpec path escaped its managed root");
-        const bytes = Buffer.from(args.content, "utf-8");
-        if (bytes.toString("utf-8") !== args.content) throw new Error("OpenSpec write requires well-formed Unicode for exact UTF-8 encoding");
-        fs.mkdirSync(path.dirname(target), { recursive: true });
-        const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
-        try {
-          fs.writeFileSync(temporary, bytes, { mode: 0o644 });
-          fs.renameSync(temporary, target);
-        } finally {
-          try { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); } catch {}
-        }
-        const sha256 = createHash("sha256").update(bytes).digest("hex");
-        return JSON.stringify({ written: clean, bytes: bytes.length, sha256 });
-      }
-    }),
-
     cortex_ia_discovery_write: tool({
       description: "Write the project-local .cortex-ia/discovery.md profile (Discovery agent only).",
       args: { content: tool.schema.string() },
@@ -1256,7 +1159,7 @@ export const CortexWorkPlugin = Plugin.define({
     cortex_ia_work_create: tool({
       description: "Create one work item in a durable same-board DAG.",
       args: {
-        workflow: tool.schema.enum(["direct-change", "fast-tdd", "hotfix", "ops-task", "sdd-lite", "sdd-full"]),
+        workflow: tool.schema.enum(["direct-change", "fast-tdd", "hotfix", "ops-task"]),
         board_id: tool.schema.string(),
         task_id: tool.schema.string(),
         title: tool.schema.string(),
@@ -1265,48 +1168,8 @@ export const CortexWorkPlugin = Plugin.define({
         verification: tool.schema.string().optional(),
         allowed_files: tool.schema.array(tool.schema.string()).optional(),
         dependencies: tool.schema.array(tool.schema.string()).optional(),
-        sdd_contract: tool.schema.object({
-          version: tool.schema.number(), workflow: tool.schema.enum(["sdd-lite", "sdd-full"]),
-          change_id: tool.schema.string(), spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid"]),
-          pins: tool.schema.array(tool.schema.object({
-            transport: tool.schema.string().describe("Pin transport ('workspace_file', 'local_cortex_cli', 'cortex_mcp')"),
-            project: tool.schema.string().describe("Workspace root directory or project path"),
-            locator: tool.schema.string().describe("Relative path to specification file"),
-            sha256: tool.schema.string().describe("64-character lowercase SHA-256 digest")
-          })),
-          requirement_ids: tool.schema.array(tool.schema.string())
-        }).optional().describe("Required for SDD tasks: contract pins and requirement IDs")
       },
       async execute(args, context) {
-        const sdd = args.workflow === "sdd-lite" || args.workflow === "sdd-full";
-        if (sdd ? args.sdd_contract?.workflow !== args.workflow : args.sdd_contract !== undefined) throw new Error("SDD_CONTRACT_REQUIRED: workflow and typed contract must agree; direct workflows cannot carry SDD bindings");
-        if (args.sdd_contract) assertSpecPlane(args.sdd_contract.spec_plane);
-        if (args.sdd_contract?.pins) {
-          for (const pin of args.sdd_contract.pins) {
-            if (pin.transport) {
-              const t = String(pin.transport).toLowerCase().trim();
-              if (["workspace_file", "workspace-file", "workspace", "file", "local_file", "local-file", "openspec", "fs", "filesystem", "workspace_path", "path"].includes(t)) {
-                pin.transport = "workspace_file";
-              } else if (["local_cortex_cli", "local-cortex-cli", "cortex_cli", "cortex-cli", "cortex_local", "cli"].includes(t)) {
-                pin.transport = "local_cortex_cli";
-              } else if (["cortex_mcp", "cortex-mcp", "cortex", "mcp"].includes(t)) {
-                pin.transport = "cortex_mcp";
-              }
-            }
-            if (pin.sha256) {
-              pin.sha256 = String(pin.sha256).toLowerCase().trim().replace(/^sha256:/, "");
-            }
-            if (pin.locator) {
-              pin.locator = String(pin.locator).trim().replace(/\\/g, "/");
-            }
-            if (context.directory && pin.project) {
-              const p = String(pin.project).trim();
-              if (p === "." || !path.isAbsolute(p) || p.toLowerCase() === path.basename(context.directory).toLowerCase()) {
-                pin.project = path.resolve(context.directory);
-              }
-            }
-          }
-        }
         const ownership = await conversationOwnership(context.sessionID, context.directory);
         const command = ["work", "create", "--board", args.board_id, "--id", args.task_id, "--title", args.title,
           "--workflow", args.workflow,
@@ -1318,19 +1181,12 @@ export const CortexWorkPlugin = Plugin.define({
         if (args.verification) command.push("--verify", args.verification);
         for (const file of args.allowed_files || []) command.push("--file", file);
         for (const dependency of args.dependencies || []) command.push("--depends", dependency);
-        let contractPath = "";
-        try {
-          if (args.sdd_contract) {
-            contractPath = transientRequest(args.sdd_contract);
-            command.push("--contract-file", contractPath);
-          }
-          return cortex(command);
-        } finally { if (contractPath) cleanupRequest(contractPath); }
+        return cortex(command);
       }
     }),
 
     cortex_ia_work_review_refresh: tool({
-      description: "Reopen a done SDD task for fresh review after approved files change (Orchestrator only).",
+      description: "Reopen a done task for fresh review after approved files change (Orchestrator only).",
       args: { task_id: tool.schema.string(), revision: tool.schema.number() },
       async execute(args) {
         return cortex(["work", "review-refresh", args.task_id, "--revision", String(args.revision)]);
@@ -1371,7 +1227,7 @@ export const CortexWorkPlugin = Plugin.define({
               found: false,
               status: "not_found",
               error: "work item not found",
-              message: `Work item "${args.task_id}" not found in Cortex-IA SQLite work database. Note: Cortex MCP observation IDs (e.g. #84) are evidence/memories, not SQLite work task items, and early SDD planning phases (propose, spec, design) have no work tasks created yet.`,
+              message: `Work item "${args.task_id}" not found in Cortex-IA SQLite work database. Note: Cortex MCP observation IDs (e.g. #84) are evidence/memories, not SQLite work task items, and planning documents have no work tasks until the planner decomposes the board.`,
               projection: getUnknownProjection(args.task_id),
               bridge_authority: bridgeAuthorityView(args.task_id, null, context.sessionID)
             });
@@ -1430,12 +1286,6 @@ export const CortexWorkPlugin = Plugin.define({
       args: {
         task_id: tool.schema.string(),
         revision: tool.schema.number(),
-        contract: tool.schema.object({
-          version: tool.schema.number(), workflow: tool.schema.enum(["sdd-lite", "sdd-full"]),
-          change_id: tool.schema.string(), spec_plane: tool.schema.enum(["cortex", "openspec", "hybrid"]),
-          pins: tool.schema.array(tool.schema.object({ transport: tool.schema.string(), project: tool.schema.string(), locator: tool.schema.string(), sha256: tool.schema.string() })),
-          requirement_ids: tool.schema.array(tool.schema.string())
-        }).optional().describe("Optional upgraded SDD contract when decomposing a direct-change task to SDD-lite or updating the change contract"),
         tasks: tool.schema.array(tool.schema.object({
           task_id: tool.schema.string(),
           title: tool.schema.string(),
@@ -1446,8 +1296,7 @@ export const CortexWorkPlugin = Plugin.define({
         }))
       },
       async execute(args) {
-        const plan: Record<string, unknown> = { tasks: args.tasks };
-        if (args.contract) plan.contract = args.contract;
+        const plan = { tasks: args.tasks };
         return cortexInput(
           ["work", "decompose", args.task_id, "--revision", String(args.revision), "--plan", "@stdin"],
           JSON.stringify(plan)
@@ -1741,11 +1590,11 @@ export const CortexWorkPlugin = Plugin.define({
   const roles = ["orchestrator", "discovery", "planner", "investigate", "implement", "reviewer"];
   const controllers = ["planner", "investigate", "implement", "reviewer"];
   const readers = new Set([
-    "content_hash", "openspec_validate", "board_list", "board_status", "work_list", "work_status",
+    "content_hash", "board_list", "board_status", "work_list", "work_status",
     "diagram_validate", "work_approvals", "work_fingerprint"
   ]);
   const mutations: Record<string, string[]> = {
-    openspec_write: ["planner"], change_archive: ["planner"], discovery_write: ["discovery"],
+    discovery_write: ["discovery"],
     board_create: ["planner", "orchestrator"], work_create: ["planner", "orchestrator"],
     work_recover: ["orchestrator"], work_recover_own: ["implement"], work_retry: ["orchestrator"], work_review_refresh: ["orchestrator"], work_decompose: ["planner"],
     work_reconcile: ["orchestrator"],

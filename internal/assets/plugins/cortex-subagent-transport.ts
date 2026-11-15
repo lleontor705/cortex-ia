@@ -263,20 +263,8 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
     } else if (typeof envelope.task_id === "string") {
       envelope.task_id = envelope.task_id.trim();
     }
-    if (
-      envelope.spec_plane === undefined ||
-      envelope.spec_plane === "" ||
-      envelope.spec_plane === "none" ||
-      envelope.spec_plane === "null" ||
-      envelope.spec_plane === "undefined" ||
-      envelope.spec_plane === false
-    ) {
-      envelope.spec_plane = null;
-    } else if (typeof envelope.spec_plane === "string") {
-      envelope.spec_plane = envelope.spec_plane.trim().toLowerCase();
-    }
     if (!envelope.workflow || typeof envelope.workflow !== "string" || !envelope.workflow.trim()) {
-      envelope.workflow = envelope.role === "planner" ? "sdd-lite" : (envelope.role || hostTarget || "investigate");
+      envelope.workflow = envelope.role === "planner" ? "plan" : (envelope.role || hostTarget || "investigate");
     } else {
       envelope.workflow = envelope.workflow.trim().toLowerCase();
     }
@@ -284,7 +272,7 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
       envelope.phase = envelope.role === "investigate" ? "diagnose"
         : envelope.role === "reviewer" ? "verify"
         : envelope.role === "discovery" ? "profile"
-        : envelope.role === "planner" ? "integrated"
+        : envelope.role === "planner" ? "plan"
         : "execute";
     } else {
       envelope.phase = envelope.phase.trim().toLowerCase();
@@ -336,9 +324,6 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
     if (!(envelope.task_id === null || (typeof envelope.task_id === "string" && envelope.task_id.trim()))) {
       contractErrors.push(`task_id must be null or non-empty string (got ${JSON.stringify(envelope.task_id)})`);
     }
-    if (![null, "openspec", "cortex", "hybrid"].includes(envelope.spec_plane)) {
-      contractErrors.push(`spec_plane '${envelope.spec_plane}' is invalid (allowed: null, openspec, cortex, hybrid)`);
-    }
     for (const key of ["allowed_files", "acceptance_checks", "artifact_refs"]) {
       if (!Array.isArray(envelope[key]) || !envelope[key].every((item: unknown) => typeof item === "string")) {
         contractErrors.push(`field '${key}' must be an array of strings`);
@@ -353,19 +338,11 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
     }
 
     if (envelope.role === "planner") {
-      const phases: Record<string, string[]> = {
-        "decision-map": ["chart", "resolve"],
-        "sdd-lite": ["integrated", "propose", "plan", "tasks", "spec", "design", "archive", "decompose"],
-        "sdd-full": ["propose", "plan", "spec", "design", "tasks", "archive", "decompose", "integrated"],
-      };
-      if (!phases[envelope.workflow]) {
-        throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning workflow (${envelope.workflow}; allowed: decision-map, sdd-lite, sdd-full)`);
+      if (envelope.workflow !== "plan") {
+        throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning workflow (${envelope.workflow}; allowed: plan)`);
       }
-      if (!phases[envelope.workflow].includes(envelope.phase)) {
-        throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning phase for ${envelope.workflow} (${envelope.phase}; allowed: [${phases[envelope.workflow].join(", ")}])`);
-      }
-      if (envelope.spec_plane === null) {
-        throw new Error("SUBAGENT_TRANSPORT_ERROR: specification plane cannot be null for planner");
+      if (!["plan", "decompose"].includes(envelope.phase)) {
+        throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning phase for plan (${envelope.phase}; allowed: [plan, decompose])`);
       }
     }
   }
@@ -378,13 +355,6 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
   // Normalize only after all aliases and routing fields pass validation. Keep
   // caller input immutable; the dispatch hook replaces its outgoing prompt.
   const normalized = { ...envelope, workload_policy: workload };
-  if (normalized.role === "planner") {
-    if (normalized.workflow === "sdd-lite" && ["propose", "plan", "tasks", "spec", "design"].includes(normalized.phase)) {
-      normalized.phase = "integrated";
-    } else if (normalized.workflow === "sdd-full" && ["plan", "integrated"].includes(normalized.phase)) {
-      normalized.phase = "propose";
-    }
-  }
   delete normalized.steps;
   delete normalized.budget;
   if (explicitBudget !== undefined) normalized.max_steps = explicitBudget;
@@ -441,10 +411,7 @@ const STRICT_AUTHORITY_TOOLS = new Set([
 ]);
 
 const SPEC_AND_PLANNING_TOOLS = new Set([
-  "cortex_ia_openspec_write",
-  "cortex_ia_openspec_validate",
   "cortex_ia_discovery_write",
-  "cortex_ia_change_archive",
   "cortex_ia_doc_convert",
   "cortex_ia_diagram_validate",
   "cortex_ia_diagram_render",
