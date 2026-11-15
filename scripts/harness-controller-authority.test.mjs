@@ -266,7 +266,7 @@ test('TestREQ_WAUTH_002 successful recovery stops maintenance and drops the stal
   const h = await harness();
   assert.equal(h.claim.maintenance.active, true);
   await h.plugin.tool.cortex_ia_work_recover_own.execute({ task_id: 'task' }, context);
-  const status = JSON.parse(await h.plugin.tool.cortex_ia_work_status.execute({ task_id: 'task' }, context));
+  const status = JSON.parse(await h.plugin.tool.cortex_ia_work_status.execute({ task_id: 'task', detail: true }, context));
   assert.equal(status.bridge_authority.handle_present, false);
   assert.equal(status.bridge_authority.maintenance, undefined);
   assert.equal(h.timers.size, 0);

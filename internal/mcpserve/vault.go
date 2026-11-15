@@ -195,7 +195,7 @@ func (s *session) heartbeat(ctx context.Context, task string, a *authority) {
 			return
 		case <-ticker.C:
 		}
-		if err := s.renewAuthority(ctx, task, a); err != nil {
+		if _, err := s.renewAuthority(ctx, task, a); err != nil {
 			if ctx.Err() != nil {
 				return
 			}
@@ -216,11 +216,13 @@ type controllerReceipt struct {
 	LeaseCount int    `json:"lease_count"`
 }
 
-func (s *session) renewAuthority(ctx context.Context, task string, a *authority) error {
+// renewAuthority renews the claim and its full lease set in one CLI call. The
+// zero receipt means the handle was replaced, so the caller renewed nothing.
+func (s *session) renewAuthority(ctx context.Context, task string, a *authority) (controllerReceipt, error) {
 	s.vault.mu.Lock()
 	if s.vault.entries[task] != a {
 		s.vault.mu.Unlock()
-		return nil
+		return controllerReceipt{}, nil
 	}
 	owner := hostbridge.Owner(a.sessionKey)
 	leases := make(map[string]string, len(a.leases))
@@ -230,22 +232,22 @@ func (s *session) renewAuthority(ctx context.Context, task string, a *authority)
 	stdin, err := json.Marshal(map[string]any{"claim_token": a.claimToken, "leases": leases})
 	s.vault.mu.Unlock()
 	if err != nil {
-		return err
+		return controllerReceipt{}, err
 	}
 	argv := []string{"work", "controller-renew", task, "--owner", owner, "--authority", "@stdin", "--ttl", heartbeatTTL}
 	stdout, err := s.runner.Run(ctx, argv, string(stdin))
 	if err != nil {
-		return fmt.Errorf("controller renewal failed: %w", err)
+		return controllerReceipt{}, fmt.Errorf("controller renewal failed: %w", err)
 	}
 	var receipt controllerReceipt
 	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &receipt); err != nil {
-		return errors.New("controller renewal unconfirmed")
+		return controllerReceipt{}, errors.New("controller renewal unconfirmed")
 	}
 	expires, parseErr := time.Parse(time.RFC3339Nano, receipt.ExpiresAt)
 	if receipt.TaskID != task || receipt.Owner != owner || receipt.LeaseCount != len(leases) || parseErr != nil || !expires.After(s.now()) {
-		return errors.New("controller renewal unconfirmed")
+		return controllerReceipt{}, errors.New("controller renewal unconfirmed")
 	}
-	return nil
+	return receipt, nil
 }
 
 func (v *vault) reason(a *authority) string {

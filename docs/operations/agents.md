@@ -59,6 +59,7 @@ Instead of printing JSON in chat, workers and reviewers invoke typed tools whose
   cortex_ia_work_transition({
     task_id: "task-auth-001",
     to: "in_review",
+    revision: 3,
     summary: "Scaffolded JWT middleware and added deterministic unit tests",
     verdict: "PASS",
     evidence_refs: ["cortex_topic_or_id"],
@@ -78,8 +79,9 @@ Instead of printing JSON in chat, workers and reviewers invoke typed tools whose
   ```typescript
   cortex_ia_work_approve({
     task_id: "task-auth-001",
-    verdict: "PASS", // or "FAIL"
-    reason: "All tests pass; AST analysis confirms clean decoupling",
+    verdict: "PASS", // or "FAIL"; uppercase only
+    revision: 3,
+    evidence: "go test ./... exit 0; AST analysis confirms clean decoupling",
     summary: "Independent oracle run successful with zero coupling regressions",
     findings: [
       "Zero cycle regressions detected",

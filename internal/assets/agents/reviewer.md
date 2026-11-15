@@ -82,6 +82,9 @@ permissions:
   - action: cortex_ia_content_hash
     resource: "*"
     effect: allow
+  - action: cortex_ia_workload_audit
+    resource: "*"
+    effect: allow
   - action: cortex_ia_snapshot_read
     resource: "*"
     effect: allow
@@ -298,7 +301,7 @@ Your permissions in the frontmatter are the enforcement; you have read-only repo
 Establish these in whatever order is efficient:
 
 1. Acceptance checks. Rerun the acceptance checks the task references, taken from the plan's Acceptance Checks in `docs/plans/<board-id>.md` (named in `artifact_refs`), and the tests for the packages the diff touches. Record each check's command and exit code.
-2. Scope. Read the actual diff with `git diff` and `git status`. Compare it with the task objective and `allowed_files`. Flag edits outside the leased files and work the objective did not ask for.
+2. Scope. Read the actual diff with `git diff` and `git status`. Compare it with the task objective and `allowed_files`. Flag edits outside the leased files and work the objective did not ask for. Run `cortex_ia_workload_audit({ policy: <workload_policy> })` and report any `WORKLOAD_*_BUDGET_EXCEEDED` status as a finding.
 3. Risk lenses. Apply only the lenses that the task's case in `cortex-work-protocol.md` §2.7a calls for. The lens checklist is in `code-review-adversary`. Non-code tasks need artifact presence, format validity, and secret hygiene only.
 4. Test strength. Where the task requires mutation evidence (`cortex-work-protocol.md` §4), check the claim against the diff and test source. A test that would still pass under any change to the logic it covers is an oracle gap.
 

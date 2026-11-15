@@ -20,10 +20,10 @@ func workReadTools() []tool {
 	return []tool{
 		{
 			Name:        "cortex_ia_work_create",
-			Description: "Create one work item in a durable same-board DAG. Conversation ownership fields are not recorded on this host.",
+			Description: "Create one work item in a same-board DAG (planner or orchestrator). board_id defaults to \"default\" for ungrouped work. Every dependency must already exist on the same board; check with board_status first.",
 			Schema: schemaObject(props(
 				"workflow", schemaEnum("Work workflow", workflowKinds...),
-				"board_id", schemaString("Board identifier"),
+				"board_id", schemaString("Board identifier; defaults to \"default\""),
 				"task_id", schemaString("Stable task identifier"),
 				"title", schemaString("Task title"),
 				"objective", schemaString("Task objective"),
@@ -31,12 +31,12 @@ func workReadTools() []tool {
 				"verification", schemaString("Raw executable verification command"),
 				"allowed_files", schemaStrings("Leased repository paths"),
 				"dependencies", schemaStrings("Task IDs on the same board"),
-			), "workflow", "board_id", "task_id", "title"),
+			), "workflow", "task_id", "title"),
 			Call: workCreate,
 		},
 		{
 			Name:        "cortex_ia_work_review_refresh",
-			Description: "Reopen a done task for fresh review after approved files change (Orchestrator only).",
+			Description: "Reopen a done task for fresh review after its approved files change (orchestrator only). Requires the current revision; a stale revision fails, so read work_status and retry.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Task identifier"),
 				"revision", schemaNumber("Observed task revision"),
@@ -55,7 +55,7 @@ func workReadTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_work_list",
-			Description: "List durable work items, optionally filtered by board.",
+			Description: "List work items as rows, optionally filtered by board_id (all boards when omitted). Read-only.",
 			Schema:      schemaObject(props("board_id", schemaString("Board identifier"))),
 			Call: func(ctx context.Context, s *session, args map[string]any) (string, error) {
 				argv := []string{"work", "list"}
@@ -67,18 +67,18 @@ func workReadTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_work_status",
-			Description: "Get task details, the projection, and authority usability for the calling controller. Read-only; does not require a claim.",
+			Description: "Read a task's compact state for this caller: status, revision, dependencies with status, allowed_files, claim and lease liveness, last verdict and authority action. Read-only; no claim needed. Pass detail: true for the full record.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Task identifier"),
-				"role", schemaString("Accepted for compatibility; presentation role is not forwarded"),
+				"detail", schemaBool("Return the full durable record, projection and bridge_authority"),
 			), "task_id"),
 			Call: workStatus,
 		},
-		readOnlyCLI("cortex_ia_work_approvals", "List historical approval records for a task.", "work", "approvals"),
-		readOnlyCLI("cortex_ia_work_fingerprint", "Calculate file fingerprints for a task and verify against approved binding.", "work", "fingerprint"),
+		readOnlyCLI("cortex_ia_work_approvals", "List approval records for a task, oldest first. Read-only.", "work", "approvals"),
+		readOnlyCLI("cortex_ia_work_fingerprint", "Compute file fingerprints for a task and compare them with its approved binding. Read-only.", "work", "fingerprint"),
 		{
 			Name:        "cortex_ia_work_recover",
-			Description: "Recover expired work claims and leases (Orchestrator only).",
+			Description: "Recover every expired claim and lease, unscoped (orchestrator only). Use after a controller died and its claim lapsed. Own expired claim: work_recover_own. Live claim: work_reconcile.",
 			Schema:      schemaObject(props()),
 			Call: func(ctx context.Context, s *session, _ map[string]any) (string, error) {
 				return s.runClean(ctx, []string{"work", "recover"})
@@ -86,7 +86,7 @@ func workReadTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_work_retry",
-			Description: "Retry a reconciled blocked task using revision CAS (Orchestrator only).",
+			Description: "Move a reconciled blocked task back to ready (orchestrator only). Requires the current revision; a stale revision fails, so read work_status and retry. Use after work_reconcile or recovery.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Task identifier"),
 				"revision", schemaNumber("Current task revision"),
@@ -105,7 +105,7 @@ func workReadTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_work_decompose",
-			Description: "Atomically decompose a blocked task into 2-8 smaller DAG tasks (Planner only).",
+			Description: "Replace a blocked task with 2-8 smaller same-board tasks in one atomic step (planner only). Requires blocked status and the current revision. Each task needs objective, acceptance_criteria and a raw verification command.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Blocked task identifier"),
 				"revision", schemaNumber("Current task revision"),
@@ -122,7 +122,7 @@ func workReadTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_work_reconcile",
-			Description: "Force-release an orphaned live work claim so the task can be retried (Orchestrator only). Owner-inactivity evidence is not available on this host, so the CLI relies on claim expiry alone.",
+			Description: "Force-release a live claim whose controller is gone so the task can be retried (orchestrator only). Requires a reason and the current revision; default target blocked, to: ready releases directly. For expired claims use work_recover instead.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Task identifier"),
 				"reason", schemaString("Audit explanation"),
@@ -157,9 +157,9 @@ func workCreate(ctx context.Context, s *session, args map[string]any) (string, e
 	if !contains(workflowKinds, workflow) {
 		return "", fmt.Errorf("workflow must be one of %s", strings.Join(workflowKinds, ", "))
 	}
-	board, err := reqString(args, "board_id")
-	if err != nil {
-		return "", err
+	board := optString(args, "board_id")
+	if board == "" {
+		board = "default"
 	}
 	task, err := reqString(args, "task_id")
 	if err != nil {
@@ -228,14 +228,106 @@ func workStatus(ctx context.Context, s *session, args map[string]any) (string, e
 	}
 	key, _ := s.sessionKeyFor(task)
 	projection := s.acceptProjection(task, durable)
+	bridge := s.bridgeAuthority(task, durable, key)
+	if detail, _ := args["detail"].(bool); !detail {
+		return encodeJSON(s.compactStatus(ctx, durable, bridge))
+	}
 	out := map[string]any{}
 	for k, v := range durable {
 		out[k] = v
 	}
 	out["found"] = true
 	out["projection"] = projection
-	out["bridge_authority"] = s.bridgeAuthority(task, durable, key)
+	out["bridge_authority"] = bridge
 	return encodeJSON(stripTokens(out))
+}
+
+// compactStatus keeps the fields a controller acts on and drops tokens and the
+// full record. Dependency statuses come from one board listing.
+func (s *session) compactStatus(ctx context.Context, durable, bridge map[string]any) map[string]any {
+	task, _ := durable["task_id"].(string)
+	board, _ := durable["board_id"].(string)
+	statuses := s.boardStatuses(ctx, board)
+	dependencies := []any{}
+	if deps, ok := durable["dependencies"].([]any); ok {
+		for _, raw := range deps {
+			id := fmt.Sprint(raw)
+			status, known := statuses[id]
+			if !known {
+				status = "unknown"
+			}
+			dependencies = append(dependencies, map[string]any{"task_id": id, "status": status})
+		}
+	}
+	var claim any
+	if c, ok := durable["claim"].(map[string]any); ok {
+		owner, live := claimLive(durable, s.now())
+		claim = map[string]any{"owner": owner, "expires_at": c["expires_at"], "live": live}
+	}
+	leases := []any{}
+	if list, ok := durable["leases"].([]any); ok {
+		for _, raw := range list {
+			if lease, ok := raw.(map[string]any); ok {
+				leases = append(leases, map[string]any{"path": lease["path"], "expires_at": lease["expires_at"]})
+			}
+		}
+	}
+	var lastVerdict any
+	if approval, ok := durable["latest_approval"].(map[string]any); ok {
+		lastVerdict = approval["verdict"]
+	}
+	allowed := durable["allowed_files"]
+	if allowed == nil {
+		allowed = []any{}
+	}
+	out := map[string]any{
+		"task_id":       task,
+		"board_id":      board,
+		"title":         durable["title"],
+		"status":        durable["status"],
+		"revision":      durable["revision"],
+		"allowed_files": allowed,
+		"dependencies":  dependencies,
+		"claim":         claim,
+		"leases":        leases,
+		"last_verdict":  lastVerdict,
+		"found":         true,
+		"authority": map[string]any{
+			"usable":       bridge["usable"],
+			"write_usable": bridge["write_usable"],
+			"action":       bridge["action"],
+		},
+	}
+	if reason, ok := durable["blocked_reason"]; ok {
+		out["blocked_reason"] = reason
+	}
+	return out
+}
+
+// boardStatuses maps task IDs to status for one board. A failed listing yields
+// an empty map, so dependencies report "unknown" instead of failing the read.
+func (s *session) boardStatuses(ctx context.Context, board string) map[string]string {
+	statuses := map[string]string{}
+	if board == "" {
+		return statuses
+	}
+	stdout, err := s.runner.Run(ctx, []string{"work", "list", "--board", board}, "")
+	if err != nil {
+		return statuses
+	}
+	decoded, err := decodeJSON(strings.TrimSpace(stdout))
+	items, ok := decoded.([]any)
+	if err != nil || !ok {
+		return statuses
+	}
+	for _, raw := range items {
+		if item, ok := raw.(map[string]any); ok {
+			id, _ := item["task_id"].(string)
+			status, _ := item["status"].(string)
+			statuses[id] = status
+		}
+	}
+	return statuses
 }
 
 func workDecompose(ctx context.Context, s *session, args map[string]any) (string, error) {

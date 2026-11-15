@@ -15,99 +15,83 @@ const (
 	authorityActionRecon = "RECONCILE_WORK_THEN_RETRY_WITH_FRESH_AUTHORITY"
 )
 
-var approvalVerdicts = []string{"PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"}
+var (
+	approvalVerdicts   = []string{"PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"}
+	transitionVerdicts = []string{"PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"}
+)
 
 func authorityTools() []tool {
 	return []tool{
 		{
 			Name:        "cortex_ia_work_claim",
-			Description: "Claim a ready task and atomically reserve file lease(s) (supports path or paths). Tokens stay in the server with automatic heartbeat renewal; the result lists the claim, reserved files and maintenance status without any token.",
+			Description: "Claim a ready task and reserve its files in one step (implement only). Requires no other live claim by this session. Heartbeat renews the claim and leases automatically. Returns the claim without tokens. A path conflict fails the whole claim, so nothing is held; pick another task.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Ready task identifier"),
-				"path", schemaString("Optional single workspace-relative file to reserve upon claiming"),
-				"paths", schemaStrings("Optional list of workspace-relative files to reserve upon claiming"),
-				"ttl", schemaString("Duration (e.g. 15m)"),
+				"paths", schemaStrings("Optional workspace-relative files to reserve with the claim"),
 			), "task_id"),
 			Call: workClaim,
 		},
 		{
 			Name:        "cortex_ia_work_renew",
-			Description: "Renew the live claim held by this server and report the renewed claim without its token.",
-			Schema: schemaObject(props(
-				"task_id", schemaString("Claimed task identifier"),
-				"ttl", schemaString("Optional duration (e.g. 15m)"),
-			), "task_id"),
-			Call: workRenew,
+			Description: "Renew the live claim and every file lease this session holds for the task in one call (implement only). Requires a live claim. Returns the new expiry without tokens. BRIDGE_AUTHORITY_UNUSABLE means the claim expired: stop writing and reconcile.",
+			Schema:      schemaObject(props("task_id", schemaString("Claimed task identifier")), "task_id"),
+			Call:        workRenew,
 		},
 		{
 			Name:        "cortex_ia_file_reserve",
-			Description: "Reserve one or more file leases for a claimed task. Each path must be reserved before it is edited.",
+			Description: "Reserve leases for files you are about to edit (implement only). Requires a live claim in in_progress. Reserve each file before writing it, in sorted order. On BRIDGE_WRITE_AUTHORITY_UNUSABLE or a path conflict, release what you reserved and stop writing.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Claimed task identifier"),
-				"path", schemaString("Single workspace-relative file"),
-				"paths", schemaStrings("Workspace-relative files"),
-				"ttl", schemaString("Optional duration (e.g. 15m)"),
-			), "task_id"),
+				"paths", schemaStrings("Workspace-relative files to reserve (1-128)"),
+			), "task_id", "paths"),
 			Call: fileReserve,
 		},
 		{
-			Name:        "cortex_ia_work_lease_renew",
-			Description: "Renew a live file lease retained by this server.",
-			Schema: schemaObject(props(
-				"task_id", schemaString("Claimed task identifier"),
-				"path", schemaString("Leased workspace-relative file"),
-				"ttl", schemaString("Optional duration (e.g. 15m)"),
-			), "task_id", "path"),
-			Call: leaseRenew,
-		},
-		{
 			Name:        "cortex_ia_work_release_all",
-			Description: "Release all task file leases in one transaction and stop the heartbeat for the task.",
+			Description: "Release all file leases for the task in one transaction and stop its heartbeat (implement only). Use when abandoning the claim or before blocking it. WORK_RELEASE_UNCONFIRMED means leases are still held: read work_status before retrying.",
 			Schema:      schemaObject(props("task_id", schemaString("Claimed task identifier")), "task_id"),
 			Call:        releaseAll,
 		},
 		{
 			Name:        "cortex_ia_file_release",
-			Description: "Release one or more file reservations using the lease tokens retained by this server.",
+			Description: "Release file leases this session holds (implement only). Requires a live claim. Returns released paths and per-path failures; BRIDGE_LEASE_MISSING means the path was never reserved by this session. Release each file as soon as its edits are done.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Claimed task identifier"),
-				"path", schemaString("Single workspace-relative file path to release"),
-				"paths", schemaStrings("Workspace-relative file paths to release"),
-			), "task_id"),
+				"paths", schemaStrings("Workspace-relative files to release"),
+			), "task_id", "paths"),
 			Call: fileRelease,
 		},
 		{
 			Name:        "cortex_ia_work_transition",
-			Description: "Transition claimed task state (in_review, in_progress, blocked) with evidence. The revision is required and is compared durably. Transitioning to in_review fails with GOTCHA_EVIDENCE_REQUIRED when the task's approval history contains a FAIL unless evidence_refs includes \"gotchas/<task_id>\".",
+			Description: "Move the claimed task to in_review, in_progress or blocked with evidence (implement only). Requires a live claim and the current revision; a stale revision fails, so read work_status first. in_review fails GOTCHA_EVIDENCE_REQUIRED when the approval history holds a FAIL: add evidence_refs gotchas/<task_id>.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Claimed task identifier"),
 				"to", schemaEnum("Target state", claimStatus...),
-				"status", schemaEnum("Alias for 'to'", claimStatus...),
-				"revision", schemaNumber("Current task revision, from the claim receipt or cortex_ia_work_status"),
+				"revision", schemaNumber("Current task revision from work_status"),
 				"summary", schemaString("Human-readable execution summary"),
-				"verdict", schemaEnum("Verification verdict", approvalVerdicts...),
+				"verdict", schemaEnum("Verification verdict", transitionVerdicts...),
 				"evidence_refs", schemaStrings("Pointers to verified test files, commands or observations"),
-				"changed_files", schemaStrings("List of modified workspace files"),
-				"blocked_reason", schemaEnum("Structured reason class for blocked transitions", "authority_expired", "upstream", "needs_user", "env", "scope_drift"),
-			), "task_id", "revision"),
+				"changed_files", schemaStrings("Modified workspace files"),
+				"blocked_reason", schemaEnum("Reason class for blocked transitions", "authority_expired", "upstream", "needs_user", "env", "scope_drift"),
+			), "task_id", "to", "revision"),
 			Call: workTransition,
 		},
 		{
 			Name:        "cortex_ia_work_approve",
-			Description: "Record independent task review verdict. PASS transitions task to done. A PASS needs evidence (summary and findings are appended); the claiming controller of the same task cannot approve it.",
+			Description: "Record an independent review verdict for a task in review (reviewer or orchestrator; never the implementing session). PASS requires evidence and moves the task to done. EVIDENCE_REQUIRED: pass evidence. Stale revision: read work_status, then re-review.",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Task identifier"),
 				"verdict", schemaEnum("Review verdict", approvalVerdicts...),
-				"evidence", schemaString("Evidence pointer (test output, observation id, commit). Required for PASS"),
-				"revision", schemaNumber("Current task revision, from the claim receipt or cortex_ia_work_status"),
-				"summary", schemaString("Independent review summary and lens verdict"),
-				"findings", schemaStrings("List of review findings or blockers"),
+				"evidence", schemaString("Evidence pointer (test output, observation id, commit); required for PASS"),
+				"revision", schemaNumber("Current task revision from work_status"),
+				"summary", schemaString("Review summary and lens verdicts"),
+				"findings", schemaStrings("Review findings or blockers"),
 			), "task_id", "verdict", "revision"),
 			Call: workApprove,
 		},
 		{
 			Name:        "cortex_ia_work_recover_own",
-			Description: "Recover the caller's own expired work claim and file leases for exactly one task (fail-closed ownership check).",
+			Description: "Recover this session's own expired claim and file leases for exactly one task (implement only). Use only after your claim lapsed (BRIDGE_AUTHORITY_UNUSABLE). Other controllers' claims need cortex_ia_work_recover (orchestrator).",
 			Schema:      schemaObject(props("task_id", schemaString("Task identifier")), "task_id"),
 			Call:        recoverOwn,
 		},
@@ -171,26 +155,12 @@ func (s *session) durableWork(ctx context.Context, task string) (map[string]any,
 	return item, nil
 }
 
-// reservationPaths gathers path and paths, enforcing the CLI's 1-128 bound.
+// reservationPaths reads the paths argument, enforcing the CLI's 1-128 bound.
 func reservationPaths(args map[string]any) ([]string, error) {
-	if raw, present := args["paths"]; present && raw != nil {
-		if _, ok := raw.([]any); !ok {
-			return nil, errors.New("paths must be an array")
-		}
-	}
-	var paths []string
-	if value, present := args["path"]; present && value != nil {
-		text, ok := value.(string)
-		if !ok {
-			return nil, errors.New("reservation requires 1-128 nonempty paths")
-		}
-		paths = append(paths, text)
-	}
-	extra, err := optStringList(args, "paths")
+	paths, err := optStringList(args, "paths")
 	if err != nil {
 		return nil, errors.New("reservation requires 1-128 nonempty paths")
 	}
-	paths = append(paths, extra...)
 	if len(paths) > 128 {
 		return nil, errors.New("reservation requires 1-128 nonempty paths")
 	}
@@ -262,9 +232,6 @@ func workClaim(ctx context.Context, s *session, args map[string]any) (string, er
 	for _, p := range paths {
 		argv = append(argv, "--path", p)
 	}
-	if ttl := optString(args, "ttl"); ttl != "" {
-		argv = append(argv, "--ttl", ttl)
-	}
 	stdout, err := s.runner.Run(ctx, argv, "")
 	if err != nil {
 		return "", err
@@ -319,18 +286,17 @@ func workRenew(ctx context.Context, s *session, args map[string]any) (string, er
 	if err != nil {
 		return "", err
 	}
-	argv := []string{"work", "renew", task, "--claim-token", "@stdin"}
-	if ttl := optString(args, "ttl"); ttl != "" {
-		argv = append(argv, "--ttl", ttl)
-	}
-	stdout, err := s.runner.Run(ctx, argv, a.claimToken)
+	receipt, err := s.renewAuthority(ctx, task, a)
 	if err != nil {
 		return "", err
+	}
+	if receipt.TaskID != task {
+		return "", errors.New("controller renewal unconfirmed")
 	}
 	if !s.vault.isActive(a) {
 		s.startHeartbeat(task, a)
 	}
-	return cleanOutput(stdout), nil
+	return encodeJSON(receipt)
 }
 
 func fileReserve(ctx context.Context, s *session, args map[string]any) (string, error) {
@@ -356,9 +322,6 @@ func fileReserve(ctx context.Context, s *session, args map[string]any) (string, 
 	argv := []string{"work", "reserve", task, "--claim-token", "@stdin"}
 	for _, p := range paths {
 		argv = append(argv, "--path", p)
-	}
-	if ttl := optString(args, "ttl"); ttl != "" {
-		argv = append(argv, "--ttl", ttl)
 	}
 	stdout, err := s.runner.Run(ctx, argv, a.claimToken)
 	if err != nil {
@@ -386,53 +349,7 @@ func fileReserve(ctx context.Context, s *session, args map[string]any) (string, 
 	for _, lease := range receipt {
 		results = append(results, stripTokens(lease))
 	}
-	if len(results) == 1 && optString(args, "path") != "" {
-		return encodeJSON(results[0])
-	}
 	return encodeJSON(map[string]any{"reserved": results, "count": len(results)})
-}
-
-func leaseRenew(ctx context.Context, s *session, args map[string]any) (string, error) {
-	task, err := reqString(args, "task_id")
-	if err != nil {
-		return "", err
-	}
-	rawPath, err := reqString(args, "path")
-	if err != nil {
-		return "", err
-	}
-	key, err := s.sessionKeyFor(task)
-	if err != nil {
-		return "", err
-	}
-	a, err := s.requireAuthority(ctx, task, key, false)
-	if err != nil {
-		return "", err
-	}
-	leasePath := workPath(rawPath)
-	token := s.vault.leaseToken(a, leasePath)
-	if token == "" {
-		return "", authorityFailure("BRIDGE_LEASE_MISSING", task, nil, leasePath)
-	}
-	argv := []string{"work", "lease-renew", "--path", leasePath, "--lease-token", "@stdin"}
-	if ttl := optString(args, "ttl"); ttl != "" {
-		argv = append(argv, "--ttl", ttl)
-	}
-	stdout, err := s.runner.Run(ctx, argv, token)
-	if err != nil {
-		return "", err
-	}
-	if decoded, decodeErr := decodeJSON(strings.TrimSpace(stdout)); decodeErr == nil {
-		if lease, ok := decoded.(map[string]any); ok {
-			p, _ := lease["path"].(string)
-			t, _ := lease["lease_token"].(string)
-			if p != "" && t != "" {
-				s.vault.dropLease(a, leasePath)
-				s.vault.setLease(a, p, t)
-			}
-		}
-	}
-	return cleanOutput(stdout), nil
 }
 
 func releaseAll(ctx context.Context, s *session, args map[string]any) (string, error) {
@@ -488,8 +405,6 @@ func fileRelease(ctx context.Context, s *session, args map[string]any) (string, 
 			targets = append(targets, p)
 		}
 	}
-	single := optString(args, "path")
-	add(single)
 	extra, err := optStringList(args, "paths")
 	if err != nil {
 		return "", err
@@ -515,9 +430,6 @@ func fileRelease(ctx context.Context, s *session, args map[string]any) (string, 
 		}
 		s.vault.dropLease(a, leasePath)
 		released = append(released, leasePath)
-	}
-	if len(targets) == 1 && single != "" && len(failures) == 0 {
-		return encodeJSON(map[string]any{"released": released[0], "status": "released"})
 	}
 	return encodeJSON(map[string]any{"released": released, "failures": failures})
 }

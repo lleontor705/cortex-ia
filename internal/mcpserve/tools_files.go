@@ -24,13 +24,13 @@ func fileTools() []tool {
 	return []tool{
 		{
 			Name:        "cortex_ia_content_hash",
-			Description: "Compute lowercase SHA-256 of exact UTF-8 content (at most 1 MiB). No newline/Unicode normalization, persistence, or network access. Returns only sha256 and byte_length.",
+			Description: "Compute the lowercase SHA-256 and byte length of exact UTF-8 content (max 1 MiB). Read-only: no normalization, storage or network. Larger input fails.",
 			Schema:      schemaObject(props("content", schemaString("Exact content to hash")), "content"),
 			Call:        contentHash,
 		},
 		{
 			Name:        "cortex_ia_discovery_write",
-			Description: "Write the project-local .cortex-ia/discovery.md profile. Returns the artifact path, byte count and SHA-256.",
+			Description: "Write the project .cortex-ia/discovery.md report (discovery role only). Content must start with \"# Cortex-IA Project Discovery\" and be at most 128 KiB. Returns path, bytes and sha256.",
 			Schema:      schemaObject(props("content", schemaString("Discovery report starting with \"# Cortex-IA Project Discovery\"")), "content"),
 			Call:        discoveryWrite,
 		},
