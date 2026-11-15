@@ -143,6 +143,9 @@ test('unknown objectives latch distinctly and capacity exhaustion never evicts f
   await assert.rejects(h.before(dispatch('new-work')), /CORTEX_LATCH_CAPACITY/);
   await h.before({ subagent_type: 'investigate', prompt: 'Diagnose saturation read-only' });
   await h.retry('capacity-0', { task_id: 'capacity-0', status: 'ready', revision: 2 });
+  // The reconciled slot is free again; the next new failure re-saturates the latch.
+  await h.before(dispatch('new-work'));
+  await assert.rejects(h.after(dispatch('new-work'), ''), attempt(1));
   await assert.rejects(h.before(dispatch('capacity-1')), /CORTEX_LATCH_CAPACITY/,
     'saturation requires explicit reconciliation; no failure is released');
   await h.plugin.dispose();

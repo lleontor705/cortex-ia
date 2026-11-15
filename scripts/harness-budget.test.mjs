@@ -134,7 +134,7 @@ test('host planner is uncapped and role spoofing cannot elevate permissions', as
   assert.equal(dispatchInfo({ subagent_type: 'implement' }, p1).limit, 70);
   assert.equal(dispatchInfo({ subagent_type: 'reviewer' }, p1).limit, 50);
   assert.equal(dispatchInfo({ subagent_type: 'investigate' }, p1).limit, 50);
-  assert.equal(dispatchInfo({ subagent_type: 'discovery' }, p1).limit, 60);
+  assert.equal(dispatchInfo({ subagent_type: 'discovery' }, p1).limit, 90);
 });
 
 test('actual plugin emits one advisory notice and permits up to 5 cleanup calls at emergency ceiling', async () => {
