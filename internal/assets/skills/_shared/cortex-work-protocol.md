@@ -1,240 +1,200 @@
-# Cortex-IA Runtime and Work Protocol
+# Cortex-IA Work Protocol
 
-**Version:** 3.0 · **Installed contract:** `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`
+**Installed contract:** `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`
 
-This is the single normative runtime contract for OpenCode controllers and native subagents. Role prompts and skills define task-specific behavior; when they disagree with this file, this file wins for authority, delegation, and completion.
-
-The canonical routing/phase/artifact matrix is `workflow-map.md` in this contract directory. Use it before each phase; a skill is not a separate agent for every stage.
+This is the normative contract for native controllers (orchestrator, discovery, investigate, planner, implement, reviewer) on every host. Role files and skills define task-specific behavior. On authority, delegation and completion, this file wins.
 
 ## 1. Authority and evidence
 
-| Plane | Owns | Never owns |
+| Plane | Owns | Does not own |
 |---|---|---|
-| Cortex MCP | Durable evidence, memories, AST knowledge, provenance, and relationships | Claims, leases, task transitions, or approval |
-| Cortex-IA | Boards, DAG tasks, claims, leases, revisions, approvals, delegation jobs, and operational events in `~/.cortex-ia/delegation.db` | Product requirements or epistemic truth |
+| Cortex-IA (`~/.cortex-ia/delegation.db`) | Boards, tasks, claims, leases, revisions, approvals, operational events | Requirements or epistemic truth |
+| Cortex MCP | Durable evidence, memories, code knowledge, relationships | Claims, leases, transitions, approvals |
 
-The plan file `docs/plans/<board-id>.md` is a repository document written by the planner. It holds the goal, acceptance checks, and slices, and it grants no authority. The embedded web board, OpenCode UI, chat, tests, and Cortex observations are views or evidence. None can substitute for current `cortex_ia_work_status` state. Controllers and minions adhere to `agent-writing-contract.md`: technical artifacts default strictly to English, while direct chat matches the user's language; saving evidence or mutating SQLite authority never substitutes for delivering a complete, transparent reply to the human operator.
+The plan file `docs/plans/<board-id>.md` is a repository document: goal, acceptance checks, slices, progress and outcome. It grants no authority. Board views, chat, test output and Cortex observations are evidence. Readiness and completion come only from current `cortex_ia_work_status` state.
 
-## 2. Role boundaries
+## 2. Roles, tiers and delegation
 
 | Role | Work-control authority |
 |---|---|
-| `orchestrator` | Query boards/tasks; create only under the bounded bootstrap below; recover expired attempts; retry bounded reconciled blockers; route decomposition to planner; auto-approve low-risk Tier 2 direct changes and operational scripts (`direct-change`, `ops-task`), data/artifact generation, docs, and declarative configs under the §2.7a Adaptive Review Case Matrix. Never decompose, claim, lease, or edit product code. |
-| `discovery` | Native agentic-environment indexing: quick agentic-environment index via `cortex_ia_discovery_write` (skills dictionary local + global installed, run/test info, minimal governance) to `./.cortex-ia/discovery.md` plus the bounded `/.cortex-ia/` .gitignore hygiene append; never mutates work state. |
-| `planner` | Write the plan file, create the initiative board and its same-board dependency DAG; design and atomically apply an orchestrator-routed decomposition of a blocked task. Never claim implementation work. |
-| `investigate` | Read-only board/task status and durable evidence. Never mutate work state. |
-| `implement` | Own exactly one live task claim, lease every writable path, renew authority, verify, and transition to `in_review`. |
-| `reviewer` | Independently inspect and rerun checks; its only work mutation is `cortex_ia_work_approve`. Never edit, claim, lease, or self-approve. |
+| `orchestrator` | Queries boards and tasks; creates tasks only for Tier 2; recovers expired attempts; retries reconciled blockers; routes decomposition to the planner; approves low-risk work under §2.7a. Never decomposes, claims, leases or edits product code. |
+| `discovery` | Writes `./.cortex-ia/discovery.md` through `cortex_ia_discovery_write`, plus the `/.cortex-ia/` .gitignore append. Never mutates work state. |
+| `planner` | Writes the plan file, creates the initiative board and its same-board DAG, and atomically applies a decomposition of a blocked task. Never claims implementation work. |
+| `investigate` | Reads board and task status and durable evidence. Never mutates work state. |
+| `implement` | Owns one live task claim, reserves every writable path, verifies, transitions to `in_review`. |
+| `reviewer` | Inspects independently and reruns checks. Its only work mutation is `cortex_ia_work_approve`. Never edits, claims, leases or approves its own work. |
 
-The orchestrator dispatches native role controllers only. Every role executes natively within OpenCode under Cortex-IA work authority; no role may hand work to an external CLI or leaf, and no external execution surface holds work-control, approval, session, or MCP authority.
+Every role runs natively in the installed host. No role hands work to an external CLI or leaf, and no external surface holds work-control, approval, session or MCP authority. Only the orchestrator starts, summarizes and ends the Cortex session. It keeps one session ID and one board ID per initiative. Dispatched controllers are ephemeral and never call session lifecycle tools.
 
-Only the orchestrator owns `cortex_session_start`, session summaries, and `cortex_session_end`. It MUST maintain exactly ONE stable session ID and ONE stable board ID throughout the entire initiative lifecycle (binding to existing active sessions from `cortex_context` upon startup). Dispatched controllers are ephemeral within that session and must never invoke session lifecycle tools.
+### Tiers
 
-### Tier 1: Fast Path (Zero-Ceremony Direct Execution)
+- **Tier 1, direct answer.** Answers, summaries, chat-composed documentation and read-only lookups need no board or claim. Filesystem reads go to `investigate`, or the orchestrator uses facts already supplied. A file mutation becomes Tier 2.
+- **Tier 2, one bounded task.** For localized changes (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`) the orchestrator creates one task with `cortex_ia_work_create` on the `default` board, dispatches one `implement`, and approves under §2.7a. Multi-task DAGs and decomposition belong to the planner.
+- **Tier 3, planned initiative.** The planner writes `docs/plans/<board-id>.md` and materializes a same-board DAG. See `workflow-map.md`.
 
-Answers, summaries, handoffs, documentation composed in chat, and read-only diagnostic lookups do not require SQLite boards or implementation claims. The orchestrator answers from supplied evidence and dispatches `investigate` for filesystem reads. File mutations route to Tier 2 with one bounded task and explicit writable scope; no planner is required. This prepares the claim and file authority before an implement controller begins editing, avoiding an invalid taskless dispatch. Native edit/write/apply_patch tools require a live task claim and session-owned file leases, including direct changes. Taskless writes are confined to separately authorized typed planning/discovery tools; shell is not an alternate route around admission checks.
+### Delegation
 
-### Tier 2: Bounded Authorized Bootstrap (Single Bounded Code & Operational Tasks)
-
-For localized code changes (`direct-change`, `fast-tdd`, `hotfix`, `ops-task`), the orchestrator may directly create one bounded task using `cortex_ia_work_create` and dispatch `implement`, then approve per the §2.7a matrix (orchestrator auto-approval for Case 5; independent `reviewer` for Case 6). Plan creation, multi-task DAGs, and decomposition remain planner-only in Tier 3.
-
-**Fileless operations policy**:
-- `allowed_files: []` supports read-only investigation or review. An implement dispatch always requires non-empty leased repository paths.
-- Target names, `allowed_effects`, and operational flags describe intent only. Running a script against an external service or database is an external effect. It is allowed only when the user has explicitly authorized that specific target in their request (for example "apply it to the test database"); the orchestrator then names that target under `allowed_effects` in the dispatch envelope. Without that authorization, the implementer writes the script, verifies what it can locally, and reports that execution needs user authorization. Target names or flags alone never grant that authority.
-- An `ops-task` that authors or edits a script leases that script in `allowed_files` like any other file. Read-only checks of a live external target carry `allowed_files: []` and route to `investigate` or `reviewer`, never `implement`.
-
-### Heuristic Delegation & Execution Boundaries (Context Inflation Prevention)
-
-Every delegation decision balances role permissions, uncertainty, output volume, and independently verifiable work:
-
-1. **Bounded Read & Inspection Rule**:
-   - The orchestrator routes filesystem reads to `investigate` and uses supplied facts in-turn. File count alone never determines depth or forces another dispatch.
-   - For targeted checks (verifying a specific procedure, single file diff, or status), assign `max_steps: 5`. In targeted mode, `investigate` queries only the direct target without triggering full AST re-ingestion, deep memory chains, or whole-repo searches.
-2. **High-Stdout Containment Boundary**:
-   - Commands producing massive stdout (full test suites, linters, builds, benchmarks) must NEVER be executed directly in the orchestrator's main conversation. Delegate them to `reviewer` or bounded execution minions to preserve orchestrator context for strategic routing.
-3. **Workspace Strategy (`current_workspace` as Single Supported Strategy)**:
-   - `current_workspace` is the sole supported implementation workspace strategy; `isolated_worktree` requests fail closed as retired.
-   - Native implement controllers may share that workspace in parallel only with distinct live task claims and disjoint per-file reservations acquired before editing each file.
-4. **Bounded Agent Contracts & Step SLAs**:
-   - Native subagent controller step budgets are advisory: reaching a dispatch's `max_steps` produces a model-visible warning, not a stop or work-state transition. Canonical `max_steps` and deprecated `budget.max_turns` (along with host `args.steps`/`args.max_steps`) are mutually exclusive aliases for one advisory count; providing multiple forms (even with identical integer values), duplicate decoded keys (including escaped spellings), malformed or non-object budgets, or role conflicts is rejected fail-closed. Use the canonical `<minion-dispatch>` envelope; the transport also accepts one legacy `<minion-contract>` envelope with identical validation, never mixed or multiple envelopes. Without an explicit budget, defaults are implement 70, discovery/orchestrator 60, and investigate/reviewer 50. Planner has no step-count threshold or ceiling, including resumed sessions; planner exemption and fallback roles derive strictly from verified host task target identity, not envelope or agent claims. The transport policy applies to verified child sessions, not the root orchestrator. Scope, permissions, resource budgets, and progress requirements still apply.
-   - The transport reads `CORTEX_IA_EMERGENCY_STEPS` once at startup (default 500, integer 1-100000) as the non-planner emergency ceiling; it is independent of dispatch budgets. At that ceiling ordinary tools stop, up to five cleanup calls remain, and the controller reports partial progress for explicit reconciliation. No SQLite task status changes automatically. Invalid configured values reject plugin initialization; restart OpenCode after changing these environment variables.
-   - `CORTEX_IA_REPETITION_LIMIT` (default 5, integer 2-100) controls an advisory warning for consecutive terminal calls with identical tool, arguments, status, and result. Errors count; changed outcomes reset the streak. This measures observable repetition, not semantic lack of progress: polling and rechecks may be legitimate. It never blocks tools, including planner tools. The system prompt carries one current notice per condition. Only bounded fingerprints and recent call identities are retained in memory; oversized outcomes are not classified as repetition. Complete bounded history restores counters and repetition evidence without refilling allowances.
-5. **Authoritative Fact & Progress Synchronization**:
-   - Environmental truths, compiler versions, and verified dependencies are recorded in Cortex Memory via `cortex_save` (`type: "discovery"`).
-   - Task progression, state transitions, attempt history, and blockers are recorded directly in the SQLite Work DAG.
-   - At startup or after context compaction, query `cortex_context` or `cortex_search` to restore ground truth.
-6. **Role Assignment & File Scope Boundaries**:
-   - Implementation minions (`role: "implement"`) require a non-empty `allowed_files` list corresponding to leased repository paths.
-   - Read-only tasks, forensic investigations, reproduction verifications, unleased repository audits, and operational state checks (`allowed_files: []`) MUST NEVER be dispatched to the `implement` role. Route them strictly to `investigate` (or `reviewer` for auditing delivered code). Calling `implement` with an empty file scope is a transport error (`SUBAGENT_TRANSPORT_ERROR`) and will fail closed.
-7. **Clean Executable Verification Commands**:
-   - The `verification` command specified in tasks, plans, and task DAGs MUST be a raw executable command line with zero human comments, expected output descriptions, quotes, or parenthetical annotations (e.g. `node --test ...` without `(expected exit 0)`). Explanations belong strictly in `acceptance_criteria` or `objective`.
+- Choose the smallest route that fits. Scale effort to the question: answer directly when the facts are in hand; dispatch one subagent for one focused question; run several only for independent questions.
+- Do not dispatch a subagent for work that takes a couple of tool calls.
+- Do not dispatch a second subagent to double-check a first. Review is decided by §2.7a.
+- Discovery and investigate are tools for the orchestrator when it lacks facts. Run discovery when `./.cortex-ia/discovery.md` is missing or stale.
+- Parallel implementers run only on tasks with distinct claims and disjoint file leases. Coupled work runs sequentially in one task. At most four run at once.
+- Read-only work uses `allowed_files: []` and goes to `investigate` or `reviewer`, never `implement`. An implement dispatch always carries non-empty leased paths.
+- A targeted check (one procedure, one file, one status) stays within about five tool calls and touches only the direct target.
+- Route high-output commands (full test suites, linters, builds) to `reviewer` or an implementer so orchestrator context stays small.
+- When the user explicitly authorizes applying something already investigated, go straight to `implement`.
+- Routine work runs on the `default` board. Create a board only for an initiative with several dependent tasks.
+- Verification commands are raw executable command lines with no comments or parenthetical notes. Explanations go in `acceptance_criteria` or `objective`.
+- Operational scripts take credentials and targets from environment variables, never from source. Running a script against an external database or service needs the user's explicit authorization for that target; the orchestrator names it in `allowed_effects`. Without it, the implementer writes and verifies the script locally and reports that execution needs authorization.
+- Workspace strategy is `current_workspace` only. `isolated_worktree` is retired and fails closed.
+- Step budgets (`max_steps`) are advisory. Reaching one produces a warning, not a stop or a state change.
 
 ### 2.7a Adaptive Review Case Matrix (Normative)
 
-> **NORMATIVE SOURCE.** This section is the single full statement of the Adaptive Review Case Matrix (stable cross-reference anchor; mirrors `AGENTS.md` §2.7). Every other harness surface (`AGENTS.md`, `agents/orchestrator.md`, role prompts, and skills) carries only a compact digest marked `Digest — normative source: cortex-work-protocol.md §2.7a` or a pure pointer. Full restatements outside this section MUST be replaced by a digest or a pointer.
+The orchestrator classifies the task before deciding whether a `reviewer` is needed. The matrix tier is a floor.
 
-The orchestrator evaluates the task kind before deciding whether an independent `reviewer` subagent is required:
+- **Case 1, data and generated artifacts** (`.xlsx`, `.csv`, `.pdf`, `.parquet`, JSON fixtures, images, charts, reports). Verification is artifact proof: the file exists, is non-empty and has a valid format, or its generator exits 0. Orchestrator auto-approves. No `reviewer`.
+- **Case 2, pure documentation and text** (`*.md`, `docs/**`, instructions, comments, specs). Verification is markdown validity, link validity or formatting. Orchestrator auto-approves regardless of size. No `reviewer`.
+- **Case 3, declarative configuration and styling** (`.gitignore`, `.dockerignore`, CSS, non-security JSON or YAML). Verification is parser validation. Orchestrator auto-approves on clean syntax. Dispatch `reviewer` only for security-sensitive settings (IAM, firewall, auth keys, CORS).
+- **Case 4, operational and database scripts** (`ops-task`). Verification is exit 0 plus target object or query checks. Execution against an external target still needs the user authorization in the fileless-operations rule above. Orchestrator auto-approves read-only or idempotent test-environment scripts. Dispatch `reviewer` for production schema changes or irreversible DDL on shared tables.
+- **Case 5, low-risk unitary code** (`direct-change`, `fast-tdd`, `hotfix`). One domain, at most 3 files and 150 LOC of core logic (pure test files up to 250 LOC), deterministic green tests, no regressions. Orchestrator auto-approves.
+- **Case 6, high-risk code.** Dispatch an independent `reviewer` for: concurrency, locks or goroutine lifecycles; production schema migrations or irreversible DDL; public APIs, breaking protocol changes, auth, crypto or security boundaries; more than 3 files or more than 150 LOC of core logic; failed, ambiguous or missing tests.
 
-- **Case 1: Data & Generated Artifact Tasks** (`.xlsx`, `.csv`, `.pdf`, `.parquet`, `.json` data fixtures, images, charts, reports):
-  * Verification is artifact generation proof (file exists on disk, non-zero size, valid format, or generator script exit 0).
-  * **MANDATORY Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", revision: <n>, evidence: "..." })`.
-  * **Default**: do not dispatch the `reviewer` subagent for generated data/artifacts. An Excel or data file has no AST, cycles, or unit tests to review. If the tier is raised with a stated reason and a reviewer is dispatched, it must execute the Artifact Integrity Gate and immediately approve without AST/cycles/linters/mutations.
-- **Case 2: Pure Documentation & Text** (`*.md`, `docs/**`, instructions like `AGENTS.md`/`README.md`, comments, specs):
-  * Verification is markdown syntax, link validity, or formatting.
-  * **MANDATORY Orchestrator Auto-Approval** regardless of LOC volume as long as changes are non-executable text. Do NOT dispatch `reviewer`.
-- **Case 3: Declarative Configuration & Styling** (`.gitignore`, `.dockerignore`, CSS/themes, JSON/YAML without security/auth implications):
-  * Verification is parser validation (`jq`, YAML check, CSS check).
-  * **Orchestrator Auto-Approval** on clean syntax. Dispatch `reviewer` only if security-sensitive (IAM, firewall, auth keys, CORS).
-- **Case 4: Operational & DB Scripts** (`ops-task`):
-  * Verification is script execution exit 0 and target DB object/query verification. Execution against an external target also requires the user authorization described in the fileless operations policy; the approval rule below is unchanged.
-  * **Orchestrator Auto-Approval** for read-only or idempotent test-environment scripts. Dispatch `reviewer` only for high-risk production schema changes or irreversible DDL on shared tables.
-- **Case 5: Low-Risk Unitary Code** (`direct-change`, `fast-tdd`, `hotfix`):
-  * Localized within a single domain, <= 3 files and <= 150 LOC (or pure test files <= 250 LOC), with deterministic green tests (exit 0) and zero regressions.
-  * **Orchestrator Auto-Approval** via `cortex_ia_work_approve({ task_id, verdict: "PASS", revision: <n>, evidence: "..." })`.
-- **Case 6: High-Risk Code (Mandatory Independent `reviewer` Subagent)**:
-  * Dispatch an independent `reviewer` ONLY when changes involve:
-    1. Concurrency, mutexes, locks, goroutine lifecycles.
-    2. Production database schema migrations or irreversible DDL.
-    3. Public APIs, breaking protocol changes, auth, crypto, security boundaries.
-    4. High churn (> 3 files or > 150 LOC of core logic).
-    5. Failed, ambiguous, or missing tests.
+Auto-approval goes only through `cortex_ia_work_approve` with an `evidence` pointer. A receipt, a passing test, a board card or a chat assertion never completes a task.
 
-Auto-approval is performed exclusively by the orchestrator through `cortex_ia_work_approve` with an `evidence` pointer; an approval by any other role, a receipt, a passing test, a UI card, or a chat assertion never completes a task.
-
-**Escalate-only tier adjustment.** The review tier this matrix assigns is a floor, never a ceiling. An implementer that judges a task riskier than its assigned tier MAY raise the tier with a stated reason when transitioning to `in_review`, and the higher tier governs. A reviewer MAY likewise escalate during review. Lowering below the assigned tier is refused fail-closed: the matrix tier governs and the refusal is recorded as evidence. The tier request travels on the existing `in_review` transition; it introduces no new task state.
+**Escalate-only tier.** An implementer or reviewer may raise the tier with a stated reason when transitioning to `in_review`. Lowering the tier below the matrix is refused, and the refusal is recorded as evidence. A raised tier travels on the existing `in_review` transition and adds no task state.
 
 ## 3. Typed tools and token custody
 
-Native controllers use the typed `cortex_ia_board_*` and `cortex_ia_work_*` tools exposed by the active OpenCode bridge. The current tool schema is authoritative: never invent a missing tool or argument.
+Controllers use the typed `cortex_ia_board_*` and `cortex_ia_work_*` tools from the active bridge. The current tool schema is authoritative; never invent a tool or argument.
 
-| Tool group | Permitted use |
+| Tool group | Who may use it |
 |---|---|
-| `cortex_ia_board_create|list|status` | Planner DAG board (Tier 3); orchestrator creation only under bounded bootstrap; reads according to role policy |
-| `cortex_ia_work_create` | Planner DAG mutation; orchestrator only under bounded authorized bootstrap (Tier 2) |
-| `cortex_ia_work_decompose` | Planner only; requires an orchestrator-routed blocked task and revision |
-| `cortex_ia_work_list|status` | Token-free reads according to role policy |
-| `cortex_ia_work_recover` | Orchestrator reconciliation only; unscoped sweep of every expired claim |
-| `cortex_ia_work_retry` | Orchestrator only; retry a reconciled blocked task under revision CAS |
-| `cortex_ia_work_recover_own` | Implementer only; recover the caller's own expired task from its owning session, fail-closed on an absent in-memory handle or a foreign session |
-| `cortex_ia_work_review_refresh` | Orchestrator only; reopen done review under current revision after active work reconciliation, without write authority or automatic approval |
-| `cortex_ia_work_claim|renew|lease_renew|release_all|transition` | Implementer only; claims task, optionally reserves initial `paths: [...]`, renews leases, and transitions state |
-| `cortex_ia_file_reserve|cortex_ia_file_release` | Implementer only; single-file or batch reservation (`path` or `paths: [...]`) and single-file release |
-| `cortex_ia_work_approve` | Independent reviewer, or orchestrator auto-approval per the §2.7a Adaptive Review Case Matrix |
+| `cortex_ia_board_create\|list\|status` | Planner for initiative boards; orchestrator for the bounded Tier 2 bootstrap; reads per role |
+| `cortex_ia_work_create` | Planner for DAG tasks; orchestrator for one Tier 2 task |
+| `cortex_ia_work_decompose` | Planner only, on an orchestrator-routed blocked task, with its revision |
+| `cortex_ia_work_list\|status` | Token-free reads, per role |
+| `cortex_ia_work_recover` | Orchestrator only; unscoped sweep of expired claims |
+| `cortex_ia_work_retry` | Orchestrator only; retries a reconciled blocked task under revision CAS |
+| `cortex_ia_work_recover_own` | Implementer only; recovers its own expired task |
+| `cortex_ia_work_review_refresh` | Orchestrator only; reopens review under the current revision. Grants no write authority and never approves |
+| `cortex_ia_work_claim\|renew\|lease_renew\|release_all\|transition` | Implementer only |
+| `cortex_ia_file_reserve\|cortex_ia_file_release` | Implementer only; one path or a batch |
+| `cortex_ia_work_approve` | Independent reviewer, or orchestrator auto-approval under §2.7a |
 
-The bridge retains claim and lease tokens in process memory and sends them to the CLI over stdin. Tokens must never appear in prompts, argv, receipts, logs, files, Cortex observations, or chat. Human operators may use the literal-token CLI form only in a protected terminal when explicitly necessary.
+The bridge keeps claim and lease tokens in process memory and sends them to the CLI over stdin. Tokens never appear in prompts, argv, receipts, logs, files, Cortex observations or chat. A human may use the literal-token CLI form in a protected terminal when it is necessary.
 
-## 4. Authoritative task lifecycle
-
-Review approval retains runtime-computed fingerprints of the task definition and its writable files; drift requires a fresh review. Historical approvals are never rewritten. Plan closure has no archive call: the last implementer fills the plan's Outcome section, as described in `workflow-map.md`.
+## 4. Task lifecycle
 
 ```text
 backlog --dependencies done--> ready --claim--> in_progress
 in_progress --verified implementation--> in_review
-in_review --PASS (independent reviewer or orchestrator auto-approval)--> done
+in_review --PASS (reviewer or orchestrator auto-approval)--> done
 in_review --FAIL--> blocked --explicit retry--> ready
-in_progress --expired authority/recovery--> blocked
+in_progress --expired authority or recovery--> blocked
 ```
 
-1. Read readiness from `cortex_ia_work_status`; dependency membership must remain inside one board.
-2. Claim exactly one `ready` task and retain its current revision.
-3. Reserve each workspace-relative writable file with atomic `cortex_ia_work_claim({ task_id, paths })` (or `cortex_ia_file_reserve({ task_id, paths })` for dynamic mid-flight additions) before the first write to that file. If any file conflicts, do not write it, transition the task to `blocked`, and reconcile. Parallel native writers in one workspace require distinct claims and disjoint live per-file reservations.
-4. The bridge renews the claim and leases while the host makes progress; renew manually only when a tool reports maintenance inactive or a lease near expiry. Stop writing immediately when authority is expired, stale, or uncertain; preserve the diff and return `BLOCKED` for reconciliation.
-5. Run focused checks, then proportional regression, and for fast-TDD-eligible code tasks (a persistent test delta in a testable unit) produce **mutation evidence** before `transition in_review`: apply 1–2 minimal reversible mutations per the `mutation-testing` skill to the changed logic, rerun the covering test, and record the outcome. `KILLED` (the covering test failed under the mutation) proves a genuine verifier; `SURVIVED` (the test passed despite the broken logic) marks a shallow test and MUST NOT appear in a transition — strengthen the assertions and re-run until `KILLED`; `STATIC-ANALYSIS` is the fallback only when the environment cannot compile or execute mutations, and its minimum bar is an explicit, recorded assertion of the changed unit's error boundaries, return payloads, and failure branches, never a silent skip. Documentation, declarative configuration, generated output (e.g. Excel spreadsheets, CSVs, reports), data artifacts, and work without a reliable fast oracle are exempt (record the reason), mirroring `skills/implement/SKILL.md`. Store bounded evidence, never full stdout.
-6. Transition to `in_review` using current authority and revision (`cortex_ia_work_transition({ to: "in_review", revision: <n> })`); the bridge automatically releases retained file leases upon transition and records review authority and implementation owner in `work_reviews`. A task in `in_review` remains fully valid for review and approval even if the implementation claim TTL elapses. Approval via `cortex_ia_work_approve` (from an independent reviewer, or orchestrator auto-approval per the §2.7a Adaptive Review Case Matrix) releases the claim and produces `done`. On implementation failure, transition to `blocked` (which releases leases and claim) and record a `blocked_reason` from the canonical taxonomy in §8.
-7. Only an approved PASS verdict (from an independent reviewer or orchestrator auto-approval per the §2.7a Adaptive Review Case Matrix) produces `done` and atomically unlocks eligible dependents. A receipt, test result, UI card, or chat assertion alone never completes a task.
+1. Read readiness from `cortex_ia_work_status`. Dependencies stay inside one board.
+2. Claim one `ready` task and keep its current revision.
+3. Reserve every writable file before the first write, in sorted order, with `cortex_ia_work_claim({ task_id, paths })` or `cortex_ia_file_reserve({ task_id, paths })` for mid-flight additions. If a file conflicts, release what you acquired, write nothing to that file, and report `blocked`.
+4. The bridge renews the claim and leases while the host makes progress. Renew manually only when a tool reports maintenance inactive or a lease is near expiry. When authority expires or becomes uncertain, stop writing, keep the diff, and report `blocked`.
+5. Run focused checks, then proportional regression. Fast-TDD code tasks (a persistent test delta in a testable unit) also record mutation evidence before `in_review`: apply one or two minimal reversible mutations to the changed logic, rerun the covering test, and revert. `KILLED` means the test failed under the mutation. `SURVIVED` means the test passed anyway; strengthen the assertions and repeat until `KILLED`. `STATIC-ANALYSIS` is the fallback when mutations cannot run, with a recorded assertion of the unit's error boundaries, return values and failure branches. Documentation, declarative config, generated output and tasks without a reliable fast oracle are exempt; record the reason. Store bounded evidence, never full stdout.
+6. Transition to `in_review` with the current revision (`cortex_ia_work_transition({ to: "in_review", revision: <n> })`). The bridge releases leases on transition and records the review authority and implementation owner. A task in `in_review` stays valid for approval even if the claim TTL elapses.
+7. Only an approved PASS produces `done` and unlocks eligible dependents. On failure, transition to `blocked` (which releases leases and the claim) and record a `blocked_reason` from §8.
 
-Every transition, approval, and retry must pass the `revision` from the claim receipt or the latest `cortex_ia_work_status`; a missing revision is refused. On a stale-revision conflict, re-read the status and decide again rather than retrying blindly.
+Every transition, approval and retry passes the current `revision`. On a stale-revision conflict, re-read status and decide again; do not retry blindly.
 
-The bridge grants a claim a fixed 30-minute validity window per heartbeat renewal (`maintenancePolicy.ttl = "30m"`), decoupled from the unchanged 15-minute stale-progress orphan window (`stale_progress_ms = 900000`): a host that makes no progress for 15 minutes stops the heartbeat, so the claim expires at most 30 minutes after the last successful renewal while remaining detectable by recovery. Implement controllers reconcile only their own expiry with `cortex_ia_work_recover_own`; unscoped `cortex_ia_work_recover` and `cortex_ia_work_retry` stay orchestrator-only.
+A claim lasts 30 minutes per successful renewal. A host that stops making progress for 15 minutes stops renewing, so the claim expires at most 30 minutes later and stays detectable. The owning implementer reconciles its own expiry with `cortex_ia_work_recover_own`. Unscoped recovery and retry stay with the orchestrator.
 
-**Bridge gotchas (durable-memory evidence).** (1) *One claim per session* (#252): the bridge enforces exactly one claimed task per session, and its in-memory handle can outlive a dead durable claim (`durable_claim_live: false`) and may survive `release_all`, leaving `BRIDGE_AUTHORITY_UNUSABLE` until a `cortex_ia_work_claim` for the already-owned task fails on status and clears the handle. (2) *Review binding drift requires a fresh review* (#284): the review binding fingerprints working-tree bytes at bind time, so any checkout or branch switch between `in_review` and approval re-drifts it; reconcile covers only `in_progress` with a live claim, and the claimless route out of `in_review` is recover's 30-minute abandoned-review sweep -> `blocked` -> retry. (3) *Post-TTL reconciliation via scoped self-recovery* (#246/#214, shipped in v0.5.8): a claim that expires before transition auto-transitions the task to `blocked`, an implement controller recovers only its own expiry with `cortex_ia_work_recover_own`, and a verified task whose claim expired before transition is reconciled by a diff-verification-only re-claim and transition without re-running full suites when the evidence is already durable.
+Review approval fingerprints the task definition and its writable files. Drift requires a fresh review. Historical approvals are never rewritten.
+
+Known bridge edge cases:
+- One claim per session. An in-memory handle can outlive a dead durable claim and block new claims with `BRIDGE_AUTHORITY_UNUSABLE`. A claim for the owned task that fails on status clears the handle.
+- The review binding fingerprints working-tree bytes. A checkout or branch switch between `in_review` and approval needs a fresh review.
+- A claim that expires before transition moves the task to `blocked`. Its owner recovers it, or a verified diff is re-claimed and transitioned without rerunning full suites when the evidence is already durable.
 
 ### Workload LOC Budget (Normative)
 
-> **NORMATIVE SOURCE.** This table is the single canonical statement of the workload LOC budget. Derived sites (`AGENTS.md` §3/§4, `agents/implement.md`, `agents/reviewer.md`, `skills/_shared/codebase-design-contract.md`, `skills/_shared/diagnosis-loop-contract.md`, `skills/code-review-adversary/SKILL.md`, `skills/implement/SKILL.md`, `skills/planner/SKILL.md`) carry only a marked digest or a pointer to this section.
+Before `in_review`, categorize churn with `git diff --numstat`. Source logic covers Go, Rust, Java and C# and TS or Python (deletions in TS and Python count 0.2x). Declarative data and schemas are exempt from every tier.
 
-Categorize churn with `git diff --numstat` before transitioning to `in_review`. Source logic is measured for Go/Rust/Java/C# and TS/Python (TS/Python deletions weighted 0.2x); test and fixture budgets are listed per tier; declarative data and schemas are exempt from every tier.
-
-| `workload_policy` | Source logic — Go/Rust/Java/C# | Source logic — TS/Python (0.2x deletions) | Test & fixtures | Over-budget behavior |
+| `workload_policy` | Source logic, Go/Rust/Java/C# | Source logic, TS/Python | Tests and fixtures | Over budget |
 |---|---|---|---|---|
-| `strict` | <= 350 LOC | <= 250 LOC | <= 600 LOC total (modular files <= 250 LOC) | Transition to `blocked` with `blocked_reason: "scope_drift"` and `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED`) at the start of the `summary`; route to planner for atomic decomposition |
-| `flexible` | <= 700 LOC | <= 500 LOC | <= 1200 LOC total | Non-blocking `WORKLOAD_ADVISORY`; may transition to `in_review` |
-| `unbounded` | No ceiling | No ceiling | No ceiling | Pre-transition diff checks bypassed |
+| `strict` | <= 350 LOC | <= 250 LOC | <= 600 LOC total; modular files <= 250 LOC | `blocked` with `blocked_reason: "scope_drift"` and `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED`) at the start of the summary; route to planner |
+| `flexible` (default) | <= 700 LOC | <= 500 LOC | <= 1200 LOC total | Advisory `WORKLOAD_ADVISORY` in the summary; may transition |
+| `unbounded` | No ceiling | No ceiling | No ceiling | Diff checks bypassed |
 
-Recovery only reconciles expired authority. It does not recreate claims or leases. Retry is explicit and uses a fresh attempt; never reuse tokens from an expired or terminal attempt. A task has an outer limit of five durable claim attempts, but MUST circuit-break earlier on review rejections: if a task receives two (2) consecutive review FAIL verdicts, or if the diff exceeds the decoupled workload budget under the active `workload_policy` (see the canonical **Workload LOC Budget** table above), the orchestrator MUST NOT retry the monolithic task directly. Implementers must check categorized diff lines (`git diff --numstat`) before calling `cortex_ia_work_transition({ to: "in_review", revision: <n> })`; under `strict`, if source logic changed lines exceed the cap, transitioning to `in_review` is strictly forbidden and the task must transition directly to `blocked` with `blocked_reason: "scope_drift"` and place `WORKLOAD_SOURCE_BUDGET_EXCEEDED` (or `WORKLOAD_TEST_BUDGET_EXCEEDED` if test fixtures exceed 600 lines without partitioning) at the start of the `summary`. Under `flexible`, churn beyond guidelines produces an advisory in the implementation summary (`WORKLOAD_ADVISORY`) without blocking transition. Under `unbounded`, pre-transition diff checks are bypassed. When timeout, scope, or 2 consecutive review failures show that the unit is overloaded or too large, the orchestrator routes the task to planner for atomic decomposition (`phase: "decompose"`). The planner designs 2-8 fully specified tasks sized by the active workload_policy and invokes `cortex_ia_work_decompose` once instead of retrying the parent. Cortex applies that plan atomically: it preserves the board/project and upstream dependencies, chains the children, redirects downstream dependencies to the final child, and exposes the blocked parent as `superseded`. The orchestrator, implementers, and reviewers never invoke decomposition directly. Anti-Decomposition of Pure-Test & Tooling Tasks: Tasks whose `allowed_files` consist purely of tests, test fixtures, or testing harnesses (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks) MUST NOT undergo DAG decomposition upon failure. A failing test harness or test helper is NOT an architectural component to be split into 2-8 subtasks. If a pure-test task fails review or verification, the implementer or planner must simplify or fix the test assertion directly, prune invalid/unrealistic mock assumptions, or revert to a standard CLI oracle; never decompose a test into more tests. Multi-record/batch validation must operate on defensive copies without mutating caller input in-place, and implementers must never weaken contracts to force tests green. Test suites and fixtures must be partitioned into modular dedicated files (`<domain>_<slice>_test.go`) bounded to <= 250 LOC; implementers and planners must never append new scenarios to an existing test file exceeding 300 LOC or when the combined delta exceeds the workload budget. Code-intelligence and AST structures (`DocSummary`, `Reasoning`, syntax symbols, callers, relationships) are strictly noninterfering (`REQ-PRIV-007`): sanitization or privacy preflights MUST NEVER redact, strip, or alter code-intelligence fields.
+Circuit breaker. Two consecutive review FAIL verdicts, or a diff over budget under `strict`, mean the orchestrator does not retry the monolithic task. It routes the task to the planner with `phase: "decompose"`. The planner designs 2 to 8 fully specified tasks and calls `cortex_ia_work_decompose` once. Cortex applies the plan atomically: it keeps board membership and upstream dependencies, chains the children, redirects downstream dependencies to the last child, and marks the parent `superseded`. Orchestrators, implementers and reviewers never decompose directly.
 
-When subagent dispatch terminates empty, corrupt, or aborted, task latching prevents ungrounded re-dispatch loops. Latching is a protective safety invariant, not a missing capability: unlatch tools do not exist, and leaf subagents are barred from attempting recovery or retry bypasses. Supported continuation requires the orchestrator to reconcile prior work and durable task state in SQLite (`cortex_ia_work_status` / `cortex_ia_work_recover`) before initiating a fresh authorized attempt under a new attempt counter; expired claim/lease tokens are never reused or inherited. If task identity is unknown, continuation capability is unavailable until the orchestrator investigates and identifies the durable task. Read-only roles never latch and never lose dispatch availability; their repeated aborts on the same objective are still surfaced as `ERR_SUBAGENT_READONLY_REPEATED_ABORT` telemetry (once per streak, reset by a successful dispatch) so a failing diagnostic loop cannot stay invisible.
+Other rules for this budget:
+- Tasks whose `allowed_files` are only tests, fixtures or harnesses are never decomposed. Fix or simplify the assertion, prune unrealistic mocks, or use a standard CLI oracle.
+- Implementers do not weaken contracts to make tests pass. Batch validation works on copies and never mutates caller input before the whole request is validated.
+- New test scenarios go in dedicated files of 250 LOC or less. Do not add to a test file over 300 LOC.
+- Code-intelligence fields (doc summaries, reasoning, symbols, callers, relationships) are never redacted or altered by privacy or sanitization steps.
+- Recovery reconciles expired authority only; it does not recreate claims or leases. Retry uses a fresh attempt with fresh tokens. A task gets at most five durable claim attempts.
+- On a transient quota error, reconcile durable state and resume under fresh authority. Do not mark the task permanently blocked.
+- When a dispatch ends empty, corrupt or aborted, reconcile durable state in SQLite before a fresh attempt. Never reuse tokens from an expired or terminal attempt. Read-only roles are never latched; repeated aborts are reported as `ERR_SUBAGENT_READONLY_REPEATED_ABORT`.
 
-Native OpenCode implement controllers execute in the current workspace under disjoint live per-file reservations (`cortex_ia_file_reserve`). Requests specifying `isolated_worktree` fail closed with an actionable retirement error.
+## 5. Dispatch
 
-## 5. Native Execution Mode
+Every dispatch is one `<minion-dispatch>` JSON object. Fields:
 
-All role controllers (`planner`, `investigate`, `implement`, and `reviewer`) execute natively within OpenCode using their assigned toolsets and authority boundaries under Cortex-IA Work Authority.
+- Required: `contract_version` (`"2.0"`), `role`, `workflow`, `phase`, `task_id` (a string, or `null` for read-only roles), `objective`, `allowed_files`, `acceptance_checks`, `artifact_refs`.
+- Optional: `non_goals`; `context` (what is already known, with `file:line` anchors); `evidence_refs` (a retry after FAIL includes `gotchas/<task_id>`); `allowed_effects` (only with user authorization); `workload_policy` (default `flexible`); `max_steps` (advisory).
+- Implement requires non-empty `allowed_files`. Planner uses workflow `plan` with phase `plan` or `decompose`.
 
-## 6. Native background dispatch & parallel waves
+Envelopes are context-complete: they carry anchors, verified evidence with its command and result, user decisions, non-goals and the verification oracle, so a subagent does not need to ask mid-run. Envelopes never include tokens or credentials. An envelope describes routing and never grants authority.
 
-Callers strictly use canonical `cortex_ia_*` bridge tool names; legacy `cortex_*` bridge aliases are not supported. Cortex MCP's independent `cortex_*` memory tools are unaffected.
+Native background dispatch needs `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`. Only the orchestrator launches role controllers. Completion notifications are the join signal; do not poll in loops.
 
-Native asynchronous delegation requires `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`. Only the orchestrator launches a native role controller through OpenCode's `task` tool. Completion notifications are the normal join signal; avoid sleep loops and aggressive polling.
+## 6. Orchestrator and subagent communication
 
-Every dispatch contains exactly one `<minion-dispatch>{...}</minion-dispatch>` JSON envelope with explicit `task_id` (`null` is valid for read-only roles), matching `role`, bounded objective, artifacts/evidence, non-goals, allowed files, checks, budget, stop conditions, and escalation rules. An implement envelope requires non-empty `allowed_files`. Never include tokens or credentials.
-
-### Orchestrator ↔ Subagent communication patterns
-
-Four verified OpenCode v2 patterns govern dispatch, mid-flight context, and completion. They are normatively defined here once; `agent-writing-contract.md` and role prompts cross-reference this section instead of restating it.
-
-1. **Context-complete envelopes**: Every dispatch carries all context the subagent needs to finish without a mid-run question: `file:line` anchors, verified evidence with the command and observed result, user-locked decisions, `non_goals`, and the verification oracles. A subagent forced to ask mid-run for context the orchestrator already possessed is an orchestrator defect; the fix is a complete envelope, never an out-of-band answer that leaves the dispatch record inconsistent.
-2. **Open questions in final receipts**: Unresolved questions travel in the completion receipt as structured `open_questions` (required when non-empty), never silently defaulted. The orchestrator resolves each through an interactive gate, a follow-up dispatch, or steering. See §8 for the receipt attribute.
-3. **Parent→child steering via `sessionID`**: The orchestrator retains every background child's `sessionID` and, when mid-flight context must reach a live child (a user decision arrived mid-run, an evidence-ref handoff, or bounded context completion), steers it through OpenCode's `task` session continuation. Delivery semantics: `steer` injects into the child's current run; `queue` waits for its next step. Steering never bypasses work authority: claims and leases still govern every file edit, and claim/lease tokens NEVER appear in steering payloads or any transport.
-4. **Synthetic context injection**: Shell-capable roles (`investigate`, `implement`, `reviewer`) may inject programmatic context into a session with `opencode api post /api/session/<sessionID>/synthetic --data '<json>'`. The payload is restricted to context and evidence; it MUST NEVER carry work-state mutations, authority tokens, or secrets. The orchestrator profile has no shell and therefore uses `task` session continuation (pattern 3) instead. "Synthetic" here means injected context only, and is distinct from generated synthetic test data.
-
-Dispatches use `contract_version: "1.0"` or `"2.0"`. The common required fields are `role`, `workflow`, `phase`, `task_id`, `objective`, `allowed_files`, `acceptance_checks`, and `artifact_refs`. Dispatches may also supply `non_goals` (string array) defining explicit negative boundaries to prevent Cascade Amplification. Workflow, phase, and objective are non-empty strings; file, check, ref, and non_goals fields are string arrays. `role` matches the host `subagent_type`; `task_id` is a non-empty ID or `null`. Planning dispatches cite the plan path in `artifact_refs`. Add evidence pointers and conditional scope/budget fields when applicable. This contract describes routing, never grants permissions or task authority.
-
-Use one envelope `max_steps` advisory count. The transport accepts a single historical budget alias, validates it, and rewrites the outgoing envelope to canonical `max_steps`; multiple forms still fail. `workload_policy` is `strict`, `flexible` or `unbounded`, defaults to `flexible`, and travels to the dispatch request and prompt. Flexible line estimates produce advisories, not rejection of otherwise coherent completed work. Execution completion and verification verdict remain separate; acceptance of a dispatch never certifies successful execution.
-
-Planner workflow/phase pairs are `plan` with `plan|decompose`. Other roles use the assigned operational phase (for example investigate/diagnose, direct-change/apply, or review/verify). The transport validates the versioned common fields and planning pairs before dispatch. Unversioned historical envelopes and one legacy `<minion-contract>` remain accepted for resume compatibility, with the existing identity and budget checks; supplied roles must match the host target. New prompts use the canonical tag.
-
-When multiple board tasks reach `ready` with mutually disjoint `allowed_files`, the orchestrator dispatches them concurrently via `task(..., background=true)` following the `parallel-dispatch` skill. Each implement controller claims its single task and acquires its disjoint per-file leases without collision.
-
-Reader and writer admission is advisory capacity control, not authority. Default limits are four readers and up to three concurrent writers when task claims, leases, effects, and isolation prove independence. Optional native background tools may be used only when present in the effective tool inventory.
-
-
-## 7. Herdr integration
-
-Herdr is retired as an execution, task-state, or approval surface; it persists only as an optional diagnostics view for the web console and never owns task state or approval.
+1. **Context-complete envelopes.** See §5. Asking the orchestrator for context it already held is an envelope defect.
+2. **Open questions in receipts.** Unresolved questions travel as `open_questions` in the receipt (§8). The orchestrator resolves each through a user gate, a follow-up dispatch or steering.
+3. **Steering.** The orchestrator keeps each child's `sessionID` and steers a live child through `task` session continuation: `steer` injects into the current run, `queue` waits for the next step. Steering never changes authority; tokens never appear in steering payloads.
+4. **Synthetic context injection.** Shell-capable roles may post context or evidence to their own session with `opencode api post /api/session/<sessionID>/synthetic --data '<json>'`. Payloads never carry work-state mutations, tokens or secrets. This is context only, not generated test data.
 
 ## 8. Completion receipt
 
-Receipts are transmitted authoritatively through typed tool calls (`cortex_ia_work_transition` and `cortex_ia_work_approve`) or semantic envelopes, freeing the chat stream for transparent human communication. Raw JSON code blocks in chat text are deprecated.
+A controller reports its result through the typed tools (`cortex_ia_work_transition`, `cortex_ia_work_approve`) or as its final message. Use this schema:
 
-Every role reports the same common completion attributes: `workflow`, `phase`, `task_id` (or `null`), `phase_status`, `verification_verdict`, `summary`, `artifact_refs`, `evidence_refs`, `open_questions`, and `next_route`. Role-specific fields extend this record rather than replacing it. `open_questions` is required whenever unresolved questions remain and may be omitted or empty when none do; a question the receiving controller must resolve is never silently defaulted or dropped. Keep `phase_status` (`success|partial|failed|blocked`) separate from `verification_verdict` (`PASS|FAIL|BLOCKED|INCONCLUSIVE`) and optional durable `task_status`. A completed diagnostic phase may legitimately have an `INCONCLUSIVE` verification verdict. A `blocked` transition additionally records a `blocked_reason` from the canonical taxonomy `authority_expired | upstream | needs_user | env | scope_drift` so continuation is deterministic.
+```text
+status: done | blocked | failed              (one line)
+summary: 1-3 sentences, result first
+changed_files: [...]                          (implement only)
+checks: [{ check_id or command, result, evidence_ref }]
+evidence_refs: [...]
+open_questions / blockers: [...]              (only if any)
+next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective
+```
 
-The receiving controller checks required attributes, routing identity, evidence, and current task state in SQLite before accepting a completion. For historical or compatibility text envelopes, normalize explicit fields and request missing evidence or return `INCONCLUSIVE`, never invent a PASS. Verification is proportional to the objective: document/contract checks for planning, cited observations and discriminating probes for diagnosis, and executable acceptance checks for implementation/review. Planning PASS attests only to the planning artifact checks, never to product behavior or task approval.
+- `result` for a check is `PASS`, `FAIL`, `BLOCKED` or `INCONCLUSIVE`. A `status` of `done` is the controller's own outcome and does not approve anything.
+- A `blocked` transition also records `blocked_reason` from `authority_expired | upstream | needs_user | env | scope_drift`, so continuation is deterministic.
+- A PASS needs executable evidence: command, exit code, revision or hash, timestamp and a bounded result. Missing evidence, task mismatch, a stale revision or an incomplete receipt yields `INCONCLUSIVE` or `BLOCKED`, never PASS.
+- A diagnostic phase may end `INCONCLUSIVE` legitimately. Planning PASS attests only to the planning artifact checks, never to product behavior or approval.
+- A fast-TDD code task without mutation evidence (`KILLED`, or `STATIC-ANALYSIS` with its assertion description) is `INCONCLUSIVE` or `BLOCKED`. Reviewers verify the evidence against the diff. A perpetually green test, one that would pass under any change to the logic it covers, is an oracle gap and fails a code task.
+- The receiving controller checks required fields, routing identity, evidence and the task state in SQLite before accepting. For a historical text envelope, normalize the explicit fields, request the missing evidence, or return `INCONCLUSIVE`. Never invent a PASS.
+- Receipts never contain secrets or tokens.
 
-For fast-TDD-eligible code tasks the required evidence composition additionally includes the §4 mutation evidence (`KILLED`, or `STATIC-ANALYSIS` with its bounded assertion description); a missing or empty mutation field makes the completion evidence incomplete and MUST produce `INCONCLUSIVE` or `BLOCKED`, never PASS. Reviewers independently verify that evidence against the actual diff and test source and apply the test-strength lens: a perpetually-green test — one that would pass under any behavior change of the logic it claims to cover — is an oracle gap and MUST FAIL a code task.
-
-A controller reports `PASS` only with executable evidence: command, exit code, relevant revision/hash, timestamp, and bounded result. Missing evidence, task mismatch, stale revision, or incomplete receipt is `INCONCLUSIVE` or `BLOCKED`, never PASS. Receipts omit secrets and authority tokens and identify the next route using the canonical `next_route` enum: `stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective`.
+Verification matches the objective: document and contract checks for planning, cited observations and discriminating probes for diagnosis, executable acceptance checks for implementation and review.
 
 ### 8.1 Per-check verdict protocol
 
-When a dispatch names acceptance checks, the envelope carries their IDs (for example `AC-2`, from the plan's Acceptance Checks table) verbatim; controllers never paraphrase, renumber, or substitute an alias. The worker receipt then performs the per-check verdict round-trip: exactly one verdict per referenced ID as `verdicts: [{ check_id, verdict, evidence_ref }]`, reusing the same verbatim ID string and pointing `evidence_ref` at the provenance record defined by `cortex-convention.md` § Verbatim provenance (observed command, outcome, and commit hash), so each verdict stays a re-verifiable fact rather than a retold claim.
+When a dispatch names acceptance checks, its envelope carries their IDs verbatim (for example `AC-2`, from the plan's Acceptance Checks table). The receipt returns exactly one `checks` entry per referenced ID, reusing the same spelling. `evidence_ref` points to the provenance record defined in `cortex-convention.md` § Verbatim provenance.
 
-Verification confirms every referenced ID before accepting the receipt: an ID that is missing from the receipt, unknown to the envelope, or altered from its verbatim spelling is reported, and the completion evidence stays incomplete (`INCONCLUSIVE` or `BLOCKED`), never PASS. This applies the §8 evidence-composition rule per ID. When a worker verdict disagrees with executable verification, the executable result wins and the conflict is recorded as evidence; no worker verdict overrides an absent or failing oracle.
+An ID that is missing from the receipt, unknown to the envelope or altered from its spelling leaves the completion `INCONCLUSIVE` or `BLOCKED`. When a worker's verdict disagrees with executable verification, the executable result wins and the conflict is recorded as evidence. An absent or failing oracle is never overridden by a worker verdict.
 
-## 9. Incident & Error Reporting Protocol
+## 9. Error reporting
 
-Controllers and orchestrators record structured operational error reports when encountering unrecoverable blockers or failure states:
-- Typed tool: `cortex_ia_report_error({ code, message, details?, task_id? })`
-- Standard Taxonomy:
-  - `ERR_TASK_BLOCKED`: Unmet dependencies, CAS revision mismatch, or maximum retry exhaustion.
-  - `ERR_VERIFICATION_FAIL`: Verification oracle or reviewer returned FAIL with reproducible failure details.
-  - `ERR_INVARIANT_VIOLATION`: Dirty worktree, file lease collision, or expired claim authority token.
-  - `ERR_DELEGATION_FAIL`: Delegation dispatch or subagent session aborted, crashed, or exited non-zero mid-flight (host restart, controller crash, or interrupted dispatch).
-  - `ERR_TOOL_EXECUTION_FAILED`: Tool execution failure, unhandled runtime exception, or tool error response.
-  - `ERR_TOOL_LEASE_REQUIRED`: Mutating file tool invoked without active lease claim or path reservation.
-  - `ERR_TOOL_AUTHORITY_UNUSABLE`: The bridge refused a tool call because live work authority was missing or stale (`WORK_STATUS_UNAVAILABLE`, `BRIDGE_AUTHORITY_UNUSABLE`, `BRIDGE_WRITE_AUTHORITY_UNUSABLE`, `BRIDGE_LEASE_MISSING`): claim expired under active work, host restarted, or the durable status could not be read. Unlike `ERR_TOOL_LEASE_REQUIRED`, authority existed and was lost, so the controller must reconcile work before retrying with fresh authority.
-  - `ERR_TOOL_MCP_FAILED`: Durable memory, code intelligence, or MCP tool communication/persistence failure.
-  - `ERR_TOOL_INVALID_ARGS`: Tool invoked with invalid, missing, or malformed parameters.
-  - `ERR_TOOL_TIMEOUT`: A tool or its bounded child process exceeded a deadline without failing on its own (snapshot export ceiling, child-process timeout, Go context deadline). Contention, not a defect: report it when the ceiling repeats, not once.
-  - `ERR_SUBAGENT_READONLY_REPEATED_ABORT`: A read-only role (`investigate`, `reviewer`, `discovery`, `planner`) aborted terminally on the same objective at the circuit-breaker threshold. Signal only: read-only dispatch is never latched or blocked, so this code carries telemetry, not authority.
-All reports are recorded in the local SQLite operational events ledger (`~/.cortex-ia/delegation.db`) for local audit, retrospective review, and diagnostics.
+Record unrecoverable blockers with `cortex_ia_report_error({ code, message, details?, task_id? })`. Reports land in the SQLite operational events ledger for audit.
+
+- `ERR_TASK_BLOCKED`: unmet dependencies, revision conflict, or retries exhausted.
+- `ERR_VERIFICATION_FAIL`: a verification oracle or reviewer returned FAIL with reproducible details.
+- `ERR_INVARIANT_VIOLATION`: dirty worktree, file-lease collision, or an expired claim token.
+- `ERR_DELEGATION_FAIL`: a dispatch or subagent session aborted, crashed or exited non-zero mid-flight.
+- `ERR_TOOL_EXECUTION_FAILED`: a tool failed with an unhandled exception or error response.
+- `ERR_TOOL_LEASE_REQUIRED`: a mutating file tool ran without a claim or reservation.
+- `ERR_TOOL_AUTHORITY_UNUSABLE`: the bridge refused a call because live authority was missing or stale (`WORK_STATUS_UNAVAILABLE`, `BRIDGE_AUTHORITY_UNUSABLE`, `BRIDGE_WRITE_AUTHORITY_UNUSABLE`, `BRIDGE_LEASE_MISSING`). Authority existed and was lost, so reconcile work before retrying with fresh authority.
+- `ERR_TOOL_MCP_FAILED`: a Cortex MCP call failed to communicate or persist.
+- `ERR_TOOL_INVALID_ARGS`: invalid, missing or malformed parameters.
+- `ERR_TOOL_TIMEOUT`: a tool or child process exceeded a deadline. Report it when the ceiling repeats, not once.
+- `ERR_SUBAGENT_READONLY_REPEATED_ABORT`: a read-only role aborted terminally on the same objective at the circuit-breaker threshold. Telemetry only; it never blocks dispatch.

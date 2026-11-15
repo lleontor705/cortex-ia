@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lleontor705/cortex-ia/internal/assets"
 )
 
 var renderRoles = []string{"orchestrator", "discovery", "investigate", "planner", "implement", "reviewer"}
@@ -61,13 +63,19 @@ func TestClaudeBundleRender(t *testing.T) {
 			t.Errorf("%s: missing name key", role)
 		}
 	}
-	orch := string(findFile(t, b, filepath.Join(home, ".claude", "agents", "orchestrator.md")))
-	if !strings.Contains(orch, "\n# Global protocol\n\n") {
-		t.Error("orchestrator lacks the global protocol appendix")
+	globalSrc, err := assets.ReadBytes("AGENTS.md")
+	if err != nil {
+		t.Fatal(err)
 	}
-	impl := string(findFile(t, b, filepath.Join(home, ".claude", "agents", "implement.md")))
-	if strings.Contains(impl, "# Global protocol") {
-		t.Error("only the orchestrator should carry the global protocol")
+	wantGlobal := strings.TrimRight(string(rewriteContractsBytes(globalSrc, string(TargetClaude))), "\n")
+	for _, role := range renderRoles {
+		content := string(findFile(t, b, filepath.Join(home, ".claude", "agents", role+".md")))
+		if !strings.Contains(content, "\n# Global protocol\n\n") {
+			t.Errorf("%s lacks the global protocol appendix", role)
+		}
+		if !strings.Contains(content, wantGlobal) {
+			t.Errorf("%s does not carry the rewritten installed AGENTS.md", role)
+		}
 	}
 
 	protocol := string(findFile(t, b, filepath.Join(home, ".claude", "skills", "cortex-protocol", "SKILL.md")))
@@ -128,6 +136,9 @@ func TestAGYBundleRender(t *testing.T) {
 		t.Error("orchestrator agent frontmatter incomplete")
 	}
 	impl := string(findFile(t, b, filepath.Join(plugin, "agents", "implement.md")))
+	if !strings.Contains(impl, "# Global protocol\n\n") {
+		t.Error("agy implement agent lacks the global protocol appendix")
+	}
 	if !strings.Contains(impl, "  - replace_file_content\n") || !strings.Contains(impl, "mode: subagent") {
 		t.Error("implement agent frontmatter incomplete")
 	}

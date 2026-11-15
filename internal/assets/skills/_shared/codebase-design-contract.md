@@ -2,67 +2,63 @@
 
 **Installed contract:** `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`
 
-This contract gives discovery, investigation, planning, implementation, and review one precise vocabulary for architecture and task boundaries. It does not authorize a role to cross its control-plane boundary: the orchestrator routes, the planner designs and decomposes, implementers edit one claimed task, and reviewers audit independently.
+A shared vocabulary for architecture and task boundaries, used by discovery, investigate, planner, implement and reviewer. It does not give any role authority beyond its own: the orchestrator routes, the planner designs and decomposes, implementers edit one claimed task, and reviewers audit independently.
 
 ## Shared vocabulary
 
 - **Module:** a cohesive unit that hides decisions behind a bounded surface.
-- **Interface:** the smallest caller-visible contract; it is also the preferred test surface.
-- **Implementation:** internal choices hidden behind the interface.
-- **Depth:** useful behavior divided by interface complexity. Prefer deep modules that provide substantial behavior through a small contract; flag shallow pass-through layers that add ceremony without hiding complexity.
-- **Locality:** code that changes together should remain easy to find and reason about together.
-- **Seam:** a deliberate substitution boundary at a real source of variation, ownership, process, or protocol.
-- **Adapter:** a translation at a seam. One implementation alone normally does not justify a speculative adapter; a second real implementation, remote protocol, or required deterministic substitute makes the seam concrete.
+- **Interface:** the smallest caller-visible contract. It is also the preferred test surface.
+- **Implementation:** the internal choices hidden behind the interface.
+- **Depth:** useful behavior divided by interface complexity. Prefer deep modules. Flag shallow pass-through layers that add ceremony without hiding complexity.
+- **Locality:** code that changes together stays easy to find and reason about together.
+- **Seam:** a deliberate substitution point at a real source of variation, ownership, process or protocol.
+- **Adapter:** a translation at a seam. One implementation alone rarely justifies an adapter. A second real implementation, a remote protocol or a required deterministic substitute makes the seam real.
 
-Use the **deletion test** as evidence: if deleting a wrapper leaves callers almost unchanged, the wrapper is probably shallow. Do not treat this heuristic as permission to bypass a repository's declared architecture.
+Use the deletion test as evidence: if deleting a wrapper leaves callers nearly unchanged, the wrapper is shallow. This heuristic does not override the repository's declared architecture.
 
 ## Dependency classification
 
-Classify a dependency before proposing a seam:
-
 | Category | Default treatment |
 |---|---|
-| In-process deterministic code | Use the real implementation in focused tests. |
-| Local substitutable resource such as filesystem, clock, or process boundary | Substitute at the narrow acquisition boundary when determinism requires it. |
-| Remote but project-owned service | Define a port at the protocol boundary and keep transport translation in an adapter. |
-| True external service | Isolate the protocol boundary and use a contract-faithful fake or mock only there. |
+| In-process deterministic code | Use the real implementation in focused tests |
+| Local substitutable resource (filesystem, clock, process) | Substitute at the narrow acquisition point when determinism needs it |
+| Remote but project-owned service | Define a port at the protocol boundary; keep transport translation in an adapter |
+| True external service | Isolate the protocol boundary; use a contract-faithful fake only there |
 
-Prefer **replace, do not layer**: a test substitute replaces the real boundary; it must not wrap the real dependency and accidentally retain its side effects. Avoid interfaces created only to mock internal code.
+Replace, do not layer: a test substitute replaces the real boundary and does not wrap it, so the real side effects do not leak through. Avoid interfaces created only to mock internal code.
 
-## Architecture decision protocol
+## Architecture decisions
 
-Use Design It Twice only when the orchestrator identifies a named architectural or public-interface decision with material ambiguity. The planner produces two or three contract-level alternatives without product-code edits. At least one alternative should optimize for a minimal interface and another for the most important known variation or caller. Compare them by:
+Use Design It Twice only when the orchestrator identifies a named architectural or public-interface decision with real ambiguity. The planner produces two or three contract-level alternatives without product-code edits. One should favor a minimal interface and another the most important known variation or caller. Compare them on:
 
 1. interface size and depth;
 2. caller locality and cognitive load;
 3. dependency direction and seam placement;
-4. blast radius, reversibility, and operational risk;
-5. fit with confirmed project architecture and constraints.
+4. blast radius, reversibility and operational risk;
+5. fit with the confirmed project architecture.
 
-The planner selects or recommends one design and records why. Implementers receive only the selected contract. Do not launch competing implementation tasks merely to explore architecture.
+The planner records the chosen design and why. Implementers receive only the selected contract. Do not launch competing implementations to explore architecture.
 
-## Task graph contract
+## Task graph
 
-Each planned task states its objective, exact writable files, requirements or interface contract, observable acceptance, exact verification command, dependencies, and explicit out-of-scope work. Dependencies must reflect executable prerequisites rather than presentation order.
+Each planned task states its objective, exact writable files, interface contract, observable acceptance, exact verification command, dependencies, and out-of-scope work. Dependencies follow executable prerequisites, not presentation order.
 
-For user-observable behavior, default to tracer-bullet vertical slices that deliver a narrow complete path and can be verified independently. Use horizontal foundation tasks only for genuine shared prerequisites. For a wide mechanical or contract refactor that cannot land green slice by slice, use `expand -> disjoint migrate batches -> contract`; removal depends on every migration.
+For user-visible behavior, prefer tracer-bullet vertical slices: a narrow, complete path that can be verified on its own. Use horizontal foundation tasks only for real shared prerequisites. For a wide mechanical refactor that cannot land green slice by slice, use `expand -> disjoint migrate batches -> contract`, where removal depends on every migration.
 
-Use independent, sequential, diamond, fork-join, or pipeline shapes only when supported by real dependency direction. Minimize unnecessary chain depth and identify the critical path. Parallel writers require distinct ready task claims and disjoint per-file leases; apparent board position never proves readiness or ownership.
+Choose independent, sequential, diamond, fork-join or pipeline shapes from real dependency direction. Keep chains short and name the critical path. Parallel writers need distinct ready claims and disjoint file leases. Board position never proves readiness or ownership.
 
-When a task is blocked because its scope is too broad, the orchestrator decides to route decomposition and supplies the evidence. The planner alone designs and atomically applies the smaller replacement DAG. The orchestrator never performs the split and an implementer never self-expands its task.
+When a task is blocked because its scope is too broad, the orchestrator decides to route decomposition and supplies the evidence. The planner alone designs and applies the smaller replacement DAG. Implementers never split their own task.
 
 ## Role application
 
-- **Discovery:** record observed modules, interfaces, dependency categories, seams, adapters, and risks with evidence; never redesign.
-- **Investigate:** assess depth, locality, dependency direction, and seam quality; compare alternatives only when a real choice exists.
-- **Planner:** own architecture alternatives, selected design contracts, critical-path DAG construction, and blocked-task decomposition.
-- **Orchestrator:** decide when investigation, design comparison, or decomposition is needed; dispatch the responsible role and monitor authoritative DAG state.
-- **Implement:** preserve the selected interface and dependency direction; do not add speculative abstraction or unapproved architecture variants.
-- **Reviewer:** detect architectural regression, including widened interfaces, shallow wrappers, misplaced seams, new cycles, and tests coupled to implementation details.
+- **Discovery:** record observed modules, interfaces, dependency categories, seams, adapters and risks with evidence. Do not redesign.
+- **Investigate:** assess depth, locality, dependency direction and seam quality. Compare alternatives only when a real choice exists.
+- **Planner:** owns alternatives, selected design contracts, critical-path DAGs and blocked-task decomposition.
+- **Orchestrator:** decides when investigation, design comparison or decomposition is needed. Dispatches the responsible role and watches the authoritative DAG state.
+- **Implement:** keep the selected interface and dependency direction. Add no speculative abstraction.
+- **Reviewer:** detects architectural regression: widened interfaces, shallow wrappers, misplaced seams, new cycles, tests coupled to implementation details.
 
-## Code-Intelligence Invariant & Test Partitioning Boundary
+## Invariants
 
-1. **AST & Code-Intelligence Noninterference (REQ-PRIV-007)**:
-   Codebase intelligence structures—including AST symbols, doc summaries (`DocSummary`), graph relations, call reasoning (`Reasoning`), and semantic tokens—are immutable codebase structure, not user data or session state. Sanitization, redaction, or privacy preflight logic must NEVER redact, strip, or alter code intelligence fields.
-2. **Modular Test Fixture Partitioning & Regression Policy**:
-   Test fixtures must remain bounded and modular per the normative workload LOC budget in `cortex-work-protocol.md` §4. Follow the target repository's own test policy as declared in its root AGENTS.md or in `./.cortex-ia/discovery.md`; when none is declared, add tests proportional to the change. Tests must never weaken contracts (such as silently skipping invalid records) or touch real developer state.
+- Code-intelligence structures (symbols, doc summaries, graph relations, call reasoning) are codebase structure, not user data. Privacy and sanitization steps never redact or alter them. See `cortex-work-protocol.md` §4.
+- Test fixtures stay bounded and modular under the workload budget in `cortex-work-protocol.md` §4. Follow the target repository's own test policy from its root `AGENTS.md` or `./.cortex-ia/discovery.md`. If neither declares one, add tests proportional to the change. Tests never weaken a contract (for example by silently skipping invalid records) and never touch real developer state.
