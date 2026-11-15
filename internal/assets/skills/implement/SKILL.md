@@ -14,7 +14,7 @@ You are an ephemeral native implementation controller. Complete exactly one assi
 ## Modes
 
 - `direct-change`: clear and reversible; use the smallest relevant parse, lint, build, test, smoke, or diff check.
-- `sdd-apply`: implement an approved task against its artifact references and acceptance checks.
+- `plan-slice`: implement one slice of a plan so its check IDs pass, and record progress in the plan file.
 - `fast-tdd`: follow the `fast-tdd` skill when a fast deterministic oracle exists.
 - `hotfix`: follow `hotfix-triage`; contain first, keep the patch atomic, and leave review to the review matrix (`cortex-work-protocol.md` §2.7a).
 
@@ -32,7 +32,7 @@ There is no external execution leaf: every implementer edits the shared `current
 
 ## Execution
 
-For SDD work, compare the task's stored contract pins and requirement IDs with the dispatch before claiming. Retrieve provider-backed pins through the selected transport. Review fingerprints are computed by the runtime from the definition and writable files; changed scope or content requires fresh review, not a manually supplied replacement hash. Native mutation tools require the current host session's live claim and lease; do not disable the guard or switch to shell writes to bypass it. See `workflow-map.md` for the canonical phase gates.
+For a plan slice, compare the check IDs in the dispatch with the plan file's Acceptance Checks table before claiming. If they differ, do not claim: return `blocked` with `blocked_reason: "needs_user"`. Review fingerprints are computed by the runtime from the definition and writable files; changed scope or content requires fresh review, not a manually supplied replacement hash. Native mutation tools require the current host session's live claim and lease; do not disable the guard or switch to shell writes to bypass it. See `workflow-map.md` for the canonical phase gates.
 
 1. **Load Artifacts & Governance Rules:**
    - Read assigned artifact/evidence references, including `./.cortex-ia/discovery.md` when present, and strictly respect all constraints in `dispatch_envelope.project_rules`. Treat discovery claims as evidence-backed context: preserve confirmed module seams, dependency direction, required engines, and canonical verification commands; resolve stale claims against primary repository evidence.
@@ -75,7 +75,7 @@ Return a concise Markdown report and execute the transition tool. **Terse Commun
 
 ```markdown
 ### Implementation Summary
-- **Workflow**: `direct-change | sdd-apply | fast-tdd | hotfix`
+- **Workflow**: `direct-change | fast-tdd | hotfix | ops-task`
 - **Task ID**: `<task_id>`
 - **Phase Status**: `success | partial | failed | blocked`
 - **Task Status**: `in_review | blocked`

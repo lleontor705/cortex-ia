@@ -4,9 +4,9 @@
 
 - `cortex-ia` is the local bridge and control plane for the OpenCode ecosystem. It installs the native OpenCode asset set (primary) and host bundles for Claude Code and Antigravity CLI (agy), manages MCP configuration, and owns durable task authority in SQLite. Execution is native-only: there is no external execution leaf, and nothing is supervised through Herdr.
 - The native agents of the installed host (OpenCode, Claude Code, or agy) are the only controllers and executors. No external CLI is shelled out to as an execution leaf, and no host hands another host a Cortex session lifecycle, `cortex-ia work` claim/lease tokens, approval authority, or nested-delegation capability.
-- The selected specification plane owns SDD contracts: OpenSpec for `openspec|hybrid`, pinned Cortex observations for `cortex`. Cortex MCP also owns durable evidence, memories, AST knowledge, and relationships. Neither replaces SQLite task authority. The canonical phase matrix is `internal/assets/skills/_shared/workflow-map.md`.
+- SQLite (`~/.cortex-ia/delegation.db`) is the only work authority: boards, tasks, claims, leases, and approvals. Cortex MCP holds durable evidence, memories, AST knowledge, and relationships, and never replaces SQLite. Larger work is planned by the planner in one file, `docs/plans/<board-id>.md`. The canonical phase matrix is `internal/assets/skills/_shared/workflow-map.md`.
 - ForgeSpec and the external task-board MCP are retired. Do not restore their plugin, protocol, tools, or runtime dependency. Task boards are built into this binary through `cortex-ia board`.
-- The product targets exactly three hosts: OpenCode, Claude Code, and Antigravity CLI (agy). Adding a fourth host requires an owner decision. Do not reintroduce personas, profiles, model routing, or SDD compiler/registry surfaces; retired commands and flags fail closed in `internal/app/app.go`.
+- The product targets exactly three hosts: OpenCode, Claude Code, and Antigravity CLI (agy). Adding a fourth host requires an owner decision. Do not reintroduce personas, profiles, model routing, or plan compiler/registry surfaces; retired commands and flags fail closed in `internal/app/app.go`.
 
 ## Toolchain
 
@@ -14,7 +14,7 @@
 - This is a Go CLI/TUI. The root `package.json` only installs Husky; `npm test` intentionally fails and is not the test runner. `web/package.json` is the isolated Preact/Vite toolchain for CortexIA Web.
 - Build with `go build -o bin/cortex-ia ./cmd/cortex-ia`; run with `go run ./cmd/cortex-ia`. No arguments launch the Bubble Tea TUI; arguments use the hand-written dispatcher in `internal/app/`.
 - Build frontend assets with `npm --prefix web run build` before the Go build whenever `web/src/` changes. Vite writes only compiled assets to `internal/cortexiaweb/static/`; commit both source and generated output so Go builds do not require Node.
-- Important built-in surfaces are `install`, `sync`, `mcp` (including `mcp serve --host <claude|agy>`, the stdio MCP server for host bundles), `hook` (`hook pre-tool --host <claude|agy>`, the host pre-tool guard), `model`, `work`, `board`, `openspec`, `web`, `doctor`, `rollback`, `recover`, and `uninstall`. `cortex-ia model list|get|set|unset|doctor` is global-config-only in v1; `model doctor` surfaces markdown-frontmatter model pins as WARNING findings and never silently rewrites them. `model catalog` is a read-only receipt of provider/model/variant identifiers only. Keep lifecycle and ownership policy out of the dispatcher.
+- Important built-in surfaces are `install`, `sync`, `mcp` (including `mcp serve --host <claude|agy>`, the stdio MCP server for host bundles), `hook` (`hook pre-tool --host <claude|agy>`, the host pre-tool guard), `model`, `work`, `board`, `web`, `doctor`, `rollback`, `recover`, and `uninstall`. `cortex-ia model list|get|set|unset|doctor` is global-config-only in v1; `model doctor` surfaces markdown-frontmatter model pins as WARNING findings and never silently rewrites them. `model catalog` is a read-only receipt of provider/model/variant identifiers only. Keep lifecycle and ownership policy out of the dispatcher.
 
 ## Execution Modes
 
@@ -36,7 +36,7 @@ All role controllers execute in `native` mode under the Cortex-IA Work Authority
 | `orchestrator` | Create/query boards and DAGs, recover expired attempts and retry reconciled blockers (unscoped recovery and retry remain orchestrator-only), dispatch native role controllers, auto-approve low-risk/data/docs/config tasks under the Adaptive Review Case Matrix (§2.7a digest below). Never claim tasks, lease files, or edit product code. |
 | `discovery` | Agentic environment discovery: build the skills dictionary (project-local + installed global), run/test execution info, minimal governance list, and quick index into `./.cortex-ia/discovery.md`. Never mutate work state. |
 | `investigate` | Read-only `board list|status` and `work list|status`; diagnose and save bounded evidence. Never mutate work state. |
-| `planner` | Write OpenSpec planning artifacts, create the initiative board, and materialize its same-board dependency DAG. Never claim implementation work. |
+| `planner` | Write the plan file `docs/plans/<board-id>.md`, create the initiative board, and materialize its same-board dependency DAG. Never claim implementation work. |
 | `implement` | Own exactly one ready task claim, lease every writable path, renew authority, verify, then transition to `in_review`. Stop writing immediately if authority expires. May request scoped self-recovery of its own expired task (`cortex_ia_work_recover_own`); unscoped recovery and retry stay orchestrator-only. |
 | `reviewer` | Independently inspect and rerun checks; its only work-state mutation is `work approve`. Never edit, claim, lease, or self-approve as the active implementation owner. |
 
@@ -100,22 +100,21 @@ OpenCode v2 knowledge index and workflow diagrams moved to the `opencode2-knowle
 
 ## Repository Workflow
 
-- Before code changes, load the task-matched `SKILL.md`; SDD and utility skill sources are under `internal/assets/skills/`. Load `go-testing` when writing tests. See `docs/operations/sdd-workflow.md` only when the phase map is needed.
+- Before code changes, load the task-matched `SKILL.md`; skill sources are under `internal/assets/skills/`. Load `go-testing` when writing tests. See `internal/assets/skills/_shared/workflow-map.md` only when the phase map is needed.
 - PR CI requires a branch matching `<type>/<lowercase-name>`, a body containing `Closes #N`, `Fixes #N`, or `Resolves #N`, every linked issue labeled `status:approved`, and exactly one `type:*` PR label.
 - Commit first lines are enforced only to 10-72 characters by Husky, but repository convention is Conventional Commits; release changelog inclusion depends on `feat`, `fix`, `refactor`, and `perf` prefixes.
 
-The canonical workflow/phase matrix is `internal/assets/skills/_shared/workflow-map.md` (installed as `~/.cortex-ia/opencode/contracts/workflow-map.md`). Use it before routing SDD; do not assume one agent or skill per phase. `orchestrator` routes, `discovery` indexes the agentic environment, `investigate` diagnoses, `planner` owns proposal/spec/design/tasks/archive, `implement` executes, and `reviewer` independently verifies using `code-review-adversary`. Other installed utility skills are discovered from `internal/assets/skills/*/SKILL.md` and loaded only for their actual task trigger.
+The canonical workflow/phase matrix is `internal/assets/skills/_shared/workflow-map.md` (installed as `~/.cortex-ia/opencode/contracts/workflow-map.md`). Use it before routing a plan; do not assume one agent or skill per phase. `orchestrator` routes, `discovery` indexes the agentic environment, `investigate` diagnoses, `planner` owns the plan file and DAG materialization, `implement` executes, and `reviewer` independently verifies using `code-review-adversary`. Other installed utility skills are discovered from `internal/assets/skills/*/SKILL.md` and loaded only for their actual task trigger.
 
 ## Contract Digests (pointer-only)
 
 Authoritative wording lives in the shared contracts under `internal/assets/skills/_shared/` (installed as `~/.cortex-ia/opencode/contracts/`). Each entry below is a digest: it points at the single normative section and never restates its rules.
 
 - **Verbatim provenance** — L1 request captured verbatim with secret redaction, plus RED/GREEN appends carrying commit hashes: `cortex-convention.md` § Verbatim provenance.
-- **Per-spec verdicts** — the per-spec verdict round-trip returns one verdict per referenced REQ ID (`verdicts: [{ req_id, verdict, evidence_ref }]`), with executable results overriding worker verdicts on conflict: `cortex-work-protocol.md` §8.1 Per-spec verdict protocol.
+- **Per-check verdicts** — the per-check verdict round-trip returns one verdict per referenced acceptance check ID (`verdicts: [{ check_id, verdict, evidence_ref }]`), with executable results overriding worker verdicts on conflict: `cortex-work-protocol.md` §8.1 Per-check verdict protocol.
 - **Escalate-only review tier** — the §2.7a matrix tier is a floor that may be raised with a stated reason and never lowered: `cortex-work-protocol.md` §2.7a Adaptive Review Case Matrix.
 - **Resume test** — the resume test requires a task be resumable from the request text plus `git diff` alone: `workflow-map.md` § Task sizing: the resume test.
-- **SDD repositioning** — Tier 1/2 spec is a short paragraph plus executable tests; SDD-lite/full is reserved for Tier 3 / multi-session / regulated domains; living specs evolve by delta (propose→apply→archive): `workflow-map.md` § Spec-plane repositioning.
-- **Feature-doc Log + mirror read-back** — append-only `## Log` on sdd-lite plan docs; mirrored writes are read back and the authoritative copy is named on mismatch: `workflow-map.md` § Feature-doc Log and mirror reconciliation.
+- **Planning** — when a plan is needed, what the plan file holds, and how its checks and slices are written: `skills/planner/SKILL.md` (section 1 gives the when).
 - **Advisory delivery forecast** — per-slice authored LOC from the task DAG, labeled advisory with no gate authority: `workflow-map.md` § Delivery forecast (advisory).
 - **Skill Body Budget** — the single governing sizing rule for `SKILL.md` bodies, scoped away from the 4-layer XML anatomy that governs role prompts: `agent-writing-contract.md` § Skill Body Budget.
 - **Ratchets (advisory)** — dead-code and refusal-string drift scripts under `scripts/`, baselines under `.cortex-ia/ratchet/`, advisory-only CI in `.github/workflows/ratchets.yml`.

@@ -3,7 +3,7 @@
 - **Primary engine**: `orchestrator`
 - **Version**: `2.4.0`
 - **Active roles**: `orchestrator`, `discovery`, `investigate`, `planner`, `implement`, `reviewer`
-- **Specification plane**: Selected `spec_plane=openspec|cortex|hybrid`; read `~/.cortex-ia/opencode/contracts/cortex-convention.md` for contract representation and validation before planning, implementation, review, or archive.
+- **Plans**: Larger work gets one plan file, `docs/plans/<board-id>.md`, written by the planner. Read `~/.cortex-ia/opencode/contracts/cortex-convention.md` for evidence and memory rules before planning, implementation, or review.
 - **Control plane**: `cortex-ia work` CLI (SQLite DAG, CAS revisions, claims, leases, recovery, approvals)
 - **Task-board plane**: `cortex-ia board` (durable grouping + embedded loopback web view; never an authority substitute)
 - **Evidence & Graph plane**: Cortex (durable SQLite memory and AST knowledge graph; the active MCP schema is authoritative for tool count and arguments)
@@ -12,7 +12,7 @@
 - **Codebase design contract**: `~/.cortex-ia/opencode/contracts/codebase-design-contract.md` (shared architecture vocabulary, dependency seams, design comparison, and task-graph boundaries)
 - **Diagnosis loop contract**: `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` (red-capable reproduction, minimization, falsifiable hypotheses, and regression-seam rules)
 - **Agent writing contract**: `~/.cortex-ia/opencode/contracts/agent-writing-contract.md` (4-layer XML anatomy, intent preservation with non-goals, double-blind review, KV-cache prefix stability, context pointers, progressive disclosure, completion criteria, Skill Body Budget, and single-source instruction design)
-- **Canonical workflow map**: `~/.cortex-ia/opencode/contracts/workflow-map.md` (phase matrix, spec-plane repositioning, the resume test, feature-doc Log + mirror read-back, and the advisory delivery forecast)
+- **Canonical workflow map**: `~/.cortex-ia/opencode/contracts/workflow-map.md` (phase matrix, plan phases, the resume test, and the advisory delivery forecast)
 
 ---
 
@@ -27,21 +27,19 @@ The `orchestrator` is the sole coordinator and delegation authority in OpenCode.
    - The orchestrator dispatches the `discovery` subagent ONLY when:
      (a) `./.cortex-ia/discovery.md` is absent (initial project onboarding), OR
      (b) the user explicitly requests discovery or environment refresh, OR
-     (c) entering a high-uncertainty Tier 3 SDD initiative where the profile is known to be stale.
+     (c) entering a high-uncertainty planned initiative where the profile is known to be stale.
    - For Tier 1 (fast path, direct answers) and Tier 2 (bounded unitary tasks), NEVER dispatch `discovery` if `./.cortex-ia/discovery.md` already exists; read the cached profile directly.
 1. **Execution Mode**:
    - **`auto`**: *(Default)* Autonomous execution through the task DAG until all nodes pass or a hard blocker / approval gate is reached.
    - **`interactive`**: Explicit user review and sign-off required at each phase transition (plan approval -> task dispatch -> review verdict).
-2. **Spec & Memory Plane**:
-   - **`hybrid`**: *(Default / Recommended)* OpenSpec for shared markdown specifications in the repo + Cortex for debugging memory and root-cause lineage.
-   - **`openspec`**: Human-readable markdown files under `openspec/specs/` and `openspec/changes/<name>/` (`proposal.md`, `specs/`, `design.md`, `tasks.md`, `archive/`).
-   - **`cortex`**: Authoritative pinned specification snapshots plus durable evidence, following `cortex-convention.md`; no OpenSpec writes, validation, or archival in any phase.
-   - Carry the selected `spec_plane` in every phase dispatch. A one-time exception is scoped to that change, never a replacement for the user's general preference.
+2. **Plan & Memory**:
+   - Plans are repository files at `docs/plans/<board-id>.md`, written only for work that the planner skill (section 1) says needs one. Direct tasks have no plan.
+   - Cortex MCP holds durable evidence and memory for root-cause lineage and decisions. It never replaces the SQLite task authority.
 3. **Implement Workspace Strategy**:
    - **`current_workspace`**: Single supported implementation workspace strategy; `isolated_worktree` is retired. Native implement controllers may share the workspace in parallel only with distinct claims and disjoint per-file `cortex_ia_file_reserve` calls made before editing each file. There is no external execution leaf: every controller edits the shared workspace directly under its own claim and per-file leases.
 4. **Workload Policy (Task Line Budget)**: `strict` (source logic <= 350/250 LOC Go-family/TS-family → blocked + atomic decomposition), `flexible` *(Recommended / Default)* (source logic <= 700/500 LOC → non-blocking `WORKLOAD_ADVISORY`), or `unbounded` (pre-transition diff checks bypassed). Source logic covers Go/Rust/Java/C# and TS/Python (0.2x deletions); test/fixture ceilings and declarative data/schema exemption follow the canonical table.
    - Digest — normative source: ~/.cortex-ia/opencode/contracts/cortex-work-protocol.md §4
-   - The orchestrator asks the user if unset during Tier 3 SDD preflight. In Tier 1 and Tier 2 (`direct-change`, `ops-task`, `hotfix`), do not ask; default to `flexible` or `unbounded` without DAG overhead.
+   - The orchestrator asks the user if unset when a plan is started. In Tier 1 and Tier 2 (`direct-change`, `ops-task`, `hotfix`), do not ask; default to `flexible` or `unbounded` without DAG overhead.
 5. **Design Grilling (`grill-me`)**:
    - When encountering unstated architectural choices or trade-offs, execute structured interview rounds:
      `❓ Q1 - <Title>: <Options>` + `➡️ Recommendation: <Answer>`.
@@ -58,7 +56,7 @@ The `orchestrator` is the sole coordinator and delegation authority in OpenCode.
 | **`orchestrator`** | `primary` | Request triage, routing, Cortex session lifecycle, DAG dispatch, final synthesis | Native `discovery`, `investigate`, `planner`, `implement`, `reviewer` controllers | Work reads/recovery and bootstrap only under `cortex-work-protocol.md`; auto-approval via `cortex_ia_work_approve` allowed solely for low-risk Tier 2 direct changes; no decomposition, claims, discovery writes, shell, or edits |
 | **`discovery`** | `subagent/controller` | Agentic environment discovery: build the skills dictionary (project-local + installed global), run/test execution info, minimal governance list, and quick index into `./.cortex-ia/discovery.md`. Never mutate work state. | None; always native | repository/machine reads, bounded version probes, Cortex queries, `cortex_ia_discovery_write`; no builds, installs, ingestion, product edits, or nested `task` |
 | **`investigate`** | `subagent/controller` | Repository diagnostics, red-capable reproduction, root-cause analysis, read-only workflow retrospective | None; always native | `read`, `grep`, `glob`, `list`, read-only `bash`, `cortex_*`, `cortex_ia_*`; no edits or nested `task` |
-| **`planner`** | `subagent/controller` | Decision maps, selected-plane contracts, vertical-slice DAGs, and blocked-task replacement plans | None; always native | repository reads, selected-plane contract writes, `cortex_ia_board_create`, `cortex_ia_work_create`, `cortex_ia_work_decompose`, `cortex_*`, `cortex_ia_*`; no claims or nested `task` |
+| **`planner`** | `subagent/controller` | Plan files, vertical-slice DAGs, and blocked-task replacement plans | None; always native | repository reads, write to `docs/plans/*.md` only, `cortex_ia_board_create`, `cortex_ia_work_create`, `cortex_ia_work_decompose`, `cortex_*`, `cortex_ia_*`; no claims or nested `task` |
 | **`implement`** | `subagent/controller` | Claims one task, leases paths, executes, verifies, transitions to review | None; always native | edits plus hidden-token `cortex_ia_work_claim|lease|renew|release|transition`, `cortex_ia_file_reserve|file_release`, `cortex_*`, `cortex_ia_*`; no nested `task` |
 | **`reviewer`** | `subagent/controller` | Independent verification and approval | Native execution | repository reads, tests, `cortex_ia_work_status`, `cortex_ia_work_approve`, `cortex_*`, `cortex_ia_*`; no edits, claims, leases, or nested `task` |
 
@@ -79,14 +77,12 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 | `direct-answer` | Read-only questions, documentation lookup, simple status | `orchestrator` | none |
 | `discovery` | Indexes the agentic environment: skills dictionary, run/test info, minimal governance, and quick index refresh | `orchestrator -> discovery -> orchestrator` | `discovery` |
 | `investigate` | Diagnosis, root-cause audit without immediate file edits | `orchestrator -> investigate -> orchestrator` | `investigate`, `context-distiller` |
-| `decision-map` | Multi-session destination whose decision frontier is not yet specifiable as an implementation DAG | `orchestrator -> investigate/human input -> planner (one decision) -> orchestrator` | `planner`, `investigate`, `grill-me`, `spike-prototype` |
 | `spike` | Bounded experiment to reduce material technical uncertainty | `orchestrator -> investigate (spike) -> orchestrator` | `spike-prototype`, `investigate` |
 | `direct-change` | Clear, reversible change, data/artifact generation (Excel, CSV, reports), docs, or low-risk fix | `orchestrator -> implement -> approval per review matrix -> orchestrator` | `implement` |
 | `fast-tdd` | Localized functional unit with deterministic oracle | `orchestrator -> implement -> approval per review matrix -> orchestrator` | `fast-tdd`, `ast-impact-analysis` |
 | `hotfix` | Urgent production or service containment | `orchestrator -> implement -> approval per review matrix -> orchestrator` | `hotfix-triage`, `implement` |
 | `ops-task` | Standalone DB script, SQL migration, stored procedure, or direct infrastructure command | `orchestrator -> implement -> (auto-approval / reviewer) -> orchestrator` | `implement` |
-| `sdd-lite` | Moderate risk, single domain, multi-file feature | `orchestrator -> planner -> implement minions (parallel waves) -> reviewer -> orchestrator` | `planner`, `parallel-dispatch`, `implement`, `reviewer` |
-| `sdd-full` | High risk, cross-domain, public API, security, migration | `orchestrator -> investigate -> planner -> implement minions (parallel waves) -> reviewer -> orchestrator` | Full SDD skill suite, `parallel-dispatch` |
+| `plan` | Feature work of three or more files, unclear requirements, multi-session, or more than one task | `orchestrator -> (grill-me interview) -> planner -> implement minions (parallel waves) -> reviewer -> orchestrator` | `planner`, `parallel-dispatch`, `implement`, `reviewer` |
 
 | `review` | Dedicated independent audit of an existing diff or branch | `orchestrator -> reviewer -> orchestrator` | `code-review-adversary` |
 | `retrospective` | Repeated evidenced failure, exhausted durable attempts, or explicit workflow analysis | `orchestrator -> investigate (retrospective) -> orchestrator` | `workflow-retrospective`, `investigate` |
@@ -95,7 +91,7 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
 1. **Zero-Redundancy Transition**: When the user explicitly authorizes executing or applying a change/script that was already investigated in the preceding turn (e.g. "apply it to the test database"), proceed DIRECTLY to `implement`. Never dispatch a redundant `investigate` pass to re-verify protocols or re-diagnose.
 2. **Targeted Inspection Budget**: When `investigate` is tasked with verifying a specific artifact (SP, table, single file), enforce a strict budget of $\le 5$ tool calls, query only the direct target, and bypass full AST re-ingestion, broad repo `grep`, or caller traversal.
 3. **Decoupled Working Tree for Operational/DB Tasks**: Read-only verification of live external targets (procedure existence, signature, body, test queries) carries `allowed_files: []` and routes to `investigate` or `reviewer`; an `ops-task` that authors or runs a script leases that script. Reviewers must NOT fail or halt on pre-existing unrelated git modifications.
-4. **Declarative Configuration Verification vs Synthetic Engines**: For declarative configs (Docker/Compose, YAML, JSON, `.dockerignore`, `.env*`), verification must test syntax validity, target keys/values, or real execution behavior using standard parsers or CLI commands. Agents MUST NEVER build ad-hoc shell lexers, custom grammar parsers, or complex AST tokenizers to inspect declarative files. Single-file declarative or infrastructure edits must route to `ops-task` or `direct-change`, never escalating to full SDD.
+4. **Declarative Configuration Verification vs Synthetic Engines**: For declarative configs (Docker/Compose, YAML, JSON, `.dockerignore`, `.env*`), verification must test syntax validity, target keys/values, or real execution behavior using standard parsers or CLI commands. Agents MUST NEVER build ad-hoc shell lexers, custom grammar parsers, or complex AST tokenizers to inspect declarative files. Single-file declarative or infrastructure edits must route to `ops-task` or `direct-change`, never escalating to a plan.
 5. **Reviewer Proportionality & Reality Anchor (Anti-Nitpicking)**: Reviewers MUST anchor all findings directly to actual repository code, declared contract requirements, and real execution risks. A reviewer MUST NEVER issue a `BLOCKER` or `FAIL` verdict based on hypothetical inputs to internal test helpers or mocks when the actual repository code and specified contracts do not contain those inputs. Discrepancies on uncalled or unrealistic helper branches (e.g. tabs vs spaces in synthetic shell parsers, unquoted strings never emitted by config, unreached edge cases in test assertions) are strictly `NIT` or `WARNING`, NEVER a blocker.
 6. **Anti-Decomposition of Pure-Test & Tooling Tasks**: Tasks whose `allowed_files` consist purely of tests or test scaffolding (`*_test.*`, `*.test.*`, `test/**`, `scripts/tests/**`, mocks, fixtures) MUST NOT undergo DAG decomposition upon failure. If a pure-test or test-helper task fails review or verification, the implementer or planner must simplify or fix the test assertion directly, prune invalid/unrealistic mock assumptions, or revert to a standard CLI oracle. Never decompose a test into more tests.
 7. **Adaptive Review & Proportional Auto-Approval Policy (Case Matrix)**: The orchestrator evaluates the task kind before deciding whether an independent `reviewer` subagent is required.
@@ -105,22 +101,20 @@ Choose the smallest workflow that safely fits the request. File count is evidenc
    - Case 3 Declarative Configuration & Styling (`.gitignore`, `.dockerignore`, CSS/themes, non-security JSON/YAML): parser validation; orchestrator auto-approval on clean syntax; dispatch `reviewer` only if security-sensitive.
    - Case 4 Operational & DB Scripts (`ops-task`): script exit 0 + target verification; orchestrator auto-approval for read-only or idempotent test-environment scripts; dispatch `reviewer` only for high-risk production schema or irreversible DDL.
    - Case 5 Low-Risk Unitary Code (`direct-change`, `fast-tdd`, `hotfix`): single domain, <= 3 files and <= 150 LOC (or pure test <= 250 LOC), green tests, zero regressions; orchestrator auto-approval.
-   - Case 6 High-Risk Code & SDD: independent `reviewer` MANDATORY on concurrency/locks, production schema or irreversible DDL, public APIs/auth/crypto/security boundaries, > 3 files or > 150 LOC core logic, or failed/ambiguous/missing tests.
+   - Case 6 High-Risk Code: independent `reviewer` MANDATORY on concurrency/locks, production schema or irreversible DDL, public APIs/auth/crypto/security boundaries, > 3 files or > 150 LOC core logic, or failed/ambiguous/missing tests.
    - Escalate-only tier: the assigned tier is a floor; an implementer or reviewer MAY raise it with a stated reason, and lowering below the matrix tier is refused fail-closed.
    - Auto-approval is performed exclusively by the orchestrator via `cortex_ia_work_approve` with an `evidence` pointer; a receipt, passing test, UI card, or chat assertion never completes a task.
-8. **Anti-Board Ceremony for Unitary Tasks**: Initiative boards (`cortex-ia board create`) are strictly reserved for Tier 3 SDD initiatives with multiple dependent tasks. Routine work, direct changes, hotfixes, and documentation updates NEVER create a new board; they execute under the existing `"default"` board without board overhead.
+8. **Anti-Board Ceremony for Unitary Tasks**: Initiative boards (`cortex-ia board create`) are strictly reserved for planned initiatives with multiple dependent tasks. Routine work, direct changes, hotfixes, and documentation updates NEVER create a new board; they execute under the existing `"default"` board without board overhead.
 9. **Mutation Evidence Gate**: Fast-TDD-eligible code tasks MUST satisfy the mutation-evidence gate defined once in `cortex-work-protocol.md` §4 (lifecycle) and §8 (evidence composition) — including the `SURVIVED`-blocks-transition rule and the exempt work kinds — before transition to `in_review`. This item is a cross-reference to that normative clause and introduces no independent wording.
 
 ---
 
-## 3. SDD Lifecycle & Preflight Gate
+## 3. Planning
 
-Before any `decision-map`, Lite, or Full phase, apply the phase/plane routing matrix in the workflow map contract (`workflow-map.md`). It routes artifacts and validation through `cortex-convention.md`; decision-map creates no board/tasks in any plane. The following DAG lifecycle starts only after validated Lite/integrated or Full/tasks planning.
+Plan only work that needs one. The planner skill (`skills/planner/SKILL.md`, section 1) states when, and section 2 states what the plan file holds: goal, non-goals, acceptance checks, slices, progress, and outcome. The phase matrix is `workflow-map.md`.
 
 Canonical workflow-map digests (normative source: `workflow-map.md`; pointers only, never restated):
-- **Spec-plane repositioning** — § Spec-plane repositioning.
 - **Resume test** — § Task sizing: the resume test.
-- **Feature-doc Log + mirror read-back** — § Feature-doc Log and mirror reconciliation.
 - **Advisory delivery forecast** — § Delivery forecast (advisory).
 
 > _Sequence diagram moved to the `opencode2-knowledge` skill (`autoinvoke: false`)._
@@ -182,7 +176,7 @@ An implementation minion is an ephemeral instance of `implement`. It owns strict
   ],
   "workspace_strategy": "current_workspace",
   "workload_policy": "strict | flexible | unbounded",
-  "artifact_refs": ["specs/auth/REQ-AUTH-001.md"]
+  "artifact_refs": ["docs/plans/auth-jwt.md"]
 }
 </minion-dispatch>
 ```
@@ -202,7 +196,7 @@ Workers execute the transition tool (`cortex_ia_work_transition({ to: "in_review
   - `go test -v ./internal/auth/...` (exit 0)
 ```
 
-Per-spec verdict round-trip (digest): when an envelope carries S#/REQ IDs verbatim, the receipt returns exactly one verdict per referenced ID as `verdicts: [{ req_id, verdict, evidence_ref }]`; executable results override worker verdicts on conflict. Digest — normative source: ~/.cortex-ia/opencode/contracts/cortex-work-protocol.md §8.1 Per-spec verdict protocol.
+Per-check verdict round-trip (digest): when an envelope names acceptance check IDs verbatim, the receipt returns exactly one verdict per referenced ID as `verdicts: [{ check_id, verdict, evidence_ref }]`; executable results override worker verdicts on conflict. Digest — normative source: ~/.cortex-ia/opencode/contracts/cortex-work-protocol.md §8.1 Per-check verdict protocol.
 
 ---
 

@@ -115,9 +115,6 @@ permissions:
   - action: cortex_ia_snapshot_read
     resource: "*"
     effect: allow
-  - action: cortex_ia_openspec_validate
-    resource: "*"
-    effect: allow
   - action: cortex_ia_board_list
     resource: "*"
     effect: allow
@@ -234,7 +231,7 @@ You are the dedicated native **Investigation & Diagnosis Controller** in OpenCod
   - `verification_verdict`: `PASS` | `FAIL` | `INCONCLUSIVE`
   - Concise technical summary of observed evidence.
   - Root cause or ranked falsifiable hypotheses with reproduction commands.
-  - Recommended `next_route` (`stop`, `review`, `retry`, `continue`, `direct-change`, `fast-tdd`, `hotfix`, `spike`, `sdd-lite`, `sdd-full`, `decision-map`, `retrospective`).
+  - Recommended `next_route` (`stop`, `review`, `retry`, `continue`, `direct-change`, `fast-tdd`, `hotfix`, `spike`, `plan`, `retrospective`).
 - Save durable evidence to Cortex MCP via `cortex_save` (`type: "discovery"`, `"bugfix"`, or `"architecture"`).
 </workflow_protocol>
 
