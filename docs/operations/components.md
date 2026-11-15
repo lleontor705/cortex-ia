@@ -17,10 +17,10 @@ All workflow assets are embedded directly inside the `cortex-ia` binary via `go:
 | Asset Kind | Embedded Source | Destination (home-relative) | Purpose |
 | :--- | :--- | :--- | :--- |
 | **Base Configuration** | `opencode.jsonc` | `~/.config/opencode/opencode.jsonc` | Safe 3-way merge preserving user keys, comments, and permissions. |
-| **System Prompt** | `AGENTS.md` | `~/.config/opencode/AGENTS.md` | Core orchestrator system prompt and SDD operational protocol. |
+| **System Prompt** | `AGENTS.md` | `~/.config/opencode/AGENTS.md` | Core orchestrator system prompt and operational protocol. |
 | **Agents (6)** | `agents/*.md` | `~/.config/opencode/agents/<name>.md` | `orchestrator`, `discovery`, `investigate`, `planner`, `implement`, `reviewer`. |
-| **Slash Commands (13)**| `commands/*.md` | `~/.config/opencode/commands/<name>.md` | `/cortex-code`, `/cortex-ingest`, `/cortex-watch`, `/discover`, `/hotfix`, `/investigate`, `/resume`, `/review`, `/sdd`, `/spike`, `/status`, `/tdd`, `/work`. |
-| **Native Skills (17 + `_shared`)**| `skills/<name>/SKILL.md`| `~/.agents/skills/<name>/SKILL.md` | SDD phase skills & utility skills (`fast-tdd`, `ast-impact-analysis`, `property-based-testing`, etc.). |
+| **Slash Commands (13)**| `commands/*.md` | `~/.config/opencode/commands/<name>.md` | `/cortex-code`, `/cortex-ingest`, `/cortex-watch`, `/discover`, `/hotfix`, `/investigate`, `/resume`, `/review`, `/spike`, `/status`, `/tdd`, `/work`. |
+| **Native Skills (17 + `_shared`)**| `skills/<name>/SKILL.md`| `~/.agents/skills/<name>/SKILL.md` | Role and utility skills (`fast-tdd`, `ast-impact-analysis`, `property-based-testing`, etc.). |
 | **Shared Contracts** | `skills/_shared/*.md` | `~/.cortex-ia/opencode/contracts/*.md` | Canonical role, workflow, and protocol contracts. |
 | **Plugins (8)** | `plugins/*.ts` | `~/.config/opencode/plugins/<name>.ts` | Cortex memory integration, lease and permission guards, skill discovery, snapshot, subagent transport, and work-state plugins. |
 | **Theme** | `themes/cortex.json` | `~/.config/opencode/themes/cortex.json` | Bundled OpenCode theme (opt-in via `--theme`). |

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="100%" role="img" aria-labelledby="planTitle planDesc">
+  <title id="planTitle">Cortex-IA planning flow</title>
+  <desc id="planDesc">Decision flow for a request. It asks whether a plan is needed. If not, it becomes one direct task that is implemented, reviewed and marked done. If so, the planner writes one plan file, docs/plans/&lt;board&gt;.md, with acceptance checks. Its slices become DAG tasks or one sequential task, which are implemented and reviewed against the Acceptance Checks before done.</desc>
+  <defs>
+    <marker id="flowArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="520" rx="14" fill="#0B1220"/>
+  <rect x="0.75" y="0.75" width="1198.5" height="518.5" rx="14" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+  <text x="48" y="48" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#F1F5F9">Planning flow</text>
+  <text x="48" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#93A4BF">Small changes run as one task. Larger feature work gets one plan file with executable checks.</text>
+  <text x="32" y="128" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#93A4BF">PATH 1 · ONE DIRECT TASK</text>
+  <text x="32" y="318" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#93A4BF">PATH 2 · PLAN FILE</text>
+  <rect x="32" y="150" width="150" height="92" rx="10" fill="#111A2E" stroke="#334155" stroke-width="1.5"/>
+  <text x="107.0" y="193.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Request</text>
+  <text x="107.0" y="208.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">user or host intent</text>
+  <rect x="230" y="150" width="150" height="92" rx="10" fill="#111A2E" stroke="#93A4BF" stroke-width="1.5"/>
+  <text x="305.0" y="178.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Needs a plan?</text>
+  <text x="305.0" y="193.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">3+ files, unclear</text>
+  <text x="305.0" y="208.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">scope, multi-session,</text>
+  <text x="305.0" y="223.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">&gt;1 task</text>
+  <rect x="428" y="150" width="150" height="92" rx="10" fill="#111A2E" stroke="#38BDF8" stroke-width="1.5"/>
+  <text x="503.0" y="178.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">One direct task</text>
+  <text x="503.0" y="193.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">bug fix, refactor,</text>
+  <text x="503.0" y="208.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">test-only work,</text>
+  <text x="503.0" y="223.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">2 files or fewer</text>
+  <rect x="626" y="150" width="150" height="92" rx="10" fill="#111A2E" stroke="#38BDF8" stroke-width="1.5"/>
+  <text x="701.0" y="193.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Implement</text>
+  <text x="701.0" y="208.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">claim, lease, verify</text>
+  <rect x="824" y="150" width="150" height="92" rx="10" fill="#111A2E" stroke="#FBBF24" stroke-width="1.5"/>
+  <text x="899.0" y="193.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Review</text>
+  <text x="899.0" y="208.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">independent PASS</text>
+  <rect x="1022" y="150" width="150" height="92" rx="10" fill="#111A2E" stroke="#34D399" stroke-width="1.5"/>
+  <text x="1097.0" y="193.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Done</text>
+  <text x="1097.0" y="208.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">work approve PASS</text>
+  <line x1="182" y1="196" x2="230" y2="196" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <text x="206" y="188" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#7DD3FC">no</text>
+  <line x1="380" y1="196" x2="428" y2="196" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <line x1="578" y1="196" x2="626" y2="196" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <line x1="776" y1="196" x2="824" y2="196" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <line x1="974" y1="196" x2="1022" y2="196" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <rect x="230" y="340" width="150" height="92" rx="10" fill="#111A2E" stroke="#A78BFA" stroke-width="1.5"/>
+  <text x="305.0" y="376.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Planner writes</text>
+  <text x="305.0" y="391.0" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#CBD5E1">docs/plans/</text>
+  <text x="305.0" y="406.0" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#CBD5E1">&lt;board&gt;.md</text>
+  <rect x="428" y="340" width="150" height="92" rx="10" fill="#111A2E" stroke="#A78BFA" stroke-width="1.5"/>
+  <text x="503.0" y="383.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Slices</text>
+  <text x="503.0" y="398.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">files, checks, order</text>
+  <rect x="626" y="340" width="150" height="92" rx="10" fill="#111A2E" stroke="#38BDF8" stroke-width="1.5"/>
+  <text x="701.0" y="373.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">DAG tasks or</text>
+  <text x="701.0" y="391.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">one sequential</text>
+  <text x="701.0" y="409.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">task</text>
+  <rect x="824" y="340" width="150" height="92" rx="10" fill="#111A2E" stroke="#38BDF8" stroke-width="1.5"/>
+  <text x="899.0" y="383.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Implement</text>
+  <text x="899.0" y="398.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#93A4BF">claim, lease, verify</text>
+  <rect x="1022" y="340" width="150" height="92" rx="10" fill="#111A2E" stroke="#FBBF24" stroke-width="1.5"/>
+  <text x="1097.0" y="373.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Review against</text>
+  <text x="1097.0" y="391.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Acceptance</text>
+  <text x="1097.0" y="409.0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#F1F5F9">Checks</text>
+  <line x1="305" y1="242" x2="305" y2="340" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <text x="315" y="296" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#7DD3FC">yes</text>
+  <line x1="380" y1="386" x2="428" y2="386" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <line x1="578" y1="386" x2="626" y2="386" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <line x1="776" y1="386" x2="824" y2="386" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <line x1="974" y1="386" x2="1022" y2="386" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <line x1="1097" y1="340" x2="1097" y2="242" stroke="#94A3B8" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <text x="1087" y="296" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#34D399">approve PASS</text>
+  <text x="48" y="490" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#93A4BF">Acceptance checks are executable commands. The first slice writes them as failing tests before any implementation.</text>
+</svg>

@@ -25,7 +25,6 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 | **Create** | `cortex-ia work create <id> "<title>" [--board <board>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <cmd>] [--file <path>]...` | Add a task to the DAG (`backlog`/`ready`) with its definition |
 | **Revise** | `cortex-ia work revise --plan <file\|@stdin>` | Safely revise an unclaimed task definition |
 | **Review Refresh** | `cortex-ia work review-refresh <id> --revision <n>` | Rebind the review to an observed revision |
-| **Archive** | `cortex-ia work archive --board <id> --change <id> --workflow <sdd-lite\|sdd-full> --spec-plane <openspec\|cortex\|hybrid>` | Close independently approved SDD work |
 | **List** | `cortex-ia work list [--board <board-id>]` | List work items, optionally scoped to one board |
 | **Status** | `cortex-ia work status <id>` *(or `show`, `get`)* | Query task status, revision, claim, and active leases |
 | **Approvals** | `cortex-ia work approvals <id>` | List historical approval records |
@@ -41,20 +40,21 @@ Commands that emit machine-readable receipts print JSON to stdout; human diagnos
 | **Transition** | `cortex-ia work transition <id> --claim-token <tok> [--revision <n>] --to <in_review\|in_progress\|blocked>` | Shift task state with an optional submission receipt |
 | **Approve** | `cortex-ia work approve <id> --reviewer <id> --verdict <PASS\|FAIL\|BLOCKED\|INCONCLUSIVE> [--evidence <ref>]` | Record a review verdict; `PASS` unlocks downstream tasks |
 | **Retry** | `cortex-ia work retry <id> [--revision <n>]` | Clear residual locks and return a `blocked` task to `ready` |
-| **Decompose** | `cortex-ia work decompose <id> --revision <n> --plan <file\|@stdin> [--contract-file <file>]` | Replace a blocked task with atomic tasks |
+| **Decompose** | `cortex-ia work decompose <id> --revision <n> --plan <file\|@stdin>` | Replace a blocked task with atomic tasks |
 | **Recover** | `cortex-ia work recover` | Sweep expired claims/leases |
 | **Reconcile** | `cortex-ia work reconcile <id> --reason <text> --session <id> --revision <n>` | Force-release a live-but-orphaned claim (orchestrator-only, fail-closed) |
 | **Verify Lease** | `cortex-ia work verify-lease --path <file> [--task <id>] [--owner <owner>]` *(or `check-lease`)* | Verify an active file lease |
 
-## OpenSpec SDD Workspace (`cortex-ia openspec`)
+## Retired commands
 
-| Command | Syntax | Purpose |
-|---|---|---|
-| **Validate** | `cortex-ia openspec validate <change> --workflow <sdd-lite\|sdd-full> --phase <phase> [--json]` | Structurally validate planning artifacts. `--workflow` and `--phase` are **required** |
-| **List** | `cortex-ia openspec list` | List active change proposals in `openspec/changes/` |
-| **Status** | `cortex-ia openspec status [change-name]` | Inspect task progress and status of changes |
-| **Archive** | `cortex-ia openspec archive <change-name> --board <id> --workflow <sdd-lite\|sdd-full> --spec-plane <openspec\|cortex\|hybrid>` | Close independently approved SDD work |
-| **New** | `cortex-ia openspec new <change-name> [domain]` | Scaffold a new OpenSpec change directory |
+These commands and flags fail closed with a "retired" error.
+
+| Retired surface | Replacement |
+|---|---|
+| `cortex-ia openspec` (`new`, `validate`, `status`, `archive`) | Plans in `docs/plans/<board-id>.md` and executable acceptance checks; see [Planning](../operations/planning.md) |
+| `cortex-ia work archive` | None; the plan stays as history and the tests are the living spec |
+| `--contract-file` and `--spec-plane` flags | None; spec planes are removed |
+
 
 ## Cortex Snapshots (`cortex-ia snapshot`)
 

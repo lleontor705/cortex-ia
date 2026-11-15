@@ -3,6 +3,32 @@
 All notable changes to this project are documented here. Versions follow
 [Semantic Versioning](https://semver.org/); tags are `vMAJOR.MINOR.PATCH`.
 
+## Unreleased
+
+### Removed
+
+- Spec-Driven Development and OpenSpec: the `cortex-ia openspec` command (`new`, `validate`,
+  `status`, `archive`), `cortex-ia work archive`, the `--contract-file` and `--spec-plane` flags,
+  the `cortex_ia_openspec_validate`, `cortex_ia_openspec_write` and `cortex_ia_change_archive` tools,
+  the spec planes (`openspec`, `cortex`, `hybrid`) and the `sdd-lite` and `sdd-full` workflows.
+  Retired commands and flags fail with a "retired" error.
+
+### Changed
+
+- Lightweight planning: a plan is written only for feature work of three or more files, unclear
+  requirements, multi-session work, or more than one task. The plan is one file,
+  `docs/plans/<board-id>.md`, with executable acceptance checks. There is no archive step; the
+  plan stays as history and the tests are the living spec.
+- Work workflows are `direct-change`, `fast-tdd`, `hotfix` and `ops-task`.
+- Migration: a schema migration converts existing SDD tasks to `direct-change` tasks, clears their
+  contracts and drops the `change_archives` table.
+
+### Fixed
+
+- `work approve` requires evidence for a `PASS` verdict.
+- The retry-after-FAIL gotcha rule is documented.
+- The reviewer role is granted the `cortex_search` permission.
+
 ## v1.0.0 (2026-11-15) — initial release
 
 First release on the new repository history. The git history was reset to a single snapshot and the

@@ -36,7 +36,7 @@ dentro de un único binario de Go, en tu máquina.
 - [Instalación](#instalación)
 - [Hosts soportados](#hosts-soportados)
 - [Roles de agente](#roles-de-agente)
-- [Enrutamiento: tres niveles](#enrutamiento-tres-niveles)
+- [Planificación](#planificación)
 - [Cortex y Cortex-IA](#cortex-y-cortex-ia)
 - [Resumen de comandos](#resumen-de-comandos)
 - [Garantías de seguridad](#garantías-de-seguridad)
@@ -61,7 +61,7 @@ fallo con un mecanismo que los agentes no pueden esquivar con palabras.
 ## Cómo funciona
 
 <p align="center">
-  <img src="docs/assets/diagrams/architecture-overview.svg" alt="Arquitectura: tres hosts llaman a un único binario cortex-ia, que se apoya en tres planos: autoridad de trabajo en SQLite, plano de especificación y plano de evidencia consultivo de Cortex" width="100%" />
+  <img src="docs/assets/diagrams/architecture-overview.svg" alt="Arquitectura: tres hosts llaman a un único binario cortex-ia, que se apoya en tres planos: autoridad de trabajo en SQLite, archivos de plan y plano de evidencia consultivo de Cortex" width="100%" />
 </p>
 
 - **Los hosts** ejecutan los agentes. La ejecución es nativa: los agentes del host instalado son los
@@ -70,8 +70,8 @@ fallo con un mecanismo que los agentes no pueden esquivar con palabras.
   MCP, guardián pre-tool y una consola web solo de loopback.
 - **La autoridad de trabajo** es la base de datos SQLite en `~/.cortex-ia/delegation.db`. Es la
   única fuente de verdad para tableros, tareas, claims, concesiones y aprobaciones.
-- **El plano de especificación** contiene los contratos de los cambios grandes: archivos OpenSpec en
-  el repositorio, observaciones de Cortex fijadas, o ambos.
+- **Los archivos de plan** contienen el objetivo y los criterios de aceptación ejecutables de los
+  cambios grandes, en `docs/plans/`. Permanecen como historial; las pruebas son la especificación viva.
 - **El plano de evidencia** es el servidor MCP de Cortex: memoria, el grafo AST del código y el
   análisis de radio de impacto. Informa las decisiones y nunca las autoriza.
 
@@ -151,25 +151,25 @@ Las rutas, los guardianes de host y los límites conocidos están en
 | `orchestrator` | Triaje, enrutamiento, ciclo de vida de la sesión, despacho y síntesis final | Crea tableros y tareas, recupera y reintenta; nunca reclama, concesiona ni edita |
 | `discovery` | Indexa skills, toolchain y estructura del proyecto en `.cortex-ia/discovery.md` | Ninguna |
 | `investigate` | Diagnóstico de causa raíz, spikes y auditorías de solo lectura | Solo lectura |
-| `planner` | Especificaciones y el grafo de dependencias de tareas | Crea el tablero de la iniciativa y sus tareas |
+| `planner` | Archivos de plan y el grafo de dependencias de tareas | Crea el tablero de la iniciativa y sus tareas |
 | `implement` | Reclama una tarea, concesiona sus archivos, edita y verifica | Claim, concesión y transición a `in_review` |
 | `reviewer` | Inspecciona el diff de forma independiente y vuelve a ejecutar las comprobaciones | Solo `work approve` |
 
 Los contratos de rol y los recibos se describen en [Agentes](docs/operations/agents.md).
 
-## Enrutamiento: tres niveles
+## Planificación
 
 <p align="center">
-  <img src="docs/assets/diagrams/routing-tiers.svg" alt="Tres niveles de enrutamiento: ruta rápida sin grafo de tareas, una tarea acotada en el tablero por defecto y desarrollo guiado por especificaciones coordinado en un tablero de iniciativa" width="100%" />
+  <img src="docs/assets/diagrams/planning-flow.svg" alt="Flujo de planificación: una petición se convierte en una tarea directa o en un archivo de plan con sus slices y tareas DAG; ambos caminos terminan en implementación, revisión y done" width="100%" />
 </p>
 
-| Nivel | Flujos de trabajo | Ejecución |
-|---|---|---|
-| **1 — Ruta rápida** | `direct-answer`, `discovery`, `investigate`, `spike`, `review` | Un subagente, sin grafo de tareas |
-| **2 — Una tarea acotada** | `direct-change`, `fast-tdd`, `hotfix`, `ops-task` | Claim, concesión, edición, verificación y revisión proporcional al riesgo |
-| **3 — SDD coordinado** | `sdd-lite`, `sdd-full` | Tablero de iniciativa, especificación, grafo de dependencias, implementadores en paralelo y revisión independiente |
-
-La matriz de fases completa está en la [guía del flujo SDD](docs/operations/sdd-workflow.md).
+Los cambios pequeños se ejecutan directamente como una tarea. Las correcciones de errores con una
+prueba que los reproduce, las refactorizaciones con pruebas en verde, el trabajo solo de pruebas y
+los cambios de dos archivos o menos no necesitan plan. El trabajo de funcionalidades que toca tres o
+más archivos, con requisitos poco claros, en varias sesiones o con más de una tarea recibe un único
+archivo de plan, `docs/plans/<board-id>.md`, cuyos criterios de aceptación son comandos ejecutables.
+El formato, los flujos de trabajo y el ciclo de vida de las tareas están en la
+[guía de planificación](docs/operations/planning.es.md).
 
 ## Cortex y Cortex-IA
 
@@ -196,7 +196,6 @@ Más en [Memoria de Cortex](docs/operations/cortex-memory.md).
 | `rollback`, `recover` | Restaurar una copia de seguridad o un journal de recuperación pendiente |
 | `board` | Crear e inspeccionar tableros de tareas |
 | `work` | Tareas, claims, concesiones, transiciones y aprobaciones |
-| `openspec` | Crear, validar y archivar cambios de especificación |
 | `mcp` | Gestionar entradas de servidores MCP; `mcp serve` es el servidor MCP de host |
 | `model` | Asignaciones de modelo por agente |
 | `web` | Consola de operaciones local |
@@ -232,7 +231,7 @@ El índice de la documentación es [docs/index.md](docs/index.md). Las páginas 
 |---|---|
 | Ponerlo en marcha | [Quickstart](docs/getting-started/quickstart.md) · [Installation](docs/getting-started/installation.md) · [Configuration](docs/getting-started/configuration.md) |
 | Automatizarlo o ejecutarlo en CI | [Non-interactive mode](docs/getting-started/non-interactive.md) · [CLI reference](docs/reference/cli.md) |
-| Entender el diseño | [Architecture](docs/architecture/architecture.md) · [Agents](docs/operations/agents.md) · [SDD workflow](docs/operations/sdd-workflow.md) |
+| Entender el diseño | [Architecture](docs/architecture/architecture.md) · [Agents](docs/operations/agents.md) · [Planificación](docs/operations/planning.es.md) |
 | Operarlo | [MCP manager](docs/operations/mcp.md) · [Web console](docs/operations/web-console.md) · [Security and recovery](docs/operations/security.md) · [Backups and rollback](docs/operations/rollback.md) |
 | Trabajar en el código | [Codebase guide](docs/architecture/codebase-guide.md) · [Repository map](docs/architecture/codebase/repository-map.md) · [Maintainer playbook](docs/architecture/codebase/maintainer-playbook.md) |
 

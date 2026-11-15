@@ -12,10 +12,10 @@ Images used by the README and the documentation site.
 | File | Explains | Used in |
 |---|---|---|
 | `diagrams/architecture-overview.svg` | Hosts, the binary and the three planes | README, docs home, Architecture |
-| `diagrams/task-lifecycle.svg` | Task states and the command behind each transition | README, Architecture, SDD coordination |
+| `diagrams/task-lifecycle.svg` | Task states and the command behind each transition | README, Architecture, Planning |
 | `diagrams/install-pipeline.svg` | Plan, lock, backup, apply, verify, rollback | README, Architecture, Security and recovery |
 | `diagrams/host-targets.svg` | What `install --target` writes for each host | README, Supported platforms |
-| `diagrams/routing-tiers.svg` | The three routing tiers and their workflows | README, SDD workflow |
+| `diagrams/planning-flow.svg` | When a request needs a plan, and the path from plan to done | README, Planning |
 | `diagrams/multi-agent-orchestration.svg` | The orchestrator and the five role controllers | README, Agents |
 | `diagrams/cortex-vs-cortexia.svg` | Cortex (MCP server) compared with Cortex-IA | README, Cortex memory |
 

@@ -88,11 +88,10 @@
     <rect width="194" height="26" rx="8" fill="#3730A3" fill-opacity="0.2"/>
     <path d="M 0 18 L 0 26 L 194 26 L 194 18 Z" fill="#3730A3" fill-opacity="0.2"/>
     <text x="12" y="18" class="role-title" fill="#A5B4FC">📐 PLANNER</text>
-    <text x="12" y="44" class="role-sub">Specs + DAG budgets: strict / flexible / unbounded</text>
-    <text x="12" y="68" class="tool-item">cortex_ia_openspec_val</text>
+    <text x="12" y="44" class="role-sub">Plan + DAG budgets: strict / flexible / unbounded</text>
+    <text x="12" y="68" class="tool-item">docs/plans/&lt;board&gt;.md</text>
     <text x="12" y="86" class="tool-item">cortex_ia_work_create</text>
     <text x="12" y="104" class="tool-item">cortex_ia_board_create</text>
-    <text x="12" y="122" class="tool-item">cortex_ia_change_archive</text>
     <rect x="10" y="132" width="174" height="16" rx="4" fill="#3730A3" fill-opacity="0.3"/>
     <text x="97" y="143" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="8" fill="#C7D2FE">Decomposes DAG into Backlog</text>
   </g>

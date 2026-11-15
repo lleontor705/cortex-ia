@@ -35,7 +35,7 @@ a transactional SQLite database, in a single Go binary, on your machine.
 - [Installation](#installation)
 - [Supported hosts](#supported-hosts)
 - [Agent roles](#agent-roles)
-- [Routing: three tiers](#routing-three-tiers)
+- [Planning](#planning)
 - [Cortex and Cortex-IA](#cortex-and-cortex-ia)
 - [Command overview](#command-overview)
 - [Safety guarantees](#safety-guarantees)
@@ -60,7 +60,7 @@ a mechanism the agents cannot talk their way around.
 ## How it works
 
 <p align="center">
-  <img src="docs/assets/diagrams/architecture-overview.svg" alt="Architecture: three hosts call one cortex-ia binary, which sits on three planes: SQLite work authority, the specification plane and the advisory Cortex evidence plane" width="100%" />
+  <img src="docs/assets/diagrams/architecture-overview.svg" alt="Architecture: three hosts call one cortex-ia binary, which sits on three planes: SQLite work authority, plan files and the advisory Cortex evidence plane" width="100%" />
 </p>
 
 - **Hosts** run the agents. Execution is native: the agents of the installed host are the only
@@ -69,8 +69,8 @@ a mechanism the agents cannot talk their way around.
   guard and a loopback-only web console.
 - **Work authority** is the SQLite database at `~/.cortex-ia/delegation.db`. It is the single source
   of truth for boards, tasks, claims, leases and approvals.
-- **The specification plane** holds the contracts for larger changes: OpenSpec files in the
-  repository, pinned Cortex observations, or both.
+- **Plan files** hold the goal and executable acceptance checks for larger changes, in
+  `docs/plans/`. They stay as history; the tests are the living spec.
 - **The evidence plane** is the Cortex MCP server: memory, the AST code graph and blast-radius
   analysis. It informs decisions and never authorizes them.
 
@@ -147,25 +147,23 @@ Paths, host guards and known limits are in [Supported Platforms](docs/getting-st
 | `orchestrator` | Triage, routing, session lifecycle, dispatch, final synthesis | Creates boards and tasks, recovers and retries; never claims, leases or edits |
 | `discovery` | Indexes skills, toolchain and project layout into `.cortex-ia/discovery.md` | None |
 | `investigate` | Root-cause diagnosis, spikes, read-only audits | Read-only |
-| `planner` | Specifications and the task dependency graph | Creates the initiative board and its tasks |
+| `planner` | Plan files and the task dependency graph | Creates the initiative board and its tasks |
 | `implement` | Claims one task, leases its files, edits, verifies | Claim, lease, transition to `in_review` |
 | `reviewer` | Independently inspects the diff and reruns checks | `work approve` only |
 
 Role contracts and receipts are described in [Agents](docs/operations/agents.md).
 
-## Routing: three tiers
+## Planning
 
 <p align="center">
-  <img src="docs/assets/diagrams/routing-tiers.svg" alt="Three routing tiers: fast path with no task graph, one bounded task on the default board, and coordinated specification-driven development on an initiative board" width="100%" />
+  <img src="docs/assets/diagrams/planning-flow.svg" alt="Planning flow: a request either becomes one direct task, or gets a plan file, its slices and DAG tasks; both paths are implemented, reviewed and marked done" width="100%" />
 </p>
 
-| Tier | Workflows | Execution |
-|---|---|---|
-| **1 — Fast path** | `direct-answer`, `discovery`, `investigate`, `spike`, `review` | One subagent, no task graph |
-| **2 — One bounded task** | `direct-change`, `fast-tdd`, `hotfix`, `ops-task` | Claim, lease, edit, verify, then review sized to the risk |
-| **3 — Coordinated SDD** | `sdd-lite`, `sdd-full` | Initiative board, specification, dependency graph, parallel implementers, independent review |
-
-The full phase matrix is in the [SDD workflow guide](docs/operations/sdd-workflow.md).
+Small changes run directly as one task. Bug fixes with a reproducing test, refactors under green
+tests, test-only work and changes to two files or fewer need no plan. Feature work across three or
+more files, with unclear requirements, across several sessions, or in more than one task gets one
+plan file, `docs/plans/<board-id>.md`, whose acceptance checks are executable commands. The format,
+workflows and task lifecycle are in the [planning guide](docs/operations/planning.md).
 
 ## Cortex and Cortex-IA
 
@@ -192,7 +190,6 @@ More in [Cortex memory](docs/operations/cortex-memory.md).
 | `rollback`, `recover` | Restore a backup or a pending recovery journal |
 | `board` | Create and inspect task boards |
 | `work` | Tasks, claims, leases, transitions and approvals |
-| `openspec` | Scaffold, validate and archive specification changes |
 | `mcp` | Manage MCP server entries; `mcp serve` is the host MCP server |
 | `model` | Per-agent model assignments |
 | `web` | Local operations console |
@@ -226,7 +223,7 @@ The documentation index is [docs/index.md](docs/index.md). The most used pages:
 |---|---|
 | Get running | [Quickstart](docs/getting-started/quickstart.md) · [Installation](docs/getting-started/installation.md) · [Configuration](docs/getting-started/configuration.md) |
 | Script it or run it in CI | [Non-interactive mode](docs/getting-started/non-interactive.md) · [CLI reference](docs/reference/cli.md) |
-| Understand the design | [Architecture](docs/architecture/architecture.md) · [Agents](docs/operations/agents.md) · [SDD workflow](docs/operations/sdd-workflow.md) |
+| Understand the design | [Architecture](docs/architecture/architecture.md) · [Agents](docs/operations/agents.md) · [Planning](docs/operations/planning.md) |
 | Operate it | [MCP manager](docs/operations/mcp.md) · [Web console](docs/operations/web-console.md) · [Security and recovery](docs/operations/security.md) · [Backups and rollback](docs/operations/rollback.md) |
 | Work on the codebase | [Codebase guide](docs/architecture/codebase-guide.md) · [Repository map](docs/architecture/codebase/repository-map.md) · [Maintainer playbook](docs/architecture/codebase/maintainer-playbook.md) |
 

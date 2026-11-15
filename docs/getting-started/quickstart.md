@@ -33,7 +33,7 @@ cortex-ia install --target opencode,claude # or: agy, all
 
 This transactionally installs the embedded asset set across its declared OpenCode roots (`~/.config/opencode/` and `~/.agents/skills/`):
 - `AGENTS.md` system prompt and 6 native roles (`orchestrator`, `discovery`, `investigate`, `planner`, `implement`, `reviewer`).
-- SDD slash commands, skills, and OpenCode plugins (the retired Herdr delegation bridge is no longer installed).
+- Slash commands, skills, and OpenCode plugins (the retired Herdr delegation bridge is no longer installed).
 - Registers the **Cortex** knowledge graph MCP server.
 
 ---
@@ -62,11 +62,8 @@ cortex-ia work create auth-1.1 "Scaffold JWT token handler" --board my-feature
 cortex-ia work create auth-1.2 "Add refresh token rotation" --board my-feature --depends auth-1.1
 ```
 
-### B. Validate OpenSpec Proposals
-```bash
-cortex-ia openspec validate <change> --workflow <sdd-lite|sdd-full> --phase <phase>
-```
-Both `--workflow` and `--phase` are required.
+### B. Plan a Larger Change
+Small changes run directly as one task. Feature work that touches three or more files, has unclear requirements, or spans sessions gets one plan file, `docs/plans/<board-id>.md`, whose acceptance checks are executable commands. See [Planning](../operations/planning.md).
 
 ### C. Watch Work State Natively
 Every role controller executes natively inside OpenCode under Cortex-IA work authority; external delegation is retired. Watch boards, claims, leases, and review transitions in the local operations console:

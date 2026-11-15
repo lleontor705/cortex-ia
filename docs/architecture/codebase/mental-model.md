@@ -67,7 +67,7 @@ How `cortex-ia` works end-to-end: a user executes an interactive TUI or CLI comm
 
 ## 3. Platform Support Strategy
 
-1. **OpenCode (Primary)**: Full native SDD asset set and MCP management under `~/.config/opencode/`.
+1. **OpenCode (Primary)**: Full native asset set and MCP management under `~/.config/opencode/`.
 2. **Claude Code and Antigravity CLI (agy)**: host bundles installed with `--target claude` and `--target agy`. Each writes role agents, skills, contracts, and an MCP registration for its host, guarded by a pre-tool hook. See [platforms](../../getting-started/platforms.md).
 3. The multi-platform adapter surface (adapters, personas, profiles, model routing) remains retired and fails closed. Exactly three hosts are supported; a fourth requires an owner decision.
 

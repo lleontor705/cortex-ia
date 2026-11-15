@@ -91,7 +91,7 @@ roots fail closed.
 
 Execution stays native on every host: no external CLI receives work by being
 shelled out to, and the retired execution leaf, `delegate`, `herdr` bridge,
-personas, profiles, model routing, SDD compiler/registry, ForgeSpec, the external
+personas, profiles, model routing, the spec compiler/registry, ForgeSpec, the external
 task-board MCP, and `isolated_worktree` remain retired and fail closed.
 
 ## Shells and Terminals

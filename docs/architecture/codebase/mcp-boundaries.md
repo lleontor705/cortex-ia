@@ -16,7 +16,7 @@ Cortex-IA cleanly separates the **Epistemic & Evidence Plane** (Cortex MCP) from
 | **Context7 MCP** | optional `npx -y @upstash/context7-mcp` | Read-only library & framework documentation | Persistence, execution authority, task state |
 | **Cortex-IA Work Control** | Native Go CLI + SQLite WAL | Task DAG, CAS revisions, TTL claims, exclusive file leases, recovery, review approvals | Long-form evidence or raw agent transcripts |
 | **Cortex-IA Task Board** | Embedded HTTP UI (`cortex-ia web`) | Board grouping, real-time SSE Kanban visualization, task intake | Authorization grants, remote exposure |
-| **OpenSpec SDD** | Repository Markdown (`openspec/`) | Human-readable proposals, delta requirements, designs, task decompositions | Runtime locks, process supervision |
+| **Plan files** | Repository Markdown (`docs/plans/`) | Goal, acceptance checks, slices and progress | Runtime locks, process supervision |
 
 ---
 
