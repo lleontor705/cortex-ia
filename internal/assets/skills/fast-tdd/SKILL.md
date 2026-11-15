@@ -9,7 +9,7 @@ metadata:
 
 # Fast-TDD minion strategy
 
-Use this strategy only when behavior is localized, observable, reproducible, and covered by a fast deterministic test oracle. File count alone does not decide eligibility. If the oracle is slow, flaky, unavailable, or the change crosses unresolved boundaries, return `blocked` and recommend `direct-change`, `spike`, or a `plan`. You are a leaf minion: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
+Use this strategy only when behavior is localized, observable, reproducible, and covered by a fast deterministic test oracle. File count alone does not decide eligibility. If the oracle is slow, flaky, unavailable, or the change crosses unresolved boundaries, return `blocked` and recommend `direct-change`, `spike`, or a `plan`. You never call session lifecycle tools; the orchestrator owns them.
 
 ## Lifecycle and loop
 
@@ -26,14 +26,9 @@ Read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` for bug fixes.
 
 ## Output
 
-Return the receipt as a Markdown list of `field: value` lines (not JSON), with these fields:
+Return the §8 receipt from `cortex-work-protocol.md` as Markdown `field: value` lines (not JSON), with `workflow: fast-tdd` and this evidence block:
 
-- workflow: fast-tdd
-- phase_status: success | partial | failed | blocked
-- task_status: done | in_progress | blocked | null
-- verification_verdict: PASS | FAIL | BLOCKED | INCONCLUSIVE
-- task_id: null
-- evidence: sub-fields below
+- evidence:
   - red: command, exit_code, oracle, seam, expected_source
   - green: command, exit_code
   - refactor: command, exit_code
@@ -43,7 +38,7 @@ Return the receipt as a Markdown list of `field: value` lines (not JSON), with t
 - evidence_refs: <list>
 - cleanup: leases_released, notes
 - risks: <list>
-- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective
+- next_route: per `cortex-work-protocol.md` §8
 
 For a fast-TDD-eligible code task with a test delta, `mutation` is required: accepted final outcomes are `KILLED` and `STATIC-ANALYSIS`; `SURVIVED` never ships, and a missing or empty field on eligible work makes the evidence incomplete (`INCONCLUSIVE` or `BLOCKED`), never `PASS`. Exempt work kinds record the exemption reason instead.
 

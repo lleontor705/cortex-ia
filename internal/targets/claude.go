@@ -18,7 +18,7 @@ type claudeRole struct {
 const claudeHookMatcher = "Write|Edit|MultiEdit|NotebookEdit|Bash|mcp__cortex_ia__.*"
 
 var claudeRoles = []claudeRole{
-	{"orchestrator", "Agent(discovery, investigate, planner, implement, reviewer), Read", "Read|mcp__cortex_ia__.*"},
+	{"orchestrator", "Agent(discovery, investigate, planner, implement, reviewer), Read, Grep, Glob", "Read|Grep|Glob|mcp__cortex_ia__.*"},
 	{"discovery", "Read, Grep, Glob, Bash, Edit, Write", claudeHookMatcher},
 	{"investigate", "Read, Grep, Glob, Bash", claudeHookMatcher},
 	{"planner", "Read, Grep, Glob", claudeHookMatcher},
@@ -128,7 +128,7 @@ func claudeAgentFile(role claudeRole, description, body string, global []byte) [
 	sb.WriteString("          command: " + yamlQuote("cortex-ia hook pre-tool --host claude --role "+role.name) + "\n")
 	sb.WriteString("          timeout: 15\n")
 	sb.WriteString("---\n\n")
-	prompt := composeRolePrompt(claudePreamble, role.name, rewriteContractsPath(body, string(TargetClaude)), global)
+	prompt := composeRolePrompt(claudePreamble, rewriteContractsPath(body, string(TargetClaude)), global)
 	sb.WriteString(prompt)
 	return []byte(sb.String())
 }

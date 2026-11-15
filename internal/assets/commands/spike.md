@@ -4,4 +4,4 @@ agent: orchestrator
 subagent: false
 ---
 
-Route this question through `spike`. Require an isolated scratch environment, measurements, cleanup, and an organic next-route decision: $ARGUMENTS
+Route this question through the `spike` workflow. Use an isolated scratch environment, record measurements, clean up afterwards, and end with a next-route decision: $ARGUMENTS

@@ -23,3 +23,7 @@ jobs:
       - name: Report refusal-string drift
         continue-on-error: true
         run: bash scripts/ratchet-refusals.sh
+
+      - name: Report prompt budget drift
+        continue-on-error: true
+        run: node scripts/prompt-budget.mjs

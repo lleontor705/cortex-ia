@@ -4,4 +4,4 @@ agent: orchestrator
 subagent: false
 ---
 
-Route this target through `review`; independently inspect evidence and return a typed verdict with actionable findings: $ARGUMENTS
+Route this target through the `review` workflow. Inspect the evidence independently and return a typed verdict with actionable findings: $ARGUMENTS

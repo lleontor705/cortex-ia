@@ -21,12 +21,12 @@ var toolRoles = map[string][]string{
 	"cortex_ia_work_claim":          {"implement"},
 	"cortex_ia_work_renew":          {"implement"},
 	"cortex_ia_file_reserve":        {"implement"},
-	"cortex_ia_work_lease_renew":    {"implement"},
 	"cortex_ia_work_release_all":    {"implement"},
 	"cortex_ia_file_release":        {"implement"},
 	"cortex_ia_work_transition":     {"implement"},
 	"cortex_ia_work_approve":        {"reviewer", "orchestrator"},
 	"cortex_ia_diagram_render":      {"implement"},
+	"cortex_ia_workload_audit":      {"implement", "reviewer"},
 }
 
 // RoleMayCall reports whether role may call the bridge tool. An empty role

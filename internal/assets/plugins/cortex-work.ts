@@ -145,7 +145,7 @@ function workPath(value: string): string {
 
 function reservationPaths(args: any): string[] {
   if (args.paths !== undefined && !Array.isArray(args.paths)) throw new Error("paths must be an array");
-  const paths = [...(args.path === undefined ? [] : [args.path]), ...(args.paths || [])];
+  const paths = [...(args.paths || [])];
   if (paths.length > 128 || paths.some(p => typeof p !== "string" || !p.trim())) throw new Error("reservation requires 1-128 nonempty paths");
   // The authority service owns normalization, validation and duplicate rejection.
   return paths;
@@ -323,6 +323,50 @@ function bridgeAuthorityView(taskID: string, durable: any, sessionID: string) {
         ? "NON_WRITING_AUTHORITY_ONLY"
         : "STOP_WRITING_AND_RECONCILE"
   };
+}
+
+// Mirrors mcpserve compactStatus: the fields a controller acts on, without tokens.
+function boardStatuses(board: string): Record<string, string> {
+  const statuses: Record<string, string> = {};
+  if (!board) return statuses;
+  try {
+    const items = parseJSON(cortex(["work", "list", "--board", board]));
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        if (typeof item?.task_id === "string") statuses[item.task_id] = String(item.status ?? "");
+      }
+    }
+  } catch {}
+  return statuses;
+}
+
+function compactWorkStatus(durable: any, bridgeAuth: any) {
+  const statuses = boardStatuses(durable?.board_id);
+  const claim = durable?.claim && typeof durable.claim === "object"
+    ? { owner: durable.claim.owner, expires_at: durable.claim.expires_at, live: bridgeAuth.durable_claim_live }
+    : null;
+  const leases = Array.isArray(durable?.leases)
+    ? durable.leases.map((lease: any) => ({ path: lease?.path, expires_at: lease?.expires_at }))
+    : [];
+  const dependencies = Array.isArray(durable?.dependencies)
+    ? durable.dependencies.map((id: any) => ({ task_id: String(id), status: statuses[String(id)] ?? "unknown" }))
+    : [];
+  const out: any = {
+    task_id: durable?.task_id,
+    board_id: durable?.board_id,
+    title: durable?.title,
+    status: durable?.status,
+    revision: durable?.revision,
+    allowed_files: durable?.allowed_files ?? [],
+    dependencies,
+    claim,
+    leases,
+    last_verdict: durable?.latest_approval?.verdict ?? null,
+    found: true,
+    authority: { usable: bridgeAuth.usable, write_usable: bridgeAuth.write_usable, action: bridgeAuth.action },
+  };
+  if (durable?.blocked_reason !== undefined) out.blocked_reason = durable.blocked_reason;
+  return out;
 }
 
 function authorityFailure(code: string, taskID: string, sessionID: string, leasePath?: string): Error {
@@ -568,21 +612,23 @@ function safeUnicodeSlice(str: string, maxChars: number): string {
   return chars.slice(0, maxChars).join("") + "...";
 }
 
-const PER_SPEC_VERDICTS = new Set(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"]);
+const PER_CHECK_VERDICTS = new Set(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"]);
 
 // Per-spec verdicts ride additively into the compact projection. Malformed
 // entries are dropped instead of failing the whole receipt so a partially-bad
 // producer can never suppress an otherwise valid compaction.
-function normalizeVerdicts(raw: any): Array<{ req_id: string; verdict: string; evidence_ref: string }> | undefined {
+function normalizeVerdicts(raw: any): Array<{ check_id: string; verdict: string; evidence_ref: string }> | undefined {
   if (!Array.isArray(raw)) return undefined;
-  const verdicts: Array<{ req_id: string; verdict: string; evidence_ref: string }> = [];
+  const verdicts: Array<{ check_id: string; verdict: string; evidence_ref: string }> = [];
   for (const entry of raw) {
     if (!entry || typeof entry !== "object") continue;
-    const reqId = typeof entry.req_id === "string" ? entry.req_id.trim() : "";
+    // req_id is the pre-plan spelling; receipts from older prompts still use it.
+    const rawId = typeof entry.check_id === "string" ? entry.check_id : entry.req_id;
+    const checkId = typeof rawId === "string" ? rawId.trim() : "";
     const verdict = typeof entry.verdict === "string" ? entry.verdict.trim() : "";
-    if (reqId.length === 0 || !PER_SPEC_VERDICTS.has(verdict)) continue;
+    if (checkId.length === 0 || !PER_CHECK_VERDICTS.has(verdict)) continue;
     if (typeof entry.evidence_ref !== "string") continue;
-    verdicts.push({ req_id: reqId, verdict, evidence_ref: entry.evidence_ref });
+    verdicts.push({ check_id: checkId, verdict, evidence_ref: entry.evidence_ref });
   }
   return verdicts;
 }
@@ -1031,7 +1077,7 @@ export const CortexWorkPlugin = Plugin.define({
 
   const bridgeTools = {
     cortex_ia_content_hash: tool({
-      description: "Compute lowercase SHA-256 of exact UTF-8 content (at most 1 MiB). No newline/Unicode normalization, persistence, or network access. Returns only sha256 and byte_length.",
+      description: "Compute the lowercase SHA-256 and byte length of exact UTF-8 content (max 1 MiB). Read-only: no normalization, storage or network. Larger input fails.",
       args: { content: tool.schema.string() },
       async execute(args) {
         const byteLength = Buffer.byteLength(args.content, "utf-8");
@@ -1043,7 +1089,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_discovery_write: tool({
-      description: "Write the project-local .cortex-ia/discovery.md profile (Discovery agent only).",
+      description: "Write the project .cortex-ia/discovery.md report (discovery role only). Content must start with \"# Cortex-IA Project Discovery\" and be at most 128 KiB. Returns path, bytes and sha256.",
       args: { content: tool.schema.string() },
       async execute(args, context) {
         if (context.agent !== "discovery") {
@@ -1083,7 +1129,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_doc_convert: tool({
-      description: "Convert an office document into Markdown text and metadata. Inline output is read-only; output_path requires the host implement controller's live task and file lease.",
+      description: "Convert an office document to Markdown text and metadata. Inline output is read-only. output_path writes a file and requires a live implement claim with a file lease on that path.",
       args: {
         file_path: tool.schema.string(),
         output_path: tool.schema.string().optional(),
@@ -1103,7 +1149,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_diagram_validate: tool({
-      description: "Validate a system diagram JSON specification (architecture, workflow, sequence, dataflow, lifecycle) against topological and structural rules (inspired by archify).",
+      description: "Validate a diagram JSON spec (architecture, workflow, sequence, dataflow, lifecycle). Read-only. Run before diagram_render; returns structural findings.",
       args: {
         spec_path: tool.schema.string(),
         diagram_type: tool.schema.enum(["architecture", "workflow", "sequence", "dataflow", "lifecycle"]).optional(),
@@ -1119,7 +1165,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_diagram_render: tool({
-      description: "Render a diagram specification to interactive HTML. Requires the host implement controller's live task and output file lease.",
+      description: "Render a validated diagram spec to interactive HTML at output_path (implement only). Requires a live claim and a file lease on output_path; reserve it with cortex_ia_file_reserve first.",
       args: {
         spec_path: tool.schema.string(),
         output_path: tool.schema.string(),
@@ -1135,7 +1181,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_board_create: tool({
-      description: "Create one durable Cortex-IA initiative board.",
+      description: "Create one durable board for an initiative (planner or orchestrator). Use one stable board_id per initiative; list boards first to avoid duplicates.",
       args: { board_id: tool.schema.string(), title: tool.schema.string(), description: tool.schema.string().optional() },
       async execute(args, context) {
         const command = ["board", "create", "--id", args.board_id, "--title", args.title];
@@ -1145,22 +1191,22 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_board_list: tool({
-      description: "List durable Cortex-IA initiative boards.",
+      description: "List durable initiative boards with their IDs and titles. Read-only.",
       args: {},
       async execute() { return cortex(["board", "list"]); }
     }),
 
     cortex_ia_board_status: tool({
-      description: "Read one board and its authoritative task snapshot.",
+      description: "Read one board and its authoritative task snapshot. Read-only; use before creating work on an existing board.",
       args: { board_id: tool.schema.string() },
       async execute(args) { return cortex(["board", "status", args.board_id]); }
     }),
 
     cortex_ia_work_create: tool({
-      description: "Create one work item in a durable same-board DAG.",
+      description: "Create one work item in a same-board DAG (planner or orchestrator). board_id defaults to \"default\" for ungrouped work. Every dependency must already exist on the same board; check with board_status first.",
       args: {
         workflow: tool.schema.enum(["direct-change", "fast-tdd", "hotfix", "ops-task"]),
-        board_id: tool.schema.string(),
+        board_id: tool.schema.string().optional(),
         task_id: tool.schema.string(),
         title: tool.schema.string(),
         objective: tool.schema.string().optional(),
@@ -1171,7 +1217,7 @@ export const CortexWorkPlugin = Plugin.define({
       },
       async execute(args, context) {
         const ownership = await conversationOwnership(context.sessionID, context.directory);
-        const command = ["work", "create", "--board", args.board_id, "--id", args.task_id, "--title", args.title,
+        const command = ["work", "create", "--board", args.board_id || "default", "--id", args.task_id, "--title", args.title,
           "--workflow", args.workflow,
           "--project", path.resolve(context.directory), "--opencode-session-id", ownership.opencode_session_id,
           "--opencode-root-session-id", ownership.opencode_root_session_id];
@@ -1186,7 +1232,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_review_refresh: tool({
-      description: "Reopen a done task for fresh review after approved files change (Orchestrator only).",
+      description: "Reopen a done task for fresh review after its approved files change (orchestrator only). Requires the current revision; a stale revision fails, so read work_status and retry.",
       args: { task_id: tool.schema.string(), revision: tool.schema.number() },
       async execute(args) {
         return cortex(["work", "review-refresh", args.task_id, "--revision", String(args.revision)]);
@@ -1194,7 +1240,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_list: tool({
-      description: "List durable work items, optionally filtered by board.",
+      description: "List work items as rows, optionally filtered by board_id (all boards when omitted). Read-only.",
       args: { board_id: tool.schema.string().optional() },
       async execute(args) {
         const command = ["work", "list"];
@@ -1204,14 +1250,15 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_status: tool({
-      description: "Get task details and authority usability for the current session.",
-      args: { task_id: tool.schema.string(), role: tool.schema.string().optional() },
+      description: "Read a task's compact state for this caller: status, revision, dependencies with status, allowed_files, claim and lease liveness, last verdict and authority action. Read-only; no claim needed. Pass detail: true for the full record.",
+      args: { task_id: tool.schema.string(), detail: tool.schema.boolean().optional() },
       async execute(args, context) {
         const hostRole = activeSubagents.get(context.sessionID)?.role || "unknown";
         try {
           const durable = durableWorkStatus(args.task_id, hostRole);
           const processed = processWorkStatusResponse(args.task_id, context.sessionID, durable);
           const bridgeAuth = bridgeAuthorityView(args.task_id, durable, context.sessionID);
+          if (!args.detail) return JSON.stringify(compactWorkStatus(durable, bridgeAuth));
           return JSON.stringify({
             ...durable,
             found: true,
@@ -1238,7 +1285,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_approvals: tool({
-      description: "List historical approval records for a task.",
+      description: "List approval records for a task, oldest first. Read-only.",
       args: { task_id: tool.schema.string() },
       async execute(args) {
         return cortex(["work", "approvals", args.task_id]);
@@ -1246,7 +1293,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_fingerprint: tool({
-      description: "Calculate file fingerprints for a task and verify against approved binding.",
+      description: "Compute file fingerprints for a task and compare them with its approved binding. Read-only.",
       args: { task_id: tool.schema.string() },
       async execute(args) {
         return cortex(["work", "fingerprint", args.task_id]);
@@ -1254,13 +1301,13 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_recover: tool({
-      description: "Recover expired work claims and leases.",
+      description: "Recover every expired claim and lease, unscoped (orchestrator only). Use after a controller died and its claim lapsed. Own expired claim: work_recover_own. Live claim: work_reconcile.",
       args: {},
       async execute() { return cortex(["work", "recover"]); }
     }),
 
     cortex_ia_work_recover_own: tool({
-      description: "Recover the caller's own expired work claim and file leases for exactly one task (fail-closed ownership check).",
+      description: "Recover this session's own expired claim and file leases for exactly one task (implement only). Use only after your claim lapsed (BRIDGE_AUTHORITY_UNUSABLE). Other controllers' claims need cortex_ia_work_recover (orchestrator).",
       args: { task_id: tool.schema.string() },
       async execute(args, context) {
         const authority = workAuthority.get(args.task_id);
@@ -1276,13 +1323,13 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_retry: tool({
-      description: "Retry a reconciled blocked task using revision CAS.",
+      description: "Move a reconciled blocked task back to ready (orchestrator only). Requires the current revision; a stale revision fails, so read work_status and retry. Use after work_reconcile or recovery.",
       args: { task_id: tool.schema.string(), revision: tool.schema.number() },
       async execute(args) { return cortex(["work", "retry", args.task_id, "--revision", String(args.revision)]); }
     }),
 
     cortex_ia_work_decompose: tool({
-      description: "Atomically decompose a blocked task into 2-8 smaller DAG tasks (Planner only).",
+      description: "Replace a blocked task with 2-8 smaller same-board tasks in one atomic step (planner only). Requires blocked status and the current revision. Each task needs objective, acceptance_criteria and a raw verification command.",
       args: {
         task_id: tool.schema.string(),
         revision: tool.schema.number(),
@@ -1305,12 +1352,10 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_claim: tool({
-      description: "Claim a ready task and atomically reserve file lease(s) (supports path or paths). Tokens remain in memory with automatic heartbeat renewal.",
+      description: "Claim a ready task and reserve its files in one step (implement only). Requires no other live claim by this session. Heartbeat renews the claim and leases automatically. Returns the claim without tokens. A path conflict fails the whole claim, so nothing is held; pick another task.",
       args: {
         task_id: tool.schema.string(),
-        path: tool.schema.string().optional().describe("Optional single workspace-relative file to reserve upon claiming"),
-        paths: tool.schema.array(tool.schema.string()).optional().describe("Optional list of workspace-relative files to reserve upon claiming"),
-        ttl: tool.schema.string().optional().describe("Duration (e.g. 15m)")
+        paths: tool.schema.array(tool.schema.string()).optional().describe("Optional workspace-relative files to reserve with the claim")
       },
       async execute(args, context) {
         const retained = workAuthority.get(args.task_id);
@@ -1335,7 +1380,6 @@ export const CortexWorkPlugin = Plugin.define({
         }
         const targetPaths = reservationPaths(args);
         const command = ["work", "claim", args.task_id, "--owner", controllerIdentity(context.sessionID), ...targetPaths.flatMap(p => ["--path", p])];
-        if (args.ttl) command.push("--ttl", args.ttl);
         const claim = parseJSON(cortex(command));
         if (!claim?.claim_token) throw new Error("cortex-ia returned no claim token");
         const claimedLeases: any[] = Array.isArray(claim.reserved_files) ? claim.reserved_files : [];
@@ -1357,7 +1401,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_reconcile: tool({
-      description: "Force-release an orphaned live work claim so the task can be retried (Orchestrator only).",
+      description: "Force-release a live claim whose controller is gone so the task can be retried (orchestrator only). Requires a reason and the current revision; default target blocked, to: ready releases directly. For expired claims use work_recover instead.",
       args: {
         task_id: tool.schema.string(),
         reason: tool.schema.string().describe("Audit explanation"),
@@ -1374,65 +1418,47 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_renew: tool({
-      description: "Renew the live claim retained by this bridge.",
-      args: { task_id: tool.schema.string(), ttl: tool.schema.string().optional() },
+      description: "Renew the live claim and every file lease this session holds for the task in one call (implement only). Requires a live claim. Returns the new expiry without tokens. BRIDGE_AUTHORITY_UNUSABLE means the claim expired: stop writing and reconcile.",
+      args: { task_id: tool.schema.string() },
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID);
-        const command = ["work", "renew", args.task_id, "--claim-token", "@stdin"];
-        if (args.ttl) command.push("--ttl", args.ttl);
-        const renewed = JSON.stringify(withoutToken(parseJSON(cortexAuthorized(command, authority.claimToken)), "claim_token"));
+        const leases: Record<string, string> = {};
+        for (const [leasePath, token] of authority.leases) leases[leasePath] = token;
+        const stdin = JSON.stringify({ claim_token: authority.claimToken, leases });
+        const receipt = parseJSON(cortexInput(
+          ["work", "controller-renew", args.task_id, "--owner", controllerIdentity(context.sessionID), "--authority", "@stdin", "--ttl", maintenancePolicy.ttl],
+          stdin
+        ));
+        if (receipt?.task_id !== args.task_id || receipt?.lease_count !== authority.leases.size) {
+          throw new Error("controller renewal unconfirmed: query work_status before continuing");
+        }
         if (!authority.maintenance?.active) startMaintenance(args.task_id, authority, context.directory);
-        return renewed;
+        return JSON.stringify({ task_id: receipt.task_id, owner: receipt.owner, expires_at: receipt.expires_at, lease_count: receipt.lease_count });
       }
     }),
 
     cortex_ia_file_reserve: tool({
-      description: "Reserve one or more file leases for a claimed task.",
+      description: "Reserve leases for files you are about to edit (implement only). Requires a live claim in in_progress. Reserve each file before writing it, in sorted order. On BRIDGE_WRITE_AUTHORITY_UNUSABLE or a path conflict, release what you reserved and stop writing.",
       args: {
         task_id: tool.schema.string(),
-        path: tool.schema.string().optional(),
-        paths: tool.schema.array(tool.schema.string()).optional(),
-        ttl: tool.schema.string().optional()
+        paths: tool.schema.array(tool.schema.string()).describe("Workspace-relative files to reserve (1-128)")
       },
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID, true);
         const targetPaths = reservationPaths(args);
-        if (!targetPaths.length) throw new Error("either 'path' or 'paths' must be provided to reserve files");
+        if (!targetPaths.length) throw new Error("paths must list at least one file to reserve");
         const command = ["work", "reserve", args.task_id, "--claim-token", "@stdin", ...targetPaths.flatMap(p => ["--path", p])];
-        if (args.ttl) command.push("--ttl", args.ttl);
         const response = parseJSON(cortexAuthorized(command, authority.claimToken));
         const reserved = reservationReceipt(response?.reserved || [response], targetPaths);
         for (const lease of reserved) authority.leases.set(lease.path, lease.lease_token);
         const results = reserved.map(lease => withoutToken(lease, "lease_token"));
         saveAuthorityState();
-        if (results.length === 1 && args.path) {
-          return JSON.stringify(results[0]);
-        }
         return JSON.stringify({ reserved: results, count: results.length });
       }
     }),
 
-    cortex_ia_work_lease_renew: tool({
-      description: "Renew a live file lease retained by this bridge.",
-      args: { task_id: tool.schema.string(), path: tool.schema.string(), ttl: tool.schema.string().optional() },
-      async execute(args, context) {
-        const authority = authorityForSession(args.task_id, context.sessionID);
-        const normalizedPath = workPath(args.path);
-        const leaseToken = authority.leases.get(normalizedPath);
-        if (!leaseToken) throw authorityFailure("BRIDGE_LEASE_MISSING", args.task_id, context.sessionID, normalizedPath);
-        const command = ["work", "lease-renew", "--path", normalizedPath, "--lease-token", "@stdin"];
-        if (args.ttl) command.push("--ttl", args.ttl);
-        const lease = parseJSON(cortexAuthorized(command, leaseToken));
-        if (lease?.path && lease?.lease_token) {
-          authority!.leases.delete(normalizedPath);
-          authority!.leases.set(lease.path, lease.lease_token);
-        }
-        return JSON.stringify(withoutToken(lease, "lease_token"));
-      }
-    }),
-
     cortex_ia_work_release_all: tool({
-      description: "Release all task file leases in one transaction.",
+      description: "Release all file leases for the task in one transaction and stop its heartbeat (implement only). Use when abandoning the claim or before blocking it. WORK_RELEASE_UNCONFIRMED means leases are still held: read work_status before retrying.",
       args: { task_id: tool.schema.string() },
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID);
@@ -1449,23 +1475,21 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_file_release: tool({
-      description: "Release one or more file reservations using the token(s) retained by this bridge.",
+      description: "Release file leases this session holds (implement only). Requires a live claim. Returns released paths and per-path failures; BRIDGE_LEASE_MISSING means the path was never reserved by this session. Release each file as soon as its edits are done.",
       args: {
         task_id: tool.schema.string(),
-        path: tool.schema.string().optional().describe("Single workspace-relative file path to release"),
-        paths: tool.schema.array(tool.schema.string()).optional().describe("List of workspace-relative file paths to release")
+        paths: tool.schema.array(tool.schema.string()).describe("Workspace-relative files to release")
       },
       async execute(args, context) {
         const authority = authorityForSession(args.task_id, context.sessionID);
         const targetPaths: string[] = [];
-        if (args.path) targetPaths.push(args.path);
         if (Array.isArray(args.paths)) {
           for (const p of args.paths) {
             if (p && !targetPaths.includes(p)) targetPaths.push(p);
           }
         }
         if (targetPaths.length === 0) {
-          throw new Error("either 'path' or 'paths' must be provided to release files");
+          throw new Error("paths must list at least one file to release");
         }
         const released: string[] = [];
         const failures: Array<{ path: string; error: string }> = [];
@@ -1485,29 +1509,25 @@ export const CortexWorkPlugin = Plugin.define({
           }
         }
         saveAuthorityState();
-        if (targetPaths.length === 1 && args.path && failures.length === 0) {
-          return JSON.stringify({ released: released[0], status: "released" });
-        }
         return JSON.stringify({ released, failures });
       }
     }),
 
     cortex_ia_work_transition: tool({
-      description: "Transition claimed task state (in_review, in_progress, blocked) with evidence. Transitioning to in_review fails with GOTCHA_EVIDENCE_REQUIRED when the task's approval history contains a FAIL unless evidence_refs includes \"gotchas/<task_id>\".",
+      description: "Move the claimed task to in_review, in_progress or blocked with evidence (implement only). Requires a live claim and the current revision; a stale revision fails, so read work_status first. in_review fails GOTCHA_EVIDENCE_REQUIRED when the approval history holds a FAIL: add evidence_refs gotchas/<task_id>.",
       args: {
         task_id: tool.schema.string(),
-        to: tool.schema.enum(["in_review", "in_progress", "blocked"]).optional(),
-        status: tool.schema.enum(["in_review", "in_progress", "blocked"]).optional().describe("Alias for 'to'"),
-        revision: tool.schema.number().describe("Current task revision, from the claim receipt or cortex_ia_work_status"),
+        to: tool.schema.enum(["in_review", "in_progress", "blocked"]),
+        revision: tool.schema.number().describe("Current task revision from work_status"),
         summary: tool.schema.string().optional().describe("Human-readable execution summary"),
         verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"]).optional().describe("Verification verdict"),
         evidence_refs: tool.schema.array(tool.schema.string()).optional().describe("Pointers to verified test files, commands or observations"),
-        changed_files: tool.schema.array(tool.schema.string()).optional().describe("List of modified workspace files"),
-        blocked_reason: tool.schema.enum(["authority_expired", "upstream", "needs_user", "env", "scope_drift"]).optional().describe("Structured reason class for blocked transitions")
+        changed_files: tool.schema.array(tool.schema.string()).optional().describe("Modified workspace files"),
+        blocked_reason: tool.schema.enum(["authority_expired", "upstream", "needs_user", "env", "scope_drift"]).optional().describe("Reason class for blocked transitions")
       },
       async execute(args, context) {
-        const targetState = args.to || args.status;
-        if (!targetState) throw new Error("'to' or 'status' is required for work transition");
+        const targetState = args.to;
+        if (!targetState) throw new Error("'to' is required for work transition: one of in_review, in_progress, blocked");
         const authority = authorityForSession(args.task_id, context.sessionID);
         if (targetState === "in_review") assertInReviewGotchaEvidence(args.task_id, args.evidence_refs);
         const command = ["work", "transition", args.task_id, "--claim-token", "@stdin", "--to", targetState];
@@ -1537,14 +1557,14 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_approve: tool({
-      description: "Record independent task review verdict. PASS transitions task to done.",
+      description: "Record an independent review verdict for a task in review (reviewer or orchestrator; never the implementing session). PASS requires evidence and moves the task to done. EVIDENCE_REQUIRED: pass evidence. Stale revision: read work_status, then re-review.",
       args: {
         task_id: tool.schema.string(),
-        verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "pass", "fail", "blocked", "inconclusive"]),
-        evidence: tool.schema.string().optional().describe("Evidence pointer (test output, observation id, commit). Required for PASS; summary and findings are appended to it"),
-        revision: tool.schema.number().describe("Current task revision, from the claim receipt or cortex_ia_work_status"),
-        summary: tool.schema.string().optional().describe("Independent review summary and lens verdict"),
-        findings: tool.schema.array(tool.schema.string()).optional().describe("List of review findings or blockers")
+        verdict: tool.schema.enum(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"]).describe("Review verdict; lowercase input is accepted"),
+        evidence: tool.schema.string().optional().describe("Evidence pointer (test output, observation id, commit); required for PASS"),
+        revision: tool.schema.number().describe("Current task revision from work_status"),
+        summary: tool.schema.string().optional().describe("Review summary and lens verdicts"),
+        findings: tool.schema.array(tool.schema.string()).optional().describe("Review findings or blockers")
       },
       async execute(args, context) {
         if (workAuthority.get(args.task_id)?.sessionID === context.sessionID) throw new Error("implementation session cannot approve its own task");
@@ -1565,7 +1585,7 @@ export const CortexWorkPlugin = Plugin.define({
 
 
     cortex_ia_report_error: tool({
-      description: "Emit an operational error and incident report to the central telemetry hub and local ledger.",
+      description: "Record an operational error in the telemetry ledger. Unknown codes fall back to ERR_TOOL_EXECUTION_FAILED. Use for tool and infrastructure failures, not for expected blockers.",
       args: {
         code: tool.schema.string().describe("Standard error code (ERR_TASK_BLOCKED, ERR_DELEGATION_FAIL, ERR_INVARIANT_VIOLATION, ERR_VERIFICATION_FAIL, ERR_TOOL_EXECUTION_FAILED, ERR_TOOL_LEASE_REQUIRED, ERR_TOOL_MCP_FAILED, ERR_TOOL_INVALID_ARGS)"),
         message: tool.schema.string().describe("Descriptive error message explaining the failure condition"),
@@ -1599,7 +1619,7 @@ export const CortexWorkPlugin = Plugin.define({
     work_recover: ["orchestrator"], work_recover_own: ["implement"], work_retry: ["orchestrator"], work_review_refresh: ["orchestrator"], work_decompose: ["planner"],
     work_reconcile: ["orchestrator"],
     work_claim: ["implement"], work_renew: ["implement"],
-    file_reserve: ["implement"], work_lease_renew: ["implement"],
+    file_reserve: ["implement"],
     work_release_all: ["implement"], file_release: ["implement"], work_transition: ["implement"],
     work_approve: ["reviewer", "orchestrator"],
     doc_convert: roles,
@@ -1630,10 +1650,9 @@ export const CortexWorkPlugin = Plugin.define({
               directory: toolCtx?.directory || hostDirectory,
             };
             const result = await def.execute(input, context);
-            if (result && typeof result === "object" && "content" in result) {
-              return result;
-            }
-            return { content: typeof result === "string" ? result : JSON.stringify(result, null, 2) };
+            // OpenCode ToolResult is `string | { output, title?, metadata? }`.
+            if (result && typeof result === "object" && "output" in result) return result;
+            return typeof result === "string" ? result : JSON.stringify(result, null, 2);
           };
           editor.add({
             name,

@@ -28,7 +28,7 @@ func boardTools() []tool {
 	return []tool{
 		{
 			Name:        "cortex_ia_board_create",
-			Description: "Create one durable Cortex-IA initiative board.",
+			Description: "Create one durable board for an initiative (planner or orchestrator). Use one stable board_id per initiative; list boards first to avoid duplicates.",
 			Schema: schemaObject(props(
 				"board_id", schemaString("Stable board identifier"),
 				"title", schemaString("Board title"),
@@ -38,7 +38,7 @@ func boardTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_board_list",
-			Description: "List durable Cortex-IA initiative boards.",
+			Description: "List durable initiative boards with their IDs and titles. Read-only.",
 			Schema:      schemaObject(props()),
 			Call: func(ctx context.Context, s *session, _ map[string]any) (string, error) {
 				return s.runClean(ctx, []string{"board", "list"})
@@ -46,7 +46,7 @@ func boardTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_board_status",
-			Description: "Read one board and its authoritative task snapshot.",
+			Description: "Read one board and its authoritative task snapshot. Read-only; use before creating work on an existing board.",
 			Schema:      schemaObject(props("board_id", schemaString("Board identifier")), "board_id"),
 			Call: func(ctx context.Context, s *session, args map[string]any) (string, error) {
 				board, err := reqString(args, "board_id")
@@ -58,7 +58,7 @@ func boardTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_report_error",
-			Description: "Emit an operational error and incident report to the central telemetry hub and local ledger. Failures are returned as an error object, not a tool error.",
+			Description: "Record an operational error in the telemetry ledger. Unknown codes fall back to ERR_TOOL_EXECUTION_FAILED. Use for tool and infrastructure failures, not for expected blockers.",
 			Schema: schemaObject(props(
 				"code", schemaString("Standard error code (ERR_TASK_BLOCKED, ERR_DELEGATION_FAIL, ERR_INVARIANT_VIOLATION, ERR_VERIFICATION_FAIL, ERR_TOOL_EXECUTION_FAILED, ERR_TOOL_LEASE_REQUIRED, ERR_TOOL_MCP_FAILED, ERR_TOOL_INVALID_ARGS)"),
 				"message", schemaString("Descriptive error message explaining the failure condition"),
@@ -69,7 +69,7 @@ func boardTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_snapshot_read",
-			Description: "Read one exact local Cortex observation through Cortex-IA's bounded streaming project export. Verifies identity and optional SHA-256; returns content and digest. Never substitutes for a remote MCP store.",
+			Description: "Read one local Cortex observation by ID through the bounded local export. Verifies identity and optional expected_sha256. Read-only; local CLI only, never a remote MCP store.",
 			Schema: schemaObject(props(
 				"observation_id", schemaNumber("Positive safe integer observation ID"),
 				"project", schemaString("Project identifier (1-512 UTF-8 bytes)"),
@@ -79,20 +79,12 @@ func boardTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_workload_audit",
-			Description: "Audit uncommitted git diff lines against the Cortex-IA workload budget (strict <=350 LOC, flexible <=700 LOC) before transitioning to review.",
+			Description: "Audit uncommitted git diff against the workload budget. Read-only; run before work_transition to in_review. Returns workload_status (PASS, EXCEEDED_ADVISORY, WORKLOAD_SOURCE_BUDGET_EXCEEDED, WORKLOAD_TEST_BUDGET_EXCEEDED).",
 			Schema: schemaObject(props(
-				"policy", schemaEnum("Workload policy threshold to evaluate against", "strict", "flexible", "unbounded"),
-				"baseRef", schemaString("Git reference to compare against (defaults to HEAD)"),
+				"policy", schemaEnum("Budget tier to evaluate against (default flexible)", "strict", "flexible", "unbounded"),
+				"baseRef", schemaString("Git revision to diff against (default HEAD)"),
 			)),
 			Call: workloadAudit,
-		},
-		{
-			Name:        "cortex_ia_work_watch",
-			Description: "Check the live Cortex-IA task authority, active board state, claims, and remaining lease TTL.",
-			Schema: schemaObject(props(
-				"board", schemaString("Board ID to query (defaults to 'default')"),
-			)),
-			Call: workWatch,
 		},
 	}
 }
@@ -212,13 +204,4 @@ func verifySnapshot(stdout, project string, id int64, expected string, hasExpect
 		return "", errors.New("snapshot digest mismatch")
 	}
 	return encodeJSON(snapshot)
-}
-
-func workWatch(ctx context.Context, s *session, args map[string]any) (string, error) {
-	board := optString(args, "board")
-	if board == "" {
-		board = "default"
-	}
-	argv := []string{"work", "status", "--project", s.workspace, "--board", board}
-	return s.runClean(ctx, argv)
 }

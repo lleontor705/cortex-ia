@@ -4,4 +4,4 @@ agent: orchestrator
 subagent: false
 ---
 
-Dispatch the native `discovery` agent to inspect the current project and write or refresh `./.cortex-ia/discovery.md`. The discovery agent must remain read-only except for its typed report writer, must not install or execute builds, and must report missing engines and uncertain architecture as evidence-backed unknowns: $ARGUMENTS
+Dispatch the native `discovery` agent to write or refresh `./.cortex-ia/discovery.md`. Apart from its report writer and the `.gitignore` hygiene append, it stays read-only. It does not install packages or run builds, and it reports missing engines and uncertain architecture as unknowns with evidence. Focus, if given: $ARGUMENTS

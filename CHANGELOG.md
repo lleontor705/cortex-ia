@@ -12,6 +12,8 @@ All notable changes to this project are documented here. Versions follow
   the `cortex_ia_openspec_validate`, `cortex_ia_openspec_write` and `cortex_ia_change_archive` tools,
   the spec planes (`openspec`, `cortex`, `hybrid`) and the `sdd-lite` and `sdd-full` workflows.
   Retired commands and flags fail with a "retired" error.
+- Tools `cortex_ia_work_lease_renew` (merged into `cortex_ia_work_renew`) and the unusable
+  `cortex_ia_work_watch`; the `path`, `ttl`, `status` and `role` aliases on work tools.
 
 ### Changed
 
@@ -22,12 +24,28 @@ All notable changes to this project are documented here. Versions follow
 - Work workflows are `direct-change`, `fast-tdd`, `hotfix` and `ops-task`.
 - Migration: a schema migration converts existing SDD tasks to `direct-change` tasks, clears their
   contracts and drops the `change_archives` table.
+- Agent instructions rewritten: the installed `AGENTS.md` drops from about 6,900 to 750 tokens,
+  role prompts shrink by 40-80%, every rule lives in one contract, and capitalised MUST/NEVER
+  imperatives are replaced by plain rules with their reasons.
+- Organic orchestration: the orchestrator picks the route, scales effort to the request, does
+  targeted reads itself, and runs parallel implementers only for independent tasks (at most four).
+- One dispatch brief (with `context` and `evidence_refs`) and one completion receipt; per-check
+  verdicts use `check_id`.
+- The reviewer works from goals and risk lenses instead of a five-phase script.
+- Claude Code and agy now give every role the global guide, not only the orchestrator.
+- `cortex_ia_work_status` returns a compact view (`detail: true` for the full record); tool
+  descriptions state preconditions and error codes; `cortex_ia_workload_audit` is available to
+  implement and reviewer.
+- `scripts/prompt-budget.mjs` ratchets prompt size and imperatives in CI;
+  `docs/evals/agent-evals.md` defines an A/B evaluation protocol.
 
 ### Fixed
 
 - `work approve` requires evidence for a `PASS` verdict.
 - The retry-after-FAIL gotcha rule is documented.
 - The reviewer role is granted the `cortex_search` permission.
+- The planner can write its plan file under all hosts' write guards.
+- `cortex_ia_snapshot_read` and `cortex_ia_workload_audit` return valid OpenCode tool results.
 
 ## v1.0.0 (2026-11-15) — initial release
 

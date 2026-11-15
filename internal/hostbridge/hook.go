@@ -51,6 +51,12 @@ const discoveryDocPath = ".cortex-ia/discovery.md"
 // plannerPlanPath matches docs/plans/<board-id>.md with a single flat name segment.
 var plannerPlanPath = regexp.MustCompile(`^docs/plans/[a-z0-9][a-z0-9._-]{0,127}\.md$`)
 
+var orchestratorReadTools = map[string]bool{"Read": true, "Grep": true, "Glob": true}
+
+// envFileGlob matches a glob or pattern that names env files, such as "*.env",
+// "**/.env*" or "*.{env,txt}".
+var envFileGlob = regexp.MustCompile(`(^|[^A-Za-z0-9_])\.env|[{,]env([^A-Za-z0-9_]|$)`)
+
 var (
 	workAuthorityShellPattern  = regexp.MustCompile(`(^|[\s;&|(])(\S*/)?cortex-ia\s+work\s+(claim|controller-renew|renew|lease|reserve|file-reserve|lease-renew|release|release-all|transition|approve|retry|decompose|recover|reconcile|prune|degrade|revise|review-refresh|archive)\b`)
 	boardMutationShellPattern  = regexp.MustCompile(`(^|[\s;&|(])(\S*/)?cortex-ia\s+board\s+(archive|unarchive|delete)\b`)
@@ -155,7 +161,7 @@ func Decide(in HookInput, deps Deps) (Decision, error) {
 		}
 		return pass(), nil
 	}
-	if in.Host == HostClaude && in.Tool == "Read" && in.Role == "orchestrator" {
+	if in.Host == HostClaude && in.Role == "orchestrator" && orchestratorReadTools[in.Tool] {
 		return decideOrchestratorRead(in), nil
 	}
 	return pass(), nil
@@ -343,12 +349,33 @@ func decideLease(in HookInput, deps Deps, rel string) (Decision, error) {
 	return deny(fmt.Sprintf(`%s Reserve it with cortex_ia_file_reserve({ task_id, paths: ["%s"] }) under your claim, or claim the task with cortex_ia_work_claim({ task_id, paths: ["%s"] }).`, reason, rel, rel)), nil
 }
 
+// decideOrchestratorRead lets the orchestrator read and search inside the
+// workspace. Env files stay unreadable, including through a glob filter.
 func decideOrchestratorRead(in HookInput) Decision {
-	rel, inside := workspaceRelative(in.Workspace, stringArg(in.Args, "file_path"))
-	if inside && rel == discoveryDocPath {
-		return pass()
+	target := stringArg(in.Args, "file_path")
+	glob := ""
+	switch in.Tool {
+	case "Grep":
+		target, glob = stringArg(in.Args, "path"), stringArg(in.Args, "glob")
+	case "Glob":
+		target, glob = stringArg(in.Args, "path"), stringArg(in.Args, "pattern")
 	}
-	return deny("the orchestrator reads only ./.cortex-ia/discovery.md; dispatch investigate for anything else")
+	if target == "" && in.Tool != "Read" {
+		target = "."
+	}
+	rel, inside := workspaceRelative(in.Workspace, target)
+	if !inside {
+		return deny("the orchestrator reads and searches only inside the workspace; dispatch investigate for anything outside it")
+	}
+	if isEnvFile(rel) || envFileGlob.MatchString(glob) {
+		return deny("env files hold secrets and are not readable by the orchestrator; dispatch investigate if their shape is needed")
+	}
+	return pass()
+}
+
+func isEnvFile(rel string) bool {
+	base := path.Base(rel)
+	return base == ".env" || strings.HasPrefix(base, ".env.")
 }
 
 func shellCommand(in HookInput) (string, bool) {

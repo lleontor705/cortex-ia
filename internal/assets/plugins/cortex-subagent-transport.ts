@@ -398,7 +398,6 @@ const STRICT_AUTHORITY_TOOLS = new Set([
   "cortex_ia_work_claim",
   "cortex_ia_work_renew",
   "cortex_ia_file_reserve",
-  "cortex_ia_work_lease_renew",
   "cortex_ia_work_release_all",
   "cortex_ia_file_release",
   "cortex_ia_work_transition",

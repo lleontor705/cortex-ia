@@ -7,53 +7,36 @@ metadata:
   version: "1.0.0"
 ---
 
-# AST Impact Analysis & Test Selection Engine
+# AST impact analysis
 
-Use this skill to identify the exact downstream blast radius, affected call chains, and minimal impacted test suites before running costly test suites or making interface modifications.
+Use this skill to find the blast radius of a change and the smallest set of tests that cover it. Run it before a costly test run or before changing an interface.
 
-## 1. Native Cortex AST Intelligence (Primary)
+## Code-intelligence tools
 
-Always prefer Cortex Zero-CGO AST tools over manual regex grep loops:
+Prefer the Cortex AST tools to grep loops:
 
-1. **Map the Impact Boundary**:
-   - MCP: `cortex_get_code_symbols(project, kind, file_path)` plus bounded source reads and `cortex_detect_cycles(project)`.
-   - CLI: use `cortex ingest`, `cortex symbols`, and repository-native caller searches supported by the current binary.
-   - Do not use `cortex_get_blast_radius` for code symbols: its current schema requires a numeric observation ID and traverses observation relationships.
-2. **Inspect Call Graphs & Hierarchies**:
-   - MCP: `cortex_get_code_graph(project)` / `cortex_get_code_symbols(project, kind, file_path)`
-   - CLI: `cortex code graph --project=<project>`
-3. **Detect Dependency Cycles**:
-   - MCP: `cortex_detect_cycles(project)`
-   - CLI: `cortex code cycles --project=<project>`
+- **Definitions and callers**: `cortex_get_code_symbols(project, kind, file_path)`, then bounded reads of the callers. CLI equivalent: `cortex ingest`, `cortex symbols`.
+- **Call graph**: `cortex_get_code_graph(project)`. CLI: `cortex code graph --project=<project>`.
+- **Cycles**: `cortex_detect_cycles(project)`. CLI: `cortex code cycles --project=<project>`.
 
-## 2. Discovery Principles & Targeted Execution
-- **Baseline Impact Boundary**: Before editing an interface or function, record its definitions, direct source callers, imports, and focused test packages.
-- **Targeted Execution:** Never run global test suites (`npm test`, `pytest`, `cargo test`, `go test ./...`) during iterative code-fix loops when the impacted blast radius can be isolated.
-- **Coupling Spike Warning**: If an edit increases downstream dependents beyond expected scope, evaluate whether an abstraction is leaking.
+Do not pass code symbols to `cortex_get_blast_radius`. It takes a numeric observation ID and walks observation relations, not code.
 
-## 3. Language-Specific Impact & Test Execution Strategies
+## Procedure
 
-### Go
-- Query definitions with `cortex_get_code_symbols`; locate direct callers with bounded repository search.
-- Targeted Test: `go test -v -run ^TestFunctionName$ ./internal/pkg/...`
-- Package Sweep: `go test -v ./internal/pkg/...`
+1. Before editing an interface or function, record its definition, direct callers, imports, and the focused test packages.
+2. Run only the target test first and confirm it fails for the expected reason (the RED step in Fast-TDD).
+3. Make the change in the bounded scope. Run the target test and confirm it passes.
+4. Run the tests in the immediate blast-radius packages.
+5. Leave the full suite to the reviewer. Do not run `go test ./...`, `npm test`, `pytest`, or `cargo test` on the whole repository inside an iteration loop.
 
-### TypeScript / JavaScript (Node, Jest, Vitest, Mocha)
-- Targeted Vitest: `npx vitest run [path_to_test] -t "[target_describe_or_it]"`
-- Targeted Jest: `npx jest [path_to_test] -t "[target_describe_or_it]"`
-- Targeted Mocha: `npx mocha [path_to_test] --grep "[pattern]"`
+If an edit adds many dependents beyond the expected scope, check whether an abstraction is leaking before continuing.
 
-### Python (pytest, unittest)
-- Targeted Pytest: `pytest [path_to_test.py] -k "[function_name]"`
-- Fast fail flag: `pytest -x --tb=short [path_to_test.py]`
+## Targeted test commands
 
-### Rust / C#
-- Rust: `cargo test test_function_name`
-- .NET: `dotnet test --filter FullyQualifiedName~TestClassName`
-
-## 4. Protocol for Fast-TDD Minion
-1. **Calculate Blast Radius**: Determine which symbol and test file govern the task.
-2. **Execute RED:** Run only the target test oracle. Verify expected failure exit code ($\neq 0$).
-3. **Execute GREEN:** Modify implementation file within bounded scope. Run only the target test. Verify exit code $0$.
-4. **Impacted Sweep:** Run only tests in the immediate blast radius package.
-5. **Full Suite Gate (Reviewer Only):** Leave the global regression suite to the `reviewer` role during the delta sync gate.
+- Go: `go test -v -run '^TestName$' ./internal/pkg/...`; package sweep `go test -v ./internal/pkg/...`
+- Vitest: `npx vitest run <path> -t "<name>"`
+- Jest: `npx jest <path> -t "<name>"`
+- Mocha: `npx mocha <path> --grep "<pattern>"`
+- Pytest: `pytest <path> -k "<name>"`; fail fast with `pytest -x --tb=short <path>`
+- Rust: `cargo test <name>`
+- .NET: `dotnet test --filter FullyQualifiedName~<ClassName>`

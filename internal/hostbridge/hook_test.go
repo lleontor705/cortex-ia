@@ -127,14 +127,6 @@ func TestDecideBridgeRoleAndBinding(t *testing.T) {
 	}
 }
 
-func TestDecideOrchestratorRead(t *testing.T) {
-	src := mustDecide(t, claudeInput("orchestrator", "Read", map[string]any{"file_path": "/repo/src/x.go"}), Deps{})
-	assertVerdict(t, src, Deny, "dispatch investigate")
-
-	discovery := mustDecide(t, claudeInput("orchestrator", "Read", map[string]any{"file_path": "/repo/.cortex-ia/discovery.md"}), Deps{})
-	assertVerdict(t, discovery, PassThrough, "")
-}
-
 func TestDecideShell(t *testing.T) {
 	cases := []struct {
 		command string

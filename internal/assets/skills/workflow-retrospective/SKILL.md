@@ -7,41 +7,21 @@ metadata:
   version: "1.0.0"
 ---
 
-# Workflow retrospective
+# Workflow Retrospective
 
-Run as a read-only `investigate` mode. Inspect authoritative work revisions, review findings, failure evidence, referenced artifacts, commands, and relevant agent instructions. Do not edit skills, code, configuration, task state, or installation. A retrospective recommends a separate bounded change; it never applies one automatically.
+Run this as a read-only `investigate` pass. Read the work revisions, review findings, failure evidence, referenced artifacts, commands, and the agent instructions involved. Change nothing: no skills, code, configuration, task state, or installation. The retrospective recommends a separate, bounded change, and someone else applies it.
 
 ## Method
 
-1. Define the reviewed task or session and its terminal or current state.
-2. Build a revision timeline containing only state transitions, distinct failure causes, oracle results, and corrective attempts. Collapse repeated instances of the same cause.
-3. Identify the earliest boundary that could have prevented each repeated failure.
+1. Define the subject (the task or session) and its current or terminal state.
+2. Build a revision timeline of state transitions, distinct failure causes, oracle results, and corrective attempts. Merge repeats of the same cause into one entry.
+3. For each repeated failure, find the earliest boundary that could have prevented it.
 4. Classify each candidate as `navigation`, `automated-check`, `review-rule`, `planning-contract`, `tool-economy`, `instruction-no-op`, or `information-access`.
-5. Recommend the smallest change that would prevent recurrence. Assign it to `discovery`, `investigate`, `planner`, `orchestrator`, `implement`, `reviewer`, a shared contract, or product tooling.
-6. Rank candidates by repeated cost, preventability, confidence, and implementation risk. Separate observed facts from inferred improvements.
+5. Recommend the smallest change that would prevent recurrence, and assign it to one owner: `discovery`, `investigate`, `planner`, `orchestrator`, `implement`, `reviewer`, a shared contract, or product tooling.
+6. Rank candidates by repeated cost, preventability, confidence, and risk. Keep observed facts separate from inferred improvements.
 
-Do not convert one unusual failure into a universal rule. Prefer an executable check over a prompt rule when both can prevent the same defect. Prefer reviewer guidance over implementer context when the requirement is evaluative rather than necessary to produce the change.
+One unusual failure is not a universal rule. An executable check usually beats a prompt rule for the same defect. Put evaluative requirements in reviewer guidance, not in implementer context.
 
-## Output
+## Report
 
-```json
-{
-  "workflow": "retrospective",
-  "phase_status": "success | partial | blocked",
-  "subject": "",
-  "revision_count": 0,
-  "distinct_failure_causes": [],
-  "repeated_causes": [],
-  "recommendations": [
-    {
-      "category": "",
-      "owner": "",
-      "evidence": [],
-      "change": "",
-      "priority": "high | medium | low"
-    }
-  ],
-  "limitations": [],
-  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective"
-}
-```
+Send the §8 completion receipt, plus `subject`, `revision_count`, `distinct_failure_causes`, `repeated_causes`, a ranked `recommendations` list (each with category, owner, evidence, change, and priority), and `limitations`. Set `next_route` per `cortex-work-protocol.md` §8.

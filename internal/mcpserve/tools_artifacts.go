@@ -19,7 +19,7 @@ func artifactTools() []tool {
 	return []tool{
 		{
 			Name:        "cortex_ia_doc_convert",
-			Description: "Convert an office document into Markdown text and metadata. Inline output is read-only; output_path requires the implement controller's live task and file lease.",
+			Description: "Convert an office document to Markdown text and metadata. Inline output is read-only. output_path writes a file and requires a live implement claim with a file lease on that path.",
 			Schema: schemaObject(props(
 				"file_path", schemaString("Document path under the workspace"),
 				"output_path", schemaString("Optional Markdown output path, leased to the caller"),
@@ -31,7 +31,7 @@ func artifactTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_diagram_validate",
-			Description: "Validate a system diagram JSON specification (architecture, workflow, sequence, dataflow, lifecycle) against topological and structural rules (inspired by archify).",
+			Description: "Validate a diagram JSON spec (architecture, workflow, sequence, dataflow, lifecycle). Read-only. Run before diagram_render; returns structural findings.",
 			Schema: schemaObject(props(
 				"spec_path", schemaString("Diagram specification path under the workspace"),
 				"diagram_type", schemaEnum("Diagram type", diagramTypes...),
@@ -41,7 +41,7 @@ func artifactTools() []tool {
 		},
 		{
 			Name:        "cortex_ia_diagram_render",
-			Description: "Render a diagram specification to interactive HTML. Requires the implement controller's live task and output file lease.",
+			Description: "Render a validated diagram spec to interactive HTML at output_path (implement only). Requires a live claim and a file lease on output_path; reserve it with cortex_ia_file_reserve first.",
 			Schema: schemaObject(props(
 				"spec_path", schemaString("Diagram specification path under the workspace"),
 				"output_path", schemaString("HTML output path, leased to the caller"),

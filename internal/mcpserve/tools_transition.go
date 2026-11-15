@@ -17,10 +17,7 @@ func workTransition(ctx context.Context, s *session, args map[string]any) (strin
 	}
 	target := optString(args, "to")
 	if target == "" {
-		target = optString(args, "status")
-	}
-	if target == "" {
-		return "", errors.New("'to' or 'status' is required for work transition")
+		return "", errors.New("'to' is required: one of in_review, in_progress, blocked")
 	}
 	revision, err := reqRevision(args)
 	if err != nil {
@@ -153,8 +150,9 @@ func workApprove(ctx context.Context, s *session, args map[string]any) (string, 
 	if verdict == "" {
 		return "", errors.New("verdict is required")
 	}
-	if upper := strings.ToUpper(verdict); contains([]string{"PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"}, upper) {
-		verdict = upper
+	verdict = strings.ToUpper(verdict)
+	if !contains([]string{"PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"}, verdict) {
+		return "", errors.New("verdict must be one of PASS, FAIL, BLOCKED, INCONCLUSIVE")
 	}
 	evidence := optString(args, "evidence")
 	if verdict == "PASS" && evidence == "" {

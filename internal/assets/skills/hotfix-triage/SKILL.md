@@ -7,47 +7,26 @@ metadata:
   version: "2.0.0"
 ---
 
-# Hotfix strategy
+# Hotfix Triage
 
-Optimize for safe service restoration, not architectural completeness. Do not refactor, optimize speculatively, add unrelated dependencies, widen permissions, or call `cortex_session_start`/`cortex_session_end` (session lifecycle is owned exclusively by the orchestrator). Define the containment boundary, rollback checkpoint, and stop conditions before editing. Cortex-IA work norms live in `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md`; this file adds only the containment delta.
+Restore service with the smallest change that is safe to ship. Do not refactor, optimise, add dependencies, or widen permissions while containing an incident. The work rules live in `cortex-work-protocol.md`; this file adds only the containment steps.
+
+Before editing, name the containment boundary, the rollback checkpoint, and the conditions that would stop the work.
 
 ## Procedure
 
-1. **Preserve Symptom & Triage Prior Incidents:**
-   - Search historical incidents: `cortex_search(query: "<symptom>", type: "bugfix")` and check `gotchas/<module>`.
-   - Read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md`; establish and execute the tightest safe oracle for the exact incident symptom before editing. In an emergency where containment cannot wait for a complete diagnosis, label the causal verdict `INCONCLUSIVE` and keep containment reversible.
-   - Identify the smallest reproducible failing boundary. Distinguish immediate cause from deeper structural cause and do not let a nearby failure stand in for the reported incident.
-2. **Task & Lease Reservation:**
-   - When a Cortex-IA work task exists, run the canonical implementer lifecycle (claim, task-bound file leases, heartbeat, review, mandatory cleanup). Keep authority tokens only in live context.
-3. **Pre-Edit Blast Radius & Minimal Patch:**
-   - Inspect target symbols and callers with filtered `cortex_get_code_symbols`, source reads, and focused tests; do not pass symbols to the observation-only `cortex_get_blast_radius` tool.
-   - Apply the smallest coherent patch. Patch size is a risk signal, not an arbitrary correctness rule; stop and escalate when the change crosses unresolved architectural, data, or security boundaries.
-4. **Focused Regression & Smoke Check:**
-   - Add or run a targeted regression test when repository policy permits it, then rerun the original incident oracle and a focused smoke check. If no automated oracle exists, state the limitation and use the safest observable check; do not label root cause or verification PASS beyond its evidence.
-5. **Durable Incident & Gotcha Memory:**
-   - Save a sanitized Cortex incident observation (`cortex_save` with `type: "bugfix"`, `topic_key: "hotfix/<incident_id>"` or `gotchas/<incident_id>`): symptom, root cause confidence, patch rationale, commands, outcomes, revision, and follow-up. Do not store tokens, secrets, or raw logs.
-6. **Complete Lifecycle & Mandatory Review:**
-   - Complete the canonical update/release order with sanitized evidence attached. Review follows the review matrix (`cortex-work-protocol.md` §2.7a): an independent reviewer when a Case 6 high-risk trigger applies, otherwise orchestrator approval with an evidence pointer.
+1. **Triage the symptom.**
+   - Search prior incidents with `cortex_search(query: "<symptom>", type: "bugfix")` and check `gotchas/<module>`.
+   - Establish the tightest oracle for the reported symptom before editing (`diagnosis-loop-contract.md`). If containment cannot wait for a full diagnosis, label the causal verdict `INCONCLUSIVE` and keep the containment reversible.
+   - Find the smallest failing boundary. A nearby failure does not stand in for the reported one.
+2. **Reserve the work.** If a Cortex-IA task exists, follow the implementer lifecycle in `cortex-work-protocol.md` §4: claim, file leases, review hand-off, cleanup.
+3. **Check blast radius, then patch.** Find callers with filtered `cortex_get_code_symbols` and source reads. `cortex_get_blast_radius` only observes, so do not feed it symbols. Apply the smallest coherent patch. Stop and escalate when the fix crosses an unresolved architecture, data, or security boundary; patch size is a signal, not a rule.
+4. **Prove it.** Add a targeted regression test where repository policy allows, then rerun the original oracle and a focused smoke check. With no automated oracle, state the limitation and claim no more than the evidence shows.
+5. **Record the incident.** `cortex_save` with `type: "bugfix"` and topic `hotfix/<incident_id>` (or `gotchas/<incident_id>`): symptom, root-cause confidence, patch rationale, commands, outcome, follow-up. Leave out tokens, secrets, and raw logs.
+6. **Close.** Review follows the matrix in `cortex-work-protocol.md` §2.7a: an independent reviewer for high-risk triggers, otherwise orchestrator approval with an evidence pointer.
 
-If the patch only contains the incident, return a separate `plan` follow-up. If authority is lost per the canonical rules, tests regress, or rollback cannot be made safe, stop and return `BLOCKED`; do not issue an improvised destructive rollback.
+If the patch contains only the incident, hand the structural fix to a separate `plan` follow-up. If authority is lost, tests regress, or rollback is unsafe, stop and return `BLOCKED`. Do not improvise a destructive rollback.
 
-## Output
+## Report
 
-```json
-{
-  "workflow": "hotfix",
-  "phase_status": "success | partial | failed | blocked",
-  "task_status": "done | in_progress | blocked | null",
-  "verification_verdict": "PASS | FAIL | BLOCKED | INCONCLUSIVE",
-  "incident_id": "",
-  "containment": "",
-  "root_cause": "",
-  "root_cause_confidence": "high | medium | low",
-  "files_changed": [],
-  "checks": [],
-  "evidence_refs": [],
-  "cleanup": {"leases_released": true, "notes": []},
-  "risks": [],
-  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective"
-}
-```
+Send the §8 completion receipt, plus `incident_id`, `containment`, `root_cause` with `root_cause_confidence`, `files_changed`, `cleanup`, and `risks`. Set `next_route` per `cortex-work-protocol.md` §8.
