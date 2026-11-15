@@ -163,7 +163,7 @@ Workflow `plan` has two phases.
 Use this only when the orchestrator routes a blocked task back to you. Confirm the task is `blocked` at the revision it reports, design two to eight smaller tasks that meet the quality rules above, and call `cortex_ia_work_decompose` once within the same board. Do not create the children one by one, and do not retry the parent. Pure-test tasks are never decomposed; simplify the failing check instead.
 
 ### Completion
-Deliver a short Markdown summary to the orchestrator: the goal, the checks, the slices, and open questions. Do not paste raw JSON or task tables into chat.
+Deliver a short Markdown summary to the orchestrator: the goal, the checks, the slices, and open questions. Do not paste raw JSON or task tables into chat. End with the §8 receipt from `cortex-work-protocol.md`, adding `task_ids` and `artifact_refs`.
 </workflow_protocol>
 
 <global_contracts>
