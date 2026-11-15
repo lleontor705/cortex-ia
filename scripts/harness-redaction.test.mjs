@@ -169,14 +169,16 @@ test('normalizeVerdicts drops malformed entries and trims accepted ones', async 
     { req_id: '   ', verdict: 'PASS', evidence_ref: 'ev-4' },
     { req_id: 'REQ-5', verdict: 'PASS', evidence_ref: 42 },
     { req_id: 'REQ-6', verdict: 'fail', evidence_ref: 'ev-6' },
+    { check_id: ' AC-8 ', verdict: 'FAIL', evidence_ref: 'ev-8' },
     null,
     'REQ-7',
   ]);
 
   // Sandbox-realm arrays have a foreign prototype, so compare structurally.
   assert.deepEqual(JSON.parse(JSON.stringify(result.output.verdicts)), [
-    { req_id: 'REQ-1', verdict: 'PASS', evidence_ref: 'ev-1' },
-    { req_id: 'REQ-2', verdict: 'BLOCKED', evidence_ref: 'ev-2' },
+    { check_id: 'REQ-1', verdict: 'PASS', evidence_ref: 'ev-1' },
+    { check_id: 'REQ-2', verdict: 'BLOCKED', evidence_ref: 'ev-2' },
+    { check_id: 'AC-8', verdict: 'FAIL', evidence_ref: 'ev-8' },
   ]);
 });
 

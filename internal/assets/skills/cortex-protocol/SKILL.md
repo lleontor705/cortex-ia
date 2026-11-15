@@ -1,6 +1,6 @@
 ---
 name: cortex-protocol
-description: Cortex persistent-memory and code-graph protocol — Adaptive-RAG/HippoRAG retrieval, incremental AST ingestion, AST delta auditing, rules-vs-observations boundary, closed-loop failure memory, proactive save taxonomy, single stable session/board continuity, and CLI/watcher workflows. Load explicitly when applying the Cortex protocol to memory, AST, graph, or session/board operations.
+description: Cortex memory and code-graph protocol: searching before acting, what to save and under which topic key, AST ingestion and impact queries, failure gotchas, and session continuity. Load explicitly when applying the Cortex protocol to memory, AST, graph, or session/board operations.
 license: MIT
 metadata:
   author: lleontor705

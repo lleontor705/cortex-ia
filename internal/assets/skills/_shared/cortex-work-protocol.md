@@ -161,13 +161,14 @@ A controller reports its result through the typed tools (`cortex_ia_work_transit
 status: done | blocked | failed              (one line)
 summary: 1-3 sentences, result first
 changed_files: [...]                          (implement only)
-checks: [{ check_id or command, result, evidence_ref }]
+checks: ["<command> -> exit <code>", ...]       (commands actually run)
+verdicts: [{ check_id, verdict, evidence_ref }]   (one per acceptance-check ID in the envelope)
 evidence_refs: [...]
 open_questions / blockers: [...]              (only if any)
 next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective
 ```
 
-- `result` for a check is `PASS`, `FAIL`, `BLOCKED` or `INCONCLUSIVE`. A `status` of `done` is the controller's own outcome and does not approve anything.
+- `verdict` is `PASS`, `FAIL`, `BLOCKED` or `INCONCLUSIVE`. A `status` of `done` is the controller's own outcome and does not approve anything.
 - A `blocked` transition also records `blocked_reason` from `authority_expired | upstream | needs_user | env | scope_drift`, so continuation is deterministic.
 - A PASS needs executable evidence: command, exit code, revision or hash, timestamp and a bounded result. Missing evidence, task mismatch, a stale revision or an incomplete receipt yields `INCONCLUSIVE` or `BLOCKED`, never PASS.
 - A diagnostic phase may end `INCONCLUSIVE` legitimately. Planning PASS attests only to the planning artifact checks, never to product behavior or approval.
@@ -179,7 +180,7 @@ Verification matches the objective: document and contract checks for planning, c
 
 ### 8.1 Per-check verdict protocol
 
-When a dispatch names acceptance checks, its envelope carries their IDs verbatim (for example `AC-2`, from the plan's Acceptance Checks table). The receipt returns exactly one `checks` entry per referenced ID, reusing the same spelling. `evidence_ref` points to the provenance record defined in `cortex-convention.md` § Verbatim provenance.
+When a dispatch names acceptance checks, its envelope carries their IDs verbatim (for example `AC-2`, from the plan's Acceptance Checks table). The receipt returns exactly one `verdicts` entry per referenced ID, reusing the same spelling. `evidence_ref` points to the provenance record defined in `cortex-convention.md` § Verbatim provenance.
 
 An ID that is missing from the receipt, unknown to the envelope or altered from its spelling leaves the completion `INCONCLUSIVE` or `BLOCKED`. When a worker's verdict disagrees with executable verification, the executable result wins and the conflict is recorded as evidence. An absent or failing oracle is never overridden by a worker verdict.
 

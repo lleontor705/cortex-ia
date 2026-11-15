@@ -26,14 +26,9 @@ Read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` for bug fixes.
 
 ## Output
 
-Return the receipt as a Markdown list of `field: value` lines (not JSON), with these fields:
+Return the §8 receipt from `cortex-work-protocol.md` as Markdown `field: value` lines (not JSON), with `workflow: fast-tdd` and this evidence block:
 
-- workflow: fast-tdd
-- phase_status: success | partial | failed | blocked
-- task_status: done | in_progress | blocked | null
-- verification_verdict: PASS | FAIL | BLOCKED | INCONCLUSIVE
-- task_id: null
-- evidence: sub-fields below
+- evidence:
   - red: command, exit_code, oracle, seam, expected_source
   - green: command, exit_code
   - refactor: command, exit_code

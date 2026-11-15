@@ -568,21 +568,23 @@ function safeUnicodeSlice(str: string, maxChars: number): string {
   return chars.slice(0, maxChars).join("") + "...";
 }
 
-const PER_SPEC_VERDICTS = new Set(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"]);
+const PER_CHECK_VERDICTS = new Set(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"]);
 
 // Per-spec verdicts ride additively into the compact projection. Malformed
 // entries are dropped instead of failing the whole receipt so a partially-bad
 // producer can never suppress an otherwise valid compaction.
-function normalizeVerdicts(raw: any): Array<{ req_id: string; verdict: string; evidence_ref: string }> | undefined {
+function normalizeVerdicts(raw: any): Array<{ check_id: string; verdict: string; evidence_ref: string }> | undefined {
   if (!Array.isArray(raw)) return undefined;
-  const verdicts: Array<{ req_id: string; verdict: string; evidence_ref: string }> = [];
+  const verdicts: Array<{ check_id: string; verdict: string; evidence_ref: string }> = [];
   for (const entry of raw) {
     if (!entry || typeof entry !== "object") continue;
-    const reqId = typeof entry.req_id === "string" ? entry.req_id.trim() : "";
+    // req_id is the pre-plan spelling; receipts from older prompts still use it.
+    const rawId = typeof entry.check_id === "string" ? entry.check_id : entry.req_id;
+    const checkId = typeof rawId === "string" ? rawId.trim() : "";
     const verdict = typeof entry.verdict === "string" ? entry.verdict.trim() : "";
-    if (reqId.length === 0 || !PER_SPEC_VERDICTS.has(verdict)) continue;
+    if (checkId.length === 0 || !PER_CHECK_VERDICTS.has(verdict)) continue;
     if (typeof entry.evidence_ref !== "string") continue;
-    verdicts.push({ req_id: reqId, verdict, evidence_ref: entry.evidence_ref });
+    verdicts.push({ check_id: checkId, verdict, evidence_ref: entry.evidence_ref });
   }
   return verdicts;
 }
