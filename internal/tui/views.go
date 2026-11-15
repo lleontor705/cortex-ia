@@ -1,0 +1,667 @@
+package tui
+
+import (
+	"fmt"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/lleontor705/cortex-ia/internal/delegation"
+	"github.com/lleontor705/cortex-ia/internal/install"
+	"github.com/lleontor705/cortex-ia/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/internal/tui/styles"
+	"github.com/lleontor705/cortex-ia/internal/updater"
+)
+
+// spinnerFrames animates the Running screen with smooth dot spinners.
+var spinnerFrames = styles.SpinnerFrames
+
+var (
+	styleTitle    = lipgloss.NewStyle().Bold(true).Foreground(styles.Primary)
+	styleSubtitle = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
+	styleDim      = lipgloss.NewStyle().Foreground(styles.Muted)
+	styleSelected = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
+	styleRow      = lipgloss.NewStyle().Bold(true).Foreground(styles.White).Background(styles.SelectedBG)
+	stylePass     = lipgloss.NewStyle().Bold(true).Foreground(styles.Success)
+	styleFail     = lipgloss.NewStyle().Bold(true).Foreground(styles.Error)
+	styleWarn     = lipgloss.NewStyle().Bold(true).Foreground(styles.Warning)
+	styleConflict = lipgloss.NewStyle().Bold(true).Foreground(styles.Error)
+	styleSection  = lipgloss.NewStyle().Bold(true).Foreground(styles.Primary)
+	styleCaret    = lipgloss.NewStyle().Bold(true).Foreground(styles.Secondary)
+	styleFrame    = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(styles.Line).Padding(0, 1)
+)
+
+var homeDescriptions = []string{
+	"Choose hosts, then deploy or reconcile skills, agents, commands & MCPs",
+	"Inspect and configure managed OpenCode MCP server presets",
+	"Modelo y esfuerzo por agente con vista previa dry-run",
+	"Open interactive local web dashboard (http://127.0.0.1:7331)",
+	"Resumen de uso de OpenCode: tokens, heatmap y ranking de modelos",
+	"Create custom subagents with Cortex-IA safety guardrails",
+	"Assess installation health, digests & recovery journals",
+	"Comprobar y aplicar actualizaciones de versión de cortex-ia",
+	"Remove accredited cortex-ia installation with backup",
+	"Exit cortex-ia",
+}
+
+var mcpDescriptions = map[string]string{
+	"cortex":   "Persistent Memory, AST Knowledge Graph & Epistemic Control",
+	"context7": "Upstash Documentation & Library Context",
+}
+
+// contentWidth clamps the layout to the terminal for basic responsiveness.
+func (m model) contentWidth() int {
+	width := m.width
+	if width <= 0 {
+		width = 80
+	}
+	if width > 100 {
+		width = 100
+	}
+	return width - 4 // frame borders and padding
+}
+
+func truncate(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	if lipgloss.Width(s) <= width {
+		return s
+	}
+	runes := []rune(s)
+	for len(runes) > 0 && lipgloss.Width(string(runes)) > width-1 {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes) + "…"
+}
+
+// bodyHeight is the row budget for screen content.
+func (m model) bodyHeight() int {
+	if m.height <= 0 {
+		return 0
+	}
+	h := m.height - 2
+	if m.confirm.kind != confirmNone {
+		h -= 5
+	}
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+// clampScreen joins top, visible content and bottom within budget rows.
+func clampScreen(top, content, bottom []string, budget, offset int, scrollKeys string) []string {
+	if budget <= 0 {
+		return append(append(append([]string{}, top...), content...), bottom...)
+	}
+	for len(top)+len(bottom) >= budget && len(top) > 1 {
+		top = top[:len(top)-1]
+	}
+	contentBudget := budget - len(top) - len(bottom)
+	if contentBudget < 0 {
+		contentBudget = 0
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(content) {
+		offset = len(content)
+		if offset > 0 {
+			offset--
+		}
+	}
+	visible := content[offset:]
+	needsIndicator := offset > 0 || len(visible) > contentBudget
+	if needsIndicator && contentBudget > 0 {
+		keep := contentBudget - 1
+		if keep < 0 {
+			keep = 0
+		}
+		if len(visible) > keep {
+			visible = visible[:keep]
+		}
+	} else if len(visible) > contentBudget {
+		visible = visible[:contentBudget]
+	}
+	hidden := len(content) - offset - len(visible)
+	lines := append(append([]string{}, top...), visible...)
+	switch {
+	case hidden > 0 && offset > 0:
+		lines = append(lines, styleDim.Render(fmt.Sprintf("↑ %d above · +%d more (%s scroll)", offset, hidden, scrollKeys)))
+	case hidden > 0:
+		lines = append(lines, styleDim.Render(fmt.Sprintf("+%d more (%s scroll)", hidden, scrollKeys)))
+	case offset > 0:
+		lines = append(lines, styleDim.Render(fmt.Sprintf("↑ %d above (%s scroll)", offset, scrollKeys)))
+	}
+	return append(lines, bottom...)
+}
+
+func (m model) View() string {
+	var body string
+	switch m.screen {
+	case screenHome:
+		body = m.viewHome()
+	case screenReview:
+		body = m.viewReview()
+	case screenRunning:
+		body = m.viewRunning()
+	case screenResult:
+		body = m.viewResult()
+	case screenMCP:
+		body = m.viewMCP()
+	case screenWeb:
+		body = m.viewWeb()
+	case screenAgentStudio:
+		body = m.viewAgentStudio()
+	case screenStats:
+		body = m.stats.view(m.contentWidth())
+	case screenModels:
+		body = m.models.view(m.contentWidth())
+	case screenUpgrade:
+		body = m.viewUpgrade()
+	case screenHostPicker:
+		body = m.viewHostPicker()
+	}
+	if m.confirm.kind != confirmNone {
+		body = body + "\n" + m.viewConfirm()
+	}
+	return styleFrame.Render(body)
+}
+
+func (m model) viewUpgrade() string {
+	w := m.contentWidth()
+	if w <= 0 {
+		w = m.width
+	}
+	return m.upgrade.view(w)
+}
+
+func (m model) header(name string) string {
+	return styleTitle.Render("cortex-ia "+m.version) + styleCaret.Render(" _") + styleDim.Render(" · "+name+" · "+m.homeDir)
+}
+
+func (m model) footer(keys string) string {
+	return styleDim.Render(keys)
+}
+
+func (m model) upgradeBadge() string {
+	if m.upgrade.phase == upgradePhaseSuccess || m.upgrade.phase == upgradePhaseUpToDate {
+		return ""
+	}
+	tag := m.upgrade.availableVersion
+	if tag == "" {
+		tag = m.upgrade.latestVersion
+	}
+	if tag == "" {
+		stateRoot := filepath.Join(m.homeDir, ".cortex-ia")
+		st, err := updater.LoadUpdateState(stateRoot)
+		if err == nil && st.UpdateAvailable() {
+			tag = strings.TrimSpace(st.Available)
+			if st.AppliedFloor != "" && tag == strings.TrimSpace(st.AppliedFloor) {
+				tag = ""
+			}
+		}
+	}
+	if tag == "" || tag == strings.TrimSpace(m.version) {
+		return ""
+	}
+	return " " + styleWarn.Render("[NEW "+tag+"]")
+}
+
+func (m model) viewHome() string {
+	width := m.contentWidth()
+	top := m.homeHeaderBlock(width)
+	content := m.homeMenuLines(width)
+	bottom := []string{"", m.footer(truncate("↑/↓ move · 1-9/enter select · q quit", width))}
+
+	offset := 0
+	if m.height > 0 {
+		offset = cursorOffset(m.cursor, len(content), m.bodyHeight(), len(top), len(bottom))
+	}
+	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), offset, "↑/↓"), "\n")
+}
+
+// homeHeaderBlock chooses the logo treatment that fits the terminal: the full
+// wordmark when the whole page fits, the compact mark on medium terminals, and
+// a one-line header when even the compact mark would overflow the width.
+func (m model) homeHeaderBlock(width int) []string {
+	subtitle := func() string {
+		return styleDim.Render(truncate("  OpenCode Edition · "+m.version+" · "+m.homeDir, width))
+	}
+
+	art := styles.HomeLogoArt(width)
+	switch {
+	case art == styles.Logo && (m.height <= 0 || m.height >= styles.LogoFullHeight):
+		return append(strings.Split(styles.ShimmerLogoArt(art, m.logoFrame), "\n"), subtitle(), "")
+	case art != "":
+		lines := strings.Split(styles.ShimmerLogoArt(styles.LogoCompact, m.logoFrame), "\n")
+		if m.height <= 0 || m.height >= styles.LogoMinHeight {
+			lines = append(lines, subtitle())
+		}
+		return append(lines, "")
+	default:
+		return []string{truncate(m.header("Home"), width), ""}
+	}
+}
+
+func (m model) homeMenuLines(width int) []string {
+	badge := m.upgradeBadge()
+	lines := make([]string, 0, len(homeEntries))
+	for i, entry := range homeEntries {
+		prefix := fmt.Sprintf("  [%d] ", i+1)
+		text := entry
+		desc := " · " + styleDim.Render(homeDescriptions[i])
+		entryBadge := ""
+		if i == upgradeEntryIndex && badge != "" {
+			entryBadge = badge
+		}
+		if i == m.cursor {
+			prefix = fmt.Sprintf("▸ [%d] ", i+1)
+			text = styleRow.Render(entry)
+		}
+		lines = append(lines, truncate(prefix+text+entryBadge+desc, width))
+	}
+	return lines
+}
+
+func (m model) viewReview() string {
+	width := m.contentWidth()
+	top := []string{
+		truncate(m.header("Review — "+m.installModeTitle()), width),
+		"",
+	}
+	if m.replanning {
+		top = append(top, styleSubtitle.Render("● planning…"))
+	} else if m.planErr != nil {
+		top = append(top, styleFail.Render("✗ plan error: "+m.planErr.Error()))
+	}
+	top = append(top, styleSection.Render("01 / Selection (space toggles, replans):"))
+	states := []bool{m.opts.Cortex, m.opts.Context7}
+	for i, name := range managedNames {
+		mark := " "
+		if states[i] {
+			mark = "x"
+		}
+		prefix := "  "
+		text := fmt.Sprintf("[%s] %s", mark, name)
+		desc := ""
+		if d, ok := mcpDescriptions[name]; ok {
+			desc = " · " + styleDim.Render(d)
+		}
+		if i == m.mcpCursor {
+			prefix = "> "
+			text = styleRow.Render(text)
+		}
+		top = append(top, truncate(prefix+text+desc, width))
+	}
+	themeMark := " "
+	if m.opts.ApplyTheme {
+		themeMark = "x"
+	}
+	themePrefix := "  "
+	themeText := fmt.Sprintf("[%s] apply cortex theme", themeMark)
+	themeDesc := " · " + styleDim.Render("opt-in; your theme is left untouched unless you select this")
+	if m.mcpCursor == themeRowIndex {
+		themePrefix = "> "
+		themeText = styleRow.Render(themeText)
+	}
+	top = append(top, truncate(themePrefix+themeText+themeDesc, width))
+	top = append(top, "")
+
+	var content []string
+	if m.plan != nil {
+		content = m.planSummary(width)
+	}
+	var bottom []string
+	clearable := 0
+	if m.plan != nil {
+		var blocked []string
+		clearable, blocked = conflictBreakdown(m.plan.Conflicts)
+		switch {
+		case len(blocked) > 0 && clearable == 0:
+			bottom = append(bottom, styleConflict.Render("manual resolution required: "+strings.Join(blocked, ", ")+" (overwrite cannot clear)"))
+		case clearable > 0 && !m.overwrite:
+			bottom = append(bottom, styleWarn.Render("[o] authorize overwrite (destructive, needs confirmed backup)"))
+		case clearable > 0 || m.overwrite:
+			bottom = append(bottom, styleWarn.Render("overwrite authorized — enter asks for explicit confirmation"))
+		default:
+			bottom = append(bottom, styleDim.Render("no blocking conflicts"))
+		}
+	}
+	if m.reviewStatus != "" {
+		bottom = append(bottom, styleWarn.Render(m.reviewStatus))
+	}
+	if m.cortexStatus != "" {
+		bottom = append(bottom, styleSubtitle.Render(truncate(m.cortexStatus, width)))
+	}
+	footerHint := "enter run · b back to wizard · pgup/pgdn scroll · esc home"
+	if clearable > 0 {
+		footerHint = "enter run · b back to wizard · o overwrite · pgup/pgdn scroll · esc home"
+	}
+	bottom = append(bottom, m.footer(footerHint))
+	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), m.reviewScroll, "pgup/pgdn"), "\n")
+}
+
+// conflictBreakdown separates conflicts an explicit overwrite authorization
+// can clear from kinds that always need manual repair, returning the distinct
+// blocked kinds in stable order for deterministic rendering.
+func conflictBreakdown(conflicts []pipeline.Conflict) (clearable int, blocked []string) {
+	seen := make(map[string]struct{}, len(conflicts))
+	for _, conflict := range conflicts {
+		if overwritable(conflict) {
+			clearable++
+			continue
+		}
+		kind := string(conflict.Kind)
+		if _, ok := seen[kind]; ok {
+			continue
+		}
+		seen[kind] = struct{}{}
+		blocked = append(blocked, kind)
+	}
+	sort.Strings(blocked)
+	return clearable, blocked
+}
+
+// overwritable reports whether an explicit overwrite authorization can clear
+// this conflict. The plan's OverwriteAuthorized bit is authoritative, but the
+// file-ownership kinds cortex-ia records as overwritable stay clearable even
+// when a hash-derived plan omitted the bit.
+func overwritable(conflict pipeline.Conflict) bool {
+	if conflict.OverwriteAuthorized {
+		return true
+	}
+	switch conflict.Kind {
+	case pipeline.ConflictUnmanagedExisting, pipeline.ConflictUnmanagedDrift:
+		return true
+	default:
+		return false
+	}
+}
+
+// conflictNotice explains why a plan carrying conflicts cannot run yet,
+// naming the kinds an overwrite authorization would never clear.
+func conflictNotice(conflicts []pipeline.Conflict) string {
+	clearable, blocked := conflictBreakdown(conflicts)
+	switch {
+	case len(blocked) > 0 && clearable == 0:
+		return "cannot run: resolve " + strings.Join(blocked, ", ") + " manually (overwrite cannot clear)"
+	case len(blocked) > 0:
+		return "cannot run: authorize overwrite with [o]; " + strings.Join(blocked, ", ") + " still need manual repair"
+	default:
+		return "cannot run: press [o] to authorize overwrite"
+	}
+}
+
+// planSummary renders the plan effects and conflicts read-only.
+func (m model) planSummary(width int) []string {
+	lines := []string{styleSection.Render(fmt.Sprintf("02 / Effects (%d, plan %s):", len(m.plan.Effects), shortDigest(m.plan.Digest)))}
+	noops := 0
+	listed := 0
+	for _, effect := range m.plan.Effects {
+		switch string(effect.Kind) {
+		case "noop", "mcp-noop":
+			noops++
+			continue
+		}
+		if listed >= 12 {
+			continue
+		}
+		listed++
+		effectTag := stylePass.Render(fmt.Sprintf("  + %s", effect.Kind))
+		if effect.Kind == "safe-merge" {
+			effectTag = styleSubtitle.Render(fmt.Sprintf("  → %s", effect.Kind))
+		}
+		lines = append(lines, truncate(fmt.Sprintf("%s %s", effectTag, effect.Dest), width))
+	}
+	if noops > 0 {
+		lines = append(lines, fmt.Sprintf("  … plus %d already converged", noops))
+	}
+	if len(m.plan.Conflicts) > 0 {
+		lines = append(lines, styleSection.Render(fmt.Sprintf("03 / Conflicts (%d):", len(m.plan.Conflicts))))
+		for _, conflict := range m.plan.Conflicts {
+			suffix := ""
+			if !overwritable(conflict) {
+				suffix = styleConflict.Render("  [overwrite cannot clear this]")
+			}
+			lines = append(lines, truncate(fmt.Sprintf("  %s: %s (%s)", conflict.Target, conflict.Kind, conflict.Reason), width)+suffix)
+		}
+	}
+	return lines
+}
+
+func shortDigest(digest string) string {
+	if len(digest) > 12 {
+		return digest[:12]
+	}
+	return digest
+}
+
+func (m model) viewRunning() string {
+	width := m.contentWidth()
+	lines := []string{
+		truncate(m.header("Running — "+m.running.title), width),
+		"",
+	}
+	spinner := styles.SpinnerChar(m.running.spinner)
+	for _, phase := range m.running.phases {
+		lines = append(lines, styleDim.Render(fmt.Sprintf("  · %s", phase)))
+	}
+
+	// Indeterminate operation indicator (no fabricated phase completion)
+	lines = append(lines, "", fmt.Sprintf("  %s %s", styleSubtitle.Render(spinner), styleSelected.Render("Operation in progress…")))
+
+	// Live elapsed time counter
+	elapsedStr := "00:00.0"
+	if !m.running.startedAt.IsZero() {
+		dur := time.Since(m.running.startedAt)
+		elapsedStr = fmt.Sprintf("%02d:%04.1fs", int(dur.Minutes()), dur.Seconds()-float64(int(dur.Minutes())*60))
+	}
+	lines = append(lines, "", m.footer(fmt.Sprintf("running… elapsed %s · ctrl+c aborts", elapsedStr)))
+	return strings.Join(lines, "\n")
+}
+
+func (m model) viewResult() string {
+	width := m.contentWidth()
+	verdict := styleFail.Render("FAIL")
+	if m.result.pass {
+		verdict = stylePass.Render("PASS")
+	}
+	top := []string{
+		truncate(m.header("Result — "+m.result.title), width),
+		"",
+		verdict,
+		fmt.Sprintf("Changed: %d", m.result.changed),
+	}
+	if m.result.backupID != "" {
+		top = append(top, fmt.Sprintf("Backup: %s", m.result.backupID))
+	}
+	if m.result.canRollback {
+		top = append(top, styleWarn.Render("Rollback: "+m.result.rollbackCmd))
+	}
+	content := make([]string, 0, len(m.result.detail))
+	for _, detail := range m.result.detail {
+		content = append(content, truncate("  "+detail, width))
+	}
+	keys := "enter/m home · ↑/↓ details · q quit"
+	if m.result.canRollback {
+		keys = "enter/m home · ↑/↓ details · r rollback (confirm) · q quit"
+	}
+	bottom := []string{m.footer(keys)}
+	return strings.Join(clampScreen(top, content, bottom, m.bodyHeight(), m.resultScroll, "↑/↓"), "\n")
+}
+
+func (m model) viewMCP() string {
+	width := m.contentWidth()
+	lines := []string{
+		truncate(m.header("MCP Manager"), width),
+		"",
+	}
+	if m.mcpErr != nil {
+		lines = append(lines, styleFail.Render("list error: "+m.mcpErr.Error()), "")
+	}
+	if m.mcpReport == nil {
+		lines = append(lines, styleDim.Render("loading…"))
+	} else {
+		if m.mcpReport.ConfigPath != "" {
+			lines = append(lines, styleDim.Render(truncate("config: "+m.mcpReport.ConfigPath, width)), "")
+		}
+		if len(m.mcpReport.Entries) == 0 {
+			lines = append(lines, styleDim.Render("no managed entries"))
+		}
+		for i, entry := range m.mcpReport.Entries {
+			prefix := "  "
+			text := fmt.Sprintf("%-12s %s", entry.Name, entry.Status)
+			switch string(entry.Status) {
+			case "managed":
+				text = fmt.Sprintf("%-12s %s", entry.Name, stylePass.Render(string(entry.Status)))
+			case "conflict", "unmanaged-equivalent":
+				text = fmt.Sprintf("%-12s %s", entry.Name, styleConflict.Render(string(entry.Status)))
+			}
+			if d, ok := mcpDescriptions[entry.Name]; ok {
+				text = text + "  " + styleDim.Render("("+d+")")
+			}
+			if i == m.cursor {
+				prefix = "> "
+				text = styleSelected.Render(text)
+			}
+			lines = append(lines, truncate(prefix+text, width))
+		}
+		if len(m.mcpReport.Unknown) > 0 {
+			lines = append(lines, "", styleDim.Render("unknown (never touched): "+strings.Join(m.mcpReport.Unknown, ", ")))
+		}
+		if !m.mcpReport.Installed {
+			lines = append(lines, styleDim.Render("no accredited v2 installation: managed adds fail closed until install runs"))
+		}
+	}
+	lines = append(lines, "", m.footer("↑/↓ move · space/enter add|remove · r refresh · esc home"))
+	return strings.Join(lines, "\n")
+}
+
+// viewConfirm renders the explicit confirmation overlay for destructive actions.
+func (m model) viewConfirm() string {
+	width := m.contentWidth()
+	var title, prompt string
+	switch m.confirm.kind {
+	case confirmOverwrite:
+		title = "Confirm overwrite"
+		count := 0
+		digest := ""
+		if m.plan != nil {
+			digest = shortDigest(m.plan.Digest)
+			for _, eff := range m.plan.Effects {
+				if string(eff.Kind) == "overwrite" {
+					count++
+				}
+			}
+			if count == 0 {
+				count = len(m.plan.Conflicts)
+			}
+		}
+		prompt = fmt.Sprintf("Overwrite replaces %d conflicting file(s) after a verified backup (plan %s).", count, digest)
+	case confirmUninstall:
+		title = "Confirm uninstall"
+		prompt = "Uninstall removes cortex-ia-managed files and MCP entries from this home. A verified backup is captured first."
+	case confirmMCPRemove:
+		title = "Confirm MCP remove"
+		prompt = fmt.Sprintf("Remove MCP entry %q. User-owned entries fail closed and nothing is mutated.", m.confirm.arg)
+	case confirmRollback:
+		title = "Confirm rollback"
+		prompt = "Rollback restores the recorded backup, undoing managed changes made after it."
+	case confirmHostUninstall:
+		title = "Confirm uninstall"
+		prompt = "Uninstall removes the cortex-ia-managed files recorded for the selected hosts. Files you modified are kept."
+	case confirmCortexInstall:
+		title = "Confirm cortex install"
+		prompt = fmt.Sprintf("The %q binary is not on PATH. Install it now with 'go install %s'? This runs the Go toolchain and may take a few minutes; declining is safe and keeps the manual command.", install.CortexBinaryName, install.CortexModulePath)
+	default:
+		return ""
+	}
+	lines := []string{
+		styleWarn.Render("● " + title),
+		truncate(prompt, width),
+		styleDim.Render("[y] yes, proceed   [n]/esc no, cancel"),
+	}
+	return styleFrame.BorderForeground(styles.Warning).Render(strings.Join(lines, "\n"))
+}
+
+func (m model) viewWeb() string {
+	width := m.contentWidth()
+	var lines []string
+
+	lines = append(lines, truncate(m.header("CortexIA Web Console"), width), "")
+	lines = append(lines, styleSection.Render("TABLERO KANBAN Y SUPERVISIÓN EN TIEMPO REAL"))
+	lines = append(lines, "")
+	var statusText string
+	var actionText string
+	if m.webStarting {
+		statusText = styleWarn.Render("● Iniciando Servidor...")
+		actionText = styleDim.Render("  [ Iniciando servidor web... apertura de navegador en espera ]")
+	} else if m.webErr != nil {
+		statusText = styleFail.Render(fmt.Sprintf("✗ Error de Inicio: %s", m.webErr.Error()))
+		actionText = styleFail.Render("  [ Error en servidor web — apertura de navegador deshabilitada ]")
+	} else if m.webReady {
+		statusText = stylePass.Render("✓ Servidor Activo")
+		actionText = styleSelected.Render("  [ Presiona 'o' o 'Enter' para abrir en tu navegador predeterminado ]")
+	} else {
+		statusText = styleDim.Render("● Servidor Inactivo")
+		actionText = styleDim.Render("  [ Servidor no disponible — apertura de navegador deshabilitada ]")
+	}
+
+	lines = append(lines, fmt.Sprintf("  • Estado:  %s", statusText))
+	urlStr := "http://127.0.0.1:7331"
+	if m.webURL != "" {
+		urlStr = m.webURL
+	}
+	lines = append(lines, fmt.Sprintf("  • URL:     %s", styleSelected.Render(urlStr)))
+	lines = append(lines, fmt.Sprintf("  • Storage: %s", styleDim.Render(delegation.DefaultDBPath(m.homeDir))))
+	lines = append(lines, "")
+	lines = append(lines, styleDim.Render("Funcionalidades disponibles en el navegador:"))
+	lines = append(lines, "  "+styleSection.Render("→")+" Tablero de Tareas (Kanban DAG: backlog, ready, in_progress, in_review, done)")
+	lines = append(lines, "  "+styleSection.Render("→")+" Monitor de Subagentes (Background subagents, duración en vivo y receipts)")
+	lines = append(lines, "  "+styleSection.Render("→")+" Control de Concurrencia (Active File Leases y Claims)")
+	lines = append(lines, "  "+styleSection.Render("→")+" Grafo de Conocimiento Cortex (AST, símbolos y memoria episódica)")
+	lines = append(lines, "")
+	lines = append(lines, actionText)
+	lines = append(lines, "", m.footer("enter / o abrir navegador · b / esc volver al menú inicio · q salir"))
+	return strings.Join(lines, "\n")
+}
+
+// cursorOffset computes a content offset so that cursorLine is within the visible viewport budget.
+func cursorOffset(cursorLine, totalLines, budget, topLen, bottomLen int) int {
+	if budget <= 0 || totalLines <= 0 {
+		return 0
+	}
+	for topLen+bottomLen >= budget && topLen > 1 {
+		topLen--
+	}
+	contentBudget := budget - topLen - bottomLen
+	if contentBudget <= 0 {
+		return 0
+	}
+	if totalLines <= contentBudget {
+		return 0
+	}
+	keep := contentBudget - 1
+	if keep < 1 {
+		keep = 1
+	}
+	offset := 0
+	if cursorLine >= keep {
+		offset = cursorLine - keep + 1
+	}
+	maxOffset := totalLines - keep
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return offset
+}

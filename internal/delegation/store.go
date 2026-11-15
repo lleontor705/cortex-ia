@@ -1,0 +1,832 @@
+package delegation
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/lleontor705/cortex-ia/internal/logging"
+
+	_ "modernc.org/sqlite"
+)
+
+type Status string
+
+const (
+	StatusAccepted  Status = "accepted"
+	StatusStarting  Status = "starting"
+	StatusRunning   Status = "running"
+	StatusBlocked   Status = "blocked"
+	StatusSucceeded Status = "succeeded"
+	StatusFailed    Status = "failed"
+	StatusTimedOut  Status = "timed_out"
+	StatusCancelled Status = "cancelled"
+	StatusLost      Status = "lost"
+)
+
+var ErrJobNotFound = errors.New("delegation job not found")
+var ErrInvalidTransition = errors.New("invalid delegation state transition")
+
+type Job struct {
+	TerminationReconciled  bool `json:"termination_reconciled,omitempty"`
+	CancellationRequested  bool `json:"cancellation_requested,omitempty"`
+	ReconciliationRequired bool `json:"reconciliation_required,omitempty"`
+	ConversationOwnership
+	ID              string  `json:"job_id"`
+	Role            string  `json:"role"`
+	TaskID          string  `json:"task_id,omitempty"`
+	ObjectiveDigest string  `json:"objective_digest"`
+	Status          Status  `json:"status"`
+	Transport       string  `json:"transport"`
+	Workspace       string  `json:"workspace"`
+	Worktree        string  `json:"worktree,omitempty"`
+	PID             int     `json:"pid,omitempty"`
+	PaneID          string  `json:"pane_id,omitempty"`
+	LeaseOwner      string  `json:"lease_owner,omitempty"`
+	LeaseExpiresAt  *string `json:"lease_expires_at,omitempty"`
+	Attempt         int     `json:"attempt"`
+	ErrorCode       string  `json:"error_code,omitempty"`
+	ErrorMessage    string  `json:"error_message,omitempty"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
+	StartedAt       string  `json:"started_at,omitempty"`
+	FinishedAt      string  `json:"finished_at,omitempty"`
+}
+
+type Receipt struct {
+	TerminationReconciled  bool            `json:"termination_reconciled,omitempty"`
+	ReconciliationRequired bool            `json:"reconciliation_required,omitempty"`
+	JobID                  string          `json:"job_id"`
+	Status                 Status          `json:"status"`
+	Output                 json.RawMessage `json:"output,omitempty"`
+	OutputHash             string          `json:"output_hash,omitempty"`
+	ExitCode               int             `json:"exit_code"`
+	CreatedAt              string          `json:"created_at"`
+}
+
+// ConversationOwnership is host-proven provenance, never claim or board identity.
+type ConversationOwnership struct {
+	OpenCodeSessionID       string `json:"opencode_session_id,omitempty"`
+	OpenCodeRootSessionID   string `json:"opencode_root_session_id,omitempty"`
+	OpenCodeParentSessionID string `json:"opencode_parent_session_id,omitempty"`
+}
+
+func (o ConversationOwnership) Validate() error {
+	s, r, p := o.OpenCodeSessionID, o.OpenCodeRootSessionID, o.OpenCodeParentSessionID
+	for _, id := range []string{s, r, p} {
+		if len(id) > 256 || strings.ContainsAny(id, "\x00") {
+			return errors.New("invalid OpenCode session ID")
+		}
+		for _, c := range id {
+			if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-' {
+				continue
+			}
+			return errors.New("invalid OpenCode session ID")
+		}
+	}
+	if s == "" && r == "" && p == "" || s != "" && r != "" && (s == r && p == "" || s != r && p != "" && p != s) {
+		return nil
+	}
+	return errors.New("invalid OpenCode ownership tuple")
+}
+
+type Store struct {
+	db  *sql.DB
+	now func() time.Time
+}
+
+func DefaultDBPath(home string) string { return filepath.Join(home, ".cortex-ia", "delegation.db") }
+
+func OpenStore(path string) (*Store, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("delegation database path is required")
+	}
+	logging.Debugf("delegation.store.open path=%s", path)
+	if err := CheckSchemaDriftBeforeOpen(path); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("create delegation state directory: %w", err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open delegation database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	store := &Store{db: db, now: time.Now}
+	if err := store.initialize(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+// OpenStoreReadOnly opens the delegation database in read-only mode for fast diagnostic
+// queries and lease checks without attempting schema migrations or acquiring exclusive locks.
+func OpenStoreReadOnly(path string) (*Store, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("delegation database path is required")
+	}
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("delegation database not found: %w", err)
+		}
+		return nil, err
+	}
+	if err := CheckSchemaDriftBeforeOpen(path); err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open read-only delegation database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	for _, pragma := range []string{
+		"PRAGMA journal_mode=WAL", "PRAGMA query_only=ON", "PRAGMA busy_timeout=5000",
+	} {
+		if _, err := db.Exec(pragma); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("configure read-only delegation database: %w", err)
+		}
+	}
+	return &Store{db: db, now: time.Now}, nil
+}
+
+func (s *Store) Close() error { return s.db.Close() }
+
+func (s *Store) initialize(ctx context.Context) error {
+	for _, pragma := range []string{
+		"PRAGMA journal_mode=WAL", "PRAGMA foreign_keys=ON", "PRAGMA busy_timeout=5000",
+	} {
+		if _, err := s.db.ExecContext(ctx, pragma); err != nil {
+			return fmt.Errorf("initialize delegation database: %w", err)
+		}
+	}
+	return s.immediate(ctx, func(conn *sql.Conn) error {
+		if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+				version INTEGER PRIMARY KEY,
+				applied_at TEXT NOT NULL
+			) STRICT`); err != nil {
+			return fmt.Errorf("create migration ledger: %w", err)
+		}
+		var version int
+		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
+			return fmt.Errorf("read migration ledger: %w", err)
+		}
+		if version > MaxSupportedSchemaVersion {
+			return &SchemaDriftError{OnDisk: version, Supported: MaxSupportedSchemaVersion}
+		}
+		logging.Debugf("delegation.store.migrate current_version=%d", version)
+		statements := []string{
+			`CREATE TABLE IF NOT EXISTS delegation_jobs (
+				id TEXT PRIMARY KEY,
+				role TEXT NOT NULL,
+				task_id TEXT NOT NULL DEFAULT '',
+				objective_digest TEXT NOT NULL,
+				status TEXT NOT NULL CHECK(status IN ('accepted','starting','running','blocked','succeeded','failed','timed_out','cancelled','lost')),
+				transport TEXT NOT NULL CHECK(transport IN ('herdr','direct')),
+				workspace TEXT NOT NULL,
+				worktree TEXT NOT NULL DEFAULT '',
+				pid INTEGER NOT NULL DEFAULT 0,
+				lease_owner TEXT NOT NULL DEFAULT '',
+				lease_expires_at TEXT,
+				attempt INTEGER NOT NULL DEFAULT 0,
+				error_code TEXT NOT NULL DEFAULT '',
+				error_message TEXT NOT NULL DEFAULT '',
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				started_at TEXT NOT NULL DEFAULT '',
+				finished_at TEXT NOT NULL DEFAULT ''
+			) STRICT`,
+			`CREATE TABLE IF NOT EXISTS delegation_events (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				job_id TEXT NOT NULL REFERENCES delegation_jobs(id) ON DELETE CASCADE,
+				kind TEXT NOT NULL,
+				from_status TEXT NOT NULL DEFAULT '',
+				to_status TEXT NOT NULL DEFAULT '',
+				detail TEXT NOT NULL DEFAULT '',
+				created_at TEXT NOT NULL
+			) STRICT`,
+			`CREATE TABLE IF NOT EXISTS delegation_receipts (
+				job_id TEXT PRIMARY KEY REFERENCES delegation_jobs(id) ON DELETE CASCADE,
+				status TEXT NOT NULL,
+				output_json TEXT NOT NULL DEFAULT '',
+				output_hash TEXT NOT NULL DEFAULT '',
+				exit_code INTEGER NOT NULL,
+				created_at TEXT NOT NULL
+			) STRICT`,
+			`CREATE INDEX IF NOT EXISTS delegation_jobs_status_idx ON delegation_jobs(status, updated_at)`,
+			`CREATE INDEX IF NOT EXISTS delegation_jobs_updated_idx ON delegation_jobs(updated_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS delegation_events_created_idx ON delegation_events(created_at DESC)`,
+			`CREATE TABLE IF NOT EXISTS work_items (
+				id TEXT PRIMARY KEY,
+				title TEXT NOT NULL,
+				status TEXT NOT NULL CHECK(status IN ('backlog','ready','in_progress','in_review','done','blocked')),
+				revision INTEGER NOT NULL DEFAULT 1,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			) STRICT`,
+			`CREATE TABLE IF NOT EXISTS work_dependencies (
+				item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+				depends_on TEXT NOT NULL REFERENCES work_items(id) ON DELETE RESTRICT,
+				PRIMARY KEY(item_id, depends_on),
+				CHECK(item_id <> depends_on)
+			) STRICT`,
+			`CREATE TABLE IF NOT EXISTS work_claims (
+				item_id TEXT PRIMARY KEY REFERENCES work_items(id) ON DELETE CASCADE,
+				owner TEXT NOT NULL,
+				token_hash TEXT NOT NULL,
+				attempt INTEGER NOT NULL,
+				expires_at TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			) STRICT`,
+			`CREATE TABLE IF NOT EXISTS work_leases (
+				path TEXT PRIMARY KEY,
+				item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+				token_hash TEXT NOT NULL,
+				expires_at TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			) STRICT`,
+			`CREATE TABLE IF NOT EXISTS work_approvals (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+				reviewer TEXT NOT NULL,
+				verdict TEXT NOT NULL CHECK(verdict IN ('PASS','FAIL','BLOCKED','INCONCLUSIVE')),
+				evidence TEXT NOT NULL DEFAULT '',
+				created_at TEXT NOT NULL
+			) STRICT`,
+			`CREATE TABLE IF NOT EXISTS work_events (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+				kind TEXT NOT NULL,
+				from_status TEXT NOT NULL DEFAULT '',
+				to_status TEXT NOT NULL DEFAULT '',
+				detail TEXT NOT NULL DEFAULT '',
+				created_at TEXT NOT NULL
+			) STRICT`,
+			`CREATE INDEX IF NOT EXISTS work_items_status_idx ON work_items(status, updated_at)`,
+			`CREATE INDEX IF NOT EXISTS work_leases_item_idx ON work_leases(item_id, expires_at)`,
+			`CREATE INDEX IF NOT EXISTS work_events_created_idx ON work_events(created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS work_dependencies_depends_on_idx ON work_dependencies(depends_on, item_id)`,
+			`CREATE INDEX IF NOT EXISTS work_approvals_item_id_idx ON work_approvals(item_id, id DESC)`,
+			`CREATE INDEX IF NOT EXISTS work_claims_expires_at_idx ON work_claims(expires_at)`,
+			`CREATE INDEX IF NOT EXISTS work_leases_expires_at_idx ON work_leases(expires_at)`,
+			`CREATE TABLE IF NOT EXISTS work_boards (
+				id TEXT PRIMARY KEY,
+				title TEXT NOT NULL,
+				description TEXT NOT NULL DEFAULT '',
+				status TEXT NOT NULL DEFAULT 'active',
+				revision INTEGER NOT NULL DEFAULT 1,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			) STRICT`,
+			`CREATE TABLE IF NOT EXISTS managed_worktrees (
+				id TEXT PRIMARY KEY,
+				repo_path TEXT NOT NULL,
+				worktree_path TEXT NOT NULL UNIQUE,
+				branch TEXT NOT NULL DEFAULT '',
+				base_ref TEXT NOT NULL DEFAULT '',
+				task_id TEXT NOT NULL DEFAULT '',
+				job_id TEXT NOT NULL DEFAULT '',
+				status TEXT NOT NULL CHECK(status IN ('active','released','pruned')),
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			) STRICT`,
+			`CREATE INDEX IF NOT EXISTS managed_worktrees_repo_idx ON managed_worktrees(repo_path, status)`,
+			`CREATE INDEX IF NOT EXISTS managed_worktrees_task_idx ON managed_worktrees(task_id)`,
+		}
+		for _, statement := range statements {
+			if _, err := conn.ExecContext(ctx, statement); err != nil {
+				return fmt.Errorf("migrate delegation database: %w", err)
+			}
+		}
+		if _, err := conn.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, s.timestamp()); err != nil {
+			return fmt.Errorf("record delegation migration: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(2, ?)`, s.timestamp()); err != nil {
+			return fmt.Errorf("record work-control migration: %w", err)
+		}
+		if version < 3 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `INSERT OR IGNORE INTO work_boards(id,title,description,created_at,updated_at) VALUES('default','Default','Default Cortex task board',?,?)`, now, now); err != nil {
+				return fmt.Errorf("create default task board: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE work_items ADD COLUMN board_id TEXT NOT NULL DEFAULT 'default'`); err != nil {
+				return fmt.Errorf("add task board ownership: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX work_items_board_status_idx ON work_items(board_id, status, updated_at)`); err != nil {
+				return fmt.Errorf("index task board items: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(3, ?)`, now); err != nil {
+				return fmt.Errorf("record task-board migration: %w", err)
+			}
+		}
+		if version < 4 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_definitions (
+				item_id TEXT PRIMARY KEY REFERENCES work_items(id) ON DELETE CASCADE,
+				objective TEXT NOT NULL DEFAULT '',
+				acceptance_criteria TEXT NOT NULL DEFAULT '',
+				verification TEXT NOT NULL DEFAULT '',
+				allowed_files_json TEXT NOT NULL DEFAULT '[]'
+			) STRICT`); err != nil {
+				return fmt.Errorf("create work definitions: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(4, ?)`, now); err != nil {
+				return fmt.Errorf("record work-definition migration: %w", err)
+			}
+		}
+		if version < 5 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE work_items ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`); err != nil {
+				return fmt.Errorf("add work project ownership: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `UPDATE work_items
+				SET workspace = (
+					SELECT MIN(j.workspace) FROM delegation_jobs j
+					WHERE j.task_id = work_items.id AND TRIM(j.workspace) <> ''
+				)
+				WHERE workspace = '' AND 1 = (
+					SELECT COUNT(DISTINCT LOWER(j.workspace)) FROM delegation_jobs j
+					WHERE j.task_id = work_items.id AND TRIM(j.workspace) <> ''
+				)`); err != nil {
+				return fmt.Errorf("backfill work project ownership from delegations: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `UPDATE work_items
+				SET workspace = (
+					SELECT MIN(seed.workspace) FROM work_items seed
+					WHERE seed.board_id = work_items.board_id AND TRIM(seed.workspace) <> ''
+				)
+				WHERE workspace = '' AND 1 = (
+					SELECT COUNT(DISTINCT LOWER(seed.workspace)) FROM work_items seed
+					WHERE seed.board_id = work_items.board_id AND TRIM(seed.workspace) <> ''
+				)`); err != nil {
+				return fmt.Errorf("backfill board project ownership: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX work_items_workspace_status_idx ON work_items(workspace, status, updated_at)`); err != nil {
+				return fmt.Errorf("index work project ownership: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(5, ?)`, now); err != nil {
+				return fmt.Errorf("record work project migration: %w", err)
+			}
+		}
+		if version < 6 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `CREATE TABLE work_decomposition_steps (
+				parent_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+				child_id TEXT NOT NULL UNIQUE REFERENCES work_items(id) ON DELETE RESTRICT,
+				position INTEGER NOT NULL CHECK(position >= 1 AND position <= 8),
+				PRIMARY KEY(parent_id, position),
+				CHECK(parent_id <> child_id)
+			) STRICT`); err != nil {
+				return fmt.Errorf("create work decomposition steps: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX work_decomposition_parent_idx ON work_decomposition_steps(parent_id, position)`); err != nil {
+				return fmt.Errorf("index work decomposition steps: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(6, ?)`, now); err != nil {
+				return fmt.Errorf("record work decomposition migration: %w", err)
+			}
+		}
+		if version < 7 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE delegation_jobs ADD COLUMN pane_id TEXT NOT NULL DEFAULT ''`); err != nil {
+				return fmt.Errorf("add pane_id to delegation_jobs: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(7, ?)`, now); err != nil {
+				return fmt.Errorf("record delegation pane migration: %w", err)
+			}
+		}
+		if version < 8 {
+			now := s.timestamp()
+			// Try adding status column; ignore error if fresh DB table already has it
+			_, _ = conn.ExecContext(ctx, `ALTER TABLE work_boards ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`)
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS work_boards_status_idx ON work_boards(status, updated_at)`); err != nil {
+				return fmt.Errorf("index task board status: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(8, ?)`, now); err != nil {
+				return fmt.Errorf("record board status migration: %w", err)
+			}
+		}
+		if version < 9 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_reviews (
+				item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+				review_id TEXT NOT NULL UNIQUE,
+				attempt INTEGER NOT NULL,
+				implementation_owner TEXT NOT NULL,
+				review_revision INTEGER NOT NULL,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY(item_id)
+			) STRICT`); err != nil {
+				return fmt.Errorf("create work reviews: %w", err)
+			}
+			_, _ = conn.ExecContext(ctx, `ALTER TABLE work_approvals ADD COLUMN review_id TEXT NOT NULL DEFAULT ''`)
+			_, _ = conn.ExecContext(ctx, `ALTER TABLE work_approvals ADD COLUMN review_revision INTEGER NOT NULL DEFAULT 0`)
+			_, _ = conn.ExecContext(ctx, `ALTER TABLE work_approvals ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0`)
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(9, ?)`, now); err != nil {
+				return fmt.Errorf("record work review lineage migration: %w", err)
+			}
+		}
+		if version < 10 {
+			now := s.timestamp()
+			if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS task_facts (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				board_id TEXT NOT NULL DEFAULT 'default',
+				fact TEXT NOT NULL,
+				source TEXT NOT NULL DEFAULT 'orchestrator',
+				created_at TEXT NOT NULL
+			) STRICT`); err != nil {
+				return fmt.Errorf("create task facts: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS task_facts_board_idx ON task_facts(board_id, created_at)`); err != nil {
+				return fmt.Errorf("index task facts: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS progress_evaluations (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				board_id TEXT NOT NULL DEFAULT 'default',
+				cycle INTEGER NOT NULL,
+				summary TEXT NOT NULL,
+				drift_detected INTEGER NOT NULL DEFAULT 0,
+				action TEXT NOT NULL DEFAULT 'continue',
+				created_at TEXT NOT NULL
+			) STRICT`); err != nil {
+				return fmt.Errorf("create progress evaluations: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS progress_evaluations_board_idx ON progress_evaluations(board_id, cycle)`); err != nil {
+				return fmt.Errorf("index progress evaluations: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(10, ?)`, now); err != nil {
+				return fmt.Errorf("record dual ledger migration: %w", err)
+			}
+		}
+		if version < 11 {
+			for _, table := range []string{"work_items", "delegation_jobs"} {
+				for _, column := range []string{"opencode_session_id", "opencode_root_session_id", "opencode_parent_session_id"} {
+					statement := fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s TEXT NOT NULL DEFAULT '' CHECK(length(CAST(%s AS BLOB)) <= 256 AND instr(%s,char(0))=0 AND %s NOT GLOB '*[^A-Za-z0-9_-]*')`, table, column, column, column, column)
+					if _, err := conn.ExecContext(ctx, statement); err != nil {
+						return fmt.Errorf("add conversation ownership: %w", err)
+					}
+				}
+				for _, statement := range []string{
+					fmt.Sprintf(`CREATE INDEX %s_conversation_idx ON %s(workspace,opencode_root_session_id,status,updated_at DESC)`, table, table),
+					fmt.Sprintf(`CREATE TRIGGER %s_ownership_insert BEFORE INSERT ON %s WHEN NOT (
+						(NEW.opencode_session_id='' AND NEW.opencode_root_session_id='' AND NEW.opencode_parent_session_id='') OR
+						(NEW.opencode_session_id<>'' AND NEW.opencode_root_session_id<>'' AND (
+						(NEW.opencode_session_id=NEW.opencode_root_session_id AND NEW.opencode_parent_session_id='') OR
+						(NEW.opencode_session_id<>NEW.opencode_root_session_id AND NEW.opencode_parent_session_id<>'' AND NEW.opencode_parent_session_id<>NEW.opencode_session_id))))
+						BEGIN SELECT RAISE(ABORT,'invalid OpenCode ownership tuple'); END`, table, table),
+					fmt.Sprintf(`CREATE TRIGGER %s_ownership_immutable BEFORE UPDATE OF opencode_session_id,opencode_root_session_id,opencode_parent_session_id ON %s
+						WHEN NEW.opencode_session_id IS NOT OLD.opencode_session_id OR NEW.opencode_root_session_id IS NOT OLD.opencode_root_session_id OR NEW.opencode_parent_session_id IS NOT OLD.opencode_parent_session_id
+						BEGIN SELECT RAISE(ABORT,'immutable OpenCode ownership'); END`, table, table),
+				} {
+					if _, err := conn.ExecContext(ctx, statement); err != nil {
+						return fmt.Errorf("guard conversation ownership: %w", err)
+					}
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(11,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record conversation ownership migration: %w", err)
+			}
+		}
+		if _, err := conn.ExecContext(ctx, `PRAGMA optimize`); err != nil {
+			return fmt.Errorf("optimize cortex database: %w", err)
+		}
+		if version < 12 {
+			for _, statement := range []string{
+				`ALTER TABLE work_definitions ADD COLUMN contract_json TEXT NOT NULL DEFAULT '' CHECK(length(CAST(contract_json AS BLOB))<=32768)`,
+				`ALTER TABLE work_reviews ADD COLUMN binding_json TEXT NOT NULL DEFAULT '' CHECK(length(CAST(binding_json AS BLOB))<=65536)`,
+				`ALTER TABLE work_approvals ADD COLUMN binding_json TEXT NOT NULL DEFAULT '' CHECK(length(CAST(binding_json AS BLOB))<=65536)`,
+				`ALTER TABLE work_approvals ADD COLUMN implementation_owner TEXT NOT NULL DEFAULT ''`,
+				`CREATE TABLE change_archives (archive_key TEXT PRIMARY KEY, board_id TEXT NOT NULL, workspace TEXT NOT NULL, change_id TEXT NOT NULL, workflow TEXT NOT NULL, spec_plane TEXT NOT NULL, binding_sha256 TEXT NOT NULL, manifest_sha256 TEXT NOT NULL DEFAULT '', source_path TEXT NOT NULL DEFAULT '', destination_path TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK(status IN('prepared','complete')), receipt_json TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT`,
+			} {
+				if _, err := conn.ExecContext(ctx, statement); err != nil {
+					return fmt.Errorf("SDD contract migration: %w", err)
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(12,?)`, s.timestamp()); err != nil {
+				return err
+			}
+		}
+		if version < 13 {
+			if err := s.migrateReconciliation(ctx, conn); err != nil {
+				return err
+			}
+		}
+		if version < 14 {
+			if err := s.migrateWorkSubmissions(ctx, conn); err != nil {
+				return err
+			}
+		}
+		if version < 15 {
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE work_items ADD COLUMN workload_policy TEXT NOT NULL DEFAULT 'flexible'`); err != nil {
+				return fmt.Errorf("workload policy migration: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(15,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record workload policy migration: %w", err)
+			}
+		}
+		if version < 16 {
+			for _, stmt := range []string{
+				`CREATE INDEX IF NOT EXISTS work_dependencies_depends_on_idx ON work_dependencies(depends_on, item_id)`,
+				`CREATE INDEX IF NOT EXISTS work_approvals_item_id_idx ON work_approvals(item_id, id DESC)`,
+				`CREATE INDEX IF NOT EXISTS work_claims_expires_at_idx ON work_claims(expires_at)`,
+				`CREATE INDEX IF NOT EXISTS work_leases_expires_at_idx ON work_leases(expires_at)`,
+			} {
+				if _, err := conn.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("query index optimization migration: %w", err)
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(16,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record index optimization migration: %w", err)
+			}
+		}
+		if version < 17 {
+			// The blocked_reason taxonomy is CHECK-enforced at the schema layer so a
+			// future writer cannot bypass the Go validation gate on a blocked transition.
+			blockedReasonCheck := `CHECK(blocked_reason IS NULL OR blocked_reason IN ('authority_expired','upstream','needs_user','env','scope_drift','','unclassified'))`
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE work_items ADD COLUMN blocked_reason TEXT `+blockedReasonCheck); err != nil {
+				return fmt.Errorf("add work item blocked reason: %w", err)
+			}
+			var submissions int
+			if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='work_submissions'`).Scan(&submissions); err != nil {
+				return fmt.Errorf("probe work submissions table: %w", err)
+			}
+			if submissions == 1 {
+				if _, err := conn.ExecContext(ctx, `ALTER TABLE work_submissions ADD COLUMN blocked_reason TEXT `+blockedReasonCheck); err != nil {
+					return fmt.Errorf("add work submission blocked reason: %w", err)
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(17,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record blocked reason migration: %w", err)
+			}
+		}
+		if version < 18 {
+			for _, stmt := range []string{
+				`CREATE TABLE work_leases_v18 (
+					workspace TEXT NOT NULL,
+					path TEXT NOT NULL,
+					item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+					token_hash TEXT NOT NULL,
+					expires_at TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					PRIMARY KEY (workspace, path)
+				) STRICT`,
+				`INSERT INTO work_leases_v18(workspace,path,item_id,token_hash,expires_at,created_at,updated_at) SELECT COALESCE(w.workspace,''), l.path, l.item_id, l.token_hash, l.expires_at, l.created_at, l.updated_at FROM work_leases l JOIN work_items w ON w.id = l.item_id`,
+				`DROP TABLE work_leases`,
+				`ALTER TABLE work_leases_v18 RENAME TO work_leases`,
+				`CREATE INDEX IF NOT EXISTS work_leases_item_idx ON work_leases(item_id, expires_at)`,
+				`CREATE INDEX IF NOT EXISTS work_leases_expires_at_idx ON work_leases(expires_at)`,
+			} {
+				if _, err := conn.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("rebuild work leases keyed by workspace: %w", err)
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(18,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record work lease workspace migration: %w", err)
+			}
+		}
+		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE expires_at<=?`, s.timestamp())
+		return nil
+	})
+}
+
+func (s *Store) timestamp() string { return s.now().UTC().Format(time.RFC3339Nano) }
+
+func (s *Store) immediate(ctx context.Context, fn func(*sql.Conn) error) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.Background(), "ROLLBACK")
+		}
+	}()
+	if err := fn(conn); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func newID() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(raw), nil
+}
+
+func (s *Store) SetPaneID(ctx context.Context, jobID, paneID string) error {
+	now := s.timestamp()
+	return s.immediate(ctx, func(conn *sql.Conn) error {
+		_, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET pane_id=?, updated_at=? WHERE id=?`, paneID, now, jobID)
+		return err
+	})
+}
+
+func (s *Store) MarkBlocked(ctx context.Context, id, detail string) error {
+	return s.transition(ctx, id, []Status{StatusRunning}, StatusBlocked, "blocked", detail)
+}
+
+func (s *Store) MarkResumed(ctx context.Context, id string) error {
+	return s.transition(ctx, id, []Status{StatusBlocked}, StatusRunning, "resumed", "")
+}
+
+func (s *Store) Get(ctx context.Context, id string) (Job, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id,role,task_id,objective_digest,status,transport,workspace,worktree,pid,pane_id,lease_owner,lease_expires_at,attempt,error_code,error_message,created_at,updated_at,started_at,finished_at,opencode_session_id,opencode_root_session_id,opencode_parent_session_id FROM delegation_jobs WHERE id=?`, id)
+	var job Job
+	var lease sql.NullString
+	if err := row.Scan(&job.ID, &job.Role, &job.TaskID, &job.ObjectiveDigest, &job.Status, &job.Transport, &job.Workspace, &job.Worktree, &job.PID, &job.PaneID, &job.LeaseOwner, &lease, &job.Attempt, &job.ErrorCode, &job.ErrorMessage, &job.CreatedAt, &job.UpdatedAt, &job.StartedAt, &job.FinishedAt, &job.OpenCodeSessionID, &job.OpenCodeRootSessionID, &job.OpenCodeParentSessionID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Job{}, ErrJobNotFound
+		}
+		return Job{}, err
+	}
+	if lease.Valid {
+		job.LeaseExpiresAt = &lease.String
+		if (job.Status == StatusStarting || job.Status == StatusRunning || job.Status == StatusBlocked) && lease.String < s.timestamp() {
+			if _, err := s.recoverExpired(ctx, id); err != nil {
+				return Job{}, err
+			}
+			return s.Get(ctx, id)
+		}
+	}
+	job.CancellationRequested = job.ErrorCode == "CANCEL_REQUESTED"
+	if job.Status == StatusLost {
+		if err := s.db.QueryRowContext(ctx, `SELECT `+reconciledJobSQL+` FROM delegation_jobs j WHERE j.id=?`, id).Scan(&job.TerminationReconciled); err != nil {
+			return Job{}, err
+		}
+	}
+	job.ReconciliationRequired = (job.Status == StatusLost || job.ErrorCode == "TERMINATION_UNCONFIRMED") && !job.TerminationReconciled
+	return job, nil
+}
+
+func (s *Store) Result(ctx context.Context, id string) (Receipt, error) {
+	var receipt Receipt
+	var output string
+	err := s.db.QueryRowContext(ctx, `SELECT job_id,status,output_json,output_hash,exit_code,created_at FROM delegation_receipts WHERE job_id=?`, id).Scan(&receipt.JobID, &receipt.Status, &output, &receipt.OutputHash, &receipt.ExitCode, &receipt.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		var jobStatus Status
+		checkErr := s.db.QueryRowContext(ctx, `SELECT status FROM delegation_jobs WHERE id=?`, id).Scan(&jobStatus)
+		if checkErr == nil {
+			return Receipt{}, fmt.Errorf("delegation job %s has not completed (current status: %s)", id, jobStatus)
+		}
+		return Receipt{}, ErrJobNotFound
+	}
+	receipt.Output = json.RawMessage(output)
+	if err == nil && receipt.Status == StatusLost {
+		err = s.db.QueryRowContext(ctx, `SELECT j.status='lost' AND `+reconciledJobSQL+` FROM delegation_jobs j WHERE j.id=?`, id).Scan(&receipt.TerminationReconciled)
+	}
+	receipt.ReconciliationRequired = receipt.Status == StatusLost && !receipt.TerminationReconciled
+	return receipt, err
+}
+
+func (s *Store) Recover(ctx context.Context) (int64, error) {
+	return s.recoverExpired(ctx, "")
+}
+
+func (s *Store) recoverExpired(ctx context.Context, id string) (int64, error) {
+	now := s.timestamp()
+	var changed int64
+	err := s.immediate(ctx, func(conn *sql.Conn) error {
+		rows, err := conn.QueryContext(ctx, `SELECT id,status FROM delegation_jobs WHERE status IN ('starting','running','blocked') AND lease_expires_at IS NOT NULL AND lease_expires_at < ? AND (?='' OR id=?) ORDER BY id`, now, id, id)
+		if err != nil {
+			return err
+		}
+		type expiredJob struct {
+			id     string
+			status Status
+		}
+		var expired []expiredJob
+		for rows.Next() {
+			var job expiredJob
+			if err := rows.Scan(&job.id, &job.status); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			expired = append(expired, job)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		for _, job := range expired {
+			result, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET status='lost', error_code=CASE WHEN error_code IN ('CANCEL_REQUESTED','TERMINATION_UNCONFIRMED') THEN error_code ELSE 'LEASE_EXPIRED' END, error_message='worker lease expired; process termination unconfirmed, reconciliation required', lease_expires_at=NULL, updated_at=?, finished_at=? WHERE id=? AND status=?`, now, now, job.id, job.status)
+			if err != nil {
+				return err
+			}
+			rowsAffected, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if rowsAffected != 1 {
+				return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, job.status, StatusLost)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO delegation_receipts(job_id,status,output_json,output_hash,exit_code,created_at) VALUES(?,'lost','{}','',-1,?) ON CONFLICT(job_id) DO UPDATE SET status='lost', output_json='{}', output_hash='', exit_code=-1, created_at=excluded.created_at`, job.id, now); err != nil {
+				return err
+			}
+			if err := s.addEvent(ctx, conn, job.id, "lease_expired", job.status, StatusLost, "worker lease expired"); err != nil {
+				return err
+			}
+			changed++
+		}
+		return nil
+	})
+	return changed, err
+}
+
+func (s *Store) transition(ctx context.Context, id string, from []Status, to Status, kind, detail string) error {
+	return s.immediate(ctx, func(conn *sql.Conn) error {
+		var current Status
+		if err := conn.QueryRowContext(ctx, `SELECT status FROM delegation_jobs WHERE id=?`, id).Scan(&current); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrJobNotFound
+			}
+			return err
+		}
+		allowed := false
+		for _, candidate := range from {
+			allowed = allowed || current == candidate
+		}
+		if !allowed {
+			return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, current, to)
+		}
+		now := s.timestamp()
+		finished := ""
+		if terminal(to) {
+			finished = now
+		}
+		result, err := conn.ExecContext(ctx, `UPDATE delegation_jobs SET status=?, updated_at=?, finished_at=? WHERE id=? AND status=?`, to, now, finished, id, current)
+		if err != nil {
+			return err
+		}
+		if err := s.requireTransition(ctx, conn, result, id, current, to); err != nil {
+			return err
+		}
+		if kind == "" {
+			kind = "transition"
+		}
+		return s.addEvent(ctx, conn, id, kind, current, to, bounded(detail, 512))
+	})
+}
+
+func (s *Store) requireTransition(ctx context.Context, conn *sql.Conn, result sql.Result, id string, from, to Status) error {
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		var count int
+		if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM delegation_jobs WHERE id=?`, id).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			return ErrJobNotFound
+		}
+		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, from, to)
+	}
+	return s.addEvent(ctx, conn, id, "transition", from, to, "")
+}
+
+func (s *Store) addEvent(ctx context.Context, conn *sql.Conn, id, kind string, from, to Status, detail string) error {
+	_, err := conn.ExecContext(ctx, `INSERT INTO delegation_events(job_id,kind,from_status,to_status,detail,created_at) VALUES(?,?,?,?,?,?)`, id, kind, from, to, detail, s.timestamp())
+	return err
+}
+
+func terminal(status Status) bool {
+	return status == StatusSucceeded || status == StatusFailed || status == StatusTimedOut || status == StatusCancelled || status == StatusLost
+}
+
+func bounded(value string, limit int) string {
+	value = strings.ReplaceAll(strings.ReplaceAll(value, "\r", " "), "\n", " ")
+	if len(value) > limit {
+		return value[:limit]
+	}
+	return value
+}

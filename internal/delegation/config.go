@@ -1,0 +1,245 @@
+package delegation
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
+)
+
+const ConfigFilename = "cortex-delegation.json"
+
+var supportedRoles = map[string]bool{
+	"implement": true, "investigate": true, "planner": true, "reviewer": true,
+}
+
+// RoleConfig is deliberately declarative. Cortex owns the executable and
+// argument vector so configuration cannot become an arbitrary shell surface.
+type RoleConfig struct {
+	Delegate        bool   `json:"delegate"`
+	CLI             string `json:"cli"` // native | agy
+	Mode            string `json:"mode,omitempty"`
+	SkipPermissions bool   `json:"skip_permissions,omitempty"`
+	Model           string `json:"model,omitempty"`
+	Effort          string `json:"effort,omitempty"`
+}
+
+type HerdrSettings struct {
+	AutoSplit      bool   `json:"auto_split"`
+	SplitDirection string `json:"split_direction"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+	Presentation   string `json:"presentation,omitempty"` // "tab" | "split"
+	AutoClose      bool   `json:"auto_close,omitempty"`
+}
+
+type TerminalSettings struct {
+	Launcher        string `json:"launcher,omitempty"` // "auto" | "window" | "hidden" | specific terminal
+	KeepOpenOnError bool   `json:"keep_open_on_error,omitempty"`
+}
+
+type DelegationConfig struct {
+	Version           string                `json:"version"`
+	DelegationEnabled bool                  `json:"delegation_enabled"`
+	UseHerdr          bool                  `json:"use_herdr"`
+	HerdrSettings     HerdrSettings         `json:"herdr_settings"`
+	TerminalSettings  TerminalSettings      `json:"terminal_settings,omitempty"`
+	DefaultModel      string                `json:"default_model,omitempty"`
+	Roles             map[string]RoleConfig `json:"roles"`
+}
+
+func NormalConfig() DelegationConfig {
+	return DelegationConfig{
+		Version:       "2.0.0",
+		HerdrSettings: HerdrSettings{SplitDirection: "right", TimeoutSeconds: 1800, Presentation: "tab", AutoClose: true},
+		Roles: map[string]RoleConfig{
+			"implement": {CLI: "native"}, "investigate": {CLI: "native"},
+			"reviewer": {CLI: "native"}, "planner": {CLI: "native"},
+		},
+	}
+}
+
+func DefaultDelegationConfig(useHerdr bool) DelegationConfig {
+	cfg := NormalConfig()
+	cfg.DelegationEnabled = true
+	cfg.UseHerdr = useHerdr
+	cfg.HerdrSettings.AutoSplit = useHerdr
+	return cfg
+}
+
+func (c DelegationConfig) Validate() error {
+	if c.Version != "2.0.0" {
+		return fmt.Errorf("unsupported delegation config version %q", c.Version)
+	}
+	if c.HerdrSettings.SplitDirection != "right" && c.HerdrSettings.SplitDirection != "down" {
+		return errors.New("herdr split_direction must be right or down")
+	}
+	if c.HerdrSettings.Presentation != "" && c.HerdrSettings.Presentation != "tab" && c.HerdrSettings.Presentation != "split" {
+		return errors.New("herdr presentation must be tab or split")
+	}
+	if c.HerdrSettings.TimeoutSeconds < 0 || c.HerdrSettings.TimeoutSeconds > 86400 {
+		return errors.New("delegation timeout_seconds must be between 0 (unbounded) and 86400")
+	}
+	for role, cfg := range c.Roles {
+		if !supportedRoles[role] {
+			return fmt.Errorf("unsupported delegation role %q", role)
+		}
+		if cfg.CLI != "native" && cfg.CLI != "agy" {
+			return fmt.Errorf("role %q: cli must be native or agy", role)
+		}
+		if cfg.CLI == "agy" && cfg.Mode != "plan" && cfg.Mode != "accept-edits" {
+			return fmt.Errorf("role %q: agy mode must be plan or accept-edits", role)
+		}
+		if cfg.Effort != "" && cfg.Effort != "low" && cfg.Effort != "medium" && cfg.Effort != "high" {
+			return fmt.Errorf("role %q: agy effort must be low, medium, or high", role)
+		}
+	}
+	return nil
+}
+
+func ResolveConfigPath(configRoot string) string { return filepath.Join(configRoot, ConfigFilename) }
+
+func encodedConfig(cfg DelegationConfig) ([]byte, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func NeedsSave(configDir string, cfg DelegationConfig) (bool, error) {
+	data, err := encodedConfig(cfg)
+	if err != nil {
+		return false, err
+	}
+	current, err := os.ReadFile(ResolveConfigPath(configDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return !bytes.Equal(current, data), nil
+}
+
+type ConfigOutcome string
+
+const (
+	ConfigOutcomeCreated ConfigOutcome = "created"
+	ConfigOutcomeChanged ConfigOutcome = "changed"
+	ConfigOutcomeNoOp    ConfigOutcome = "noop"
+)
+
+var (
+	ErrPreimageMismatch = errors.New("delegation config: expected preimage does not match existing content")
+	ErrOverwriteDenied  = errors.New("delegation config: unauthorized overwrite of existing configuration")
+	ErrMalformedConfig  = errors.New("delegation config: malformed existing configuration")
+)
+
+type SaveOptions struct {
+	ExpectedPreimage []byte
+	RequirePreimage  bool
+	AllowOverwrite   bool
+}
+
+type ConfigWriteResult struct {
+	Outcome      ConfigOutcome
+	ConfigPath   string
+	BytesWritten int
+}
+
+func SaveWithResult(configDir string, cfg DelegationConfig, opts SaveOptions) (ConfigWriteResult, error) {
+	configPath := ResolveConfigPath(configDir)
+	res := ConfigWriteResult{ConfigPath: configPath}
+
+	data, err := encodedConfig(cfg)
+	if err != nil {
+		return res, fmt.Errorf("validate requested config: %w", err)
+	}
+
+	current, readErr := os.ReadFile(configPath)
+	exists := readErr == nil
+
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return res, fmt.Errorf("read existing config: %w", readErr)
+	}
+
+	if opts.RequirePreimage && ((exists && !bytes.Equal(current, opts.ExpectedPreimage)) || (!exists && len(opts.ExpectedPreimage) > 0)) {
+		return res, ErrPreimageMismatch
+	}
+
+	if exists {
+		var existingCfg DelegationConfig
+		if err := json.Unmarshal(current, &existingCfg); err != nil {
+			return res, fmt.Errorf("%w: %v", ErrMalformedConfig, err)
+		}
+	}
+
+	if exists && bytes.Equal(current, data) {
+		res.Outcome = ConfigOutcomeNoOp
+		return res, nil
+	}
+
+	if exists && !opts.AllowOverwrite {
+		return res, ErrOverwriteDenied
+	}
+
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return res, fmt.Errorf("create config dir: %w", err)
+	}
+
+	_, err = filemerge.WriteFileAtomic(configPath, data, 0o600)
+	if err != nil {
+		return res, fmt.Errorf("atomic write: %w", err)
+	}
+
+	res.BytesWritten = len(data)
+	if exists {
+		res.Outcome = ConfigOutcomeChanged
+	} else {
+		res.Outcome = ConfigOutcomeCreated
+	}
+	return res, nil
+}
+
+func Save(configDir string, cfg DelegationConfig) error {
+	_, err := SaveWithResult(configDir, cfg, SaveOptions{AllowOverwrite: true})
+	return err
+}
+
+func Load(configDir string) (DelegationConfig, error) {
+	data, err := os.ReadFile(ResolveConfigPath(configDir))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return NormalConfig(), nil
+		}
+		return NormalConfig(), err
+	}
+	var cfg DelegationConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return NormalConfig(), err
+	}
+	if cfg.Version == "1.0.0" {
+		cfg.Version = "2.0.0"
+		for role, roleCfg := range cfg.Roles {
+			if roleCfg.CLI != "agy" {
+				roleCfg.Delegate, roleCfg.CLI, roleCfg.Mode = false, "native", ""
+			} else if role == "implement" {
+				roleCfg.Mode = "accept-edits"
+			} else {
+				roleCfg.Mode = "plan"
+			}
+			cfg.Roles[role] = roleCfg
+		}
+	}
+	if err := cfg.Validate(); err != nil {
+		return NormalConfig(), err
+	}
+	return cfg, nil
+}

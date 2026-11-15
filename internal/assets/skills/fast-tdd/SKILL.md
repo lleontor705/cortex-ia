@@ -1,0 +1,50 @@
+---
+name: fast-tdd
+description: Execute one bounded RED-GREEN-REFACTOR loop where a fast deterministic oracle proves observable behavior. Use when a localized behavior has a fast, deterministic test oracle.
+license: MIT
+metadata:
+  author: lleontor705
+  version: "2.0.0"
+---
+
+# Fast-TDD minion strategy
+
+Use this strategy only when behavior is localized, observable, reproducible, and covered by a fast deterministic test oracle. File count alone does not decide eligibility. If the oracle is slow, flaky, unavailable, or the change crosses unresolved boundaries, return `blocked` and recommend `direct-change`, `spike`, or right-sized SDD. You are a leaf minion: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
+
+## Lifecycle and loop
+
+Canonical protocol: `~/.cortex-ia/opencode/contracts/cortex-work-protocol.md` — when a persistent task is assigned, run its canonical claim/lease lifecycle; authority tokens live only in live context, with writes stopped immediately on expired or stale authority. This file adds only the RED-GREEN-REFACTOR loop:
+
+Read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` for bug fixes. Respect the repository's persistent-test policy; when that policy excludes the needed test class, use an ephemeral oracle and report the limitation instead of adding a prohibited test.
+
+1. Name the public seam and independent source of the expected result. Write one focused test or approved ephemeral oracle that captures the exact missing behavior. Run it and prove RED: failure must be caused by the intended behavior, not syntax, setup, or an unrelated failure.
+2. Implement the minimum production change and rerun the identical focused command to prove GREEN.
+3. Run 1–2 minimal reversible mutations per the `mutation-testing` skill and record the outcome: `KILLED` proves the covering test can fail and asserts a boundary, a return payload, or a failure branch; `SURVIVED` marks a shallow test — strengthen the assertions and re-run until `KILLED`, never transitioning with `SURVIVED`; `STATIC-ANALYSIS` is permitted only when mutations cannot execute, naming the explicit assertions covering error boundaries, return payloads, and failure branches. Exempt work kinds (documentation, declarative configuration, generated output, no reliable fast oracle) record the exemption reason instead.
+4. Refactor only locally, then rerun the focused test and proportional regression suite.
+5. Rerun the original unminimized reproduction when the change fixes a defect. Verify tagged instrumentation and disposable harnesses are absent.
+6. Save a bounded Cortex observation containing commands, exit codes, revision, timestamp, oracle, seam, and summarized outcomes; never save tokens or large stdout. Use its reference for review approval; cleanup follows the canonical completion order on every exit path.
+
+## Output
+
+Return the receipt as a Markdown list of `field: value` lines (not JSON), with these fields:
+
+- workflow: fast-tdd
+- phase_status: success | partial | failed | blocked
+- task_status: done | in_progress | blocked | null
+- verification_verdict: PASS | FAIL | BLOCKED | INCONCLUSIVE
+- task_id: null
+- evidence: sub-fields below
+  - red: command, exit_code, oracle, seam, expected_source
+  - green: command, exit_code
+  - refactor: command, exit_code
+  - regression: command, exit_code
+  - mutation: outcome (KILLED | STATIC-ANALYSIS), description, command, reverted
+- files_changed: <list>
+- evidence_refs: <list>
+- cleanup: leases_released, notes
+- risks: <list>
+- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective
+
+For a fast-TDD-eligible code task with a test delta, `mutation` is required: accepted final outcomes are `KILLED` and `STATIC-ANALYSIS`; `SURVIVED` never ships, and a missing or empty field on eligible work makes the evidence incomplete (`INCONCLUSIVE` or `BLOCKED`), never `PASS`. Exempt work kinds record the exemption reason instead.
+
+Never include claim or lease authority in the receipt.

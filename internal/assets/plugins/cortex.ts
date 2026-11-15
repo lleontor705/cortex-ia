@@ -1,0 +1,1087 @@
+/**
+ * Cortex — OpenCode plugin adapter
+ *
+ * Thin layer that connects OpenCode's event system to the Cortex Go binary.
+ * The Go binary runs as a local HTTP server and handles all persistence.
+ *
+ * Flow:
+ *   OpenCode events → this plugin → HTTP calls → cortex serve → SQLite
+ *
+ * Session resilience:
+ *   Uses `ensureSession()` before any DB write. Sessions are created on-demand
+ *   even if the plugin was loaded after the session started.
+ *
+ * Delivery contract (REM-PLUGIN-001):
+ *   - Credentials come only from CORTEX_HTTP_TOKEN; a tokenless exception is
+ *     limited to local mode with a parsed loopback destination.
+ *   - Success is only a 2xx response with the exact persisted body expected
+ *     for the endpoint; every other outcome is classified (unauthorized,
+ *     forbidden, conflict, validation, unavailable, timeout,
+ *     invalid_response, config, durable_rejected) and logged bounded.
+ *   - Sessions are confirmed before use: ensureSession caches a session only
+ *     on a persisted-identity echo or a 409 proven by reading the exact
+ *     persisted identity back, and classifies every failure instead of
+ *     silently assuming continuity. Protected writes and trusted context
+ *     require that confirmation (SEC-04).
+ *   - Logs never contain tokens, payloads, or response bodies.
+ *   - Hooks always return control; every delivery is deadline-bounded.
+ *   - Prompts and passive captures are truncated by UTF-8 runes before JSON
+ *     with truncated/original_bytes/stored_bytes metadata.
+ *   - Durable handoffs (cortex_handoff) are an MCP capability already
+ *     delivered through the MCP channel; this plugin never interprets,
+ *     redelivers, or fabricates signals from their results.
+ */
+
+// OpenCode Plugin helper ensuring default export is a valid plugin definition object for v1 and v2
+export const Plugin = {
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; server?: (ctx: any) => Promise<any> | any }>(def: T): T => {
+    if (!def.server && def.setup) {
+      def.server = def.setup;
+    }
+    return def;
+  },
+};
+
+import fs from "fs"
+import os from "os"
+import path from "path"
+
+// ─── Configuration ───────────────────────────────────────────────────────────
+
+function resolveLocalConfig(): { token: string; url: string; port: number; syncEnabled: boolean; syncUrl: string } {
+  // If explicitly set via CORTEX_HTTP_TOKEN (e.g. test harness), use it
+  const envHttpToken = process.env.CORTEX_HTTP_TOKEN
+  let token = (envHttpToken ?? "").trim()
+  let url = (process.env.CORTEX_SERVER_URL ?? process.env.CORTEX_URL ?? "").trim().replace(/\/+$/, "")
+  let port = parseInt(process.env.CORTEX_HTTP_PORT ?? "7438")
+  let syncEnabled = process.env.CORTEX_SYNC_ENABLED === "true"
+  let syncUrl = (process.env.CORTEX_SYNC_URL ?? "").trim()
+
+  // Check local ~/.cortex/cortex.yaml to align with the local cortex daemon
+  if (envHttpToken === undefined) {
+    try {
+      const home = os.homedir()
+      const configFile = process.env.CORTEX_CONFIG_FILE
+      const candidates = configFile
+        ? [configFile]
+        : [
+            path.join(home, ".cortex", "cortex.yaml"),
+            path.join(home, ".cortex", "config.yaml"),
+            path.join(home, ".cortex", "cortex.json"),
+            path.join(home, ".cortex", "config.json"),
+          ]
+      for (const file of candidates) {
+        if (fs.existsSync(file)) {
+          const content = fs.readFileSync(file, "utf-8")
+          if (!token) {
+            // First check http.token
+            const httpTokenMatch = content.match(/http:[\s\S]*?token:\s*["']?([^"'\r\n]+)["']?/)
+            if (httpTokenMatch && httpTokenMatch[1]) {
+              token = httpTokenMatch[1].trim()
+            }
+            if (!token) {
+              const tokenMatch = content.match(/(?:token|token_env|api_key):\s*["']?([^"'\r\n]+)["']?/)
+              if (tokenMatch && tokenMatch[1]) {
+                const rawVal = tokenMatch[1].trim()
+                if (process.env[rawVal]) {
+                  token = process.env[rawVal]!.trim()
+                } else if (!rawVal.startsWith("CORTEX_")) {
+                  token = rawVal
+                }
+              }
+            }
+          }
+          const portMatch = content.match(/port:\s*(\d+)/)
+          if (portMatch && portMatch[1]) {
+            port = parseInt(portMatch[1])
+          }
+          const syncEnabledMatch = content.match(/sync:[\s\S]*?enabled:\s*(true|false)/i)
+          if (syncEnabledMatch && syncEnabledMatch[1].toLowerCase() === "true") {
+            syncEnabled = true
+          }
+          const syncUrlMatch = content.match(/sync:[\s\S]*?url:\s*["']?([^"'\r\n]+)["']?/)
+          if (syncUrlMatch && syncUrlMatch[1]) {
+            syncUrl = syncUrlMatch[1].trim()
+          }
+          break
+        }
+      }
+    } catch {}
+
+    if (!token) {
+      token = (process.env.CORTEX_REMOTE_TOKEN ?? process.env.CORTEX_API_KEY ?? "").trim()
+    }
+  }
+
+  if (!url) {
+    url = `http://127.0.0.1:${port}`
+  }
+
+  return { token, url, port, syncEnabled, syncUrl }
+}
+
+const _cfg = resolveLocalConfig()
+const CORTEX_HTTP_PORT = _cfg.port
+const CORTEX_URL = _cfg.url
+const CORTEX_HTTP_TOKEN = _cfg.token
+const CORTEX_BIN = process.env.CORTEX_BIN ?? (() => {
+  // Try Bun.which for PATH lookup, fall back to bare command
+  try {
+    const which = (globalThis as any).Bun?.which?.("cortex")
+    if (which) return which
+  } catch {}
+  return "cortex"
+})()
+
+const REQUEST_TIMEOUT_MS = 2000
+const PAYLOAD_BYTE_LIMIT = 2000
+const encoder = new TextEncoder()
+
+export type CortexMode = "server" | "hybrid" | "local"
+
+let cachedMode: CortexMode | null = null
+
+async function detectCortexMode(): Promise<CortexMode> {
+  if (cachedMode) return cachedMode
+
+  if (process.env.CORTEX_MODE) {
+    const m = process.env.CORTEX_MODE.toLowerCase()
+    if (m === "server" || m === "hybrid" || m === "local") {
+      cachedMode = m as CortexMode
+      return cachedMode
+    }
+  }
+
+  // 1. Hybrid Mode: Local daemon with active remote sync configured
+  if (_cfg.syncEnabled && _cfg.syncUrl) {
+    cachedMode = "hybrid"
+    return "hybrid"
+  }
+
+  // A tokenless destination is eligible only after local loopback URL
+  // classification. Never probe a protected remote endpoint to infer its mode.
+  if (!CORTEX_HTTP_TOKEN) {
+    cachedMode = "local"
+    return "local"
+  }
+
+  // 2. Server Mode: Direct remote URL probe
+  if (CORTEX_URL.startsWith("https://") || (CORTEX_HTTP_TOKEN && !CORTEX_URL.includes("127.0.0.1") && !CORTEX_URL.includes("localhost"))) {
+    try {
+      const res = await boundedFetch("/api/me", {
+        headers: { Authorization: `Bearer ${CORTEX_HTTP_TOKEN}` },
+      })
+      if (res.status === 200 || res.status === 403) {
+        cachedMode = "server"
+        return "server"
+      }
+    } catch {}
+  }
+
+  cachedMode = "local"
+  return "local"
+}
+
+function isTokenlessEligible(mode: CortexMode, rawUrl: string = CORTEX_URL): boolean {
+  if (mode !== "local") return false
+  try {
+    const parsed = new URL(rawUrl)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false
+    }
+    const host = parsed.hostname.toLowerCase()
+    if (host === "localhost" || host === "[::1]" || host === "::1") {
+      return true
+    }
+    const parts = host.split(".")
+    if (parts.length === 4) {
+      const octets = parts.map((p) => {
+        if (!/^\d+$/.test(p)) return -1
+        const n = Number(p)
+        return n >= 0 && n <= 255 ? n : -1
+      })
+      if (octets.every((o) => o >= 0)) {
+        return octets[0] === 127
+      }
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
+// Cortex's own MCP tools — don't count these as "tool calls" for session stats.
+// cortex_handoff is handled separately before this set is consulted.
+const CORTEX_TOOLS = new Set([
+  // Core memory
+  "cortex_search",
+  "cortex_save",
+  "cortex_update",
+  "cortex_delete",
+  "cortex_suggest_topic_key",
+  "cortex_save_prompt",
+  "cortex_session_summary",
+  "cortex_context",
+  "cortex_stats",
+  "cortex_timeline",
+  "cortex_get_observation",
+  "cortex_session_start",
+  "cortex_session_end",
+  "cortex_capture_passive",
+  // Knowledge graph & Architecture
+  "cortex_relate",
+  "cortex_graph",
+  "cortex_graph_relationships",
+  "cortex_graph_path",
+  "cortex_graph_subgraph",
+  "cortex_score",
+  "cortex_archive",
+  "cortex_search_hybrid",
+  "cortex_get_blast_radius",
+  "cortex_code_impact",
+  "cortex_analyze_architecture",
+  "cortex_code_analyze",
+  "cortex_detect_cycles",
+  "cortex_ingest_code",
+  "cortex_code_scan",
+  "cortex_get_code_symbols",
+  "cortex_code_symbols",
+  "cortex_get_code_graph",
+  "cortex_code_graph",
+  "cortex_code_map",
+  "cortex_get_code_map",
+  "cortex_code_tests",
+  "cortex_get_impacted_tests",
+  "cortex_code_find",
+  "cortex_find_symbols",
+  "cortex_get_agent_context",
+  // Governance, Skills, Directives & Rules
+  "cortex_get_rules",
+  "cortex_save_rule",
+  "cortex_get_project_context",
+  "cortex_list_skills",
+  "cortex_get_skill",
+  "cortex_resolve_query",
+  "cortex_get_status",
+  // History & Hygiene
+  "cortex_revision_history",
+  "cortex_consolidate",
+  "cortex_project_dna",
+  "cortex_merge_projects",
+  "cortex_handoff",
+  // Temporal (advanced)
+  "cortex_temporal_create_edge",
+  "cortex_temporal_get_edges",
+  "cortex_temporal_get_relevant",
+  "cortex_temporal_create_snapshot",
+  "cortex_temporal_record_operation",
+  "cortex_temporal_evaluate_quality",
+  "cortex_temporal_system_metrics",
+  "cortex_temporal_health_check",
+  "cortex_temporal_evolution_path",
+  "cortex_temporal_fact_state",
+  "cortex_search_temporal",
+])
+
+// ─── Mode-Aware Memory Instructions ──────────────────────────────────────────
+
+// Canonical observation types an agent may pass to `cortex_save`, mirrored from
+// the convention allowlist. The server enforces the full allowlist fail-closed;
+// this agent-facing subset exists so instruction text and runtime checks cannot
+// drift into accepting a non-canonical type.
+export const CANONICAL_SAVE_TYPES = ["bugfix", "decision", "architecture", "pattern", "discovery", "config", "learning"] as const;
+
+export function isCanonicalSaveType(value: unknown): boolean {
+  return (CANONICAL_SAVE_TYPES as readonly string[]).includes(String(value ?? ""));
+}
+
+export function assertCanonicalSaveType(value: unknown): string {
+  if (!isCanonicalSaveType(value)) {
+    throw new Error(`SAVE_TYPE_INVALID: ${JSON.stringify(value)} is not a canonical cortex_save type (${CANONICAL_SAVE_TYPES.join("|")})`);
+  }
+  return String(value);
+}
+
+function buildMemoryInstructions(mode: CortexMode = "server"): string {
+  if (mode === "server") {
+    return `## Cortex Persistent Memory — Protocol (Mode: SERVER / PostgreSQL Multi-Tenant)
+
+You have access to Cortex Server via authenticated MCP tools (PostgreSQL RLS, PGVector semantic search, knowledge graph, corporate governance, and dynamic skills).
+
+TRANSPORT IDENTIFIERS:
+- In Server Mode, all observation IDs and node IDs are public UUID strings (e.g. "6b806a41-9e9b-4298-a39a-7887a71e94e0").
+- Never use or fabricate numeric IDs.
+
+### 1. STARTUP: PROJECT CONTEXT & GOVERNANCE (Mandatory at session start)
+At the beginning of any session or when switching projects:
+1. IMMEDIATELY call \`cortex_get_project_context(project)\` to retrieve corporate governance rules, architectural constraints, and available skill playbooks.
+2. Call \`cortex_list_skills(project)\` and \`cortex_get_skill(key, project)\` to inspect and follow approved domain skills.
+
+### 2. WHEN TO SAVE (Mandatory after completing work)
+Call \`cortex_save\` IMMEDIATELY after any of these:
+- Bug fix completed (type: "bugfix")
+- Architectural/design decision made (type: "decision")
+- Non-obvious discovery in codebase (type: "discovery")
+- Pattern or convention established (type: "pattern")
+- Configuration/environment rule (type: "config")
+- Domain learning (type: "learning")
+
+Format for \`cortex_save\`:
+- **title**: Verb + object — short, searchable (e.g. "Fixed N+1 query in PgBouncer pool")
+- **type**: ${CANONICAL_SAVE_TYPES.join(" | ")} (the agent-facing durable subset; the server remains the fail-closed authority for the full allowlist)
+- **scope**: \`project\` (default) | \`personal\`
+- **topic_key** (optional): stable key for evolving topics (e.g. \`auth/jwt-rotation\`)
+- **content**: What was done, Why it was done, Affected files, and Lessons learned.
+- **Naming Rule**: Always invoke \`cortex_save\` (or \`cortex_cortex_save\`) directly. NEVER use dot notation like \`cortex.cortex_save\`.
+
+### 3. CODEBASE INTELLIGENCE & BLAST RADIUS
+- Before refactoring or renaming symbols, use filtered \`cortex_get_code_symbols(project, kind, file_path)\` plus bounded source reads. \`cortex_get_blast_radius\` accepts a numeric observation ID and is a cognitive graph tool, not a code-symbol impact oracle.
+- Call \`cortex_detect_cycles(project)\` to ensure no circular import dependencies or architectural violations.
+- Call \`cortex_analyze_architecture(project)\` to inspect code communities and god nodes.
+- Use \`cortex_relate\` to link related observations (references, relates_to, follows, supersedes, contradicts).
+
+### 4. UNIFIED SEARCH & QUERY RESOLUTION
+- For complex questions or domain lookups, call \`cortex_resolve_query(query, project)\` for a unified retrieval across corporate rules, skills, and observations.
+- Call \`cortex_search\` for keyword/FTS search, or \`cortex_context\` for recent session history.
+- If you find an observation match, call \`cortex_get_observation(id)\` to read its complete full text.
+
+### 5. SESSION CLOSE PROTOCOL (Orchestrator only)
+If and only if the current role is the root orchestrator, before saying "done" or finishing a session:
+1. Call \`cortex_session_summary\` with: Goal, Discoveries, Accomplished, Next Steps, Relevant Files.
+Dispatched OpenCode subagents must never call session lifecycle or session summary tools.
+
+### 6. AFTER COMPACTION
+1. The root orchestrator may call \`cortex_session_summary\` with compacted context.
+2. Subagents only call \`cortex_context\` when needed and never take session ownership.`
+  }
+
+  return `## Cortex Persistent Memory — Protocol (Mode: LOCAL / HYBRID Zero-CGO)
+
+You have access to Cortex Local, a high-performance local memory system (zero-CGO SQLite, FTS5 full-text search, knowledge graph, static AST extraction, and temporal tracking).
+
+TRANSPORT IDENTIFIERS:
+- In Local Mode, observation and graph IDs are numeric integers (e.g. 1, 42).
+- Follow active MCP tool schema.
+
+### 1. RULES & DIRECTIVES (Mandatory at session start)
+- Call \`cortex_get_rules(project)\` to retrieve active project and global rules, coding standards, and architectural directives.
+- Call \`cortex_save_rule(title, content, topic_key, scope)\` ONLY for permanent architectural directives or coding invariants. Never save task notes, test outputs, or worktree logs in rules.
+
+### 2. CODEBASE AST & INTELLIGENCE
+- Call \`cortex_ingest_code(path, project)\` with the **absolute workspace root path** (e.g. \`/path/to/project\`, never \`.\`) to scan local files with the Zero-CGO Static AST Extractor and index symbols into the knowledge graph.
+- Call \`cortex_code_map(path, budget)\` or \`cortex_get_code_map\` to retrieve a token-budgeted PageRank repository map.
+- Call \`cortex_code_tests(target, project, hops)\` or \`cortex_get_impacted_tests\` to pinpoint precisely which test suites are impacted by modified symbols or files.
+- Call \`cortex_code_find(query, project)\` or \`cortex_find_symbols\` to search AST symbols across the repository.
+- Call \`cortex_get_agent_context(project, format)\` to export structured architecture & memory context for agent prompts.
+- Call \`cortex_get_blast_radius(observation_id, depth)\` to traverse related cognitive observations.
+- Call \`cortex_detect_cycles(project)\` to find circular dependencies across modules.
+- Call \`cortex_analyze_architecture(project)\` to inspect code communities and god nodes.
+
+### 3. WHEN TO SAVE (Mandatory after completing work)
+Call \`cortex_save\` IMMEDIATELY after any of these:
+- Bug fix completed (type: "bugfix")
+- Architecture decision made (type: "decision")
+- Non-obvious discovery about codebase (type: "discovery")
+- Pattern established (type: "pattern")
+- Configuration/environment rule (type: "config")
+- Learning (type: "learning")
+
+Format for \`cortex_save\`:
+- **title**: Verb + object — short, searchable (e.g. "Fixed N+1 query in UserList")
+- **type**: ${CANONICAL_SAVE_TYPES.join(" | ")} (the agent-facing durable subset; the server remains the fail-closed authority for the full allowlist)
+- **scope**: \`project\` (default) | \`personal\`
+- **topic_key** (optional, recommended): stable key like \`architecture/auth-model\`
+- **content**: What was done, Why, Where (files affected), and Gotchas.
+- **Naming Rule**: Always invoke \`cortex_save\` (or \`cortex_cortex_save\`) directly. NEVER use dot notation like \`cortex.cortex_save\`.
+
+### 4. KNOWLEDGE GRAPH & RELATIONS
+- After saving related observations, call \`cortex_relate\` (references, relates_to, follows, supersedes, contradicts).
+- Call \`cortex_graph\` to traverse connections from any observation.
+- Call \`cortex_score\` to recalculate observation importance.
+
+### 5. SEARCH & RETRIEVAL
+1. First call \`cortex_context\` to check recent session history.
+2. If not found, call \`cortex_search\` with keywords (FTS5).
+3. If needed, call \`cortex_search_hybrid\` for combined vector + FTS search.
+4. Call \`cortex_get_observation(id)\` to fetch the complete full-text observation.
+
+### 6. REVISION HISTORY & HYGIENE
+- \`cortex_revision_history(id)\`: View evolution across upserts.
+- Administrative timeline, archive, and delete tools are not available in the agent profile. Never invent them; an operator must use an admin profile explicitly.
+
+### 7. SESSION CLOSE PROTOCOL (Orchestrator only)
+If and only if the current role is the root orchestrator, before saying "done" or finishing a session:
+1. Call \`cortex_session_summary\` with: Goal, Discoveries, Accomplished, Next Steps, Relevant Files.
+Dispatched OpenCode subagents must never call session lifecycle or summary tools.
+
+### 8. AFTER COMPACTION
+1. The root orchestrator may call \`cortex_session_summary\` with compacted context.
+2. Subagents only call \`cortex_context\` when needed and never take session ownership.`
+}
+
+const MEMORY_INSTRUCTIONS = buildMemoryInstructions("server")
+
+// ─── Delivery classification ─────────────────────────────────────────────────
+
+type DeliveryKind = "prompt" | "observation" | "session"
+
+type Classification =
+  | "success"
+  | "unauthorized"
+  | "forbidden"
+  | "conflict"
+  | "validation"
+  | "unavailable"
+  | "timeout"
+  | "invalid_response"
+  | "config"
+  | "durable_rejected"
+
+// Logs carry the classification only — never tokens, payloads, or bodies.
+function report(kind: DeliveryKind, outcome: Classification, detail = ""): void {
+  const suffix = detail ? ` (${detail})` : ""
+  if (outcome === "success") {
+    console.info(`[cortex] ${kind} delivery success`)
+  } else {
+    console.warn(`[cortex] ${kind} delivery ${outcome}${suffix}`)
+  }
+}
+
+function classifyStatus(status: number): Classification {
+  if (status === 401) return "unauthorized"
+  if (status === 403) return "forbidden"
+  if (status === 409) return "conflict"
+  if (status === 400 || status === 404 || status === 405 || status === 413 || status === 422) {
+    return "validation"
+  }
+  return "unavailable"
+}
+
+function classifyException(err: unknown): Classification {
+  const name = (err as DOMException | null)?.name
+  if (name === "TimeoutError" || name === "AbortError") return "timeout"
+  return "unavailable"
+}
+
+// ─── HTTP Client ─────────────────────────────────────────────────────────────
+
+// fetch with a deadline the host runtime can observe. The timer (not
+// AbortSignal.timeout) drives aborts so deadlines stay testable and the
+// request can never hang the hook.
+async function boundedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController()
+  let deadlineHit = false
+  const timer = setTimeout(() => {
+    deadlineHit = true
+    controller.abort()
+  }, REQUEST_TIMEOUT_MS)
+  try {
+    return await fetch(`${CORTEX_URL}${path}`, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (deadlineHit) {
+      throw Object.assign(new Error("deadline elapsed"), { name: "TimeoutError" })
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+type HttpResult =
+  | { ok: true; status: number; body: unknown }
+  | { ok: false; classification: Classification }
+
+async function request(path: string, body?: unknown): Promise<HttpResult> {
+  try {
+    // Every request carries the credential when one is configured, including
+    // protected GETs. /health is the only unauthenticated route and is probed
+    // through boundedFetch directly, never here.
+    const tokenless = !CORTEX_HTTP_TOKEN && isTokenlessEligible(await detectCortexMode())
+    if (!CORTEX_HTTP_TOKEN && !tokenless) {
+      return { ok: false, classification: "config" }
+    }
+    const headers: Record<string, string> = {}
+    if (CORTEX_HTTP_TOKEN) headers.Authorization = `Bearer ${CORTEX_HTTP_TOKEN}`
+    const init: RequestInit =
+      body === undefined
+        ? { headers }
+        : {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...headers,
+            },
+            body: JSON.stringify(body),
+          }
+    const res = await boundedFetch(path, tokenless ? { ...init, redirect: "manual" } : init)
+    if (res.status < 200 || res.status >= 300) {
+      return { ok: false, classification: classifyStatus(res.status) }
+    }
+    try {
+      return { ok: true, status: res.status, body: await res.json() }
+    } catch {
+      return { ok: false, classification: "invalid_response" }
+    }
+  } catch (err) {
+    return { ok: false, classification: classifyException(err) }
+  }
+}
+
+// Deliver a payload and classify the outcome. `expected` must validate the
+// exact persisted body for the endpoint; anything else is invalid_response.
+async function deliver(
+  kind: DeliveryKind,
+  path: string,
+  payload: unknown,
+  expected: (body: unknown) => boolean
+): Promise<void> {
+  if (!CORTEX_HTTP_TOKEN && !isTokenlessEligible(await detectCortexMode())) {
+    report(kind, "config", "missing CORTEX_HTTP_TOKEN")
+    return
+  }
+  const result = await request(path, payload)
+  if (!result.ok) {
+    report(kind, result.classification)
+    return
+  }
+  if (!expected(result.body)) {
+    report(kind, "invalid_response")
+    return
+  }
+  report(kind, "success")
+}
+
+async function isCortexRunning(): Promise<boolean> {
+  try {
+    const res = await boundedFetch("/health")
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+// ─── UTF-8 byte-bounded truncation ───────────────────────────────────────────
+
+export type TruncationRecord = {
+  content: string
+  truncated: boolean
+  original_bytes: number
+  stored_bytes: number
+}
+
+// Truncate by whole UTF-8 runes so stored bytes never exceed the limit and
+// the stored content always round-trips as valid UTF-8. Array.from indexes by
+// codepoint, so an astral rune (surrogate pair) can never be split into a
+// lone surrogate that would encode as U+FFFD.
+function truncateUtf8(text: string): TruncationRecord {
+  const originalBytes = encoder.encode(text).byteLength
+  if (originalBytes <= PAYLOAD_BYTE_LIMIT) {
+    return { content: text, truncated: false, original_bytes: originalBytes, stored_bytes: originalBytes }
+  }
+  const runes = Array.from(text)
+  let lo = 0
+  let hi = runes.length
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2)
+    const prefix = runes.slice(0, mid).join("")
+    if (encoder.encode(prefix).byteLength <= PAYLOAD_BYTE_LIMIT) {
+      lo = mid
+    } else {
+      hi = mid - 1
+    }
+  }
+  const content = runes.slice(0, lo).join("")
+  const storedBytes = encoder.encode(content).byteLength
+  return { content, truncated: true, original_bytes: originalBytes, stored_bytes: storedBytes }
+}
+
+// ─── Response body contracts ─────────────────────────────────────────────────
+
+function hasExactKeys(body: unknown, keys: readonly string[]): body is Record<string, unknown> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return false
+  const actual = Object.keys(body)
+  return actual.length === keys.length && keys.every((key) => key in body)
+}
+
+const PROMPT_KEYS = ["id", "content", "project", "session_id", "created_at"] as const
+
+function isPositiveID(value: unknown): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+}
+
+function persistedPrompt(sent: { content: string; session_id: string }): (body: unknown) => boolean {
+  return (body) =>
+    hasExactKeys(body, PROMPT_KEYS) &&
+    isPositiveID(body.id) &&
+    typeof body.content === "string" &&
+    body.content === sent.content &&
+    typeof body.project === "string" &&
+    body.session_id === sent.session_id &&
+    typeof body.created_at === "string"
+}
+
+// The persisted Observation is validated by identity, not by exact shape:
+// a positive ID plus equality on every field the plugin actually sent.
+// Additive server fields (tags, sync metadata, ...) are tolerated so the
+// contract does not break when the server payload grows.
+function persistedObservation(
+  sent: {
+    content: string
+    session_id: string
+    title: string
+    project: string
+    type: string
+    scope: string
+  }
+): (body: unknown) => boolean {
+  return (body) =>
+    isJsonObject(body) &&
+    isPositiveID(body.id) &&
+    body.session_id === sent.session_id &&
+    body.content === sent.content &&
+    body.title === sent.title &&
+    body.project === sent.project &&
+    body.type === sent.type &&
+    body.scope === sent.scope
+}
+
+// POST /api/sessions/{id}/end returns exactly {"status":"ended"}; anything
+// else in a 2xx body is a false success.
+function persistedEndStatus(): (body: unknown) => boolean {
+  return (body) => hasExactKeys(body, ["status"]) && body.status === "ended"
+}
+
+function isJsonObject(body: unknown): boolean {
+  return typeof body === "object" && body !== null && !Array.isArray(body)
+}
+
+const SESSION_REQUIRED_KEYS = ["id", "project", "directory", "started_at"] as const
+
+// Context injected into the host prompt is trusted only when every item is
+// an object with string title and type; anything else is invalid_response.
+function isObservationSummaryList(body: unknown): body is Array<{ title: string; type: string }> {
+  return (
+    Array.isArray(body) &&
+    body.every(
+      (item) => isJsonObject(item) &&
+        typeof (item as Record<string, unknown>).title === "string" &&
+        typeof (item as Record<string, unknown>).type === "string"
+    )
+  )
+}
+
+// The persisted Session echo is validated by identity: the server returns the
+// session that was sent (optional omitempty fields are not asserted).
+function persistedSession(sent: {  id: string
+  project: string
+  directory: string
+}): (body: unknown) => boolean {
+  return (body) => {
+    if (!isJsonObject(body)) return false
+    const record = body as Record<string, unknown>
+    return (
+      SESSION_REQUIRED_KEYS.every((key) => key in record) &&
+      record.id === sent.id &&
+      record.project === sent.project &&
+      record.directory === sent.directory &&
+      typeof record.started_at === "string"
+    )
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Plugin setup runs synchronously on the host event loop: a hung git lookup
+// must degrade to the directory-derived project name instead of blocking
+// startup (Bun kills the child at the deadline and reports no exit code).
+const GIT_LOOKUP_TIMEOUT_MS = 3000;
+
+export function extractProjectName(directory: string): string {
+  try {
+    const result = Bun.spawnSync(["git", "-C", directory, "remote", "get-url", "origin"], { timeout: GIT_LOOKUP_TIMEOUT_MS })
+    if (result.exitCode === 0) {
+      const url = result.stdout?.toString().trim()
+      if (url) {
+        const name = url.replace(/\.git$/, "").split(/[/:]/).pop()
+        if (name) return name
+      }
+    }
+  } catch {}
+
+  try {
+    const result = Bun.spawnSync(["git", "-C", directory, "rev-parse", "--show-toplevel"], { timeout: GIT_LOOKUP_TIMEOUT_MS })
+    if (result.exitCode === 0) {
+      const root = result.stdout?.toString().trim()
+      if (root) return root.split("/").pop() ?? "unknown"
+    }
+  } catch {}
+
+  return directory.split("/").pop() ?? "unknown"
+}
+
+// ─── Typed secret redaction ──────────────────────────────────────────────────
+
+// The typed-redaction helper is owned by the tool-telemetry plugin, whose
+// sanitizeValue is its other consumer. It is resolved lazily, not via a static
+// import, so this module stays loadable by the isolated harness sandbox, which
+// rejects relative imports between plugin files.
+type RedactionApi = {
+  redactSecrets: (text: string) => string;
+  hasUnredactableSecret: (text: string) => boolean;
+  reportPromptRedactionDrop: (directory: string, sessionID: string, detail: string) => void;
+};
+
+let redactionApiPromise: Promise<RedactionApi> | null = null;
+
+function redactionApi(): Promise<RedactionApi> {
+  if (!redactionApiPromise) {
+    redactionApiPromise = import("./cortex-tool-telemetry")
+      .then((mod) => ({
+        redactSecrets: mod.redactSecrets,
+        hasUnredactableSecret: mod.hasUnredactableSecret,
+        reportPromptRedactionDrop: mod.reportPromptRedactionDrop,
+      }))
+      .catch((err) => {
+        redactionApiPromise = null;
+        throw err;
+      });
+  }
+  return redactionApiPromise;
+}
+
+// ─── Durable handoff neutrality ──────────────────────────────────────────────
+
+// cortex_handoff is an MCP capability: by the time this hook sees a result,
+// the handoff was already delivered (or failed) through the MCP channel.
+// The plugin never interprets, redelivers, truncates, or classifies that
+// result — doing so would fabricate delivery signals from tool output.
+
+// ─── Plugin Export ───────────────────────────────────────────────────────────
+
+export const Cortex = Plugin.define({
+  id: "cortex",
+  async setup(ctx) {
+    const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd()
+    const project = extractProjectName(directory)
+
+    const toolCounts = new Map<string, number>()
+    const knownSessions = new Set<string>()
+    const subAgentSessions = new Set<string>()
+
+    type SessionEnsureResult = {
+      confirmed: boolean
+      classification: Classification
+    }
+
+    // A session counts as known only after the server confirmed it: a 2xx
+    // persisted echo of the exact session identity, or a 409 conflict proven
+    // by reading the exact persisted identity back. A bare 409 body is an
+    // error object and cannot prove which session exists, so it is never
+    // trusted on its own. Failures are classified, never cached, and a later
+    // event retries instead of assuming continuity.
+    async function ensureSession(sessionId: string): Promise<SessionEnsureResult> {
+      if (!sessionId || subAgentSessions.has(sessionId)) {
+        return { confirmed: false, classification: "validation" }
+      }
+      if (knownSessions.has(sessionId)) {
+        return { confirmed: true, classification: "success" }
+      }
+      if (!CORTEX_HTTP_TOKEN && !isTokenlessEligible(await detectCortexMode())) {
+        report("session", "config", "missing CORTEX_HTTP_TOKEN")
+        return { confirmed: false, classification: "config" }
+      }
+      const sent = { id: sessionId, project, directory }
+      const result = await request("/api/sessions", sent)
+      if (result.ok) {
+        if (persistedSession(sent)(result.body)) {
+          knownSessions.add(sessionId)
+          return { confirmed: true, classification: "success" }
+        }
+        report("session", "invalid_response")
+        return { confirmed: false, classification: "invalid_response" }
+      }
+      if (result.classification === "conflict") {
+        // Contract-proven conflict: confirm the exact existing identity through
+        // the read endpoint before trusting the session.
+        const existing = await request(`/api/sessions/${encodeURIComponent(sessionId)}`)
+        if (existing.ok && persistedSession(sent)(existing.body)) {
+          knownSessions.add(sessionId)
+          return { confirmed: true, classification: "success" }
+        }
+        const classification = existing.ok ? "invalid_response" : existing.classification
+        report("session", classification)
+        return { confirmed: false, classification }
+      }
+      report("session", result.classification)
+      return { confirmed: false, classification: result.classification }
+    }
+
+    // Try to start cortex server if not running. Never attempted without a
+    // configured credential: an unauthenticated plugin sends nothing.
+    if (CORTEX_HTTP_TOKEN) {
+      const running = await isCortexRunning()
+      if (!running) {
+        try {
+          Bun.spawn([CORTEX_BIN, "serve"], {
+            stdout: "ignore",
+            stderr: "ignore",
+            stdin: "ignore",
+          })
+          await new Promise((r) => setTimeout(r, 500))
+        } catch {}
+      }
+    }
+
+    const abortController = new AbortController()
+    const { signal } = abortController
+
+    if (ctx.event?.subscribe) {
+      ;(async () => {
+        try {
+          for await (const event of ctx.event.subscribe({ signal })) {
+            if (!event) continue
+            if (event.type === "session.created") {
+              const info = (event.properties as any)?.info
+              const sessionId = info?.id
+              const parentID = info?.parentID
+              const title: string = info?.title ?? ""
+
+              const isSubAgent = !!parentID || title.endsWith(" subagent)")
+
+              if (sessionId && !isSubAgent) {
+                await ensureSession(sessionId)
+              } else if (sessionId && isSubAgent) {
+                subAgentSessions.add(sessionId)
+              }
+            }
+
+            if (event.type === "session.deleted") {
+              const info = (event.properties as any)?.info
+              const sessionId = info?.id
+              if (sessionId) {
+                if (!subAgentSessions.has(sessionId) && knownSessions.has(sessionId)) {
+                  await deliver(
+                    "session",
+                    `/api/sessions/${encodeURIComponent(sessionId)}/end`,
+                    { summary: "" },
+                    persistedEndStatus()
+                  )
+                }
+                toolCounts.delete(sessionId)
+                knownSessions.delete(sessionId)
+                subAgentSessions.delete(sessionId)
+              }
+            }
+          }
+        } catch (err: any) {
+          if (err?.name !== "AbortError" && !signal.aborted) {
+            // Stream closed or error
+          }
+        }
+      })()
+    }
+
+    if (ctx.session?.hook) {
+      // ─── User Prompt Capture ──────────────────────────────────────
+      ctx.session.hook("prompt", async (event: any) => {
+        try {
+          const sessionId = event?.sessionID || event?.sessionId || event?.message?.sessionID || event?.message?.sessionId
+          if (!sessionId || subAgentSessions.has(sessionId)) return
+
+          let content = ""
+          if (Array.isArray(event.parts)) {
+            content = event.parts
+              .filter((p: any) => p?.type === "text")
+              .map((p: any) => p?.text ?? "")
+              .join("\n")
+              .trim()
+          } else if (typeof event.prompt === "string") {
+            content = event.prompt.trim()
+          } else if (typeof event.content === "string") {
+            content = event.content.trim()
+          }
+
+          const fallback = !content && event.message?.summary
+            ? `${event.message.summary.title ?? ""}\n${event.message.summary.body ?? ""}`.trim()
+            : ""
+
+          const finalContent = content || fallback
+
+          if (finalContent.length > 10) {
+            // SEC-04: no protected write unless the exact session was
+            // positively confirmed. Failures stay uncached and retryable on a
+            // later host event.
+            const session = await ensureSession(sessionId)
+            if (!session.confirmed) return
+            const redactor = await redactionApi()
+            const redacted = redactor.redactSecrets(finalContent).trim()
+            if (redactor.hasUnredactableSecret(redacted)) {
+              // Fail closed: a secret shape redaction could not rewrite is never
+              // persisted; the drop rides the shared telemetry channel.
+              redactor.reportPromptRedactionDrop(directory, sessionId, "unredactable secret shape")
+              return
+            }
+            const record = truncateUtf8(redacted)
+            await deliver(
+              "prompt",
+              "/api/prompts",
+              {
+                session_id: sessionId,
+                project,
+                ...record,
+              },
+              persistedPrompt({ content: record.content, session_id: sessionId })
+            )
+          }
+        } catch {
+          report("prompt", "unavailable")
+        }
+      })
+
+      // ─── System Prompt: Always-on memory instructions ──────────
+      ctx.session.hook("context", async (event: any) => {
+        try {
+          const mode = await detectCortexMode()
+          const instructions = buildMemoryInstructions(mode)
+          if (Array.isArray(event.system)) {
+            if (event.system.length > 0) {
+              const last = event.system[event.system.length - 1];
+              if (typeof last === "string") {
+                event.system[event.system.length - 1] += "\n\n" + instructions;
+              } else if (last && typeof last === "object" && "text" in last) {
+                last.text += "\n\n" + instructions;
+              } else {
+                event.system.push({ type: "text", text: instructions });
+              }
+            } else {
+              event.system.push({ type: "text", text: instructions });
+            }
+          } else if (typeof event.system === "string") {
+            event.system = event.system ? event.system + "\n\n" + instructions : instructions;
+          }
+        } catch {}
+      })
+
+      // ─── Compaction Hook ──────────────────────────────────────────
+      ctx.session.hook("compaction", async (event: any) => {
+        try {
+          // SEC-04: returned context is trusted only when a credential is
+          // configured and the exact session was positively confirmed.
+          const sessionId = event?.sessionID || event?.sessionId || event?.message?.sessionID
+          const session = sessionId
+            ? await ensureSession(sessionId)
+            : { confirmed: false, classification: "validation" as Classification }
+          if (CORTEX_HTTP_TOKEN && session.confirmed) {
+            const result = await request(
+              `/api/observations?project=${encodeURIComponent(project)}&limit=20`
+            )
+            if (!result.ok) {
+              report("observation", result.classification)
+            } else if (!isObservationSummaryList(result.body)) {
+              report("observation", "invalid_response")
+            } else if (result.body.length > 0) {
+              const ctxList = (result.body as any[]).map((o) => `- [${o.type}] ${o.title}`).join("\n")
+              const text = `Recent Cortex memories for ${project}:\n${ctxList}`
+              if (Array.isArray(event.context)) {
+                event.context.push(text)
+              } else if (Array.isArray(event.messages)) {
+                event.messages.push({ role: "system", content: text })
+              }
+            }
+          }
+
+          const instruction =
+            `CRITICAL INSTRUCTION FOR COMPACTED SUMMARY:\n` +
+            `The agent has access to Cortex persistent memory via MCP tools.\n` +
+            `Include this role-aware instruction at the TOP of the compacted summary:\n\n` +
+            `"If the current role is the root orchestrator, summarize compacted context with cortex_session_summary for project '${project}'. ` +
+            `If the current role is a subagent or external leaf, do not call session lifecycle or summary tools; use cortex_context only when needed."`
+
+          if (Array.isArray(event.context)) {
+            event.context.push(instruction)
+          } else if (Array.isArray(event.messages)) {
+            event.messages.push({ role: "system", content: instruction })
+          }
+        } catch {
+          // Non-blocking: a hook failure must never break the host compaction.
+        }
+      })
+    }
+
+    if (ctx.tool?.hook) {
+      // ─── Tool Execution Hook ─────────────────────────────────────
+      ctx.tool.hook("execute.after", async (event: any) => {
+        try {
+          const rawTool = event.tool || event.name || ""
+          const tool = rawTool.toLowerCase()
+
+          const normalizedTool = tool.startsWith("cortex_") ? tool.slice(7) : tool.startsWith("cortex.") ? tool.slice(7) : tool
+
+          // Durable handoffs were already delivered through the MCP channel;
+          // their result is not input to this plugin. Stay neutral: no
+          // interpretation, no redelivery, no fabricated signal.
+          if (tool === "cortex_handoff" || normalizedTool === "cortex_handoff") return
+
+          if (CORTEX_TOOLS.has(tool) || CORTEX_TOOLS.has(normalizedTool)) return
+
+          const sessionId = event.sessionID || event.sessionId
+          let sessionConfirmed = false
+          if (sessionId) {
+            const session = await ensureSession(sessionId)
+            sessionConfirmed = session.confirmed
+            toolCounts.set(sessionId, (toolCounts.get(sessionId) ?? 0) + 1)
+          }
+
+          // Passive capture from task / subagent tool output — protected write, so it
+          // requires the same confirmed session.
+          const output = event.output ?? event.result
+          if ((tool === "task" || tool === "subagent") && output && sessionId && sessionConfirmed) {
+            const text = typeof output === "string" ? output : JSON.stringify(output)
+            if (text.length > 50) {
+              const redactor = await redactionApi()
+              const redacted = redactor.redactSecrets(text).trim()
+              const record = truncateUtf8(redacted)
+              const sent = {
+                content: record.content,
+                session_id: sessionId,
+                title: "Passive capture from task",
+                project,
+                type: "passive",
+                scope: "project",
+              }
+              await deliver(
+                "observation",
+                "/api/observations",
+                {
+                  session_id: sent.session_id,
+                  title: sent.title,
+                  type: sent.type,
+                  project: sent.project,
+                  scope: sent.scope,
+                  ...record,
+                },
+                persistedObservation(sent)
+              )
+            }
+          }
+        } catch {
+          report("observation", "unavailable")
+        }
+      })
+    }
+
+    const cleanup = () => {
+      abortController.abort();
+    };
+    (cleanup as any).dispose = cleanup;
+    return cleanup;
+  },
+})
+
+Object.assign(Cortex, {
+  detectCortexMode,
+  isTokenlessEligible,
+  buildMemoryInstructions,
+});
+
+export default Cortex;

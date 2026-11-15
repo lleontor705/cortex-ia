@@ -1,0 +1,72 @@
+# cortex-ia — Full System Context
+
+cortex-ia is the deterministic multi-agent control plane, transactional OpenCode installer, and native-only agent execution bridge.
+
+## Architecture Packages
+
+```text
+cmd/cortex-ia/               main(): release version + internal/app
+internal/app/                CLI command dispatch (board, work, openspec, mcp, web)
+internal/delegation/         ACID SQLite engine: DAG, CAS revisions, claims, file leases, reviews
+internal/cortexiaweb/        Embedded Preact web console with SSE real-time event streaming
+internal/herdr/              Optional Herdr setup/detection helpers (diagnostics only)
+internal/tui/                Bubble Tea interactive wizard
+internal/install/            Service facade: install, sync, doctor, rollback, uninstall
+internal/pipeline/           Transactional plan, backup, apply, rollback engine
+internal/backup/             Snapshot manifests and restoration
+internal/mcpmanager/         Managed MCP catalog (cortex, context7)
+internal/state/              Installation metadata, accreditation digests & cross-process locks
+internal/components/filemerge JSONC three-way merger with comment preservation
+internal/assets/             go:embed runtime assets (AGENTS.md, agents, commands, skills, plugins)
+```
+
+## Planes & Boundaries
+
+1. **Epistemic & Evidence Plane (Cortex MCP)**:
+   - Evaluates code symbols, call hierarchies, and AST blast radius (`cortex_code_scan`, `cortex_get_blast_radius`).
+   - Stores durable gotchas, bug root causes, ADRs, and session milestones (`cortex_save`, `cortex_search`).
+   - Advisory only: never bypasses review gates or grants write authority.
+
+2. **Control & Coordination Plane (Cortex-IA CLI)**:
+   - Authoritative SQLite ACID state machine (`~/.cortex-ia/delegation.db`).
+   - Task DAG: `backlog ➔ ready ➔ in_progress ➔ in_review ➔ done`.
+   - CAS monotonic revision locking: prevents concurrent race conditions between subagents.
+   - Exclusive file leases: mandatory workspace-relative path locks before writing.
+   - Independent peer review: implementers cannot approve their own work.
+
+3. **Specification Plane (OpenSpec)**:
+   - Markdown delta specifications with RFC 2119 keywords (`openspec/changes/`).
+   - Validated natively via `openspec validate` / `cortex-ia openspec validate`.
+
+4. **Native Execution Plane (OpenCode Role Controllers)**:
+   - Every role controller executes inside OpenCode under Cortex-IA work authority.
+   - No external execution leaf exists: no external CLI receives work-control, approval, session, or MCP authority.
+
+## Complete CLI Reference
+
+- `cortex-ia`: Launch interactive TUI
+- `cortex-ia board create <id> "<title>" "[desc]"`
+- `cortex-ia board list`
+- `cortex-ia board status <id>` (aliases: `show`, `get`)
+- `cortex-ia board serve [--addr 127.0.0.1:7331]`
+- `cortex-ia work create <id> "<title>" --board <id> [--depends <id>]...`
+- `cortex-ia work list [--board <id>]`
+- `cortex-ia work status <id>` (aliases: `show`, `get`)
+- `cortex-ia work claim <id> --owner <owner> [--ttl 15m]`
+- `cortex-ia work renew <id> --claim-token <tok> [--ttl 15m]`
+- `cortex-ia work lease <id> --claim-token <tok> --path <file> [--ttl 15m]`
+- `cortex-ia work lease-renew --path <file> --lease-token <tok>`
+- `cortex-ia work release --path <file> --lease-token <tok>`
+- `cortex-ia work transition <id> --claim-token <tok> --to <in_review|in_progress|blocked>`
+- `cortex-ia work approve <id> --reviewer <id> --verdict <PASS|FAIL> [--evidence <ref>]`
+- `cortex-ia work retry <id>`
+- `cortex-ia work recover`
+- `cortex-ia openspec validate [dir]`
+- `cortex-ia openspec list`
+- `cortex-ia openspec status [dir]`
+- `cortex-ia web [--open] [--addr 127.0.0.1:7331]`
+- `cortex-ia install [--dry-run] [--overwrite]`
+- `cortex-ia sync [--dry-run]`
+- `cortex-ia doctor`
+- `cortex-ia mcp add|list|remove`
+- `cortex-ia rollback <snapshot-id>`

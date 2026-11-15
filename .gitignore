@@ -1,0 +1,36 @@
+# Binaries (root only, not cmd/cortex-ia/)
+/cortex-ia
+/cortex-ia.exe
+*.exe
+*.dll
+*.so
+*.dylib
+.perch
+# Build output
+/bin/
+/dist/
+
+# Test
+*.test
+*.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+._*
+
+# Go
+vendor/
+node_modules/
+.opencode/themes/
+
+# Ratchet baselines are committed regression baselines, unlike local Cortex session state.
+/.cortex-ia/*
+!/.cortex-ia/ratchet/

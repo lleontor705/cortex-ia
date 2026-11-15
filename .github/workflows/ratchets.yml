@@ -1,0 +1,25 @@
+name: Ratchets (advisory)
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ratchets:
+    name: Advisory ratchets
+    runs-on: ubuntu-latest
+    # Advisory by contract: drift is reported for review but never blocks a merge.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Report dead-code drift
+        continue-on-error: true
+        run: bash scripts/ratchet-deadcode.sh
+
+      - name: Report refusal-string drift
+        continue-on-error: true
+        run: bash scripts/ratchet-refusals.sh

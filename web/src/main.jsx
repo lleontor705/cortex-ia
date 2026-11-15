@@ -1,0 +1,1787 @@
+import { render } from 'preact';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import './styles.css';
+import { FlowCanvas } from './flow-canvas.jsx';
+import {
+  CortexLogoMark,
+  IconOverview,
+  IconBoards,
+  IconDelegation,
+  IconActivity,
+  IconSettings,
+  IconSearch,
+  IconPlus,
+  IconRefresh,
+  IconCheck,
+  IconAlert,
+  IconClock,
+  IconTerminal,
+  IconExternal,
+  IconShield,
+  IconCopy,
+  IconArchive,
+  IconChevronDown,
+  IconChevronRight,
+  IconX,
+  IconFlow,
+  IconKanban,
+  IconList
+} from './icons.jsx';
+
+const states = [
+  ['backlog', 'Backlog'],
+  ['ready', 'Lista'],
+  ['in_progress', 'En progreso'],
+  ['in_review', 'En revisión'],
+  ['blocked', 'Bloqueada'],
+  ['superseded', 'Descompuesta'],
+  ['done', 'Completada']
+];
+const stateLabels = Object.fromEntries(states);
+const emptyDashboard = { summary: {}, sessions: [], active_work: [], delegations: [], activity: [] };
+const emptyFeed = { delegations: [], activity: [], page: 0, page_size: 20, total_delegations: 0, total_activity: 0 };
+
+function Pagination({ page, total, size = 20, onPage }) {
+  const pages = Math.max(1, Math.ceil(total / size));
+  return <nav class="header-actions" aria-label="Paginación">
+    <button disabled={page === 0} onClick={() => onPage(page - 1)}>Anterior</button>
+    <span>Página {page + 1} de {pages} · {total} registros</span>
+    <button disabled={page + 1 >= pages} onClick={() => onPage(page + 1)}>Siguiente</button>
+  </nav>;
+}
+const safeStatus = value => /^[a-z_]+$/.test(value || '') ? value : 'unknown';
+const shortID = value => value?.length > 16 ? `${value.slice(0, 8)}…${value.slice(-5)}` : value || '—';
+const formatTime = value => value ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
+const relativeTime = value => {
+  if (!value) return '—';
+  const seconds = Math.round((new Date(value).getTime() - Date.now()) / 1000);
+  const abs = Math.abs(seconds);
+  const [amount, unit] = abs < 60 ? [seconds, 'second'] : abs < 3600 ? [Math.round(seconds / 60), 'minute'] : abs < 86400 ? [Math.round(seconds / 3600), 'hour'] : [Math.round(seconds / 86400), 'day'];
+  return new Intl.RelativeTimeFormat('es', { numeric: 'auto' }).format(amount, unit);
+};
+
+async function request(path, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(path, { ...options, signal: controller.signal });
+    const body = await response.json();
+    if (!response.ok) {
+      const err = body?.error;
+      const msg = typeof err === 'object' && err !== null ? (err.message || err.code) : err;
+      throw new Error(msg || `Error HTTP ${response.status}`);
+    }
+    return body;
+  } finally { clearTimeout(timeout); }
+}
+
+function StatusChip({ status, label }) {
+  return <span class={`status-chip ${safeStatus(status)}`}>{label || stateLabels[status] || status}</span>;
+}
+
+function Empty({ title, children }) {
+  return <div class="empty-inline"><b>{title}</b><span>{children}</span></div>;
+}
+
+function PageHeader({ eyebrow, title, description, action }) {
+  return (
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">{eyebrow}</p>
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+      {action && <div class="page-header-action">{action}</div>}
+    </header>
+  );
+}
+
+function Sidebar({ boards, dashboard, currentBoard, view, onView, onBoard, onNewBoard }) {
+  const [showArchived, setShowArchived] = useState(false);
+  const nav = [
+    ['overview', IconOverview, 'Resumen'],
+    ['sessions', IconBoards, 'Boards'],
+    ['delegations', IconDelegation, 'Delegación'],
+    ['activity', IconActivity, 'Actividad'],
+    ['settings', IconSettings, 'Ecosistema']
+  ];
+  const activeBoards = boards.filter(b => b.status !== 'archived');
+  const archivedBoards = boards.filter(b => b.status === 'archived');
+
+  return (
+    <aside class="sidebar">
+      <button class="brand" onClick={() => onView('overview')} title="Cortex-IA Operations Console">
+        <CortexLogoMark size={36} />
+        <span class="brand-text">
+          <strong>Cortex-IA</strong>
+          <small>Operations Console</small>
+        </span>
+      </button>
+      <p class="side-label">CONTROL</p>
+      <nav class="primary-nav" aria-label="Navegación principal">
+        {nav.map(([id, IconComponent, label]) => (
+          <button
+            key={id}
+            class={`nav-link ${view === id ? 'active' : ''}`}
+            aria-current={view === id ? 'page' : undefined}
+            onClick={() => onView(id)}
+          >
+            <span class="nav-icon"><IconComponent size={16} /></span>
+            <span class="nav-text">{label}</span>
+            {id === 'sessions' && <b>{dashboard.summary.sessions || 0}</b>}
+            {id === 'delegations' && <b>{dashboard.summary.active_delegations || 0}</b>}
+          </button>
+        ))}
+      </nav>
+      <div class="board-heading">
+        <p class="side-label">TASK BOARDS</p>
+        <button onClick={onNewBoard} aria-label="Crear tablero" title="Nuevo board / tablero">
+          <IconPlus size={12} />
+        </button>
+      </div>
+      <nav class="board-nav" aria-label="Tableros">
+        {activeBoards.length ? activeBoards.map(board => (
+          <button
+            key={board.board_id}
+            class={`board-link ${view === 'board' && currentBoard === board.board_id ? 'active' : ''}`}
+            aria-current={view === 'board' && currentBoard === board.board_id ? 'page' : undefined}
+            onClick={() => onBoard(board.board_id)}
+          >
+            <span>
+              {board.board_id?.startsWith('branch-') && !board.title?.includes('🌿') && <span class="branch-indicator">🌿 </span>}
+              {board.title}
+            </span>
+            <b>{Object.values(board.counts || {}).reduce((a, b) => a + b, 0)}</b>
+          </button>
+        )) : <small class="empty-boards">Sin tableros activos</small>}
+
+        {archivedBoards.length > 0 && (
+          <div class="archived-section">
+            <button class="archived-toggle" onClick={() => setShowArchived(!showArchived)}>
+              <span>{showArchived ? '▾' : '▸'} Archivados ({archivedBoards.length})</span>
+            </button>
+            {showArchived && archivedBoards.map(board => (
+              <button
+                key={board.board_id}
+                class={`board-link archived ${view === 'board' && currentBoard === board.board_id ? 'active' : ''}`}
+                aria-current={view === 'board' && currentBoard === board.board_id ? 'page' : undefined}
+                onClick={() => onBoard(board.board_id)}
+                title={`Tablero archivado: ${board.board_id}`}
+              >
+                <span>📦 {board.title}</span>
+                <b>{Object.values(board.counts || {}).reduce((a, b) => a + b, 0)}</b>
+              </button>
+            ))}
+          </div>
+        )}
+      </nav>
+      <footer>
+        <div>
+          <span class="online-dot"></span>
+          <strong>Control Local Activo</strong>
+        </div>
+        <small>SQLite · loopback seguro</small>
+      </footer>
+    </aside>
+  );
+}
+
+function Metrics({ dashboard }) {
+  const s = dashboard.summary;
+  return (
+    <div class="metrics five">
+      <article>
+        <span>Boards</span>
+        <strong>{s.sessions || 0}</strong>
+        <small>boards durables</small>
+      </article>
+      <article>
+        <span>Trabajo activo</span>
+        <strong>{s.active_tasks || 0}</strong>
+        <small>tareas no cerradas</small>
+      </article>
+      <article>
+        <span>Agentes activos</span>
+        <strong>{s.active_agents || 0}</strong>
+        <small>claims vigentes</small>
+      </article>
+      <article>
+        <span>Delegaciones</span>
+        <strong>{s.active_delegations || 0}</strong>
+        <small>ejecutores activos</small>
+      </article>
+      <article class="metric-alert">
+        <span>Bloqueadas</span>
+        <strong>{s.blocked || 0}</strong>
+        <small>requieren atención</small>
+      </article>
+    </div>
+  );
+}
+
+function WorkRow({ item, onOpen }) {
+  return (
+    <button class="work-row" onClick={() => onOpen(item)}>
+      <span class={`status-dot ${safeStatus(item.status)}`}></span>
+      <span class="work-copy">
+        <b>{item.title}</b>
+        <small>{item.task_id} · {item.board_id}</small>
+      </span>
+      <span class="owner-chip">{item.claim?.owner || 'Sin claim'}</span>
+      <span class="lease-count">{item.leases?.length || 0} leases</span>
+      <StatusChip status={item.status} />
+    </button>
+  );
+}
+
+function EventList({ events, compact = false }) {
+  if (!events.length) return <Empty title="Sin actividad">Los eventos de trabajo y delegación aparecerán aquí.</Empty>;
+  return (
+    <div class={`timeline ${compact ? 'compact' : ''}`}>
+      {events.map((event, index) => (
+        <article class="event" key={`${event.source}-${event.entity_id}-${event.created_at}-${index}`}>
+          <span class={`event-mark ${event.source}`}>{event.source === 'work' ? 'W' : 'D'}</span>
+          <div>
+            <header>
+              <b>{event.kind.replaceAll('_', ' ')}</b>
+              <time title={formatTime(event.created_at)}>{relativeTime(event.created_at)}</time>
+            </header>
+            <p>{event.title} <code>{shortID(event.entity_id)}</code></p>
+            {(event.from || event.to) && <small class="event-diff">{event.from || '—'} → {event.to || '—'}</small>}
+            {event.detail && <small class="event-detail">{event.detail}</small>}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function JobRows({ jobs, preview = false, onOpen }) {
+  if (!jobs.length) return <Empty title="Sin delegaciones">Las ejecuciones delegadas a CLI aparecerán aquí.</Empty>;
+  if (preview) {
+    return (
+      <div class="job-list">
+        {jobs.slice(0, 5).map(job => (
+          <button class="job-row-btn" key={job.job_id} onClick={() => onOpen?.(job)}>
+            <span class="transport-mark">{job.transport === 'herdr' ? '▦' : '⌁'}</span>
+            <span class="job-copy">
+              <b>{job.role}</b>
+              <small>{job.task_id || shortID(job.job_id)}</small>
+            </span>
+            <StatusChip status={job.status} />
+            <time>{relativeTime(job.updated_at)}</time>
+          </button>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <>
+      {jobs.map(job => (
+        <tr key={job.job_id} class="clickable-tr" onClick={() => onOpen?.(job)}>
+          <td><code title={job.job_id}>{shortID(job.job_id)}</code></td>
+          <td>
+            <b>{job.role}</b>
+            <small>{job.task_id || 'sin task vinculada'}</small>
+          </td>
+          <td>
+            <span class={`transport-badge ${job.transport}`}>
+              {job.transport === 'herdr' ? '▦ Herdr' : '⌁ Direct CLI'}
+            </span>
+          </td>
+          <td><code>{job.lease_owner ? shortID(job.lease_owner) : '—'}</code></td>
+          <td>#{job.attempt}</td>
+          <td>
+            <StatusChip status={job.status} />
+            {job.error_code && <small class="error-copy">{job.error_code}</small>}
+          </td>
+          <td title={formatTime(job.updated_at)}>{relativeTime(job.updated_at)}</td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function Overview({ dashboard, onView, onTask, onNewTask, onJob }) {
+  return (
+    <>
+      <PageHeader
+        eyebrow="SYSTEM OVERVIEW"
+        title="Operaciones en Tiempo Real"
+        description="Boards de trabajo, agentes, tareas y ejecuciones delegadas desde el plano de control local."
+        action={<button class="button primary" onClick={onNewTask}>+ Nueva tarea</button>}
+      />
+      <Metrics dashboard={dashboard} />
+      <div class="dashboard-grid">
+        <section class="panel work-panel">
+          <header>
+            <div>
+              <p class="eyebrow">ACTIVE WORK</p>
+              <h2>Trabajo en curso</h2>
+            </div>
+            <button class="text-button" onClick={() => onView('sessions')}>Ver sesiones →</button>
+          </header>
+          <div class="work-list">
+            {dashboard.active_work.length ? (
+              dashboard.active_work.slice(0, 8).map(item => <WorkRow key={item.task_id} item={item} onOpen={onTask} />)
+            ) : (
+              <Empty title="No hay tareas activas">Crea un board o tarea para comenzar.</Empty>
+            )}
+          </div>
+        </section>
+        <section class="panel activity-panel">
+          <header>
+            <div>
+              <p class="eyebrow">EVENT STREAM</p>
+              <h2>Actividad reciente</h2>
+            </div>
+            <button class="text-button" onClick={() => onView('activity')}>Ver todo →</button>
+          </header>
+          <EventList events={dashboard.activity.slice(0, 7)} compact />
+        </section>
+        <section class="panel delegation-panel">
+          <header>
+            <div>
+              <p class="eyebrow">EXECUTION BRIDGE</p>
+              <h2>Delegación externa</h2>
+            </div>
+            <button class="text-button" onClick={() => onView('delegations')}>Abrir monitor →</button>
+          </header>
+          <JobRows jobs={dashboard.delegations} preview onOpen={onJob} />
+        </section>
+      </div>
+    </>
+  );
+}
+
+function Sessions({ sessions, boards = [], onBoard, onNew, onArchive, onUnarchive, onDelete }) {
+  const [filter, setFilter] = useState('all');
+  const boardStatusMap = useMemo(() => new Map(boards.map(b => [b.board_id, b.status || 'active'])), [boards]);
+
+  const filteredSessions = useMemo(() => {
+    return sessions.filter(session => {
+      const status = boardStatusMap.get(session.board_id) || 'active';
+      if (filter === 'active') return status !== 'archived';
+      if (filter === 'archived') return status === 'archived';
+      return true;
+    });
+  }, [sessions, boardStatusMap, filter]);
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="WORK SESSIONS"
+        title="Boards e iniciativas"
+        description="Cada board agrupa una iniciativa durable con su DAG, progreso y reservas. No representa una conversación de OpenCode."
+        action={
+          <div class="header-actions">
+            <div class="segmented-control">
+              <button class={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>Todas</button>
+              <button class={filter === 'active' ? 'active' : ''} onClick={() => setFilter('active')}>Activas</button>
+              <button class={filter === 'archived' ? 'active' : ''} onClick={() => setFilter('archived')}>Archivadas</button>
+            </div>
+            <button class="button primary" onClick={onNew}>+ Nuevo board</button>
+          </div>
+        }
+      />
+      <div class="session-grid">
+        {filteredSessions.length ? (
+          filteredSessions.map(session => {
+            const isArchived = boardStatusMap.get(session.board_id) === 'archived';
+            return (
+              <div class={`session-card-container ${isArchived ? 'archived' : ''}`} key={session.board_id}>
+                <button class="session-card" onClick={() => onBoard(session.board_id)}>
+                  <header>
+                    <div class="chip-group">
+                      <StatusChip status={session.status} label={session.status === 'complete' ? 'Completada' : session.status === 'active' ? 'Activa' : 'Vacía'} />
+                      {isArchived && <span class="status-chip archived">Archivado</span>}
+                    </div>
+                    <small>{relativeTime(session.updated_at)}</small>
+                  </header>
+                  <h2>{session.title}</h2>
+                  <p>{session.description || `Board ${session.board_id}`}</p>
+                  <div class="session-stats">
+                    <span><b>{session.task_count}</b> tareas</span>
+                    <span><b>{session.owners?.length || 0}</b> agentes</span>
+                    <span><b>{session.counts?.blocked || 0}</b> bloqueadas</span>
+                  </div>
+                  <progress max="100" value={session.progress || 0} aria-label={`${session.progress || 0}% completado`}></progress>
+                  <footer>
+                    <span>{session.progress || 0}% completado</span>
+                    <span>rev. durable →</span>
+                  </footer>
+                </button>
+                <div class="session-card-actions">
+                  {!isArchived ? (
+                    session.board_id !== 'default' && (
+                      <button
+                        class="mini-action-btn"
+                        onClick={(e) => { e.stopPropagation(); onArchive?.(session.board_id); }}
+                        title="Archivar board terminado"
+                      >
+                        📦 Archivar
+                      </button>
+                    )
+                  ) : (
+                    <>
+                      <button
+                        class="mini-action-btn"
+                        onClick={(e) => { e.stopPropagation(); onUnarchive?.(session.board_id); }}
+                        title="Restaurar board a activo"
+                      >
+                        ↺ Restaurar
+                      </button>
+                      {session.board_id !== 'default' && (
+                        <button
+                          class="mini-action-btn danger"
+                          onClick={(e) => { e.stopPropagation(); onDelete?.(session.board_id); }}
+                          title="Eliminar board definitivamente"
+                        >
+                          ✕ Eliminar
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <Empty title="No hay sesiones">No se encontraron sesiones con el filtro seleccionado.</Empty>
+        )}
+      </div>
+    </>
+  );
+}
+
+function Delegations({ jobs, onOpenJob }) {
+  const [filter, setFilter] = useState('');
+  const filtered = useMemo(() => {
+    if (!filter) return jobs;
+    const q = filter.toLowerCase();
+    return jobs.filter(j => j.role?.toLowerCase().includes(q) || j.task_id?.toLowerCase().includes(q) || j.status?.toLowerCase().includes(q) || j.job_id?.toLowerCase().includes(q));
+  }, [jobs, filter]);
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="DELEGATION MONITOR"
+        title="Supervisión de Tareas Delegadas"
+        description="Monitoreo transparente de tareas ejecutadas por workers CLI y multiplexores terminales en tiempo real."
+        action={
+          <div class="search-box">
+            <input
+              type="text"
+              placeholder="Buscar en esta página: rol, task o estado…"
+              value={filter}
+              onInput={e => setFilter(e.currentTarget.value)}
+            />
+          </div>
+        }
+      />
+      <section class="panel table-panel">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Job ID</th>
+                <th>Rol / Task</th>
+                <th>Transporte</th>
+                <th>Owner Claim</th>
+                <th>Intento</th>
+                <th>Estado</th>
+                <th>Actualizado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length ? (
+                <JobRows jobs={filtered} onOpen={onOpenJob} />
+              ) : (
+                <tr>
+                  <td colspan="7">
+                    <Empty title="Sin ejecuciones delegadas">
+                      {filter ? 'No hay resultados para tu búsqueda.' : 'Cuando un agente delegue una tarea a un worker externo aparecerá aquí.'}
+                    </Empty>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function SettingsView({ configData, onRefresh }) {
+  const cfg = configData?.delegation_config || {};
+  const roles = cfg?.roles || {};
+  const herdr = cfg?.herdr_settings || {};
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="ECOSYSTEM & DELEGATION CONFIG"
+        title="Configuración Dinámica del Ecosistema"
+        description="Consulta las políticas activas de delegación, ejecutores CLI por rol y estado de los multiplexores."
+        action={<button class="button secondary" onClick={onRefresh}>↻ Recargar configuración</button>}
+      />
+      <div class="settings-grid">
+        <section class="panel settings-card">
+          <header>
+            <div>
+              <p class="eyebrow">GLOBAL POLICY</p>
+              <h2>Motor de Delegación</h2>
+            </div>
+            <StatusChip
+              status={cfg.delegation_enabled ? 'succeeded' : 'blocked'}
+              label={cfg.delegation_enabled ? 'Habilitada' : 'Deshabilitada'}
+            />
+          </header>
+          <div class="settings-body">
+            <div class="setting-row">
+              <span>Modo de Transporte</span>
+              <b>{cfg.use_herdr ? 'Herdr Multiplexed (Terminal Split)' : 'Direct CLI (Subproceso)'}</b>
+            </div>
+            <div class="setting-row">
+              <span>Modelo AGY Predeterminado</span>
+              <b><code>{cfg.default_model || 'gemini-3.8-flash-high'}</code></b>
+            </div>
+            <div class="setting-row">
+              <span>Dirección de Split</span>
+              <b><code>split {herdr.split_direction || 'right'}</code></b>
+            </div>
+            <div class="setting-row">
+              <span>Auto Split & Close</span>
+              <b>{herdr.auto_split ? 'Activado (Automático)' : 'Manual'}</b>
+            </div>
+            <div class="setting-row">
+              <span>Timeout por Tarea</span>
+              <b>{herdr.timeout_seconds || 1800} segundos</b>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel settings-card">
+          <header>
+            <div>
+              <p class="eyebrow">ENVIRONMENT</p>
+              <h2>Estado del Entorno</h2>
+            </div>
+            <StatusChip
+              status={configData?.herdr_active ? 'succeeded' : 'ready'}
+              label={configData?.herdr_active ? 'Herdr Activo' : 'Standalone'}
+            />
+          </header>
+          <div class="settings-body">
+            <div class="setting-row">
+              <span>Multiplexador Herdr</span>
+              <b>{configData?.herdr_installed ? 'Instalado ✓' : 'No detectado'}</b>
+            </div>
+            <div class="setting-row">
+              <span>Sesión Herdr en Terminal</span>
+              <b>{configData?.herdr_active ? 'En ejecución (Paneles interactivos)' : 'Inactivo'}</b>
+            </div>
+            <div class="setting-row">
+              <span>Subagentes en Background</span>
+              <b>{configData?.background_subagents_enabled ? 'Habilitado (OPENCODE_EXPERIMENTAL)' : 'Deshabilitado'}</b>
+            </div>
+            <div class="setting-row">
+              <span>Base de Datos Operativa</span>
+              <b><code>~/.config/opencode/delegation.db</code></b>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="panel role-matrix-panel">
+        <header>
+          <div>
+            <p class="eyebrow">ROLE DISPATCH MATRIX</p>
+            <h2>Ejecutores CLI Configurados por Rol</h2>
+          </div>
+        </header>
+        <div class="role-grid">
+          {Object.entries(roles).map(([roleName, roleCfg]) => (
+            <article class="role-card" key={roleName}>
+              <header>
+                <div>
+                  <span class="role-icon">{roleName === 'implement' ? '🛠️' : roleName === 'investigate' ? '🔍' : roleName === 'planner' ? '📋' : '🛡️'}</span>
+                  <h3>role/{roleName}</h3>
+                </div>
+                <StatusChip
+                  status={roleCfg.delegate ? 'succeeded' : 'ready'}
+                  label={roleCfg.delegate ? 'Delegado' : 'Nativo'}
+                />
+              </header>
+              <div class="role-details">
+                <div class="role-field">
+                  <span>CLI Ejecutor</span>
+                  <b><code>{roleCfg.cli || 'native'}</code></b>
+                </div>
+                <div class="role-field">
+                  <span>Modo Operativo</span>
+                  <b><code>{roleCfg.mode || 'default'}</code></b>
+                </div>
+                <div class="role-field">
+                  <span>Modelo Asignado</span>
+                  <b><code>{roleCfg.model || (roleCfg.delegate ? (cfg.default_model || 'gemini-3.8-flash-high') : 'N/A (Nativo)')}</code></b>
+                </div>
+                <div class="role-field">
+                  <span>Delegación Externa</span>
+                  <b>{roleCfg.delegate ? 'Sí (Supervisada)' : 'No (In-process)'}</b>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
+const isLive = value => value && new Date(value).getTime() > Date.now();
+
+function TaskCard({ item, itemsByID, onOpen }) {
+  const pendingDependencies = (item.dependencies || []).filter(id => itemsByID.get(id)?.status !== 'done');
+  const liveClaim = isLive(item.claim?.expires_at);
+  return (
+    <button class={`task-card ${item.status}`} onClick={() => onOpen(item)}>
+      <div class="task-card-topline">
+        <code>{item.task_id}</code>
+        <span>r{item.revision}</span>
+      </div>
+      <h3>{item.title}</h3>
+      <p class="task-objective">{item.objective || 'Objetivo detallado pendiente de definir.'}</p>
+      <div class="task-signals">
+        <span class={liveClaim ? 'signal active' : 'signal'}><i></i>{liveClaim ? item.claim.owner : 'sin claim'}</span>
+        <span>{item.allowed_files?.length || item.leases?.length || 0} archivos</span>
+      </div>
+      {(item.dependencies?.length || 0) > 0 && (
+        <footer>
+          <span>{pendingDependencies.length ? `${pendingDependencies.length} dependencias pendientes` : 'dependencias resueltas'}</span>
+          <span>→</span>
+        </footer>
+      )}
+    </button>
+  );
+}
+
+function DependencyView({ items, itemsByID, onTask }) {
+  return (
+    <div class="dependency-list">
+      {items.map(item => {
+        const dependencies = item.dependencies || [];
+        return (
+          <button class="dependency-row" key={item.task_id} onClick={() => onTask(item)}>
+            <span class={`dependency-state ${safeStatus(item.status)}`}></span>
+            <span class="dependency-copy">
+              <code>{item.task_id}</code>
+              <b>{item.title}</b>
+              <small>{item.objective || 'Objetivo no documentado'}</small>
+            </span>
+            <span class="dependency-links">
+              {dependencies.length ? dependencies.map(id => (
+                <span class={itemsByID.get(id)?.status === 'done' ? 'resolved' : ''} key={id}>{id}</span>
+              )) : <small>raíz del DAG</small>}
+            </span>
+            <StatusChip status={item.status} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Board({ snapshot, activity, delegations, onNewTask, onTask, onArchiveBoard, onUnarchiveBoard, onDeleteBoard }) {
+  const board = snapshot?.board;
+  const items = snapshot?.items || [];
+  const counts = board?.counts || {};
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [hideDone, setHideDone] = useState(() => {
+    try {
+      return localStorage.getItem('cortex_hide_done') === 'true';
+    } catch (_) {
+      return false;
+    }
+  });
+  const [mode, setMode] = useState('graph');
+  const itemsByID = useMemo(() => new Map(items.map(item => [item.task_id, item])), [items]);
+  const filteredItems = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return items.filter(item => {
+      if (hideDone && (item.status === 'done' || item.status === 'superseded')) return false;
+      if (statusFilter !== 'all' && item.status !== statusFilter) return false;
+      if (!needle) return true;
+      return [item.task_id, item.title, item.objective, item.acceptance_criteria, item.verification, item.claim?.owner, ...(item.allowed_files || []), ...(item.leases || []).map(lease => lease.path)]
+        .filter(Boolean)
+        .some(value => value.toLowerCase().includes(needle));
+    });
+  }, [items, query, statusFilter, hideDone]);
+  const liveClaims = items.filter(item => isLive(item.claim?.expires_at));
+  const leasedFiles = items.reduce((total, item) => total + (item.leases?.filter(lease => isLive(lease.expires_at)).length || 0), 0);
+  const completed = (counts.done || 0) + (counts.superseded || 0);
+  const progress = items.length ? Math.round((completed / items.length) * 100) : 0;
+  const boardActivity = activity || [];
+  const boardDelegations = delegations || [];
+  const attention = items.filter(item => item.status === 'blocked' || (item.status === 'in_progress' && !isLive(item.claim?.expires_at)));
+  const upcoming = items
+    .filter(item => ['in_progress', 'ready', 'backlog'].includes(item.status))
+    .sort((a, b) => ['in_progress', 'ready', 'backlog'].indexOf(a.status) - ['in_progress', 'ready', 'backlog'].indexOf(b.status))
+    .slice(0, 4);
+  if (!board) return <Empty title="Cargando board">Consultando el task board local.</Empty>;
+  return (
+    <>
+      <header class="board-hero">
+        <div class="board-identity">
+          <p class="eyebrow">
+            DURABLE TASK BOARD · <code>{board.board_id}</code>
+            {board.board_id?.startsWith('branch-') && <span class="status-chip branch-chip chip-inline">Rama Git</span>}
+            {board.status === 'archived' && <span class="status-chip archived chip-inline">Archivado</span>}
+          </p>
+          <h1>{board.title}</h1>
+          <p>{board.description || 'Iniciativa del plano de control local.'}</p>
+          <div class="board-meta">
+            <span>rev. {board.revision}</span>
+            <span>{items.length} tareas</span>
+            <span>estado: <b>{board.status === 'archived' ? 'Archivado' : 'Activo'}</b></span>
+            <span>actualizado {relativeTime(board.updated_at)}</span>
+          </div>
+        </div>
+        <div class="board-progress">
+          <span><b>{progress}%</b> completado</span>
+          <progress class="progress-track" value={progress} max="100" aria-label={`${progress}% completado`}></progress>
+          <small>{completed} de {items.length} tareas aprobadas</small>
+          <div class="board-actions-row">
+            {board.status !== 'archived' ? (
+              <>
+                <button class="button primary" onClick={onNewTask}>+ Nueva tarea</button>
+                {board.board_id !== 'default' && (
+                  <button class="button secondary" onClick={() => onArchiveBoard?.(board.board_id)} title="Archivar este tablero finalizado">
+                    📦 Archivar
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <button class="button secondary" onClick={() => onUnarchiveBoard?.(board.board_id)} title="Restaurar a activo">
+                  ↺ Desarchivar
+                </button>
+                {board.board_id !== 'default' && (
+                  <button class="button danger" onClick={() => onDeleteBoard?.(board.board_id)} title="Eliminar definitivamente este tablero">
+                    ✕ Eliminar
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <section class="board-kpis" aria-label="Estado del tablero">
+        <article><small>Lista para tomar</small><strong>{counts.ready || 0}</strong><span class="kpi-mark ready"></span></article>
+        <article><small>Agentes con claim</small><strong>{liveClaims.length}</strong><span class="kpi-mark in_progress"></span></article>
+        <article><small>Archivos reservados</small><strong>{leasedFiles}</strong><span class="kpi-mark in_review"></span></article>
+        <article class={counts.blocked ? 'alert' : ''}><small>Requieren atención</small><strong>{attention.length}</strong><span class="kpi-mark blocked"></span></article>
+      </section>
+
+      {upcoming.length > 0 && <section class="execution-plan">
+        <header>
+          <div><p class="eyebrow">EXECUTION PLAN</p><h2>Qué se va a hacer</h2></div>
+          <span>Ordenado por disponibilidad y dependencias</span>
+        </header>
+        <div class="plan-steps">
+          {upcoming.map((item, index) => (
+            <button key={item.task_id} onClick={() => onTask(item)}>
+              <span class="step-number">{String(index + 1).padStart(2, '0')}</span>
+              <span class="step-copy">
+                <span><code>{item.task_id}</code><StatusChip status={item.status} /></span>
+                <b>{item.title}</b>
+                <p>{item.objective || 'Esta tarea aún no tiene un objetivo operativo documentado.'}</p>
+                <small>
+                  {item.allowed_files?.length ? `${item.allowed_files.length} archivos previstos` : 'alcance de archivos pendiente'}
+                  {' · '}
+                  {item.verification ? `verifica: ${item.verification}` : 'verificación pendiente'}
+                </small>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>}
+
+      {items.length ? <div class="board-layout">
+        <section class="board-workspace">
+          <header class="board-toolbar">
+            <div class="view-switch" aria-label="Vista del tablero">
+              <button
+                class={mode === 'graph' ? 'active' : ''}
+                aria-pressed={mode === 'graph'}
+                onClick={() => setMode('graph')}
+                title="Grafo DAG interactivo estilo ComfyUI / React Flow"
+              >
+                <span class="view-switch-icon"><IconFlow size={14} /></span>
+                Grafo DAG
+              </button>
+              <button
+                class={mode === 'kanban' ? 'active' : ''}
+                aria-pressed={mode === 'kanban'}
+                onClick={() => setMode('kanban')}
+                title="Tablero de columnas Kanban"
+              >
+                <span class="view-switch-icon"><IconKanban size={14} /></span>
+                Kanban
+              </button>
+              <button
+                class={mode === 'list' ? 'active' : ''}
+                aria-pressed={mode === 'list'}
+                onClick={() => setMode('list')}
+                title="Lista de dependencias"
+              >
+                <span class="view-switch-icon"><IconList size={14} /></span>
+                Lista
+              </button>
+            </div>
+            <div class="board-filters">
+              <button
+                class={`toggle-button ${hideDone ? 'active' : ''}`}
+                onClick={() => {
+                  const next = !hideDone;
+                  setHideDone(next);
+                  try { localStorage.setItem('cortex_hide_done', String(next)); } catch (_) {}
+                }}
+                title={hideDone ? "Mostrar tareas completadas y descompuestas" : "Ocultar tareas completadas y descompuestas"}
+              >
+                {hideDone ? '👁️ Completadas ocultas' : '👁️ Ocultar completadas'}
+              </button>
+              <select value={statusFilter} onChange={event => setStatusFilter(event.currentTarget.value)} aria-label="Filtrar por estado">
+                <option value="all">Todos los estados</option>
+                {states.map(([status, label]) => <option value={status} key={status}>{label}</option>)}
+              </select>
+              <input value={query} onInput={event => setQuery(event.currentTarget.value)} placeholder="Buscar tarea, owner o archivo…" aria-label="Buscar tareas" />
+            </div>
+          </header>
+          <div class="result-count">{filteredItems.length} de {items.length} tareas visibles</div>
+          {mode === 'graph' ? (
+            <FlowCanvas
+              items={filteredItems}
+              itemsByID={itemsByID}
+              boardId={board.board_id}
+              onTask={onTask}
+              onNewTask={onNewTask}
+            />
+          ) : mode === 'kanban' ? (
+            <section class="kanban">
+              {states.map(([status, label]) => {
+                if (hideDone && (status === 'done' || status === 'superseded')) return null;
+                const cards = filteredItems.filter(item => item.status === status);
+                return (
+                  <section class={`column ${status}`} key={status}>
+                    <header class="column-head">
+                      <span class={`status-dot ${status}`}></span>
+                      <h2>{label}</h2>
+                      <b>{cards.length}</b>
+                    </header>
+                    <div class="cards">
+                      {cards.length ? cards.map(item => (
+                        <TaskCard key={item.task_id} item={item} itemsByID={itemsByID} onOpen={onTask} />
+                      )) : <span class="empty-column">Sin tareas</span>}
+                    </div>
+                  </section>
+                );
+              })}
+            </section>
+          ) : (
+            <DependencyView items={filteredItems} itemsByID={itemsByID} onTask={onTask} />
+          )}
+        </section>
+
+        <aside class="control-rail">
+          <section class="rail-panel attention-panel">
+            <header><div><p class="eyebrow">CONTROL PLANE</p><h2>Atención requerida</h2></div><b>{attention.length}</b></header>
+            {attention.length ? attention.slice(0, 5).map(item => (
+              <button class="rail-task" key={item.task_id} onClick={() => onTask(item)}>
+                <span class={`status-dot ${safeStatus(item.status)}`}></span>
+                <span><b>{item.task_id}</b><small>{item.status === 'blocked' ? 'Bloqueada' : 'Claim ausente o vencido'}</small></span>
+              </button>
+            )) : <Empty title="Sin alertas">Claims y bloqueos están bajo control.</Empty>}
+          </section>
+
+          <section class="rail-panel">
+            <header><div><p class="eyebrow">AUTHORITY</p><h2>Claims y reservas</h2></div><b>{liveClaims.length}</b></header>
+            <div class="authority-list">
+              {liveClaims.length ? liveClaims.slice(0, 6).map(item => (
+                <button key={item.task_id} onClick={() => onTask(item)}>
+                  <span><b>{item.claim.owner}</b><small>{item.task_id}</small></span>
+                  <span><strong>{item.leases?.length || 0}</strong><small>archivos</small></span>
+                </button>
+              )) : <Empty title="Sin claims activos">Ningún agente posee autoridad de escritura.</Empty>}
+            </div>
+          </section>
+
+          <section class="rail-panel">
+            <header><div><p class="eyebrow">EXTERNAL LEAVES</p><h2>Delegaciones</h2></div><b>{boardDelegations.length}</b></header>
+            {boardDelegations.length ? <div class="mini-jobs">{boardDelegations.map(job => (
+              <div key={job.job_id}><span>{job.role}</span><StatusChip status={job.status} /><small>{shortID(job.job_id)}</small></div>
+            ))}</div> : <Empty title="Sin delegaciones">No hay jobs vinculados a este board.</Empty>}
+          </section>
+
+          <section class="rail-panel board-events">
+            <header><div><p class="eyebrow">LIVE AUDIT</p><h2>Actividad reciente</h2></div></header>
+            <EventList events={boardActivity} compact />
+          </section>
+        </aside>
+      </div> : (
+        <div class="empty">
+          <strong>Este board está listo.</strong>
+          <span>Crea la primera tarea para materializar su DAG.</span>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Modal({ open, onClose, title = 'Diálogo', children, className = '' }) {
+  const modalRef = useRef(null);
+  const previousFocus = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    previousFocus.current = document.activeElement;
+    const handleKey = event => {
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (event.key === 'Tab' && modalRef.current) {
+        const focusables = modalRef.current.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    setTimeout(() => {
+      const firstInput = modalRef.current?.querySelector('input, select, textarea, button');
+      firstInput?.focus();
+    }, 50);
+
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      if (previousFocus.current && typeof previousFocus.current.focus === 'function') {
+        previousFocus.current.focus();
+      }
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <div class="modal-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+      <section ref={modalRef} class={`modal ${className}`} role="dialog" aria-modal="true" aria-label={title}>
+        {children}
+      </section>
+    </div>
+  );
+}
+
+function BoardForm({ open, onClose, onCreated, onError }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [values, setValues] = useState({ board_id: '', title: '', description: '' });
+
+  const updateField = (field, value) => {
+    setValues(prev => ({ ...prev, [field]: value }));
+  };
+
+  const submit = async event => {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setFormError('');
+    try {
+      const board = await request('/api/boards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values)
+      });
+      setValues({ board_id: '', title: '', description: '' });
+      onCreated(board);
+    } catch (error) {
+      setFormError(error.message);
+      onError(error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Crear task board">
+      <form onSubmit={submit}>
+        <header>
+          <div>
+            <p class="eyebrow">NEW SESSION</p>
+            <h2>Crear task board</h2>
+          </div>
+          <button type="button" class="close" onClick={onClose} aria-label="Cerrar modal">×</button>
+        </header>
+        {formError && <p class="form-error" role="alert">{formError}</p>}
+        <label>
+          ID estable
+          <input
+            name="board_id"
+            required
+            maxlength="128"
+            placeholder="release-1"
+            value={values.board_id}
+            onInput={e => updateField('board_id', e.target.value)}
+          />
+        </label>
+        <label>
+          Nombre
+          <input
+            name="title"
+            required
+            maxlength="256"
+            placeholder="Release 1"
+            value={values.title}
+            onInput={e => updateField('title', e.target.value)}
+          />
+        </label>
+        <label>
+          Descripción
+          <textarea
+            name="description"
+            maxlength="2048"
+            placeholder="Objetivo y alcance del board"
+            value={values.description}
+            onInput={e => updateField('description', e.target.value)}
+          ></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button type="button" class="button secondary" onClick={onClose} disabled={submitting}>Cancelar</button>
+          <button class="button primary" disabled={submitting}>
+            {submitting ? 'Creando…' : 'Crear board'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function TaskForm({ open, onClose, onCreated, onError, boards, currentBoard }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [values, setValues] = useState({
+    board_id: currentBoard || (boards[0]?.board_id || ''),
+    task_id: '',
+    title: '',
+    objective: '',
+    acceptance_criteria: '',
+    verification: '',
+    allowed_files: '',
+    dependencies: ''
+  });
+
+  useEffect(() => {
+    if (currentBoard) {
+      setValues(prev => ({ ...prev, board_id: currentBoard }));
+    }
+  }, [currentBoard]);
+
+  const updateField = (field, value) => {
+    setValues(prev => ({ ...prev, [field]: value }));
+  };
+
+  const submit = async event => {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setFormError('');
+    try {
+      const payload = {
+        ...values,
+        dependencies: values.dependencies.split(',').map(v => v.trim()).filter(Boolean),
+        allowed_files: values.allowed_files.split(/[\r\n,]+/).map(v => v.trim()).filter(Boolean)
+      };
+      const task = await request('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      setValues({
+        board_id: currentBoard || '',
+        task_id: '',
+        title: '',
+        objective: '',
+        acceptance_criteria: '',
+        verification: '',
+        allowed_files: '',
+        dependencies: ''
+      });
+      onCreated(task);
+    } catch (error) {
+      setFormError(error.message);
+      onError(error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Nueva tarea">
+      <form onSubmit={submit}>
+        <header>
+          <div>
+            <p class="eyebrow">NEW WORK ITEM</p>
+            <h2>Nueva tarea</h2>
+          </div>
+          <button type="button" class="close" onClick={onClose} aria-label="Cerrar modal">×</button>
+        </header>
+        {formError && <p class="form-error" role="alert">{formError}</p>}
+        <label>
+          Tablero
+          <select
+            name="board_id"
+            value={values.board_id}
+            onChange={e => updateField('board_id', e.target.value)}
+            required
+          >
+            {boards.map(board => (
+              <option value={board.board_id} key={board.board_id}>{board.title}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          ID de tarea
+          <input
+            name="task_id"
+            required
+            maxlength="128"
+            placeholder="TASK-101"
+            value={values.task_id}
+            onInput={e => updateField('task_id', e.target.value)}
+          />
+        </label>
+        <label>
+          Título
+          <input
+            name="title"
+            required
+            maxlength="512"
+            placeholder="Implementar el adaptador"
+            value={values.title}
+            onInput={e => updateField('title', e.target.value)}
+          />
+        </label>
+        <label>
+          Qué se va a hacer
+          <textarea
+            name="objective"
+            required
+            maxlength="4096"
+            placeholder="Objetivo operativo, límites y resultado esperado"
+            value={values.objective}
+            onInput={e => updateField('objective', e.target.value)}
+          ></textarea>
+        </label>
+        <label>
+          Criterios de aceptación
+          <textarea
+            name="acceptance_criteria"
+            maxlength="4096"
+            placeholder="Condiciones observables que deben cumplirse"
+            value={values.acceptance_criteria}
+            onInput={e => updateField('acceptance_criteria', e.target.value)}
+          ></textarea>
+        </label>
+        <label>
+          Verificación prevista
+          <input
+            name="verification"
+            maxlength="2048"
+            placeholder="go test ./internal/tui/..."
+            value={values.verification}
+            onInput={e => updateField('verification', e.target.value)}
+          />
+        </label>
+        <label>
+          Archivos previstos <small>(uno por línea; rutas relativas exactas)</small>
+          <textarea
+            name="allowed_files"
+            placeholder={'internal/example/service.go\ninternal/example/service_test.go'}
+            value={values.allowed_files}
+            onInput={e => updateField('allowed_files', e.target.value)}
+          ></textarea>
+        </label>
+        <label>
+          Dependencias <small>(IDs separados por coma)</small>
+          <input
+            name="dependencies"
+            placeholder="TASK-099, TASK-100"
+            value={values.dependencies}
+            onInput={e => updateField('dependencies', e.target.value)}
+          />
+        </label>
+        <div class="dialog-actions">
+          <button type="button" class="button secondary" onClick={onClose} disabled={submitting}>Cancelar</button>
+          <button class="button primary" disabled={submitting}>
+            {submitting ? 'Creando…' : 'Crear tarea'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function TaskDetail({ item, onClose }) {
+  return (
+    <Modal open={!!item} onClose={onClose} title={item ? `Detalle de tarea: ${item.task_id}` : 'Detalle de tarea'}>
+      {item && (
+        <div class="detail-content">
+          <header>
+            <div>
+              <p class="eyebrow">{item.board_id} / {item.task_id}</p>
+              <h2>{item.title}</h2>
+            </div>
+            <button class="close" onClick={onClose} aria-label="Cerrar detalle">×</button>
+          </header>
+          <div class="detail-grid">
+            <span>Estado<b><StatusChip status={item.status} /></b></span>
+            <span>Revisión<b>{item.revision}</b></span>
+            <span>Owner<b>{item.claim?.owner || 'Sin claim'}</b></span>
+            <span>Expira<b>{item.claim ? relativeTime(item.claim.expires_at) : '—'}</b></span>
+          </div>
+          <h3>Qué se va a hacer</h3>
+          <p class="definition-copy">{item.objective || 'Objetivo operativo no documentado.'}</p>
+          <h3>Criterios de aceptación</h3>
+          <p class="definition-copy">{item.acceptance_criteria || 'Criterios de aceptación no documentados.'}</p>
+          <h3>Verificación prevista</h3>
+          <div class="verification-command"><code>{item.verification || 'Comando no definido'}</code></div>
+          <h3>Archivos previstos</h3>
+          <div class="planned-files">
+            {item.allowed_files?.length ? item.allowed_files.map(path => <code key={path}>{path}</code>) : <span>Alcance de archivos no documentado</span>}
+          </div>
+          <h3>Dependencias</h3>
+          <div class="token-list">
+            {item.dependencies?.length ? (
+              item.dependencies.map(dep => <code key={dep}>{dep}</code>)
+            ) : (
+              <span>Ninguna</span>
+            )}
+          </div>
+          <h3>File leases exclusivos</h3>
+          <div class="lease-list">
+            {item.leases?.length ? (
+              item.leases.map(lease => (
+                <div key={lease.path}>
+                  <code>{lease.path}</code>
+                  <span>expira {relativeTime(lease.expires_at)}</span>
+                </div>
+              ))
+            ) : (
+              <span>Sin archivos reservados</span>
+            )}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function JobDetail({ job, error, loading, onClose }) {
+  if (!job) return null;
+  const receipt = job.receipt;
+  let formattedOutput = null;
+  if (receipt?.output) {
+    try {
+      formattedOutput = JSON.stringify(typeof receipt.output === 'string' ? JSON.parse(receipt.output) : receipt.output, null, 2);
+    } catch {
+      formattedOutput = String(receipt.output);
+    }
+  }
+
+  return (
+    <Modal open={!!job} onClose={onClose} title={job ? `Detalle de job: ${job.job_id}` : 'Detalle de job'} className="wide-modal">
+      <div class="detail-content">
+        {loading && <p role="status">Consultando detalle…</p>}
+        {error && <p class="error-copy" role="alert">Detalle desactualizado: {error}</p>}
+        <header>
+          <div>
+            <p class="eyebrow">DELEGATED JOB / {job.transport?.toUpperCase()}</p>
+            <h2>Job <code>{job.job_id}</code></h2>
+          </div>
+          <button class="close" onClick={onClose} aria-label="Cerrar detalle">×</button>
+        </header>
+
+        <div class="detail-grid">
+          <span>Rol<b>{job.role}</b></span>
+          <span>Estado<b><StatusChip status={job.status} /></b></span>
+          <span>Task ID<b>{job.task_id || '—'}</b></span>
+          <span>Transporte<b>{job.transport === 'herdr' ? '▦ Herdr Multiplexed' : '⌁ Direct CLI'}</b></span>
+          <span>Intento<b>#{job.attempt}</b></span>
+          <span>Exit Code<b>{receipt?.exit_code ?? '—'}</b></span>
+          <span>Lease Owner<b><code>{job.lease_owner ? shortID(job.lease_owner) : '—'}</code></b></span>
+          <span>Actualizado<b>{formatTime(job.updated_at)}</b></span>
+        </div>
+
+        {job.error_message && (
+          <div class="job-error-box">
+            <b>Error ({job.error_code || 'ERROR'}):</b>
+            <pre>{job.error_message}</pre>
+          </div>
+        )}
+
+        {formattedOutput && (
+          <>
+            <h3>Receipt Estructurado</h3>
+            <pre class="code-block">{formattedOutput}</pre>
+          </>
+        )}
+
+        {receipt?.output_hash && (
+          <p class="hash-copy">
+            <small>SHA-256 Digest: <code>{receipt.output_hash}</code></small>
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function App() {
+  const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const initialView = queryParams.get('board') || queryParams.get('task') ? 'board' : (location.hash.slice(1) || 'overview');
+  const initialBoard = queryParams.get('board') || localStorage.getItem('cortex-board') || 'default';
+  const initialTaskID = queryParams.get('task');
+
+  const [dashboard, setDashboard] = useState(emptyDashboard);
+  const [boards, setBoards] = useState([]);
+  const [snapshot, setSnapshot] = useState(null);
+  const [configData, setConfigData] = useState(null);
+  const [view, setView] = useState(initialView);
+  const [currentBoard, setCurrentBoard] = useState(initialBoard);
+  const [targetTaskID, setTargetTaskID] = useState(initialTaskID);
+  const [boardModal, setBoardModal] = useState(false);
+  const [taskModal, setTaskModal] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [jobDetail, setJobDetail] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [syncedAt, setSyncedAt] = useState(null);
+  const [syncError, setSyncError] = useState('');
+  const [boardError, setBoardError] = useState('');
+  const [boardSyncedAt, setBoardSyncedAt] = useState(null);
+  const [overviewHealth, setOverviewHealth] = useState({ state: 'loading', lastSuccess: null, error: '' });
+  const [boardHealth, setBoardHealth] = useState({ state: 'loading', lastSuccess: null, error: '' });
+  const lastGoodSnapshots = useRef(new Map());
+  const [feed, setFeed] = useState(emptyFeed);
+  const [boardFeed, setBoardFeed] = useState(emptyFeed);
+  const [page, setPage] = useState(0);
+  const [boardPage, setBoardPage] = useState(0);
+  const [jobID, setJobID] = useState('');
+  const [jobError, setJobError] = useState('');
+  const [jobLoading, setJobLoading] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const allGeneration = useRef(0);
+  const boardGeneration = useRef(0);
+  const jobGeneration = useRef(0);
+  const allPending = useRef(null);
+  const boardPending = useRef(null);
+  const selection = useRef({ board: currentBoard, page: boardPage, view });
+  selection.current = { board: currentBoard, page: boardPage, view };
+  const globalPage = useRef(page);
+  globalPage.current = page;
+
+  const notify = (message, error = false) => {
+    setNotice({ message, error });
+    setTimeout(() => setNotice(null), 2600);
+  };
+
+  const loadAll = useCallback(async (silent = true) => {
+    if (allPending.current?.page === page && allPending.current.generation === allGeneration.current) return;
+    const generation = ++allGeneration.current;
+    const pending = { page, generation };
+    allPending.current = pending;
+    setOverviewHealth(prev => ({ ...prev, state: prev.state === 'healthy' ? 'healthy' : 'loading' }));
+    try {
+      const [nextDashboard, nextBoards, nextConfig, nextFeed] = await Promise.all([
+        request('/api/overview'),
+        request('/api/boards'),
+        request('/api/config'),
+        request(`/api/feed?page=${page}`)
+      ]);
+      if (generation !== allGeneration.current || globalPage.current !== page) return;
+      setDashboard(nextDashboard);
+      setBoards(nextBoards);
+      if (nextConfig) setConfigData(nextConfig);
+      setFeed(nextFeed);
+      setSyncError('');
+      const syncTime = new Date();
+      setSyncedAt(syncTime);
+      setOverviewHealth({ state: 'healthy', lastSuccess: syncTime, error: '' });
+      if (!silent) notify('Datos sincronizados');
+    } catch (error) {
+      if (generation !== allGeneration.current || globalPage.current !== page) return;
+      setSyncError(error.message);
+      setOverviewHealth(prev => ({ state: 'degraded', lastSuccess: prev.lastSuccess, error: error.message }));
+      notify(error.message, true);
+    } finally {
+      if (allPending.current === pending) allPending.current = null;
+    }
+  }, [page]);
+
+  const loadBoard = useCallback(async (id, requestedPage = selection.current.page) => {
+    if (!id) return;
+    const key = `${id}:${requestedPage}`;
+    if (boardPending.current?.key === key && boardPending.current.generation === boardGeneration.current) return;
+    const generation = ++boardGeneration.current;
+    const pending = { key, generation };
+    boardPending.current = pending;
+    const current = () => generation === boardGeneration.current && selection.current.board === id && selection.current.page === requestedPage && selection.current.view === 'board';
+    setBoardHealth(prev => ({ ...prev, state: prev.state === 'healthy' ? 'healthy' : 'loading' }));
+    try {
+      const [next, nextFeed] = await Promise.all([
+        request(`/api/boards/${encodeURIComponent(id)}`),
+        request(`/api/feed?board=${encodeURIComponent(id)}&page=${requestedPage}`)
+      ]);
+      if (!current()) return;
+      if (next.board?.board_id !== id) throw new Error('Respuesta de tablero incompatible');
+      lastGoodSnapshots.current.set(id, next);
+      setSnapshot(next);
+      setBoardFeed(nextFeed);
+      setBoardError('');
+      const syncTime = new Date();
+      setBoardSyncedAt(syncTime);
+      setBoardHealth({ state: 'healthy', lastSuccess: syncTime, error: '' });
+    } catch (error) {
+      if (!current()) return;
+      setBoardError(error.message);
+      setBoardHealth(prev => ({ state: 'degraded', lastSuccess: prev.lastSuccess, error: error.message }));
+      notify(error.message, true);
+    } finally {
+      if (boardPending.current === pending) boardPending.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+    const timer = setInterval(() => !document.hidden && loadAll(), 8000);
+    return () => { clearInterval(timer); allGeneration.current++; };
+  }, [loadAll]);
+
+  useEffect(() => {
+    if (boards.length && !boards.some(board => board.board_id === currentBoard)) {
+      setCurrentBoard(boards[0].board_id);
+      localStorage.setItem('cortex-board', boards[0].board_id);
+    }
+  }, [boards, currentBoard]);
+
+  useEffect(() => {
+    const search = window.location.search;
+    history.replaceState(null, '', `${window.location.pathname}${search}#${view}`);
+  }, [view]);
+
+  useEffect(() => {
+    if (!targetTaskID) return;
+    const allTasks = [
+      ...(snapshot?.tasks || []),
+      ...(dashboard?.active_work || [])
+    ];
+    const found = allTasks.find(t => t.task_id === targetTaskID);
+    if (found) {
+      setDetail(found);
+      setTargetTaskID(null);
+    }
+  }, [targetTaskID, snapshot, dashboard]);
+
+  useEffect(() => {
+    if (view !== 'board' || !currentBoard) return;
+    const cached = lastGoodSnapshots.current.get(currentBoard);
+    setSnapshot(cached || null);
+    setBoardFeed(emptyFeed);
+    setBoardError('');
+    setBoardHealth({ state: 'loading', lastSuccess: cached?.board?.updated_at ? new Date(cached.board.updated_at) : null, error: '' });
+    loadBoard(currentBoard, boardPage);
+    const timer = setInterval(() => !document.hidden && loadBoard(currentBoard, boardPage), 5000);
+    return () => { clearInterval(timer); boardGeneration.current++; };
+  }, [view, currentBoard, boardPage, loadBoard]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!jobID) return;
+    let closed = false;
+    let pending = false;
+    const read = async () => {
+      if (pending) return;
+      pending = true;
+      const generation = ++jobGeneration.current;
+      setJobLoading(true);
+      try {
+        const next = await request(`/api/delegations/${encodeURIComponent(jobID)}`);
+        if (closed || generation !== jobGeneration.current) return;
+        if (next.job_id !== jobID) throw new Error('Respuesta de delegación incompatible');
+        setJobDetail(next);
+        setJobError('');
+      } catch (error) {
+        if (!closed && generation === jobGeneration.current) setJobError(error.message);
+      } finally {
+        pending = false;
+        if (!closed && generation === jobGeneration.current) setJobLoading(false);
+      }
+    };
+    read();
+    const timer = setInterval(() => !document.hidden && read(), 5000);
+    return () => { closed = true; jobGeneration.current++; clearInterval(timer); };
+  }, [jobID]);
+
+  const openJob = job => {
+    jobGeneration.current++;
+    setJobDetail(job);
+    setJobError('');
+    setJobLoading(true);
+    setJobID(job.job_id);
+  };
+
+  const refresh = () => {
+    loadAll(false);
+    if (view === 'board') loadBoard(currentBoard, boardPage);
+  };
+
+  const openBoard = id => {
+    boardGeneration.current++;
+    selection.current = { board: id, page: 0, view: 'board' };
+    setSnapshot(null);
+    setBoardFeed(emptyFeed);
+    setBoardSyncedAt(null);
+    setBoardPage(0);
+    setCurrentBoard(id);
+    localStorage.setItem('cortex-board', id);
+    setView('board');
+  };
+
+  const archiveBoard = async id => {
+    if (!id || id === 'default') return;
+    if (!confirm(`¿Deseas archivar el tablero "${id}"?`)) return;
+    try {
+      await request(`/api/boards/${encodeURIComponent(id)}/archive`, { method: 'POST' });
+      notify('Tablero archivado');
+      await loadAll();
+      if (currentBoard === id) await loadBoard(id);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  };
+
+  const unarchiveBoard = async id => {
+    if (!id) return;
+    try {
+      await request(`/api/boards/${encodeURIComponent(id)}/unarchive`, { method: 'POST' });
+      notify('Tablero restaurado a activo');
+      await loadAll();
+      if (currentBoard === id) await loadBoard(id);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  };
+
+  const deleteBoard = async id => {
+    if (!id || id === 'default') return;
+    if (!confirm(`¿Estás SEGURO de eliminar definitivamente el tablero "${id}" y todas sus tareas asociadas? Esta acción no se puede deshacer.`)) return;
+    try {
+      await request(`/api/boards/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      notify('Tablero eliminado');
+      setCurrentBoard('default');
+      localStorage.setItem('cortex-board', 'default');
+      await loadAll();
+      setView('sessions');
+    } catch (error) {
+      notify(error.message, true);
+    }
+  };
+
+  const afterBoard = async board => {
+    setBoardModal(false);
+    await loadAll();
+    openBoard(board.board_id);
+    notify('Board creado');
+  };
+
+  const afterTask = async task => {
+    setTaskModal(false);
+    setCurrentBoard(task.board_id);
+    await loadAll();
+    await loadBoard(task.board_id);
+    setView('board');
+    notify('Tarea creada');
+  };
+
+  const sectionTitle = useMemo(() => {
+    if (view === 'board') return boards.find(board => board.board_id === currentBoard)?.title || 'TASK BOARD';
+    if (view === 'overview') return 'RESUMEN OPERACIONAL';
+    if (view === 'sessions') return 'SESIONES Y BOARDS';
+    if (view === 'delegations') return 'MONITOR DE DELEGACIÓN';
+    if (view === 'activity') return 'HISTORIAL DE EVENTOS';
+    if (view === 'settings') return 'ECOSISTEMA Y CONFIGURACIÓN';
+    return view.toUpperCase();
+  }, [view, boards, currentBoard]);
+
+  const currentHealth = view === 'board' ? boardHealth : overviewHealth;
+  const lastSync = currentHealth.lastSuccess || (view === 'board' ? boardSyncedAt : syncedAt);
+  const currentError = currentHealth.error || (view === 'board' ? boardError : syncError);
+  const stale = !lastSync || now - lastSync.getTime() > 20000;
+  const visibleSnapshot = (snapshot?.board?.board_id === currentBoard && boardFeed.page === boardPage ? snapshot : null) || lastGoodSnapshots.current.get(currentBoard) || null;
+  const retryCurrent = () => {
+    if (view === 'board') {
+      loadBoard(currentBoard, boardPage);
+    } else {
+      loadAll(false);
+    }
+  };
+
+  return (
+    <div class="shell">
+      <Sidebar
+        boards={boards}
+        dashboard={dashboard}
+        currentBoard={currentBoard}
+        view={view}
+        onView={next => { setPage(0); setView(next); }}
+        onBoard={openBoard}
+        onNewBoard={() => setBoardModal(true)}
+      />
+      <main>
+        <header class="global-header">
+          <div>
+            <span class="breadcrumb">CORTEX / <b>{sectionTitle}</b></span>
+            <span class={`live ${currentHealth.state}`}>
+              <i></i>{currentHealth.state === 'degraded' ? 'DEGRADADO' : currentHealth.state === 'loading' ? 'CARGANDO' : stale ? 'DESACTUALIZADO' : 'SALUDABLE'}
+            </span>
+          </div>
+          <div class="header-actions">
+            <span>{lastSync ? `Último éxito ${new Intl.DateTimeFormat('es-CO', { timeStyle: 'short' }).format(lastSync)}` : 'Sincronizando…'}</span>
+            {currentHealth.state === 'degraded' && (
+              <button class="button small retry-btn" onClick={retryCurrent}>Reintentar</button>
+            )}
+            <button class="icon-button" onClick={refresh} aria-label="Actualizar datos" title="Refrescar datos">
+              <IconRefresh size={15} />
+            </button>
+          </div>
+        </header>
+
+        {currentHealth.state === 'degraded' && currentError && (
+          <div class="endpoint-alert degraded" role="alert">
+            <span>Endpoint {view === 'board' ? `del tablero (${currentBoard})` : 'resumen'} degradado: {currentError}. {lastSync ? `Reteniendo últimos datos válidos (${new Intl.DateTimeFormat('es-CO', { timeStyle: 'short' }).format(lastSync)}).` : ''}</span>
+            <button class="button small retry-btn" onClick={retryCurrent}>Reintentar ahora</button>
+          </div>
+        )}
+
+        <section class={`view ${view === 'overview' ? 'active' : ''}`}>
+          {view === 'overview' && (
+            <Overview
+              dashboard={dashboard}
+              onView={next => { setPage(0); setView(next); }}
+              onTask={setDetail}
+              onNewTask={() => setTaskModal(true)}
+              onJob={openJob}
+            />
+          )}
+        </section>
+
+        <section class={`view ${view === 'sessions' ? 'active' : ''}`}>
+          {view === 'sessions' && (
+            <Sessions
+              sessions={dashboard.sessions}
+              boards={boards}
+              onBoard={openBoard}
+              onNew={() => setBoardModal(true)}
+              onArchive={archiveBoard}
+              onUnarchive={unarchiveBoard}
+              onDelete={deleteBoard}
+            />
+          )}
+        </section>
+
+        <section class={`view ${view === 'delegations' ? 'active' : ''}`}>
+          {view === 'delegations' && (
+            <>
+              <Delegations jobs={feed.page === page ? feed.delegations : []} onOpenJob={openJob} />
+              <Pagination page={page} total={feed.total_delegations} onPage={setPage} />
+            </>
+          )}
+        </section>
+
+        <section class={`view ${view === 'activity' ? 'active' : ''}`}>
+          {view === 'activity' && (
+            <>
+              <PageHeader
+                eyebrow="AUDIT STREAM"
+                title="Historial de Eventos"
+                description="Registro append-only de transiciones de tareas, claims, leases y delegaciones en SQLite."
+              />
+              <section class="panel">
+                <EventList events={feed.page === page ? feed.activity : []} />
+                <Pagination page={page} total={feed.total_activity} onPage={setPage} />
+              </section>
+            </>
+          )}
+        </section>
+
+        <section class={`view ${view === 'settings' ? 'active' : ''}`}>
+          {view === 'settings' && (
+            <SettingsView configData={configData} onRefresh={() => loadAll(false)} />
+          )}
+        </section>
+
+        <section class={`view ${view === 'board' ? 'active' : ''}`}>
+          {view === 'board' && (
+            <>
+            <Board
+              key={currentBoard}
+              snapshot={visibleSnapshot}
+              activity={visibleSnapshot ? boardFeed.activity : []}
+              delegations={visibleSnapshot ? boardFeed.delegations : []}
+              onNewTask={() => setTaskModal(true)}
+              onTask={setDetail}
+              onArchiveBoard={archiveBoard}
+              onUnarchiveBoard={unarchiveBoard}
+              onDeleteBoard={deleteBoard}
+            />
+            <Pagination page={boardPage} total={Math.max(boardFeed.total_activity, boardFeed.total_delegations)} onPage={setBoardPage} />
+            </>
+          )}
+        </section>
+
+        {notice && <div class={`notice show ${notice.error ? 'error' : ''}`} role="status">{notice.message}</div>}
+      </main>
+
+      <BoardForm
+        open={boardModal}
+        onClose={() => setBoardModal(false)}
+        onCreated={afterBoard}
+        onError={error => notify(error.message, true)}
+      />
+      <TaskForm
+        open={taskModal}
+        onClose={() => setTaskModal(false)}
+        onCreated={afterTask}
+        onError={error => notify(error.message, true)}
+        boards={boards}
+        currentBoard={currentBoard}
+      />
+      <TaskDetail item={detail} onClose={() => setDetail(null)} />
+      <JobDetail job={jobDetail} error={jobError} loading={jobLoading} onClose={() => { jobGeneration.current++; setJobID(''); setJobDetail(null); }} />
+    </div>
+  );
+}
+
+render(<App />, document.getElementById('app'));

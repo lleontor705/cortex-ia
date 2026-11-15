@@ -1,0 +1,55 @@
+# Dockerfile.arch — E2E test image for cortex-ia on Arch Linux
+# Builds the binary from source and runs the E2E test suite as a non-root user.
+# archlinux:base only provides x86_64 images. Force amd64 platform so Docker
+# uses QEMU emulation on ARM hosts (Apple Silicon).
+FROM --platform=linux/amd64 archlinux:base
+
+# ---------------------------------------------------------------------------
+# System dependencies (includes npm for claude-code tests)
+# ---------------------------------------------------------------------------
+# Disable pacman's seccomp sandbox — it fails under QEMU emulation on ARM hosts.
+# Initialize the pacman keyring explicitly because fresh Arch containers may not
+# have a local secret key yet, which breaks archlinux-keyring post-install hooks.
+RUN echo 'DisableSandbox' >> /etc/pacman.conf && \
+    pacman-key --init && \
+    pacman-key --populate archlinux && \
+    pacman -Syu --noconfirm && \
+    pacman -S --noconfirm \
+        git \
+        curl \
+        sudo \
+        go \
+        npm \
+        python \
+        base-devel \
+    && pacman -Scc --noconfirm
+
+# ---------------------------------------------------------------------------
+# Create non-root test user with passwordless sudo
+# ---------------------------------------------------------------------------
+RUN useradd -m -s /bin/bash testuser && \
+    echo "testuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# ---------------------------------------------------------------------------
+# Copy project source and build
+# ---------------------------------------------------------------------------
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -o /usr/local/bin/cortex-ia ./cmd/cortex-ia
+
+# ---------------------------------------------------------------------------
+# Prepare test environment
+# ---------------------------------------------------------------------------
+RUN chown -R testuser:testuser /home/testuser
+
+USER testuser
+ENV HOME=/home/testuser
+
+# Ensure go install binaries are on PATH for testuser
+ENV GOPATH="/home/testuser/go"
+ENV PATH="${GOPATH}/bin:/usr/local/go/bin:${PATH}"
+
+ENTRYPOINT ["/bin/bash"]

@@ -1,0 +1,56 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cortex-ia
+    main: ./cmd/cortex-ia
+    binary: cortex-ia
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      # main.version and app.Version must stay canonical (v-prefixed): the updater's
+      # ParseCanonicalVersion rejects a bare MAJOR.MINOR.PATCH when applying an update.
+      - -X main.version=v{{ .Version }}
+      - -X github.com/lleontor705/cortex-ia/internal/app.Version=v{{ .Version }}
+      - -X github.com/lleontor705/cortex-ia/internal/app.Commit={{ .Commit }}
+      - -X github.com/lleontor705/cortex-ia/internal/app.Date={{ .Date }}
+      - '-X github.com/lleontor705/cortex-ia/internal/telemetry.CanonicalDefaultEndpoint={{ if index .Env "CORTEX_REPORT_ENDPOINT" }}{{ .Env.CORTEX_REPORT_ENDPOINT }}{{ else }}https://cortex-report-hub-production.up.railway.app/api/v1/reports{{ end }}'
+      - '-X github.com/lleontor705/cortex-ia/internal/telemetry.CanonicalDefaultSecret={{ if index .Env "CORTEX_REPORT_SECRET" }}{{ .Env.CORTEX_REPORT_SECRET }}{{ else }}{{ end }}'
+
+
+archives:
+  - id: default
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    # updater.FindAsset resolves exactly cortex-ia_<tag-without-v>_<os>_<arch>.zip|.tar.gz.
+    name_template: "cortex-ia_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - scripts/*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

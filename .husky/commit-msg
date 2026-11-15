@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+# Validate commit message format
+MSG_FILE="$1"
+MSG=$(head -1 "$MSG_FILE")
+
+if [ ${#MSG} -lt 10 ]; then
+    echo "FAIL: Commit message too short (min 10 chars)"
+    exit 1
+fi
+
+if [ ${#MSG} -gt 72 ]; then
+    echo "FAIL: First line too long (max 72 chars, got ${#MSG})"
+    exit 1
+fi

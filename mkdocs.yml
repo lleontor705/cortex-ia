@@ -1,0 +1,95 @@
+site_name: cortex-ia
+site_url: https://lleontor705.github.io/cortex-ia/
+repo_url: https://github.com/lleontor705/cortex-ia
+repo_name: lleontor705/cortex-ia
+docs_dir: docs
+
+strict: true
+
+# The docs cross-reference repository files outside docs_dir (SKILL contracts
+# under internal/assets/skills/_shared/). MkDocs cannot resolve those as doc
+# targets, so keep them visible at info level instead of failing the strict build.
+validation:
+  links:
+    not_found: info
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - navigation.tabs
+    - navigation.top
+    - navigation.sections
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: es
+          name: Español
+          build: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Quickstart: getting-started/quickstart.md
+      - Installation: getting-started/installation.md
+      - Non-interactive usage: getting-started/non-interactive.md
+      - Platforms: getting-started/platforms.md
+      - Configuration: getting-started/configuration.md
+      - Custom providers: getting-started/custom-providers.md
+  - Architecture:
+      - Architecture: architecture/architecture.md
+      - Codebase guide: architecture/codebase-guide.md
+      - Codebase:
+          - Mental model: architecture/codebase/mental-model.md
+          - Repository map: architecture/codebase/repository-map.md
+          - Interfaces: architecture/codebase/interfaces.md
+          - Reference map: architecture/codebase/reference-map.md
+          - MCP boundaries: architecture/codebase/mcp-boundaries.md
+          - Integrations: architecture/codebase/integrations.md
+          - Sync and cloud: architecture/codebase/sync-and-cloud.md
+          - Dashboard: architecture/codebase/dashboard.md
+          - SDD coordination: architecture/codebase/sdd-coordination.md
+          - Project and extension: architecture/codebase/project-and-extension.md
+          - Maintainer playbook: architecture/codebase/maintainer-playbook.md
+  - Operations:
+      - Agents: operations/agents.md
+      - Components: operations/components.md
+      - MCP: operations/mcp.md
+      - SDD workflow: operations/sdd-workflow.md
+      - Cortex memory: operations/cortex-memory.md
+      - Web console: operations/web-console.md
+      - Usage stats and TUI: operations/stats-and-ui.md
+      - Rollback: operations/rollback.md
+      - Docker E2E testing: operations/docker-e2e-testing.md
+      - Security: operations/security.md
+      - Release keys: operations/release-keys.md
+  - Reference:
+      - Updater verification profiles: reference/updater-verification-profiles.md
+      - Cortex report hub snapshot: reference/cortex-report-hub-snapshot.md
+      - MCP qualification: reference/mcp-qualification.md
+      - Qualification inputs: reference/qualification-inputs.md
+      - SDK qualification: reference/sdk-qualification.md
+      - Nan Ink theme: reference/nan-ink-theme.md
+  - Analysis: analysis/harness-improvement-paper.md

@@ -1,0 +1,7 @@
+---
+description: Start continuous live file watcher daemon to automatically re-index AST on code changes
+agent: orchestrator
+subagent: false
+---
+
+Dispatch the native `investigate` subagent to launch the Cortex file watcher daemon in the background (`cortex watch . --project=<project-name>`) with debounced incremental static AST indexing. Files modified or created will automatically update `code_symbols` and `code_relations` without manual re-indexing: $ARGUMENTS

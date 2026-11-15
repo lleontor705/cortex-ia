@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+echo "=== cortex-ia pre-commit ==="
+
+# 1. Format check
+echo "[1/2] Checking formatting..."
+UNFORMATTED=$(gofmt -l . 2>/dev/null | grep -v vendor/ || true)
+if [ -n "$UNFORMATTED" ]; then
+    echo "FAIL: Unformatted files:"
+    echo "$UNFORMATTED"
+    echo "Run: gofmt -s -w ."
+    exit 1
+fi
+echo "  OK: Formatting"
+
+# 2. Vet
+echo "[2/2] Running go vet..."
+go vet ./...
+echo "  OK: Vet"
+
+echo "=== Pre-commit checks passed ==="

@@ -1,0 +1,7 @@
+---
+description: Contain and patch an urgent incident with strict scope
+agent: orchestrator
+subagent: false
+---
+
+Route this incident through `hotfix`, require a minimal verified patch and review per the review matrix, and create a later SDD route when containment is not the structural fix: $ARGUMENTS

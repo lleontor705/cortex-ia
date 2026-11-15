@@ -1,0 +1,4 @@
+# Repository canon is LF for Go sources. With core.autocrlf=true on Windows the
+# checkout is CRLF, so `gofmt -l` flags every file and the pre-commit gofmt leg
+# fails. Pin Go sources to LF to keep worktrees and the index byte-identical.
+*.go text eol=lf

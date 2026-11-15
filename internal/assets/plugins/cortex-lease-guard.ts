@@ -1,0 +1,309 @@
+// OpenCode Plugin helper ensuring default export is a valid plugin definition object for v1 and v2
+export const Plugin = {
+  define: <T extends { id: string; setup?: (ctx: any) => Promise<any> | any; v1?: (ctx: any) => Promise<any> | any; server?: (ctx: any) => Promise<any> | any }>(def: T): T => {
+    if (!def.server && def.setup) {
+      def.server = def.setup;
+    }
+    return def;
+  },
+};
+
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+// Admission runs synchronously on the host event loop, so every child-process
+// call needs an explicit budget: a stalled PATH scan or lease lookup blocks
+// the whole session. Failure reasons keep the elapsed time so report-hub
+// incidents can be diagnosed without reproducing them.
+const EXECUTABLE_LOOKUP_TIMEOUT_MS = 3000;
+const LEASE_CLI_TIMEOUT_MS = 15000;
+const SLOW_ADMISSION_LOG_MS = 2000;
+
+function resolveExecutable(cmd: string): string | null {
+  const isWin = process.platform === "win32";
+  const locator = isWin ? "where.exe" : "which";
+  try {
+    const out = execFileSync(locator, [cmd], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+      timeout: EXECUTABLE_LOOKUP_TIMEOUT_MS,
+    }).trim();
+    if (out) {
+      const first = out.split(/\r?\n/)[0].trim();
+      if (path.isAbsolute(first) && fs.existsSync(first)) {
+        return first;
+      }
+    }
+  } catch (error: any) {
+    if (error?.code === "ETIMEDOUT") {
+      throw new Error(`executable lookup for '${cmd}' timed out after ${EXECUTABLE_LOOKUP_TIMEOUT_MS}ms`);
+    }
+  }
+  return null;
+}
+
+function firstCortexIA(directory?: string): string {
+  const home = process.env.USERPROFILE || process.env.HOME || "";
+  const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+  const candidates = [
+    path.join(home, "go", "bin", "cortex-ia.exe"),
+    path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
+    path.join(home, ".local", "bin", "cortex-ia"),
+    "/usr/local/bin/cortex-ia",
+    "/usr/bin/cortex-ia",
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  const resolved = resolveExecutable("cortex-ia");
+  if (resolved) {
+    if (directory && path.resolve(resolved).startsWith(path.resolve(directory) + path.sep)) {
+      throw new Error("SECURITY_ERROR: cortex-ia executable found inside workspace directory is untrusted");
+    }
+    return resolved;
+  }
+  throw new Error("cortex-ia executable not found");
+}
+
+function targetFiles(toolName: string, args: Record<string, any>): string[] {
+  if (toolName === "cortex_ia_doc_convert" || toolName === "cortex_ia_diagram_render") {
+    if (typeof args?.output_path !== "string" || !args.output_path) throw new Error("LEASE_CHECK_FAILED: an output path is required");
+    return [args.output_path];
+  }
+  if (toolName === "apply_patch" || (toolName === "patch" && typeof args?.patchText === "string")) {
+    if (typeof args?.patchText !== "string" || args.patchText.length > 1024 * 1024) throw new Error("LEASE_CHECK_FAILED: bounded patchText is required");
+    const lines = args.patchText.replace(/\r\n/g, "\n").trim().split("\n");
+    if (lines.shift() !== "*** Begin Patch" || lines.pop() !== "*** End Patch") throw new Error("LEASE_CHECK_FAILED: unrecognized patch framing");
+    const targets: string[] = [];
+    let kind = "";
+    for (const line of lines) {
+      const header = /^\*\*\* (Add|Update|Delete) File: (.+)$/.exec(line);
+      if (header) { kind = header[1]; targets.push(header[2]); continue; }
+      const move = /^\*\*\* Move to: (.+)$/.exec(line);
+      if (move && kind === "Update") { targets.push(move[1]); continue; }
+      if (line.startsWith("*** ") && line !== "*** End of File") throw new Error("LEASE_CHECK_FAILED: unrecognized patch operation");
+    }
+    if (!targets.length || targets.length > 128) throw new Error("LEASE_CHECK_FAILED: patch must expose 1-128 target paths");
+    return targets;
+  }
+  const direct = [
+    args?.TargetFile,
+    args?.targetFile,
+    args?.filePath,
+    args?.file_path,
+    args?.path,
+    args?.file,
+    args?.destination,
+    args?.dest,
+    args?.target,
+    args?.target_path,
+  ].filter(value => value !== undefined);
+  if (!direct.length || direct.some(value => typeof value !== "string" || !value || value !== direct[0])) throw new Error("LEASE_CHECK_FAILED: a single verifiable target path is required");
+  return [direct[0]];
+}
+
+function relativeTarget(directory: string, target: string): string {
+  if (target.includes("\0")) throw new Error("LEASE_CHECK_FAILED: invalid target path");
+  const root = path.resolve(directory);
+  const relative = path.relative(root, path.resolve(root, target));
+  if (!relative || path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`) || relative.includes(":")) throw new Error("LEASE_CHECK_FAILED: target is outside the workspace");
+  // Do not authorize a logical lease path that writes through a link to another
+  // physical target. Missing components are allowed for newly created files.
+  let current = fs.realpathSync(root);
+  for (const component of relative.split(path.sep)) {
+    current = path.join(current, component);
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) throw new Error("LEASE_CHECK_FAILED: symlink targets are not verifiable");
+    } catch (error: any) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
+  return relative.replaceAll(path.sep, "/");
+}
+
+const verifiedLeaseCache = new Map<string, number>();
+
+async function verifyLeasesForTool(
+  toolName: string,
+  rawArgs: any,
+  sessionID: string,
+  directory: string,
+  role: string
+) {
+  if (toolName === "cortex_ia_doc_convert" && !(rawArgs as any)?.output_path) return;
+  if (!["edit", "write_to_file", "write", "apply_patch", "patch", "multiedit", "delete_file", "replace_file_content", "notebook_edit", "cortex_ia_doc_convert", "cortex_ia_diagram_render"].includes(toolName)) return;
+
+  if (typeof sessionID !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(sessionID)) throw new Error("LEASE_CHECK_FAILED: host session identity is required");
+  const rawTargets = targetFiles(toolName, (rawArgs || {}) as Record<string, any>);
+  // Every target must be contained and leased, including logs, scratch files,
+  // and control directories. Path names never confer mutation authority.
+  const targets = [...new Set(rawTargets.map(target => relativeTarget(directory, target)))].sort();
+  if (!targets.length) return;
+
+  // Sole leaseless sanctioned mutation: discovery's bounded .gitignore hygiene append (Step-0).
+  if (role === "discovery" && targets.length === 1 &&
+      String(targets[0]).replace(/\\/g, "/").split("/").pop() === ".gitignore") return;
+
+  const cacheKey = `${sessionID}:${targets.join(";")}`;
+  const cachedExpiresAt = verifiedLeaseCache.get(cacheKey);
+  if (cachedExpiresAt !== undefined && cachedExpiresAt > Date.now()) {
+    return;
+  }
+
+  const admissionStart = Date.now();
+  let attemptCount = 0;
+
+  try {
+    const lookupStart = Date.now();
+    const cortex = firstCortexIA(directory);
+    const lookupMs = Date.now() - lookupStart;
+    let raw: string | undefined;
+    let lastExecErr: any;
+    const pathArgs = targets.length === 1
+      ? ["--path", targets[0]]
+      : targets.flatMap(t => ["--path", t]);
+    const cliArgs = ["work", "verify-lease", "--project", path.resolve(directory), "--session-id", sessionID, ...pathArgs];
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      attemptCount = attempt;
+      const attemptStart = Date.now();
+      try {
+        raw = execFileSync(cortex, cliArgs, {
+          cwd: directory,
+          encoding: "utf8",
+          maxBuffer: 64 * 1024,
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: LEASE_CLI_TIMEOUT_MS,
+          windowsHide: true,
+        });
+        const verifyMs = Date.now() - attemptStart;
+        if (verifyMs >= SLOW_ADMISSION_LOG_MS) {
+          console.warn(`[CORTEX_LEASE_GUARD] slow lease admission: verify-lease ${verifyMs}ms, executable resolve ${lookupMs}ms, attempt ${attempt}`);
+        }
+        break;
+      } catch (execErr: any) {
+        lastExecErr = execErr;
+        if (execErr?.code === "ETIMEDOUT" && attempt === 1) {
+          console.warn(`[CORTEX_LEASE_GUARD] verify-lease attempt 1 exceeded ${LEASE_CLI_TIMEOUT_MS}ms; retrying once`);
+          continue;
+        }
+        throw execErr;
+      }
+    }
+    if (!raw && lastExecErr) throw lastExecErr;
+    const result = JSON.parse(raw!);
+    if (result.valid !== true) {
+      throw new Error(result.reason || "lease verification rejected by cortex-ia");
+    }
+    if (result.owner !== `opencode-session:${sessionID}`) {
+      throw new Error(`claim owner mismatch for targets: expected 'opencode-session:${sessionID}', got '${result.owner}'`);
+    }
+    if (typeof result.task_id !== "string" || !result.task_id) {
+      throw new Error("missing task identity in lease verification response");
+    }
+    const expiresAt = Date.parse(result.expires_at);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      throw new Error("lease for targets has expired");
+    }
+    const cacheTtl = Math.min(expiresAt - 5000, Date.now() + 5_000);
+    if (cacheTtl > Date.now()) {
+      verifiedLeaseCache.set(cacheKey, cacheTtl);
+    }
+  } catch (err: any) {
+    const admissionElapsedMs = Date.now() - admissionStart;
+    let reason = "";
+    if (err?.code === "ETIMEDOUT") {
+      reason = `lease verification CLI exceeded ${LEASE_CLI_TIMEOUT_MS}ms (attempt ${attemptCount}/2)`;
+    }
+    if (!reason && err?.stdout) {
+      try {
+        const parsed = JSON.parse(typeof err.stdout === "string" ? err.stdout : err.stdout.toString("utf8"));
+        if (typeof parsed?.reason === "string" && parsed.reason) {
+          reason = parsed.reason;
+        }
+      } catch {}
+    }
+    if (!reason && err?.stderr) {
+      const stderrStr = (typeof err.stderr === "string" ? err.stderr : err.stderr.toString("utf8")).trim();
+      if (stderrStr) {
+        reason = stderrStr.replace(/^lease verification failed:\s*/i, "");
+      }
+    }
+    if (!reason && typeof err?.message === "string" && err.message && !err.message.includes("Command failed")) {
+      reason = err.message;
+    }
+    if (reason) {
+      reason += `; admission_elapsed_ms=${admissionElapsedMs}`;
+    }
+    const targetsStr = targets.join(", ");
+    const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";
+    const recoveryGuidance = `\n[RECOVERY GUIDANCE] If you already own an active task claim, run cortex_ia_file_reserve({ task_id, paths: ['${targets.join("', '")}'] }) to reserve this path. If starting work on a task, run cortex_ia_work_claim({ task_id, paths: ['${targets.join("', '")}'] }). If lease expired, run cortex_ia_work_lease_renew({ task_id, path }). If authority was lost, run cortex_ia_work_recover_own({ task_id }).`;
+    throw new Error(`LEASE_REQUIRED${suffix} (target: '${targetsStr}')${recoveryGuidance}`);
+  }
+}
+
+/**
+ * Fail-closed admission for native file tools. Typed planning/discovery tools
+ * have separate policy. This hook does not sandbox shell writes or make the
+ * lease check and subsequent filesystem mutation atomic.
+ */
+export const CortexLeaseGuardPlugin = Plugin.define({
+  id: "cortex-lease-guard",
+  async setup(ctx: any) {
+    const cleanup = async () => {};
+    (cleanup as any).dispose = cleanup;
+
+    if (ctx?.tool?.hook) {
+      await ctx.tool.hook("execute.before", async (event: any) => {
+        const toolName = (event?.tool || "").toLowerCase();
+        const sessionID = event?.sessionID || event?.sessionId || (ctx as any)?.session?.id || "";
+        const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
+        const role = String(event?.session?.role || (ctx as any)?.session?.role || "").toLowerCase();
+        await verifyLeasesForTool(toolName, event?.input, sessionID, directory, role);
+      });
+    } else {
+      (cleanup as any)["tool.execute.before"] = async (input: any, output: any) => {
+        const toolName = (input?.tool || "").toLowerCase();
+        const sessionID = input?.sessionID || "";
+        const directory = ctx?.directory || (ctx as any)?.location?.directory || process.cwd();
+        const role = String(input?.session?.role || input?.agent || (ctx as any)?.session?.role || "").toLowerCase();
+        await verifyLeasesForTool(toolName, output?.args, sessionID, directory, role);
+      };
+    }
+
+    // OpenCode v2: Shell Fencing and Environment Injection
+    if ((ctx as any).shell?.hook) {
+      await (ctx as any).shell.hook("create.before", (event: any) => {
+        const directory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
+        const sessionID = event?.sessionID || event?.sessionId || (ctx as any)?.session?.id || "";
+        if (sessionID && event?.env) {
+          event.env.CORTEX_SESSION_ID = sessionID;
+          event.env.CORTEX_WORKSPACE_ROOT = directory;
+        }
+        // The Go CLI refuses authority-mutating verbs from agent shells on this marker.
+        if (event?.env) event.env.CORTEX_IA_AGENT_SHELL = "1";
+        if (event?.timeout && typeof event.timeout === "number") {
+          event.timeout = Math.min(event.timeout, 300_000);
+        }
+      });
+    }
+
+    return cleanup;
+  },
+  async v1(ctx: any) {
+    const directory = ctx?.directory || process.cwd();
+    return {
+      "tool.execute.before": async (input: any, output: any) => {
+        const toolName = (input?.tool || "").toLowerCase();
+        const sessionID = input?.sessionID || "";
+        const role = String(input?.session?.role || input?.agent || "").toLowerCase();
+        await verifyLeasesForTool(toolName, output?.args, sessionID, directory, role);
+      },
+    };
+  },
+});
+
+export default CortexLeaseGuardPlugin;
+

@@ -1,0 +1,13 @@
+FROM fedora:40
+
+RUN dnf install -y golang git curl nodejs npm && dnf clean all
+
+WORKDIR /src
+COPY . .
+RUN go build -o /usr/local/bin/cortex-ia ./cmd/cortex-ia
+
+RUN useradd -m testuser
+USER testuser
+ENV HOME=/home/testuser
+
+ENTRYPOINT ["/bin/bash"]
