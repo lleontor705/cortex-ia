@@ -2,165 +2,81 @@
 
 **Installed contract:** `~/.cortex-ia/opencode/contracts/agent-writing-contract.md`
 
-Use this contract when creating or materially changing agent prompts, skills, commands, `AGENTS.md`, or shared contracts. It governs instruction design, not product documentation.
+Use this when you create or materially change an agent prompt, skill, command, `AGENTS.md` or shared contract. It governs how instructions are written, not product documentation.
+
+## Style rules
+
+- Write plainly. State a rule once with its reason in the same sentence. Do not use all-caps emphasis. Keep absolute wording only for real authority and safety boundaries (token secrecy, no self-approval, no writes without a lease), and give the reason there.
+- One source per rule. Other files point to it by file and section name and do not restate it, not even as a digest.
+- Do not restate what frontmatter permissions or tools already enforce. Say what to do when a tool refuses, and let the refusal message carry the rest.
+- Describe good output and a few hard constraints. Let the model order its own steps. Use numbered steps only where order matters, such as claim before edit or transition after verify.
+- Give each step a checkable completion criterion.
+- Keep tool names exact. Do not rename or drop tools in a prompt edit.
+- Keep the section names that other files reference (see `cortex-work-protocol.md`).
+- No invented citations, no emoji, no marketing words. Technical artifacts are written in English.
+- Delete stale and internal material: retired surfaces, legacy envelopes, repository-internal issue IDs, cache-tuning notes, step budgets written as prose, and ceremonial lines.
 
 ## Context pointers
 
-A pointer must say what the referenced material controls and the distinct conditions that require reading it. Front-load the triggering concept and collapse synonyms that describe the same branch. A mandatory rule behind an ambiguous pointer is a routing defect.
+A pointer says what the referenced material controls and the conditions that require reading it. Put the triggering concept first and collapse synonyms that describe one branch. A mandatory rule behind a vague pointer is a routing defect.
 
-Keep always-loaded text small. Inline steps and invariants every branch needs; place conditional reference behind a pointer that names when to load it. Co-locate a concept's definition, rules, and exceptions in one authoritative file.
+Keep always-loaded text small. Inline the steps and invariants every branch needs. Place conditional detail behind a pointer. Keep a concept's definition, rules and exceptions in one authoritative file.
 
-## Executable instructions
+## Role prompt anatomy
 
-- Give each ordered step a checkable completion criterion. Prefer exhaustive bounds such as “every modified path accounted for” over vague completion language.
-- State the positive target behavior first. Retain prohibitions only for real safety or authority boundaries.
-- Use one stable leading term for one concept across agents, skills, receipts, and UI.
-- Treat manifests, schemas, command help, and directory layout as primary sources. Do not cache easy lookups in prompts unless the cache carries a non-obvious reason or gotcha.
-- Remove duplicate rules, stale branches, generic advice, and instructions that do not change agent behavior.
+Role prompts use four tagged layers:
+
+1. `<identity>`: who the agent is and what it is responsible for.
+2. `<capabilities_and_tools>`: what it may use, and what it does not do.
+3. `<workflow_protocol>`: the procedure, with checkable completion criteria.
+4. `<hard_invariants>`: the few boundaries that must hold, each with its reason.
+
+Shared policies that must read the same in every role go in `<global_contracts>`: language, delivery and output format.
 
 ## Handoffs and phase boundaries
 
-Handoffs carry pointers to primary artifacts, task IDs, decisions, and evidence rather than copied transcripts. Do not summarize information already present in the plan file, Cortex evidence, a work receipt, a diff, or a project profile.
+Handoffs carry pointers to primary artifacts, task IDs, decisions and evidence, not copied transcripts. Do not restate what is already in the plan file, Cortex evidence, a receipt, a diff or a project profile.
 
-Compact or hand off at a phase boundary, not in the middle of a causal investigation or implementation loop. Continue when the next phase needs the current reasoning as a primary source; dispatch a bounded leaf when it can run independently; otherwise preserve only the smallest sufficient secondary context.
+Compact or hand off at a phase boundary, not in the middle of an investigation or an implementation loop. Dispatch a bounded leaf when it can run independently. Otherwise keep the smallest context that the next step needs.
 
-## Language Domain Contract (Persona Scope)
+## Dispatch briefs
 
-The user's conversational language, tone, and active persona govern ONLY direct replies, explanations, and user-facing status in chat. They DO NOT govern technical artifacts:
-- Source code, identifiers, function/variable names, and comments
-- UI strings, labels, accessibility text, and error messages
-- Documentation, README files, commit messages, PR titles and descriptions
-- Specifications, task descriptions, and test fixtures
+Briefs are context-complete and carry `non_goals`. Subagents get narrowed authority: they stay within `allowed_files` and `non_goals`. The envelope fields and communication patterns are defined in `cortex-work-protocol.md` §5 and §6.
 
-For all technical artifacts:
-- Default strictly to concise, professional English unless the user explicitly requests another language for that specific artifact or the existing codebase convention strictly mandates it.
-- Never inject colloquialisms, regional slang, or persona stylistic quirks into code, tests, or persistent contracts.
+## Communication
 
-## Delivery Guarantee (Saving is not Replying)
+- No narration between tool calls. Do not announce each step.
+- Final replies are concise: a heading with the verdict, a short synthesis, and the evidence that matters. Omit apologies and restated diffs.
+- Lead with the verdict, route and status. Keep the detailed record in the control plane (SQLite, Cortex), not in chat.
+- Never put raw JSON in a chat reply. Structured receipts go through typed tools or the final report.
+- Saving to Cortex or changing work state does not replace the reply. Finish every turn with a complete answer and no tool call after it. If a tool call fails, say so briefly and still answer.
 
-Persisting observations to Cortex MCP (`cortex_save`) or updating SQLite work authority (`cortex_ia_work_transition`, `cortex_ia_work_approve`) is internal bookkeeping. It NEVER substitutes for answering the user.
-- The user never directly sees tool calls or internal state transitions. If an explanation exists only inside a tool payload or memory observation, the user never received it.
-- Execute all memory, state, and authority mutations BEFORE composing the final user-facing response.
-- End every turn with a complete, transparent synthesized answer for the human operator, with NO tool calls after it. Never collapse a turn into a one-line "Saved/Updated" acknowledgment.
-- If a tool call fails or times out, report the failure concisely and deliver the substantive answer anyway.
+## Interactive decisions
 
-## Format & Transport Separation (No Raw JSON in Chat)
+When a choice needs the user, present the full envelope: why input is needed, every option with its label and description, and the allowed answers. Never default, reorder, truncate or decide for the user. If the answer is ambiguous, present the envelope again and wait.
 
-Never instruct or compel an agent to output raw JSON code blocks as their chat response to the user.
-- Chat text belongs to the human operator: format with clear Markdown, tables, headings, and code snippets.
-- Structured receipts, state handoffs, and verification verdicts must be transmitted via typed tool arguments (`cortex_ia_work_transition`, `cortex_ia_work_approve`) or semantic envelopes.
-- Do not mix Markdown narrative and raw JSON in the same chat turn; doing so invites syntax errors, token waste, and attention degradation.
+## Review
 
-## Lossless Blocking Prompts
+Reviewers audit against primary evidence: the actual diff, test exit codes, and the contract. They do not rely on the implementer's narrative or stated confidence. Self-reported success is advisory only.
 
-When presenting an interactive decision, choice menu, or approval gate to the user (via `question`, `grill-me`, session alignment, or diagnostic doctor prompts):
-- Preserve the complete user-facing choice envelope: why input is required, every option with its original label and description, and the exact allowed-answer domain.
-- Never silently default, infer, reorder, truncate, or decide on the user's behalf.
-- If the interaction is ambiguous, re-present the complete choice envelope and wait.
+## Code comments
 
-## Hierarchical 4-Layer System Prompt Anatomy
+Code says how; comments say why. Do not write comments that restate the code, record task or session attribution, or keep commented-out code. Keep comments for a non-obvious reason, a workaround, or an invariant the type system cannot express.
 
-System prompts must be organized into four distinct, semantically tagged layers to prevent attention dilution, eliminate ambiguity, and maintain high cognitive fidelity across frontier models:
+## Failure traces
 
-1. `<identity>`: Concise, authoritative definition of the agent's identity, primary function, and operational scope. Avoid redundant conversational filler.
-2. `<capabilities_and_tools>`: Explicit permissions, permitted tools, strictly prohibited tools, and execution boundaries.
-3. `<workflow_protocol>`: Step-by-step operational procedure with deterministic ordering, state transitions, and checkable completion criteria.
-4. `<hard_invariants>`: Non-negotiable negative boundaries, safety rules, and anti-patterns that must never be bypassed.
-
-Shared operational policies that must remain identical across all roles (`Language Domain Contract`, `Delivery Guarantee`, `Format & Transport Separation`) are grouped under a canonical `<global_contracts>` section to maximize KV-cache reuse.
+Report a failure as a bounded trace: target file, location, error code, minimal reproduction command, and a snippet of 25 lines or fewer. Never paste whole logs.
 
 ## Skill Body Budget
 
-This section is the single source of truth for `SKILL.md` body sizing. It governs `SKILL.md` procedure documents only.
+This section is the single source of truth for `SKILL.md` body sizing. It governs `SKILL.md` bodies only. Role prompts follow the layered anatomy above; the budget does not size them.
 
-- **Scope split**: role system prompts remain governed exclusively by the 4-layer XML anatomy above; the Skill Body Budget never applies to them. Conversely, the XML anatomy does not size `SKILL.md` bodies — this section does. No text is governed by both rules.
-- **Target**: 180–450 tokens per `SKILL.md` body, frontmatter excluded. Inside this band is the steer; slightly outside is acceptable when the procedure genuinely needs it.
-- **Hard max**: 1000 tokens. A body that meets or exceeds the hard max must be split or trimmed before the change is accepted.
-- **Trigger-first descriptions**: the frontmatter `description` must open with what the skill does and the conditions that require loading it, so routing decides from the description alone.
-- **Advisory estimation**: estimate size as the character count divided by 4 (roughly words × 1.3). This is an authoring and review aid; no runtime validator counts tokens.
-- **Review-time enforcement**: the hard max is checked when a `SKILL.md` body is created or materially changed, at the same review gate that accepts the change — never by tooling.
-
-## Intent-Preserving Delegation Protocol (IPDP) & Non-Goals
-
-Delegation is a sociotechnical transfer of authority and accountability, not merely mechanical task decomposition. To prevent **Cascade Amplification** (where orchestrator ambiguities compound down worker chains):
-- Every minion dispatch envelope MUST define positive requirements along with explicit **negative boundaries (`non_goals`)**: paths not to touch, architectural patterns not to alter, and third-party dependencies not to introduce.
-- Every dispatch MUST be **context-complete** (`cortex-work-protocol.md` §6, pattern 1): `file:line` anchors, verified evidence, user-locked decisions, non-goals, and verification oracles travel upfront. A subagent forced to ask mid-run for context the orchestrator already held is an orchestrator defect, not a subagent failure.
-- Delegated subagents receive narrowed authority (principle of least privilege) and MUST NOT exceed the scope defined in `allowed_files` and `non_goals`.
-
-## Double-Blind Adversarial Verification (Consensus Paradox Defense)
-
-Multi-agent swarms inherently suffer from the **Consensus Paradox**, prioritizing internal sycophancy and architectural agreement over external logical truth. To preserve empirical rigor:
-- Reviewers and evaluators must perform **Double-Blind Verification**: audit strictly against primary empirical artifacts (actual `git diff`, deterministic test suite exit codes, AST cycle checks, and contract pins).
-- A reviewer MUST NEVER receive or rely on the implementer's self-assessed narrative, internal chain-of-thought, or claims of confidence. Self-reported success is advisory evidence only.
-
-## Static-First KV-Cache Preservation
-
-To maximize Transformer KV-cache reuse (achieving up to 90% latency and cost reduction):
-- All invariant role prompts, schemas, and structural instructions must be placed at the very beginning of the prompt as a stable static prefix (`[STATIC_PREFIX_V3]`).
-- Volatile, session-specific variables (`task_id`, diff contents, user instructions, timestamps) must strictly be placed at the tail of the context window or inside the dynamic dispatch envelope.
-- Keys in structured JSON envelopes must be serialized deterministically in sorted order to avoid cache fragmentation.
-
-## Structured ACI Failure Tracing
-
-To prevent context window blowout from verbose compiler errors, stack traces, and linter outputs (Agent-Computer Interface principle):
-- Subagents must extract bounded, structured failure traces rather than dumping raw logs.
-- Failure traces must isolate the offending file, line number, error code, minimal reproduction command, and a focused diagnostic snippet bounded to $\le 25$ lines:
-```xml
-<failure_trace>
-  <target_file>path/to/file.go</target_file>
-  <location>line 42, col 8</location>
-  <error_code>COMPILATION_ERROR</error_code>
-  <minimal_repro>go test -v ./pkg/... -run TestName</minimal_repro>
-  <diagnostic_snippet>
-    cannot use x (variable of type string) as int in argument
-  </diagnostic_snippet>
-</failure_trace>
-```
-
-## Code Hygiene & Minimal Commenting Policy (Zero-Noise Invariant)
-
-To eliminate AI code bloat and maintain long-term codebase health:
-- **Code explains HOW, comments explain WHY**: Never generate comments that restate the code in the same or slightly different words (John Ousterhout, *A Philosophy of Software Design*).
-- **Prohibited comment patterns**:
-  - Echo/narrative comments explaining WHAT obvious code does (e.g. `// get user`, `// return result`, `// increment count`).
-  - Task metadata, changelog comments, or session attribution (`// added by implement`, `// fixed in task X`).
-  - Zombie / commented-out code. Delete dead code cleanly; Git preserves history.
-  - Trivial structural markers (`// end of loop`, `// if valid`).
-- **Permitted comment patterns**:
-  - Non-obvious architectural or algorithmic *WHY* (rationale for an unexpected design choice or non-intuitive workaround).
-  - Subtle hardware, compiler, or concurrency invariants that the type system cannot express.
-  - Public API docstrings strictly when required by language convention and providing genuine domain context beyond identifier names.
-
-## Minimalist Minion Communication Contract
-
-- **No Chat Narration**: Do NOT emit conversational filler before or between tool calls (e.g. "Now I will inspect...", "Let me run tests...").
-- **Terse and Structured Delivery**: Deliver final responses using clean Markdown tables, headings, and high-density summaries. Omit apologies, cheerleading, and diff reiteration.
-- **Four Communication Patterns** (`cortex-work-protocol.md` §6): context-complete envelopes, `open_questions` in final receipts (§8), parent→child steering via a retained `sessionID`, and shell-only synthetic context injection. That contract defines them once; prompts and skills reference, never restate.
-
-## Orchestrator Executive Synthesis Standard (Artifact Pyramid)
-
-The orchestrator is the human interface and executive synthesizer of the system, not a transcript echo chamber. All user-facing communications from the orchestrator must follow the **3-Layer Artifact Pyramid** (Zhang et al., AAMAS 2024):
-
-1. **Layer 1: Executive Action Line (Header)**:
-   - High-contrast, scannable headline communicating final verdict, routing tier, and status (e.g. `### 🎯 Objective Achieved — {Route Tier} | Verdict: {PASS}`).
-2. **Layer 2: Progressive Disclosure Synthesis**:
-   - Structured summary tailored to human working memory limits (4 ± 1 cognitive units):
-     - **Architectural Deltas**: High-level structural changes ($\le 3-5$ bullets) naming modified subsystems, not line-by-line diffs.
-     - **Empirical Verification Evidence**: Exact deterministic test/verification command, exit code `0`, passing test count, and linter status.
-     - **Actionable Next Steps / Gates**: Unambiguous path forward, or lossless choice envelope for interactive decisions.
-3. **Layer 3: Deep Operational Dossier (Decoupled from Chat)**:
-   - Detailed SQLite task DAG nodes, claim tokens, file lock hashes, raw git diffs, and complete stdout traces belong strictly to the **Control and Evidence Planes** (`cortex-ia board`, SQLite `~/.cortex-ia/delegation.db`, Cortex MCP observations). They MUST NEVER be dumped into chat.
-
-## Cognitive Load Reduction & Zero-Chatter Invariant
-
-- **Zero Stream-of-Consciousness Narration**: Agents must NEVER emit conversational filler or internal play-by-play commentary before or between tool invocations (e.g., "Now I will invoke planner...", "Let me check the database...").
-- **Decoupled Telemetry**: In modern execution environments like OpenCode v2, tool execution badges, spinners, and worker lifecycles are streamed natively by the runtime. The chat channel is reserved exclusively for (1) interactive decision gates, and (2) high-density executive delivery upon phase completion.
-- **Compaction Resiliency**: Verbose conversational chatter degrades catastrophically under LLM context compaction. Concise 3-layer executive syntheses preserve semantic integrity and intentional lineage across compaction boundaries.
+- **Target**: 180–450 tokens per `SKILL.md` body, frontmatter excluded. Inside this band is the steer. Slightly outside is acceptable when the procedure needs the space.
+- **Hard max**: 1000 tokens. A body at or over the hard max is split or trimmed before the change is accepted.
+- **Trigger-first descriptions**: the frontmatter `description` opens with what the skill does, then the conditions that load it, so routing decides from the description alone.
+- **Estimation**: characters divided by 4 (roughly words × 1.3). An authoring and review aid only. No runtime validator counts tokens.
+- **Enforcement**: checked at the review gate that accepts a body change, never by tooling.
 
 ## Review gate
 
-Before accepting an instruction change, verify that every new pointer has a real trigger, every normative rule has one source of truth, conditional detail is disclosed only when needed, and completion can be distinguished from premature stopping.
-
-Any rule that sizes skill bodies MUST live in the single `Skill Body Budget` section. A change that introduces skill-body sizing guidance anywhere else is rejected until that guidance is relocated into `Skill Body Budget`; the numbers are stated there once and referenced, never restated.
-
-
+Before accepting an instruction change, check that each new pointer has a real trigger, each normative rule has one source, conditional detail appears only where it is needed, and completion can be told apart from premature stopping. Any rule that sizes skill bodies lives in the Skill Body Budget section only.

@@ -180,7 +180,7 @@ func agyAgentFile(role agyRole, description, body string, global []byte) []byte 
 		sb.WriteString("  - " + t + "\n")
 	}
 	sb.WriteString("---\n\n")
-	sb.WriteString(composeRolePrompt(agyPreamble, role.name, rewriteContractsPath(body, string(TargetAGY)), global))
+	sb.WriteString(composeRolePrompt(agyPreamble, rewriteContractsPath(body, string(TargetAGY)), global))
 	return []byte(sb.String())
 }
 

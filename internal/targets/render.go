@@ -15,7 +15,6 @@ import (
 
 const (
 	opencodeContractsRef = "~/.cortex-ia/opencode/contracts"
-	orchestratorRole     = "orchestrator"
 	globalProtocolHeader = "# Global protocol"
 )
 
@@ -109,21 +108,19 @@ func rewriteAutoinvoke(src []byte, replacement string) []byte {
 	return []byte("---\n" + strings.Join(kept, "\n") + "\n---\n" + body)
 }
 
-// composeRolePrompt joins a host preamble with a role body. The orchestrator
-// additionally carries the global protocol document.
-func composeRolePrompt(preamble, role, body string, globalDoc []byte) string {
+// composeRolePrompt joins a host preamble, a role body and the global protocol
+// document. Every role carries the global document so subagents see the
+// universal rules as well as the orchestrator.
+func composeRolePrompt(preamble, body string, globalDoc []byte) string {
 	var sb strings.Builder
 	sb.WriteString(preamble)
 	sb.WriteString("\n\n")
 	sb.WriteString(strings.Trim(body, "\n"))
+	sb.WriteString("\n\n")
+	sb.WriteString(globalProtocolHeader)
+	sb.WriteString("\n\n")
+	sb.WriteString(strings.TrimRight(string(globalDoc), "\n"))
 	sb.WriteString("\n")
-	if role == orchestratorRole {
-		sb.WriteString("\n\n")
-		sb.WriteString(globalProtocolHeader)
-		sb.WriteString("\n\n")
-		sb.WriteString(strings.TrimRight(string(globalDoc), "\n"))
-		sb.WriteString("\n")
-	}
 	return sb.String()
 }
 
