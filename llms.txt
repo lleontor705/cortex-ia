@@ -5,11 +5,10 @@ Cortex-IA is a deterministic multi-agent control plane, transactional installer,
 - **Planes Separation**:
   - Epistemic & Evidence Plane: Cortex MCP (`cortex_*` tools: AST graphs, blast radius, durable gotcha memory).
   - Control & Authority Plane: `cortex-ia work` (SQLite ACID DAG, CAS monotonic revisions, atomic file leases, peer review gates).
-  - Specification Plane: OpenSpec (`openspec validate`, delta proposals, design, tasks DAG).
+  - Plan Files: `docs/plans/<board-id>.md` for larger changes (goal, executable acceptance checks, slices, progress, outcome).
 - **Core CLI Surfaces**:
   - `board`: `create`, `list`, `status`/`show`/`get`, `serve`
   - `work`: `create`, `list`, `status`/`show`/`get`, `claim`, `renew`, `lease`, `lease-renew`, `release`, `transition`, `approve`, `retry`, `recover`
-  - `openspec`: `validate`, `list`, `status`
   - `web`: `--open`, `--addr` (real-time SSE web console)
   - `install`, `sync`, `doctor`, `mcp`, `rollback`, `uninstall`
 - **Native-Only Execution**: Every role controller runs inside the installed host under Cortex-IA work authority; no external CLI or leaf receives work-control, approval, session, or MCP authority.
@@ -18,4 +17,4 @@ Cortex-IA is a deterministic multi-agent control plane, transactional installer,
   - Verified snapshot backups before any disk write with automatic rollback.
   - Fail-closed path traversal and symlink checks.
 
-Key documentation: README.md, docs/index.md, docs/getting-started/quickstart.md, docs/reference/cli.md, docs/architecture/architecture.md, docs/operations/agents.md, docs/operations/sdd-workflow.md, docs/architecture/codebase/mcp-boundaries.md.
+Key documentation: README.md, docs/index.md, docs/getting-started/quickstart.md, docs/reference/cli.md, docs/architecture/architecture.md, docs/operations/agents.md, docs/operations/planning.md, docs/architecture/codebase/mcp-boundaries.md.

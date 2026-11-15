@@ -33,7 +33,7 @@ type normalizedWorkStep struct {
 // DecomposeWork atomically replaces one blocked task with a sequential chain
 // of smaller tasks. The original remains in the append-only history and is
 // presented as superseded; downstream dependencies move to the final child.
-func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision int64, steps []WorkStepDefinition, contractOverride ...*SDDContract) (WorkDecomposition, error) {
+func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision int64, steps []WorkStepDefinition) (WorkDecomposition, error) {
 	id = strings.TrimSpace(id)
 	if id == "" || expectedRevision <= 0 {
 		return WorkDecomposition{}, errors.New("task id and positive revision are required")
@@ -77,46 +77,6 @@ func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision i
 			return err
 		}
 
-		var contractJSON string
-		if err := conn.QueryRowContext(ctx, `SELECT contract_json FROM work_definitions WHERE item_id=?`, id).Scan(&contractJSON); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		contract, err := decodeContract(contractJSON)
-		if err != nil {
-			return err
-		}
-		if len(contractOverride) > 0 && contractOverride[0] != nil {
-			contract = contractOverride[0]
-			contractJSON, err = encodeContract(contract)
-			if err != nil {
-				return err
-			}
-		}
-		if err := requireOpenSDDChange(ctx, conn, boardID, contract); err != nil {
-			return err
-		}
-		if contractJSON != "" {
-			var parentAllowedJSON string
-			_ = conn.QueryRowContext(ctx, `SELECT allowed_files_json FROM work_definitions WHERE item_id=?`, id).Scan(&parentAllowedJSON)
-			var parentAllowed []string
-			if parentAllowedJSON != "" {
-				_ = json.Unmarshal([]byte(parentAllowedJSON), &parentAllowed)
-			}
-			// If the parent task had a writable scope, ensure that at least one child retains a writable scope.
-			// Individual children may be read-only verification, audit, or aggregate provenance gates (allowed_files: []).
-			if len(parentAllowed) > 0 {
-				hasWritableChild := false
-				for _, step := range normalized {
-					if len(step.AllowedFiles) > 0 {
-						hasWritableChild = true
-						break
-					}
-				}
-				if !hasWritableChild {
-					return errors.New("SDD decomposition requires at least one child with a writable scope when parent has writable scope")
-				}
-			}
-		}
 		for index, step := range normalized {
 			childStatus := WorkBacklog
 			if index == 0 && unresolved == 0 {
@@ -125,7 +85,7 @@ func (s *Store) DecomposeWork(ctx context.Context, id string, expectedRevision i
 			if _, err := conn.ExecContext(ctx, `INSERT INTO work_items(id,title,status,created_at,updated_at,board_id,workspace,opencode_session_id,opencode_root_session_id,opencode_parent_session_id,workload_policy) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, step.ID, step.Title, childStatus, now, now, boardID, workspace, ownership.OpenCodeSessionID, ownership.OpenCodeRootSessionID, ownership.OpenCodeParentSessionID, string(parentPolicy)); err != nil {
 				return fmt.Errorf("create decomposition task %q: %w", step.ID, err)
 			}
-			if _, err := conn.ExecContext(ctx, `INSERT INTO work_definitions(item_id,objective,acceptance_criteria,verification,allowed_files_json,contract_json) VALUES(?,?,?,?,?,?)`, step.ID, step.Objective, step.Acceptance, step.Verification, step.allowedFilesJSON, contractJSON); err != nil {
+			if _, err := conn.ExecContext(ctx, `INSERT INTO work_definitions(item_id,objective,acceptance_criteria,verification,allowed_files_json) VALUES(?,?,?,?,?)`, step.ID, step.Objective, step.Acceptance, step.Verification, step.allowedFilesJSON); err != nil {
 				return fmt.Errorf("create decomposition definition %q: %w", step.ID, err)
 			}
 			childDependencies := dependencies

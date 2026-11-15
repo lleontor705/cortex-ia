@@ -7,30 +7,25 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 )
 
 type WorkRevisionPlan struct {
-	Version           int                    `json:"version"`
-	TaskID            string                 `json:"task_id"`
-	BoardID           string                 `json:"board_id"`
-	Project           string                 `json:"project"`
-	ExpectedRevision  int64                  `json:"expected_revision"`
-	ExpectedStatus    WorkStatus             `json:"expected_status"`
-	ExpectedWorkflow  string                 `json:"expected_workflow,omitempty"`
-	ExpectedChangeID  string                 `json:"expected_change_id,omitempty"`
-	ExpectedSpecPlane string                 `json:"expected_spec_plane,omitempty"`
-	Definition        WorkRevisionDefinition `json:"definition"`
+	Version          int                    `json:"version"`
+	TaskID           string                 `json:"task_id"`
+	BoardID          string                 `json:"board_id"`
+	Project          string                 `json:"project"`
+	ExpectedRevision int64                  `json:"expected_revision"`
+	ExpectedStatus   WorkStatus             `json:"expected_status"`
+	Definition       WorkRevisionDefinition `json:"definition"`
 }
 
 type WorkRevisionDefinition struct {
-	Title        string       `json:"title"`
-	Objective    string       `json:"objective"`
-	Acceptance   string       `json:"acceptance_criteria"`
-	Verification string       `json:"verification"`
-	AllowedFiles []string     `json:"allowed_files"`
-	Contract     *SDDContract `json:"sdd_contract"`
+	Title        string   `json:"title"`
+	Objective    string   `json:"objective"`
+	Acceptance   string   `json:"acceptance_criteria"`
+	Verification string   `json:"verification"`
+	AllowedFiles []string `json:"allowed_files"`
 }
 
 func DecodeWorkRevisionPlan(r io.Reader) (WorkRevisionPlan, error) {
@@ -47,23 +42,12 @@ func DecodeWorkRevisionPlan(r io.Reader) (WorkRevisionPlan, error) {
 }
 
 // ReviseWorkDefinition atomically replaces the bounded definition of an unclaimed
-// ready/backlog task after read-only validation of the replacement contract pins.
-// A done task is accepted only for a pin-only re-bind: its frozen definition stays
-// byte-identical and only the SDD contract pins move to reconciled on-disk digests.
-// Without that path a completed task can never follow legitimate planning pin drift,
-// which blocks RefreshWorkReview and therefore archive.
+// ready/backlog task. Completed tasks are not revisable; a new task is the only path
+// for a changed definition.
 func (s *Store) ReviseWorkDefinition(ctx context.Context, plan WorkRevisionPlan) (WorkItem, error) {
-	normalized, allowedJSON, contractJSON, workspace, err := normalizeWorkRevisionPlan(ctx, plan)
+	normalized, allowedJSON, workspace, err := normalizeWorkRevisionPlan(ctx, plan)
 	if err != nil {
 		return WorkItem{}, err
-	}
-	if normalized.Definition.Contract != nil {
-		if err := verifyWorkspacePins(workspace, normalized.Definition.Contract, "", ""); err != nil {
-			return WorkItem{}, err
-		}
-		if err := verifyLocalCortexPins(ctx, normalized.Definition.Contract); err != nil {
-			return WorkItem{}, err
-		}
 	}
 
 	now := s.timestamp()
@@ -88,7 +72,7 @@ func (s *Store) ReviseWorkDefinition(ctx context.Context, plan WorkRevisionPlan)
 			return fmt.Errorf("%w: task is at revision %d, not %d", ErrWorkConflict, live.Revision, normalized.ExpectedRevision)
 		}
 		liveStatus := WorkStatus(live.Status)
-		if liveStatus != normalized.ExpectedStatus || (liveStatus != WorkReady && liveStatus != WorkBacklog && liveStatus != WorkDone) {
+		if liveStatus != normalized.ExpectedStatus || (liveStatus != WorkReady && liveStatus != WorkBacklog) {
 			return fmt.Errorf("%w: task %s is %s, not revisable", ErrWorkConflict, normalized.TaskID, live.Status)
 		}
 
@@ -118,29 +102,14 @@ func (s *Store) ReviseWorkDefinition(ctx context.Context, plan WorkRevisionPlan)
 			return fmt.Errorf("%w: task was superseded by decomposition", ErrWorkConflict)
 		}
 
-		var objective, acceptance, verification, filesJSON, oldContractJSON string
-		if err := conn.QueryRowContext(ctx, `SELECT objective,acceptance_criteria,verification,allowed_files_json,contract_json FROM work_definitions WHERE item_id=?`, normalized.TaskID).Scan(&objective, &acceptance, &verification, &filesJSON, &oldContractJSON); err != nil {
-			return err
-		}
-		oldContract, err := decodeContract(oldContractJSON)
-		if err != nil {
-			return err
-		}
-		if err := validateRevisionContractIdentity(normalized, oldContract); err != nil {
-			return err
-		}
-		if liveStatus == WorkDone {
-			if err := validatePinOnlyRebind(live.Title, objective, acceptance, verification, filesJSON, oldContract, normalized, allowedJSON); err != nil {
-				return err
-			}
-		}
-		if err := requireOpenSDDChange(ctx, conn, normalized.BoardID, normalized.Definition.Contract); err != nil {
+		var objective, acceptance, verification, filesJSON string
+		if err := conn.QueryRowContext(ctx, `SELECT objective,acceptance_criteria,verification,allowed_files_json FROM work_definitions WHERE item_id=?`, normalized.TaskID).Scan(&objective, &acceptance, &verification, &filesJSON); err != nil {
 			return err
 		}
 
-		oldHash := hashJSON([]any{live.Title, objective, acceptance, verification, filesJSON, oldContractJSON})
-		newHash := hashJSON([]any{normalized.Definition.Title, normalized.Definition.Objective, normalized.Definition.Acceptance, normalized.Definition.Verification, allowedJSON, contractJSON})
-		if _, err := conn.ExecContext(ctx, `UPDATE work_definitions SET objective=?,acceptance_criteria=?,verification=?,allowed_files_json=?,contract_json=? WHERE item_id=?`, normalized.Definition.Objective, normalized.Definition.Acceptance, normalized.Definition.Verification, allowedJSON, contractJSON, normalized.TaskID); err != nil {
+		oldHash := hashJSON([]any{live.Title, objective, acceptance, verification, filesJSON})
+		newHash := hashJSON([]any{normalized.Definition.Title, normalized.Definition.Objective, normalized.Definition.Acceptance, normalized.Definition.Verification, allowedJSON})
+		if _, err := conn.ExecContext(ctx, `UPDATE work_definitions SET objective=?,acceptance_criteria=?,verification=?,allowed_files_json=? WHERE item_id=?`, normalized.Definition.Objective, normalized.Definition.Acceptance, normalized.Definition.Verification, allowedJSON, normalized.TaskID); err != nil {
 			return err
 		}
 		result, err := conn.ExecContext(ctx, `UPDATE work_items SET title=?,revision=revision+1,updated_at=? WHERE id=? AND revision=? AND status=?`, normalized.Definition.Title, now, normalized.TaskID, normalized.ExpectedRevision, live.Status)
@@ -151,12 +120,8 @@ func (s *Store) ReviseWorkDefinition(ctx context.Context, plan WorkRevisionPlan)
 		if changed != 1 {
 			return fmt.Errorf("%w: stale revision", ErrWorkConflict)
 		}
-		eventKind, oldDigest, newDigest := "definition_revised", oldHash, newHash
-		if liveStatus == WorkDone {
-			eventKind, oldDigest, newDigest = "contract_rebind", hashJSON(oldContractJSON), hashJSON(contractJSON)
-		}
-		detail, _ := json.Marshal(map[string]string{"old": oldDigest, "new": newDigest})
-		return s.addWorkEvent(ctx, conn, normalized.TaskID, eventKind, live.Status, live.Status, string(detail))
+		detail, _ := json.Marshal(map[string]string{"old": oldHash, "new": newHash})
+		return s.addWorkEvent(ctx, conn, normalized.TaskID, "definition_revised", live.Status, live.Status, string(detail))
 	})
 	if err != nil {
 		return WorkItem{}, err
@@ -164,43 +129,40 @@ func (s *Store) ReviseWorkDefinition(ctx context.Context, plan WorkRevisionPlan)
 	return s.GetWork(ctx, normalized.TaskID)
 }
 
-func normalizeWorkRevisionPlan(ctx context.Context, plan WorkRevisionPlan) (WorkRevisionPlan, string, string, string, error) {
+func normalizeWorkRevisionPlan(ctx context.Context, plan WorkRevisionPlan) (WorkRevisionPlan, string, string, error) {
 	_ = ctx
 	plan.TaskID = strings.TrimSpace(plan.TaskID)
 	plan.BoardID = strings.TrimSpace(plan.BoardID)
 	plan.Project = strings.TrimSpace(plan.Project)
-	plan.ExpectedWorkflow = strings.TrimSpace(plan.ExpectedWorkflow)
-	plan.ExpectedChangeID = strings.TrimSpace(plan.ExpectedChangeID)
-	plan.ExpectedSpecPlane = strings.TrimSpace(plan.ExpectedSpecPlane)
 	plan.Definition.Title = strings.TrimSpace(plan.Definition.Title)
 	plan.Definition.Objective = strings.TrimSpace(plan.Definition.Objective)
 	plan.Definition.Acceptance = strings.TrimSpace(plan.Definition.Acceptance)
 	plan.Definition.Verification = strings.TrimSpace(plan.Definition.Verification)
 	if plan.Version != 1 || plan.TaskID == "" || plan.BoardID == "" || plan.Project == "" || plan.ExpectedRevision <= 0 {
-		return WorkRevisionPlan{}, "", "", "", errors.New("revision plan requires version, identity, project and positive revision")
+		return WorkRevisionPlan{}, "", "", errors.New("revision plan requires version, identity, project and positive revision")
 	}
-	if plan.ExpectedStatus != WorkReady && plan.ExpectedStatus != WorkBacklog && plan.ExpectedStatus != WorkDone {
-		return WorkRevisionPlan{}, "", "", "", errors.New("revision plan expected status must be ready, backlog, or done")
+	if plan.ExpectedStatus != WorkReady && plan.ExpectedStatus != WorkBacklog {
+		return WorkRevisionPlan{}, "", "", errors.New("revision plan expected status must be ready or backlog")
 	}
 	if plan.Definition.Title == "" || len(plan.Definition.Title) > 512 || plan.Definition.Objective == "" || plan.Definition.Acceptance == "" || plan.Definition.Verification == "" {
-		return WorkRevisionPlan{}, "", "", "", errors.New("revision definition requires bounded title, objective, acceptance and verification")
+		return WorkRevisionPlan{}, "", "", errors.New("revision definition requires bounded title, objective, acceptance and verification")
 	}
 	if len(plan.Definition.Objective) > 4096 || len(plan.Definition.Acceptance) > 4096 || len(plan.Definition.Verification) > 2048 {
-		return WorkRevisionPlan{}, "", "", "", errors.New("revision definition exceeds size limit")
+		return WorkRevisionPlan{}, "", "", errors.New("revision definition exceeds size limit")
 	}
 	if len(plan.Definition.AllowedFiles) > 128 {
-		return WorkRevisionPlan{}, "", "", "", errors.New("revision allowed file count exceeds limit")
+		return WorkRevisionPlan{}, "", "", errors.New("revision allowed file count exceeds limit")
 	}
 	workspace, err := ResolveProjectRoot(plan.Project)
 	if err != nil {
-		return WorkRevisionPlan{}, "", "", "", fmt.Errorf("resolve revision project: %w", err)
+		return WorkRevisionPlan{}, "", "", fmt.Errorf("resolve revision project: %w", err)
 	}
 	allowed := make([]string, 0, len(plan.Definition.AllowedFiles))
 	seen := map[string]struct{}{}
 	for _, value := range plan.Definition.AllowedFiles {
 		file, err := canonicalLeasePath(value)
 		if err != nil {
-			return WorkRevisionPlan{}, "", "", "", fmt.Errorf("invalid allowed file %q: %w", value, err)
+			return WorkRevisionPlan{}, "", "", fmt.Errorf("invalid allowed file %q: %w", value, err)
 		}
 		if _, duplicate := seen[file]; duplicate {
 			continue
@@ -211,73 +173,7 @@ func normalizeWorkRevisionPlan(ctx context.Context, plan WorkRevisionPlan) (Work
 	plan.Definition.AllowedFiles = allowed
 	allowedJSON, err := json.Marshal(allowed)
 	if err != nil {
-		return WorkRevisionPlan{}, "", "", "", err
+		return WorkRevisionPlan{}, "", "", err
 	}
-	contractJSON, err := encodeContract(plan.Definition.Contract)
-	if err != nil {
-		return WorkRevisionPlan{}, "", "", "", err
-	}
-	return plan, string(allowedJSON), contractJSON, workspace, nil
-}
-
-func validateRevisionContractIdentity(plan WorkRevisionPlan, old *SDDContract) error {
-	newContract := plan.Definition.Contract
-	if old != nil && newContract == nil {
-		return errors.New("SDD binding cannot be removed by revision")
-	}
-	if old == nil {
-		return nil
-	}
-	if plan.ExpectedWorkflow == "" || plan.ExpectedChangeID == "" || plan.ExpectedSpecPlane == "" {
-		return errors.New("SDD revision requires expected workflow, change, and spec plane")
-	}
-	if old.Workflow != plan.ExpectedWorkflow || old.ChangeID != plan.ExpectedChangeID || old.SpecPlane != plan.ExpectedSpecPlane {
-		return fmt.Errorf("%w: live SDD identity mismatch", ErrWorkConflict)
-	}
-	if newContract.Workflow != old.Workflow || newContract.ChangeID != old.ChangeID || newContract.SpecPlane != old.SpecPlane {
-		return errors.New("SDD workflow, change, and spec plane are immutable for revision")
-	}
-	if !sameStringSet(old.RequirementIDs, newContract.RequirementIDs) {
-		return errors.New("SDD requirement identity changed; fresh planning required")
-	}
-	return nil
-}
-
-func sameStringSet(a, b []string) bool {
-	left, right := append([]string(nil), a...), append([]string(nil), b...)
-	sort.Strings(left)
-	sort.Strings(right)
-	if len(left) != len(right) {
-		return false
-	}
-	for i := range left {
-		if left[i] != right[i] {
-			return false
-		}
-	}
-	return true
-}
-
-// A completed task can only be re-bound to reconciled specification pins. Everything
-// outside the pins stays byte-identical so a pin refresh cannot smuggle in a scope
-// change that was never independently reviewed; any real redefinition must go through
-// fresh planning and a new task. Pin digests are already verified against the on-disk
-// locators before this runs, so an accepted re-bind always points at real content.
-func validatePinOnlyRebind(liveTitle, liveObjective, liveAcceptance, liveVerification, liveAllowedJSON string, liveContract *SDDContract, plan WorkRevisionPlan, allowedJSON string) error {
-	if plan.Definition.Title != liveTitle ||
-		plan.Definition.Objective != liveObjective ||
-		plan.Definition.Acceptance != liveAcceptance ||
-		plan.Definition.Verification != liveVerification ||
-		allowedJSON != liveAllowedJSON {
-		return errors.New("done task accepts contract pins only; full redefinition requires a new task")
-	}
-	next := plan.Definition.Contract
-	if liveContract == nil || next == nil {
-		return errors.New("done task rebind requires an existing SDD contract")
-	}
-	if liveContract.Workflow != next.Workflow || liveContract.ChangeID != next.ChangeID ||
-		liveContract.SpecPlane != next.SpecPlane || !sameStringSet(liveContract.RequirementIDs, next.RequirementIDs) {
-		return errors.New("done task accepts contract pins only; SDD identity is frozen")
-	}
-	return nil
+	return plan, string(allowedJSON), workspace, nil
 }

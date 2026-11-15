@@ -14,8 +14,8 @@ function timedOut(message) {
 
 function dispatch(task = 'work-real') {
   return { subagent_type: 'implement', prompt: '<minion-dispatch>' + JSON.stringify({
-    contract_version: '1.0', task_id: task, role: 'implement', workflow: 'sdd-full', phase: 'apply',
-    objective: 'Bounded work', spec_plane: 'openspec', allowed_files: ['one.go'],
+    contract_version: '1.0', task_id: task, role: 'implement', workflow: 'direct-change', phase: 'apply',
+    objective: 'Bounded work', allowed_files: ['one.go'],
     acceptance_checks: ['check'], artifact_refs: [], max_steps: 10,
   }) + '</minion-dispatch>' };
 }

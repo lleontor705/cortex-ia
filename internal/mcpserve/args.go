@@ -119,16 +119,6 @@ func schemaObject(properties map[string]any, required ...string) map[string]any 
 	return schema
 }
 
-func mergeProps(parts ...map[string]any) map[string]any {
-	out := map[string]any{}
-	for _, part := range parts {
-		for key, value := range part {
-			out[key] = value
-		}
-	}
-	return out
-}
-
 func props(pairs ...any) map[string]any {
 	out := map[string]any{}
 	for i := 0; i+1 < len(pairs); i += 2 {

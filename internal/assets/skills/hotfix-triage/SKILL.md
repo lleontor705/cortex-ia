@@ -29,7 +29,7 @@ Optimize for safe service restoration, not architectural completeness. Do not re
 6. **Complete Lifecycle & Mandatory Review:**
    - Complete the canonical update/release order with sanitized evidence attached. Review follows the review matrix (`cortex-work-protocol.md` §2.7a): an independent reviewer when a Case 6 high-risk trigger applies, otherwise orchestrator approval with an evidence pointer.
 
-If the patch only contains the incident, return a separate `sdd-lite` or `sdd-full` follow-up. If authority is lost per the canonical rules, tests regress, or rollback cannot be made safe, stop and return `BLOCKED`; do not issue an improvised destructive rollback.
+If the patch only contains the incident, return a separate `plan` follow-up. If authority is lost per the canonical rules, tests regress, or rollback cannot be made safe, stop and return `BLOCKED`; do not issue an improvised destructive rollback.
 
 ## Output
 
@@ -48,6 +48,6 @@ If the patch only contains the incident, return a separate `sdd-lite` or `sdd-fu
   "evidence_refs": [],
   "cleanup": {"leases_released": true, "notes": []},
   "risks": [],
-  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective"
+  "next_route": "stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective"
 }
 ```

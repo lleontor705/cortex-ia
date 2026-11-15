@@ -20,7 +20,7 @@ Keep always-loaded text small. Inline steps and invariants every branch needs; p
 
 ## Handoffs and phase boundaries
 
-Handoffs carry pointers to primary artifacts, task IDs, decisions, and evidence rather than copied transcripts. Do not summarize information already present in OpenSpec, Cortex evidence, a work receipt, a diff, or a project profile.
+Handoffs carry pointers to primary artifacts, task IDs, decisions, and evidence rather than copied transcripts. Do not summarize information already present in the plan file, Cortex evidence, a work receipt, a diff, or a project profile.
 
 Compact or hand off at a phase boundary, not in the middle of a causal investigation or implementation loop. Continue when the next phase needs the current reasoning as a primary source; dispatch a bounded leaf when it can run independently; otherwise preserve only the smallest sufficient secondary context.
 

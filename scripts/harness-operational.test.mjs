@@ -5,7 +5,7 @@ import { loadPluginFile } from './harness-plugin-loader.mjs';
 const source = 'internal/assets/plugins/cortex-subagent-transport.ts';
 const envelope = (extra = {}) => ({
   contract_version: '1.0', role: 'implement', workflow: 'direct-change', phase: 'apply',
-  spec_plane: null, task_id: 'work-ops', objective: 'Inspect the assigned synthetic operation',
+  task_id: 'work-ops', objective: 'Inspect the assigned synthetic operation',
   allowed_files: [], acceptance_checks: [], artifact_refs: [], ...extra,
 });
 const prompt = (value) => `<minion-dispatch>${JSON.stringify(value)}</minion-dispatch>`;

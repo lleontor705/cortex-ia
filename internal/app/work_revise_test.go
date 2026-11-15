@@ -3,8 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -16,10 +14,7 @@ import (
 
 func TestWorkReviseAppliesPlanAndPrintsUpdatedTask(t *testing.T) {
 	home, workspace, item := setupWorkReviseTask(t)
-	pin := "openspec/changes/c/plan.md"
-	writeAppRevisePin(t, workspace, pin, "new")
-	plan := appRevisePlan(workspace, item, appReviseContract(workspace, pin, []byte("new")))
-	planFile := writeJSONPlan(t, home, plan)
+	planFile := writeJSONPlan(t, home, appRevisePlan(workspace, item))
 
 	out, err := captureStdout(func() error { return runWork([]string{"revise", "--plan", planFile}) })
 	if err != nil {
@@ -34,16 +29,16 @@ func TestWorkReviseAppliesPlanAndPrintsUpdatedTask(t *testing.T) {
 	}
 }
 
-func TestWorkReviseRejectsUnknownFieldsTrailingOversizeAndArgs(t *testing.T) {
+func TestWorkReviseRejectsUnknownAndRetiredFieldsTrailingOversizeAndArgs(t *testing.T) {
 	home, workspace, item := setupWorkReviseTask(t)
-	pin := "openspec/changes/c/plan.md"
-	base := appRevisePlan(workspace, item, appReviseContract(workspace, pin, []byte("old")))
+	base := appRevisePlan(workspace, item)
 	before := appReviseSnapshot(t, home, item.ID)
 
 	cases := []string{
 		`{"version":1,"task_id":"app-ready","board_id":"app-board","project":".","expected_revision":1,"expected_status":"ready","extra":true,"definition":{}}`,
-		`{"version":1,"task_id":"app-ready","board_id":"app-board","project":".","expected_revision":1,"expected_status":"ready","definition":{"title":"t","objective":"o","acceptance_criteria":"a","verification":"v","allowed_files":[],"extra":true,"sdd_contract":null}}`,
-		`{"version":1,"task_id":"app-ready","board_id":"app-board","project":".","expected_revision":1,"expected_status":"ready","definition":{"title":"t","objective":"o","acceptance_criteria":"a","verification":"v","allowed_files":[],"sdd_contract":{"version":1,"workflow":"sdd-lite","change_id":"c","spec_plane":"hybrid","pins":[],"requirement_ids":[],"extra":true}}}`,
+		`{"version":1,"task_id":"app-ready","board_id":"app-board","project":".","expected_revision":1,"expected_status":"ready","definition":{"title":"t","objective":"o","acceptance_criteria":"a","verification":"v","allowed_files":[],"extra":true}}`,
+		`{"version":1,"task_id":"app-ready","board_id":"app-board","project":".","expected_revision":1,"expected_status":"ready","expected_workflow":"sdd-lite","definition":{"title":"t","objective":"o","acceptance_criteria":"a","verification":"v","allowed_files":[]}}`,
+		`{"version":1,"task_id":"app-ready","board_id":"app-board","project":".","expected_revision":1,"expected_status":"ready","definition":{"title":"t","objective":"o","acceptance_criteria":"a","verification":"v","allowed_files":[],"sdd_contract":null}}`,
 		mustJSON(t, base) + ` {}`,
 	}
 	for i, body := range cases {
@@ -72,17 +67,15 @@ func TestWorkReviseRejectsUnknownFieldsTrailingOversizeAndArgs(t *testing.T) {
 	appAssertSameSnapshot(t, before, appReviseSnapshot(t, home, item.ID))
 }
 
-func TestWorkReviseRejectsIdentityStatusRevisionAndSDDDropWithoutMutation(t *testing.T) {
+func TestWorkReviseRejectsIdentityStatusAndRevisionWithoutMutation(t *testing.T) {
 	home, workspace, item := setupWorkReviseTask(t)
 	before := appReviseSnapshot(t, home, item.ID)
-	pin := "openspec/changes/c/plan.md"
 	for name, mutate := range map[string]func(*delegation.WorkRevisionPlan){
 		"missing identity": func(p *delegation.WorkRevisionPlan) { p.BoardID = "" },
 		"stale revision":   func(p *delegation.WorkRevisionPlan) { p.ExpectedRevision++ },
-		"wrong status":     func(p *delegation.WorkRevisionPlan) { p.ExpectedStatus = delegation.WorkBacklog },
-		"sdd drop":         func(p *delegation.WorkRevisionPlan) { p.Definition.Contract = nil },
+		"wrong status":     func(p *delegation.WorkRevisionPlan) { p.ExpectedStatus = delegation.WorkDone },
 	} {
-		plan := appRevisePlan(workspace, item, appReviseContract(workspace, pin, []byte("old")))
+		plan := appRevisePlan(workspace, item)
 		mutate(&plan)
 		if _, err := captureStdout(func() error { return runWork([]string{"revise", "--plan", writeJSONPlan(t, home, plan)}) }); err == nil {
 			t.Fatalf("%s unexpectedly succeeded", name)
@@ -103,9 +96,7 @@ func setupWorkReviseTask(t *testing.T) (string, string, delegation.WorkItem) {
 	if _, err := store.CreateBoard(context.Background(), "app-board", "App Board", ""); err != nil {
 		t.Fatal(err)
 	}
-	pin := "openspec/changes/c/plan.md"
-	writeAppRevisePin(t, workspace, pin, "old")
-	item, err := store.CreateWorkInBoardWithDefinition(context.Background(), "app-board", "app-ready", "old title", nil, delegation.WorkDefinition{Project: workspace, Objective: "old objective", Acceptance: "old acceptance", Verification: "old verification", AllowedFiles: []string{"old.go"}, Contract: appReviseContract(workspace, pin, []byte("old"))})
+	item, err := store.CreateWorkInBoardWithDefinition(context.Background(), "app-board", "app-ready", "old title", nil, delegation.WorkDefinition{Project: workspace, Objective: "old objective", Acceptance: "old acceptance", Verification: "old verification", AllowedFiles: []string{"old.go"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,24 +106,8 @@ func setupWorkReviseTask(t *testing.T) (string, string, delegation.WorkItem) {
 	return home, workspace, item
 }
 
-func appRevisePlan(workspace string, item delegation.WorkItem, contract *delegation.SDDContract) delegation.WorkRevisionPlan {
-	return delegation.WorkRevisionPlan{Version: 1, TaskID: item.ID, BoardID: item.BoardID, Project: workspace, ExpectedRevision: item.Revision, ExpectedStatus: item.Status, ExpectedWorkflow: "sdd-lite", ExpectedChangeID: "c", ExpectedSpecPlane: "hybrid", Definition: delegation.WorkRevisionDefinition{Title: "revised title", Objective: "revised objective", Acceptance: "revised acceptance", Verification: "revised verification", AllowedFiles: []string{"new.go"}, Contract: contract}}
-}
-
-func appReviseContract(workspace, locator string, content []byte) *delegation.SDDContract {
-	sum := sha256.Sum256(content)
-	return &delegation.SDDContract{Version: 1, Workflow: "sdd-lite", ChangeID: "c", SpecPlane: "hybrid", Pins: []delegation.ContractPin{{Transport: "workspace_file", Project: workspace, Locator: locator, SHA256: hex.EncodeToString(sum[:])}}, RequirementIDs: []string{"REQ-TEST-001"}}
-}
-
-func writeAppRevisePin(t *testing.T, workspace, locator, content string) {
-	t.Helper()
-	path := filepath.Join(workspace, filepath.FromSlash(locator))
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
+func appRevisePlan(workspace string, item delegation.WorkItem) delegation.WorkRevisionPlan {
+	return delegation.WorkRevisionPlan{Version: 1, TaskID: item.ID, BoardID: item.BoardID, Project: workspace, ExpectedRevision: item.Revision, ExpectedStatus: item.Status, Definition: delegation.WorkRevisionDefinition{Title: "revised title", Objective: "revised objective", Acceptance: "revised acceptance", Verification: "revised verification", AllowedFiles: []string{"new.go"}}}
 }
 
 func writeJSONPlan(t *testing.T, dir string, plan delegation.WorkRevisionPlan) string {
@@ -156,7 +131,6 @@ func mustJSON(t *testing.T, v any) string {
 type appSnapshot struct {
 	Title, Objective, Acceptance, Verification string
 	AllowedFiles                               string
-	Contract                                   string
 	Revision                                   int64
 }
 
@@ -175,11 +149,7 @@ func appReviseSnapshot(t *testing.T, home, id string) appSnapshot {
 	if err != nil {
 		t.Fatal(err)
 	}
-	contract, err := json.Marshal(item.Contract)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return appSnapshot{Title: item.Title, Objective: item.Objective, Acceptance: item.Acceptance, Verification: item.Verification, AllowedFiles: string(files), Contract: string(contract), Revision: item.Revision}
+	return appSnapshot{Title: item.Title, Objective: item.Objective, Acceptance: item.Acceptance, Verification: item.Verification, AllowedFiles: string(files), Revision: item.Revision}
 }
 
 func appAssertSameSnapshot(t *testing.T, want, got appSnapshot) {

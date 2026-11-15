@@ -35,7 +35,6 @@ Quick-reference index of CLI commands, Go packages, key types, MCP tools, config
 | `cortex-ia board` | Create and manage durable task boards (`create`, `list`, `status`, `archive`, `unarchive`, `delete`, `serve`) |
 | `cortex-ia ledger` | Inspect or update the Dual Ledger (`fact`, `progress`, `status`) |
 | `cortex-ia ui` | Print a bounded read-only TUI snapshot (`snapshot`) |
-| `cortex-ia openspec` | Manage the OpenSpec SDD workspace (`validate`, `list`, `status`, `archive`, `new`) |
 | `cortex-ia web` | Launch the local operations dashboard |
 | `cortex-ia doc` | Convert office/PDF documents to Markdown or inspect metadata (`convert`, `inspect`) |
 | `cortex-ia diagram` | Validate, render, compare, or trace system diagrams (`validate`, `render`, `compare`, `reach`) |
@@ -70,7 +69,6 @@ Retired surfaces: `delegate` and `herdr` belong to the removed external AGY exec
 | OpenCode layout | `internal/agents/opencode/` | Declarative home-relative layout + pure asset mapping and collision checks |
 | MCP manager | `internal/mcpmanager/` | Managed MCP presets, ownership accreditation, qualification, conflict errors |
 | Model manager | `internal/modelmgr/` | Global-config agent model assignment, doctor, and catalog |
-| OpenSpec | `internal/openspec/` | Planning-structure validation; never approves semantics or work |
 | Diagram | `internal/diagram/` | System diagram validate, render, compare, and reach |
 | Doc conversion | `internal/docconv/` | Office/PDF conversion to Markdown plus metadata inspection |
 | Telemetry | `internal/telemetry/` | Bounded error-report outbox |
@@ -161,7 +159,6 @@ The full, grouped index is [`docs/index.md`](../../index.md). The codebase pages
 | Mental Model | `docs/architecture/codebase/mental-model.md` | End-to-end data flow |
 | Repository Map | `docs/architecture/codebase/repository-map.md` | Directory-by-directory index |
 | MCP Boundaries | `docs/architecture/codebase/mcp-boundaries.md` | MCP server contracts & limits |
-| SDD Coordination | `docs/architecture/codebase/sdd-coordination.md` | Spec-Driven Development workflow |
 | Interfaces | `docs/architecture/codebase/interfaces.md` | Go interface contracts |
 | Sync, State & Backup | `docs/architecture/codebase/sync-and-cloud.md` | State files, snapshots, local sync |
 | Dashboard & TUI | `docs/architecture/codebase/dashboard.md` | Bubbletea architecture, screens |
@@ -171,7 +168,7 @@ The full, grouped index is [`docs/index.md`](../../index.md). The codebase pages
 | Reference Map | `docs/architecture/codebase/reference-map.md` | This page — quick lookup index |
 | Architecture | `docs/architecture/architecture.md` | High-level architecture overview |
 | Agents | `docs/operations/agents.md` | Agent topology & coordination contracts (6 native roles) |
-| SDD Workflow | `docs/operations/sdd-workflow.md` | SDD skills & workflow docs |
+| Planning | `docs/operations/planning.md` | Plan files, task lifecycle, and review |
 | CLI Reference | `docs/reference/cli.md` | Every command group, syntax and purpose |
 | Diagram assets | `docs/assets/README.md` | Diagram index, rules and palette |
 

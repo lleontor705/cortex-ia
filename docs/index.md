@@ -19,10 +19,10 @@ task graph, file leases and review gates that make parallel agent work safe.
 
 ## The system in one picture
 
-![Three hosts call one cortex-ia binary, which sits on SQLite work authority, the specification plane and the advisory Cortex evidence plane](assets/diagrams/architecture-overview.svg)
+![Three hosts call one cortex-ia binary, which sits on SQLite work authority, plan files and the advisory Cortex evidence plane](assets/diagrams/architecture-overview.svg)
 
 Agents run natively inside the host. They reach Cortex-IA through typed `cortex_ia_*` tools, and
-Cortex-IA records every claim, lease, transition and approval in SQLite. Specifications and Cortex
+Cortex-IA records every claim, lease, transition and approval in SQLite. Plan files and Cortex
 memory inform the work; only SQLite decides its state.
 
 ## Documentation map
@@ -48,7 +48,7 @@ Task-oriented pages for running Cortex-IA day to day.
 | Page | What it covers |
 |---|---|
 | [Agents](operations/agents.md) | The six roles, their authority and their receipts |
-| [SDD workflow](operations/sdd-workflow.md) | Specification-driven development and layered verification |
+| [Planning](operations/planning.md) | When a change needs a plan, the plan file and the task lifecycle |
 | [MCP manager](operations/mcp.md) | Catalog presets, custom servers, ownership and adoption |
 | [Components](operations/components.md) | What is installed and which MCP servers are managed |
 | [Cortex memory](operations/cortex-memory.md) | Memory, the AST graph and how it relates to work authority |
@@ -70,7 +70,6 @@ Background for understanding why the system behaves as it does.
 | [Repository map](architecture/codebase/repository-map.md) | Directory-by-directory layout |
 | [Interfaces](architecture/codebase/interfaces.md) | Core Go interfaces and data models |
 | [MCP boundaries](architecture/codebase/mcp-boundaries.md) | Ownership and fail-closed conflicts for MCP entries |
-| [SDD coordination](architecture/codebase/sdd-coordination.md) | Work lifecycle, routing and authority rules |
 | [Sync, state and backup](architecture/codebase/sync-and-cloud.md) | State files and reconciliation |
 | [Dashboard and TUI](architecture/codebase/dashboard.md) | Bubble Tea architecture and screens |
 | [Integrations and CI/CD](architecture/codebase/integrations.md) | Workflows, GoReleaser and distribution |

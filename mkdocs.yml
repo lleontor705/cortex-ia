@@ -69,14 +69,13 @@ nav:
           - Integrations: architecture/codebase/integrations.md
           - Sync and cloud: architecture/codebase/sync-and-cloud.md
           - Dashboard: architecture/codebase/dashboard.md
-          - SDD coordination: architecture/codebase/sdd-coordination.md
           - Project and extension: architecture/codebase/project-and-extension.md
           - Maintainer playbook: architecture/codebase/maintainer-playbook.md
   - Guides:
       - Agents: operations/agents.md
       - Components: operations/components.md
       - MCP: operations/mcp.md
-      - SDD workflow: operations/sdd-workflow.md
+      - Planning: operations/planning.md
       - Cortex memory: operations/cortex-memory.md
       - Web console: operations/web-console.md
       - Usage stats and TUI: operations/stats-and-ui.md

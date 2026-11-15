@@ -75,8 +75,8 @@ func TestClaudeBundleRender(t *testing.T) {
 	if !strings.Contains(front, "disable-model-invocation: true") || strings.Contains(front, "autoinvoke") {
 		t.Error("autoinvoke skill not converted to disable-model-invocation")
 	}
-	sdd := string(findFile(t, b, filepath.Join(home, ".claude", "commands", "sdd.md")))
-	if !strings.HasPrefix(sdd, "---\ndescription: \"Plan and execute") || strings.Contains(sdd, "agent: ") {
+	planCmd := string(findFile(t, b, filepath.Join(home, ".claude", "commands", "plan.md")))
+	if !strings.HasPrefix(planCmd, "---\ndescription: \"Plan a larger change") || strings.Contains(planCmd, "agent: ") {
 		t.Errorf("command frontmatter not reduced to description")
 	}
 	findFile(t, b, filepath.Join(home, ".cortex-ia", "claude", "contracts", "workflow-map.md"))
@@ -99,10 +99,10 @@ func TestAGYBundleRender(t *testing.T) {
 	if n := countUnder(b, filepath.Join(plugin, "commands")); n != 0 {
 		t.Errorf("agy plugin must not have commands, found %d", n)
 	}
-	findFile(t, b, filepath.Join(plugin, "skills", "cmd-sdd", "SKILL.md"))
-	cmd := string(findFile(t, b, filepath.Join(plugin, "skills", "cmd-sdd", "SKILL.md")))
-	if !strings.Contains(cmd, "name: cmd-sdd\n") || !strings.Contains(cmd, "(Use when the user asks to run the sdd command.)") {
-		t.Errorf("cmd-sdd skill frontmatter incomplete:\n%s", cmd)
+	findFile(t, b, filepath.Join(plugin, "skills", "cmd-plan", "SKILL.md"))
+	cmd := string(findFile(t, b, filepath.Join(plugin, "skills", "cmd-plan", "SKILL.md")))
+	if !strings.Contains(cmd, "name: cmd-plan\n") || !strings.Contains(cmd, "(Use when the user asks to run the plan command.)") {
+		t.Errorf("cmd-plan skill frontmatter incomplete:\n%s", cmd)
 	}
 	if strings.Contains(cmd, "$ARGUMENTS") {
 		t.Error("$ARGUMENTS not replaced in cmd skill")

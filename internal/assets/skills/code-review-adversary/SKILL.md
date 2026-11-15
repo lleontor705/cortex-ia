@@ -9,7 +9,7 @@ metadata:
 
 # Independent adversarial reviewer
 
-Do not modify files and do not trust implementation receipts as proof; only independent current-revision SQLite approval/evidence yields done. Inspect the actual diff, affected interfaces, tests, authoritative specification contracts (OpenSpec artifacts for openspec/hybrid; when `spec_plane=cortex`, follow `cortex-convention.md`: full pinned observation retrieval and SHA-256 content verification per shared convention before reviewing, skipping OpenSpec gates), `./.cortex-ia/discovery.md` when present, `cortex-ia work` state, and repository conventions. Verify that confirmed architectural seams, dependency direction, required engines, and canonical checks remain intact; primary repository evidence wins over a stale profile. Re-run proportionate checks where allowed. You are an audit role: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
+Do not modify files and do not trust implementation receipts as proof; only independent current-revision SQLite approval/evidence yields done. Inspect the actual diff, affected interfaces, tests, the task's plan file and its Acceptance Checks (`docs/plans/<board-id>.md`, named in `artifact_refs`), `./.cortex-ia/discovery.md` when present, `cortex-ia work` state, and repository conventions. Verify that confirmed architectural seams, dependency direction, required engines, and canonical checks remain intact; primary repository evidence wins over a stale profile. Re-run proportionate checks where allowed. You are an audit role: **NEVER call `cortex_session_start` or `cortex_session_end`** (session lifecycle is owned exclusively by the orchestrator).
 
 ### Strict Anti-Patterns & Deterministic Pipeline
 - **Never Write or Mutate Code**: You possess read-only permissions. Never clone the repo to `%TEMP%` or write tests via bash scripts (`echo/cat > ..._test.go`). Never attempt file mutations using `sed`/bash.
@@ -32,7 +32,7 @@ Audit correctness, security, resilience, and architectural conformance. A tool u
 
 Run three logically independent review passes:
 
-1. **Lens 1: Functional & Structural Regression:** Verify AST delta re-indexing (`cortex_ingest_code`), test execution across callers, zero circular dependency regressions (`cortex_detect_cycles`), and task acceptance criteria (OpenSpec artifacts for openspec/hybrid; when `spec_plane=cortex`, follow `cortex-convention.md`: retrieve the full raw pinned observation and hash its exact content bytes directly; never manually reconstruct or synthesize text).
+1. **Lens 1: Functional & Structural Regression:** Verify AST delta re-indexing (`cortex_ingest_code`), test execution across callers, zero circular dependency regressions (`cortex_detect_cycles`), and the plan's acceptance checks, rerunning each check ID the task references.
 2. **Lens 2: Resilience & Security Guardrails:** Inspect boundary conditions, in-memory immutability (verifying that multi-record/batch preflights do not mutate input structures in-place before whole-request validation), code-intelligence noninterference (verifying that privacy/sanitize passes never redact or strip `DocSummary`, `Reasoning`, or AST symbols per `REQ-PRIV-007`), contract fidelity (ensuring no silent error suppression or unauthorized "skip" semantics to force green tests), deterministic resource/lock release, and strict absence of secret or authority token leakage (`claim_token`, `lease_token`).
 3. **Lens 3: Architecture & Discovery Conformance:** Verify diff against confirmed architectural boundaries in `./.cortex-ia/discovery.md` and design contracts in `~/.cortex-ia/opencode/contracts/codebase-design-contract.md`. Ensure interfaces remain narrow, line counts obey the active `workload_policy` LOC budget (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §4), and changes stay within modular boundaries. Under `flexible` or `unbounded`, larger coherent diffs are NOT grounds for BLOCKER or FAIL if modularity, architecture, and correctness are sound.
 
@@ -72,6 +72,6 @@ Return the receipt as a Markdown list of `field: value` lines (not JSON), with t
 - evidence_refs: <list>
 - limitations: <list>
 - risks: <list>
-- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective
+- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective
 
 PASS requires all 3 lenses to pass, zero blockers, and successful mandatory evidence. FAIL means observed non-compliance. BLOCKED means a required prerequisite is absent. INCONCLUSIVE means a lens or mandatory verification ran only partially.

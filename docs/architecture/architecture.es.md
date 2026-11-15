@@ -4,7 +4,7 @@
 
 **Cortex-IA** es el plano de control multiagente determinista, el instalador transaccional y el puente de proceso local para el ecosistema **OpenCode**.
 
-![Tres hosts llaman a un único binario cortex-ia, que se apoya en la autoridad de trabajo en SQLite, el plano de especificación y el plano de evidencia consultivo de Cortex](../assets/diagrams/architecture-overview.svg)
+![Tres hosts llaman a un único binario cortex-ia, que se apoya en la autoridad de trabajo en SQLite, los archivos de plan y el plano de evidencia consultivo de Cortex](../assets/diagrams/architecture-overview.svg)
 
 El sistema tiene cuatro capas. Cada una depende solo de las que tiene debajo.
 
@@ -12,7 +12,7 @@ El sistema tiene cuatro capas. Cada una depende solo de las que tiene debajo.
 |---|---|---|
 | Presentación | Interfaz de terminal, despachador de la CLI, consola web de loopback, servidor MCP de host y guardián pre-tool | `internal/tui`, `internal/app`, `internal/cortexiaweb`, `internal/mcpserve`, `internal/hostbridge` |
 | Control y coordinación | Grafo de tareas, claims, concesiones de archivo, comprobaciones de revisión, aprobaciones y recuperación | `internal/delegation` (SQLite `STRICT` + WAL) |
-| Especificación | Propuestas, requisitos delta, diseño y desglose de tareas | Archivos OpenSpec u observaciones de Cortex fijadas |
+| Planes | Objetivo, criterios de aceptación, slices y progreso | `docs/plans/<board-id>.md` |
 | Evidencia | Memoria, grafo de símbolos AST y análisis de radio de impacto. Solo consultiva | Servidor MCP de Cortex |
 
 ---
@@ -22,7 +22,7 @@ El sistema tiene cuatro capas. Cada una depende solo de las que tiene debajo.
 ```text
 cmd/cortex-ia/               Entry point main(): release versioning + app bootstrap
 internal/
-├── app/                     CLI command routers (board, work, openspec, mcp, web)
+├── app/                     CLI command routers (board, work, mcp, web)
 ├── delegation/              ACID SQLite engine: DAG, claims, leases, reviews, approvals
 ├── cortexiaweb/             Embedded HTTP web server with SSE live event stream
 ├── herdr/                   Optional Herdr setup/detection helpers (diagnostics only)

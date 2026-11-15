@@ -71,9 +71,6 @@ func runCLI(args []string) error {
 	case "ui":
 		return runUI(rest)
 
-	case "openspec":
-		return runOpenSpec(rest)
-
 	case "web":
 		return runWeb(rest)
 
@@ -282,6 +279,7 @@ var retiredCommands = map[string]bool{
 	"profile":        true,
 	"delegate":       true,
 	"herdr":          true,
+	"openspec":       true,
 }
 
 // retiredFlagPrefixes are removed legacy flags. Any argument starting with
@@ -295,6 +293,8 @@ var retiredFlagPrefixes = []string{
 	"--profile",
 	"--model",
 	"--sdd",
+	"--contract-file",
+	"--spec-plane",
 }
 
 // RetiredSurfaceError identifies a command or flag that was removed from the
@@ -305,7 +305,7 @@ type RetiredSurfaceError struct {
 
 func (e RetiredSurfaceError) Error() string {
 	return fmt.Sprintf(
-		"%q was removed from the OpenCode CLI; available commands: install, sync, snapshot, work, worktree, board, ledger, ui, openspec, web, doc, diagram, mcp, model, stats, report, doctor, rollback, recover, uninstall, update, version, help",
+		"%q was removed from the OpenCode CLI; available commands: install, sync, snapshot, work, worktree, board, ledger, ui, web, doc, diagram, mcp, model, stats, report, doctor, rollback, recover, uninstall, update, version, help",
 		e.Surface,
 	)
 }
@@ -377,7 +377,7 @@ Usage:
                                       variants and the acquisition source
   cortex-ia snapshot read --project <project> --id <id> [--expected-sha256 <digest>]
                                       Read and verify one bounded local Cortex snapshot
-  cortex-ia work create|revise|archive|list|status|approvals|fingerprint
+  cortex-ia work create|revise|list|status|approvals|fingerprint
                                       Define, revise, or inspect the local task DAG
   cortex-ia work claim|renew|controller-renew|transition|approve|retry
                                       Acquire or advance bounded task authority
@@ -395,8 +395,6 @@ Usage:
   cortex-ia ledger fact|progress|status
                                       Inspect or update the Dual Ledger (facts + progress)
   cortex-ia ui snapshot              Print a bounded read-only TUI snapshot
-  cortex-ia openspec validate|list|status|archive|new
-                                      Manage the OpenSpec SDD workspace
   cortex-ia web [--addr 127.0.0.1:7331] [--board <id>] [--task <id>] [--open] [--daemon]
                                       Launch local Cortex-IA web dashboard in browser
   cortex-ia doc convert|inspect      Convert office/PDF docs to Markdown or inspect metadata

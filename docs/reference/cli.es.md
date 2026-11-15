@@ -27,7 +27,6 @@ Los comandos que emiten recibos legibles por máquina imprimen JSON en stdout; l
 | **Crear** | `cortex-ia work create <id> "<title>" [--board <board>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <cmd>] [--file <path>]...` | Añade una tarea al DAG (`backlog`/`ready`) con su definición |
 | **Revisar** | `cortex-ia work revise --plan <file\|@stdin>` | Revisa de forma segura la definición de una tarea no reclamada |
 | **Refrescar revisión** | `cortex-ia work review-refresh <id> --revision <n>` | Vuelve a vincular la revisión a una revisión observada |
-| **Archivar** | `cortex-ia work archive --board <id> --change <id> --workflow <sdd-lite\|sdd-full> --spec-plane <openspec\|cortex\|hybrid>` | Cierra trabajo SDD aprobado de forma independiente |
 | **Listar** | `cortex-ia work list [--board <board-id>]` | Lista los elementos de trabajo, opcionalmente acotados a un tablero |
 | **Estado** | `cortex-ia work status <id>` *(o `show`, `get`)* | Consulta el estado de la tarea, la revisión, el reclamo y las concesiones activas |
 | **Aprobaciones** | `cortex-ia work approvals <id>` | Lista los registros históricos de aprobación |
@@ -43,20 +42,21 @@ Los comandos que emiten recibos legibles por máquina imprimen JSON en stdout; l
 | **Transicionar** | `cortex-ia work transition <id> --claim-token <tok> [--revision <n>] --to <in_review\|in_progress\|blocked>` | Cambia el estado de la tarea con un recibo de envío opcional |
 | **Aprobar** | `cortex-ia work approve <id> --reviewer <id> --verdict <PASS\|FAIL\|BLOCKED\|INCONCLUSIVE> [--evidence <ref>]` | Registra un veredicto de revisión; `PASS` desbloquea las tareas posteriores |
 | **Reintentar** | `cortex-ia work retry <id> [--revision <n>]` | Elimina los bloqueos residuales y devuelve una tarea `blocked` a `ready` |
-| **Descomponer** | `cortex-ia work decompose <id> --revision <n> --plan <file\|@stdin> [--contract-file <file>]` | Reemplaza una tarea bloqueada por tareas atómicas |
+| **Descomponer** | `cortex-ia work decompose <id> --revision <n> --plan <file\|@stdin>` | Reemplaza una tarea bloqueada por tareas atómicas |
 | **Recuperar** | `cortex-ia work recover` | Barre los reclamos y concesiones vencidos |
 | **Reconciliar** | `cortex-ia work reconcile <id> --reason <text> --session <id> --revision <n>` | Fuerza la liberación de un reclamo vivo pero huérfano (solo orquestador, falla de forma cerrada) |
 | **Verificar concesión** | `cortex-ia work verify-lease --path <file> [--task <id>] [--owner <owner>]` *(o `check-lease`)* | Verifica una concesión de archivo activa |
 
-## Espacio de trabajo OpenSpec SDD (`cortex-ia openspec`)
+## Comandos retirados
 
-| Comando | Sintaxis | Propósito |
-|---|---|---|
-| **Validar** | `cortex-ia openspec validate <change> --workflow <sdd-lite\|sdd-full> --phase <phase> [--json]` | Valida estructuralmente los artefactos de planificación. `--workflow` y `--phase` son **obligatorios** |
-| **Listar** | `cortex-ia openspec list` | Lista las propuestas de cambio activas en `openspec/changes/` |
-| **Estado** | `cortex-ia openspec status [change-name]` | Inspecciona el progreso de las tareas y el estado de los cambios |
-| **Archivar** | `cortex-ia openspec archive <change-name> --board <id> --workflow <sdd-lite\|sdd-full> --spec-plane <openspec\|cortex\|hybrid>` | Cierra trabajo SDD aprobado de forma independiente |
-| **Nuevo** | `cortex-ia openspec new <change-name> [domain]` | Genera la estructura de un nuevo directorio de cambio OpenSpec |
+Estos comandos y flags fallan de forma cerrada con un error de "retirado".
+
+| Superficie retirada | Sustituto |
+|---|---|
+| `cortex-ia openspec` (`new`, `validate`, `status`, `archive`) | Planes en `docs/plans/<board-id>.md` y criterios de aceptación ejecutables; ver [Planificación](../operations/planning.es.md) |
+| `cortex-ia work archive` | Ninguno; el plan permanece como historial y las pruebas son la especificación viva |
+| Flags `--contract-file` y `--spec-plane` | Ninguno; los planos de especificación se eliminaron |
+
 
 ## Instantáneas de Cortex (`cortex-ia snapshot`)
 

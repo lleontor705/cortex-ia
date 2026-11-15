@@ -50,4 +50,4 @@ Finding **facts** is strictly the system's job, never the user's:
 - Recompute the frontier and ask the next round if unsettled choices remain.
 - A question whose answer depends on an open question in the current round belongs to a *future round*, not the current one.
 - **Completion Gate**: The grilling session concludes when the **frontier is empty** — every branch of the design tree has been visited, edge cases evaluated, and nothing is left silently assumed.
-- Summarize the final agreed design or sync it into the active OpenSpec/Cortex proposal before delegating implementation.
+- Summarize the final agreed design or record it in the plan file before delegating implementation.

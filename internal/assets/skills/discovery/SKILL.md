@@ -78,6 +78,6 @@ Return the receipt as a Markdown list of `field: value` lines (not JSON), with t
 - governance_rule_count: <count>
 - gitignore_hygiene: applied | already_present | unknown
 - unknowns: <list>
-- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | sdd-lite | sdd-full | decision-map | retrospective
+- next_route: stop | review | retry | continue | direct-change | fast-tdd | hotfix | spike | plan | retrospective
 
 Use `partial` when useful evidence was produced but Cortex or a filesystem source was unavailable. Use `blocked` only when the project root cannot be established or the report cannot be written safely.

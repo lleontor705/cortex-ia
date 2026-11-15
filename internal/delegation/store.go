@@ -599,6 +599,27 @@ func (s *Store) initialize(ctx context.Context) error {
 				return fmt.Errorf("record work lease workspace migration: %w", err)
 			}
 		}
+		if version < 19 {
+			// Direct tasks carry no workflow column; the retired SDD workflow lived only in
+			// contract_json, so clearing it converts every task to direct-change. Stored
+			// bindings keep their decodable shape and stop matching the recomputed
+			// definition digest, so approvals that depended on SDD identity require review.
+			var definitions int
+			if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='work_definitions'`).Scan(&definitions); err != nil {
+				return fmt.Errorf("probe work definitions table: %w", err)
+			}
+			if definitions == 1 {
+				if _, err := conn.ExecContext(ctx, `UPDATE work_definitions SET contract_json=''`); err != nil {
+					return fmt.Errorf("clear retired SDD contracts: %w", err)
+				}
+			}
+			if _, err := conn.ExecContext(ctx, `DROP TABLE IF EXISTS change_archives`); err != nil {
+				return fmt.Errorf("drop retired change archives: %w", err)
+			}
+			if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version,applied_at) VALUES(19,?)`, s.timestamp()); err != nil {
+				return fmt.Errorf("record SDD retirement migration: %w", err)
+			}
+		}
 		_, _ = conn.ExecContext(ctx, `DELETE FROM work_leases WHERE expires_at<=?`, s.timestamp())
 		return nil
 	})

@@ -248,3 +248,19 @@ func TestModelCatalogReceipts(t *testing.T) {
 		}
 	}
 }
+
+func TestRetiredSDDSurfacesFailClosed(t *testing.T) {
+	t.Setenv("CORTEX_IA_HOME", t.TempDir())
+	for _, args := range [][]string{
+		{"openspec"},
+		{"openspec", "validate", "change"},
+		{"work", "archive", "--board", "b", "--change", "c"},
+		{"work", "create", "t1", "title", "--contract-file", "plan.json"},
+		{"work", "create", "t1", "title", "--spec-plane", "hybrid"},
+	} {
+		var retired RetiredSurfaceError
+		if err := runCLI(args); !errors.As(err, &retired) {
+			t.Fatalf("args %v: want RetiredSurfaceError, got %v", args, err)
+		}
+	}
+}

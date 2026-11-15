@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,28 +12,11 @@ import (
 )
 
 var (
-	workflowKinds = []string{"direct-change", "fast-tdd", "hotfix", "ops-task", "sdd-lite", "sdd-full"}
-	specPlanes    = []string{"openspec", "cortex", "hybrid"}
+	workflowKinds = []string{"direct-change", "fast-tdd", "hotfix", "ops-task"}
 	claimStatus   = []string{"in_review", "in_progress", "blocked"}
 )
 
-const sddContractDescription = "Required for SDD tasks: contract pins and requirement IDs"
-
 func workReadTools() []tool {
-	pinSchema := schemaObject(props(
-		"transport", schemaString("Pin transport ('workspace_file', 'local_cortex_cli', 'cortex_mcp')"),
-		"project", schemaString("Workspace root directory or project path"),
-		"locator", schemaString("Relative path to specification file"),
-		"sha256", schemaString("64-character lowercase SHA-256 digest"),
-	))
-	contractSchema := schemaObject(props(
-		"version", schemaNumber("Contract version"),
-		"workflow", schemaEnum("SDD workflow", "sdd-lite", "sdd-full"),
-		"change_id", schemaString("SDD change identifier"),
-		"spec_plane", schemaEnum("Specification plane", specPlanes...),
-		"pins", schemaArray("Contract pins", pinSchema),
-		"requirement_ids", schemaStrings("Requirement identifiers"),
-	), "version", "workflow", "change_id", "spec_plane")
 	return []tool{
 		{
 			Name:        "cortex_ia_work_create",
@@ -50,13 +31,12 @@ func workReadTools() []tool {
 				"verification", schemaString("Raw executable verification command"),
 				"allowed_files", schemaStrings("Leased repository paths"),
 				"dependencies", schemaStrings("Task IDs on the same board"),
-				"sdd_contract", mergeProps(contractSchema, map[string]any{"description": sddContractDescription}),
 			), "workflow", "board_id", "task_id", "title"),
 			Call: workCreate,
 		},
 		{
 			Name:        "cortex_ia_work_review_refresh",
-			Description: "Reopen a done SDD task for fresh review after approved files change (Orchestrator only).",
+			Description: "Reopen a done task for fresh review after approved files change (Orchestrator only).",
 			Schema: schemaObject(props(
 				"task_id", schemaString("Task identifier"),
 				"revision", schemaNumber("Observed task revision"),
@@ -129,7 +109,6 @@ func workReadTools() []tool {
 			Schema: schemaObject(props(
 				"task_id", schemaString("Blocked task identifier"),
 				"revision", schemaNumber("Current task revision"),
-				"contract", mergeProps(contractSchema, map[string]any{"description": "Optional upgraded SDD contract"}),
 				"tasks", schemaArray("Replacement tasks", schemaObject(props(
 					"task_id", schemaString("Task identifier"),
 					"title", schemaString("Task title"),
@@ -190,18 +169,6 @@ func workCreate(ctx context.Context, s *session, args map[string]any) (string, e
 	if err != nil {
 		return "", err
 	}
-	sdd := workflow == "sdd-lite" || workflow == "sdd-full"
-	contract, hasContract := args["sdd_contract"].(map[string]any)
-	if _, present := args["sdd_contract"]; present && args["sdd_contract"] != nil && !hasContract {
-		return "", errors.New("sdd_contract must be an object")
-	}
-	mismatch := "SDD_CONTRACT_REQUIRED: workflow and typed contract must agree; direct workflows cannot carry SDD bindings"
-	if sdd && (!hasContract || contract["workflow"] != workflow) {
-		return "", errors.New(mismatch)
-	}
-	if !sdd && hasContract {
-		return "", errors.New(mismatch)
-	}
 	argv := []string{"work", "create", "--board", board, "--id", task, "--title", title, "--workflow", workflow, "--project", s.workspace}
 	for _, option := range [][2]string{{"objective", "--objective"}, {"acceptance_criteria", "--acceptance"}, {"verification", "--verify"}} {
 		if value := optString(args, option[0]); value != "" {
@@ -222,78 +189,7 @@ func workCreate(ctx context.Context, s *session, args map[string]any) (string, e
 	for _, dependency := range dependencies {
 		argv = append(argv, "--depends", dependency)
 	}
-	if hasContract {
-		if !contains(specPlanes, optString(contract, "spec_plane")) {
-			return "", fmt.Errorf("SPEC_PLANE_INVALID: %q is not an accepted spec_plane (%s)", optString(contract, "spec_plane"), strings.Join(specPlanes, "|"))
-		}
-		normalizeContractPins(contract, s.workspace)
-		contractPath, cleanup, err := writeContractFile(contract)
-		if err != nil {
-			return "", err
-		}
-		defer cleanup()
-		argv = append(argv, "--contract-file", contractPath)
-	}
 	return s.runClean(ctx, argv)
-}
-
-var pinTransports = map[string]string{
-	"workspace_file": "workspace_file", "workspace-file": "workspace_file", "workspace": "workspace_file",
-	"file": "workspace_file", "local_file": "workspace_file", "local-file": "workspace_file",
-	"openspec": "workspace_file", "fs": "workspace_file", "filesystem": "workspace_file",
-	"workspace_path": "workspace_file", "path": "workspace_file",
-	"local_cortex_cli": "local_cortex_cli", "local-cortex-cli": "local_cortex_cli", "cortex_cli": "local_cortex_cli",
-	"cortex-cli": "local_cortex_cli", "cortex_local": "local_cortex_cli", "cli": "local_cortex_cli",
-	"cortex_mcp": "cortex_mcp", "cortex-mcp": "cortex_mcp", "cortex": "cortex_mcp", "mcp": "cortex_mcp",
-}
-
-// normalizeContractPins canonicalises pin transports, digests, locators and
-// project roots exactly as the plugin does before the CLI sees them.
-func normalizeContractPins(contract map[string]any, workspace string) {
-	pins, _ := contract["pins"].([]any)
-	base := filepath.Base(workspace)
-	for _, raw := range pins {
-		pin, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		if transport, ok := pin["transport"].(string); ok && transport != "" {
-			key := strings.ToLower(strings.TrimSpace(transport))
-			if canonical, known := pinTransports[key]; known {
-				pin["transport"] = canonical
-			}
-		}
-		if digest, ok := pin["sha256"].(string); ok && digest != "" {
-			pin["sha256"] = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(digest)), "sha256:")
-		}
-		if locator, ok := pin["locator"].(string); ok && locator != "" {
-			pin["locator"] = strings.ReplaceAll(strings.TrimSpace(locator), "\\", "/")
-		}
-		if project, ok := pin["project"].(string); ok && strings.TrimSpace(project) != "" {
-			trimmed := strings.TrimSpace(project)
-			if trimmed == "." || !filepath.IsAbs(trimmed) || strings.EqualFold(trimmed, base) {
-				pin["project"] = workspace
-			}
-		}
-	}
-}
-
-func writeContractFile(contract map[string]any) (string, func(), error) {
-	data, err := encodeJSON(contract)
-	if err != nil {
-		return "", nil, err
-	}
-	dir, err := makeTempDir()
-	if err != nil {
-		return "", nil, err
-	}
-	cleanup := func() { removeAll(dir) }
-	file := filepath.Join(dir, "contract.json")
-	if err := writeExclusive(file, []byte(data)); err != nil {
-		cleanup()
-		return "", nil, err
-	}
-	return file, cleanup, nil
 }
 
 func contains(values []string, value string) bool {
@@ -315,7 +211,7 @@ func workStatus(ctx context.Context, s *session, args map[string]any) (string, e
 		if strings.Contains(runErr.Error(), "work item not found") {
 			return encodeJSON(map[string]any{
 				"task_id": task, "found": false, "status": "not_found", "error": "work item not found",
-				"message":          fmt.Sprintf("Work item %q not found in Cortex-IA SQLite work database. Note: Cortex MCP observation IDs (e.g. #84) are evidence/memories, not SQLite work task items, and early SDD planning phases (propose, spec, design) have no work tasks created yet.", task),
+				"message":          fmt.Sprintf("Work item %q not found in Cortex-IA SQLite work database. Note: Cortex MCP observation IDs (e.g. #84) are evidence/memories, not SQLite work task items, and planning notes have no work tasks until one is created.", task),
 				"projection":       unknownProjection(task),
 				"bridge_authority": s.bridgeAuthority(task, nil, ""),
 			})
@@ -356,9 +252,6 @@ func workDecompose(ctx context.Context, s *session, args map[string]any) (string
 		return "", errors.New("tasks must be an array")
 	}
 	plan := map[string]any{"tasks": tasks}
-	if contract, ok := args["contract"].(map[string]any); ok {
-		plan["contract"] = contract
-	}
 	stdin, err := encodeJSON(plan)
 	if err != nil {
 		return "", err
@@ -462,24 +355,4 @@ func claimLive(durable map[string]any, now time.Time) (string, bool) {
 	owner, _ := claim["owner"].(string)
 	expires, err := time.Parse(time.RFC3339Nano, fmt.Sprint(claim["expires_at"]))
 	return owner, err == nil && expires.After(now)
-}
-
-func makeTempDir() (string, error) {
-	return os.MkdirTemp("", "cortex-mcp-")
-}
-
-func removeAll(dir string) {
-	_ = os.RemoveAll(dir)
-}
-
-func writeExclusive(file string, data []byte) error {
-	handle, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := handle.Write(data); err != nil {
-		_ = handle.Close()
-		return err
-	}
-	return handle.Close()
 }

@@ -1,6 +1,6 @@
 ---
 name: opencode2-knowledge
-description: OpenCode v2 (opencode2) knowledge index and harness flow diagrams — official docs mapping, live CLI inspection helpers, project developer skills, and the startup/SDD/minion/guard mermaid diagrams. Load explicitly when researching or debugging OpenCode v2 platform capabilities.
+description: OpenCode v2 (opencode2) knowledge index and harness flow diagrams — official docs mapping, live CLI inspection helpers, project developer skills, and the startup/planning/minion/guard mermaid diagrams. Load explicitly when researching or debugging OpenCode v2 platform capabilities.
 license: MIT
 metadata:
   author: lleontor705
@@ -61,12 +61,10 @@ flowchart TD
     
     subgraph Alignment ["Operating Conditions Alignment"]
         StartGate -->|Ask if unset| ModeChoice[Execution Mode:\nAuto vs Interactive]
-        StartGate -->|Ask if unset| PlaneChoice[Spec & Memory Plane:\nOpenSpec vs Cortex vs Hybrid]
         StartGate -->|Ask if unset| WorkloadChoice[Workload Policy:\nStrict vs Flexible vs Unbounded]
         StartGate -->|Fixed policy| WorkspaceChoice[Implement Workspace:\nCurrent Workspace]
         
         ModeChoice --> AmbiguityCheck{High Design\nUncertainty?}
-        PlaneChoice --> AmbiguityCheck
         WorkloadChoice --> AmbiguityCheck
         WorkspaceChoice --> AmbiguityCheck
         
@@ -83,10 +81,10 @@ flowchart TD
         RouteDecision -->|direct-change| SubImpDirect[Subagent: implement]
         RouteDecision -->|fast-tdd| SubImpTDD[Subagent: implement + fast-tdd]
         RouteDecision -->|hotfix| SubImpHotfix[Subagent: implement + hotfix-triage]
-        RouteDecision -->|sdd-lite / sdd-full| SubPlan[Subagent: planner]
+        RouteDecision -->|plan| SubPlan[Subagent: planner]
     end
 
-    subgraph SDD_Flow ["SDD Task Execution (selected spec plane + cortex-ia work)"]
+    subgraph Plan_Flow ["Plan Execution (plan file + cortex-ia work)"]
         SubPlan -->|Validated contracts & Task DAG| Minions[Ephemeral Implement Minions]
         Minions -->|Code Changes & Evidence| SubRev[Subagent: reviewer]
     end
@@ -106,7 +104,7 @@ flowchart TD
     end
 ```
 
-### 3. SDD Lifecycle & Preflight (sequence diagram)
+### 3. Planning & Execution Lifecycle (sequence diagram)
 
 ```mermaid
 sequenceDiagram
@@ -134,9 +132,9 @@ sequenceDiagram
     Inv-->>Orch: Diagnostic Evidence & Baseline AST Topology Receipt
     end
 
-    Note over Orch,Work: Phase 2: Preflight & Planning (if SDD route)
-    Orch->>Plan: Dispatch SDD Plan (intent, project_rules, blast_radius_baseline)
-    Plan->>Plan: Write and validate selected-plane contracts
+    Note over Orch,Work: Phase 2: Planning (if plan route)
+    Orch->>Plan: Dispatch plan (intent, project_rules, blast_radius_baseline)
+    Plan->>Plan: Write docs/plans/<board-id>.md (goal, checks, slices)
     Plan->>Work: work create (workload_policy strict/flexible/unbounded sets per-task LOC budget, stable initiative board)
     Plan-->>Orch: Planning Receipt (artifact refs, task refs, DAG readiness)
 
@@ -164,7 +162,7 @@ sequenceDiagram
             Rev->>Work: work approve PASS (gate approval with evidence)
             Rev->>Cortex: cortex_save(type: "decision", topic_key: "architecture/feature") + cortex_relate
             Rev-->>Orch: Review Receipt (Verdict: PASS)
-            Orch->>Plan: Archive selected-plane contract after approval
+            Imp->>Imp: Fill plan Outcome (last slice only)
         else Verdict is FAIL / BLOCKED
             Rev->>Cortex: cortex_save(type: "bugfix", topic_key: "gotchas/task_id", content: minimal_failure_locality) + cortex_relate
             Rev-->>Orch: Review Receipt (Verdict: FAIL, evidence_ref: "gotchas/task_id")

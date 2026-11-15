@@ -9,8 +9,6 @@ var Roles = []string{"orchestrator", "discovery", "planner", "investigate", "imp
 // (internal/assets/plugins/cortex-work.ts): tools absent from it are read-only
 // and open to every role.
 var toolRoles = map[string][]string{
-	"cortex_ia_openspec_write":      {"planner"},
-	"cortex_ia_change_archive":      {"planner"},
 	"cortex_ia_discovery_write":     {"discovery"},
 	"cortex_ia_board_create":        {"planner", "orchestrator"},
 	"cortex_ia_work_create":         {"planner", "orchestrator"},
