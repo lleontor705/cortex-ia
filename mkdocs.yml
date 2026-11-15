@@ -94,6 +94,7 @@ nav:
   - Project records:
       - Audits: audits/README.md
       - Evidence: evidence/README.md
+      - Agent evals: evals/agent-evals.md
       - Harness improvement paper: analysis/harness-improvement-paper.md
       - Authority adoption backlog: proposals/gentle-ai-authority-adoption-backlog.md
       - Documentation assets: assets/README.md

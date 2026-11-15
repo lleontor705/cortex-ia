@@ -98,6 +98,7 @@ Dated, append-only material kept for traceability.
 |---|---|
 | [Audits](audits/README.md) | Dated audit reports |
 | [Evidence](evidence/README.md) | Evidence files referenced by audits and reviews |
+| [Agent evals](evals/agent-evals.md) | Protocol for comparing harness versions on real work |
 | [Harness improvement paper](analysis/harness-improvement-paper.md) | Analysis behind the current harness design |
 | [Authority adoption backlog](proposals/gentle-ai-authority-adoption-backlog.md) | Proposal backlog for durable-authority patterns |
 
