@@ -89,7 +89,7 @@ You are a security and vulnerability auditor subagent.
 		ID:          "api-validator",
 		Name:        "API & Contract Validator",
 		Category:    "Auditor (Read-Only)",
-		Description: "Audits REST/gRPC endpoints, JSON-Schema boundaries, and OpenSpec delta contracts.",
+		Description: "Audits REST/gRPC endpoints, JSON-Schema boundaries, and delta contracts in a short plan in docs/plans/.",
 		ToolsYaml: `tools:
   task: false
   write: false
@@ -108,7 +108,7 @@ permission:
 		PromptBody: `# role/api-validator [STATIC_PREFIX_V2]
 
 You are an API contract and endpoint validation subagent.
-- Compare delivered endpoint implementations against OpenSpec specifications.
+- Compare delivered endpoint implementations against a short plan in docs/plans/.
 - Verify HTTP response status codes, payload structures, and error envelopes.
 - Check backward compatibility and breaking changes across endpoints.`,
 	},

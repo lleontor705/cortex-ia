@@ -39,7 +39,7 @@ const bashCompletionScript = `_cortex_ia_completions() {
     local cur prev words cword
     _init_completion -n : || return
 
-    local top_commands="install sync snapshot work worktree board ledger ui openspec web doc diagram report stats doctor rollback recover uninstall update completion version help mcp model"
+    local top_commands="install sync snapshot work worktree board ledger ui web doc diagram report stats doctor rollback recover uninstall update completion version help mcp model"
 
     if [ "$cword" -eq 1 ]; then
         COMPREPLY=($(compgen -W "$top_commands" -- "$cur"))
@@ -49,7 +49,7 @@ const bashCompletionScript = `_cortex_ia_completions() {
     local cmd="${words[1]}"
     case "$cmd" in
         work)
-            local work_subs="create revise archive list status approvals fingerprint claim renew controller-renew transition approve retry lease reserve lease-renew release release-all verify-lease review-refresh decompose recover reconcile degrade"
+            local work_subs="create revise list status approvals fingerprint claim renew controller-renew transition approve retry lease reserve lease-renew release release-all verify-lease review-refresh decompose recover reconcile degrade"
             if [ "$cword" -eq 2 ]; then
                 COMPREPLY=($(compgen -W "$work_subs" -- "$cur"))
             fi
@@ -78,12 +78,6 @@ const bashCompletionScript = `_cortex_ia_completions() {
                 COMPREPLY=($(compgen -W "$ledger_subs" -- "$cur"))
             fi
             ;;
-        openspec)
-            local openspec_subs="validate list status archive new"
-            if [ "$cword" -eq 2 ]; then
-                COMPREPLY=($(compgen -W "$openspec_subs" -- "$cur"))
-            fi
-            ;;
         completion)
             if [ "$cword" -eq 2 ]; then
                 COMPREPLY=($(compgen -W "bash zsh fish" -- "$cur"))
@@ -109,7 +103,6 @@ _cortex_ia() {
         'board:Group task DAGs into local task boards'
         'ledger:Inspect or update the Dual Ledger (facts + progress)'
         'ui:Print a bounded read-only TUI snapshot'
-        'openspec:Manage the OpenSpec SDD workspace'
         'web:Launch local Cortex-IA web dashboard in browser'
         'doc:Convert office/PDF docs to Markdown or inspect metadata'
         'diagram:Validate, render, compare, or trace system diagrams'
@@ -205,7 +198,6 @@ complete -c cortex-ia -n "__fish_use_subcommand" -a "snapshot" -d "Read and veri
 complete -c cortex-ia -n "__fish_use_subcommand" -a "work" -d "Define, claim, or advance task DAG"
 complete -c cortex-ia -n "__fish_use_subcommand" -a "board" -d "Manage local task boards"
 complete -c cortex-ia -n "__fish_use_subcommand" -a "ledger" -d "Dual Ledger facts and progress"
-complete -c cortex-ia -n "__fish_use_subcommand" -a "openspec" -d "Manage OpenSpec workspace"
 complete -c cortex-ia -n "__fish_use_subcommand" -a "web" -d "Launch web dashboard"
 complete -c cortex-ia -n "__fish_use_subcommand" -a "mcp" -d "Manage MCP servers"
 complete -c cortex-ia -n "__fish_use_subcommand" -a "model" -d "Manage agent models"

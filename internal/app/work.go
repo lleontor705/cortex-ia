@@ -73,7 +73,7 @@ func runWork(args []string) error {
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]... [--workload-policy <strict|flexible|unbounded>] (defaults to --board default)", nil)
 		}
-		opts, positionals, err := workOptions(args[1:], map[string]bool{"--id": false, "--title": false, "--depends": true, "--board": false, "--objective": false, "--acceptance": false, "--verify": false, "--file": true, "--project": false, "--opencode-session-id": false, "--opencode-root-session-id": false, "--opencode-parent-session-id": false, "--contract-file": false, "--workflow": false, "--workload-policy": false})
+		opts, positionals, err := workOptions(args[1:], map[string]bool{"--id": false, "--title": false, "--depends": true, "--board": false, "--objective": false, "--acceptance": false, "--verify": false, "--file": true, "--project": false, "--opencode-session-id": false, "--opencode-root-session-id": false, "--opencode-parent-session-id": false, "--workflow": false, "--workload-policy": false})
 		if err != nil {
 			return workUsage("create <id> <title> [--board <id>] [--depends <id>]... [--objective <text>] [--acceptance <text>] [--verify <command>] [--file <path>]... [--workload-policy <strict|flexible|unbounded>] (defaults to --board default)", err)
 		}
@@ -101,32 +101,18 @@ func runWork(args []string) error {
 		if id == "" || title == "" {
 			return errors.New("work create requires an id and title; see cortex-ia work create --help")
 		}
-		var contract *delegation.SDDContract
-		if file := oneOption(opts, "--contract-file"); file != "" {
-			contract, err = delegation.ReadSDDContract(file)
-			if err != nil {
-				return err
-			}
-		}
 		if workflow, explicit := opts["--workflow"]; explicit {
 			if len(workflow) != 1 {
 				return errors.New("work create requires one workflow")
 			}
 			switch workflow[0] {
-			case "sdd-lite", "sdd-full":
-				if contract == nil || contract.Workflow != workflow[0] {
-					return errors.New("SDD workflow requires a matching --contract-file")
-				}
 			case "direct-change", "fast-tdd", "hotfix", "ops-task":
-				if contract != nil {
-					return errors.New("direct workflow cannot carry an SDD contract")
-				}
 			default:
-				return errors.New("unsupported work create workflow")
+				return errors.New("unsupported work create workflow; use direct-change, fast-tdd, hotfix or ops-task")
 			}
 		}
 		item, err := store.CreateWorkInBoardWithDefinition(ctx, boardID, id, title, depends, delegation.WorkDefinition{
-			Project: oneOption(opts, "--project"), Contract: contract,
+			Project:        oneOption(opts, "--project"),
 			WorkloadPolicy: delegation.WorkloadPolicy(oneOption(opts, "--workload-policy")),
 			ConversationOwnership: delegation.ConversationOwnership{
 				OpenCodeSessionID:       oneOption(opts, "--opencode-session-id"),
@@ -156,27 +142,7 @@ func runWork(args []string) error {
 		}
 		return printJSON(item)
 	case "archive":
-		opts, positionals, err := workOptions(args[1:], map[string]bool{"--board": false, "--project": false, "--change": false, "--workflow": false, "--spec-plane": false})
-		if err != nil || len(positionals) != 0 {
-			return workUsage("archive --board <id> --project <workspace> --change <id> --workflow <sdd-lite|sdd-full> --spec-plane <openspec|cortex|hybrid>", err)
-		}
-		for _, key := range []string{"--board", "--change", "--workflow", "--spec-plane"} {
-			if oneOption(opts, key) == "" {
-				return fmt.Errorf("work archive requires %s", key)
-			}
-		}
-		project := oneOption(opts, "--project")
-		if project == "" {
-			project, err = os.Getwd()
-			if err != nil {
-				return err
-			}
-		}
-		receipt, err := store.ArchiveChange(ctx, delegation.ArchiveOptions{BoardID: oneOption(opts, "--board"), Workspace: project, ChangeID: oneOption(opts, "--change"), Workflow: oneOption(opts, "--workflow"), SpecPlane: oneOption(opts, "--spec-plane")})
-		if err != nil {
-			return err
-		}
-		return printJSON(receipt)
+		return RetiredSurfaceError{Surface: "work archive"}
 	case "list":
 		if len(args) > 1 && isHelp(args[1]) {
 			return workUsage("list [--board <board-id>] [--current] [--project <dir>]", nil)
@@ -572,11 +538,11 @@ func runWork(args []string) error {
 		return printJSON(item)
 	case "decompose":
 		if len(args) > 1 && isHelp(args[1]) {
-			return workUsage("decompose <task-id> --revision <n> --plan <file|@stdin> [--contract-file <file>]", nil)
+			return workUsage("decompose <task-id> --revision <n> --plan <file|@stdin>", nil)
 		}
-		id, opts, err := workIDOptions(args[1:], map[string]bool{"--revision": false, "--plan": false, "--contract-file": false})
+		id, opts, err := workIDOptions(args[1:], map[string]bool{"--revision": false, "--plan": false})
 		if err != nil {
-			return workUsage("decompose <task-id> --revision <n> --plan <file|@stdin> [--contract-file <file>]", err)
+			return workUsage("decompose <task-id> --revision <n> --plan <file|@stdin>", err)
 		}
 		revision, err := positiveRevision(oneOption(opts, "--revision"))
 		if err != nil {
@@ -586,15 +552,7 @@ func runWork(args []string) error {
 		if err != nil {
 			return err
 		}
-		contract := plan.Contract
-		if file := oneOption(opts, "--contract-file"); file != "" {
-			contractFromFile, err := delegation.ReadSDDContract(file)
-			if err != nil {
-				return err
-			}
-			contract = contractFromFile
-		}
-		result, err := store.DecomposeWork(ctx, id, revision, plan.Tasks, contract)
+		result, err := store.DecomposeWork(ctx, id, revision, plan.Tasks)
 		if err != nil {
 			return err
 		}
@@ -901,7 +859,6 @@ var agentShellDeniedWorkVerbs = map[string]bool{
 	"file-reserve": true, "lease-renew": true, "release": true, "release-all": true,
 	"transition": true, "approve": true, "retry": true, "decompose": true, "recover": true,
 	"reconcile": true, "prune": true, "degrade": true, "revise": true, "review-refresh": true,
-	"archive": true,
 }
 
 // agentShellDeniedBoardVerbs are the board verbs that archive, unarchive or delete.
@@ -926,8 +883,7 @@ func workUsage(usage string, cause error) error {
 }
 
 type workDecompositionPlan struct {
-	Contract *delegation.SDDContract         `json:"contract,omitempty"`
-	Tasks    []delegation.WorkStepDefinition `json:"tasks"`
+	Tasks []delegation.WorkStepDefinition `json:"tasks"`
 }
 
 func readWorkDecompositionPlan(source string) (workDecompositionPlan, error) {

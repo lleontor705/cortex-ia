@@ -2,8 +2,6 @@ package delegation
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,18 +13,6 @@ func TestReviewFreshness(t *testing.T) {
 	ctx := context.Background()
 	store, workspace := newReviseTestStore(t)
 
-	// 1. Setup workspace and contract
-	pinRel := "openspec/changes/c/plan.md"
-	pinAbs := filepath.Join(workspace, filepath.FromSlash(pinRel))
-	if err := os.MkdirAll(filepath.Dir(pinAbs), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	pinBytes := []byte("plan-content")
-	if err := os.WriteFile(pinAbs, pinBytes, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	pinHash := sha256.Sum256(pinBytes)
-
 	srcRel := "src/logic.go"
 	srcAbs := filepath.Join(workspace, filepath.FromSlash(srcRel))
 	if err := os.MkdirAll(filepath.Dir(srcAbs), 0o700); err != nil {
@@ -36,19 +22,8 @@ func TestReviewFreshness(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	contract := &SDDContract{
-		Version:   1,
-		Workflow:  "sdd-lite",
-		ChangeID:  "c",
-		SpecPlane: "hybrid",
-		Pins: []ContractPin{
-			{Transport: "workspace_file", Project: workspace, Locator: pinRel, SHA256: hex.EncodeToString(pinHash[:])},
-		},
-		RequirementIDs: []string{"REQ-REV-001"},
-	}
-
 	item, err := store.CreateWorkInBoardWithDefinition(ctx, "revise-board", "task-rev", "Freshness Task", nil, WorkDefinition{
-		Project: workspace, Objective: "objective", Acceptance: "acceptance", Verification: "verification", AllowedFiles: []string{srcRel}, Contract: contract,
+		Project: workspace, Objective: "objective", Acceptance: "acceptance", Verification: "verification", AllowedFiles: []string{srcRel},
 	})
 	if err != nil {
 		t.Fatalf("create work item: %v", err)
@@ -83,7 +58,7 @@ func TestReviewFreshness(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = store.ApproveWork(ctx, item.ID, "independent-rev-1", "PASS", "evidence", inReview.Revision)
-	if err == nil || err.Error() != "SDD review binding changed; fresh review required" {
+	if err == nil || err.Error() != "review binding changed; fresh review required" {
 		t.Fatalf("expected binding changed error, got: %v", err)
 	}
 
@@ -129,7 +104,7 @@ func TestReviewFreshness(t *testing.T) {
 		t.Fatalf("expected PASS on reapproval, got %s", reapproved.Verdict)
 	}
 
-	// 10. Test ListWorkApprovals and ComputeWorkFingerprint on SDD task
+	// 10. Test ListWorkApprovals and ComputeWorkFingerprint on the refreshed task
 	approvals, err := store.ListWorkApprovals(ctx, item.ID)
 	if err != nil {
 		t.Fatalf("ListWorkApprovals failed: %v", err)
