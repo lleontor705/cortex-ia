@@ -78,7 +78,7 @@ Controllers use the typed `cortex_ia_board_*` and `cortex_ia_work_*` tools from 
 | `cortex_ia_work_retry` | Orchestrator only; retries a reconciled blocked task under revision CAS |
 | `cortex_ia_work_recover_own` | Implementer only; recovers its own expired task |
 | `cortex_ia_work_review_refresh` | Orchestrator only; reopens review under the current revision. Grants no write authority and never approves |
-| `cortex_ia_work_claim\|renew\|lease_renew\|release_all\|transition` | Implementer only |
+| `cortex_ia_work_claim\|renew\|release_all\|transition` | Implementer only |
 | `cortex_ia_file_reserve\|cortex_ia_file_release` | Implementer only; one path or a batch |
 | `cortex_ia_work_approve` | Independent reviewer, or orchestrator auto-approval under §2.7a |
 
@@ -115,7 +115,7 @@ Known bridge edge cases:
 
 ### Workload LOC Budget (Normative)
 
-Before `in_review`, categorize churn with `git diff --numstat`. Source logic covers Go, Rust, Java and C# and TS or Python (deletions in TS and Python count 0.2x). Declarative data and schemas are exempt from every tier.
+Before `in_review`, run `cortex_ia_workload_audit` (git diff numstat, categorized by source, test and schema/doc). Source logic covers Go, Rust, Java and C# and TS or Python (deletions in TS and Python count 0.2x). Declarative data and schemas are exempt from every tier.
 
 | `workload_policy` | Source logic, Go/Rust/Java/C# | Source logic, TS/Python | Tests and fixtures | Over budget |
 |---|---|---|---|---|

@@ -184,7 +184,7 @@ stateDiagram-v2
     
     state Execution_Loop {
         [*] --> Red_Green_Refactor
-        Red_Green_Refactor --> Heartbeat_Renew: work renew + lease-renew
+        Red_Green_Refactor --> Heartbeat_Renew: work renew (claim and leases)
         Heartbeat_Renew --> Red_Green_Refactor
     }
     

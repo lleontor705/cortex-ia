@@ -261,67 +261,30 @@ export const CortexPermissionFencePlugin = Plugin.define({
       });
     }
 
-    // 2. Dynamic Tool Registration: cortex_ia_workload_audit & cortex_ia_work_watch
+    // 2. Dynamic Tool Registration: cortex_ia_workload_audit (git-only; no CLI wrapper)
     const auditInput = {
       type: "object",
       properties: {
         policy: {
           type: "string",
           enum: ["strict", "flexible", "unbounded"],
-          description: "Workload policy threshold to evaluate against.",
+          description: "Budget tier to evaluate against (default flexible)",
         },
         baseRef: {
           type: "string",
-          description: "Git reference to compare against (defaults to HEAD).",
-        },
-      },
-    };
-
-    const watchInput = {
-      type: "object",
-      properties: {
-        board: {
-          type: "string",
-          description: "Board ID to query (defaults to 'default').",
+          description: "Git revision to diff against (default HEAD)",
         },
       },
     };
 
     const auditTool = {
       name: "cortex_ia_workload_audit",
-      description: "Audit uncommitted git diff lines against the Cortex-IA workload budget (strict <=350 LOC, flexible <=700 LOC) before transitioning to review.",
+      description: "Audit uncommitted git diff against the workload budget. Read-only; run before work_transition to in_review. Returns workload_status (PASS, EXCEEDED_ADVISORY, WORKLOAD_SOURCE_BUDGET_EXCEEDED, WORKLOAD_TEST_BUDGET_EXCEEDED).",
       input: auditInput,
       parameters: auditInput,
       execute: async (args: any) => {
         const res = auditWorkload(directory, args?.policy || "flexible", args?.baseRef || "HEAD");
-        return { content: JSON.stringify(res, null, 2) };
-      },
-    };
-
-    const watchTool = {
-      name: "cortex_ia_work_watch",
-      description: "Check the live Cortex-IA task authority, active board state, claims, and remaining lease TTL.",
-      input: watchInput,
-      parameters: watchInput,
-      execute: async (args: any) => {
-        const cortex = firstCortexIA(directory);
-        if (!cortex) {
-          return { content: JSON.stringify({ error: "cortex-ia binary not found" }) };
-        }
-        try {
-          const board = args?.board || "default";
-          const raw = execFileSync(cortex, ["work", "status", "--project", path.resolve(directory), "--board", board], {
-            cwd: directory,
-            encoding: "utf8",
-            maxBuffer: 64 * 1024,
-            stdio: ["ignore", "pipe", "ignore"],
-            timeout: 10000,
-            windowsHide: true,
-          });
-          return { content: raw.trim() };
-        } catch (err: any) {
-          return { content: JSON.stringify({ error: err?.message || "failed to query cortex-ia work status" }) };
-        }
+        return JSON.stringify(res, null, 2);
       },
     };
 
@@ -334,17 +297,10 @@ export const CortexPermissionFencePlugin = Plugin.define({
             input: auditTool.input,
             execute: async (input: any) => auditTool.execute(input),
           });
-          editor.add({
-            name: watchTool.name,
-            description: watchTool.description,
-            input: watchTool.input,
-            execute: async (input: any) => watchTool.execute(input),
-          });
         }
       });
     } else if (typeof (ctx as any).tool?.register === "function") {
       (ctx as any).tool.register(auditTool);
-      (ctx as any).tool.register(watchTool);
     }
 
     const cleanup = async () => {};

@@ -102,6 +102,10 @@ func schemaEnum(description string, values ...string) map[string]any {
 	return map[string]any{"type": "string", "description": description, "enum": values}
 }
 
+func schemaBool(description string) map[string]any {
+	return map[string]any{"type": "boolean", "description": description}
+}
+
 func schemaStrings(description string) map[string]any {
 	return map[string]any{"type": "array", "description": description, "items": map[string]any{"type": "string"}}
 }

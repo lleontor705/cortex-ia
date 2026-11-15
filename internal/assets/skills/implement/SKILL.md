@@ -35,7 +35,7 @@ Skip TDD for documentation, declarative config, generated output, or work withou
 4. Make the minimal coherent change. Comments say why, never what. No changelog tags, task attribution, or commented-out code.
 5. Verify. New tests must be able to fail: assert a boundary, a return value, or an error branch. Run focused checks, then a proportional regression run. Declarative config is parsed by a standard parser. Generated data is checked for existence, size, and format. Docs are checked for markdown and links.
 6. Review your diff for scope creep, secrets, unsafe paths, and drift in generated files. Do not redact or alter code-intelligence metadata. Save root causes and gotchas with `cortex_save` as `type: bugfix`, topic `bugfix/<issue>` or `gotchas/<issue>`. Never save raw stdout.
-7. Check workload with `git diff --numstat` against `workload_policy`, as `cortex-work-protocol.md` §4 describes. Fast-TDD code also needs mutation evidence (`mutation-testing` skill; §4 and §8).
+7. Check workload with `cortex_ia_workload_audit({ policy: <workload_policy> })`, as `cortex-work-protocol.md` §4 describes. Fast-TDD code also needs mutation evidence (`mutation-testing` skill; §4 and §8).
 8. Transition with `cortex_ia_work_transition`. Leases release on `in_review`. Review and approval follow the §2.7a matrix.
 
 ## Database scripts

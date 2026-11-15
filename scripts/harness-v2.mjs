@@ -175,7 +175,7 @@ async function runSuite() {
   // Simulate registering cortex-permission-fence
   assert(fenceContent.includes("cortex-permission-fence"), "Contains correct plugin ID 'cortex-permission-fence'");
   assert(fenceContent.includes("cortex_ia_workload_audit"), "Registers 'cortex_ia_workload_audit' tool");
-  assert(fenceContent.includes("cortex_ia_work_watch"), "Registers 'cortex_ia_work_watch' tool");
+  assert(!fenceContent.includes("cortex_ia_work_watch"), "Does not register the retired 'cortex_ia_work_watch' tool");
 
   // Suite 3: cortex-lease-guard.ts Shell Fencing & Destructive Ask Gating
   console.log("\n🔒 Suite 3: Shell Destructive-Command Ask Gating (Permission Prompts)");
