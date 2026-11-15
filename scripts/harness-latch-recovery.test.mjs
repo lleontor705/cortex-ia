@@ -17,7 +17,7 @@ const MUTATION_VERBS = ['transition', 'claim', 'lease', 'approve', 'recover', 'r
 function dispatch(task, role) {
   return { subagent_type: role, task_id: 'host-resume-' + role, prompt: '<minion-dispatch>' + JSON.stringify({
     contract_version: '2.0', task_id: task, role, workflow: 'fast-tdd', phase: 'execute',
-    objective: 'Recover a read-only objective', spec_plane: 'hybrid', allowed_files: [],
+    objective: 'Recover a read-only objective', allowed_files: [],
     acceptance_checks: ['check'], artifact_refs: [], max_steps: 10,
   }) + '</minion-dispatch>' };
 }

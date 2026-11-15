@@ -14,8 +14,8 @@ import { loadPluginFile } from './harness-plugin-loader.mjs';
 
 function dispatch(task = 'work-real', role = 'implement', resume = 'host-resume-1') {
   return { subagent_type: role, task_id: resume, prompt: '<minion-dispatch>' + JSON.stringify({
-    contract_version: '1.0', task_id: task, role, workflow: 'sdd-full', phase: 'apply',
-    objective: 'Bounded work', spec_plane: 'openspec', allowed_files: role === 'implement' ? ['one.go'] : [],
+    contract_version: '1.0', task_id: task, role, workflow: 'direct-change', phase: 'apply',
+    objective: 'Bounded work', allowed_files: role === 'implement' ? ['one.go'] : [],
     acceptance_checks: ['check'], artifact_refs: [], max_steps: 10,
   }) + '</minion-dispatch>' };
 }

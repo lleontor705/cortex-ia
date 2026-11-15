@@ -45,15 +45,15 @@ test('duplicate callID is an idempotent no-op on the memory plane and fails clos
     }, 'duplicate memory-plane before-hook must be idempotent');
 
     await plugin['tool.execute.before'](
-      { tool: 'cortex_ia_openspec_write', sessionID: 'child-1', callID: 'call-spec-dup' },
-      { args: { relative_path: 'openspec/changes/test.md', content: 'test' } }
+      { tool: 'cortex_ia_content_hash', sessionID: 'child-1', callID: 'call-hash-dup' },
+      { args: { content: 'test' } }
     );
     await assert.doesNotReject(async () => {
       await plugin['tool.execute.before'](
-        { tool: 'cortex_ia.cortex_ia_openspec_write', sessionID: 'child-1', callID: 'call-spec-dup' },
-        { args: { relative_path: 'openspec/changes/test.md', content: 'test' } }
+        { tool: 'cortex_ia.cortex_ia_content_hash', sessionID: 'child-1', callID: 'call-hash-dup' },
+        { args: { content: 'test' } }
       );
-    }, 'duplicate spec-plane before-hook must be idempotent');
+    }, 'duplicate content-hash before-hook must be idempotent');
 
     await plugin['tool.execute.before'](
       { tool: 'cortex_ia_work_status', sessionID: 'child-1', callID: 'call-status-dup' },

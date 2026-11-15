@@ -273,9 +273,16 @@ test('TestREQ_WAUTH_002 successful recovery stops maintenance and drops the stal
   await h.plugin.dispose();
 });
 
-// ─── Plugin policy sync (spec_plane, save types, error codes) ────────────────
+// ─── Plugin policy sync (save types, error codes) ────────────────────────────
 
 const CANONICAL_SAVE_TYPES = ['bugfix', 'decision', 'architecture', 'pattern', 'discovery', 'config', 'learning'];
+
+function loadCortexModuleExports() {
+  const cortexSource = transpileTS(fs.readFileSync('internal/assets/plugins/cortex.ts', 'utf8'));
+  const sandbox = createIsolatedSandbox({ env: { CORTEX_HTTP_TOKEN: 'harness-token' } });
+  vm.runInContext(cortexSource, sandbox);
+  return sandbox.exports;
+}
 
 function loadWorkModuleExports() {
   const sandbox = createIsolatedSandbox({
@@ -285,36 +292,6 @@ function loadWorkModuleExports() {
   vm.runInContext(source, sandbox);
   return sandbox.exports;
 }
-
-function loadCortexModuleExports() {
-  const cortexSource = transpileTS(fs.readFileSync('internal/assets/plugins/cortex.ts', 'utf8'));
-  const sandbox = createIsolatedSandbox({ env: { CORTEX_HTTP_TOKEN: 'harness-token' } });
-  vm.runInContext(cortexSource, sandbox);
-  return sandbox.exports;
-}
-
-test('TestREQ_PLUGIN_001 spec_plane drops speckit and unknown planes fail closed', async () => {
-  const work = loadWorkModuleExports();
-  assert.deepEqual([...work.SPEC_PLANES], ['openspec', 'cortex', 'hybrid']);
-  for (const plane of ['openspec', 'cortex', 'hybrid']) {
-    assert.equal(work.assertSpecPlane(plane), plane);
-  }
-  for (const bad of ['speckit', 'Speckit', '', 'manual', undefined]) {
-    assert.throws(() => work.assertSpecPlane(bad), /SPEC_PLANE_INVALID/, String(bad));
-  }
-  assert.equal(source.includes('speckit'), false);
-
-  const h = await harness();
-  await assert.rejects(
-    h.plugin.tool.cortex_ia_work_create.execute({
-      workflow: 'sdd-lite', board_id: 'board', task_id: 'task', title: 'T',
-      sdd_contract: { version: 1, workflow: 'sdd-lite', change_id: 'change', spec_plane: 'speckit', pins: [], requirement_ids: [] }
-    }, { ...context, agent: 'planner' }),
-    /SPEC_PLANE_INVALID/
-  );
-  assert.equal(h.calls.filter(c => c.args[0] === 'work' && c.args[1] === 'create').length, 0);
-  await h.plugin.dispose();
-});
 
 test('TestREQ_PLUGIN_002 cortex_save type list matches the convention allowlist', async () => {
   const cortex = loadCortexModuleExports();
