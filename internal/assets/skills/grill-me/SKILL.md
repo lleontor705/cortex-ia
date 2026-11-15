@@ -7,47 +7,25 @@ metadata:
   version: "1.0.0"
 ---
 
-# Relentless Design & Decision Grilling
+# Design Grilling
 
-Interview the user relentlessly until you reach a concrete, shared understanding of requirements, architecture, constraints, and trade-offs. Map this exploration as a **design tree**: every foundational decision branches into the secondary decisions that depend on it.
+Use this to pressure-test a plan, architecture decision, or feature design before implementation starts. Interview the user until requirements, constraints, and trade-offs are concrete. Treat the design as a tree: each foundational decision unlocks the decisions that depend on it.
 
-## 1. The Decision Frontier
+## Rounds
 
-Work the tree in **rounds**. The **frontier** consists of every decision whose prerequisites are already settled — questions you can ask *now* without guessing at answers you haven't received yet.
+Each round asks the **frontier**: every decision whose prerequisites are already settled. Ask the whole frontier at once so the user can answer in one pass. A question that depends on an unanswered one waits for a later round.
 
-Ask the entire frontier in one round:
-- Number each question (`Q1`, `Q2`, ...).
-- Provide a clear, concrete rationale and the viable options.
-- Always include your **recommended answer** with the technical justification.
-- Wait for the user's answers before formulating the next round.
-
-## 2. Round Formatting Contract
-
-Format every grilling round strictly as follows:
+For each question, give a number (`Q1`, `Q2`), the decision, the viable options (A/B/C), the trade-offs, and your recommendation with its technical reason. Then wait for the answers.
 
 ```
-❓ **Q1** - **<Decision / Question Title>**: <Detailed body, context, trade-offs, and options (A/B/C)>
-
-➡️ **Recommendation**: <Your recommended option and technical justification>
-
----
-
-❓ **Q2** - **<Decision / Question Title>**: <Detailed body, context, trade-offs, and options (A/B/C)>
-
-➡️ **Recommendation**: <Your recommended option and technical justification>
+Q1 - <decision title>: <context, trade-offs, options A/B/C>
+Recommendation: <option and reason>
 ```
 
-## 3. Autonomous Fact-Finding via Subagents (Zero Busywork for User)
+## Facts and decisions
 
-Finding **facts** is strictly the system's job, never the user's:
-- The `orchestrator` has no code inspection or shell tools. When a frontier question depends on a codebase fact (existing APIs, schemas, configurations, dependency versions, test runners, project structure), the orchestrator **MUST dispatch the `investigate` subagent** to inspect the repository and return factual evidence.
-- **Never ask the user for information that `investigate` can discover in the codebase.**
-- **Decisions** belong to the user; **facts** belong to `investigate` diagnostics.
+The user decides. The repository answers factual questions such as APIs, schemas, versions, test runners, and layout. When a question depends on a fact, the orchestrator dispatches `investigate` to find it. Do not ask the user for anything the codebase can answer.
 
-## 4. Tree Progression & Stop Condition
+## Stop condition
 
-- Each round of user answers settles active branches and pushes the frontier outward, unblocking downstream architectural choices.
-- Recompute the frontier and ask the next round if unsettled choices remain.
-- A question whose answer depends on an open question in the current round belongs to a *future round*, not the current one.
-- **Completion Gate**: The grilling session concludes when the **frontier is empty** — every branch of the design tree has been visited, edge cases evaluated, and nothing is left silently assumed.
-- Summarize the final agreed design or record it in the plan file before delegating implementation.
+Stop when the frontier is empty: every branch has been visited, edge cases have been weighed, and nothing is left assumed silently. Then summarize the agreed design and record it in the plan file (`docs/plans/<board-id>.md`) before implementation is delegated.

@@ -7,96 +7,37 @@ metadata:
   version: "2.0.0"
 ---
 
-# Parallel Dispatch Protocol
+# Parallel Dispatch
 
-## Overview
+Run implementers in parallel only when the work is independent. Two tasks are independent when they write disjoint files and their design decisions do not depend on each other. Coupled work runs sequentially, either as one task or in dependency order.
 
-Execute independent tasks concurrently instead of forcing sequential execution. Concurrency dramatically reduces total initiative lead time while preserving SQLite work authority and file safety.
+## 1. Choose the wave
 
-**Core Principle:** Parallelism is valid ONLY when tasks are `ready` and their writable `allowed_files` are strictly disjoint (zero intersection).
+Start from the tasks that are `ready` in the board (`cortex_ia_work_list({ board_id })`). Put a task in the same wave only if:
 
----
+- its writable `allowed_files` do not overlap with any other task in the wave, and
+- its design does not depend on another task's result, and it does not define an interface another task uses.
 
-## Step 1: Detect Independent Ready Tasks
+Keep a wave to at most 4 implementers. Tasks that fail either check wait for a later wave.
 
-1. Call `tools.cortex_ia_work_list({ board_id })` and filter the returned items for `status == "ready"` in code.
-2. Inspect the `allowed_files` array for each candidate task.
-3. Compute the intersection of `allowed_files` across all candidates:
-   - If sets are **disjoint**: The tasks can be executed in parallel.
-   - If sets **overlap**: The tasks MUST be executed sequentially (enforce dependency order).
+## 2. Workspace
 
----
+Use `current_workspace`; it is the only supported strategy. Each implementer holds its own live claim and reserves each writable file with `cortex_ia_file_reserve`, in sorted path order, before editing that file. It releases each file with `cortex_ia_file_release`. On a conflict it releases what it already holds and stops writing.
 
-## Step 2: Workspace Strategy
+## 3. Dispatch
 
-### `current_workspace` (Sole Supported Strategy)
-- Suitable for parallel native OpenCode `implement` controllers with disjoint file scopes.
-- Each controller claims a distinct `task_id`.
-- Controllers reserve their disjoint paths atomically via `cortex_ia_work_claim({ task_id, paths: allowed_files })` or `cortex_ia_file_reserve`.
-- Because file sets are disjoint, per-file reservations succeed without collision.
-- There is no external execution leaf: every parallel writer is a native `implement` controller editing the shared workspace under its own claim and disjoint per-file leases; `isolated_worktree` is retired.
+Launch one `implement` subagent per task in the same turn, as background subagents. Give each the dispatch brief from the orchestrator prompt, with `allowed_files`, `non_goals`, and `acceptance_checks` filled in. Do not poll. Each subagent's completion arrives when it moves its task to `in_review`.
 
----
+## 4. Join
 
-## Step 3: Concurrent Dispatch
+For each task in `in_review`, choose orchestrator auto-approval or an independent `reviewer` per `cortex-work-protocol.md` §2.7a, then approve with `cortex_ia_work_approve` at the current revision and with an evidence pointer. On PASS, SQLite marks the task done, releases its remaining authority, and moves dependents whose prerequisites are now complete to `ready`. On FAIL, only that task is blocked for a targeted retry; the rest of the wave continues. Then recompute the ready set and start the next wave.
 
-For each task in the parallel wave, dispatch an `implement` controller in the same orchestrator turn using native background subagents and the canonical `<minion-dispatch>` envelope (v2.0 schema; `cortex-work-protocol.md` §6):
+## Quick reference
 
-```json
-<minion-dispatch>
-{
-  "contract_version": "2.0",
-  "role": "implement",
-  "workflow": "direct-change",
-  "phase": "apply",
-  "workload_policy": "flexible",
-  "task_id": "task-auth-jwt",
-  "objective": "Implement JWT validation middleware with claims checking",
-  "allowed_files": ["internal/auth/jwt.go", "internal/auth/jwt_test.go"],
-  "non_goals": ["Do not modify token issuance or the login handler"],
-  "acceptance_checks": ["go test -v ./internal/auth/... -run TestJWT"],
-  "artifact_refs": ["docs/plans/auth-jwt.md"],
-  "max_steps": 30
-}
-</minion-dispatch>
-```
-
-When using OpenCode's `task` tool:
-```javascript
-// Launch Task 1 concurrently
-task({ subagent_type: "implement", prompt: envelopeTask1, background: true });
-
-// Launch Task 2 concurrently
-task({ subagent_type: "implement", prompt: envelopeTask2, background: true });
-```
-
-**Capacity Rule:** Default maximum of 3 concurrent background writers to prevent CPU/memory exhaustion.
-
----
-
-## Step 4: Reactive Join & Independent Verification
-
-1. **Reactive Completion:**
-   Do not poll in a sleep loop. The orchestrator receives completion notifications automatically as each background subagent finishes and transitions its task to `in_review`.
-2. **Adaptive Verification & Approval:**
-   Apply the §2.7a Adaptive Review Case Matrix (Digest — normative source: internal/assets/skills/_shared/cortex-work-protocol.md §2.7a) to choose between orchestrator auto-approval (`cortex_ia_work_approve({ task_id, verdict: "PASS", revision: <n>, evidence: ... })`) and independent `reviewer` dispatch.
-3. **Atomic DAG Unlocking:**
-   Upon reviewer or auto-approval `PASS`, SQLite atomically:
-   - Marks the task `done`.
-   - Releases any remaining claim/leases.
-   - Evaluates downstream dependents in the board. Dependents whose prerequisites are now all `done` automatically transition to `ready`.
-4. **Next Wave:**
-   Repeat Step 1 to detect newly ready tasks and launch the next parallel wave.
-
----
-
-## Quick Reference
-
-| Condition | Action |
+| Situation | Action |
 |---|---|
-| Multiple tasks `ready` with disjoint `allowed_files` | Launch parallel background subagents (`parallel-dispatch`) |
-| Tasks share any file in `allowed_files` | Execute sequentially in dependency/sorted order |
-| Task reaches `in_review` | Choose orchestrator auto-approval vs independent `reviewer` dispatch per the §2.7a Adaptive Review Case Matrix |
-| Task requests `isolated_worktree` or external execution | Fail closed; only native `current_workspace` controllers are supported |
-| Worker fails or hits collision | Worker transitions to `blocked`; other parallel tasks continue unaffected |
-| Reviewer returns `FAIL` | Task transitions to `blocked` for targeted retry; healthy tasks proceed |
+| Ready tasks with disjoint files and independent designs | Run them as one wave, at most 4 |
+| Tasks share a file or one design depends on another | Run sequentially in dependency order |
+| Task in `in_review` | Auto-approve or send to `reviewer` per §2.7a |
+| Worker hits a file conflict or loses authority | Release partial reservations, stop writing, report `blocked` |
+| Reviewer returns FAIL | Block that task for a targeted retry; other tasks continue |

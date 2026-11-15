@@ -7,28 +7,19 @@ metadata:
   version: "1.0.0"
 ---
 
-# Document Reader & Converter (Inspired by Anydoc)
+# Document Reader
 
-Use this skill when dealing with office documents, spreadsheets, presentations, ebooks, or PDF specifications that cannot be read as plain text source code.
-
-## 1. Core Tools
-
-- `cortex_ia_doc_convert`: Convert document to clean GitHub-Flavored Markdown.
-
-## 2. Supported Formats
+Use `cortex_ia_doc_convert` to turn a document that is not plain text into GitHub-flavored Markdown, then read the Markdown like any other file.
 
 | Category | Extensions |
 |---|---|
-| **Word Processing** | `.docx`, `.doc`, `.docm`, `.odt`, `.rtf` |
-| **Spreadsheets** | `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.ods`, `.csv`, `.tsv` |
-| **Presentations** | `.pptx`, `.ppt`, `.ppsx`, `.odp` |
-| **Documents & Ebooks** | `.pdf`, `.epub` |
+| Word processing | `.docx`, `.doc`, `.docm`, `.odt`, `.rtf` |
+| Spreadsheets | `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.ods`, `.csv`, `.tsv` |
+| Presentations | `.pptx`, `.ppt`, `.ppsx`, `.odp` |
+| Documents and ebooks | `.pdf`, `.epub` |
 
-## 3. Best Practices & Token Preservation
+## Keeping context small
 
-1. **Use `output_path` for Multi-Page Manuals**:
-   If a PDF or document is over 10 pages, convert to a file (`output_path: "docs/spec.md"`) and use standard reading tools (`read`, `grep`) on the generated Markdown.
-3. **Limit Lines**:
-   Set `max_lines: 300` when quickly scanning an excerpt in context.
-4. **Scanned PDFs**:
-   For image-only scanned PDFs, pass `ocr: "hosted"` to process via OCR parse service.
+- For a document longer than about 10 pages, convert to a file with `output_path` (for example `docs/spec.md`), then search it with `grep` or read the sections you need.
+- To skim an excerpt, pass `max_lines: 300`.
+- For an image-only scanned PDF, pass `ocr: "hosted"`. That sends the file to the hosted OCR service, so confirm the document may leave the machine first.

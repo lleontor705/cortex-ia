@@ -7,32 +7,22 @@ metadata:
   version: "1.0.0"
 ---
 
-# System Diagrams & Architecture Maps (Inspired by Archify)
+# System Diagrams
 
-Use this skill to turn codebases, service topologies, workflows, and state machines into validated, interactive system maps.
+Use this to turn a codebase, service topology, workflow, or state machine into a diagram that has been validated before it is shared.
 
-## 1. Tool Surface
+## Choosing the type
 
-- `cortex_ia_diagram_validate`: Validate diagram JSON specification against topological and schema rules.
-- `cortex_ia_diagram_render`: Render standalone interactive HTML diagram with SVG, dark/light themes, and node exploration.
-
-## 2. Diagram Type Router
-
-| Type | Best For | Key Elements |
+| Type | Use for | Key elements |
 |---|---|---|
-| **`architecture`** | Services, storage, cloud/security boundaries, infrastructure | Components (`frontend`, `backend`, `database`, `cloud`, `security`), boundaries (`wraps`), connections |
-| **`workflow`** | Process steps, CI/CD, multi-agent coordination, approvals | Steps, transitions, conditional branches |
-| **`sequence`** | API call chains, async message traces, request lifecycles | Participants, ordered message exchanges |
-| **`dataflow`** | Pipelines, ETL/ELT, lineage, governance, consumers | Sources, transforms, stores, data links |
-| **`lifecycle`** | State transitions, error handling, retries, terminal states | States, events, error & recovery transitions |
+| `architecture` | Services, storage, cloud and security boundaries | Components (`frontend`, `backend`, `database`, `cloud`, `security`), boundaries (`wraps`), connections |
+| `workflow` | Process steps, CI/CD, approvals, multi-agent coordination | Steps, transitions, conditional branches |
+| `sequence` | API call chains, async messages, request lifecycles | Participants, ordered messages |
+| `dataflow` | Pipelines, ETL/ELT, lineage, consumers | Sources, transforms, stores, data links |
+| `lifecycle` | State transitions, errors, retries, terminal states | States, events, error and recovery transitions |
 
-## 3. Fast Authoring & Delivery Loop
+## Steps
 
-1. **Write Candidate Specification**:
-   Produce typed JSON with `meta`, `components`, `connections`, and optional `boundaries` / `cards`.
-2. **Validate**:
-   Run `cortex_ia_diagram_validate({ spec_path: "path/to/spec.json", quality: "showcase" })`.
-   Ensure 0 errors and valid topology (all connection endpoints point to existing component IDs).
-3. **Render**:
-   Run `cortex_ia_diagram_render({ spec_path: "path/to/spec.json", output_path: "docs/architecture.html" })`.
-   Produces a self-contained HTML artifact with embedded SVG and interactive dark/light theme.
+1. **Write the spec.** Produce typed JSON with `meta`, `components`, and `connections`, plus `boundaries` or `cards` when they add meaning.
+2. **Validate.** Run `cortex_ia_diagram_validate({ spec_path: "path/to/spec.json", quality: "showcase" })`. Fix every error. Every connection must point at an existing component ID.
+3. **Render.** Run `cortex_ia_diagram_render({ spec_path: "path/to/spec.json", output_path: "docs/architecture.html" })`. The result is a self-contained HTML file with inline SVG and a light and dark theme.
