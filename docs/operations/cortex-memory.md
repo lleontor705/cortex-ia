@@ -54,6 +54,8 @@
 
 ## 🧭 Separation of Planes: Epistemic vs Operational
 
+![Cortex is the MCP server for memory and code knowledge; Cortex-IA is the control plane and CLI that owns task authority](../assets/diagrams/cortex-vs-cortexia.svg)
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                 EPISTEMIC / EVIDENCE PLANE                  │

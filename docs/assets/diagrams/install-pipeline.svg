@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 430" width="100%" role="img" aria-labelledby="pipeTitle pipeDesc">
+  <title id="pipeTitle">Cortex-IA transactional install pipeline</title>
+  <desc id="pipeDesc">Install and sync run as a transaction in five steps: plan the exact effects, take the cross-process lock, capture a verified backup, apply atomic writes, then verify the result and record installation metadata. A dry run stops after the plan. Files cortex-ia did not write cause a conflict before anything is written. If applying fails, every touched file is restored from the verified backup.</desc>
+  <defs>
+    <marker id="pipeArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#94A3B8"/>
+    </marker>
+    <marker id="pipeArrowRed" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#FB7185"/>
+    </marker>
+  </defs>
+  <style>
+    .t { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    .m { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .h1 { font-size: 24px; font-weight: 700; fill: #F1F5F9; }
+    .sub { font-size: 13px; fill: #93A4BF; }
+    .num { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; fill: #64748B; }
+    .name { font-size: 17px; font-weight: 700; fill: #F1F5F9; }
+    .line { font-size: 12px; fill: #B6C2D6; }
+    .note { font-size: 12px; fill: #93A4BF; }
+  </style>
+
+  <rect width="1200" height="430" rx="14" fill="#0B1220"/>
+  <rect x="0.75" y="0.75" width="1198.5" height="428.5" rx="14" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+
+  <text x="48" y="48" class="t h1">Transactional install pipeline</text>
+  <text x="48" y="72" class="t sub">cortex-ia install and cortex-ia sync either converge completely or leave the home directory as it was.</text>
+
+  <g>
+    <rect x="48" y="112" width="192" height="128" rx="10" fill="#0E2233" stroke="#38BDF8" stroke-width="1.5"/>
+    <text x="66" y="138" class="t num">STEP 1</text>
+    <text x="66" y="164" class="t name">Plan</text>
+    <text x="66" y="188" class="t line">Compute every effect</text>
+    <text x="66" y="206" class="t line">against the layout and</text>
+    <text x="66" y="224" class="t line">current ownership</text>
+
+    <rect x="276" y="112" width="192" height="128" rx="10" fill="#111A2E" stroke="#334155" stroke-width="1.5"/>
+    <text x="294" y="138" class="t num">STEP 2</text>
+    <text x="294" y="164" class="t name">Lock</text>
+    <text x="294" y="188" class="t line">One writer per home</text>
+    <text x="294" y="206" class="t line">through a cross-process</text>
+    <text x="294" y="224" class="t line">file lock</text>
+
+    <rect x="504" y="112" width="192" height="128" rx="10" fill="#111A2E" stroke="#334155" stroke-width="1.5"/>
+    <text x="522" y="138" class="t num">STEP 3</text>
+    <text x="522" y="164" class="t name">Backup</text>
+    <text x="522" y="188" class="t line">Snapshot each file to be</text>
+    <text x="522" y="206" class="t line">touched and verify the</text>
+    <text x="522" y="224" class="t line">manifest</text>
+
+    <rect x="732" y="112" width="192" height="128" rx="10" fill="#111A2E" stroke="#334155" stroke-width="1.5"/>
+    <text x="750" y="138" class="t num">STEP 4</text>
+    <text x="750" y="164" class="t name">Apply</text>
+    <text x="750" y="188" class="t line">Atomic writes; JSONC</text>
+    <text x="750" y="206" class="t line">config merged with user</text>
+    <text x="750" y="224" class="t line">comments preserved</text>
+
+    <rect x="960" y="112" width="192" height="128" rx="10" fill="#0F2420" stroke="#34D399" stroke-width="1.5"/>
+    <text x="978" y="138" class="t num">STEP 5</text>
+    <text x="978" y="164" class="t name">Verify and record</text>
+    <text x="978" y="188" class="t line">Check written files, then</text>
+    <text x="978" y="206" class="t line">commit installation</text>
+    <text x="978" y="224" class="t line">metadata</text>
+  </g>
+
+  <path d="M240 176 H270" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#pipeArrow)"/>
+  <path d="M468 176 H498" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#pipeArrow)"/>
+  <path d="M696 176 H726" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#pipeArrow)"/>
+  <path d="M924 176 H954" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#pipeArrow)"/>
+
+  <!-- early exits under Plan -->
+  <path d="M144 240 V276" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#pipeArrow)"/>
+  <rect x="48" y="280" width="420" height="92" rx="10" fill="#141C2E" stroke="#334155" stroke-dasharray="6 4"/>
+  <text x="66" y="306" class="t name" style="font-size:14px">Stops here, nothing written</text>
+  <text x="66" y="330" class="m line" style="fill:#7DD3FC">--dry-run</text>
+  <text x="150" y="330" class="t line">prints the plan and exits</text>
+  <text x="66" y="352" class="t line">A file cortex-ia did not write is a conflict (use --overwrite)</text>
+
+  <!-- rollback lane -->
+  <path d="M828 240 V326 H702" fill="none" stroke="#FB7185" stroke-width="1.75" marker-end="url(#pipeArrowRed)"/>
+  <path d="M1056 240 V326 H828" fill="none" stroke="#FB7185" stroke-width="1.75"/>
+  <rect x="504" y="280" width="192" height="92" rx="10" fill="#2A1320" stroke="#FB7185" stroke-width="1.5"/>
+  <text x="522" y="306" class="t name" style="font-size:14px">Rollback</text>
+  <text x="522" y="330" class="t line">Restore every touched</text>
+  <text x="522" y="348" class="t line">file from the backup</text>
+  <text x="840" y="318" class="t note" style="fill:#FDA4AF">on any failure</text>
+
+  <text x="48" y="404" class="t note">Backups live under ~/.cortex-ia/backups/ and stay available to cortex-ia rollback after a successful run.</text>
+</svg>

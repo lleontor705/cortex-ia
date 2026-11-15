@@ -59,7 +59,6 @@ The command opens the delegation store **read-only** (`OpenStoreReadOnly`): it n
 
 ## See Also
 
-- [`custom-providers.md`](../getting-started/custom-providers.md) — retired custom-provider installer (provider installation is now native in OpenCode)
 - [`web-console.md`](web-console.md) — embedded Preact operations console
 - [`codebase/dashboard.md`](../architecture/codebase/dashboard.md) — Bubble Tea TUI architecture
 - [`configuration.md`](../getting-started/configuration.md) — environment variables and managed state

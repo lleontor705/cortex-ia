@@ -41,8 +41,8 @@ roots fail closed.
 
 ## Target AI Platforms
 
-| Platform | Support Tier | Configuration Directory | Notes |
-| :--- | :---: | :--- | :--- |
+![One binary installs the same roles, skills and contracts into OpenCode, Claude Code and Antigravity CLI, each with its own destination layout](../assets/diagrams/host-targets.svg)
+
 | Host (`--target`) | Status | What is written, and where | How to start |
 | :--- | :--- | :--- | :--- |
 | **OpenCode** (`opencode`, default) | Primary, full native asset set | `~/.config/opencode/` (agents, commands, plugins, themes, tui-plugins, `opencode.jsonc`, `AGENTS.md`), `~/.agents/skills/`, `~/.cortex-ia/opencode/`, managed MCPs | Native agents inside OpenCode (see [Quickstart](quickstart.md)) |

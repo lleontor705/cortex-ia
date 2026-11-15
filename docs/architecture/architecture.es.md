@@ -4,39 +4,16 @@
 
 **Cortex-IA** es el plano de control multiagente determinista, el instalador transaccional y el puente de proceso local para el ecosistema **OpenCode**.
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                   CORTEX-IA LAYERED ARCHITECTURE                            │
-│                                                                                             │
-│  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
-│  │ 1. PRESENTATION PLANE                                                                 │  │
-│  │    • Interactive TUI (BubbleTea wizard)        • Embedded Web Console (SSE / REST)   │  │
-│  │    • Optional Herdr Diagnostics (Web)          • Universal CLI Dispatcher            │  │
-│  └───────────────────────────────────────────────────────────────────────────────────────┘  │
-│                                            │                                                │
-│                                            ▼                                                │
-│  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
-│  │ 2. CONTROL & COORDINATION PLANE (internal/delegation)                                 │  │
-│  │    • SQLite STRICT + WAL ACID Store            • Monotonic CAS Revision Locks         │  │
-│  │    • Task DAG (backlog ➔ ready ➔ in_progress)  • Ephemeral Claim Tokens (SHA-256)     │  │
-│  │    • Exclusive Workspace File Leases           • Independent Review Gates (Approve)   │  │
-│  └───────────────────────────────────────────────────────────────────────────────────────┘  │
-│                                            │                                                │
-│                                            ▼                                                │
-│  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
-│  │ 3. SPECIFICATION PLANE (OpenSpec)                                                     │  │
-│  │    • RFC 2119 Delta Requirements               • Change Proposals & Design Docs       │  │
-│  │    • Tasks Specification (DAG Decompositions)  • Schema & Contract Validator          │  │
-│  └───────────────────────────────────────────────────────────────────────────────────────┘  │
-│                                            │                                                │
-│                                            ▼                                                │
-│  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
-│  │ 4. EPISTEMIC & EVIDENCE PLANE (Cortex MCP)                                            │  │
-│  │    • AST Code Symbol Graph & Relationships     • Blast Radius Impact Tree Engine      │  │
-│  │    • Durable Bug & ADR Observations            • Session Lifecycle Demarcation        │  │
-│  └───────────────────────────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
-```
+![Tres hosts llaman a un único binario cortex-ia, que se apoya en la autoridad de trabajo en SQLite, el plano de especificación y el plano de evidencia consultivo de Cortex](../assets/diagrams/architecture-overview.svg)
+
+El sistema tiene cuatro capas. Cada una depende solo de las que tiene debajo.
+
+| Capa | Qué posee | Dónde |
+|---|---|---|
+| Presentación | Interfaz de terminal, despachador de la CLI, consola web de loopback, servidor MCP de host y guardián pre-tool | `internal/tui`, `internal/app`, `internal/cortexiaweb`, `internal/mcpserve`, `internal/hostbridge` |
+| Control y coordinación | Grafo de tareas, claims, concesiones de archivo, comprobaciones de revisión, aprobaciones y recuperación | `internal/delegation` (SQLite `STRICT` + WAL) |
+| Especificación | Propuestas, requisitos delta, diseño y desglose de tareas | Archivos OpenSpec u observaciones de Cortex fijadas |
+| Evidencia | Memoria, grafo de símbolos AST y análisis de radio de impacto. Solo consultiva | Servidor MCP de Cortex |
 
 ---
 
@@ -88,6 +65,14 @@ Cuando un revisor registra una aprobación `PASS` mediante `work approve`:
 
 ---
 
+### D. Ciclo de vida de una tarea
+
+![Ciclo de vida de una tarea: backlog, ready, in_progress, in_review, done, con blocked como estado de fallo y work retry devolviendo una tarea bloqueada a ready](../assets/diagrams/task-lifecycle.svg)
+
+Un veredicto distinto de `PASS`, un bloqueo reportado o un claim vencido llevan la tarea a `blocked`. `work retry` la devuelve a `ready` con autoridad nueva, y dos veredictos `FAIL` consecutivos envían la tarea a descomposición por el planner en lugar de otro reintento.
+
+---
+
 ## 3. Modelo de ejecución nativa de subagentes
 
 Los controladores se ejecutan de forma nativa dentro de OpenCode bajo la autoridad de trabajo de Cortex-IA. El puente coordina los leases de tareas y el estado del trabajo directamente con el plano de control SQLite:
@@ -115,6 +100,8 @@ sequenceDiagram
 ## 4. Pipeline de instalación transaccional de archivos (`internal/pipeline`)
 
 Toda modificación de configuración sigue un pipeline ACID:
+
+![Pipeline de instalación: plan, bloqueo, copia de seguridad, aplicación, verificación y registro, con reversión desde la copia verificada ante cualquier fallo](../assets/diagrams/install-pipeline.svg)
 
 1. **Plan**: analiza el home destino, detecta conflictos no gestionados y genera un plan de ejecución inmutable.
 2. **Lock**: adquiere un bloqueo entre procesos (`LockFileEx` en Windows, `flock` en Unix) sobre `~/.cortex-ia/lock`.

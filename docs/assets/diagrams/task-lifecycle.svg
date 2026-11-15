@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" width="100%" role="img" aria-labelledby="lifeTitle lifeDesc">
+  <title id="lifeTitle">Cortex-IA task lifecycle</title>
+  <desc id="lifeDesc">State machine for a work item. A task moves from backlog to ready when its dependencies are approved, to in_progress when an implementer claims it and leases its files, to in_review on transition, and to done only when an approval with verdict PASS is recorded, which unlocks dependent tasks. A blocker, an expired claim, or a non-PASS verdict moves the task to blocked; work retry returns a blocked task to ready.</desc>
+  <defs>
+    <marker id="lifeArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#94A3B8"/>
+    </marker>
+    <marker id="lifeArrowRed" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#FB7185"/>
+    </marker>
+    <marker id="lifeArrowAmber" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#FBBF24"/>
+    </marker>
+  </defs>
+  <style>
+    .t { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    .m { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .h1 { font-size: 24px; font-weight: 700; fill: #F1F5F9; }
+    .sub { font-size: 13px; fill: #93A4BF; }
+    .state { font-size: 16px; font-weight: 700; text-anchor: middle; }
+    .who { font-size: 11.5px; fill: #93A4BF; text-anchor: middle; }
+    .lbl { font-size: 12px; fill: #CBD5E1; text-anchor: middle; }
+    .lblm { font-size: 11.5px; fill: #7DD3FC; text-anchor: middle; }
+    .note { font-size: 12px; fill: #93A4BF; }
+  </style>
+
+  <rect width="1200" height="500" rx="14" fill="#0B1220"/>
+  <rect x="0.75" y="0.75" width="1198.5" height="498.5" rx="14" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+
+  <text x="48" y="48" class="t h1">Task lifecycle</text>
+  <text x="48" y="72" class="t sub">Every arrow is a transactional, revision-checked transition recorded in SQLite.</text>
+
+  <!-- transition labels -->
+  <text x="240" y="128" class="t lbl">dependencies</text>
+  <text x="240" y="144" class="t lbl">approved</text>
+  <text x="480" y="128" class="m lblm">work claim</text>
+  <text x="480" y="144" class="t lbl">+ file leases</text>
+  <text x="720" y="128" class="m lblm">work transition</text>
+  <text x="720" y="144" class="t lbl">to in_review</text>
+  <text x="960" y="128" class="m lblm">work approve</text>
+  <text x="960" y="144" class="t lbl">verdict PASS</text>
+
+  <!-- states -->
+  <rect x="40" y="164" width="160" height="76" rx="10" fill="#141C2E" stroke="#475569" stroke-width="1.5"/>
+  <text x="120" y="198" class="m state" fill="#CBD5E1">backlog</text>
+  <text x="120" y="220" class="t who">waiting on dependencies</text>
+
+  <rect x="280" y="164" width="160" height="76" rx="10" fill="#0E2233" stroke="#38BDF8" stroke-width="1.5"/>
+  <text x="360" y="198" class="m state" fill="#7DD3FC">ready</text>
+  <text x="360" y="220" class="t who">claimable</text>
+
+  <rect x="520" y="164" width="160" height="76" rx="10" fill="#17152F" stroke="#A78BFA" stroke-width="1.5"/>
+  <text x="600" y="198" class="m state" fill="#C4B5FD">in_progress</text>
+  <text x="600" y="220" class="t who">one implementer owns it</text>
+
+  <rect x="760" y="164" width="160" height="76" rx="10" fill="#2A2110" stroke="#FBBF24" stroke-width="1.5"/>
+  <text x="840" y="198" class="m state" fill="#FCD34D">in_review</text>
+  <text x="840" y="220" class="t who">awaiting a verdict</text>
+
+  <rect x="1000" y="164" width="160" height="76" rx="10" fill="#0F2420" stroke="#34D399" stroke-width="2"/>
+  <text x="1080" y="198" class="m state" fill="#6EE7B7">done</text>
+  <text x="1080" y="220" class="t who">unlocks dependents</text>
+
+  <!-- forward arrows -->
+  <path d="M200 202 H274" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#lifeArrow)"/>
+  <path d="M440 202 H514" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#lifeArrow)"/>
+  <path d="M680 202 H754" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#lifeArrow)"/>
+  <path d="M920 202 H994" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#lifeArrow)"/>
+
+  <!-- blocked -->
+  <rect x="520" y="344" width="160" height="76" rx="10" fill="#2A1320" stroke="#FB7185" stroke-width="1.5"/>
+  <text x="600" y="378" class="m state" fill="#FDA4AF">blocked</text>
+  <text x="600" y="400" class="t who">needs reconciliation</text>
+
+  <path d="M600 240 V338" stroke="#FB7185" stroke-width="1.75" marker-end="url(#lifeArrowRed)"/>
+  <text x="612" y="284" class="t note" style="fill:#FDA4AF">blocker reported,</text>
+  <text x="612" y="300" class="t note" style="fill:#FDA4AF">or claim expired</text>
+
+  <path d="M840 240 V382 H686" fill="none" stroke="#FB7185" stroke-width="1.75" marker-end="url(#lifeArrowRed)"/>
+  <text x="852" y="296" class="t note" style="fill:#FDA4AF">verdict FAIL, BLOCKED</text>
+  <text x="852" y="312" class="t note" style="fill:#FDA4AF">or INCONCLUSIVE</text>
+
+  <path d="M520 382 H360 V246" fill="none" stroke="#FBBF24" stroke-width="1.75" stroke-dasharray="6 4" marker-end="url(#lifeArrowAmber)"/>
+  <text x="348" y="296" class="m note" text-anchor="end" style="fill:#FCD34D">work retry</text>
+  <text x="348" y="312" class="t note" text-anchor="end" style="fill:#FCD34D">orchestrator only</text>
+
+  <text x="48" y="462" class="t note">Only an approval with verdict PASS and evidence produces done. Chat messages, passing tests and Kanban position never complete a task.</text>
+  <text x="48" y="480" class="t note">Two consecutive FAIL verdicts stop retries: the planner decomposes the task into smaller ones.</text>
+</svg>

@@ -154,22 +154,26 @@ Retired surfaces: `delegate` and `herdr` belong to the removed external AGY exec
 
 ## Documentation Pages
 
+The full, grouped index is [`docs/index.md`](../../index.md). The codebase pages:
+
 | Page | Location | Covers |
 |------|----------|--------|
-| Mental Model | `docs/codebase/mental-model.md` | End-to-end data flow |
-| Repository Map | `docs/codebase/repository-map.md` | Directory-by-directory index |
-| MCP Boundaries | `docs/codebase/mcp-boundaries.md` | MCP server contracts & limits |
-| SDD Coordination | `docs/codebase/sdd-coordination.md` | Spec-Driven Development workflow |
-| Interfaces | `docs/codebase/interfaces.md` | Go interface contracts |
-| Sync, State & Backup | `docs/codebase/sync-and-cloud.md` | State files, snapshots, local sync |
-| Dashboard & TUI | `docs/codebase/dashboard.md` | Bubbletea architecture, screens |
-| Integrations | `docs/codebase/integrations.md` | CI/CD, GoReleaser, installer |
-| Project & Extension | `docs/codebase/project-and-extension.md` | Adding agents/skills/components/subcommands |
-| Maintainer Playbook | `docs/codebase/maintainer-playbook.md` | Release & dependency process |
-| Reference Map | `docs/codebase/reference-map.md` | This page — quick lookup index |
-| Architecture | `docs/architecture.md` | High-level architecture overview |
-| Agents | `docs/AGENTS.md` | Agent topology & coordination contracts (6 native roles) |
-| SDD Workflow | `docs/sdd-workflow.md` | SDD skills & workflow docs |
+| Mental Model | `docs/architecture/codebase/mental-model.md` | End-to-end data flow |
+| Repository Map | `docs/architecture/codebase/repository-map.md` | Directory-by-directory index |
+| MCP Boundaries | `docs/architecture/codebase/mcp-boundaries.md` | MCP server contracts & limits |
+| SDD Coordination | `docs/architecture/codebase/sdd-coordination.md` | Spec-Driven Development workflow |
+| Interfaces | `docs/architecture/codebase/interfaces.md` | Go interface contracts |
+| Sync, State & Backup | `docs/architecture/codebase/sync-and-cloud.md` | State files, snapshots, local sync |
+| Dashboard & TUI | `docs/architecture/codebase/dashboard.md` | Bubbletea architecture, screens |
+| Integrations | `docs/architecture/codebase/integrations.md` | CI/CD, GoReleaser, installer |
+| Project & Extension | `docs/architecture/codebase/project-and-extension.md` | Adding agents/skills/components/subcommands |
+| Maintainer Playbook | `docs/architecture/codebase/maintainer-playbook.md` | Release & dependency process |
+| Reference Map | `docs/architecture/codebase/reference-map.md` | This page — quick lookup index |
+| Architecture | `docs/architecture/architecture.md` | High-level architecture overview |
+| Agents | `docs/operations/agents.md` | Agent topology & coordination contracts (6 native roles) |
+| SDD Workflow | `docs/operations/sdd-workflow.md` | SDD skills & workflow docs |
+| CLI Reference | `docs/reference/cli.md` | Every command group, syntax and purpose |
+| Diagram assets | `docs/assets/README.md` | Diagram index, rules and palette |
 
 ## Invariants
 

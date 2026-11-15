@@ -6,11 +6,9 @@
 
 # Agent Topology & Coordination Contracts
 
-**Cortex-IA** embeds an enterprise multi-agent topology tailored for **OpenCode**. Execution is native-only: there is no external execution leaf, and every role controller runs inside OpenCode under Cortex-IA work authority.
+**Cortex-IA** embeds an enterprise multi-agent topology for **OpenCode**, **Claude Code** and **Antigravity CLI (agy)**. Execution is native-only: there is no external execution leaf, and every role controller runs inside the installed host under Cortex-IA work authority.
 
-<p align="center">
-  <img src="assets/multi-agent-orchestration.svg" alt="Multi-Agent Orchestration" width="100%" />
-</p>
+![One orchestrator dispatches five ephemeral role controllers: discovery, investigate, planner, implement and reviewer](../assets/diagrams/multi-agent-orchestration.svg)
 
 ---
 

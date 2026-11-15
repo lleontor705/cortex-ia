@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="100%" role="img" aria-labelledby="archTitle archDesc">
+  <title id="archTitle">Cortex-IA architecture overview</title>
+  <desc id="archDesc">Three hosts (OpenCode, Claude Code, Antigravity CLI) run native agents that call one cortex-ia Go binary. The binary exposes a CLI dispatcher, a TUI, the install service, an MCP server, a pre-tool guard and a loopback web console. Below it sit three planes: SQLite work authority (the single source of truth for tasks, claims, leases and approvals), the specification plane (OpenSpec or pinned Cortex observations) and the advisory evidence plane (Cortex MCP memory and AST graph).</desc>
+  <defs>
+    <marker id="archArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#64748B"/>
+    </marker>
+  </defs>
+  <style>
+    .t { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    .m { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .h1 { font-size: 24px; font-weight: 700; fill: #F1F5F9; }
+    .sub { font-size: 13px; fill: #93A4BF; }
+    .band { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; fill: #64748B; }
+    .name { font-size: 16px; font-weight: 700; fill: #F1F5F9; }
+    .line { font-size: 12.5px; fill: #B6C2D6; }
+    .code { font-size: 12px; fill: #7DD3FC; }
+    .chipname { font-size: 13px; font-weight: 700; fill: #F1F5F9; }
+    .chipcode { font-size: 11px; fill: #93A4BF; }
+    .note { font-size: 12px; fill: #93A4BF; }
+  </style>
+
+  <rect width="1200" height="700" rx="14" fill="#0B1220"/>
+  <rect x="0.75" y="0.75" width="1198.5" height="698.5" rx="14" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+
+  <text x="48" y="48" class="t h1">Cortex-IA architecture</text>
+  <text x="48" y="72" class="t sub">Native agents call one local binary. SQLite decides what work is ready, owned and done; specs and evidence inform it.</text>
+
+  <!-- Hosts -->
+  <text x="48" y="108" class="t band">HOSTS · NATIVE AGENTS ARE THE ONLY EXECUTORS</text>
+  <g>
+    <rect x="48" y="120" width="352" height="96" rx="10" fill="#111A2E" stroke="#38BDF8" stroke-width="1.5"/>
+    <text x="68" y="150" class="t name">OpenCode</text>
+    <text x="68" y="172" class="t line">Primary host · full native asset set</text>
+    <text x="68" y="196" class="m code">bridge plugin → cortex_ia_* tools</text>
+
+    <rect x="424" y="120" width="352" height="96" rx="10" fill="#111A2E" stroke="#334155" stroke-width="1.5"/>
+    <text x="444" y="150" class="t name">Claude Code</text>
+    <text x="444" y="172" class="t line">Host bundle · --target claude</text>
+    <text x="444" y="196" class="m code">mcp serve + pre-tool hook</text>
+
+    <rect x="800" y="120" width="352" height="96" rx="10" fill="#111A2E" stroke="#334155" stroke-width="1.5"/>
+    <text x="820" y="150" class="t name">Antigravity CLI (agy)</text>
+    <text x="820" y="172" class="t line">Host bundle · --target agy</text>
+    <text x="820" y="196" class="m code">native plugin + mcp serve + hook</text>
+  </g>
+
+  <path d="M224 216 V252" stroke="#64748B" stroke-width="1.5" marker-end="url(#archArrow)"/>
+  <path d="M600 216 V252" stroke="#64748B" stroke-width="1.5" marker-end="url(#archArrow)"/>
+  <path d="M976 216 V252" stroke="#64748B" stroke-width="1.5" marker-end="url(#archArrow)"/>
+
+  <!-- Binary -->
+  <rect x="48" y="256" width="1104" height="150" rx="12" fill="#0F1A30" stroke="#334155" stroke-width="1.5"/>
+  <text x="68" y="286" class="t band">CORTEX-IA · ONE PORTABLE GO BINARY</text>
+  <g>
+    <rect x="68" y="302" width="167" height="84" rx="8" fill="#16223A" stroke="#2A3A57"/>
+    <text x="82" y="330" class="t chipname">CLI dispatcher</text>
+    <text x="82" y="350" class="m chipcode">work · board · mcp</text>
+    <text x="82" y="368" class="m chipcode">internal/app</text>
+
+    <rect x="247" y="302" width="167" height="84" rx="8" fill="#16223A" stroke="#2A3A57"/>
+    <text x="261" y="330" class="t chipname">Terminal UI</text>
+    <text x="261" y="350" class="m chipcode">cortex-ia (no args)</text>
+    <text x="261" y="368" class="m chipcode">internal/tui</text>
+
+    <rect x="426" y="302" width="167" height="84" rx="8" fill="#16223A" stroke="#2A3A57"/>
+    <text x="440" y="330" class="t chipname">Install service</text>
+    <text x="440" y="350" class="m chipcode">install · sync</text>
+    <text x="440" y="368" class="m chipcode">internal/install</text>
+
+    <rect x="605" y="302" width="167" height="84" rx="8" fill="#16223A" stroke="#2A3A57"/>
+    <text x="619" y="330" class="t chipname">MCP server</text>
+    <text x="619" y="350" class="m chipcode">mcp serve --host</text>
+    <text x="619" y="368" class="m chipcode">internal/mcpserve</text>
+
+    <rect x="784" y="302" width="167" height="84" rx="8" fill="#16223A" stroke="#2A3A57"/>
+    <text x="798" y="330" class="t chipname">Pre-tool guard</text>
+    <text x="798" y="350" class="m chipcode">hook pre-tool</text>
+    <text x="798" y="368" class="m chipcode">internal/hostbridge</text>
+
+    <rect x="963" y="302" width="169" height="84" rx="8" fill="#16223A" stroke="#2A3A57"/>
+    <text x="977" y="330" class="t chipname">Web console</text>
+    <text x="977" y="350" class="m chipcode">web · loopback only</text>
+    <text x="977" y="368" class="m chipcode">internal/cortexiaweb</text>
+  </g>
+
+  <path d="M224 406 V442" stroke="#64748B" stroke-width="1.5" marker-end="url(#archArrow)"/>
+  <path d="M600 406 V442" stroke="#64748B" stroke-width="1.5" marker-end="url(#archArrow)"/>
+  <path d="M976 406 V442" stroke="#64748B" stroke-width="1.5" marker-end="url(#archArrow)"/>
+
+  <!-- Planes -->
+  <g>
+    <rect x="48" y="446" width="352" height="196" rx="10" fill="#0E2233" stroke="#38BDF8" stroke-width="2"/>
+    <text x="68" y="474" class="t band" fill="#38BDF8" style="fill:#38BDF8">WORK AUTHORITY · SOURCE OF TRUTH</text>
+    <text x="68" y="500" class="t name">SQLite task store</text>
+    <text x="68" y="522" class="m code">~/.cortex-ia/delegation.db</text>
+    <text x="68" y="550" class="t line">Boards and the task dependency graph</text>
+    <text x="68" y="572" class="t line">Claims and per-file leases with TTL</text>
+    <text x="68" y="594" class="t line">Revision checks on every transition</text>
+    <text x="68" y="616" class="t line">Approvals and an append-only event log</text>
+
+    <rect x="424" y="446" width="352" height="196" rx="10" fill="#17152F" stroke="#A78BFA" stroke-width="1.5"/>
+    <text x="444" y="474" class="t band" style="fill:#A78BFA">SPECIFICATION PLANE · CONTRACTS</text>
+    <text x="444" y="500" class="t name">OpenSpec or pinned Cortex</text>
+    <text x="444" y="522" class="m code" style="fill:#C4B5FD">openspec/changes/&lt;name&gt;/</text>
+    <text x="444" y="550" class="t line">Proposal, delta specs, design, tasks</text>
+    <text x="444" y="572" class="t line">Requirements with Given / When / Then</text>
+    <text x="444" y="594" class="t line">Structural validation per phase</text>
+    <text x="444" y="616" class="t line">Selected per change: openspec · cortex · hybrid</text>
+
+    <rect x="800" y="446" width="352" height="196" rx="10" fill="#0F2420" stroke="#34D399" stroke-width="1.5" stroke-dasharray="7 5"/>
+    <text x="820" y="474" class="t band" style="fill:#34D399">EVIDENCE PLANE · ADVISORY ONLY</text>
+    <text x="820" y="500" class="t name">Cortex MCP server</text>
+    <text x="820" y="522" class="m code" style="fill:#6EE7B7">cortex_* tools</text>
+    <text x="820" y="550" class="t line">Durable memory across sessions</text>
+    <text x="820" y="572" class="t line">AST symbol graph and call relations</text>
+    <text x="820" y="594" class="t line">Blast-radius and cycle analysis</text>
+    <text x="820" y="616" class="t line">Never authorizes writes or completion</text>
+  </g>
+
+  <text x="48" y="674" class="t note">Claim and lease tokens stay in process memory; SQLite stores only their hashes. The dashed border marks a plane that informs but never decides.</text>
+</svg>

@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="100%" role="img" aria-labelledby="hostTitle hostDesc">
+  <title id="hostTitle">Cortex-IA install targets</title>
+  <desc id="hostDesc">One cortex-ia binary installs the same embedded roles, skills and contracts into three hosts. OpenCode is the default target and receives the full native asset set under ~/.config/opencode, ~/.agents/skills and ~/.cortex-ia/opencode. Claude Code receives a host bundle under ~/.claude plus MCP servers in ~/.claude.json. Antigravity CLI receives a native plugin under ~/.gemini/config/plugins/cortex-ia. Every target shares the same SQLite work authority.</desc>
+  <defs>
+    <marker id="hostArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+  <style>
+    .t { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    .m { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .h1 { font-size: 24px; font-weight: 700; fill: #F1F5F9; }
+    .sub { font-size: 13px; fill: #93A4BF; }
+    .band { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; fill: #64748B; }
+    .name { font-size: 16px; font-weight: 700; fill: #F1F5F9; }
+    .line { font-size: 12.5px; fill: #B6C2D6; }
+    .code { font-size: 12px; fill: #7DD3FC; }
+    .path { font-size: 12px; fill: #CBD5E1; }
+    .note { font-size: 12px; fill: #93A4BF; }
+  </style>
+
+  <rect width="1200" height="520" rx="14" fill="#0B1220"/>
+  <rect x="0.75" y="0.75" width="1198.5" height="518.5" rx="14" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+
+  <text x="48" y="48" class="t h1">One binary, three hosts</text>
+  <text x="48" y="72" class="t sub">The same embedded roles, skills and contracts are rendered for each host. Only the destination layout changes.</text>
+
+  <!-- binary -->
+  <rect x="48" y="112" width="300" height="356" rx="12" fill="#0F1A30" stroke="#334155" stroke-width="1.5"/>
+  <text x="68" y="142" class="t band">EMBEDDED IN THE BINARY</text>
+  <text x="68" y="172" class="t name">cortex-ia install</text>
+  <text x="68" y="196" class="m code">--target opencode,claude,agy</text>
+  <text x="68" y="236" class="t line">6 role prompts</text>
+  <text x="68" y="258" class="t line">Skills and slash commands</text>
+  <text x="68" y="280" class="t line">Shared work contracts</text>
+  <text x="68" y="302" class="t line">Managed MCP entries</text>
+  <rect x="68" y="330" width="260" height="118" rx="8" fill="#0E2233" stroke="#38BDF8"/>
+  <text x="84" y="356" class="t band" style="fill:#38BDF8">SHARED BY EVERY HOST</text>
+  <text x="84" y="382" class="t line">SQLite work authority</text>
+  <text x="84" y="404" class="m path">~/.cortex-ia/delegation.db</text>
+  <text x="84" y="430" class="t line">Ownership manifests and backups</text>
+
+  <path d="M348 168 H394" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#hostArrow)"/>
+  <path d="M348 290 H394" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#hostArrow)"/>
+  <path d="M348 412 H394" stroke="#94A3B8" stroke-width="1.75" marker-end="url(#hostArrow)"/>
+
+  <!-- OpenCode -->
+  <rect x="400" y="112" width="752" height="112" rx="10" fill="#0E2233" stroke="#38BDF8" stroke-width="1.5"/>
+  <text x="420" y="142" class="t name">OpenCode</text>
+  <text x="520" y="142" class="t line">default target · primary · full native asset set</text>
+  <text x="420" y="170" class="m path">~/.config/opencode/</text>
+  <text x="580" y="170" class="t line">agents, commands, plugins, themes, opencode.jsonc, AGENTS.md</text>
+  <text x="420" y="190" class="m path">~/.agents/skills/</text>
+  <text x="580" y="190" class="t line">native skills</text>
+  <text x="420" y="210" class="m path">~/.cortex-ia/opencode/</text>
+  <text x="600" y="210" class="t line">contracts, roles, permissions</text>
+
+  <!-- Claude Code -->
+  <rect x="400" y="234" width="752" height="112" rx="10" fill="#111A2E" stroke="#334155" stroke-width="1.5"/>
+  <text x="420" y="264" class="t name">Claude Code</text>
+  <text x="540" y="264" class="t line">--target claude · host bundle</text>
+  <text x="420" y="292" class="m path">~/.claude/</text>
+  <text x="580" y="292" class="t line">agents/, skills/, commands/ (settings.json is not touched)</text>
+  <text x="420" y="312" class="m path">~/.claude.json</text>
+  <text x="580" y="312" class="t line">user-scope MCP servers cortex and cortex_ia</text>
+  <text x="420" y="332" class="m code">claude --agent orchestrator</text>
+
+  <!-- agy -->
+  <rect x="400" y="356" width="752" height="112" rx="10" fill="#111A2E" stroke="#334155" stroke-width="1.5"/>
+  <text x="420" y="386" class="t name">Antigravity CLI (agy)</text>
+  <text x="610" y="386" class="t line">--target agy · host bundle</text>
+  <text x="420" y="414" class="m path">~/.gemini/config/plugins/cortex-ia/</text>
+  <text x="690" y="414" class="t line">plugin.json, MCP config, hooks, rules, agents, skills</text>
+  <text x="420" y="434" class="t line">Commands are installed as skills named cmd-&lt;name&gt;</text>
+  <text x="420" y="454" class="m code">agy --agent orchestrator</text>
+
+  <text x="48" y="498" class="t note">Host bundles fail closed on files cortex-ia did not write unless --overwrite is given. The Claude Code and agy bundles are not yet exercised in a real host session.</text>
+</svg>

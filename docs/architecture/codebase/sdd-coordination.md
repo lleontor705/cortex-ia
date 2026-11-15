@@ -14,6 +14,8 @@ Use the [canonical workflow map](../../../internal/assets/skills/_shared/workflo
 
 `backlog -> ready -> in_progress -> in_review -> done`
 
+![Task lifecycle: backlog, ready, in_progress, in_review, done, with blocked as the failure state and work retry returning a blocked task to ready](../../assets/diagrams/task-lifecycle.svg)
+
 Only independent approval PASS produces `done`. Failure enters `blocked`; recovery reconciles expired authority, and retry requires fresh authority. Decomposition preserves contract bindings and replaces an oversized task with approved-scope dependencies. UI placement never authorizes work.
 
 ## Routing and role ownership

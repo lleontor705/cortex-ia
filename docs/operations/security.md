@@ -9,6 +9,8 @@
 cortex-ia writes into your home configuration. Every safeguard below is
 enforced by the transactional pipeline, not by convention.
 
+![Install pipeline: plan, lock, backup, apply, verify and record, with rollback from the verified backup on any failure](../assets/diagrams/install-pipeline.svg)
+
 ## Plan First, Write Second
 
 `install`, `sync`, and every `mcp` mutation build a complete plan before

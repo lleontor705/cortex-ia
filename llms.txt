@@ -1,6 +1,6 @@
 ﻿# cortex-ia
 
-Cortex-IA is a deterministic Multi-Agent Control Plane, transactional installer, and orchestration engine for OpenCode.
+Cortex-IA is a deterministic multi-agent control plane, transactional installer, and orchestration engine for OpenCode (primary), Claude Code, and Antigravity CLI (agy).
 
 - **Planes Separation**:
   - Epistemic & Evidence Plane: Cortex MCP (`cortex_*` tools: AST graphs, blast radius, durable gotcha memory).
@@ -12,10 +12,10 @@ Cortex-IA is a deterministic Multi-Agent Control Plane, transactional installer,
   - `openspec`: `validate`, `list`, `status`
   - `web`: `--open`, `--addr` (real-time SSE web console)
   - `install`, `sync`, `doctor`, `mcp`, `rollback`, `uninstall`
-- **Native-Only Execution**: Every role controller runs inside OpenCode under Cortex-IA work authority; no external CLI or leaf receives work-control, approval, session, or MCP authority.
+- **Native-Only Execution**: Every role controller runs inside the installed host under Cortex-IA work authority; no external CLI or leaf receives work-control, approval, session, or MCP authority.
 - **Safety Invariants**:
   - LockFileEx / flock cross-process file locks.
   - Verified snapshot backups before any disk write with automatic rollback.
   - Fail-closed path traversal and symlink checks.
 
-Key documentation: README.md, docs/quickstart.md, docs/architecture.md, docs/agents.md, docs/sdd-workflow.md, docs/codebase/mcp-boundaries.md.
+Key documentation: README.md, docs/index.md, docs/getting-started/quickstart.md, docs/reference/cli.md, docs/architecture/architecture.md, docs/operations/agents.md, docs/operations/sdd-workflow.md, docs/architecture/codebase/mcp-boundaries.md.

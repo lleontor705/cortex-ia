@@ -10,6 +10,10 @@ The [canonical workflow map](../../internal/assets/skills/_shared/workflow-map.m
 
 Cortex-IA separates the specification plane (OpenSpec, Cortex, or hybrid), durable work authority in SQLite, and evidence. SDD means contracts precede implementation and the accepted change is traceable to those contracts. A board, a successful build or a completed subagent alone does not establish SDD compliance.
 
+![Three routing tiers: fast path with no task graph, one bounded task on the default board, and coordinated specification-driven development on an initiative board](../assets/diagrams/routing-tiers.svg)
+
+The orchestrator first picks a tier; the flow below shows how each tier reaches `done`.
+
 ```mermaid
 flowchart LR
   A[User intent] --> B[Orchestrator routes by tier]
