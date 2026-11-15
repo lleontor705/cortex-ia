@@ -28,7 +28,7 @@ Devuelve el código de salida 0 e imprime el plan. No se escribe ningún archivo
 cortex-ia sync
 ```
 
-Útil en CI: haz pull de main → `cortex-ia sync` para recoger nuevos skills SDD o actualizaciones de convenciones.
+Útil en CI: haz pull de main → `cortex-ia sync` para recoger nuevos skills o actualizaciones de convenciones.
 
 ### Comprobación de estado
 

@@ -6,7 +6,7 @@ cortex-ia is the deterministic multi-agent control plane, transactional OpenCode
 
 ```text
 cmd/cortex-ia/               main(): release version + internal/app
-internal/app/                CLI command dispatch (board, work, openspec, mcp, web)
+internal/app/                CLI command dispatch (board, work, mcp, web)
 internal/delegation/         ACID SQLite engine: DAG, CAS revisions, claims, file leases, reviews
 internal/cortexiaweb/        Embedded Preact web console with SSE real-time event streaming
 internal/herdr/              Optional Herdr setup/detection helpers (diagnostics only)
@@ -34,9 +34,9 @@ internal/assets/             go:embed runtime assets (AGENTS.md, agents, command
    - Exclusive file leases: mandatory workspace-relative path locks before writing.
    - Independent peer review: implementers cannot approve their own work.
 
-3. **Specification Plane (OpenSpec)**:
-   - Markdown delta specifications with RFC 2119 keywords (`openspec/changes/`).
-   - Validated natively via `openspec validate` / `cortex-ia openspec validate`.
+3. **Plan Files**:
+   - One plan per initiative at `docs/plans/<board-id>.md`: goal, acceptance checks as executable commands, slices, progress, outcome.
+   - Only larger changes get a plan; the tests named by the acceptance checks are the living spec, with no archive step.
 
 4. **Native Execution Plane (OpenCode Role Controllers)**:
    - Every role controller executes inside OpenCode under Cortex-IA work authority.
@@ -61,9 +61,6 @@ internal/assets/             go:embed runtime assets (AGENTS.md, agents, command
 - `cortex-ia work approve <id> --reviewer <id> --verdict <PASS|FAIL> [--evidence <ref>]`
 - `cortex-ia work retry <id>`
 - `cortex-ia work recover`
-- `cortex-ia openspec validate [dir]`
-- `cortex-ia openspec list`
-- `cortex-ia openspec status [dir]`
 - `cortex-ia web [--open] [--addr 127.0.0.1:7331]`
 - `cortex-ia install [--dry-run] [--overwrite]`
 - `cortex-ia sync [--dry-run]`

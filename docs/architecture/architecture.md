@@ -2,7 +2,7 @@
 
 **Cortex-IA** is the deterministic multi-agent control plane, transactional installer, and local process bridge for **OpenCode** (primary), **Claude Code** and **Antigravity CLI (agy)**.
 
-![Three hosts call one cortex-ia binary, which sits on SQLite work authority, the specification plane and the advisory Cortex evidence plane](../assets/diagrams/architecture-overview.svg)
+![Three hosts call one cortex-ia binary, which sits on SQLite work authority, plan files and the advisory Cortex evidence plane](../assets/diagrams/architecture-overview.svg)
 
 The system is four layers. Each one depends only on the layers below it.
 
@@ -10,7 +10,7 @@ The system is four layers. Each one depends only on the layers below it.
 |---|---|---|
 | Presentation | Terminal UI, CLI dispatcher, loopback web console, host MCP server and pre-tool guard | `internal/tui`, `internal/app`, `internal/cortexiaweb`, `internal/mcpserve`, `internal/hostbridge` |
 | Control and coordination | Task graph, claims, file leases, revision checks, approvals, recovery | `internal/delegation` (SQLite `STRICT` + WAL) |
-| Specification | Proposals, delta requirements, design and task breakdowns | OpenSpec files or pinned Cortex observations |
+| Plans | Goal, acceptance checks, slices and progress | `docs/plans/<board-id>.md` |
 | Evidence | Memory, AST symbol graph, blast-radius analysis. Advisory only | Cortex MCP server |
 
 ---
@@ -20,7 +20,7 @@ The system is four layers. Each one depends only on the layers below it.
 ```text
 cmd/cortex-ia/               Entry point main(): release versioning + app bootstrap
 internal/
-├── app/                     CLI command routers (board, work, openspec, mcp, web)
+├── app/                     CLI command routers (board, work, mcp, web)
 ├── delegation/              ACID SQLite engine: DAG, claims, leases, reviews, approvals
 ├── cortexiaweb/             Embedded HTTP web server with SSE live event stream
 ├── herdr/                   Optional Herdr setup/detection helpers (diagnostics only)

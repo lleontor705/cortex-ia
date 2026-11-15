@@ -16,7 +16,7 @@ If you read only one page: [mental-model.md](codebase/mental-model.md).
 
 `cortex-ia` is the local bridge and control plane for the OpenCode ecosystem. It installs the native OpenCode asset set, manages MCP configuration, and owns durable task authority in SQLite. Execution is native-only: every role controller runs inside OpenCode, there is no external execution leaf, and nothing is supervised through Herdr. The retired ForgeSpec surface and external task-board MCP are not part of the product.
 
-The selected specification plane owns SDD contracts: OpenSpec for `openspec|hybrid`, pinned Cortex observations for `cortex`. Cortex MCP also owns durable evidence, memories, AST knowledge, and relationships. Neither replaces SQLite task authority.
+Plan files under `docs/plans/` hold the goal and acceptance checks for larger changes; the tests they name are the living spec. Cortex MCP owns durable evidence, memories, AST knowledge, and relationships. Neither replaces SQLite task authority.
 
 ## 2. Architecture Summary
 
@@ -47,7 +47,7 @@ Skills, prompts, commands, and plugins under `internal/assets/` are runtime sour
 | 4 | [dashboard.md](codebase/dashboard.md) | Bubble Tea TUI architecture, 10-screen workflow, Lip Gloss themes |
 | 5 | [mcp-boundaries.md](codebase/mcp-boundaries.md) | MCP catalog ownership, qualification, and fail-closed conflict rules |
 | 6 | [project-and-extension.md](codebase/project-and-extension.md) | Adding OpenCode skills, agents, commands, and MCP presets |
-| 7 | [sdd-coordination.md](codebase/sdd-coordination.md) | SDD workflow, sub-agent coordination, and file reservations |
+| 7 | [planning.md](../operations/planning.md) | Plan files, task lifecycle, and file reservations |
 | 8 | [sync-and-cloud.md](codebase/sync-and-cloud.md) | State management (`MetadataV2`), backup, and local sync |
 | 9 | [integrations.md](codebase/integrations.md) | Release pipeline, CI workflows, installer script, and distribution |
 | 10 | [maintainer-playbook.md](codebase/maintainer-playbook.md) | Release checklist, gates, and dependency updates |
@@ -68,5 +68,5 @@ Skills, prompts, commands, and plugins under `internal/assets/` are runtime sour
 
 - [`architecture.md`](architecture.md) — Internal engine layers and package responsibilities
 - [`agents.md`](../operations/agents.md) — 6-role topology, authority invariants, and typed receipt contracts
-- [`sdd-workflow.md`](../operations/sdd-workflow.md) — SDD lifecycle with role-specific responsibilities
+- [`planning.md`](../operations/planning.md) — when a plan is needed, the plan file, and the task lifecycle
 - [`mcp.md`](../operations/mcp.md) — Operator-facing MCP management reference

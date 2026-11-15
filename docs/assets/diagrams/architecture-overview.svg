@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="100%" role="img" aria-labelledby="archTitle archDesc">
   <title id="archTitle">Cortex-IA architecture overview</title>
-  <desc id="archDesc">Three hosts (OpenCode, Claude Code, Antigravity CLI) run native agents that call one cortex-ia Go binary. The binary exposes a CLI dispatcher, a TUI, the install service, an MCP server, a pre-tool guard and a loopback web console. Below it sit three planes: SQLite work authority (the single source of truth for tasks, claims, leases and approvals), the specification plane (OpenSpec or pinned Cortex observations) and the advisory evidence plane (Cortex MCP memory and AST graph).</desc>
+  <desc id="archDesc">Three hosts (OpenCode, Claude Code, Antigravity CLI) run native agents that call one cortex-ia Go binary. The binary exposes a CLI dispatcher, a TUI, the install service, an MCP server, a pre-tool guard and a loopback web console. Below it sit three planes: SQLite work authority (the single source of truth for tasks, claims, leases and approvals), plan files under docs/plans with executable acceptance checks and the advisory evidence plane (Cortex MCP memory and AST graph).</desc>
   <defs>
     <marker id="archArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
       <path d="M1 1 L9 5 L1 9 Z" fill="#64748B"/>
@@ -24,7 +24,7 @@
   <rect x="0.75" y="0.75" width="1198.5" height="698.5" rx="14" fill="none" stroke="#1E293B" stroke-width="1.5"/>
 
   <text x="48" y="48" class="t h1">Cortex-IA architecture</text>
-  <text x="48" y="72" class="t sub">Native agents call one local binary. SQLite decides what work is ready, owned and done; specs and evidence inform it.</text>
+  <text x="48" y="72" class="t sub">Native agents call one local binary. SQLite decides what work is ready, owned and done; plans and evidence inform it.</text>
 
   <!-- Hosts -->
   <text x="48" y="108" class="t band">HOSTS · NATIVE AGENTS ARE THE ONLY EXECUTORS</text>
@@ -100,13 +100,13 @@
     <text x="68" y="616" class="t line">Approvals and an append-only event log</text>
 
     <rect x="424" y="446" width="352" height="196" rx="10" fill="#17152F" stroke="#A78BFA" stroke-width="1.5"/>
-    <text x="444" y="474" class="t band" style="fill:#A78BFA">SPECIFICATION PLANE · CONTRACTS</text>
-    <text x="444" y="500" class="t name">OpenSpec or pinned Cortex</text>
-    <text x="444" y="522" class="m code" style="fill:#C4B5FD">openspec/changes/&lt;name&gt;/</text>
-    <text x="444" y="550" class="t line">Proposal, delta specs, design, tasks</text>
-    <text x="444" y="572" class="t line">Requirements with Given / When / Then</text>
-    <text x="444" y="594" class="t line">Structural validation per phase</text>
-    <text x="444" y="616" class="t line">Selected per change: openspec · cortex · hybrid</text>
+    <text x="444" y="474" class="t band" style="fill:#A78BFA">PLAN FILES · ACCEPTANCE CHECKS</text>
+    <text x="444" y="500" class="t name">One file per initiative</text>
+    <text x="444" y="522" class="m code" style="fill:#C4B5FD">docs/plans/&lt;board-id&gt;.md</text>
+    <text x="444" y="550" class="t line">Goal, context, non-goals, outcome</text>
+    <text x="444" y="572" class="t line">Acceptance checks as executable commands</text>
+    <text x="444" y="594" class="t line">Slices and progress; history, not a gate</text>
+    <text x="444" y="616" class="t line">Small changes need no plan file</text>
 
     <rect x="800" y="446" width="352" height="196" rx="10" fill="#0F2420" stroke="#34D399" stroke-width="1.5" stroke-dasharray="7 5"/>
     <text x="820" y="474" class="t band" style="fill:#34D399">EVIDENCE PLANE · ADVISORY ONLY</text>

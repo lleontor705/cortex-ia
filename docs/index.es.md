@@ -22,11 +22,11 @@ hacen seguro el trabajo de agentes en paralelo.
 
 ## El sistema en una imagen
 
-![Tres hosts llaman a un único binario cortex-ia, que se apoya en la autoridad de trabajo en SQLite, el plano de especificación y el plano de evidencia consultivo de Cortex](assets/diagrams/architecture-overview.svg)
+![Tres hosts llaman a un único binario cortex-ia, que se apoya en la autoridad de trabajo en SQLite, los archivos de plan y el plano de evidencia consultivo de Cortex](assets/diagrams/architecture-overview.svg)
 
 Los agentes se ejecutan de forma nativa dentro del host. Llegan a Cortex-IA mediante herramientas
 tipadas `cortex_ia_*`, y Cortex-IA registra cada claim, concesión, transición y aprobación en
-SQLite. Las especificaciones y la memoria de Cortex informan el trabajo; solo SQLite decide su
+SQLite. Los archivos de plan y la memoria de Cortex informan el trabajo; solo SQLite decide su
 estado.
 
 ## Mapa de la documentación
@@ -52,7 +52,7 @@ Páginas orientadas a tareas para el uso diario de Cortex-IA.
 | Página | Qué cubre |
 |---|---|
 | [Agentes](operations/agents.md) | Los seis roles, su autoridad y sus recibos |
-| [Flujo SDD](operations/sdd-workflow.md) | Desarrollo guiado por especificaciones y verificación por capas |
+| [Planificación](operations/planning.es.md) | Cuándo un cambio necesita plan, el archivo de plan y el ciclo de vida de las tareas |
 | [Gestor de MCP](operations/mcp.md) | Presets del catálogo, servidores propios, propiedad y adopción |
 | [Componentes](operations/components.md) | Qué se instala y qué servidores MCP se gestionan |
 | [Memoria de Cortex](operations/cortex-memory.md) | Memoria, grafo AST y su relación con la autoridad de trabajo |
@@ -74,7 +74,6 @@ Contexto para entender por qué el sistema se comporta como lo hace.
 | [Mapa del repositorio](architecture/codebase/repository-map.md) | Estructura directorio por directorio |
 | [Interfaces](architecture/codebase/interfaces.md) | Interfaces de Go y modelos de datos principales |
 | [Límites de MCP](architecture/codebase/mcp-boundaries.md) | Propiedad y conflictos con cierre ante fallos en entradas MCP |
-| [Coordinación SDD](architecture/codebase/sdd-coordination.md) | Ciclo de vida del trabajo, enrutamiento y reglas de autoridad |
 | [Sincronización, estado y copias](architecture/codebase/sync-and-cloud.md) | Archivos de estado y reconciliación |
 | [Dashboard y TUI](architecture/codebase/dashboard.md) | Arquitectura de Bubble Tea y pantallas |
 | [Integraciones y CI/CD](architecture/codebase/integrations.md) | Workflows, GoReleaser y distribución |

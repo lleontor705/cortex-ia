@@ -19,7 +19,7 @@
 | **`orchestrator`** | Primary / Interactive Coordinator | Request intake, startup alignment, Cortex session management, DAG dispatch, and final receipt synthesis. | `discovery`, `investigate`, `planner`, `implement`, `reviewer` |
 | **`discovery`** | Subagent / Discovery Controller | Project onboarding, skills inventory, environment readiness, engine requirements, and maintains `.cortex-ia/discovery.md`. | None (strictly native) |
 | **`investigate`** | Subagent / Read-Only Controller | Diagnostic audits, root-cause identification, exploratory spikes, and AST blast radius inspection. | None (native-only) |
-| **`planner`** | Subagent / Spec Controller | OpenSpec delta specifications (RFC 2119), Given/When/Then scenarios, and task DAG decomposition sized by the active `workload_policy` tier (`strict` / `flexible` / `unbounded`) and the resume test. | None (native-only) |
+| **`planner`** | Subagent / Plan Controller | The plan file `docs/plans/<board-id>.md` with executable acceptance checks, and task DAG decomposition sized by the active `workload_policy` tier (`strict` / `flexible` / `unbounded`) and the resume test. | None (native-only) |
 | **`implement`** | Subagent / Mutating Controller | Single task claim, exclusive file leases, TDD oracle execution, and review transition. | None (native-only) |
 | **`reviewer`** | Subagent / Adversarial Gate | Independent test verification, mutation checks, invariant auditing, and `PASS` gate approval. | None (native-only) |
 
@@ -32,7 +32,7 @@ The external `agy` execution leaf and its `delegate` / `herdr` delegation bridge
 1. **Role Separation**:
    - `orchestrator` never claims work items or holds file leases directly.
    - `discovery` never mutates code or claims tasks; writes strictly to `.cortex-ia/discovery.md`.
-   - `planner` creates board DAGs and specifications; never claims implementation tasks.
+   - `planner` writes plan files and creates board DAGs; never claims implementation tasks.
    - `implement` must hold an active claim and exclusive file leases before editing any file.
    - `reviewer` cannot approve their own implementation changes (`reviewer_id != claim_owner`).
 2. **Ephemeral Authority Tokens**:
@@ -119,8 +119,7 @@ Saving observations or evidence to Cortex (`cortex_save`) or updating SQLite sta
 
 ## 5. Workflow & Repository Evidence Pointers
 
-- **SDD repositioning**: Tier 1/2 specs are a short paragraph plus executable tests; SDD-lite/full is reserved for Tier 3 / multi-session / regulated domains; living specs evolve by delta (propose → apply → archive), never by an in-place base-spec rewrite.
-  - Pointer: `workflow-map.md` § Spec-plane repositioning.
+- **Lightweight planning**: a plan is written only for feature work of three or more files, unclear requirements, multi-session work, or more than one task; the plan stays as history and the tests are the living spec. See [Planning](planning.md).
 - **Resume test**: a task must be resumable from the request text plus `git diff` alone; when it conflicts with a tier or LOC budget, the stricter outcome governs.
   - Pointer: `workflow-map.md` § Task sizing: the resume test.
 - **Ratchets (advisory)**: dead-code and refusal-string drift are pinned to baselines under `.cortex-ia/ratchet/` and compared by `scripts/ratchet-deadcode.sh` and `scripts/ratchet-refusals.sh`; both run advisory-only in `.github/workflows/ratchets.yml` (`continue-on-error: true`) and never block a merge.

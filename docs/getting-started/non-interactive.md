@@ -28,7 +28,7 @@ Returns exit code 0 and prints the plan. No files are written and no backup is c
 cortex-ia sync
 ```
 
-Useful in CI: pull main → `cortex-ia sync` to pick up new SDD skills or convention updates.
+Useful in CI: pull main → `cortex-ia sync` to pick up new skills or convention updates.
 
 ### Health check
 

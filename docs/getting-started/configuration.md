@@ -27,7 +27,7 @@ cortex-ia version                      # Show version
 cortex-ia help                         # Show usage
 ```
 
-The remaining commands — `snapshot`, `work`, `worktree`, `board`, `ledger`, `ui`, `openspec`, `web`, `doc`, `diagram`, `model`, `stats`, and `report` — are part of the operations surface. See [`codebase/reference-map.md`](../architecture/codebase/reference-map.md) and `cortex-ia help` for their subcommands. The former `delegate` and `herdr` subcommands are retired and fail closed. `hook` is the host pre-tool guard entry point (`hook pre-tool --host <claude|agy>`), invoked by host hooks rather than by users.
+The remaining commands — `snapshot`, `work`, `worktree`, `board`, `ledger`, `ui`, `web`, `doc`, `diagram`, `model`, `stats`, and `report` — are part of the operations surface. See [`codebase/reference-map.md`](../architecture/codebase/reference-map.md) and `cortex-ia help` for their subcommands. The former `delegate` and `herdr` subcommands are retired and fail closed. `hook` is the host pre-tool guard entry point (`hook pre-tool --host <claude|agy>`), invoked by host hooks rather than by users.
 
 ### Install and sync flags
 
@@ -163,7 +163,6 @@ The installer resolves components with Kahn's topological sort and parallel grou
 ```
 Level 0 (parallel): cortex, context7, skills, built-in work control
 Level 1 (after cortex): conventions
-Level 2 (after cortex + built-in work control): sdd
 ```
 
 ## Idempotency

@@ -106,4 +106,4 @@ cortex-ia doctor          # Verifies cortex binary, skills, and configuration he
 ## 📚 See Also
 
 - [`architecture.md`](../architecture/architecture.md) — Cortex-IA multi-agent control plane architecture
-- [`sdd-workflow.md`](sdd-workflow.md) — Specification-Driven Development lifecycle
+- [`planning.md`](planning.md) — plan files and the task lifecycle
