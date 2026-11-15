@@ -4,4 +4,4 @@ agent: orchestrator
 subagent: false
 ---
 
-Route this request through `investigate`. Preserve the no-write boundary and return evidence, limitations, and a recommended next route: $ARGUMENTS
+Route this request through the `investigate` workflow. Do not modify production files. Return the evidence, its limits, and a recommended next route: $ARGUMENTS

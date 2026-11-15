@@ -4,4 +4,4 @@ agent: orchestrator
 subagent: false
 ---
 
-Read and summarize current `cortex_ia_work_list` / `cortex_ia_work_status` state and referenced Cortex evidence without mutating them. Use a native background-status tool only when it exists in the effective runtime; never invent it. Include blockers, stale claims or leases, latest verification, and next eligible action: $ARGUMENTS
+Summarize the current state from `cortex_ia_work_list` and `cortex_ia_work_status`, plus the referenced Cortex evidence. Change nothing. Show blockers, stale claims or leases, the latest verification, and the next eligible action. Use a background-status tool only if the runtime provides one. Scope: $ARGUMENTS

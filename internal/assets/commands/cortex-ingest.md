@@ -1,7 +1,7 @@
 ---
-description: Scan codebase with Cortex Native Polyglot AST Extractor and index symbols & relationships into knowledge graph
+description: Index the codebase's symbols and relationships into the Cortex knowledge graph
 agent: orchestrator
 subagent: false
 ---
 
-Dispatch the native `investigate` subagent to call the `cortex_ingest_code` tool on the current project repository (specifying its absolute workspace root path) using the Zero-CGO Native Polyglot AST Extractor to index all code symbols (functions, structs, classes, interfaces) and dependencies into the Cortex knowledge graph. Have it report the summary of files scanned, symbols indexed, and blast radius connections: $ARGUMENTS
+Dispatch the native `investigate` subagent to call `cortex_ingest_code` on the current repository, passing its absolute workspace root path (never `.`). Have it index the code symbols (functions, types, interfaces) and their dependencies, then report files scanned, symbols indexed, and the main relationships found. Scope, if given: $ARGUMENTS
