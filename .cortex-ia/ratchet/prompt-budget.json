@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "agentsMd": {
+    "tokens": 747,
+    "imperatives": 0
+  },
+  "roles": {
+    "orchestrator": {
+      "body": 1634,
+      "always": 2381,
+      "imperatives": 0
+    },
+    "discovery": {
+      "body": 642,
+      "always": 1389,
+      "imperatives": 0
+    },
+    "investigate": {
+      "body": 784,
+      "always": 1531,
+      "imperatives": 0
+    },
+    "planner": {
+      "body": 1057,
+      "always": 1804,
+      "imperatives": 0
+    },
+    "implement": {
+      "body": 1352,
+      "always": 2099,
+      "imperatives": 0
+    },
+    "reviewer": {
+      "body": 978,
+      "always": 1725,
+      "imperatives": 0
+    }
+  },
+  "skills": {
+    "ast-impact-analysis": {
+      "body": 463,
+      "imperatives": 0
+    },
+    "code-review-adversary": {
+      "body": 772,
+      "imperatives": 0
+    },
+    "context-distiller": {
+      "body": 410,
+      "imperatives": 0
+    },
+    "cortex-protocol": {
+      "body": 523,
+      "imperatives": 0
+    },
+    "discovery": {
+      "body": 781,
+      "imperatives": 0
+    },
+    "document-reader": {
+      "body": 209,
+      "imperatives": 0
+    },
+    "fast-tdd": {
+      "body": 875,
+      "imperatives": 0
+    },
+    "grill-me": {
+      "body": 351,
+      "imperatives": 0
+    },
+    "hotfix-triage": {
+      "body": 621,
+      "imperatives": 0
+    },
+    "implement": {
+      "body": 934,
+      "imperatives": 0
+    },
+    "investigate": {
+      "body": 691,
+      "imperatives": 0
+    },
+    "mutation-testing": {
+      "body": 540,
+      "imperatives": 0
+    },
+    "opencode2-knowledge": {
+      "body": 2883,
+      "imperatives": 0
+    },
+    "parallel-dispatch": {
+      "body": 605,
+      "imperatives": 0
+    },
+    "planner": {
+      "body": 790,
+      "imperatives": 0
+    },
+    "property-based-testing": {
+      "body": 401,
+      "imperatives": 0
+    },
+    "spike-prototype": {
+      "body": 525,
+      "imperatives": 0
+    },
+    "system-diagrams": {
+      "body": 345,
+      "imperatives": 0
+    },
+    "workflow-retrospective": {
+      "body": 423,
+      "imperatives": 0
+    }
+  },
+  "shared": {
+    "agent-writing-contract.md": {
+      "tokens": 1499,
+      "imperatives": 0
+    },
+    "codebase-design-contract.md": {
+      "tokens": 1362,
+      "imperatives": 0
+    },
+    "cortex-convention.md": {
+      "tokens": 1186,
+      "imperatives": 0
+    },
+    "cortex-work-protocol.md": {
+      "tokens": 5450,
+      "imperatives": 0
+    },
+    "diagnosis-loop-contract.md": {
+      "tokens": 810,
+      "imperatives": 0
+    },
+    "skill-style-guide.md": {
+      "tokens": 584,
+      "imperatives": 0
+    },
+    "workflow-map.md": {
+      "tokens": 1312,
+      "imperatives": 0
+    }
+  }
+}

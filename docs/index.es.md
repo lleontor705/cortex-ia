@@ -102,6 +102,7 @@ Material fechado y de solo adición que se conserva por trazabilidad.
 |---|---|
 | [Auditorías](audits/README.md) | Informes de auditoría fechados |
 | [Evidencia](evidence/README.md) | Archivos de evidencia referenciados por auditorías y revisiones |
+| [Evals de agentes](evals/agent-evals.md) | Protocolo para comparar versiones del harness con trabajo real |
 | [Paper de mejora del harness](analysis/harness-improvement-paper.md) | Análisis detrás del diseño actual del harness |
 | [Backlog de adopción de autoridad](proposals/gentle-ai-authority-adoption-backlog.md) | Backlog de propuestas sobre patrones de autoridad duradera |
 
