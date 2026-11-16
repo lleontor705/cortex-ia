@@ -119,6 +119,13 @@ func IsDuplicate(backupDir string, newChecksum string) (bool, error) {
 //
 // Returns the list of deleted backup IDs.
 func Prune(backupDir string, retentionCount int) ([]string, error) {
+	return PruneKeeping(backupDir, retentionCount, nil)
+}
+
+// PruneKeeping is Prune with a protected set of backup IDs. A protected
+// backup is never deleted and does not count toward retentionCount, so a
+// backup an incomplete journal still needs can never be the one evicted.
+func PruneKeeping(backupDir string, retentionCount int, keep map[string]bool) ([]string, error) {
 	if retentionCount <= 0 {
 		return nil, nil
 	}
@@ -138,7 +145,7 @@ func Prune(backupDir string, retentionCount int) ([]string, error) {
 
 	var unpinned []Manifest
 	for _, m := range manifests {
-		if !m.Pinned {
+		if !m.Pinned && !keep[m.ID] {
 			unpinned = append(unpinned, m)
 		}
 	}

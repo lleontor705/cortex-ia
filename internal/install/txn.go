@@ -154,7 +154,11 @@ func (t *serviceTxn) abort(status *txnStatus, stage string, err error) error {
 // commit marks the transaction committed after every acceptance check
 // passed. A commit failure itself triggers a verified restoration.
 func (t *serviceTxn) commit() error {
-	return t.journal.Commit()
+	if err := t.journal.Commit(); err != nil {
+		return err
+	}
+	pruneBackups(t.homeDir)
+	return nil
 }
 
 // rel converts an absolute target under the transaction home into its
