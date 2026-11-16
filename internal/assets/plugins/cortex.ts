@@ -1040,28 +1040,34 @@ export const Cortex = Plugin.define({
             if (text.length > 50) {
               const redactor = await redactionApi()
               const redacted = redactor.redactSecrets(text).trim()
-              const record = truncateUtf8(redacted)
-              const sent = {
-                content: record.content,
-                session_id: sessionId,
-                title: "Passive capture from task",
-                project,
-                type: "passive",
-                scope: "project",
+              // Same fail-closed gate as the prompt path: an unrewritable secret
+              // shape drops the capture instead of persisting it.
+              if (redactor.hasUnredactableSecret(redacted)) {
+                redactor.reportPromptRedactionDrop(directory, sessionId, "passive task output: unredactable secret shape")
+              } else {
+                const record = truncateUtf8(redacted)
+                const sent = {
+                  content: record.content,
+                  session_id: sessionId,
+                  title: "Passive capture from task",
+                  project,
+                  type: "passive",
+                  scope: "project",
+                }
+                await deliver(
+                  "observation",
+                  "/api/observations",
+                  {
+                    session_id: sent.session_id,
+                    title: sent.title,
+                    type: sent.type,
+                    project: sent.project,
+                    scope: sent.scope,
+                    ...record,
+                  },
+                  persistedObservation(sent)
+                )
               }
-              await deliver(
-                "observation",
-                "/api/observations",
-                {
-                  session_id: sent.session_id,
-                  title: sent.title,
-                  type: sent.type,
-                  project: sent.project,
-                  scope: sent.scope,
-                  ...record,
-                },
-                persistedObservation(sent)
-              )
             }
           }
         } catch {
