@@ -82,44 +82,77 @@ func WriteFileAtomic(path string, content []byte, perm fs.FileMode) (WriteResult
 	return WriteResult{Changed: true, Created: created}, nil
 }
 
-// rejectSymlinkParent walks each existing component of dir and rejects any
-// symlink or reparse point so a managed write can never follow a substituted
-// path.
+// rejectSymlinkParent walks every existing ancestor of dir from the volume
+// root and rejects a symlink or reparse point unless symlinkTrusted accepts
+// it. The walk must start at the root: relative components would be resolved
+// against the process cwd and check the wrong entries (or none at all).
 func rejectSymlinkParent(dir string) error {
-	cleaned := filepath.Clean(dir)
-	if cleaned == "." || cleaned == string(filepath.Separator) || filepath.VolumeName(cleaned) != "" && cleaned == filepath.VolumeName(cleaned)+string(filepath.Separator) {
-		return nil
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolve %q: %w", dir, err)
 	}
-	current := ""
+	cleaned := filepath.Clean(abs)
+	current := filepath.VolumeName(cleaned) + string(filepath.Separator)
 	for _, part := range splitPath(cleaned) {
 		current = filepath.Join(current, part)
-		if current == "" {
-			continue
-		}
 		info, err := os.Lstat(current)
 		if errors.Is(err, fs.ErrNotExist) {
-			break
+			return nil
 		}
 		if err != nil {
 			return fmt.Errorf("inspect %q: %w", current, err)
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		if info.Mode()&os.ModeSymlink != 0 && !symlinkTrusted(current) {
 			return fmt.Errorf("%q traverses a symlink/reparse point", current)
 		}
 	}
 	return nil
 }
 
+// symlinkTrusted accepts only symlinks that belong to the OS or to the user's
+// own layout, so a link planted inside a managed directory (for example
+// ~/.config/opencode/agents -> /elsewhere) fails closed. Accepted:
+//   - a direct child of the volume root (macOS /var, /tmp, /etc aliases,
+//     which only root can create);
+//   - a link at or above the home directory or the temp directory, because
+//     macOS keeps $TMPDIR under /var/folders and homes may sit behind aliases;
+//   - a dot-entry directly under home (~/.config, ~/.claude) that a dotfile
+//     manager points elsewhere.
+//
+// Every other symlink, including one below home that is not a dot-entry, is
+// refused.
+func symlinkTrusted(link string) bool {
+	parent := filepath.Dir(link)
+	if parent == filepath.VolumeName(link)+string(filepath.Separator) {
+		return true
+	}
+	if containsPath(link, os.TempDir()) {
+		return true
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	home = filepath.Clean(home)
+	if containsPath(link, home) {
+		return true
+	}
+	return parent == home && strings.HasPrefix(filepath.Base(link), ".")
+}
+
+// containsPath reports whether ancestor is target itself or one of its parents.
+func containsPath(ancestor, target string) bool {
+	ancestor = filepath.Clean(ancestor)
+	target = filepath.Clean(target)
+	return target == ancestor || strings.HasPrefix(target, ancestor+string(filepath.Separator))
+}
+
+// splitPath returns the components of an absolute, cleaned path below its
+// volume root: "/a/b/c" yields ["a", "b", "c"].
 func splitPath(cleaned string) []string {
-	vol := filepath.VolumeName(cleaned)
-	rest := cleaned[len(vol):]
-	rest = strings.TrimPrefix(rest, string(filepath.Separator))
+	rest := strings.TrimPrefix(cleaned[len(filepath.VolumeName(cleaned)):], string(filepath.Separator))
 	if rest == "" {
 		return nil
 	}
-	parts := strings.Split(rest, string(filepath.Separator))
-	if vol != "" {
-		return append([]string{vol + string(filepath.Separator)}, parts...)
-	}
-	return parts
+	return strings.Split(rest, string(filepath.Separator))
 }
