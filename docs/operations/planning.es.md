@@ -45,10 +45,6 @@ Contexto relevante, restricciones y lo que este plan deliberadamente no hace.
 ## Slices
 1. Nombre del slice: archivos, comprobaciones que satisface, dependencias de slices anteriores.
 
-## Progress
-- [ ] Slice 1
-- [ ] Slice 2
-
 ## Decisions and Surprises
 Notas fechadas sobre las decisiones tomadas y todo lo que difirió del plan.
 
@@ -56,8 +52,26 @@ Notas fechadas sobre las decisiones tomadas y todo lo que difirió del plan.
 Se completa al terminar el trabajo: qué se entregó, qué comprobaciones pasaron y qué queda.
 ````
 
+No hay sección de progreso. El estado de las tareas en la base de datos del tablero es el progreso.
+
 Los criterios de aceptación son comandos ejecutables con un resultado esperado, no prosa. El primer
-slice los escribe como pruebas que fallan (rojo) antes de cualquier implementación.
+slice los escribe como pruebas que fallan (rojo) antes de cualquier implementación. Cada tarea lleva
+sus comprobaciones como cadenas `AC-<n>: <comando>`, para que el veredicto del revisor nombre la
+comprobación que cubre.
+
+## Quién escribe qué
+
+| Acción | Quién | Notas |
+|---|---|---|
+| Crear el tablero | `planner`, una vez, con el slug del orquestador | El orquestador no crea tableros |
+| Escribir el archivo de plan | `planner` | Fases `plan` y `update` |
+| Cambiar un criterio de aceptación | `planner`, fase `update` | El orquestador la despacha con el motivo; queda en Decisions and Surprises |
+| Registrar sorpresas y decisiones | Los implementadores las informan en sus recibos; `planner`, fase `update`, las copia al plan | Los implementadores nunca reservan ni editan el archivo de plan |
+| Completar Outcome | `planner`, fase `update`, al cierre | El orquestador la despacha tras la última aprobación |
+| Descomponer una tarea bloqueada | `planner`, fase `decompose` | Los hijos se encadenan en orden |
+
+El archivo de plan nunca está en los archivos permitidos de un slice, así que los slices paralelos no
+colisionan en él.
 
 ## Slices y tareas
 
@@ -83,8 +97,8 @@ El archivo de plan nunca es una aprobación por sí mismo.
 
 ## Cierre
 
-No hay paso de archivado. Al terminar el trabajo, se actualizan las secciones Progress y Outcome del
-plan y el archivo permanece en `docs/plans/`. El trabajo aprobado produce `done` mediante
+No hay paso de archivado. Cuando se registra la última aprobación, el orquestador despacha al
+planificador en fase `update`, que completa Outcome, y el archivo permanece en `docs/plans/`. El trabajo aprobado produce `done` mediante
 `cortex-ia work approve`; no se requiere un cierre de especificación aparte.
 
 ## Ciclo de vida de las tareas
