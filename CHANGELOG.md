@@ -96,6 +96,24 @@ All notable changes to this project are documented here. Versions follow
   overwrite files) and fails closed when `git diff` fails.
 - The orchestrator's env-file guard is case-insensitive and covers `.envrc` and `*.env`.
 
+### CI and supply chain
+
+- CI runs the plugin harness tests (`scripts/*.test.mjs`, except the live `qualify-mcp` test),
+  the prompt budget gate, and a check that the committed web bundle matches `web/src`.
+- Release archives and `checksums.txt` carry build provenance attestations; verify a download
+  with `gh attestation verify <archive> --repo lleontor705/cortex-ia`. Only the publishing job
+  holds `contents: write`.
+- Release archives no longer include `scripts/*`; GoReleaser fails when `go mod tidy -diff`
+  reports changes instead of tidying during the build.
+- The updater's unused verification-profile and checksum-consent code is removed. Integrity is
+  the SHA-256 check against the release `checksums.txt`; it does not prove the publisher, which
+  the attestation does. `--allow-checksum-updates` and `CORTEX_IA_ALLOW_CHECKSUM_UPDATES` are
+  deprecated no-ops. Loopback download origins are accepted only in updater tests.
+- The report hub compares its secrets in constant time and throttles each client to 30 requests
+  per minute (`/health` exempt), keyed by the proxy-appended `X-Forwarded-For` entry.
+- The dead-code ratchet runs under `LC_ALL=C`, excludes value-receiver wrappers, compiler-generated
+  type routines and interface-dispatched method names, and its baseline is regenerated.
+
 ## v1.0.0 (2026-11-15) — initial release
 
 First release on the new repository history. The git history was reset to a single snapshot and the

@@ -17,3 +17,39 @@ jobs:
 
   security:
     uses: lleontor705/ats-deploy-public/.github/workflows/security-scan.yml@fe9f00320a3a9618d6f8bb841eae891861ec5774
+
+  harness:
+    name: Plugin harness, prompt budget and web bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.1"
+
+      - name: Install harness TypeScript dependency
+        run: npm ci --prefix internal/tuiassets --no-audit --no-fund
+
+      - name: Run harness tests
+        # qualify-mcp.test.mjs starts a live Cortex MCP executable and has no offline substitute.
+        run: |
+          tests=$(ls scripts/*.test.mjs | grep -v '^scripts/qualify-mcp\.test\.mjs$')
+          node --test $tests
+
+      - name: Run prompt budget gate
+        run: node scripts/prompt-budget.mjs
+
+      - name: Verify committed web bundle matches web/src
+        run: |
+          npm ci --prefix web --no-audit --no-fund
+          npm --prefix web run build
+          git diff --exit-code -- internal/cortexiaweb/static
+          test -z "$(git ls-files --others --exclude-standard -- internal/cortexiaweb/static)"

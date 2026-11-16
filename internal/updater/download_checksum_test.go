@@ -159,11 +159,8 @@ func TestDownloadChecksumPipeline(t *testing.T) {
 		}
 	})
 
-	t.Run("candidate_without_trust_bundle_succeeds", func(t *testing.T) {
+	t.Run("candidate_release_build_succeeds", func(t *testing.T) {
 		v := defaultVerifier()
-		if err := v.RequireAuthority(); err != nil {
-			t.Fatalf("expected nil authority error, got: %v", err)
-		}
 		candidate, err := v.UpdateCandidate("v0.9.0", "v1.0.0", "")
 		if err != nil || !candidate {
 			t.Fatalf("expected candidate for release build, got cand=%v err=%v", candidate, err)

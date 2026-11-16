@@ -37,7 +37,15 @@ var allowedHosts = map[string]bool{
 	"raw.githubusercontent.com":             true,
 }
 
+// loopbackAllowed admits loopback origins so httptest servers can stand in for
+// GitHub. Only this package's _test.go files set it; production binaries never
+// accept http or localhost download origins.
+var loopbackAllowed = false
+
 func isLoopbackHost(host string) bool {
+	if !loopbackAllowed {
+		return false
+	}
 	h := host
 	if colon := strings.LastIndex(h, ":"); colon != -1 {
 		h = h[:colon]
@@ -160,9 +168,6 @@ func DownloadAndVerifyRelease(ctx context.Context, client *http.Client, repo, cu
 // its SHA-256 digest in flight, and returns the raw archive bytes and matched asset.
 func downloadAndVerifyReleaseWithFloor(ctx context.Context, client *http.Client, repo, currentVersion string, rel *Release, appliedFloor string) ([]byte, *ReleaseAsset, error) {
 	verifier := defaultVerifier()
-	if err := verifier.RequireAuthority(); err != nil {
-		return nil, nil, err
-	}
 
 	var relAssets []ReleaseAsset
 	tag := ""
