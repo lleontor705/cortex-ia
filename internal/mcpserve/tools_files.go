@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,6 +53,22 @@ func contentHash(_ context.Context, _ *session, args map[string]any) (string, er
 	return encodeJSON(map[string]any{"sha256": hex.EncodeToString(sum[:]), "byte_length": len(content)})
 }
 
+// writeRoot resolves the user's own symlinks in the workspace path so the
+// managed write is checked against the real project location. Symlinks inside
+// the project (for example .cortex-ia -> elsewhere) are still refused by
+// filemerge. The workspace key kept on the session is not rewritten, because
+// delegation matches leases and items on it.
+func writeRoot(workspace string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(workspace)
+	if err == nil {
+		return resolved, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return workspace, nil
+	}
+	return "", fmt.Errorf("resolve workspace %q: %w", workspace, err)
+}
+
 func discoveryWrite(_ context.Context, s *session, args map[string]any) (string, error) {
 	raw, ok := args["content"].(string)
 	if !ok {
@@ -65,7 +82,11 @@ func discoveryWrite(_ context.Context, s *session, args map[string]any) (string,
 	if len(output) == 0 || len(output) > maxDiscoveryBytes {
 		return "", errors.New("discovery report must contain 1-131072 UTF-8 bytes")
 	}
-	directory := filepath.Join(s.workspace, ".cortex-ia")
+	root, err := writeRoot(s.workspace)
+	if err != nil {
+		return "", err
+	}
+	directory := filepath.Join(root, ".cortex-ia")
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return "", err
 	}
