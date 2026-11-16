@@ -38,27 +38,30 @@ function resolveExecutable(cmd: string): string | null {
   return null;
 }
 
-function resolveCortexExecutable(directory?: string): string | null {
+// Search order is identical in every plugin copy: fixed install paths, then PATH.
+// A binary inside the workspace is untrusted: an agent with write access there
+// could replace it.
+function trustedCortexIA(workspace?: string): string | null {
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
   const candidates = [
+    path.join(home, "go", "bin", "cortex-ia"),
     path.join(home, "go", "bin", "cortex-ia.exe"),
     path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
     path.join(home, ".local", "bin", "cortex-ia"),
+    "/opt/homebrew/bin/cortex-ia",
     "/usr/local/bin/cortex-ia",
     "/usr/bin/cortex-ia",
   ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
+  const insideWorkspace = (candidate: string) => {
+    if (!workspace) return false;
+    const relative = path.relative(path.resolve(workspace), path.resolve(candidate));
+    return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
+  };
+  const trusted = (candidate: string) => fs.existsSync(candidate) && !insideWorkspace(candidate);
+  for (const candidate of candidates) if (trusted(candidate)) return candidate;
   const resolved = resolveExecutable("cortex-ia");
-  if (resolved) {
-    if (directory && path.resolve(resolved).startsWith(path.resolve(directory) + path.sep)) {
-      return null;
-    }
-    return resolved;
-  }
-  return null;
+  return resolved && trusted(resolved) ? resolved : null;
 }
 
 const recentReports = new Map<string, number>();
@@ -360,7 +363,7 @@ function dispatchReport(executable: string, directory: string, cliArgs: string[]
 // The note reuses the same bounded report-error CLI and debounce window as
 // tool-failure telemetry, so repeated drops collapse into a single report.
 export function reportPromptRedactionDrop(directory: string, sessionID: string, detail: string): void {
-  const executable = resolveCortexExecutable(directory);
+  const executable = trustedCortexIA(directory);
   if (!executable) return;
 
   const now = Date.now();
@@ -397,7 +400,7 @@ export function emitToolErrorReport(
   role: string,
   args: Record<string, any>
 ): void {
-  const executable = resolveCortexExecutable(directory);
+  const executable = trustedCortexIA(directory);
   if (!executable) return;
 
   const code = classifyToolErrorCode(toolName, errorMessage);

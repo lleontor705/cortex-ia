@@ -44,25 +44,38 @@ function resolveExecutable(cmd: string): string | null {
   return null;
 }
 
-function firstCortexIA(directory?: string): string {
+// Search order is identical in every plugin copy: fixed install paths, then PATH.
+// A binary inside the workspace is untrusted: an agent with write access there
+// could replace it.
+function trustedCortexIA(workspace?: string): string | null {
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
   const candidates = [
+    path.join(home, "go", "bin", "cortex-ia"),
     path.join(home, "go", "bin", "cortex-ia.exe"),
     path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
     path.join(home, ".local", "bin", "cortex-ia"),
+    "/opt/homebrew/bin/cortex-ia",
     "/usr/local/bin/cortex-ia",
     "/usr/bin/cortex-ia",
   ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
+  const insideWorkspace = (candidate: string) => {
+    if (!workspace) return false;
+    const relative = path.relative(path.resolve(workspace), path.resolve(candidate));
+    return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
+  };
+  const trusted = (candidate: string) => fs.existsSync(candidate) && !insideWorkspace(candidate);
+  for (const candidate of candidates) if (trusted(candidate)) return candidate;
   const resolved = resolveExecutable("cortex-ia");
-  if (resolved) {
-    if (directory && path.resolve(resolved).startsWith(path.resolve(directory) + path.sep)) {
-      throw new Error("SECURITY_ERROR: cortex-ia executable found inside workspace directory is untrusted");
-    }
-    return resolved;
+  return resolved && trusted(resolved) ? resolved : null;
+}
+
+function firstCortexIA(directory?: string): string {
+  const found = trustedCortexIA(directory);
+  if (found) return found;
+  const onPath = resolveExecutable("cortex-ia");
+  if (onPath && directory && path.resolve(onPath).startsWith(path.resolve(directory) + path.sep)) {
+    throw new Error("SECURITY_ERROR: cortex-ia executable found inside workspace directory is untrusted");
   }
   throw new Error("cortex-ia executable not found");
 }
@@ -124,6 +137,12 @@ function relativeTarget(directory: string, target: string): string {
 }
 
 const verifiedLeaseCache = new Map<string, number>();
+const VERIFIED_CACHE_CAPACITY = 1000;
+function rememberVerified(cache: Map<string, number>, key: string, expiresAt: number): void {
+  cache.delete(key);
+  cache.set(key, expiresAt);
+  if (cache.size > VERIFIED_CACHE_CAPACITY) cache.delete(cache.keys().next().value as string);
+}
 
 async function verifyLeasesForTool(
   toolName: string,
@@ -211,7 +230,7 @@ async function verifyLeasesForTool(
     }
     const cacheTtl = Math.min(expiresAt - 5000, Date.now() + 5_000);
     if (cacheTtl > Date.now()) {
-      verifiedLeaseCache.set(cacheKey, cacheTtl);
+      rememberVerified(verifiedLeaseCache, cacheKey, cacheTtl);
     }
   } catch (err: any) {
     const admissionElapsedMs = Date.now() - admissionStart;

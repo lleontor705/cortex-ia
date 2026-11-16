@@ -197,7 +197,7 @@ function extractBudget(args: Record<string, any>, envelope: Record<string, any>)
   return budgetList[0]?.value;
 }
 
-function dispatchInfo(args: Record<string, any>, prompt: string): { limit: number; operational: boolean; prompt: string } {
+function dispatchInfo(args: Record<string, any>, prompt: string): { limit: number; prompt: string } {
   const envelopes = [...prompt.matchAll(/<minion-(dispatch|contract)>([\s\S]*?)<\/minion-\1>/g)];
   let envelope: Record<string, any> = {};
   if (envelopes.length > 1 ||
@@ -363,10 +363,10 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
     ? prompt.replace(envelopes[0][0], () => `<minion-dispatch>${JSON.stringify(normalized)}</minion-dispatch>`)
     : explicitBudget !== undefined ? `${prompt}\n<minion-dispatch>${JSON.stringify(normalized)}</minion-dispatch>` : prompt;
   const hostRole = hostTarget;
-  if (hostRole === "planner") return { limit: Number.POSITIVE_INFINITY, operational: false, prompt: normalizedPrompt };
+  if (hostRole === "planner") return { limit: Number.POSITIVE_INFINITY, prompt: normalizedPrompt };
   const fallback = typeof hostRole === "string" && Object.prototype.hasOwnProperty.call(ROLE_DEFAULT_STEPS, hostRole)
     ? ROLE_DEFAULT_STEPS[hostRole] : DEFAULT_MAX_STEPS;
-  return { limit: explicitBudget ?? fallback, operational: false, prompt: normalizedPrompt };
+  return { limit: explicitBudget ?? fallback, prompt: normalizedPrompt };
 }
 
 function safeJsonParse(value: any): any {
@@ -447,12 +447,23 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
   const emergencySteps = policyInteger("CORTEX_IA_EMERGENCY_STEPS", 500, 1, 100000);
   const repetitionLimit = policyInteger("CORTEX_IA_REPETITION_LIMIT", 5, 2, 100);
   let disposed = false;
+  const RETAINED_SESSIONS = 1000;
+  const keepRecent = <K, V>(map: Map<K, V>, key: K, value: V) => {
+    map.delete(key);
+    map.set(key, value);
+    if (map.size > RETAINED_SESSIONS) map.delete(map.keys().next().value as K);
+  };
+  const keepRecentKey = (set: Set<string>, key: string) => {
+    set.delete(key);
+    set.add(key);
+    if (set.size > RETAINED_SESSIONS) set.delete(set.values().next().value as string);
+  };
   const childSessions = new Set<string>();
   const sessionStepCounts = new Map<string, number>();
   const sessionStepLimits = new Map<string, number>();
-  const operationalSessions = new Set<string>();
-  type Start = { callID: string; limit: number; childID?: string; part?: string; invalid?: boolean; resume?: boolean; operational?: boolean };
-  // Retain dispatch identities/counters as tombstones until disposal: after is not child completion.
+  type Start = { callID: string; limit: number; childID?: string; part?: string; invalid?: boolean; resume?: boolean };
+  // Dispatch identities/counters are tombstones until the child is deleted: after is not child completion.
+  // Per-session state is released on session.deleted; the deleted tombstones themselves are LRU-capped.
   const starts = new Map<string, Map<string, Start>>();
   const parents = new Map<string, string>();
   const deleted = new Set<string>();
@@ -467,7 +478,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
   const terminal = (id: string, callID: string, tool: string, args: unknown, status: string, result: unknown) => {
     if (!childSessions.has(id) || !callID || !["completed", "error"].includes(status)) return;
     let state = progress.get(id);
-    if (!state) { state = { seen: new Set(), streak: 0 }; progress.set(id, state); }
+    if (!state) { state = { seen: new Set(), streak: 0 }; keepRecent(progress, id, state); }
     const baseTool = tool && tool.includes(".") ? tool.split(".").pop()! : (tool || "");
     const parsedArgs = typeof args === "string" ? safeJsonParse(args) : args;
     const targetId = typeof parsedArgs === "object" && parsedArgs !== null
@@ -497,8 +508,8 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
     if (typeof sId !== "string" || deleted.has(sId)) return;
     const parentId = info.parentID || info.parentId || info.parent_id || info.info?.parentID || info.info?.parentId;
     if (typeof parentId === "string" && parentId) {
-      if (parents.has(sId) && parents.get(sId) !== parentId) { deleted.add(sId); return; }
-      parents.set(sId, parentId);
+      if (parents.has(sId) && parents.get(sId) !== parentId) { keepRecentKey(deleted, sId); return; }
+      keepRecent(parents, sId, parentId);
       childSessions.add(sId);
     }
   };
@@ -527,7 +538,6 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       if (!s.invalid) {
         s.part = identity;
         s.childID = childId;
-        if (s.operational) operationalSessions.add(childId);
       }
     }
   };
@@ -666,7 +676,6 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
 
       let original = originals.length === 1 ? originals[0] : undefined;
       let limit = emergencySteps;
-      let isOperational = false;
       let identity = `synthetic_identity_${id}`;
       let callID = `call_synth_${id}`;
 
@@ -676,7 +685,6 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
         if (typeof prompt === "string" && prompt.trim()) {
           const info = dispatchInfo(origInput, prompt);
           limit = info.limit;
-          isOperational = info.operational;
         }
         identity = JSON.stringify([original.messageID, original.id, original.callID]);
         callID = original.callID;
@@ -694,15 +702,14 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       if (existing?.invalid || (existing && existing.part !== identity) ||
           [...(starts.get(parent)?.values() ?? [])].some(start => start.childID === id && start.invalid)) return resumeFailure("restore_existing_invalid");
       const effectiveCallID = original?.callID ?? callID;
-      const start = existing ?? { callID: effectiveCallID, limit, childID: id, part: identity, operational: isOperational };
+      const start = existing ?? { callID: effectiveCallID, limit, childID: id, part: identity };
       const collision = starts.get(parent)?.get(effectiveCallID);
       if (collision && collision !== existing && (collision.part !== identity || collision.invalid)) return resumeFailure("restore_collision_invalid");
-      if (!starts.has(parent)) starts.set(parent, new Map());
+      if (!starts.has(parent)) keepRecent(starts, parent, new Map<string, Start>());
       starts.get(parent)!.set(effectiveCallID, start);
-      parents.set(id, parent);
+      keepRecent(parents, id, parent);
       childSessions.add(id);
       owners.set(id, start);
-      if (start.operational || isOperational) operationalSessions.add(id);
       sessionStepLimits.set(id, existing?.limit ?? limit);
       sessionStepCounts.set(id, Math.max(sessionStepCounts.get(id) ?? 0, attempts.length));
       cleanupCounts.set(id, Math.max(cleanupCounts.get(id) ?? 0, usedCleanup));
@@ -759,9 +766,6 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       const chosen = validCandidates[0];
       owners.set(id, chosen);
       sessionStepLimits.set(id, chosen.limit);
-      if (chosen.operational) operationalSessions.add(id);
-    } else if (owner.operational) {
-      operationalSessions.add(id);
     }
   };
 
@@ -856,7 +860,10 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       } else if (type === "session.deleted") {
         const id = sessionData.sessionID || sessionData.id;
         if (id) {
-          deleted.add(id);
+          keepRecentKey(deleted, id);
+          for (const map of [parents, starts, progress, owners, sessionStepCounts, sessionStepLimits, cleanupCounts,
+            restorations, restoredPending, restoredCleanupPending, activeCalls] as Map<string, unknown>[]) map.delete(id);
+          childSessions.delete(id);
         }
       }
     };
@@ -935,10 +942,6 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
               delete event.tools["cortex_ia_file_reserve"];
               delete event.tools["cortex_ia_work_approve"];
             }
-          }
-          if (operationalSessions.has(sessionID)) {
-            delete event.tools["edit"];
-            delete event.tools["write"];
           }
         }
       }
@@ -1048,13 +1051,6 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
           owners.get(sessionID)?.invalid || [...(starts.get(parents.get(sessionID) ?? "")?.values() ?? [])]
             .some(s => s.childID === sessionID && s.invalid)) return fail("execute_post_identify_invalid");
 
-      // Guard: operational subagents cannot execute repository write tools
-      if (operationalSessions.has(sessionID)) {
-        if (["edit", "write_to_file", "write", "apply_patch"].includes(baseToolName)) {
-          throw new Error("SUBAGENT_TRANSPORT_ERROR: repository write tools are forbidden for operational tasks; operations execute against target systems only");
-        }
-      }
-
       // Charge all ordinary tools, including nested task dispatches, before dispatch handling.
       if (sessionID && childSessions.has(sessionID)) {
         if (!callID) return fail("execute_missing_call_id");
@@ -1111,7 +1107,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
           throw new Error("SUBAGENT_TRANSPORT_ERROR: task dispatch requires a non-empty prompt or envelope");
         }
 
-        const { limit: stepBudget, operational: isOperational, prompt: normalizedPrompt } = dispatchInfo(args, prompt);
+        const { limit: stepBudget, prompt: normalizedPrompt } = dispatchInfo(args, prompt);
         const existingStart = starts.get(sessionID)?.get(callID);
         if (existingStart) {
           const normalizedArgs = { ...args, prompt: normalizedPrompt };
@@ -1144,7 +1140,6 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
           limit: resume ? sessionStepLimits.get(resume)! : stepBudget,
           childID: resume || undefined,
           resume: !!resume,
-          operational: resume ? operationalSessions.has(resume) : isOperational,
         };
         if (!starts.has(sessionID)) starts.set(sessionID, new Map());
         starts.get(sessionID)!.set(callID, start);
@@ -1170,7 +1165,6 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
       childSessions.clear();
       sessionStepCounts.clear();
       sessionStepLimits.clear();
-      operationalSessions.clear();
       starts.clear(); parents.clear(); deleted.clear(); owners.clear();
       cleanupCounts.clear();
       restorations.clear();

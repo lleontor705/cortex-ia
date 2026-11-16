@@ -13,6 +13,7 @@ const context = { agent: 'implement', sessionID: 'controller', directory: '/isol
 async function harness(options = {}) {
   const calls = [];
   const sandbox = createIsolatedSandbox({
+    env: { HOME: '/isolated/home' }, virtualFiles: { '/isolated/home/go/bin/cortex-ia': 'binary' },
     mockPluginSDK: { tool: Object.assign(x => x, { schema }) },
     childProcess: { execFileSync: (file, args, opts) => {
       calls.push({ file, args: Array.from(args), input: opts?.input });

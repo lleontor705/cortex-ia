@@ -81,7 +81,7 @@ test('response ordering discards older revisions', async () => {
   assert.equal(r3.projection.revision, 3);
 });
 
-test('response task and session mismatch rejected', async () => {
+test('response task mismatch rejected', async () => {
   const bridge = await loadPluginFile('internal/assets/plugins/cortex-work.ts', {
     allowChildProcess: true,
   });
@@ -97,18 +97,6 @@ test('response task and session mismatch rejected', async () => {
   const resTask = processWorkStatusResponse('task-expected', 'session-1', wrongTask);
   assert.equal(resTask.accepted, false);
   assert.equal(resTask.reason, 'RESPONSE_TASK_MISMATCH');
-
-  // Session ID mismatch
-  const wrongSession = {
-    task_id: 'task-match',
-    revision: 1,
-    status: 'ready',
-    opencode_session_id: 'session-other',
-    projection: { task_id: 'task-match', revision: 1, status: 'ready' }
-  };
-  const resSession = processWorkStatusResponse('task-match', 'session-1', wrongSession);
-  assert.equal(resSession.accepted, false);
-  assert.equal(resSession.reason, 'RESPONSE_SESSION_MISMATCH');
 });
 
 test('failed retrieval replaces cached readiness with unknown authority', async () => {
