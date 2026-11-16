@@ -1,5 +1,5 @@
 ---
-description: "Ground diagnosis, workflow retrospectives, and bounded spikes in repository and execution evidence."
+description: "Ground diagnosis, workflow retrospectives, and read-only spikes in repository and execution evidence."
 mode: subagent
 color: "#78909C"
 steps: 150

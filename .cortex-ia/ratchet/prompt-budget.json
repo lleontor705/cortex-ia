@@ -1,38 +1,38 @@
 {
   "schema": 1,
   "agentsMd": {
-    "tokens": 747,
+    "tokens": 761,
     "imperatives": 0
   },
   "roles": {
     "orchestrator": {
-      "body": 1634,
-      "always": 2381,
+      "body": 2236,
+      "always": 2997,
       "imperatives": 0
     },
     "discovery": {
       "body": 642,
-      "always": 1389,
+      "always": 1403,
       "imperatives": 0
     },
     "investigate": {
       "body": 784,
-      "always": 1531,
+      "always": 1545,
       "imperatives": 0
     },
     "planner": {
-      "body": 1057,
-      "always": 1804,
+      "body": 1060,
+      "always": 1821,
       "imperatives": 0
     },
     "implement": {
-      "body": 1352,
-      "always": 2099,
+      "body": 1331,
+      "always": 2092,
       "imperatives": 0
     },
     "reviewer": {
-      "body": 978,
-      "always": 1725,
+      "body": 1037,
+      "always": 1798,
       "imperatives": 0
     }
   },
@@ -42,7 +42,7 @@
       "imperatives": 0
     },
     "code-review-adversary": {
-      "body": 772,
+      "body": 780,
       "imperatives": 0
     },
     "context-distiller": {
@@ -62,7 +62,7 @@
       "imperatives": 0
     },
     "fast-tdd": {
-      "body": 875,
+      "body": 896,
       "imperatives": 0
     },
     "grill-me": {
@@ -74,7 +74,7 @@
       "imperatives": 0
     },
     "implement": {
-      "body": 934,
+      "body": 958,
       "imperatives": 0
     },
     "investigate": {
@@ -86,7 +86,7 @@
       "imperatives": 0
     },
     "opencode2-knowledge": {
-      "body": 2883,
+      "body": 2884,
       "imperatives": 0
     },
     "parallel-dispatch": {
@@ -128,7 +128,7 @@
       "imperatives": 0
     },
     "cortex-work-protocol.md": {
-      "tokens": 5450,
+      "tokens": 5460,
       "imperatives": 0
     },
     "diagnosis-loop-contract.md": {
