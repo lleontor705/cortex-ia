@@ -89,9 +89,10 @@ func TestClaudeBundleRender(t *testing.T) {
 	}
 	findFile(t, b, filepath.Join(home, ".cortex-ia", "claude", "contracts", "workflow-map.md"))
 	assertNoOpenCodeContracts(t, b)
-	if len(b.JSONSets) != 2 {
-		t.Errorf("JSON sets = %d, want 2", len(b.JSONSets))
+	if len(b.JSONSets) != 3 {
+		t.Errorf("JSON sets = %d, want 3", len(b.JSONSets))
 	}
+	assertAgentShellSet(t, b, filepath.Join(home, ".claude", "settings.json"))
 }
 
 func TestAGYBundleRender(t *testing.T) {
@@ -180,4 +181,14 @@ func TestHostBundlesResolveHomeAndRejectRelative(t *testing.T) {
 			t.Error("relative home accepted")
 		}
 	}
+}
+
+func assertAgentShellSet(t *testing.T, b Bundle, settings string) {
+	t.Helper()
+	for _, s := range b.JSONSets {
+		if s.Path == settings && len(s.Key) == 2 && s.Key[0] == "env" && s.Key[1] == "CORTEX_IA_AGENT_SHELL" && s.Value == "1" {
+			return
+		}
+	}
+	t.Errorf("bundle lacks env.CORTEX_IA_AGENT_SHELL in %s", settings)
 }
