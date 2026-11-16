@@ -60,9 +60,9 @@ func TestTargetLabel(t *testing.T) {
 func TestInstallAndUninstallClaude(t *testing.T) {
 	tempHome := t.TempDir()
 
-	res, err := InstallClaude(tempHome, false)
+	res, err := InstallClaudeWith(tempHome, ApplyOptions{})
 	if err != nil {
-		t.Fatalf("InstallClaude failed: %v", err)
+		t.Fatalf("InstallClaudeWith failed: %v", err)
 	}
 	if !res.Success {
 		t.Errorf("expected success on InstallClaude")

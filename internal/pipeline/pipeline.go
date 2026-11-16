@@ -57,28 +57,6 @@ func ResolveRollback(homeDir, backupID string) (string, backup.Manifest, error) 
 	return backupID, manifest, nil
 }
 
-// Rollback restores managed files from a previous backup manifest through
-// the same containment-validated, journaled restore every service rollback
-// uses: the manifest must prove restorable, every entry must be a
-// home-contained file target, the pre-rollback bytes of every target are
-// journaled before the first write, and any later restore, verification, or
-// commit failure reverts the partial restoration to the exact pre-rollback
-// bytes (the rollback of the rollback). An empty backupID resolves to the
-// backup recorded in the legacy v1 state and lock; v2 homes resolve their
-// backup through the install service, which additionally runs the ownership
-// preflight and holds the canonical home lock around this restore. Callers
-// of this engine-level entry must already serialize the home.
-func Rollback(homeDir, backupID string) (backup.Manifest, error) {
-	id, manifest, err := ResolveRollback(homeDir, backupID)
-	if err != nil {
-		return backup.Manifest{}, err
-	}
-	if err := JournaledRestore(homeDir, id, manifest); err != nil {
-		return backup.Manifest{}, err
-	}
-	return manifest, nil
-}
-
 // RestoreManifestFn is the manifest restoration seam. Production code
 // always routes through backup.RestoreService; the exported indirection
 // exists so adversarial verification in other packages can prove the

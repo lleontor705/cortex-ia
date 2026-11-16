@@ -51,14 +51,6 @@ type Lock struct {
 	release func() error
 }
 
-// Path returns the canonical lock file path backing the lock.
-func (l *Lock) Path() string {
-	if l == nil {
-		return ""
-	}
-	return l.path
-}
-
 // Release releases the lock and closes the underlying OS handle. It is
 // idempotent: releasing an already released (or nil) Lock is a no-op that
 // returns nil.

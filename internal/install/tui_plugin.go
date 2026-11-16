@@ -123,13 +123,6 @@ const (
 	ThemeOutcomeError ThemeApplyOutcome = "error"
 )
 
-// ConfigureTUIPlugin ensures OpenCode's configuration contains the cortex-ia TUI
-// plugin entry and applies the bundled cortex theme.
-func ConfigureTUIPlugin(homeDir string) (string, error) {
-	path, _, _, err := ConfigureTUIPluginWithResult(homeDir, false)
-	return path, err
-}
-
 // ConfigureTUIPluginWithResult ensures the configuration file the detected
 // OpenCode generation actually loads contains the cortex-ia TUI plugin entry
 // and the cortex theme, ensures the OpenCode v2 bridge directory exists, and

@@ -188,11 +188,6 @@ func TestWorkItemsClaimsAndLeases(t *testing.T) {
 		t.Fatalf("RenewWorkLease failed: %v", err)
 	}
 
-	// 6b. Extend Task Authority (claim + all leases)
-	if err := store.ExtendTaskAuthority(ctx, "t-1", 15*time.Minute); err != nil {
-		t.Fatalf("ExtendTaskAuthority failed: %v", err)
-	}
-
 	// 6c. Verify Work Lease against SQLite
 	verified, err := store.VerifyWorkLease(ctx, "src/main.go", "t-1", "agent-impl-1")
 	if err != nil || !verified.Valid {

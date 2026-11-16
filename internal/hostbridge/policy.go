@@ -52,15 +52,28 @@ var unidentifiedRoleTools = map[string]bool{
 // means the host could not identify it; such callers get read-only tools and
 // unidentifiedRoleTools.
 func RoleMayCall(role, tool string) bool {
-	allowed, restricted := toolRoles[tool]
-	if !restricted {
+	return callMayRun(role, tool, AllowedRoles(tool))
+}
+
+// callRoles returns the roles a single bridge call needs, or nil when it is
+// open to every role. doc_convert writes a file only with output_path, so that
+// form is restricted to implement exactly like diagram_render; inline reads stay open.
+func callRoles(tool string, args map[string]any) []string {
+	if tool == "cortex_ia_doc_convert" && stringArg(args, "output_path") != "" {
+		return []string{"implement"}
+	}
+	return AllowedRoles(tool)
+}
+
+func callMayRun(role, tool string, roles []string) bool {
+	if roles == nil {
 		return true
 	}
 	role = strings.ToLower(strings.TrimSpace(role))
 	if role == "" {
 		return unidentifiedRoleTools[tool]
 	}
-	for _, candidate := range allowed {
+	for _, candidate := range roles {
 		if candidate == role {
 			return true
 		}

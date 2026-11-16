@@ -18,8 +18,8 @@ func TestClaudeSettingsAgentShellMarkerLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := InstallClaude(home, false); err != nil {
-		t.Fatalf("InstallClaude: %v", err)
+	if _, err := InstallClaudeWith(home, ApplyOptions{}); err != nil {
+		t.Fatalf("InstallClaudeWith: %v", err)
 	}
 	m := readJSONMap(t, settings)
 	env, ok := m["env"].(map[string]any)

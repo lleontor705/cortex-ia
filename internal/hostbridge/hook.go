@@ -240,15 +240,16 @@ func bridgeCall(in HookInput) (string, map[string]any, bool) {
 }
 
 func decideBridge(in HookInput, deps Deps, tool string, args map[string]any) (Decision, error) {
-	if !RoleMayCall(in.Role, tool) {
+	roles := callRoles(tool, args)
+	if !callMayRun(in.Role, tool, roles) {
 		if in.Role == "" {
-			return deny(fmt.Sprintf("%s is restricted to roles [%s] and this host does not identify the calling role; approve or recover from a terminal with cortex-ia work", tool, strings.Join(AllowedRoles(tool), ", "))), nil
+			return deny(fmt.Sprintf("%s is restricted to roles [%s] and this host does not identify the calling role; approve or recover from a terminal with cortex-ia work", tool, strings.Join(roles, ", "))), nil
 		}
-		return deny(fmt.Sprintf("%s is available to roles [%s]; this agent's role is %q", tool, strings.Join(AllowedRoles(tool), ", "), in.Role)), nil
+		return deny(fmt.Sprintf("%s is available to roles [%s]; this agent's role is %q", tool, strings.Join(roles, ", "), in.Role)), nil
 	}
-	// Only restricted tools need a caller identity. Binding read-only calls
+	// Only restricted calls need a caller identity. Binding read-only calls
 	// would let them overwrite the binding a pending restricted call relies on.
-	if AllowedRoles(tool) == nil {
+	if roles == nil {
 		return pass(), nil
 	}
 	taskID := stringArg(args, "task_id")

@@ -62,13 +62,6 @@ func SetUnixEnvRunnerForTesting(runner UnixEnvRunner) func() {
 	}
 }
 
-// ConfigureEnvironment ensures OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS="true"
-// is configured persistently across Windows, Linux, and macOS.
-func ConfigureEnvironment(homeDir string) error {
-	_, err := ConfigureEnvironmentWithResult(homeDir)
-	return err
-}
-
 // ConfigureEnvironmentWithResult ensures OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS="true"
 // is configured persistently and reports whether persistent configuration changed.
 func ConfigureEnvironmentWithResult(homeDir string) (bool, error) {
