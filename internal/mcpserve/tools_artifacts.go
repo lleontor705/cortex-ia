@@ -17,10 +17,11 @@ func artifactTools() []tool {
 	return []tool{
 		{
 			Name:        "cortex_ia_doc_convert",
-			Description: "Convert an office document to Markdown text and metadata. Inline output is read-only. output_path writes a file and requires a live implement claim with a file lease on that path.",
+			Description: "Convert an office document to Markdown text and metadata. Inline output is read-only. output_path writes a file and requires task_id (implement only) with a live claim and a file lease on that path.",
 			Schema: schemaObject(props(
 				"file_path", schemaString("Document path under the workspace"),
 				"output_path", schemaString("Optional Markdown output path, leased to the caller"),
+				"task_id", schemaString("Claimed task identifier; required when output_path is set"),
 				"format", schemaString("Optional output format"),
 				"max_lines", schemaNumber("Optional maximum line count"),
 				"ocr", schemaEnum("OCR policy", "reject", "hosted"),
@@ -76,7 +77,11 @@ func docConvert(ctx context.Context, s *session, args map[string]any) (string, e
 		argv = append(argv, "--ocr", ocr)
 	}
 	if output != "" {
-		return s.artifactCommand(ctx, optString(args, "task_id"), argv, output)
+		task := optString(args, "task_id")
+		if task == "" {
+			return "", errors.New("task_id is required when output_path is set")
+		}
+		return s.artifactCommand(ctx, task, argv, output)
 	}
 	return s.runClean(ctx, argv)
 }
