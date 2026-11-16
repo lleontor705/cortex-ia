@@ -15,7 +15,7 @@ Judge the actual diff against the task objective and its acceptance checks. Trea
 
 ## Lens 1: Functional and structural
 
-- Rerun each acceptance check the task references, from the plan's Acceptance Checks in `docs/plans/<board-id>.md`. Record the command and exit code.
+- Rerun the acceptance checks the task names (its `AC-<n>` IDs). Record the command and exit code. Do not rerun the whole plan's checks.
 - Run the tests for the changed packages and their direct callers.
 - For code tasks, run `cortex_ingest_code` on the absolute workspace root, then `cortex_detect_cycles` for the project. A new cycle is a BLOCKER.
 - Check that tests assert what the objective needs: error branches, return payloads, boundaries. A test that would pass under any change to the logic is an oracle gap. Name the assertion that cannot fail.
@@ -51,4 +51,4 @@ Give each lens PASS, FAIL, BLOCKED, or INCONCLUSIVE with its evidence. A tool th
 
 ## Memory
 
-On FAIL, the reviewer saves the root cause as a gotcha (see `agents/reviewer.md`). On PASS for an architectural change, record the decision with `cortex_save` (`type: "decision"`, `topic_key: "architecture/<module>"`). Topic keys and observation types are in `_shared/cortex-convention.md`. Never store secrets, raw output, or authority tokens.
+On FAIL, the reviewer saves the root cause as a gotcha and cites its observation id in the findings (see `agents/reviewer.md`). On PASS for an architectural change, record the decision with `cortex_save` (`type: "decision"`, `topic_key: "architecture/<module>"`). Topic keys and observation types are in `_shared/cortex-convention.md`. Never store secrets, raw output, or authority tokens.
