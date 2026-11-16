@@ -68,19 +68,22 @@ func TestShellLookalikesAllowed(t *testing.T) {
 	}
 }
 
-func TestAGYEmptyRoleFailsClosedForRestrictedTools(t *testing.T) {
-	restricted := map[string]string{
-		"cortex_ia_work_approve": `{"task_id":"T","verdict":"PASS"}`,
-		"cortex_ia_work_recover": `{}`,
-		"cortex_ia_work_claim":   `{"task_id":"T"}`,
-		"cortex_ia_work_create":  `{}`,
+func TestAGYEmptyRoleMayImplementButNotApprove(t *testing.T) {
+	denied := map[string]string{
+		"cortex_ia_work_approve":   `{"task_id":"T","verdict":"PASS"}`,
+		"cortex_ia_work_recover":   `{}`,
+		"cortex_ia_work_retry":     `{"task_id":"T"}`,
+		"cortex_ia_work_reconcile": `{"task_id":"T"}`,
+		"cortex_ia_work_decompose": `{"task_id":"T"}`,
 	}
-	for tool, args := range restricted {
-		in := agyMCPCall(tool, args)
-		d := mustDecide(t, in, Deps{StateHome: t.TempDir()})
-		assertVerdict(t, d, Deny, "could not be determined")
+	for tool, args := range denied {
+		d := mustDecide(t, agyMCPCall(tool, args), Deps{StateHome: t.TempDir()})
+		assertVerdict(t, d, Deny, "does not identify the calling role")
 	}
-
+	for _, tool := range []string{"cortex_ia_work_claim", "cortex_ia_work_transition", "cortex_ia_work_create"} {
+		d := mustDecide(t, agyMCPCall(tool, `{"task_id":"T"}`), Deps{StateHome: t.TempDir()})
+		assertVerdict(t, d, PassThrough, "")
+	}
 	open := mustDecide(t, agyMCPCall("cortex_ia_work_status", `{}`), Deps{})
 	assertVerdict(t, open, PassThrough, "")
 }

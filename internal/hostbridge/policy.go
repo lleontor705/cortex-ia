@@ -29,14 +29,37 @@ var toolRoles = map[string][]string{
 	"cortex_ia_workload_audit":      {"implement", "reviewer"},
 }
 
+// unidentifiedRoleTools are the restricted tools a caller without a known role
+// may still use. Hosts such as agy do not name the calling agent, so they can
+// create and implement work, but approval and recovery of other agents' work
+// need a known role; on such hosts the user approves from a terminal.
+var unidentifiedRoleTools = map[string]bool{
+	"cortex_ia_discovery_write":  true,
+	"cortex_ia_board_create":     true,
+	"cortex_ia_work_create":      true,
+	"cortex_ia_work_recover_own": true,
+	"cortex_ia_work_claim":       true,
+	"cortex_ia_work_renew":       true,
+	"cortex_ia_file_reserve":     true,
+	"cortex_ia_work_release_all": true,
+	"cortex_ia_file_release":     true,
+	"cortex_ia_work_transition":  true,
+	"cortex_ia_diagram_render":   true,
+	"cortex_ia_workload_audit":   true,
+}
+
 // RoleMayCall reports whether role may call the bridge tool. An empty role
-// means the host could not identify it; such callers get only read-only tools.
+// means the host could not identify it; such callers get read-only tools and
+// unidentifiedRoleTools.
 func RoleMayCall(role, tool string) bool {
 	allowed, restricted := toolRoles[tool]
 	if !restricted {
 		return true
 	}
 	role = strings.ToLower(strings.TrimSpace(role))
+	if role == "" {
+		return unidentifiedRoleTools[tool]
+	}
 	for _, candidate := range allowed {
 		if candidate == role {
 			return true

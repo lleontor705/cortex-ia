@@ -242,7 +242,7 @@ func bridgeCall(in HookInput) (string, map[string]any, bool) {
 func decideBridge(in HookInput, deps Deps, tool string, args map[string]any) (Decision, error) {
 	if !RoleMayCall(in.Role, tool) {
 		if in.Role == "" {
-			return deny(fmt.Sprintf("%s is restricted to roles [%s]; the calling role could not be determined for this host, so the call is denied", tool, strings.Join(AllowedRoles(tool), ", "))), nil
+			return deny(fmt.Sprintf("%s is restricted to roles [%s] and this host does not identify the calling role; approve or recover from a terminal with cortex-ia work", tool, strings.Join(AllowedRoles(tool), ", "))), nil
 		}
 		return deny(fmt.Sprintf("%s is available to roles [%s]; this agent's role is %q", tool, strings.Join(AllowedRoles(tool), ", "), in.Role)), nil
 	}

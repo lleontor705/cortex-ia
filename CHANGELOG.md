@@ -47,6 +47,19 @@ All notable changes to this project are documented here. Versions follow
 - The planner can write its plan file under all hosts' write guards.
 - `cortex_ia_snapshot_read` and `cortex_ia_workload_audit` return valid OpenCode tool results.
 
+### Security
+
+- Agent shells can no longer approve their own work through `cortex-ia work`: the host guard
+  normalizes case, quotes and global flags, and Claude Code shells now carry
+  `CORTEX_IA_AGENT_SHELL=1` so the CLI refuses authority verbs however they are invoked.
+- agy agents, which the host guard cannot identify, may create and implement tasks but not
+  approve, recover, retry, reconcile or decompose them.
+- The symlink-parent guard for managed writes now checks real ancestors; it previously
+  checked paths relative to the current directory and passed every write.
+- `cortex_ia_workload_audit` rejects option-like `baseRef` values (a `--output=` value could
+  overwrite files) and fails closed when `git diff` fails.
+- The orchestrator's env-file guard is case-insensitive and covers `.envrc` and `*.env`.
+
 ## v1.0.0 (2026-11-15) — initial release
 
 First release on the new repository history. The git history was reset to a single snapshot and the
