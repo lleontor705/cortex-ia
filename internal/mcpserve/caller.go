@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/hostbridge"
+	"github.com/lleontor705/cortex-ia/v2/internal/hostbridge"
 )
 
 // session carries everything one server process needs. The server cannot see

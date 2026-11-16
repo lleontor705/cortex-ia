@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/installmeta"
-	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/installmeta"
+	"github.com/lleontor705/cortex-ia/v2/internal/mcpmanager"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // ErrNotInstalled is returned by mutating MCP operations when no agreed v2

@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/lleontor705/cortex-ia/internal/targets"
+	"github.com/lleontor705/cortex-ia/v2/internal/targets"
 )
 
 // fakeHosts is the zero-value-safe TargetAPI test double: no host is detected

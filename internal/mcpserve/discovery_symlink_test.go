@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/hostbridge"
+	"github.com/lleontor705/cortex-ia/v2/internal/hostbridge"
 )
 
 func TestDiscoveryWrite_WorkspaceReachedThroughUserSymlink(t *testing.T) {

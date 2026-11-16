@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/installmeta"
+	"github.com/lleontor705/cortex-ia/v2/internal/installmeta"
 )
 
 const (

@@ -104,7 +104,7 @@ host selection screen. The full walkthrough is in the [Quickstart](docs/getting-
 | Install script (Linux / macOS) | `curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh \| bash` |
 | Install script (Windows PowerShell) | `irm https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.ps1 \| iex` |
 | Precompiled binary | Download from [Releases](https://github.com/lleontor705/cortex-ia/releases) |
-| Go | `go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest` |
+| Go | `go install github.com/lleontor705/cortex-ia/v2/cmd/cortex-ia@latest` |
 | From source | `git clone https://github.com/lleontor705/cortex-ia.git && cd cortex-ia && go build -o bin/cortex-ia ./cmd/cortex-ia` |
 
 > **Note:** source builds do not embed the error-reporting signing secret, so

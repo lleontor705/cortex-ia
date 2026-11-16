@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/homelock"
+	"github.com/lleontor705/cortex-ia/v2/internal/homelock"
 )
 
 const maxQueuedReports = 128

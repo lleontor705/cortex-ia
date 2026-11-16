@@ -10,9 +10,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/lleontor705/cortex-ia/internal/delegation"
-	"github.com/lleontor705/cortex-ia/internal/tui/styles"
-	"github.com/lleontor705/cortex-ia/internal/updater"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/tui/styles"
+	"github.com/lleontor705/cortex-ia/v2/internal/updater"
 )
 
 type upgradePhase int

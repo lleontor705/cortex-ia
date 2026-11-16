@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
 )
 
 // TestWorkReconcileIncidentSmoke replays the obs-176/obs-184 incident through the

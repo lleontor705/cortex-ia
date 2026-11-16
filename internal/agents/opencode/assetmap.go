@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/assets"
+	"github.com/lleontor705/cortex-ia/v2/internal/assets"
 )
 
 // ErrAssetCollision reports two embedded assets claiming the same managed

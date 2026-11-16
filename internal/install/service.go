@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/backup"
-	"github.com/lleontor705/cortex-ia/internal/delegation"
-	"github.com/lleontor705/cortex-ia/internal/homelock"
-	"github.com/lleontor705/cortex-ia/internal/logging"
-	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
-	"github.com/lleontor705/cortex-ia/internal/pipeline"
-	"github.com/lleontor705/cortex-ia/internal/state"
-	"github.com/lleontor705/cortex-ia/internal/telemetry"
+	"github.com/lleontor705/cortex-ia/v2/internal/backup"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/homelock"
+	"github.com/lleontor705/cortex-ia/v2/internal/logging"
+	"github.com/lleontor705/cortex-ia/v2/internal/mcpmanager"
+	"github.com/lleontor705/cortex-ia/v2/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/telemetry"
 )
 
 // ErrHomeBusy reports that another process holds this home's mutation lock.

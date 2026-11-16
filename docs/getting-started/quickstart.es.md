@@ -10,7 +10,7 @@ Pon en marcha **Cortex-IA** en tres pasos sencillos.
 
 ```bash
 # Via Go (recommended)
-go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
+go install github.com/lleontor705/cortex-ia/v2/cmd/cortex-ia@latest
 
 # Or via install script (Linux / macOS)
 curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh | bash

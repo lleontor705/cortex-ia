@@ -36,7 +36,7 @@ Both installers automatically:
 ### Go Install
 
 ```bash
-go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
+go install github.com/lleontor705/cortex-ia/v2/cmd/cortex-ia@latest
 cortex-ia sync
 ```
 

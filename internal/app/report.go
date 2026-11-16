@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/delegation"
-	"github.com/lleontor705/cortex-ia/internal/telemetry"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/telemetry"
 )
 
 func runReport(args []string) error {

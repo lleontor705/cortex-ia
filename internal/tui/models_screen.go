@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/lleontor705/cortex-ia/internal/install"
-	"github.com/lleontor705/cortex-ia/internal/modelmgr"
+	"github.com/lleontor705/cortex-ia/v2/internal/install"
+	"github.com/lleontor705/cortex-ia/v2/internal/modelmgr"
 )
 
 const (

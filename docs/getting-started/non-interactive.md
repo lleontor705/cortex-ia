@@ -89,7 +89,7 @@ GitHub Actions one-liner:
 ```yaml
 - name: Install cortex-ia ecosystem
   run: |
-    go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest
+    go install github.com/lleontor705/cortex-ia/v2/cmd/cortex-ia@latest
     cortex-ia install --target opencode
     cortex-ia doctor
 ```

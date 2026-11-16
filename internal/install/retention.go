@@ -4,10 +4,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/lleontor705/cortex-ia/internal/backup"
-	"github.com/lleontor705/cortex-ia/internal/logging"
-	"github.com/lleontor705/cortex-ia/internal/pipeline"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/backup"
+	"github.com/lleontor705/cortex-ia/v2/internal/logging"
+	"github.com/lleontor705/cortex-ia/v2/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // pruneBackups applies the default backup retention under the caller's home

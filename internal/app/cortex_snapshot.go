@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/lleontor705/cortex-ia/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
 )
 
 func runCortexSnapshot(args []string) error {

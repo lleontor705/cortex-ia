@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/telemetry"
+	"github.com/lleontor705/cortex-ia/v2/internal/telemetry"
 	_ "modernc.org/sqlite"
 )
 

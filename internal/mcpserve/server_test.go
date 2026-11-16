@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/hostbridge"
+	"github.com/lleontor705/cortex-ia/v2/internal/hostbridge"
 )
 
 func runProtocol(t *testing.T, s *session, input string) []map[string]any {

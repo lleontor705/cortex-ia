@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/hostbridge"
+	"github.com/lleontor705/cortex-ia/v2/internal/hostbridge"
 )
 
 func workTransition(ctx context.Context, s *session, args map[string]any) (string, error) {

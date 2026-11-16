@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/updater"
+	"github.com/lleontor705/cortex-ia/v2/internal/updater"
 )
 
 // updateSchedulerRunner is the scheduler seam: production uses the OS-backed

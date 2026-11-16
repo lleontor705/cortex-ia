@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/install"
-	"github.com/lleontor705/cortex-ia/internal/logging"
-	"github.com/lleontor705/cortex-ia/internal/targets"
-	"github.com/lleontor705/cortex-ia/internal/tui"
+	"github.com/lleontor705/cortex-ia/v2/internal/install"
+	"github.com/lleontor705/cortex-ia/v2/internal/logging"
+	"github.com/lleontor705/cortex-ia/v2/internal/targets"
+	"github.com/lleontor705/cortex-ia/v2/internal/tui"
 )
 
 // Run is the main entry point for the cortex-ia CLI. Without arguments it

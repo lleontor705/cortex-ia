@@ -6,8 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/lleontor705/cortex-ia/internal/ocstats"
-	"github.com/lleontor705/cortex-ia/internal/tui/styles"
+	"github.com/lleontor705/cortex-ia/v2/internal/ocstats"
+	"github.com/lleontor705/cortex-ia/v2/internal/tui/styles"
 )
 
 func TestHeatmapTodoGridSpansRealRange(t *testing.T) {

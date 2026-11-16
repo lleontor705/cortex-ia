@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/ocstats"
+	"github.com/lleontor705/cortex-ia/v2/internal/ocstats"
 )
 
 // productionBoot unlocks the shipped zero-argument boot surface for one test and

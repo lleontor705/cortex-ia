@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/assets"
+	"github.com/lleontor705/cortex-ia/v2/internal/assets"
 )
 
 var renderRoles = []string{"orchestrator", "discovery", "investigate", "planner", "implement", "reviewer"}

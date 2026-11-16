@@ -3,7 +3,30 @@
 All notable changes to this project are documented here. Versions follow
 [Semantic Versioning](https://semver.org/); tags are `vMAJOR.MINOR.PATCH`.
 
-## Unreleased
+## v2.0.0 (2026-11-15)
+
+Spec-driven development is retired in favour of short plans with executable checks, the agent
+instructions are rewritten around organic orchestration, and a deep review's security,
+coherence, robustness and supply-chain findings are fixed. This release is incompatible with
+v1.0.0: commands and tools were removed and the delegation database migrates to schema v19.
+
+### Upgrading from v1.0.0
+
+- The Go module path is now `github.com/lleontor705/cortex-ia/v2`. Install with
+  `go install github.com/lleontor705/cortex-ia/v2/cmd/cortex-ia@latest`; the old path stays on
+  v1.0.0.
+- Run `cortex-ia sync` (or `install`) after updating so every host gets the new prompts, tools
+  and guards. On Claude Code this adds `CORTEX_IA_AGENT_SHELL=1` to `~/.claude/settings.json`.
+- The database migrates to schema v19 on first use: SDD tasks become direct tasks and
+  `change_archives` is dropped. A v1.0.0 binary refuses the migrated database.
+- `cortex-ia openspec`, `cortex-ia work archive`, `--contract-file` and `--spec-plane` fail with
+  a "retired" error. Scripts that call them must be updated.
+- Approvals bound to SDD contracts, or to directories with mixed-case paths on macOS and
+  Windows, need a fresh review.
+- On agy, agents can implement but not approve; approve from a terminal with
+  `cortex-ia work approve`.
+- Release archives carry build-provenance attestations: `gh attestation verify <archive> --repo
+  lleontor705/cortex-ia`.
 
 ### Removed
 

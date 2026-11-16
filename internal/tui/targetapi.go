@@ -4,7 +4,7 @@ import (
 	"errors"
 	"os/exec"
 
-	"github.com/lleontor705/cortex-ia/internal/targets"
+	"github.com/lleontor705/cortex-ia/v2/internal/targets"
 )
 
 // hostTargets is the production TargetAPI bound to one home directory. The

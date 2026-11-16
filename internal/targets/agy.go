@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/assets"
+	"github.com/lleontor705/cortex-ia/v2/internal/assets"
 )
 
 type agyRole struct {

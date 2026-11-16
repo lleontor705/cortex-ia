@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/agents/opencode"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // artifactAbs returns the absolute destination path for a recorded artifact.

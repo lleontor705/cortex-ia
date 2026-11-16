@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/updater"
+	"github.com/lleontor705/cortex-ia/v2/internal/updater"
 )
 
 const updateCheckTimeout = 60 * time.Second

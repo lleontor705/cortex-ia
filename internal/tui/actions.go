@@ -9,8 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/lleontor705/cortex-ia/internal/install"
-	"github.com/lleontor705/cortex-ia/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/v2/internal/install"
+	"github.com/lleontor705/cortex-ia/v2/internal/pipeline"
 )
 
 // cortexBinaryMissing and ensureCortexBinary are isolation seams: TUI tests

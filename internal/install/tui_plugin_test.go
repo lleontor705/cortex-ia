@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/v2/internal/components/filemerge"
 )
 
 func setV2Detector(t *testing.T) {

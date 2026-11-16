@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/delegation"
-	"github.com/lleontor705/cortex-ia/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/pipeline"
 )
 
 // InstallReceipt is the typed outcome of one install or sync execution. It

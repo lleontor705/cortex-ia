@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/diagram"
-	"github.com/lleontor705/cortex-ia/internal/docconv"
+	"github.com/lleontor705/cortex-ia/v2/internal/diagram"
+	"github.com/lleontor705/cortex-ia/v2/internal/docconv"
 )
 
 func artifactFixture(t *testing.T) (string, string, ArtifactAuthority) {

@@ -9,9 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/lleontor705/cortex-ia/internal/backup"
-	"github.com/lleontor705/cortex-ia/internal/install"
-	"github.com/lleontor705/cortex-ia/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/v2/internal/backup"
+	"github.com/lleontor705/cortex-ia/v2/internal/install"
+	"github.com/lleontor705/cortex-ia/v2/internal/pipeline"
 )
 
 // fakeService records every call and replays scripted results. It exists only

@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/cortexiaweb"
-	"github.com/lleontor705/cortex-ia/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/cortexiaweb"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
 )
 
 func isHelp(s string) bool {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
 )
 
 func runUI(args []string) error {

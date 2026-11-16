@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/backup"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/backup"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // validBackupID matches safe backup IDs (alphanumeric, hyphens, underscores).

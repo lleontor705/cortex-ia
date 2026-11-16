@@ -1,6 +1,6 @@
 {
   "name": "cortex-ia",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Local control plane for multi-agent software development on OpenCode, Claude Code and Antigravity CLI.",
   "main": "index.js",
   "directories": {

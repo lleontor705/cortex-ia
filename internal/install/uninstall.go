@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
-	"github.com/lleontor705/cortex-ia/internal/modelmgr"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/mcpmanager"
+	"github.com/lleontor705/cortex-ia/v2/internal/modelmgr"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // UninstallOptions is the explicit per-call intent for uninstall. The zero

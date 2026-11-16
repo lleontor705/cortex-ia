@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/install"
-	"github.com/lleontor705/cortex-ia/internal/pipeline"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/install"
+	"github.com/lleontor705/cortex-ia/v2/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // openReview presses Home → Install/Sync, walks through the wizard steps,

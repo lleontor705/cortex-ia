@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
 )
 
 func TestWorkReviseAppliesPlanAndPrintsUpdatedTask(t *testing.T) {

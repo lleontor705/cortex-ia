@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/install"
-	"github.com/lleontor705/cortex-ia/internal/pipeline"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/install"
+	"github.com/lleontor705/cortex-ia/v2/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // The theme toggle consults the user instead of mutating their theme by
