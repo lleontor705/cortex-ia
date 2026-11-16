@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
-	"github.com/lleontor705/cortex-ia/internal/installmeta"
+	"github.com/lleontor705/cortex-ia/v2/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/v2/internal/installmeta"
 )
 
 const (

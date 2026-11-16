@@ -10,12 +10,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
-	"github.com/lleontor705/cortex-ia/internal/assets"
-	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
-	"github.com/lleontor705/cortex-ia/internal/logging"
-	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/agents/opencode"
+	"github.com/lleontor705/cortex-ia/v2/internal/assets"
+	"github.com/lleontor705/cortex-ia/v2/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/v2/internal/logging"
+	"github.com/lleontor705/cortex-ia/v2/internal/mcpmanager"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // planCommon resolves the home, derives the desired asset set from the

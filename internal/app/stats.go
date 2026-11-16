@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lleontor705/cortex-ia/internal/ocstats"
-	"github.com/lleontor705/cortex-ia/internal/tui"
+	"github.com/lleontor705/cortex-ia/v2/internal/ocstats"
+	"github.com/lleontor705/cortex-ia/v2/internal/tui"
 )
 
 type statsJSONOutput struct {

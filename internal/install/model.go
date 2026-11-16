@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/modelmgr"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/modelmgr"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // agentModelSidecarNamespace prefixes the sidecar record names this service

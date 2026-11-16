@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/delegation"
-	"github.com/lleontor705/cortex-ia/internal/docconv"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/docconv"
 )
 
 func runDoc(args []string) error {

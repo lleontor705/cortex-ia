@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/telemetry"
+	"github.com/lleontor705/cortex-ia/v2/internal/telemetry"
 )
 
 // assessReportingProbe runs the reporting assessment on a fresh report.

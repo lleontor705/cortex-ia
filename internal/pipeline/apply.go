@@ -8,14 +8,14 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/lleontor705/cortex-ia/internal/agents/opencode"
-	"github.com/lleontor705/cortex-ia/internal/assets"
-	"github.com/lleontor705/cortex-ia/internal/backup"
-	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
-	"github.com/lleontor705/cortex-ia/internal/installmeta"
-	"github.com/lleontor705/cortex-ia/internal/logging"
-	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/agents/opencode"
+	"github.com/lleontor705/cortex-ia/v2/internal/assets"
+	"github.com/lleontor705/cortex-ia/v2/internal/backup"
+	"github.com/lleontor705/cortex-ia/v2/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/v2/internal/installmeta"
+	"github.com/lleontor705/cortex-ia/v2/internal/logging"
+	"github.com/lleontor705/cortex-ia/v2/internal/mcpmanager"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // Apply transactionally executes a plan: it revalidates every precondition,

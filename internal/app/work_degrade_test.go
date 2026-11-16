@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
 )
 
 // degradeStaleAge exceeds the 168h default TTL so aged fixtures are unambiguously

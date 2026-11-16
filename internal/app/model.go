@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/assets"
-	"github.com/lleontor705/cortex-ia/internal/install"
-	"github.com/lleontor705/cortex-ia/internal/modelmgr"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/assets"
+	"github.com/lleontor705/cortex-ia/v2/internal/install"
+	"github.com/lleontor705/cortex-ia/v2/internal/modelmgr"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // modelUsage documents the whole `model` grammar. Its flags are deliberately

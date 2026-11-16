@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/logging"
+	"github.com/lleontor705/cortex-ia/v2/internal/logging"
 )
 
 // Snapshotter creates file snapshots for backup purposes.

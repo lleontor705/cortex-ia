@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/clidetect"
-	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/v2/internal/clidetect"
+	"github.com/lleontor705/cortex-ia/v2/internal/components/filemerge"
 )
 
 const (

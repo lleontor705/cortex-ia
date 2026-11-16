@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/install"
-	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
+	"github.com/lleontor705/cortex-ia/v2/internal/install"
+	"github.com/lleontor705/cortex-ia/v2/internal/mcpmanager"
 )
 
 // openMCP drives Home → Manage MCPs and drains the list command.

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/backup"
-	"github.com/lleontor705/cortex-ia/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/v2/internal/backup"
+	"github.com/lleontor705/cortex-ia/v2/internal/pipeline"
 )
 
 // seedBackups creates count backup directories oldest first, each a real

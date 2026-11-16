@@ -4,7 +4,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/updater"
+	"github.com/lleontor705/cortex-ia/v2/internal/updater"
 )
 
 // Version holds the current build version, set via ldflags or defaulting to "dev".

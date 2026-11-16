@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/homelock"
+	"github.com/lleontor705/cortex-ia/v2/internal/homelock"
 )
 
 func txnBundle(home string, files map[string]string) Bundle {

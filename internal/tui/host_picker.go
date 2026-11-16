@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/lleontor705/cortex-ia/internal/targets"
+	"github.com/lleontor705/cortex-ia/v2/internal/targets"
 )
 
 // hostRow is one checklist entry on the host picker. Detection and install

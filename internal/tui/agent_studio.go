@@ -8,7 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/lleontor705/cortex-ia/internal/tui/styles"
+	"github.com/lleontor705/cortex-ia/v2/internal/tui/styles"
 )
 
 const (

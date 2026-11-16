@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lleontor705/cortex-ia/internal/app"
+	"github.com/lleontor705/cortex-ia/v2/internal/app"
 )
 
 // version is set by GoReleaser via ldflags at build time (-X main.version=...).

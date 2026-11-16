@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
-	"github.com/lleontor705/cortex-ia/internal/mcpmanager"
-	"github.com/lleontor705/cortex-ia/internal/pipeline"
-	"github.com/lleontor705/cortex-ia/internal/state"
-	"github.com/lleontor705/cortex-ia/internal/telemetry"
+	"github.com/lleontor705/cortex-ia/v2/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/v2/internal/mcpmanager"
+	"github.com/lleontor705/cortex-ia/v2/internal/pipeline"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/telemetry"
 )
 
 // DoctorVerdict summarizes a doctor report.

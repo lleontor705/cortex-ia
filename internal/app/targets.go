@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 
-	"github.com/lleontor705/cortex-ia/internal/targets"
+	"github.com/lleontor705/cortex-ia/v2/internal/targets"
 )
 
 func applyHostTarget(verb string, target targets.TargetID, home string, flags runFlags) error {

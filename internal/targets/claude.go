@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/assets"
+	"github.com/lleontor705/cortex-ia/v2/internal/assets"
 )
 
 type claudeRole struct {

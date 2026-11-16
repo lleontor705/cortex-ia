@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/updater"
+	"github.com/lleontor705/cortex-ia/v2/internal/updater"
 )
 
 func TestResolveVersion(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/v2/internal/components/filemerge"
 )
 
 // RestoreService restores files from a validated backup manifest.

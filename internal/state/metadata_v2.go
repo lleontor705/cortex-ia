@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lleontor705/cortex-ia/internal/installmeta"
+	"github.com/lleontor705/cortex-ia/v2/internal/installmeta"
 )
 
 // MetadataSchemaV2 is the schema version written by the OpenCode installer

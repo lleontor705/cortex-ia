@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/delegation"
+	"github.com/lleontor705/cortex-ia/v2/internal/delegation"
 )
 
 const maxWorkRevisionPlanBytes = 128 * 1024

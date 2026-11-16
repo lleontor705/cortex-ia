@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lleontor705/cortex-ia/internal/diagram"
+	"github.com/lleontor705/cortex-ia/v2/internal/diagram"
 )
 
 func runDiagram(args []string) error {

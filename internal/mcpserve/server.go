@@ -15,7 +15,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/lleontor705/cortex-ia/internal/hostbridge"
+	"github.com/lleontor705/cortex-ia/v2/internal/hostbridge"
 )
 
 // Version is reported in the initialize result; the CLI sets it before Serve.

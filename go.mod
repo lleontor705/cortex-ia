@@ -1,4 +1,4 @@
-module github.com/lleontor705/cortex-ia
+module github.com/lleontor705/cortex-ia/v2
 
 go 1.26.1
 

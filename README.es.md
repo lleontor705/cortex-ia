@@ -106,7 +106,7 @@ terminal, que incluye una pantalla de selección de host. El recorrido completo 
 | Script de instalación (Linux / macOS) | `curl -sSL https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.sh \| bash` |
 | Script de instalación (Windows PowerShell) | `irm https://raw.githubusercontent.com/lleontor705/cortex-ia/main/scripts/install.ps1 \| iex` |
 | Binario precompilado | Descárgalo desde [Releases](https://github.com/lleontor705/cortex-ia/releases) |
-| Go | `go install github.com/lleontor705/cortex-ia/cmd/cortex-ia@latest` |
+| Go | `go install github.com/lleontor705/cortex-ia/v2/cmd/cortex-ia@latest` |
 | Desde el código fuente | `git clone https://github.com/lleontor705/cortex-ia.git && cd cortex-ia && go build -o bin/cortex-ia ./cmd/cortex-ia` |
 
 > **Nota:** las compilaciones desde el código fuente no incorporan el secreto de

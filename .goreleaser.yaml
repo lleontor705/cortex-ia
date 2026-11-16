@@ -23,11 +23,11 @@ builds:
       # main.version and app.Version must stay canonical (v-prefixed): the updater's
       # ParseCanonicalVersion rejects a bare MAJOR.MINOR.PATCH when applying an update.
       - -X main.version=v{{ .Version }}
-      - -X github.com/lleontor705/cortex-ia/internal/app.Version=v{{ .Version }}
-      - -X github.com/lleontor705/cortex-ia/internal/app.Commit={{ .Commit }}
-      - -X github.com/lleontor705/cortex-ia/internal/app.Date={{ .Date }}
-      - '-X github.com/lleontor705/cortex-ia/internal/telemetry.CanonicalDefaultEndpoint={{ if index .Env "CORTEX_REPORT_ENDPOINT" }}{{ .Env.CORTEX_REPORT_ENDPOINT }}{{ else }}https://cortex-report-hub-production.up.railway.app/api/v1/reports{{ end }}'
-      - '-X github.com/lleontor705/cortex-ia/internal/telemetry.CanonicalDefaultSecret={{ if index .Env "CORTEX_REPORT_SECRET" }}{{ .Env.CORTEX_REPORT_SECRET }}{{ else }}{{ end }}'
+      - -X github.com/lleontor705/cortex-ia/v2/internal/app.Version=v{{ .Version }}
+      - -X github.com/lleontor705/cortex-ia/v2/internal/app.Commit={{ .Commit }}
+      - -X github.com/lleontor705/cortex-ia/v2/internal/app.Date={{ .Date }}
+      - '-X github.com/lleontor705/cortex-ia/v2/internal/telemetry.CanonicalDefaultEndpoint={{ if index .Env "CORTEX_REPORT_ENDPOINT" }}{{ .Env.CORTEX_REPORT_ENDPOINT }}{{ else }}https://cortex-report-hub-production.up.railway.app/api/v1/reports{{ end }}'
+      - '-X github.com/lleontor705/cortex-ia/v2/internal/telemetry.CanonicalDefaultSecret={{ if index .Env "CORTEX_REPORT_SECRET" }}{{ .Env.CORTEX_REPORT_SECRET }}{{ else }}{{ end }}'
 
 
 archives:

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lleontor705/cortex-ia/internal/backup"
-	"github.com/lleontor705/cortex-ia/internal/components/filemerge"
-	"github.com/lleontor705/cortex-ia/internal/state"
+	"github.com/lleontor705/cortex-ia/v2/internal/backup"
+	"github.com/lleontor705/cortex-ia/v2/internal/components/filemerge"
+	"github.com/lleontor705/cortex-ia/v2/internal/state"
 )
 
 // Repository test policy scopes this file to simple existence and copy

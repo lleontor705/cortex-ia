@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/lleontor705/cortex-ia/internal/installmeta"
+	"github.com/lleontor705/cortex-ia/v2/internal/installmeta"
 )
 
 // Preset describes one MCP server entry cortex-ia is able to manage inside

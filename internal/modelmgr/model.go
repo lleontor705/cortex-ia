@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/lleontor705/cortex-ia/internal/installmeta"
+	"github.com/lleontor705/cortex-ia/v2/internal/installmeta"
 )
 
 // ModelSource classifies where an agent's effective model reference comes
