@@ -56,11 +56,6 @@ function scanDirForSkills(dir: string, origin: SkillOrigin, precedence: number):
       if (fs.existsSync(skillFile)) {
         const canonical = canonicalPath(skillFile);
         const name = entry.name;
-        if (map.has(name) && map.get(name)!.path.toLowerCase() !== canonical.toLowerCase()) {
-          throw new Error(
-            `CONTEXT_RESOLUTION_ERROR: same-precedence collision for skill '${name}': candidates [${map.get(name)!.path}, ${canonical}]`
-          );
-        }
         map.set(name, {
           name,
           path: canonical,
@@ -81,16 +76,17 @@ function discoverInventory(
   origin: SkillOrigin,
   precedence: number
 ): Map<string, ResolvedSkill> {
+  // Earlier directories win: callers order dirs by precedence (project skills/ first).
+  // A duplicate name is a shadowing decision, not an error, so discovery never aborts on it.
   const combined = new Map<string, ResolvedSkill>();
   for (const dir of dirs) {
-    const skills = scanDirForSkills(dir, origin, precedence);
-    for (const [name, skill] of skills) {
-      if (combined.has(name) && combined.get(name)!.path.toLowerCase() !== skill.path.toLowerCase()) {
-        throw new Error(
-          `CONTEXT_RESOLUTION_ERROR: same-precedence collision for skill '${name}': candidates [${combined.get(name)!.path}, ${skill.path}]`
-        );
+    for (const [name, skill] of scanDirForSkills(dir, origin, precedence)) {
+      const winner = combined.get(name);
+      if (!winner) {
+        combined.set(name, skill);
+      } else if (winner.path.toLowerCase() !== skill.path.toLowerCase()) {
+        console.warn(`[CORTEX_SKILL_DISCOVERY] skill '${name}' at ${skill.path} is shadowed by ${winner.path}`);
       }
-      combined.set(name, skill);
     }
   }
   return combined;
@@ -133,9 +129,9 @@ function resolveSkill(name: string, options: SkillDiscoveryOptions = {}): Resolv
     path.join(home, ".gemini", "config", "plugins", "cortex-ia", "skills"),
   ];
   const repoDirs = options.repoSkillsDirs || [
+    path.join(baseDir, "skills"),
     path.join(baseDir, ".cortex-ia", "skills"),
     path.join(baseDir, ".agents", "skills"),
-    path.join(baseDir, "skills"),
   ];
   const embeddedDirs = options.embeddedSkillsDirs || [
     path.join(baseDir, "internal", "assets", "skills"),
@@ -165,9 +161,9 @@ function getAllDiscoveredSkills(options: SkillDiscoveryOptions = {}): ResolvedSk
     path.join(home, ".gemini", "config", "plugins", "cortex-ia", "skills"),
   ];
   const repoDirs = options.repoSkillsDirs || [
+    path.join(baseDir, "skills"),
     path.join(baseDir, ".cortex-ia", "skills"),
     path.join(baseDir, ".agents", "skills"),
-    path.join(baseDir, "skills"),
   ];
   const embeddedDirs = options.embeddedSkillsDirs || [
     path.join(baseDir, "internal", "assets", "skills"),

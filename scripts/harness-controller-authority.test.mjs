@@ -116,7 +116,8 @@ test('idle, unknown, error and status timeout stop with no overlapping or resurr
     if (resolve) { resolve({ data: { controller: { type: 'busy' } } }); await h.flush(); }
     await h.advance(120000);
     assert.equal(h.renewals().length, 0);
-    assert.equal(h.statusCalls.length, 1);
+    // A status timeout is a transient renewal failure: it is retried twice, then stops.
+    assert.equal(h.statusCalls.length, response === null ? 3 : 1);
     await h.plugin.dispose();
   }
 });
@@ -156,7 +157,7 @@ test('failed renewal stops, executable discovery is cached and invalidated on er
   await h.advance(30000);
   assert.equal(h.calls.filter(c => c.args[0] === 'version').length, 1);
   h.controls.renew = false;
-  await h.advance(30000);
+  await h.advance(120000);
   const count = h.renewals().length;
   h.controls.renew = true;
   await h.advance(120000);

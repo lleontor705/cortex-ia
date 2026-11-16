@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -63,7 +64,13 @@ func fingerprintFile(workspace, relative string) (string, error) {
 	if !info.Mode().IsRegular() {
 		return "", errors.New("fingerprint requires explicit regular files or directories")
 	}
-	f, err := os.Open(filepath.Join(workspace, filepath.FromSlash(clean)))
+	return hashRegularFile(workspace, clean)
+}
+
+// hashRegularFile streams one regular file's content digest. The name is used as-is so
+// a tracked path keeps the case git recorded, even where canonicalLeasePath folds case.
+func hashRegularFile(workspace, name string) (string, error) {
+	f, err := os.Open(filepath.Join(workspace, filepath.FromSlash(name)))
 	if err != nil {
 		return "", err
 	}
@@ -120,9 +127,14 @@ func fingerprintTrackedTree(workspace, pattern string) (string, error) {
 		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
 			return "", statErr
 		}
-		digest, err := fingerprintFile(workspace, name)
-		if err != nil {
-			return "", err
+		digest := "absent" // tracked in the index but deleted from the worktree
+		if statErr == nil {
+			if _, err := lstatChain(workspace, name); err != nil {
+				return "", err
+			}
+			if digest, err = hashRegularFile(workspace, name); err != nil {
+				return "", err
+			}
 		}
 		if _, err := fmt.Fprintf(h, "%s\x00%s\x00", name, digest); err != nil {
 			return "", err
@@ -134,12 +146,27 @@ func fingerprintTrackedTree(workspace, pattern string) (string, error) {
 // trackedFilesTimeout bounds the git query that backs a directory or glob fingerprint.
 const trackedFilesTimeout = 30 * time.Second
 
+// caseInsensitiveLeasePaths mirrors canonicalLeasePath, which folds case on these
+// platforms. Git pathspecs stay case-sensitive regardless of core.ignorecase, so the
+// folded pattern needs the icase magic to match mixed-case tracked paths.
+var caseInsensitiveLeasePaths = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+
+// treePathspec builds the git pathspec for a canonical directory or glob entry. Without
+// icase the pattern passes through unchanged, so all-lowercase trees resolve exactly as
+// they always have.
+func treePathspec(pattern string, icase bool) string {
+	if icase {
+		return ":(icase)" + pattern
+	}
+	return pattern
+}
+
 // listTrackedFiles returns the sorted workspace-relative paths of git-tracked files that
 // match a directory entry or glob pattern.
 func listTrackedFiles(workspace, pattern string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), trackedFilesTimeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, "git", "-C", workspace, "ls-files", "-z", "--", pattern)
+	command := exec.CommandContext(ctx, "git", "-C", workspace, "ls-files", "-z", "--", treePathspec(pattern, caseInsensitiveLeasePaths))
 	command.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr

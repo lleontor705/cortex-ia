@@ -47,6 +47,23 @@ All notable changes to this project are documented here. Versions follow
 - The planner can write its plan file under all hosts' write guards.
 - `cortex_ia_snapshot_read` and `cortex_ia_workload_audit` return valid OpenCode tool results.
 
+### Robustness
+
+- Leases are confined to the task's `allowed_files`; review fingerprints include mixed-case
+  paths on macOS and Windows (approvals of such directories need a fresh review).
+- Claude Code / agy: caller identity is bound per call and consumed once, so a read-only status
+  call can no longer take over another agent's claim; the MCP server stops renewing a claim
+  after 15 minutes without owner calls, `work_reconcile` reports owner inactivity, and the
+  compact `work_status` shows whether renewal is active (also on OpenCode).
+- OpenCode heartbeat stops only for its own session's events and retries a failed renewal
+  twice; claim and lease tokens are redacted in telemetry and Cortex captures; the write
+  fence covers `multiedit`, `patch` and `notebook_edit`; duplicate skill names no longer crash
+  skill discovery.
+- Installs keep each config file's mode (a `0600` file stays `0600`), backups are private,
+  old backups are pruned (newest five plus any still needed), and Claude Code / agy bundles
+  apply under the home lock with rollback on failure and refuse to replace a symlink without
+  `--overwrite`.
+
 ### Flow coherence
 
 - The work state machine is one table in the protocol (actor, required state, tool), and the

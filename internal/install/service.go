@@ -299,6 +299,7 @@ func (s *Service) applyPlanWithConfirmation(opts Options, req pipeline.Request, 
 	plan, receipt, err := pipeline.ApplyConfirmed(req, planner)
 	outReceipt := newInstallReceipt(plan, receipt)
 	if err == nil {
+		pruneBackups(s.homeDir)
 		backupID := ""
 		if receipt != nil {
 			backupID = receipt.BackupID

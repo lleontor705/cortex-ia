@@ -50,6 +50,15 @@ func (s *session) callTool(ctx context.Context, name string, args map[string]any
 	if !ok {
 		return fmt.Sprintf("unknown tool: %s", name), true
 	}
+	if err := s.bindCall(name, args); err != nil {
+		return s.redact(err.Error()), true
+	}
+	defer func() { s.bound = nil }()
+	if task := optString(args, "task_id"); task != "" {
+		if caller, ok := s.boundCaller(task); ok {
+			s.vault.touch(task, caller.SessionKey, s.now())
+		}
+	}
 	text, err := s.invoke(ctx, t, args)
 	if err != nil {
 		return s.redact(err.Error()), true

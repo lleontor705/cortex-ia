@@ -206,7 +206,7 @@ func equalManifestPath(left, right string) bool {
 }
 
 func WriteManifest(path string, manifest Manifest) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create manifest directory %q: %w", path, err)
 	}
 
@@ -216,7 +216,7 @@ func WriteManifest(path string, manifest Manifest) error {
 	}
 
 	content = append(content, '\n')
-	if err := os.WriteFile(path, content, 0o644); err != nil {
+	if err := os.WriteFile(path, content, 0o600); err != nil {
 		return fmt.Errorf("write manifest %q: %w", path, err)
 	}
 	return nil

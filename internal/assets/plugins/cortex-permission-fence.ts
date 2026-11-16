@@ -68,12 +68,40 @@ function firstCortexIA(directory?: string): string | null {
 const READ_ONLY_ROLES = new Set(["discovery", "investigate", "planner", "reviewer"]);
 const MUTATING_TOOLS = new Set([
   "edit",
+  "multiedit",
   "write_to_file",
   "write",
   "replace_file_content",
+  "notebook_edit",
   "apply_patch",
+  "patch",
   "delete_file",
 ]);
+
+// Mirrors cortex-lease-guard.ts patch framing so both plugins agree on targets.
+// Returns null for an unparseable patch, which the caller must treat as a denial.
+function patchTargets(patchText: unknown): string[] | null {
+  if (typeof patchText !== "string" || patchText.length > 1024 * 1024) return null;
+  const lines = patchText.replace(/\r\n/g, "\n").trim().split("\n");
+  if (lines.shift() !== "*** Begin Patch" || lines.pop() !== "*** End Patch") return null;
+  const targets: string[] = [];
+  let kind = "";
+  for (const line of lines) {
+    const header = /^\*\*\* (Add|Update|Delete) File: (.+)$/.exec(line);
+    if (header) { kind = header[1]; targets.push(header[2]); continue; }
+    const move = /^\*\*\* Move to: (.+)$/.exec(line);
+    if (move && kind === "Update") { targets.push(move[1]); continue; }
+    if (line.startsWith("*** ") && line !== "*** End of File") return null;
+  }
+  return targets.length && targets.length <= 128 ? targets : null;
+}
+
+// Only the workspace-root .gitignore is discovery's sanctioned hygiene target.
+function isRootGitignore(directory: string, target: string): boolean {
+  if (!target || target.includes("\0")) return false;
+  const root = path.resolve(directory);
+  return path.relative(root, path.resolve(root, target)).split(path.sep).join("/") === ".gitignore";
+}
 
 function isProtectedPath(filePath: string): boolean {
   // Segment matching keeps names like `.environment.ts` writable while still
@@ -214,11 +242,24 @@ export const CortexPermissionFencePlugin = Plugin.define({
         const toolName = String(event?.tool || "").toLowerCase();
         const targetPath = String(event?.path || event?.input?.TargetFile || event?.input?.targetFile || event?.input?.path || event?.input?.filePath || event?.input?.file_path || event?.input?.target_path || "");
 
-        // Protected system paths check
-        if (targetPath && isProtectedPath(targetPath)) {
+        // A patch carries its own target list; an unparseable one is denied rather than
+        // treated as targetless, since targetless writes skip every path check.
+        const isPatchTool = toolName === "apply_patch" || toolName === "patch";
+        const patchFiles = isPatchTool ? patchTargets(event?.input?.patchText) : undefined;
+        if (isPatchTool && patchFiles === null) {
           return {
             effect: "deny",
-            reason: `CORTEX_PERMISSION_FENCE: Path '${targetPath}' is protected by Cortex-IA governance policy.`,
+            reason: "CORTEX_PERMISSION_FENCE: patch text could not be parsed; its target paths cannot be verified.",
+          };
+        }
+        const targets = patchFiles ?? (targetPath ? [targetPath] : []);
+
+        // Protected system paths check
+        const protectedTarget = targets.find(isProtectedPath);
+        if (protectedTarget !== undefined) {
+          return {
+            effect: "deny",
+            reason: `CORTEX_PERMISSION_FENCE: Path '${protectedTarget}' is protected by Cortex-IA governance policy.`,
           };
         }
 
@@ -226,9 +267,10 @@ export const CortexPermissionFencePlugin = Plugin.define({
         const role = String(event?.session?.role || (ctx as any)?.session?.role || process.env.CORTEX_ROLE || "").toLowerCase();
         if (READ_ONLY_ROLES.has(role) && MUTATING_TOOLS.has(toolName)) {
           const isDiscoveryGitignore = role === "discovery" && toolName === "edit" &&
-            targetPath.replace(/\\/g, "/").split("/").pop() === ".gitignore";
+            targets.length === 1 && isRootGitignore(directory, targets[0]);
           // planner's only sanctioned mutation is its plan file
-          const isPlannerPlan = role === "planner" && isPlannerPlanTarget(directory, targetPath);
+          const isPlannerPlan = role === "planner" && targets.length > 0 &&
+            targets.every(target => isPlannerPlanTarget(directory, target));
           if (!isDiscoveryGitignore && !isPlannerPlan) {
             return {
               effect: "deny",

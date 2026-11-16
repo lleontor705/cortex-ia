@@ -246,6 +246,11 @@ func decideBridge(in HookInput, deps Deps, tool string, args map[string]any) (De
 		}
 		return deny(fmt.Sprintf("%s is available to roles [%s]; this agent's role is %q", tool, strings.Join(AllowedRoles(tool), ", "), in.Role)), nil
 	}
+	// Only restricted tools need a caller identity. Binding read-only calls
+	// would let them overwrite the binding a pending restricted call relies on.
+	if AllowedRoles(tool) == nil {
+		return pass(), nil
+	}
 	taskID := stringArg(args, "task_id")
 	if taskID == "" {
 		return pass(), nil
@@ -262,6 +267,7 @@ func decideBridge(in HookInput, deps Deps, tool string, args map[string]any) (De
 		SessionKey: in.SessionKey,
 		Role:       in.Role,
 		TaskID:     taskID,
+		Tool:       tool,
 		BoundAt:    now,
 	}); err != nil {
 		return Decision{}, fmt.Errorf("bind caller: %w", err)

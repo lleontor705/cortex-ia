@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -15,9 +16,15 @@ import (
 
 const (
 	heartbeatInterval = 5 * time.Minute
-	// The CLI's controller renewal accepts at most 15m; a longer TTL fails every beat.
+	// The CLI's controller renewal accepts a TTL up to 30m
+	// (internal/delegation/work_controller_authority.go); the claim must outlive
+	// a missed beat, so a shorter TTL would expire it between renewals.
 	heartbeatTTL = "30m"
-	minTokenLen  = 8
+	// idleRenewalWindow stops renewal once the owner has made no identity-bearing
+	// call for this long. It matches the CLI stale-progress window, so a claim
+	// the server stopped renewing becomes reclaimable on the same clock.
+	idleRenewalWindow = 15 * time.Minute
+	minTokenLen       = 8
 )
 
 // authority is the in-memory handle for one claimed task. Tokens never leave
@@ -29,6 +36,7 @@ type authority struct {
 	cancel     context.CancelFunc
 	active     bool
 	reason     string
+	lastSeen   time.Time
 }
 
 type vault struct {
@@ -105,6 +113,37 @@ func (v *vault) isActive(a *authority) bool {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	return a.active
+}
+
+// touch records an owner call for the task. Calls from other sessions do not
+// count, and read-only calls carry no identity so they never reach here.
+func (v *vault) touch(task, sessionKey string, now time.Time) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if a := v.entries[task]; a != nil && a.sessionKey == sessionKey {
+		a.lastSeen = now
+	}
+}
+
+// ownerIdle reports whether the handle's owner has gone silent for the window.
+// It is the server's evidence of owner inactivity for reconcile.
+func (v *vault) ownerIdle(task string, now time.Time) bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	a := v.entries[task]
+	return a != nil && now.Sub(a.lastSeen) >= idleRenewalWindow
+}
+
+// stopIfIdle ends renewal for a handle whose owner has been silent for the
+// window. It reports whether it stopped the handle.
+func (v *vault) stopIfIdle(task string, a *authority, now time.Time) bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.entries[task] != a || !a.active || now.Sub(a.lastSeen) < idleRenewalWindow {
+		return false
+	}
+	stopLocked(a, "idle_window_exceeded: no owner call within the idle window; renewal stopped and the claim will expire")
+	return true
 }
 
 func (v *vault) leaseToken(a *authority, path string) string {
@@ -195,18 +234,30 @@ func (s *session) heartbeat(ctx context.Context, task string, a *authority) {
 			return
 		case <-ticker.C:
 		}
-		if _, err := s.renewAuthority(ctx, task, a); err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			s.vault.mu.Lock()
-			if s.vault.entries[task] == a {
-				stopLocked(a, "maintenance_failed_manual_reconciliation_required: "+err.Error())
-			}
-			s.vault.mu.Unlock()
+		if !s.beat(ctx, task, a) {
 			return
 		}
 	}
+}
+
+// beat runs one maintenance tick and reports whether renewal should continue.
+func (s *session) beat(ctx context.Context, task string, a *authority) bool {
+	if s.vault.stopIfIdle(task, a, s.now()) {
+		fmt.Fprintf(os.Stderr, "cortex-ia mcp: stopped renewing claim %s after %s without owner calls\n", task, idleRenewalWindow)
+		return false
+	}
+	if _, err := s.renewAuthority(ctx, task, a); err != nil {
+		if ctx.Err() != nil {
+			return false
+		}
+		s.vault.mu.Lock()
+		if s.vault.entries[task] == a {
+			stopLocked(a, "maintenance_failed_manual_reconciliation_required: "+err.Error())
+		}
+		s.vault.mu.Unlock()
+		return false
+	}
+	return true
 }
 
 type controllerReceipt struct {

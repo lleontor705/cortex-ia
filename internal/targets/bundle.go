@@ -97,6 +97,9 @@ type plan struct {
 	removes    []string
 	backups    []pendingBackup
 	backupSeen map[string]bool
+	copies     map[string]string
+	steps      []undoStep
+	rootMade   bool
 	changes    []string
 	conflicts  []string
 	unchanged  int
@@ -119,13 +122,20 @@ func Apply(b Bundle, opts ApplyOptions) (*TargetResult, error) {
 	if err := b.prepare(); err != nil {
 		return nil, err
 	}
+	if !opts.DryRun {
+		release, err := lockHome(b.Home)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+	}
 	mPath := filepath.Join(b.StateDir, manifestFileName)
 	prev, err := readManifest(mPath)
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now().UTC()
-	p, err := planApply(b, prev, opts, now.Format(backupStamp))
+	p, err := planApply(b, prev, opts, now)
 	if err != nil {
 		return nil, err
 	}
@@ -140,19 +150,29 @@ func Apply(b Bundle, opts ApplyOptions) (*TargetResult, error) {
 		return finishResult(res, b), nil
 	}
 
+	// Every write after the first one is covered by the undo log: any later
+	// failure, including a failed validation, restores the pre-run state and
+	// leaves the previous manifest in place.
 	if err := p.run(); err != nil {
-		return nil, err
+		return nil, p.abort(err)
 	}
 	m, err := buildManifest(b, now)
 	if err != nil {
-		return nil, err
+		return nil, p.abort(err)
 	}
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("encode manifest: %w", err)
+		return nil, p.abort(fmt.Errorf("encode manifest: %w", err))
 	}
-	if _, err := filemerge.WriteFileAtomic(mPath, append(data, '\n'), 0o644); err != nil {
-		return nil, fmt.Errorf("write manifest: %w", err)
+	if err := p.stage(mPath); err != nil {
+		return nil, p.abort(err)
+	}
+	mode, err := filemerge.ExistingMode(mPath, defaultFileMode)
+	if err != nil {
+		return nil, p.abort(err)
+	}
+	if _, err := filemerge.WriteFileAtomic(mPath, append(data, '\n'), mode); err != nil {
+		return nil, p.abort(fmt.Errorf("write manifest: %w", err))
 	}
 
 	res.Message = fmt.Sprintf("Installed %s (%s)", TargetLabel(b.Target), summary)
@@ -163,7 +183,7 @@ func Apply(b Bundle, opts ApplyOptions) (*TargetResult, error) {
 		}
 		if verr != nil {
 			res.Success = false
-			return finishResult(res, b), fmt.Errorf("%s validation failed: %w", TargetLabel(b.Target), verr)
+			return finishResult(res, b), p.abort(fmt.Errorf("%s validation failed: %w", TargetLabel(b.Target), verr))
 		}
 	}
 	return finishResult(res, b), nil
@@ -174,6 +194,13 @@ func Apply(b Bundle, opts ApplyOptions) (*TargetResult, error) {
 func Remove(b Bundle, dryRun bool) (*TargetResult, error) {
 	if err := b.prepare(); err != nil {
 		return nil, err
+	}
+	if !dryRun {
+		release, err := lockHome(b.Home)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
 	}
 	mPath := filepath.Join(b.StateDir, manifestFileName)
 	prev, err := readManifest(mPath)
@@ -186,7 +213,10 @@ func Remove(b Bundle, dryRun bool) (*TargetResult, error) {
 		return res, nil
 	}
 
-	p := newPlan(b.Home, filepath.Join(b.StateDir, backupDirName, time.Now().UTC().Format(backupStamp)))
+	p, err := newPlan(b.Home, b.StateDir, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
 	for _, pf := range prev.Files {
 		abs, err := joinHome(b.Home, pf.Path)
 		if err != nil {
@@ -247,20 +277,26 @@ func Remove(b Bundle, dryRun bool) (*TargetResult, error) {
 		return res, nil
 	}
 	if err := p.run(); err != nil {
-		return nil, err
+		return nil, p.abort(err)
+	}
+	if err := p.stage(mPath); err != nil {
+		return nil, p.abort(err)
+	}
+	if err := os.Remove(mPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, p.abort(fmt.Errorf("remove manifest: %w", err))
 	}
 	for _, dir := range b.OwnedDirs {
 		removeEmptyDirs(dir)
-	}
-	if err := os.Remove(mPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("remove manifest: %w", err)
 	}
 	res.Message = fmt.Sprintf("Removed %s", TargetLabel(b.Target))
 	return res, nil
 }
 
-func planApply(b Bundle, prev *manifest, opts ApplyOptions, stamp string) (*plan, error) {
-	p := newPlan(b.Home, filepath.Join(b.StateDir, backupDirName, stamp))
+func planApply(b Bundle, prev *manifest, opts ApplyOptions, now time.Time) (*plan, error) {
+	p, err := newPlan(b.Home, b.StateDir, now)
+	if err != nil {
+		return nil, err
+	}
 	prevFiles := map[string]manifestFile{}
 	prevJSON := map[string]manifestJSON{}
 	if prev != nil {
@@ -285,6 +321,14 @@ func (p *plan) planFiles(b Bundle, prevFiles map[string]manifestFile, opts Apply
 	for _, f := range b.Files {
 		abs := filepath.Clean(f.Path)
 		rel, _ := insideHome(b.Home, abs)
+		if isSymlink(abs) && !opts.Overwrite {
+			if cur, readErr := os.ReadFile(abs); readErr == nil && bytes.Equal(cur, f.Content) {
+				p.unchanged++
+			} else {
+				p.conflicts = append(p.conflicts, rel+" (is a symlink; cortex-ia will not replace it without --overwrite)")
+			}
+			continue
+		}
 		cur, err := os.ReadFile(abs)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
@@ -356,6 +400,10 @@ func (p *plan) planJSON(b Bundle, prevJSON map[string]manifestJSON, opts ApplyOp
 				p.conflicts = append(p.conflicts, label+" (a parent key is not an object)")
 				continue
 			}
+		}
+		if isSymlink(abs) && !opts.Overwrite {
+			p.conflicts = append(p.conflicts, label+" (settings file is a symlink; cortex-ia will not replace it without --overwrite)")
+			continue
 		}
 		if exists {
 			p.backup(abs)
@@ -448,8 +496,17 @@ func (p *plan) planStale(b Bundle, prev *manifest, prevFiles map[string]manifest
 	return nil
 }
 
-func newPlan(home, backupRoot string) *plan {
-	return &plan{home: home, backupRoot: backupRoot, backupSeen: map[string]bool{}}
+func newPlan(home, stateDir string, now time.Time) (*plan, error) {
+	backupRoot, err := newBackupRoot(stateDir, now)
+	if err != nil {
+		return nil, err
+	}
+	return &plan{
+		home:       home,
+		backupRoot: backupRoot,
+		backupSeen: map[string]bool{},
+		copies:     map[string]string{},
+	}, nil
 }
 
 // backup records one pre-change copy of an existing file. Each path is backed
@@ -466,28 +523,37 @@ func (p *plan) backup(abs string) {
 }
 
 // run executes the plan in order: backups first, then file writes, JSON
-// mutations, and deletions.
+// mutations, and deletions. Each mutation is staged in the undo log first.
 func (p *plan) run() error {
 	for _, bk := range p.backups {
-		data, err := os.ReadFile(bk.abs)
-		if err != nil {
-			return fmt.Errorf("back up %s: %w", bk.rel, err)
-		}
-		if _, err := filemerge.WriteFileAtomic(filepath.Join(p.backupRoot, filepath.FromSlash(bk.rel)), data, 0o644); err != nil {
-			return fmt.Errorf("back up %s: %w", bk.rel, err)
+		if _, err := p.preserve(bk.abs); err != nil {
+			return err
 		}
 	}
 	for _, w := range p.writes {
-		if _, err := filemerge.WriteFileAtomic(w.abs, w.content, 0o644); err != nil {
+		mode, err := filemerge.ExistingMode(w.abs, defaultFileMode)
+		if err != nil {
+			return err
+		}
+		if err := p.stage(w.abs); err != nil {
+			return err
+		}
+		if _, err := filemerge.WriteFileAtomic(w.abs, w.content, mode); err != nil {
 			return err
 		}
 	}
 	for _, j := range p.jsons {
+		if err := p.stage(j.abs); err != nil {
+			return err
+		}
 		if _, err := filemerge.MutateJSONFile(j.abs, filemerge.JSONMutation{Overlay: j.overlay, RemovePaths: j.remove}); err != nil {
 			return err
 		}
 	}
 	for _, r := range p.removes {
+		if err := p.stage(r); err != nil {
+			return err
+		}
 		if err := os.Remove(r); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("remove %s: %w", r, err)
 		}

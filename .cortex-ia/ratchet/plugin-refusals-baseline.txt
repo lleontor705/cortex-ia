@@ -19,15 +19,14 @@ internal/assets/plugins/cortex-lease-guard.ts	cortex-ia executable not found
 internal/assets/plugins/cortex-lease-guard.ts	executable lookup for '${cmd}' timed out after ${EXECUTABLE_LOOKUP_TIMEOUT_MS}ms
 internal/assets/plugins/cortex-lease-guard.ts	lease for targets has expired
 internal/assets/plugins/cortex-lease-guard.ts	missing task identity in lease verification response
-internal/assets/plugins/cortex-permission-fence.ts	CORTEX_PERMISSION_FENCE: Path '${targetPath}' is protected by Cortex-IA governance policy.
+internal/assets/plugins/cortex-permission-fence.ts	CORTEX_PERMISSION_FENCE: Path '${protectedTarget}' is protected by Cortex-IA governance policy.
 internal/assets/plugins/cortex-permission-fence.ts	CORTEX_PERMISSION_FENCE: Role '${role}' is restricted to read-only operations. File mutations are forbidden.
+internal/assets/plugins/cortex-permission-fence.ts	CORTEX_PERMISSION_FENCE: patch text could not be parsed; its target paths cannot be verified.
 internal/assets/plugins/cortex-permission-fence.ts	workload audit: baseRef must be a git revision, not an option
 internal/assets/plugins/cortex-permission-fence.ts	workload audit: git diff failed for baseRef '${baseRef}'
 internal/assets/plugins/cortex-permission-fence.ts	workload audit: policy must be strict, flexible or unbounded
 internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: explicit locator not found or unreadable: ${locator}
 internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: invalid locator path
-internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: same-precedence collision for skill '${name}': candidates [${combined.get(name)!.path}, ${skill.path}]
-internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: same-precedence collision for skill '${name}': candidates [${map.get(name)!.path}, ${canonical}]
 internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: skill '${name}' not found in any inventory
 internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: skill name is required
 internal/assets/plugins/cortex-snapshot.ts	Invalid snapshot content or byte length

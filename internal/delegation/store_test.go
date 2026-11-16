@@ -119,11 +119,14 @@ func TestWorkItemsClaimsAndLeases(t *testing.T) {
 	_, _ = store.CreateBoard(ctx, "default", "Default Board", "")
 
 	// 1. Create Work Item with dependency
-	_, err = store.CreateWorkInBoard(ctx, "default", "t-dep", "Dependency task", nil)
+	project := t.TempDir()
+	_, err = store.CreateWorkInBoardWithDefinition(ctx, "default", "t-dep", "Dependency task", nil, WorkDefinition{Project: project})
 	if err != nil {
 		t.Fatalf("CreateWorkInBoard dep failed: %v", err)
 	}
-	item, err := store.CreateWorkInBoard(ctx, "default", "t-1", "Main task", []string{"t-dep"})
+	item, err := store.CreateWorkInBoardWithDefinition(ctx, "default", "t-1", "Main task", []string{"t-dep"}, WorkDefinition{
+		Project: project, AllowedFiles: []string{"src/main.go"},
+	})
 	if err != nil {
 		t.Fatalf("CreateWorkInBoard failed: %v", err)
 	}
@@ -356,7 +359,8 @@ func TestVerifySessionWorkLeases_Batch(t *testing.T) {
 			OpenCodeSessionID:     sessionID,
 			OpenCodeRootSessionID: sessionID,
 		},
-		Project: workspace,
+		Project:      workspace,
+		AllowedFiles: []string{"src/file1.go", "src/file2.go"},
 	})
 	if err != nil {
 		t.Fatalf("CreateWorkInBoardWithDefinition failed: %v", err)

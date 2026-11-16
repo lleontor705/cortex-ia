@@ -484,8 +484,8 @@ func CleanupLegacyFlatFiles(homeDir string) error {
 			continue
 		}
 		name := entry.Name()
-		if (len(name) > 23 && name[:23] == "cortex-authority-state-" && len(name) > 5 && name[len(name)-5:] == ".json") ||
-			(len(name) > 22 && name[:22] == "cortex-delegation-panes-" && len(name) > 5 && name[len(name)-5:] == ".json") ||
+		if (strings.HasPrefix(name, "cortex-authority-state-") && strings.HasSuffix(name, ".json")) ||
+			(strings.HasPrefix(name, "cortex-delegation-panes-") && strings.HasSuffix(name, ".json")) ||
 			name == "cortex-delegation-events.jsonl" {
 			_ = os.Remove(filepath.Join(configDir, name))
 		}
