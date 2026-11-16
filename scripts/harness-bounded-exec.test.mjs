@@ -44,7 +44,7 @@ test('task latch bounds the PATH scan behind the circuit report', async () => {
   await plugin.dispose();
 });
 
-test('workload audit bounds the git diff and degrades to empty stats', async () => {
+test('workload audit bounds the git diff and fails closed when it times out', async () => {
   const calls = [];
   const mod = await loadPluginFile('internal/assets/plugins/cortex-permission-fence.ts', {
     childProcess: {
@@ -54,12 +54,11 @@ test('workload audit bounds the git diff and degrades to empty stats', async () 
       },
     },
   });
-  const result = mod.exports.auditWorkload('/isolated/harness', 'flexible', 'HEAD');
+  assert.throws(() => mod.exports.auditWorkload('/isolated/harness', 'flexible', 'HEAD'), /git diff failed/);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].file, 'git');
+  assert.equal(calls[0].args.join(' '), 'diff --numstat HEAD --');
   assert.equal(calls[0].opts.timeout, 10000);
-  assert.equal(result.workload_status, 'PASS');
-  assert.equal(result.files_changed, 0);
 });
 
 test('cortex project lookup bounds its git spawns during plugin setup', async () => {

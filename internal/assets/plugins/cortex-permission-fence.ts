@@ -99,19 +99,29 @@ export interface WorkloadAuditResult {
   files: { path: string; added: number; deleted: number; category: string }[];
 }
 
+const AUDIT_POLICIES = ["strict", "flexible", "unbounded"] as const;
+
 export function auditWorkload(
   directory: string,
   policy: "strict" | "flexible" | "unbounded" = "flexible",
   baseRef: string = "HEAD"
 ): WorkloadAuditResult {
+  if (!(AUDIT_POLICIES as readonly string[]).includes(policy)) {
+    throw new Error("workload audit: policy must be strict, flexible or unbounded");
+  }
+  // A model-supplied ref must never reach git as an option (`--output=<file>` writes).
+  if (typeof baseRef !== "string" || baseRef.length === 0 || baseRef.startsWith("-") || baseRef.includes("\0")) {
+    throw new Error("workload audit: baseRef must be a git revision, not an option");
+  }
   const files: { path: string; added: number; deleted: number; category: string }[] = [];
   let logicAdded = 0;
   let logicDeleted = 0;
   let testAdded = 0;
   let testDeleted = 0;
 
+  let raw: string;
   try {
-    const raw = execFileSync("git", ["diff", "--numstat", baseRef], {
+    raw = execFileSync("git", ["diff", "--numstat", baseRef, "--"], {
       cwd: directory,
       encoding: "utf8",
       maxBuffer: 1024 * 1024,
@@ -119,35 +129,38 @@ export function auditWorkload(
       windowsHide: true,
       timeout: GIT_DIFF_TIMEOUT_MS,
     });
+  } catch {
+    // A failed diff must not read as a clean PASS.
+    throw new Error(`workload audit: git diff failed for baseRef '${baseRef}'`);
+  }
 
-    const lines = raw.trim().split(/\r?\n/);
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const parts = line.split(/\t/);
-      if (parts.length < 3) continue;
-      const added = parseInt(parts[0], 10) || 0;
-      const deleted = parseInt(parts[1], 10) || 0;
-      const filePath = parts[2].trim();
+  const lines = raw.trim().split(/\r?\n/);
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const parts = line.split(/\t/);
+    if (parts.length < 3) continue;
+    const added = parseInt(parts[0], 10) || 0;
+    const deleted = parseInt(parts[1], 10) || 0;
+    const filePath = parts[2].trim();
 
-      const isTest = /(_test\.|[._]test\.|[._]spec\.|[/\\]tests?[/\\]|[/\\]fixtures?[/\\])/i.test(filePath);
-      const isSchemaOrDoc = /(\.md|\.json|\.ya?ml|\.sql)$/i.test(filePath);
+    const isTest = /(_test\.|[._]test\.|[._]spec\.|[/\\]tests?[/\\]|[/\\]fixtures?[/\\])/i.test(filePath);
+    const isSchemaOrDoc = /(\.md|\.json|\.ya?ml|\.sql)$/i.test(filePath);
 
-      let category = "source";
-      if (isTest) {
-        category = "test";
-        testAdded += added;
-        testDeleted += deleted;
-      } else if (isSchemaOrDoc) {
-        category = "schema_doc";
-      } else {
-        category = "source";
-        logicAdded += added;
-        logicDeleted += deleted;
-      }
-
-      files.push({ path: filePath, added, deleted, category });
+    let category = "source";
+    if (isTest) {
+      category = "test";
+      testAdded += added;
+      testDeleted += deleted;
+    } else if (isSchemaOrDoc) {
+      category = "schema_doc";
+    } else {
+      category = "source";
+      logicAdded += added;
+      logicDeleted += deleted;
     }
-  } catch {}
+
+    files.push({ path: filePath, added, deleted, category });
+  }
 
   const weightedLogic = Math.round(logicAdded + logicDeleted * 0.2);
   const totalTest = testAdded + testDeleted;
