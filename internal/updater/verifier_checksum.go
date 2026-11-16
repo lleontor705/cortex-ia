@@ -6,19 +6,16 @@ import (
 	"strings"
 )
 
-// checksumVerifier verifies release metadata without a signature: it trusts the
-// pinned-HTTPS transport allowlist, structural manifest validation, and the
-// per-artifact SHA-256 digest check. It is opt-in and never activates without
-// explicit consent.
+// checksumVerifier checks release eligibility and per-artifact integrity.
+//
+// checksums.txt is published in the same GitHub release as the archive it lists.
+// A matching digest therefore proves the downloaded bytes are the ones that
+// release published, and that the transfer was not corrupted or altered in
+// flight. It does not prove who published the release. Authenticity is
+// checkable by the user with `gh attestation verify <archive> --repo
+// lleontor705/cortex-ia`, against the build provenance attested by the release
+// workflow (see docs/reference/updater-verification-profiles.md).
 type checksumVerifier struct{}
-
-func (checksumVerifier) Name() VerificationProfile { return ProfileChecksum }
-
-// RequireAuthority passes unconditionally: release authenticity and integrity
-// are anchored by pinned-HTTPS transport and SHA-256 digests in checksums.txt.
-func (checksumVerifier) RequireAuthority() error {
-	return nil
-}
 
 // CheckEligibility keeps the canonical release-build contract and extends
 // eligibility to development builds by comparing the candidate against the
@@ -64,9 +61,4 @@ func checksumFloorDelta(tag, appliedFloor string) (delta int, hasFloor bool, err
 		return 0, false, fmt.Errorf("invalid applied floor: %w", err)
 	}
 	return CompareCanonical(cand, floorVer), true, nil
-}
-
-// RequiredAssets names the standard GoReleaser checksums asset.
-func (checksumVerifier) RequiredAssets() []string {
-	return []string{ChecksumsFileName}
 }

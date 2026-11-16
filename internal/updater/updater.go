@@ -105,9 +105,6 @@ func (c *Client) CheckLatestFresh(ctx context.Context, currentVersion string) (*
 
 func (c *Client) checkLatest(ctx context.Context, currentVersion string, conditional bool) (*Release, bool, error) {
 	verifier := defaultVerifier()
-	if err := verifier.RequireAuthority(); err != nil {
-		return nil, false, err
-	}
 
 	var cached UpdateState
 	if conditional && c.StateHome != "" {
@@ -322,14 +319,11 @@ func (c *Client) ApplyUpdate(ctx context.Context, currentVersion string, rel *Re
 	return c.ApplyUpdateToTarget(ctx, currentVersion, rel, "")
 }
 
-// ApplyUpdateToTarget downloads the release asset for the current OS/Arch, verifies metadata, signature,
-// and artifact digest, safely extracts the executable, and replaces the target binary.
-// If targetPath is empty, it resolves os.Executable().
+// ApplyUpdateToTarget downloads the release asset for the current OS/Arch, verifies its
+// eligibility and SHA-256 digest against the release checksums.txt, safely extracts the
+// executable, and replaces the target binary. If targetPath is empty, it resolves os.Executable().
 func (c *Client) ApplyUpdateToTarget(ctx context.Context, currentVersion string, rel *Release, targetPath string) error {
 	verifier := defaultVerifier()
-	if err := verifier.RequireAuthority(); err != nil {
-		return err
-	}
 	tag := ""
 	if rel != nil {
 		tag = rel.TagName

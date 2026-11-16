@@ -30,6 +30,10 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+	// The HMAC key for report signatures is embedded in public release binaries
+	// through telemetry.CanonicalDefaultSecret (ldflags). Anyone can extract it, so
+	// treat it as public: it authenticates report shape only, never a person or
+	// the read endpoints. Read access is gated by DASHBOARD_PASSWORD/basic auth.
 	secret := strings.TrimSpace(os.Getenv("CORTEX_REPORT_SECRET"))
 	authUser := strings.TrimSpace(os.Getenv("DASHBOARD_USER"))
 	if authUser == "" {
@@ -144,7 +148,10 @@ func main() {
 
 	addr := ":" + port
 	log.Printf("🚀 Cortex Report Hub started on %s (Auth Protected: %v, User: %s)", addr, authPassword != "", authUser)
-	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
+	// Trust the proxy-appended X-Forwarded-For entry: the hub runs behind a single
+	// edge proxy, so every request otherwise shares the proxy's address as its key.
+	limiter := newRateLimiter(rateLimitPerMinute, true)
+	server := &http.Server{Addr: addr, Handler: limiter.middleware("/health", mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
@@ -158,6 +165,12 @@ func ensureReportSchemaVersion(db *sql.DB) error {
 	}
 	_, err = db.Exec("ALTER TABLE reports ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 0")
 	return err
+}
+
+// secretEqual compares secrets in constant time so response timing does not
+// reveal how many leading bytes of the password matched.
+func secretEqual(got, want string) bool {
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
 func (h *HubServer) requireAuth(next http.HandlerFunc) http.HandlerFunc {
@@ -176,11 +189,11 @@ func (h *HubServer) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 		// 2. Bearer Token or X-Cortex-Key Header
 		authHeader := r.Header.Get("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer ") && strings.TrimPrefix(authHeader, "Bearer ") == h.authPassword {
+		if strings.HasPrefix(authHeader, "Bearer ") && secretEqual(strings.TrimPrefix(authHeader, "Bearer "), h.authPassword) {
 			next(w, r)
 			return
 		}
-		if r.Header.Get("X-Cortex-Key") == h.authPassword {
+		if secretEqual(r.Header.Get("X-Cortex-Key"), h.authPassword) {
 			next(w, r)
 			return
 		}

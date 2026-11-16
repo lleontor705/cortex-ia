@@ -42,9 +42,6 @@ func runUpdate(args []string) error {
 		}
 	}
 
-	// Consent is per-run: an absent flag clears any prior grant so one
-	// invocation can never inherit a stale checksum selection.
-	updater.SetChecksumConsent(allowChecksumUpdates)
 	if allowChecksumUpdates {
 		fmt.Println("Note: --allow-checksum-updates is deprecated; checksums.txt verification is now the default")
 	}
