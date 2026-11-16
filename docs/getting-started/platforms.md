@@ -56,6 +56,9 @@ roots fail closed.
 - agy plugins have no commands, so each command is installed as a skill named
   `cmd-<name>`.
 - The agy install runs `agy plugin validate` when `agy` is on `PATH`.
+- agy does not tell the host guard which agent is calling, so agy agents can create,
+  claim, implement and transition tasks, but cannot approve, recover, retry, reconcile or
+  decompose them. Approve agy work from a terminal with `cortex-ia work approve`.
 - Host roles are not separate prompts: role bodies, skills, and contracts are
   the same embedded assets. Each host receives a short "Host adaptation"
   preamble that maps tool names and rewrites the contracts path.

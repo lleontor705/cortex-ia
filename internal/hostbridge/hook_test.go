@@ -116,14 +116,12 @@ func TestDecideBridgeRoleAndBinding(t *testing.T) {
 
 	agyApprove := agyInput("call_mcp_tool", map[string]any{
 		"ServerName": "cortex_ia",
-		"ToolName":   "cortex_ia_work_claim",
+		"ToolName":   "cortex_ia_work_approve",
 		"Arguments":  `{"task_id":"T2"}`,
 	})
-	if d := mustDecide(t, agyApprove, deps); d.Verdict != PassThrough {
-		t.Fatalf("agy bridge call should pass through, got %+v", d)
-	}
-	if _, err := ResolveCaller(stateHome, "T2", hookNow); err != nil {
-		t.Fatalf("agy bridge call did not bind caller: %v", err)
+	assertVerdict(t, mustDecide(t, agyApprove, deps), Deny, "does not identify the calling role")
+	if _, err := ResolveCaller(stateHome, "T2", hookNow); err == nil {
+		t.Fatal("denied agy bridge call must not bind a caller")
 	}
 }
 

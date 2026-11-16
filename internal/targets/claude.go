@@ -66,6 +66,8 @@ func ClaudeBundle(home string) (Bundle, error) {
 				Value: map[string]any{"command": "cortex", "args": []string{"mcp", "--tools=agent"}}},
 			{Path: filepath.Join(home, ".claude.json"), Key: []string{"mcpServers", "cortex_ia"},
 				Value: map[string]any{"command": "cortex-ia", "args": []string{"mcp", "serve", "--host", "claude"}}},
+			// Marks Claude Code shells so the CLI refuses authority verbs from them.
+			{Path: filepath.Join(home, ".claude", "settings.json"), Key: []string{"env", "CORTEX_IA_AGENT_SHELL"}, Value: "1"},
 		},
 	}
 

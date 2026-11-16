@@ -241,7 +241,7 @@ async function verifyLeasesForTool(
     }
     const targetsStr = targets.join(", ");
     const suffix = reason ? `: ${reason}` : ": all native mutation targets require a live session-owned claim and lease in this workspace";
-    const recoveryGuidance = `\n[RECOVERY GUIDANCE] If you already own an active task claim, run cortex_ia_file_reserve({ task_id, paths: ['${targets.join("', '")}'] }) to reserve this path. If starting work on a task, run cortex_ia_work_claim({ task_id, paths: ['${targets.join("', '")}'] }). If lease expired, run cortex_ia_work_lease_renew({ task_id, path }). If authority was lost, run cortex_ia_work_recover_own({ task_id }).`;
+    const recoveryGuidance = `\n[RECOVERY GUIDANCE] If you already own an active task claim, run cortex_ia_file_reserve({ task_id, paths: ['${targets.join("', '")}'] }) to reserve this path. If starting work on a task, run cortex_ia_work_claim({ task_id, paths: ['${targets.join("', '")}'] }). If a lease or claim is near expiry, run cortex_ia_work_renew({ task_id }) (renews the claim and every lease). If authority was lost, run cortex_ia_work_recover_own({ task_id }).`;
     throw new Error(`LEASE_REQUIRED${suffix} (target: '${targetsStr}')${recoveryGuidance}`);
   }
 }

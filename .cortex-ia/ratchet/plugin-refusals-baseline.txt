@@ -21,6 +21,9 @@ internal/assets/plugins/cortex-lease-guard.ts	lease for targets has expired
 internal/assets/plugins/cortex-lease-guard.ts	missing task identity in lease verification response
 internal/assets/plugins/cortex-permission-fence.ts	CORTEX_PERMISSION_FENCE: Path '${targetPath}' is protected by Cortex-IA governance policy.
 internal/assets/plugins/cortex-permission-fence.ts	CORTEX_PERMISSION_FENCE: Role '${role}' is restricted to read-only operations. File mutations are forbidden.
+internal/assets/plugins/cortex-permission-fence.ts	workload audit: baseRef must be a git revision, not an option
+internal/assets/plugins/cortex-permission-fence.ts	workload audit: git diff failed for baseRef '${baseRef}'
+internal/assets/plugins/cortex-permission-fence.ts	workload audit: policy must be strict, flexible or unbounded
 internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: explicit locator not found or unreadable: ${locator}
 internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: invalid locator path
 internal/assets/plugins/cortex-skill-discovery.ts	CONTEXT_RESOLUTION_ERROR: same-precedence collision for skill '${name}': candidates [${combined.get(name)!.path}, ${skill.path}]
@@ -75,7 +78,7 @@ internal/assets/plugins/cortex-task-latch.ts	SUBAGENT_TRANSPORT_ERROR: duplicate
 internal/assets/plugins/cortex-task-latch.ts	role mismatch
 internal/assets/plugins/cortex-work.ts	${error?.message || "invalid reservation receipt"} — the claim is held by this session; call cortex_ia_work_release_all or cortex_ia_work_recover_own before retrying
 internal/assets/plugins/cortex-work.ts	${name} executable not found
-internal/assets/plugins/cortex-work.ts	'to' or 'status' is required for work transition
+internal/assets/plugins/cortex-work.ts	'to' is required for work transition: one of in_review, in_progress, blocked
 internal/assets/plugins/cortex-work.ts	BRIDGE_POLICY_UNCLASSIFIED: ${name}
 internal/assets/plugins/cortex-work.ts	BRIDGE_ROLE_DENIED: ${name} is available to roles [${allowed.join(", ")}]; caller role is "${context?.agent || "unknown"}"
 internal/assets/plugins/cortex-work.ts	BRIDGE_ROLE_DENIED: artifact output requires the host implement controller
@@ -93,19 +96,20 @@ internal/assets/plugins/cortex-work.ts	[CORTEX-IA STATE SNAPSHOT]
 internal/assets/plugins/cortex-work.ts	authority for ${args.task_id} is already held by this controller
 internal/assets/plugins/cortex-work.ts	content hash input exceeds 1 MiB (1048576 UTF-8 bytes)
 internal/assets/plugins/cortex-work.ts	content hash requires well-formed Unicode for exact UTF-8 encoding
+internal/assets/plugins/cortex-work.ts	controller renewal unconfirmed: query work_status before continuing
 internal/assets/plugins/cortex-work.ts	controller_renewal_unconfirmed
 internal/assets/plugins/cortex-work.ts	cortex-ia returned no claim token
 internal/assets/plugins/cortex-work.ts	discovery report escaped the project-local .cortex-ia directory
 internal/assets/plugins/cortex-work.ts	discovery report must contain 1-131072 UTF-8 bytes
 internal/assets/plugins/cortex-work.ts	discovery report must start with the canonical heading \"# Cortex-IA Project Discovery\"
-internal/assets/plugins/cortex-work.ts	either 'path' or 'paths' must be provided to release files
-internal/assets/plugins/cortex-work.ts	either 'path' or 'paths' must be provided to reserve files
 internal/assets/plugins/cortex-work.ts	host_status_timeout
 internal/assets/plugins/cortex-work.ts	implementation session cannot approve its own task
 internal/assets/plugins/cortex-work.ts	incomplete reservation receipt; reconcile durable authority before retry
 internal/assets/plugins/cortex-work.ts	invalid reservation receipt; reconcile durable authority before retry
 internal/assets/plugins/cortex-work.ts	only the discovery agent may write the project discovery report
 internal/assets/plugins/cortex-work.ts	paths must be an array
+internal/assets/plugins/cortex-work.ts	paths must list at least one file to release
+internal/assets/plugins/cortex-work.ts	paths must list at least one file to reserve
 internal/assets/plugins/cortex-work.ts	reservation requires 1-128 nonempty paths
 internal/assets/plugins/cortex-work.ts	scoped recover denied: session does not own the in-memory authority for this task
 internal/assets/plugins/cortex-work.ts	this implement session already owns one work task; dispatch a separate controller for additional work

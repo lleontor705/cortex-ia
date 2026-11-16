@@ -53,16 +53,6 @@ var plannerPlanPath = regexp.MustCompile(`^docs/plans/[a-z0-9][a-z0-9._-]{0,127}
 
 var orchestratorReadTools = map[string]bool{"Read": true, "Grep": true, "Glob": true}
 
-// envFileGlob matches a glob or pattern that names env files, such as "*.env",
-// "**/.env*" or "*.{env,txt}".
-var envFileGlob = regexp.MustCompile(`(^|[^A-Za-z0-9_])\.env|[{,]env([^A-Za-z0-9_]|$)`)
-
-var (
-	workAuthorityShellPattern  = regexp.MustCompile(`(^|[\s;&|(])(\S*/)?cortex-ia\s+work\s+(claim|controller-renew|renew|lease|reserve|file-reserve|lease-renew|release|release-all|transition|approve|retry|decompose|recover|reconcile|prune|degrade|revise|review-refresh|archive)\b`)
-	boardMutationShellPattern  = regexp.MustCompile(`(^|[\s;&|(])(\S*/)?cortex-ia\s+board\s+(archive|unarchive|delete)\b`)
-	sqliteDatabaseShellPattern = regexp.MustCompile(`sqlite3\b[^|;&]*delegation\.db`)
-)
-
 var (
 	claudeFileMutationTools = map[string]bool{"Write": true, "Edit": true, "MultiEdit": true, "NotebookEdit": true}
 	claudeFilePathKeys      = []string{"file_path", "notebook_path"}
@@ -156,8 +146,8 @@ func Decide(in HookInput, deps Deps) (Decision, error) {
 		return decideFileMutation(in, deps, stringArg(in.Args, filePathKeys(in)...))
 	}
 	if command, ok := shellCommand(in); ok {
-		if workAuthorityShellPattern.MatchString(command) || boardMutationShellPattern.MatchString(command) || sqliteDatabaseShellPattern.MatchString(command) {
-			return deny("work-authority changes go through the cortex_ia_* tools, not the shell"), nil
+		if reason := shellDenyReason(command); reason != "" {
+			return deny(reason), nil
 		}
 		return pass(), nil
 	}
@@ -250,7 +240,10 @@ func bridgeCall(in HookInput) (string, map[string]any, bool) {
 }
 
 func decideBridge(in HookInput, deps Deps, tool string, args map[string]any) (Decision, error) {
-	if in.Role != "" && !RoleMayCall(in.Role, tool) {
+	if !RoleMayCall(in.Role, tool) {
+		if in.Role == "" {
+			return deny(fmt.Sprintf("%s is restricted to roles [%s] and this host does not identify the calling role; approve or recover from a terminal with cortex-ia work", tool, strings.Join(AllowedRoles(tool), ", "))), nil
+		}
 		return deny(fmt.Sprintf("%s is available to roles [%s]; this agent's role is %q", tool, strings.Join(AllowedRoles(tool), ", "), in.Role)), nil
 	}
 	taskID := stringArg(args, "task_id")
@@ -367,15 +360,10 @@ func decideOrchestratorRead(in HookInput) Decision {
 	if !inside {
 		return deny("the orchestrator reads and searches only inside the workspace; dispatch investigate for anything outside it")
 	}
-	if isEnvFile(rel) || envFileGlob.MatchString(glob) {
+	if isEnvFile(rel) || envFilterDenied(glob) {
 		return deny("env files hold secrets and are not readable by the orchestrator; dispatch investigate if their shape is needed")
 	}
 	return pass()
-}
-
-func isEnvFile(rel string) bool {
-	base := path.Base(rel)
-	return base == ".env" || strings.HasPrefix(base, ".env.")
 }
 
 func shellCommand(in HookInput) (string, bool) {
