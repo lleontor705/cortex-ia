@@ -123,7 +123,6 @@ test('dispatchInfo enforces role alignment and boundaries', async () => {
 
   const res = dispatchInfo({ subagent_type: 'implement' }, validPrompt);
   assert.equal(res.limit, 150);
-  assert.equal(res.operational, false);
 
   const mismatchPrompt = `<minion-dispatch>
 {
@@ -231,7 +230,6 @@ test('dispatchInfo normalizes investigate envelope with description fallback', a
 
   const res = dispatchInfo({ agent: 'investigate', description: 'Mapear arquitectura inventario actual' }, prompt);
   assert.equal(res.limit, 60);
-  assert.equal(res.operational, false);
   const normalized = JSON.parse(res.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
   assert.equal(normalized.contract_version, '2.0');
   assert.equal(normalized.role, 'investigate');

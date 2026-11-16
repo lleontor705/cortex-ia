@@ -19,6 +19,7 @@ async function heartbeat() {
   const timers = new Map(), calls = [], controls = { renewFailures: 0 };
   const expiry = () => new Date(now + 900000).toISOString();
   const sandbox = createIsolatedSandbox({
+    env: { HOME: home }, virtualFiles: { [path.join(home, 'go', 'bin', 'cortex-ia')]: 'binary' },
     mockPluginSDK: { tool: Object.assign(x => x, { schema }) },
     childProcess: { execFileSync: (_file, args) => {
       calls.push(Array.from(args));
@@ -118,7 +119,7 @@ test('tool error reports keep secrets out of argv and redact the stdin details',
       execFile: (_file, args) => { argvCalls.push(args); return { stdin: { on() {}, end(data) { stdin.push(data); } } }; },
     },
   });
-  const plugin = await mod.instantiate({ directory: home });
+  const plugin = await mod.instantiate({ directory: path.join(home, 'project') });
   await plugin['tool.execute.after'](
     { tool: 'edit', sessionID: 'ses-redact', callID: 'call-r', args: {} },
     { output: 'Error: write refused: lease_token=DEMOLEASE9 and claim_token: DEMOCLAIM9' }

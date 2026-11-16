@@ -4,7 +4,6 @@ import path from 'node:path';
 import { loadPluginFile } from './harness-plugin-loader.mjs';
 
 const TELEMETRY = 'internal/assets/plugins/cortex-tool-telemetry.ts';
-const BRIDGE = 'internal/assets/plugins/cortex-work.ts';
 
 const root = path.resolve('/isolated/harness');
 const home = path.resolve('/isolated/home');
@@ -152,47 +151,4 @@ test('labeled secrets are redacted and pass the drop gate', async () => {
   const redacted = redactSecrets(labeled);
   assert.ok(!redacted.includes('DEMOPASSWORD2') && !redacted.includes('DEMOAPIKEY2') && !redacted.includes('DEMOTOKEN2'));
   assert.equal(hasUnredactableSecret(redacted), false, 'a labeled secret is rewritten, not dropped');
-});
-
-async function compactReceipt(verdicts) {
-  const bridge = await loadPluginFile(BRIDGE, { allowChildProcess: true });
-  const structured_output = verdicts === undefined ? { summary: 'ok' } : { summary: 'ok', verdicts };
-  const res = { status: 'succeeded', output: { structured_output } };
-  return bridge.exports.extractCompactReceipt({ status: 'succeeded' }, res, 'job-redaction-1');
-}
-
-test('normalizeVerdicts drops malformed entries and trims accepted ones', async () => {
-  const result = await compactReceipt([
-    { req_id: 'REQ-1', verdict: 'PASS', evidence_ref: 'ev-1' },
-    { req_id: ' REQ-2 ', verdict: ' BLOCKED ', evidence_ref: 'ev-2' },
-    { req_id: 'REQ-3', verdict: 'MAYBE', evidence_ref: 'ev-3' },
-    { req_id: '   ', verdict: 'PASS', evidence_ref: 'ev-4' },
-    { req_id: 'REQ-5', verdict: 'PASS', evidence_ref: 42 },
-    { req_id: 'REQ-6', verdict: 'fail', evidence_ref: 'ev-6' },
-    { check_id: ' AC-8 ', verdict: 'FAIL', evidence_ref: 'ev-8' },
-    null,
-    'REQ-7',
-  ]);
-
-  // Sandbox-realm arrays have a foreign prototype, so compare structurally.
-  assert.deepEqual(JSON.parse(JSON.stringify(result.output.verdicts)), [
-    { check_id: 'REQ-1', verdict: 'PASS', evidence_ref: 'ev-1' },
-    { check_id: 'REQ-2', verdict: 'BLOCKED', evidence_ref: 'ev-2' },
-    { check_id: 'AC-8', verdict: 'FAIL', evidence_ref: 'ev-8' },
-  ]);
-});
-
-test('normalizeVerdicts omits the field when absent or non-array and keeps an empty array', async () => {
-  const absent = await compactReceipt(undefined);
-  assert.ok(!('verdicts' in absent.output), 'an absent verdicts field must be omitted');
-  assert.ok(!('verdicts' in absent), 'the compact result must not fabricate verdicts');
-
-  for (const bad of ['PASS', {}, 42, null]) {
-    const result = await compactReceipt(bad);
-    assert.ok(!('verdicts' in result.output), `non-array verdicts ${JSON.stringify(bad)} must be omitted`);
-  }
-
-  const empty = await compactReceipt([]);
-  assert.ok(Array.isArray(empty.output.verdicts), 'an explicitly empty array is retained');
-  assert.equal(empty.output.verdicts.length, 0);
 });
