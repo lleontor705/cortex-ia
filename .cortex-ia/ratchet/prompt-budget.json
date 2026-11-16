@@ -21,8 +21,8 @@
       "imperatives": 0
     },
     "planner": {
-      "body": 1060,
-      "always": 1821,
+      "body": 1236,
+      "always": 1997,
       "imperatives": 0
     },
     "implement": {
@@ -66,11 +66,11 @@
       "imperatives": 0
     },
     "grill-me": {
-      "body": 351,
+      "body": 372,
       "imperatives": 0
     },
     "hotfix-triage": {
-      "body": 621,
+      "body": 631,
       "imperatives": 0
     },
     "implement": {
@@ -82,7 +82,7 @@
       "imperatives": 0
     },
     "mutation-testing": {
-      "body": 540,
+      "body": 580,
       "imperatives": 0
     },
     "opencode2-knowledge": {
@@ -90,11 +90,11 @@
       "imperatives": 0
     },
     "parallel-dispatch": {
-      "body": 605,
+      "body": 657,
       "imperatives": 0
     },
     "planner": {
-      "body": 790,
+      "body": 846,
       "imperatives": 0
     },
     "property-based-testing": {
@@ -102,7 +102,7 @@
       "imperatives": 0
     },
     "spike-prototype": {
-      "body": 525,
+      "body": 573,
       "imperatives": 0
     },
     "system-diagrams": {
@@ -124,11 +124,11 @@
       "imperatives": 0
     },
     "cortex-convention.md": {
-      "tokens": 1186,
+      "tokens": 1215,
       "imperatives": 0
     },
     "cortex-work-protocol.md": {
-      "tokens": 5460,
+      "tokens": 5760,
       "imperatives": 0
     },
     "diagnosis-loop-contract.md": {
@@ -140,7 +140,7 @@
       "imperatives": 0
     },
     "workflow-map.md": {
-      "tokens": 1312,
+      "tokens": 1440,
       "imperatives": 0
     }
   }

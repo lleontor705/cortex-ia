@@ -16,7 +16,7 @@ Before editing, name the containment boundary, the rollback checkpoint, and the 
 ## Procedure
 
 1. **Triage the symptom.**
-   - Read prior incidents with `cortex_context` and `cortex_get_observation` for the `gotchas/<module>` and `hotfix/<incident_id>` topics.
+   - Find prior incidents with `cortex_search` on the `gotchas/<module>` and `hotfix/<incident_id>` topics, then read them with `cortex_get_observation`.
    - Establish the tightest oracle for the reported symptom before editing (`diagnosis-loop-contract.md`). If containment cannot wait for a full diagnosis, label the causal verdict `INCONCLUSIVE` and keep the containment reversible.
    - Find the smallest failing boundary. A nearby failure does not stand in for the reported one.
 2. **Reserve the work.** If a Cortex-IA task exists, follow the implementer lifecycle in `cortex-work-protocol.md` §4: claim, file leases, review hand-off, cleanup.

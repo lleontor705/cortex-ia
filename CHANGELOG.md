@@ -47,6 +47,25 @@ All notable changes to this project are documented here. Versions follow
 - The planner can write its plan file under all hosts' write guards.
 - `cortex_ia_snapshot_read` and `cortex_ia_workload_audit` return valid OpenCode tool results.
 
+### Flow coherence
+
+- The work state machine is one table in the protocol (actor, required state, tool), and the
+  orchestrator and implement prompts follow it: retry after a FAIL calls `work_retry` before
+  re-dispatch, a failed or recovered claim is reported instead of re-claimed, and two FAILs
+  route the task to decompose.
+- `cortex_ia_work_create` takes `workload_policy`, so the strict LOC budget can apply.
+- Plans: the planner is the only board creator and gains an `update` phase for check changes
+  and close; implementers never lease the plan file; the Progress section is gone; acceptance
+  checks travel as `AC-<n>: <command>` and reviewers verify only the checks a task names.
+- The orchestrator can run `workload_audit` and save gotchas, so auto-approval and failure
+  memory rest on its own evidence.
+- Claude Code: the planner can write its plan and the orchestrator can ask the user; agy:
+  the planner can write; both host preambles state what the guard actually enforces.
+- Advisory step budgets match the frontmatter caps more closely, and budget warnings use
+  fixed text so they no longer break prompt caching.
+- The mutation-testing skill reverts with an inverse edit instead of `git checkout`, which
+  discarded the implementer's uncommitted fix.
+
 ### Security
 
 - Agent shells can no longer approve their own work through `cortex-ia work`: the host guard
