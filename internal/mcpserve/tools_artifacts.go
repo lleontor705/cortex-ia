@@ -6,8 +6,6 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
-
-	"github.com/lleontor705/cortex-ia/internal/hostbridge"
 )
 
 var (
@@ -147,8 +145,8 @@ func (s *session) artifactCommand(ctx context.Context, argv []string, output str
 		return "", errors.New("LEASE_REQUIRED: artifact output requires one live task claim")
 	}
 	task := owned[0]
-	caller, err := hostbridge.ResolveCaller(s.stateHome, task, s.now())
-	if err != nil || caller.Role != "implement" || caller.SessionKey != key {
+	caller, ok := s.boundCaller(task)
+	if !ok || caller.Role != "implement" || caller.SessionKey != key {
 		return "", errors.New(denied)
 	}
 	relative, err := filepath.Rel(s.workspace, s.absPath(output))

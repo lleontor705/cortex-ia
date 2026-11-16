@@ -95,10 +95,11 @@ func newTestSession(t *testing.T, runner Runner) *session {
 	return s
 }
 
-func bindTask(t *testing.T, s *session, sessionKey string) {
+// bindCall simulates the pre-tool hook for the next call of tool on testTask.
+func bindCall(t *testing.T, s *session, tool, sessionKey string) {
 	t.Helper()
 	err := hostbridge.BindCaller(s.stateHome, hostbridge.Caller{
-		Host: hostbridge.HostClaude, SessionKey: sessionKey, TaskID: testTask, BoundAt: time.Now(),
+		Host: hostbridge.HostClaude, SessionKey: sessionKey, TaskID: testTask, Tool: tool, BoundAt: time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("bind caller: %v", err)
