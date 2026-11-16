@@ -101,7 +101,10 @@ const REDACTION_RULES: ReadonlyArray<readonly [RegExp, string]> = [
   [/(["']?\b(?:api[_\-\s]?key|apikey|access[_\-\s]?key|secret[_\-\s]?key|subscription[_\-\s]?key)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&)]+)/gi, "$1[REDACTED:apikey]"],
   [/(["']?\b(?:password|passwd|pwd|passphrase)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&)]+)/gi, "$1[REDACTED:password]"],
   [/(["']?\b(?:client[_\-\s]?secret|secret)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&)]+)/gi, "$1[REDACTED:secret]"],
-  [/(["']?\b(?:auth[_\-\s]?token|access[_\-\s]?token|refresh[_\-\s]?token|id[_\-\s]?token|session[_\-\s]?token|bearer[_\-\s]?token|token)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&)]+)/gi, "$1[REDACTED:token]"],
+  // `\b` cannot precede "token" inside "claim_token"/"lease_token" (underscore is a
+  // word character), so the workflow tokens get their own alternation.
+  [/(["']?\b(?:auth[_\-\s]?token|access[_\-\s]?token|refresh[_\-\s]?token|id[_\-\s]?token|session[_\-\s]?token|bearer[_\-\s]?token|(?:claim|lease)[_\-\s]?token|token)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&)]+)/gi, "$1[REDACTED:token]"],
+  [/(--(?:claim|lease)[_\-]?token(?:=|\s+))(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&)]+)/gi, "$1[REDACTED:token]"],
 ];
 
 // Unmistakable secret material the rules above deliberately do not rewrite
@@ -332,19 +335,24 @@ function extractTaskID(args: Record<string, any>): string | undefined {
   return undefined;
 }
 
-function dispatchReport(executable: string, directory: string, cliArgs: string[]): void {
+// Payloads that may carry host text travel on stdin (`--details @stdin`), never argv.
+function dispatchReport(executable: string, directory: string, cliArgs: string[], stdinPayload?: string): void {
   try {
-    execFile(
+    const child: any = execFile(
       executable,
       cliArgs,
       {
         cwd: directory,
         timeout: TOOL_REPORT_TIMEOUT_MS,
         windowsHide: true,
-        stdio: ["ignore", "ignore", "ignore"],
+        stdio: [stdinPayload === undefined ? "ignore" : "pipe", "ignore", "ignore"],
       },
       () => {}
     );
+    if (stdinPayload !== undefined) {
+      child?.stdin?.on?.("error", () => {});
+      child?.stdin?.end?.(stdinPayload);
+    }
   } catch {}
 }
 
@@ -393,9 +401,11 @@ export function emitToolErrorReport(
   if (!executable) return;
 
   const code = classifyToolErrorCode(toolName, errorMessage);
+  // Redact before anything is hashed, logged to argv, or serialized.
+  const safeMessage = redactSecrets(errorMessage);
   const now = Date.now();
   const signature = createHash("sha256")
-    .update(`${sessionID}:${toolName}:${code}:${errorMessage}`)
+    .update(`${sessionID}:${toolName}:${code}:${safeMessage}`)
     .digest("hex");
 
   if (!shouldEmitReport(signature, now)) {
@@ -406,7 +416,7 @@ export function emitToolErrorReport(
   const details = {
     tool: toolName,
     code,
-    error_message: errorMessage.slice(0, 2048),
+    error_message: safeMessage.slice(0, 2048),
     session_id: sessionID,
     call_id: callID,
     role: role || "unknown",
@@ -417,8 +427,8 @@ export function emitToolErrorReport(
   const cliArgs = [
     "report", "error",
     "--code", code,
-    "--message", `Tool '${toolName}' failed: ${errorMessage.slice(0, 512)}`,
-    "--details", JSON.stringify(details),
+    "--message", `Tool '${toolName}' failed: ${safeMessage.slice(0, 512)}`,
+    "--details", "@stdin",
     "--source", "tool-telemetry-plugin",
     "--workspace", directory,
   ];
@@ -426,7 +436,7 @@ export function emitToolErrorReport(
   if (role) cliArgs.push("--role", role);
   if (taskID) cliArgs.push("--task", taskID);
 
-  dispatchReport(executable, directory, cliArgs);
+  dispatchReport(executable, directory, cliArgs, JSON.stringify(details));
 }
 
 export const CortexToolTelemetryPlugin = async (ctx: any) => {

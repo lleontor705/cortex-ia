@@ -96,7 +96,7 @@ interface WorkAuthority {
   claimToken: string;
   leases: Map<string, string>;
   sessionID: string;
-  maintenance?: { active: boolean; lastProgress: number; timer?: ReturnType<typeof setTimeout>; abort?: AbortController; progress: Map<string, string>; reason?: string };
+  maintenance?: { active: boolean; lastProgress: number; timer?: ReturnType<typeof setTimeout>; abort?: AbortController; progress: Map<string, string>; reason?: string; failures?: number };
 }
 
 const workAuthority = new Map<string, WorkAuthority>();
@@ -109,7 +109,9 @@ const sessionStatuses = new Map<string, string>();
 // ttl is the claim validity granted per heartbeat renewal; it is an independent
 // constant, deliberately NOT derived from the no-host-activity orphan window
 // (which stays untouched so stale claims remain detectable by recovery).
-const maintenancePolicy = { interval_ms: 30000, status_timeout_ms: 5000, stale_progress_ms: 900000, ttl: "30m" };
+// A transient renewal failure (CLI hiccup, status timeout) retries before the
+// heartbeat gives up; each retry is recorded as the maintenance reason.
+const maintenancePolicy = { interval_ms: 30000, status_timeout_ms: 5000, stale_progress_ms: 900000, ttl: "30m", renewal_retries: 2, retry_backoff_ms: 2000 };
 function stopMaintenance(authority: WorkAuthority, reason: string) {
   const state = authority.maintenance;
   if (!state) return;
@@ -353,6 +355,7 @@ function compactWorkStatus(durable: any, bridgeAuth: any) {
     : [];
   const out: any = {
     task_id: durable?.task_id,
+    maintenance: { active: Boolean(bridgeAuth.maintenance?.active), reason: bridgeAuth.maintenance?.reason ?? null },
     board_id: durable?.board_id,
     title: durable?.title,
     status: durable?.status,
@@ -790,6 +793,7 @@ export const CortexWorkPlugin = Plugin.define({
       const abort = new AbortController();
       state.abort = abort;
       let timeout: ReturnType<typeof setTimeout> | undefined;
+      let retryDelay: number | undefined;
       try {
         if (statusProbe) {
           const response: any = await Promise.race([
@@ -819,16 +823,28 @@ export const CortexWorkPlugin = Plugin.define({
             receipt?.lease_count !== authority.leases.size || !(Date.parse(receipt?.expires_at) > Date.now())) {
           throw new Error("controller_renewal_unconfirmed");
         }
+        state.failures = 0;
+        state.reason = undefined;
       } catch {
-        stopMaintenance(authority, "maintenance_failed_manual_reconciliation_required");
+        // A stop requested while this tick was in flight already set the reason;
+        // the abort it caused must not overwrite that reason or count as a failure.
+        if (current()) {
+          state.failures = (state.failures ?? 0) + 1;
+          if (state.failures > maintenancePolicy.renewal_retries) {
+            stopMaintenance(authority, "maintenance_failed_manual_reconciliation_required");
+          } else {
+            state.reason = `renewal_retry_${state.failures}`;
+            retryDelay = maintenancePolicy.retry_backoff_ms * state.failures;
+          }
+        }
       } finally {
         if (timeout !== undefined) clearTimeout(timeout);
         state.abort = undefined;
-        if (current()) schedule();
+        if (current()) schedule(retryDelay);
       }
     };
-    const schedule = () => {
-      state.timer = setTimeout(tick, maintenancePolicy.interval_ms);
+    const schedule = (delay: number = maintenancePolicy.interval_ms) => {
+      state.timer = setTimeout(tick, delay);
       (state.timer as any)?.unref?.();
     };
     schedule();
@@ -876,8 +892,10 @@ export const CortexWorkPlugin = Plugin.define({
     for (const authority of workAuthority.values()) {
       const state = authority.maintenance;
       if (!state?.active) continue;
+      // Only events that name this claim's session end its maintenance; an
+      // unattributed error from another session must not orphan the claim.
       if (type === "server.instance.disposed" ||
-          (["session.idle", "session.deleted", "session.error"].includes(type) && (sessionID === authority.sessionID || !sessionID)) ||
+          (["session.idle", "session.deleted", "session.error"].includes(type) && sessionID === authority.sessionID) ||
           (type === "session.status" && sessionID === authority.sessionID && event.properties?.status?.type === "idle")) {
         stopMaintenance(authority, type); continue;
       }

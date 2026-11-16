@@ -104,7 +104,7 @@ test('resolveSkill follows precedence: host-installed > repository > embedded-so
   }
 });
 
-test('discoverInventory detects same-precedence collisions with candidate list', async () => {
+test('discoverInventory resolves duplicate skill names by directory order without throwing', async () => {
   const mod = await loadPluginFile('internal/assets/plugins/cortex-skill-discovery.ts', pluginOpts);
   const { discoverInventory } = mod.exports;
 
@@ -115,14 +115,9 @@ test('discoverInventory detects same-precedence collisions with candidate list',
     writeSkill(dirA, 'conflicting-skill', 'Version A');
     writeSkill(dirB, 'conflicting-skill', 'Version B');
 
-    assert.throws(
-      () => discoverInventory([dirA, dirB], 'repository', 2),
-      (err) => {
-        assert.match(err.message, /CONTEXT_RESOLUTION_ERROR: same-precedence collision for skill 'conflicting-skill'/);
-        assert.match(err.message, /candidates/);
-        return true;
-      }
-    );
+    const inventory = discoverInventory([dirA, dirB], 'repository', 2);
+    assert.equal(inventory.get('conflicting-skill').description, 'Version A');
+    assert.ok(inventory.get('conflicting-skill').path.startsWith(dirA.replaceAll(path.sep, '/')));
   } finally {
     fs.rmSync(dirA, { recursive: true, force: true });
     fs.rmSync(dirB, { recursive: true, force: true });
