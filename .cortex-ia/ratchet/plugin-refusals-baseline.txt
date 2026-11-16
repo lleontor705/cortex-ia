@@ -53,7 +53,7 @@ internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: d
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: duplicate decoded key in dispatch envelope: ${lastString}
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: implementation requires a non-empty file scope; external-effect authority is unavailable, route read-only operations to investigate or reviewer
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid common dispatch contract: ${contractErrors.join("; ")}
-internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid planning phase for plan (${envelope.phase}; allowed: [plan, decompose])
+internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid planning phase for plan (${envelope.phase}; allowed: [plan, decompose, update])
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid planning workflow (${envelope.workflow}; allowed: plan)
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid step budget
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: invalid step budget integer in ${source}

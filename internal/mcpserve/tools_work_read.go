@@ -14,13 +14,15 @@ import (
 var (
 	workflowKinds = []string{"direct-change", "fast-tdd", "hotfix", "ops-task"}
 	claimStatus   = []string{"in_review", "in_progress", "blocked"}
+	// workloadPolicies mirrors the CLI's --workload-policy values.
+	workloadPolicies = []string{"strict", "flexible", "unbounded"}
 )
 
 func workReadTools() []tool {
 	return []tool{
 		{
 			Name:        "cortex_ia_work_create",
-			Description: "Create one work item in a same-board DAG (planner or orchestrator). board_id defaults to \"default\" for ungrouped work. Every dependency must already exist on the same board; check with board_status first.",
+			Description: "Create one work item in a same-board DAG (planner or orchestrator). board_id defaults to \"default\" for ungrouped work. Every dependency must already exist on the same board; check with board_status first. allowed_files must match the files the implementer will change: the transition refuses changes outside them.",
 			Schema: schemaObject(props(
 				"workflow", schemaEnum("Work workflow", workflowKinds...),
 				"board_id", schemaString("Board identifier; defaults to \"default\""),
@@ -31,6 +33,7 @@ func workReadTools() []tool {
 				"verification", schemaString("Raw executable verification command"),
 				"allowed_files", schemaStrings("Leased repository paths"),
 				"dependencies", schemaStrings("Task IDs on the same board"),
+				"workload_policy", schemaEnum("Churn budget profile; defaults to flexible", workloadPolicies...),
 			), "workflow", "task_id", "title"),
 			Call: workCreate,
 		},
@@ -170,7 +173,7 @@ func workCreate(ctx context.Context, s *session, args map[string]any) (string, e
 		return "", err
 	}
 	argv := []string{"work", "create", "--board", board, "--id", task, "--title", title, "--workflow", workflow, "--project", s.workspace}
-	for _, option := range [][2]string{{"objective", "--objective"}, {"acceptance_criteria", "--acceptance"}, {"verification", "--verify"}} {
+	for _, option := range [][2]string{{"objective", "--objective"}, {"acceptance_criteria", "--acceptance"}, {"verification", "--verify"}, {"workload_policy", "--workload-policy"}} {
 		if value := optString(args, option[0]); value != "" {
 			argv = append(argv, option[1], value)
 		}
