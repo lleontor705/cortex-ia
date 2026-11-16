@@ -76,30 +76,34 @@ func SessionKey(host Host, sessionID, agentID string) (string, error) {
 // internal/delegation verifies leases against; every host shares it.
 func Owner(sessionKey string) string { return "opencode-session:" + sessionKey }
 
-// Caller is the non-secret identity a pre-tool hook records for the MCP call
-// it is about to admit.
+// Caller is the non-secret identity a pre-tool hook records for one restricted
+// MCP call. A binding is keyed by (task, tool) and consumed by the server on
+// the call it was written for; no host payload carries a call id the MCP
+// server can see, so the tool name is the narrowest key both sides share.
 type Caller struct {
 	Host       Host      `json:"host"`
 	SessionKey string    `json:"session_key"`
 	Role       string    `json:"role,omitempty"`
 	TaskID     string    `json:"task_id"`
+	Tool       string    `json:"tool"`
 	BoundAt    time.Time `json:"bound_at"`
 }
 
-func callerPath(stateHome, taskID string) string {
-	sum := sha256.Sum256([]byte(taskID))
+func callerPath(stateHome, taskID, tool string) string {
+	sum := sha256.Sum256([]byte(taskID + "\x00" + tool))
 	return filepath.Join(stateHome, ".cortex-ia", "run", "callers", hex.EncodeToString(sum[:])+".json")
 }
 
+// BindCaller records the caller for the next call of caller.Tool on caller.TaskID.
 func BindCaller(stateHome string, caller Caller) error {
-	if strings.TrimSpace(caller.TaskID) == "" || !sessionKeyPattern.MatchString(caller.SessionKey) {
-		return errors.New("caller binding requires a task id and a valid session key")
+	if strings.TrimSpace(caller.TaskID) == "" || strings.TrimSpace(caller.Tool) == "" || !sessionKeyPattern.MatchString(caller.SessionKey) {
+		return errors.New("caller binding requires a task id, a tool name and a valid session key")
 	}
 	raw, err := json.Marshal(caller)
 	if err != nil {
 		return err
 	}
-	path := callerPath(stateHome, caller.TaskID)
+	path := callerPath(stateHome, caller.TaskID, caller.Tool)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -107,22 +111,28 @@ func BindCaller(stateHome string, caller Caller) error {
 	return err
 }
 
-// ErrCallerUnbound means no fresh hook binding exists for the task.
-var ErrCallerUnbound = errors.New("CALLER_UNBOUND: no fresh host caller binding for this task; the cortex-ia pre-tool hook did not run for this call")
+// ErrCallerUnbound means no fresh hook binding exists for the task and tool.
+var ErrCallerUnbound = errors.New("CALLER_UNBOUND: no fresh host caller binding for this call; the cortex-ia pre-tool hook did not run for this call")
 
-func ResolveCaller(stateHome, taskID string, now time.Time) (Caller, error) {
-	raw, err := os.ReadFile(callerPath(stateHome, taskID))
+// ConsumeCaller returns the fresh binding for (taskID, tool) and deletes it, so
+// one hook run authorizes exactly one server call.
+func ConsumeCaller(stateHome, taskID, tool string, now time.Time) (Caller, error) {
+	path := callerPath(stateHome, taskID, tool)
+	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return Caller{}, ErrCallerUnbound
 	}
 	if err != nil {
 		return Caller{}, err
 	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return Caller{}, fmt.Errorf("consume caller binding: %w", err)
+	}
 	var caller Caller
 	if err := json.Unmarshal(raw, &caller); err != nil {
 		return Caller{}, fmt.Errorf("decode caller binding: %w", err)
 	}
-	if caller.TaskID != taskID || !sessionKeyPattern.MatchString(caller.SessionKey) {
+	if caller.TaskID != taskID || caller.Tool != tool || !sessionKeyPattern.MatchString(caller.SessionKey) {
 		return Caller{}, ErrCallerUnbound
 	}
 	if age := now.Sub(caller.BoundAt); age < 0 || age > CallerMaxAge {

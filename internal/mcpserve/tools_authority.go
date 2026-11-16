@@ -256,7 +256,7 @@ func workClaim(ctx context.Context, s *session, args map[string]any) (string, er
 			}
 		}
 	}
-	a := &authority{sessionKey: key, claimToken: token, leases: leases}
+	a := &authority{sessionKey: key, claimToken: token, leases: leases, lastSeen: s.now()}
 	s.vault.put(task, a)
 	s.startHeartbeat(task, a)
 	receipt, err := reservationReceipt(reservedRaw, paths)

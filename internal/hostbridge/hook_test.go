@@ -106,7 +106,7 @@ func TestDecideBridgeRoleAndBinding(t *testing.T) {
 	allowed := mustDecide(t, claudeInput("reviewer", approve, map[string]any{"task_id": "T1"}), deps)
 	assertVerdict(t, allowed, PassThrough, "")
 
-	caller, err := ResolveCaller(stateHome, "T1", hookNow)
+	caller, err := ConsumeCaller(stateHome, "T1", "cortex_ia_work_approve", hookNow)
 	if err != nil {
 		t.Fatalf("ResolveCaller after bridge call: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestDecideBridgeRoleAndBinding(t *testing.T) {
 		"Arguments":  `{"task_id":"T2"}`,
 	})
 	assertVerdict(t, mustDecide(t, agyApprove, deps), Deny, "does not identify the calling role")
-	if _, err := ResolveCaller(stateHome, "T2", hookNow); err == nil {
+	if _, err := ConsumeCaller(stateHome, "T2", "cortex_ia_work_approve", hookNow); err == nil {
 		t.Fatal("denied agy bridge call must not bind a caller")
 	}
 }

@@ -229,7 +229,7 @@ func workStatus(ctx context.Context, s *session, args map[string]any) (string, e
 	if !ok {
 		return "", errors.New("work status returned an unexpected shape")
 	}
-	key, _ := s.sessionKeyFor(task)
+	key := s.statusSessionKey(task)
 	projection := s.acceptProjection(task, durable)
 	bridge := s.bridgeAuthority(task, durable, key)
 	if detail, _ := args["detail"].(bool); !detail {
@@ -304,7 +304,22 @@ func (s *session) compactStatus(ctx context.Context, durable, bridge map[string]
 	if reason, ok := durable["blocked_reason"]; ok {
 		out["blocked_reason"] = reason
 	}
+	out["maintenance"] = compactMaintenance(bridge)
 	return out
+}
+
+// compactMaintenance tells the controller whether its claim is still being
+// renewed. It carries no tokens and no policy fields.
+func compactMaintenance(bridge map[string]any) map[string]any {
+	m, ok := bridge["maintenance"].(map[string]any)
+	if !ok {
+		return map[string]any{"active": false, "reason": "no_local_handle"}
+	}
+	reason, _ := m["reason"].(string)
+	if active, _ := m["active"].(bool); active {
+		reason = "renewing"
+	}
+	return map[string]any{"active": m["active"], "reason": reason}
 }
 
 // boardStatuses maps task IDs to status for one board. A failed listing yields
@@ -377,7 +392,7 @@ func workReconcile(ctx context.Context, s *session, args map[string]any) (string
 		return "", err
 	}
 	argv := []string{"work", "reconcile", task, "--reason", reason, "--session", key,
-		"--revision", strconv.FormatInt(revision, 10), "--owner-session-inactive", "false"}
+		"--revision", strconv.FormatInt(revision, 10), "--owner-session-inactive", strconv.FormatBool(s.vault.ownerIdle(task, s.now()))}
 	if to := optString(args, "to"); to != "" {
 		argv = append(argv, "--to", to)
 	}
