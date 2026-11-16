@@ -2,10 +2,7 @@ package targets
 
 import (
 	"fmt"
-	"os"
 	"strings"
-
-	"github.com/lleontor705/cortex-ia/internal/clidetect"
 )
 
 // TargetID specifies an installation target platform.
@@ -76,12 +73,4 @@ func ParseTargets(input string) ([]TargetID, error) {
 		}
 	}
 	return result, nil
-}
-
-// AvailableTargets inspects the host and returns target recommendations based on detected CLIs.
-func AvailableTargets(homeDir string) []clidetect.CLIInfo {
-	if homeDir == "" {
-		homeDir, _ = os.UserHomeDir()
-	}
-	return clidetect.DetectAll(homeDir)
 }

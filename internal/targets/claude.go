@@ -136,11 +136,6 @@ func claudeAgentFile(role claudeRole, description, body string, global []byte) [
 	return []byte(sb.String())
 }
 
-// InstallClaude installs the Claude Code target with default options.
-func InstallClaude(home string, dryRun bool) (*TargetResult, error) {
-	return InstallClaudeWith(home, ApplyOptions{DryRun: dryRun})
-}
-
 // InstallClaudeWith installs the Claude Code target with explicit options.
 func InstallClaudeWith(home string, opts ApplyOptions) (*TargetResult, error) {
 	b, err := ClaudeBundle(home)

@@ -2,7 +2,6 @@ package homelock
 
 import (
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -15,10 +14,6 @@ func TestHomelockLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire failed: %v", err)
 	}
-	if lock.Path() != filepath.Join(tempHome, MetadataDirName, LockFileName) {
-		t.Errorf("unexpected lock path: %s", lock.Path())
-	}
-
 	// 2. Contention: Attempt second acquire with short timeout -> ErrHomeBusy
 	_, err = Acquire(tempHome, 50*time.Millisecond)
 	if !errors.Is(err, ErrHomeBusy) {

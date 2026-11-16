@@ -34,8 +34,8 @@ func TestConfigureEnvironment(t *testing.T) {
 			t.Fatalf("failed to create fake bashrc: %v", err)
 		}
 
-		if err := ConfigureEnvironment(tempHome); err != nil {
-			t.Fatalf("ConfigureEnvironment failed: %v", err)
+		if _, err := ConfigureEnvironmentWithResult(tempHome); err != nil {
+			t.Fatalf("ConfigureEnvironmentWithResult failed: %v", err)
 		}
 
 		data, err := os.ReadFile(bashrc)
@@ -48,8 +48,8 @@ func TestConfigureEnvironment(t *testing.T) {
 		}
 	} else {
 		// On Windows, test process env is set and Windows runner is exercised safely
-		if err := ConfigureEnvironment(tempHome); err != nil {
-			t.Fatalf("ConfigureEnvironment failed on Windows: %v", err)
+		if _, err := ConfigureEnvironmentWithResult(tempHome); err != nil {
+			t.Fatalf("ConfigureEnvironmentWithResult failed on Windows: %v", err)
 		}
 		if val := os.Getenv(EnvBackgroundSubagentsKey); val != EnvBackgroundSubagentsVal {
 			t.Errorf("expected env %s=%s, got %s", EnvBackgroundSubagentsKey, EnvBackgroundSubagentsVal, val)

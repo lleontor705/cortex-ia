@@ -70,7 +70,7 @@ type Manifest struct {
 	// ArchiveSize is the compressed archive size in bytes.
 	ArchiveSize int64 `json:"archive_size,omitempty"`
 
-	// Checksum is the SHA-256 digest of the snapshot inputs (per ComputeChecksum).
+	// Checksum is the SHA-256 digest of the snapshot inputs, set by Snapshotter.Create.
 	// Absent on legacy manifests; an empty string disables dedup for that backup.
 	Checksum string `json:"checksum,omitempty"`
 }
@@ -247,15 +247,6 @@ func DeleteBackup(manifest Manifest) error {
 		return fmt.Errorf("backup root %q is a filesystem root", root)
 	}
 	return os.RemoveAll(root)
-}
-
-func RenameBackup(manifest Manifest, newDescription string) error {
-	if manifest.RootDir == "" {
-		return fmt.Errorf("backup has no root directory")
-	}
-	manifest.Description = newDescription
-	manifestPath := filepath.Join(manifest.RootDir, ManifestFilename)
-	return WriteManifest(manifestPath, manifest)
 }
 
 // ListResult holds manifests and any warnings from scanning.
