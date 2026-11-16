@@ -305,7 +305,7 @@ type RetiredSurfaceError struct {
 
 func (e RetiredSurfaceError) Error() string {
 	return fmt.Sprintf(
-		"%q was removed from the OpenCode CLI; available commands: install, sync, snapshot, work, worktree, board, ledger, ui, web, doc, diagram, mcp, model, stats, report, doctor, rollback, recover, uninstall, update, version, help",
+		"%q was removed from cortex-ia; available commands: install, sync, snapshot, work, worktree, board, ledger, hook, ui, web, doc, diagram, mcp, model, stats, report, doctor, rollback, recover, uninstall, update, completion, version, help",
 		e.Surface,
 	)
 }
