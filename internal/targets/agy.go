@@ -23,7 +23,7 @@ var agyRoles = []agyRole{
 	{"orchestrator", "primary", []string{"view_file", "invoke_subagent", "send_message", "manage_subagents", "ask_question", "call_mcp_tool"}},
 	{"discovery", "subagent", []string{"run_command", "view_file", "grep_search", "find_by_name", "list_dir", "write_to_file", "call_mcp_tool"}},
 	{"investigate", "subagent", []string{"run_command", "view_file", "grep_search", "find_by_name", "list_dir", "call_mcp_tool"}},
-	{"planner", "subagent", []string{"view_file", "grep_search", "find_by_name", "list_dir", "call_mcp_tool"}},
+	{"planner", "subagent", []string{"view_file", "write_to_file", "grep_search", "find_by_name", "list_dir", "call_mcp_tool"}},
 	{"implement", "subagent", []string{"run_command", "write_to_file", "replace_file_content", "view_file", "grep_search", "find_by_name", "list_dir", "call_mcp_tool"}},
 	{"reviewer", "subagent", []string{"run_command", "view_file", "grep_search", "find_by_name", "list_dir", "call_mcp_tool"}},
 }
@@ -31,12 +31,12 @@ var agyRoles = []agyRole{
 const agyPluginName = "cortex-ia"
 
 const agyPreamble = `## Host adaptation: Antigravity
-This role prompt is shared with OpenCode. In Antigravity:
+This role prompt is shared across hosts. In Antigravity:
 - ` + "`cortex_ia_*`" + ` tools come from the ` + "`cortex_ia`" + ` MCP server and memory tools (` + "`cortex_*`" + `) from the ` + "`cortex`" + ` MCP server. Invoke both through ` + "`call_mcp_tool`" + `.
 - ` + "`task({ subagent_type, ... })`" + ` dispatch is ` + "`invoke_subagent`" + `: the role name selects the subagent and the dispatch envelope goes in the prompt.
-- ` + "`read`, `grep`, `glob`, `edit`, `write`, `shell`" + ` map to ` + "`view_file`, `grep_search`, `find_by_name`, `replace_file_content` or `write_to_file`, `run_command`" + `.
+- ` + "`read`, `grep`, `glob`, `edit`, `write`, `shell`, `question`" + ` map to ` + "`view_file`, `grep_search`, `find_by_name`, `replace_file_content` or `write_to_file`, `run_command`, `ask_question`" + `.
 - Shared contracts live in ` + "`~/.cortex-ia/agy/contracts/`" + `.
-- A pre-tool hook enforces file leases and this role's permission rules. When a call is denied, the reason states what to do next.`
+- The pre-tool hook does not receive a role name on Antigravity. It refuses ` + "`cortex_ia`" + ` tools that are not open to an unidentified caller (approval, recovery and retry stay with the user's terminal) and checks file writes against active work leases. Role limits such as the planner writing only its plan file and read-only roles writing nothing are prompt rules on this host, and reads are not guarded. Shell commands other than cortex-ia authority verbs are not blocked. When a call is denied, the reason states what to do next.`
 
 const agyRulesStub = `# Cortex-IA for Antigravity
 

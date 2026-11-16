@@ -18,21 +18,22 @@ type claudeRole struct {
 const claudeHookMatcher = "Write|Edit|MultiEdit|NotebookEdit|Bash|mcp__cortex_ia__.*"
 
 var claudeRoles = []claudeRole{
-	{"orchestrator", "Agent(discovery, investigate, planner, implement, reviewer), Read, Grep, Glob", "Read|Grep|Glob|mcp__cortex_ia__.*"},
+	{"orchestrator", "Agent(discovery, investigate, planner, implement, reviewer), Read, Grep, Glob, AskUserQuestion", "Read|Grep|Glob|mcp__cortex_ia__.*"},
 	{"discovery", "Read, Grep, Glob, Bash, Edit, Write", claudeHookMatcher},
 	{"investigate", "Read, Grep, Glob, Bash", claudeHookMatcher},
-	{"planner", "Read, Grep, Glob", claudeHookMatcher},
+	// Write is confined to docs/plans/<board-id>.md by the pre-tool hook.
+	{"planner", "Read, Grep, Glob, Write", claudeHookMatcher},
 	{"implement", "Read, Grep, Glob, Edit, Write, Bash", claudeHookMatcher},
 	{"reviewer", "Read, Grep, Glob, Bash", claudeHookMatcher},
 }
 
 const claudePreamble = `## Host adaptation: Claude Code
-This role prompt is shared with OpenCode. In Claude Code:
-- ` + "`cortex_ia_*`" + ` tools are MCP tools of the ` + "`cortex_ia`" + ` server (full name ` + "`mcp__cortex_ia__<tool>`" + `). Memory tools written as ` + "`cortex_*`" + ` or ` + "`cortex_cortex_*`" + ` belong to the ` + "`cortex`" + ` MCP server.
+This role prompt is shared across hosts. In Claude Code:
+- ` + "`cortex_ia_*`" + ` tools are MCP tools of the ` + "`cortex_ia`" + ` server (full name ` + "`mcp__cortex_ia__<tool>`" + `). Memory tools written as ` + "`cortex_*`" + ` belong to the ` + "`cortex`" + ` MCP server (` + "`mcp__cortex__*`" + `), which every role may call.
 - ` + "`task({ subagent_type, ... })`" + ` dispatch is the ` + "`Agent`" + ` tool: ` + "`subagent_type`" + ` is the role name and the dispatch envelope goes in the prompt.
-- ` + "`read`, `grep`, `glob`, `edit`, `write`, `shell`" + ` are ` + "`Read`, `Grep`, `Glob`, `Edit`, `Write`, `Bash`" + `. Skills load through the ` + "`Skill`" + ` tool.
+- ` + "`read`, `grep`, `glob`, `edit`, `write`, `shell`, `question`" + ` are ` + "`Read`, `Grep`, `Glob`, `Edit`, `Write`, `Bash`, `AskUserQuestion`" + `. Skills load through the ` + "`Skill`" + ` tool.
 - Shared contracts live in ` + "`~/.cortex-ia/claude/contracts/`" + `.
-- The OpenCode permission rules of this role are enforced here by its tool list and by a pre-tool hook. When a call is denied, the reason states what to do next.`
+- The pre-tool hook checks each ` + "`cortex_ia_*`" + ` call against work authority and this role's tool policy. It limits file writes by role: the planner writes only its plan file, discovery only its index, implement only leased paths, and the other roles none. Shell commands other than cortex-ia authority verbs are not blocked on this host. When a call is denied, the reason states what to do next.`
 
 // ClaudeBundle renders the Claude Code install: role agents, skills, commands,
 // shared contracts, and the cortex MCP servers in ~/.claude.json.

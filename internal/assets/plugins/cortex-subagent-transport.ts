@@ -22,12 +22,13 @@ const TRANSPORT_ISOLATION_SYSTEM = [
   "Follow the assigned dispatch envelope and emit the canonical completion receipt. Direct routing avoids unassigned duties; reconcile prior jobs before reattempting."
 ].join("\n");
 
+// Advisory defaults only: the budget warning is not a stop. Frontmatter allows more.
 const ROLE_DEFAULT_STEPS: Record<string, number> = {
-  implement: 70,
+  implement: 150,
   discovery: 90,
-  orchestrator: 60,
-  reviewer: 50,
-  investigate: 50,
+  orchestrator: 120,
+  reviewer: 80,
+  investigate: 60,
 };
 
 const DEFAULT_MAX_STEPS = 60;
@@ -341,8 +342,8 @@ function dispatchInfo(args: Record<string, any>, prompt: string): { limit: numbe
       if (envelope.workflow !== "plan") {
         throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning workflow (${envelope.workflow}; allowed: plan)`);
       }
-      if (!["plan", "decompose"].includes(envelope.phase)) {
-        throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning phase for plan (${envelope.phase}; allowed: [plan, decompose])`);
+      if (!["plan", "decompose", "update"].includes(envelope.phase)) {
+        throw new Error(`SUBAGENT_TRANSPORT_ERROR: invalid planning phase for plan (${envelope.phase}; allowed: [plan, decompose, update])`);
       }
     }
   }
@@ -899,9 +900,9 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
           if (!hasText(TRANSPORT_ISOLATION_SYSTEM)) appendSystem(TRANSPORT_ISOLATION_SYSTEM);
           const count = sessionStepCounts.get(sessionID) ?? 0;
           const budget = sessionStepLimits.get(sessionID) ?? Infinity;
-          if (count >= budget) appendSystem(`CORTEX_BUDGET_WARNING: advisory tool budget ${budget} reached (${count} attempts). Continue when useful; assess remaining scope and report partial progress if needed. This warning does not change task authority.`);
+          if (count >= budget) appendSystem("CORTEX_BUDGET_WARNING: the advisory tool budget for this dispatch has been reached. Continue when useful; assess remaining scope and report partial progress if needed. This warning does not change task authority.");
           const streak = progress.get(sessionID)?.streak ?? 0;
-          if (streak >= repetitionLimit) appendSystem(`CORTEX_REPETITION_WARNING: ${streak} consecutive terminal tools had identical tool, arguments, status and result. This detects observable repetition, not semantic lack of progress; polling can be legitimate. Reassess the approach and report progress.`);
+          if (streak >= repetitionLimit) appendSystem("CORTEX_REPETITION_WARNING: recent terminal tools repeated the same tool, arguments, status and result. This detects observable repetition, not semantic lack of progress; polling can be legitimate. Reassess the approach and report progress.");
         } else if (typeof event.system === "string") {
           if (!event.system.includes(TRANSPORT_ISOLATION_SYSTEM)) {
             event.system += "\n\n" + TRANSPORT_ISOLATION_SYSTEM;
@@ -922,6 +923,7 @@ export const CortexSubagentTransportPlugin = async (ctx: any) => {
               delete event.tools["write"];
               delete event.tools["cortex_ia_work_claim"];
               delete event.tools["cortex_ia_file_reserve"];
+              delete event.tools["cortex_ia_board_create"];
             }
             if (roleLower === "implement") {
               delete event.tools["cortex_ia_work_create"];
