@@ -44,27 +44,30 @@ function resolveExecutable(cmd: string): string | null {
   return null;
 }
 
-function resolveCortexExecutable(directory?: string): string | null {
+// Search order is identical in every plugin copy: fixed install paths, then PATH.
+// A binary inside the workspace is untrusted: an agent with write access there
+// could replace it.
+function trustedCortexIA(workspace?: string): string | null {
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
   const candidates = [
+    path.join(home, "go", "bin", "cortex-ia"),
     path.join(home, "go", "bin", "cortex-ia.exe"),
     path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
     path.join(home, ".local", "bin", "cortex-ia"),
+    "/opt/homebrew/bin/cortex-ia",
     "/usr/local/bin/cortex-ia",
     "/usr/bin/cortex-ia",
   ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
+  const insideWorkspace = (candidate: string) => {
+    if (!workspace) return false;
+    const relative = path.relative(path.resolve(workspace), path.resolve(candidate));
+    return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
+  };
+  const trusted = (candidate: string) => fs.existsSync(candidate) && !insideWorkspace(candidate);
+  for (const candidate of candidates) if (trusted(candidate)) return candidate;
   const resolved = resolveExecutable("cortex-ia");
-  if (resolved) {
-    if (directory && path.resolve(resolved).startsWith(path.resolve(directory) + path.sep)) {
-      return null;
-    }
-    return resolved;
-  }
-  return null;
+  return resolved && trusted(resolved) ? resolved : null;
 }
 
 const ROLES = new Set(["discovery", "investigate", "planner", "implement", "reviewer"]);
@@ -235,7 +238,7 @@ export const CortexTaskLatchPlugin = async (ctx: any) => {
     // One bounded, non-throwing telemetry call. Reporting availability never
     // releases a latch and a missing/failing binary never surfaces to the host.
     function reportSignal(code: string, message: string, details: Record<string, any>, taskId?: string): void {
-      const executable = resolveCortexExecutable(directory);
+      const executable = trustedCortexIA(directory);
       if (!executable) return;
       const command = ["report", "error", "--code", code, "--message", message,
         "--details", JSON.stringify(details), "--source", "task-latch-plugin"];

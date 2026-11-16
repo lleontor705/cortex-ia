@@ -17,10 +17,11 @@ func artifactTools() []tool {
 	return []tool{
 		{
 			Name:        "cortex_ia_doc_convert",
-			Description: "Convert an office document to Markdown text and metadata. Inline output is read-only. output_path writes a file and requires a live implement claim with a file lease on that path.",
+			Description: "Convert an office document to Markdown text and metadata. Inline output is read-only. output_path writes a file and requires task_id (implement only) with a live claim and a file lease on that path.",
 			Schema: schemaObject(props(
 				"file_path", schemaString("Document path under the workspace"),
 				"output_path", schemaString("Optional Markdown output path, leased to the caller"),
+				"task_id", schemaString("Claimed task identifier; required when output_path is set"),
 				"format", schemaString("Optional output format"),
 				"max_lines", schemaNumber("Optional maximum line count"),
 				"ocr", schemaEnum("OCR policy", "reject", "hosted"),
@@ -43,9 +44,10 @@ func artifactTools() []tool {
 			Schema: schemaObject(props(
 				"spec_path", schemaString("Diagram specification path under the workspace"),
 				"output_path", schemaString("HTML output path, leased to the caller"),
+				"task_id", schemaString("Claimed task identifier; the hook binds the caller through it"),
 				"diagram_type", schemaEnum("Diagram type (default architecture)", diagramTypes...),
 				"quality", schemaEnum("Quality gate", diagramQuality...),
-			), "spec_path", "output_path"),
+			), "task_id", "spec_path", "output_path"),
 			Call: diagramRender,
 		},
 	}
@@ -75,7 +77,11 @@ func docConvert(ctx context.Context, s *session, args map[string]any) (string, e
 		argv = append(argv, "--ocr", ocr)
 	}
 	if output != "" {
-		return s.artifactCommand(ctx, argv, output)
+		task := optString(args, "task_id")
+		if task == "" {
+			return "", errors.New("task_id is required when output_path is set")
+		}
+		return s.artifactCommand(ctx, task, argv, output)
 	}
 	return s.runClean(ctx, argv)
 }
@@ -97,6 +103,10 @@ func diagramValidate(ctx context.Context, s *session, args map[string]any) (stri
 }
 
 func diagramRender(ctx context.Context, s *session, args map[string]any) (string, error) {
+	task, err := reqString(args, "task_id")
+	if err != nil {
+		return "", err
+	}
 	spec, err := reqString(args, "spec_path")
 	if err != nil {
 		return "", err
@@ -113,7 +123,7 @@ func diagramRender(ctx context.Context, s *session, args map[string]any) (string
 	if quality := optString(args, "quality"); quality != "" {
 		argv = append(argv, "--quality="+quality)
 	}
-	return s.artifactCommand(ctx, argv, output)
+	return s.artifactCommand(ctx, task, argv, output)
 }
 
 func (s *session) absPath(value string) string {
@@ -132,19 +142,14 @@ func (s *session) runClean(ctx context.Context, argv []string) (string, error) {
 }
 
 // artifactCommand runs a write-producing CLI verb whose output path must sit
-// under the live lease of this session's single claimed task. The CLI
-// re-checks both tokens; the tokens travel on stdin only.
-func (s *session) artifactCommand(ctx context.Context, argv []string, output string) (string, error) {
+// under the live lease of task, the task the caller's hook binding names. The
+// CLI re-checks both tokens; the tokens travel on stdin only.
+func (s *session) artifactCommand(ctx context.Context, task string, argv []string, output string) (string, error) {
 	const denied = "BRIDGE_ROLE_DENIED: artifact output requires the host implement controller"
-	key, err := s.sessionKeyFor("")
+	key, err := s.sessionKeyFor(task)
 	if err != nil {
 		return "", err
 	}
-	owned := s.vault.ownedBy(key)
-	if len(owned) != 1 {
-		return "", errors.New("LEASE_REQUIRED: artifact output requires one live task claim")
-	}
-	task := owned[0]
 	caller, ok := s.boundCaller(task)
 	if !ok || caller.Role != "implement" || caller.SessionKey != key {
 		return "", errors.New(denied)

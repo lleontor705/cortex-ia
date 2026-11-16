@@ -42,27 +42,30 @@ function resolveExecutable(cmd: string): string | null {
   return null;
 }
 
-function firstCortexIA(directory?: string): string | null {
+// Search order is identical in every plugin copy: fixed install paths, then PATH.
+// A binary inside the workspace is untrusted: an agent with write access there
+// could replace it.
+function trustedCortexIA(workspace?: string): string | null {
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
   const candidates = [
+    path.join(home, "go", "bin", "cortex-ia"),
     path.join(home, "go", "bin", "cortex-ia.exe"),
     path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
     path.join(home, ".local", "bin", "cortex-ia"),
+    "/opt/homebrew/bin/cortex-ia",
     "/usr/local/bin/cortex-ia",
     "/usr/bin/cortex-ia",
   ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
+  const insideWorkspace = (candidate: string) => {
+    if (!workspace) return false;
+    const relative = path.relative(path.resolve(workspace), path.resolve(candidate));
+    return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
+  };
+  const trusted = (candidate: string) => fs.existsSync(candidate) && !insideWorkspace(candidate);
+  for (const candidate of candidates) if (trusted(candidate)) return candidate;
   const resolved = resolveExecutable("cortex-ia");
-  if (resolved) {
-    if (directory && path.resolve(resolved).startsWith(path.resolve(directory) + path.sep)) {
-      return null;
-    }
-    return resolved;
-  }
-  return null;
+  return resolved && trusted(resolved) ? resolved : null;
 }
 
 const READ_ONLY_ROLES = new Set(["discovery", "investigate", "planner", "reviewer"]);
@@ -230,6 +233,12 @@ function isPlannerPlanTarget(directory: string, target: string): boolean {
 }
 
 const verifiedPermLeaseCache = new Map<string, number>();
+const VERIFIED_CACHE_CAPACITY = 1000;
+function rememberVerified(cache: Map<string, number>, key: string, expiresAt: number): void {
+  cache.delete(key);
+  cache.set(key, expiresAt);
+  if (cache.size > VERIFIED_CACHE_CAPACITY) cache.delete(cache.keys().next().value as string);
+}
 
 export const CortexPermissionFencePlugin = Plugin.define({
   id: "cortex-permission-fence",
@@ -286,7 +295,7 @@ export const CortexPermissionFencePlugin = Plugin.define({
           if (verifiedPermLeaseCache.get(cacheKey) && verifiedPermLeaseCache.get(cacheKey)! > Date.now()) {
             return { effect: "allow", reason: "Verified active lease (cached)" };
           }
-          const cortex = firstCortexIA(directory);
+          const cortex = trustedCortexIA(directory);
           if (cortex && sessionID) {
             try {
               const cliArgs = ["work", "verify-lease", "--project", path.resolve(directory), "--session-id", sessionID, "--path", targetPath];
@@ -305,7 +314,7 @@ export const CortexPermissionFencePlugin = Plugin.define({
               }
               const result = JSON.parse(raw);
               if (result?.valid === true && result?.owner === `opencode-session:${sessionID}`) {
-                verifiedPermLeaseCache.set(cacheKey, Date.now() + 5_000);
+                rememberVerified(verifiedPermLeaseCache, cacheKey, Date.now() + 5_000);
                 return { effect: "allow", reason: "Verified active lease" };
               }
             } catch {}

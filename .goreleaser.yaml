@@ -2,7 +2,8 @@ version: 2
 
 before:
   hooks:
-    - go mod tidy
+    # Fails when go.mod or go.sum would change, so the shipped binary is built from the tagged source as committed.
+    - go mod tidy -diff
 
 builds:
   - id: cortex-ia
@@ -37,10 +38,11 @@ archives:
         format: zip
     # updater.FindAsset resolves exactly cortex-ia_<tag-without-v>_<os>_<arch>.zip|.tar.gz.
     name_template: "cortex-ia_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Install scripts are fetched from the repository, not from the archive; nothing
+    # at runtime reads scripts/ from an extracted release.
     files:
       - README.md
       - LICENSE
-      - scripts/*
 
 checksum:
   name_template: "checksums.txt"

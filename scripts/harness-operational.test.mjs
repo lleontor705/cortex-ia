@@ -45,7 +45,6 @@ test('read-only investigation and review retain canonical identity and budget va
     const value = envelope({ role, workflow: role, phase: 'inspect', task_id: null, max_steps: 5 });
     const result = dispatchInfo({ subagent_type: role }, prompt(value));
     assert.equal(result.limit, 5);
-    assert.equal(result.operational, false);
     assert.throws(() => dispatchInfo({ subagent_type: 'implement' }, prompt(value)), /role does not match/);
     assert.throws(() => dispatchInfo({ subagent_type: role, max_steps: 5 }, prompt(value)), /ambiguous step budgets/);
   }

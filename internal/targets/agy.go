@@ -206,11 +206,6 @@ func validateAGYPlugin(pluginDir string) (string, error) {
 	return text, nil
 }
 
-// InstallAGY installs the Antigravity target with default options.
-func InstallAGY(home string, dryRun bool) (*TargetResult, error) {
-	return InstallAGYWith(home, ApplyOptions{DryRun: dryRun})
-}
-
 // InstallAGYWith installs the Antigravity target with explicit options.
 func InstallAGYWith(home string, opts ApplyOptions) (*TargetResult, error) {
 	b, err := AGYBundle(home)

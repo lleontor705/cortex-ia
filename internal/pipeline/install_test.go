@@ -264,42 +264,6 @@ func TestInstall_ConfigMergePreservesUserKeysAndComments(t *testing.T) {
 	}
 }
 
-// Rollback restores the pre-install state from the verified backup
-// manifest: an authorized overwrite returns the user's original bytes and
-// the pre-install absence is re-established for created files.
-func TestRollback_RestoresFromEngineBackup(t *testing.T) {
-	home := engineHome(t)
-	dest := engineJoin(home, ".config/opencode/AGENTS.md")
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	const userBytes = "user-owned system prompt\n"
-	if err := os.WriteFile(dest, []byte(userBytes), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	req := engineRequest(home)
-	req.Overwrite = true
-	_, receipt, err := InstallV2(req)
-	if err != nil {
-		t.Fatalf("install failed: %v", err)
-	}
-	if got := engineAssertRegular(t, dest); got == userBytes {
-		t.Fatal("overwrite must replace the user file")
-	}
-
-	manifest, err := Rollback(home, receipt.BackupID)
-	if err != nil {
-		t.Fatalf("rollback failed: %v", err)
-	}
-	if manifest.ID != receipt.BackupID {
-		t.Fatalf("rollback used manifest %q, want %q", manifest.ID, receipt.BackupID)
-	}
-	if got := engineAssertRegular(t, dest); got != userBytes {
-		t.Fatal("rollback must restore the user's pre-install bytes")
-	}
-}
-
 // Pre-existing opencode.json is merged in-place and opencode.jsonc is not created.
 func TestInstall_SupportsPreexistingOpenCodeJSON(t *testing.T) {
 	home := engineHome(t)

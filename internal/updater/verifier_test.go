@@ -5,37 +5,6 @@ import (
 	"testing"
 )
 
-func TestResolveProfileSelection(t *testing.T) {
-	cases := []struct {
-		bundlePresent bool
-		consent       bool
-		want          VerificationProfile
-	}{
-		{true, true, ProfileChecksum},
-		{true, false, ProfileChecksum},
-		{false, true, ProfileChecksum},
-		{false, false, ProfileChecksum},
-	}
-	for _, tc := range cases {
-		got := ResolveProfile(tc.bundlePresent, tc.consent)
-		if got != tc.want {
-			t.Fatalf("ResolveProfile(%v, %v) = %q, want %q", tc.bundlePresent, tc.consent, got, tc.want)
-		}
-	}
-}
-
-func TestChecksumVerifierAuthorityGate(t *testing.T) {
-	if err := (checksumVerifier{}).RequireAuthority(); err != nil {
-		t.Fatalf("expected nil authority error for checksum verifier, got %v", err)
-	}
-}
-
-func TestRequireProfileAuthorityGate(t *testing.T) {
-	if err := RequireProfileAuthority(); err != nil {
-		t.Fatalf("RequireProfileAuthority must return nil, got %v", err)
-	}
-}
-
 func TestChecksumVerifierEligibilityAndCandidate(t *testing.T) {
 	cv := checksumVerifier{}
 
@@ -74,13 +43,8 @@ func TestChecksumVerifierEligibilityAndCandidate(t *testing.T) {
 	}
 }
 
-func TestVerifierAdaptersContract(t *testing.T) {
-	cv := checksumVerifier{}
-	if cv.Name() != ProfileChecksum {
-		t.Fatalf("checksum verifier name = %q", cv.Name())
-	}
-	assets := cv.RequiredAssets()
-	if len(assets) != 1 || assets[0] != ChecksumsFileName {
-		t.Fatalf("checksum required assets = %v", assets)
+func TestDefaultVerifierIsChecksum(t *testing.T) {
+	if _, ok := defaultVerifier().(checksumVerifier); !ok {
+		t.Fatalf("defaultVerifier() = %T, want checksumVerifier", defaultVerifier())
 	}
 }

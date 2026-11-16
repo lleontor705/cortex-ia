@@ -204,24 +204,6 @@ func BootstrapFromEnv(homeDir string) (bool, error) {
 	return true, nil
 }
 
-// AutoReport persists before returning; delivery may finish in a later process.
-func AutoReport(homeDir, source, code, message, details, taskID, jobID, boardID, workspace, version string) {
-	cfg, err := LoadConfig(homeDir)
-	if err != nil || !cfg.Enabled || cfg.Endpoint == "" || cfg.Secret == "" {
-		return
-	}
-	report := CreateReport(source, code, message, details, taskID, jobID, boardID, workspace, version, cfg.Secret)
-	if err := EnqueueReport(homeDir, report, cfg.Secret); err != nil {
-		fmt.Fprintln(os.Stderr, "telemetry queue failed:", err)
-		return
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-		defer cancel()
-		_ = FlushReports(ctx, homeDir, cfg)
-	}()
-}
-
 func NewReportID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)

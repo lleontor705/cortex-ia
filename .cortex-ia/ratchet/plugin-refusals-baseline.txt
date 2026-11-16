@@ -59,7 +59,6 @@ internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: i
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: malformed budget object in ${source}
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: malformed dispatch envelope
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: missing budget count in ${source}
-internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: repository write tools are forbidden for operational tasks; operations execute against target systems only
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: task dispatch requires a non-empty prompt or envelope
 internal/assets/plugins/cortex-subagent-transport.ts	SUBAGENT_TRANSPORT_ERROR: workload_policy must be strict, flexible or unbounded
 internal/assets/plugins/cortex-subagent-transport.ts	identity lookup timeout
@@ -76,7 +75,6 @@ internal/assets/plugins/cortex-task-latch.ts	SUBAGENT_ATTEMPT_FAILED: Attempt ${
 internal/assets/plugins/cortex-task-latch.ts	SUBAGENT_TRANSPORT_ERROR: duplicate decoded key in dispatch envelope: ${lastString}
 internal/assets/plugins/cortex-task-latch.ts	role mismatch
 internal/assets/plugins/cortex-work.ts	${error?.message || "invalid reservation receipt"} — the claim is held by this session; call cortex_ia_work_release_all or cortex_ia_work_recover_own before retrying
-internal/assets/plugins/cortex-work.ts	${name} executable not found
 internal/assets/plugins/cortex-work.ts	'to' is required for work transition: one of in_review, in_progress, blocked
 internal/assets/plugins/cortex-work.ts	BRIDGE_POLICY_UNCLASSIFIED: ${name}
 internal/assets/plugins/cortex-work.ts	BRIDGE_ROLE_DENIED: ${name} is available to roles [${allowed.join(", ")}]; caller role is "${context?.agent || "unknown"}"
@@ -97,6 +95,7 @@ internal/assets/plugins/cortex-work.ts	content hash input exceeds 1 MiB (1048576
 internal/assets/plugins/cortex-work.ts	content hash requires well-formed Unicode for exact UTF-8 encoding
 internal/assets/plugins/cortex-work.ts	controller renewal unconfirmed: query work_status before continuing
 internal/assets/plugins/cortex-work.ts	controller_renewal_unconfirmed
+internal/assets/plugins/cortex-work.ts	cortex-ia executable not found
 internal/assets/plugins/cortex-work.ts	cortex-ia returned no claim token
 internal/assets/plugins/cortex-work.ts	discovery report escaped the project-local .cortex-ia directory
 internal/assets/plugins/cortex-work.ts	discovery report must contain 1-131072 UTF-8 bytes

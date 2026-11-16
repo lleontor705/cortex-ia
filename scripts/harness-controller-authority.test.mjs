@@ -12,6 +12,7 @@ async function harness(variant = {}) {
   const timers = new Map(), calls = [], statusCalls = [];
   const controls = { status: async () => ({ data: { controller: { type: 'busy' } } }), release: true, renew: true };
   const sandbox = createIsolatedSandbox({
+    env: { HOME: '/isolated/home' }, virtualFiles: { '/isolated/home/go/bin/cortex-ia': 'binary' },
     mockPluginSDK: { tool: Object.assign(x => x, { schema }) },
     childProcess: { execFileSync: (file, args, opts) => {
       calls.push({ file, args: Array.from(args), input: opts?.input, timeout: opts?.timeout });
@@ -152,10 +153,9 @@ test('release-all sends one transaction and retains reservations after failure o
   }
 });
 
-test('failed renewal stops, executable discovery is cached and invalidated on error', async () => {
+test('failed renewal stops and no renewal resurrects after the host recovers', async () => {
   const h = await harness();
   await h.advance(30000);
-  assert.equal(h.calls.filter(c => c.args[0] === 'version').length, 1);
   h.controls.renew = false;
   await h.advance(120000);
   const count = h.renewals().length;
@@ -163,7 +163,6 @@ test('failed renewal stops, executable discovery is cached and invalidated on er
   await h.advance(120000);
   assert.equal(h.renewals().length, count);
   await h.plugin.tool.cortex_ia_work_release_all.execute({ task_id: 'task' }, context);
-  assert.ok(h.calls.filter(c => c.args[0] === 'version').length >= 2);
   await h.plugin.dispose();
 });
 

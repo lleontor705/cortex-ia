@@ -75,7 +75,7 @@ tool.schema = {
   array: (items: any) => makeSchemaNode("array", { items: itemsToJSONSchema(items) }),
   object: (props: Record<string, any>) => makeSchemaNode("object", { _rawProps: props }),
 };
-import { execFileSync, execSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -88,10 +88,21 @@ interface SubagentTrack {
 }
 
 const activeSubagents = new Map<string, SubagentTrack>();
-const subagentStartTimes = new Map<string, number>();
 // Retained past idle so a host session that started and then stopped remains
-// classifiable as inactive for reconcile owner-inactivity evidence.
+// classifiable as inactive for reconcile owner-inactivity evidence. Both
+// collections are LRU-capped; an evicted session fails closed as unclassifiable.
+const RETAINED_SESSIONS = 1000;
 const knownHostSessions = new Set<string>();
+function keepRecent<K, V>(map: Map<K, V>, key: K, value: V): void {
+  map.delete(key);
+  map.set(key, value);
+  if (map.size > RETAINED_SESSIONS) map.delete(map.keys().next().value as K);
+}
+function keepRecentKey(set: Set<string>, key: string): void {
+  set.delete(key);
+  set.add(key);
+  if (set.size > RETAINED_SESSIONS) set.delete(set.values().next().value as string);
+}
 interface WorkAuthority {
   claimToken: string;
   leases: Map<string, string>;
@@ -122,15 +133,6 @@ function stopMaintenance(authority: WorkAuthority, reason: string) {
 }
 const controllerIdentity = (sessionID: string) => `opencode-session:${sessionID}`;
 const logDelegation = logLifecycle;
-
-function configRoot(): string {
-  const home = process.env.USERPROFILE || process.env.HOME || "";
-  return path.resolve(home, ".config", "opencode");
-}
-
-function saveAuthorityState() {
-  // In-memory authority tracking
-}
 
 function withoutToken(value: any, tokenField: string): any {
   if (!value || typeof value !== "object") return value;
@@ -254,19 +256,6 @@ function processWorkStatusResponse(
   const responseTaskID = response.task_id || response.projection?.task_id;
   if (!responseTaskID || responseTaskID !== requestedTaskID) {
     return { accepted: false, reason: "RESPONSE_TASK_MISMATCH", projection: getUnknownProjection(requestedTaskID) };
-  }
-
-  const responseSessionID = response.opencode_session_id || response.session_id;
-  const rootSessionID = response.opencode_root_session_id;
-  const parentSessionID = response.opencode_parent_session_id;
-  const isSessionMatch = !responseSessionID ||
-    responseSessionID === sessionID ||
-    sessionID === "host-system" ||
-    (rootSessionID && rootSessionID === sessionID) ||
-    (parentSessionID && parentSessionID === sessionID) ||
-    (typeof sessionID === "string" && (sessionID.startsWith("ses_") || sessionID.startsWith("subagent-")));
-  if (!isSessionMatch) {
-    return { accepted: false, reason: "RESPONSE_SESSION_MISMATCH", projection: getUnknownProjection(requestedTaskID) };
   }
 
   const rev = Number(response.revision || response.projection?.revision || 0);
@@ -401,53 +390,98 @@ function authorityForSession(taskID: string, sessionID: string, requireWriting =
   return workAuthority.get(taskID)!;
 }
 
+const DELEGATION_LOG_MAX_BYTES = 5 * 1024 * 1024;
+const DELEGATION_LOG_KEPT_BYTES = 1024 * 1024;
+
 function logLifecycle(msg: string) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   try {
     const home = process.env.USERPROFILE || process.env.HOME || "";
     const logPath = path.resolve(home, ".config", "opencode", "cortex-delegation.log");
+    try { rotateLifecycleLog(logPath); } catch {}
     fs.appendFileSync(logPath, line, "utf-8");
   } catch {}
 }
 
-const executableCache = new Map<string, { path: string; until: number; environment: string }>();
-function firstExecutable(name: "cortex-ia" = "cortex-ia"): string {
-  const environment = [process.env.PATH, process.env.HOME, process.env.USERPROFILE, process.env.LOCALAPPDATA, process.cwd()].join("|");
-  const cached = executableCache.get(name);
-  if (cached && cached.until > Date.now() && cached.environment === environment &&
-      (cached.path === name || fs.existsSync(cached.path))) return cached.path;
-  executableCache.delete(name);
-  const remember = (value: string) => {
-    executableCache.set(name, { path: value, until: Date.now() + 60000, environment });
-    return value;
-  };
+// Past the cap, keep only the newest tail and drop its partial leading line.
+function rotateLifecycleLog(logPath: string) {
+  let size: number;
+  try { size = fs.statSync(logPath).size; } catch { return; }
+  if (size <= DELEGATION_LOG_MAX_BYTES) return;
+  const fd = fs.openSync(logPath, "r");
+  let tail: Buffer;
+  try {
+    const buffer = Buffer.alloc(DELEGATION_LOG_KEPT_BYTES);
+    tail = buffer.subarray(0, fs.readSync(fd, buffer, 0, buffer.length, size - buffer.length));
+  } finally {
+    fs.closeSync(fd);
+  }
+  const newline = tail.indexOf(0x0a);
+  if (newline >= 0) tail = tail.subarray(newline + 1);
+  const temporary = `${logPath}.tmp`;
+  fs.writeFileSync(temporary, tail);
+  fs.renameSync(temporary, logPath);
+}
+
+// Search order, identical in every plugin copy (lease guard, permission fence, task
+// latch, tool telemetry, this bridge): fixed install paths, then PATH. A binary inside
+// the workspace is untrusted: an agent with write access there could replace it.
+function resolveExecutable(cmd: string): string | null {
+  const locator = process.platform === "win32" ? "where.exe" : "which";
+  try {
+    const out = execFileSync(locator, [cmd], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+      timeout: 3000,
+    }).trim();
+    if (out) {
+      const first = out.split(/\r?\n/)[0].trim();
+      if (path.isAbsolute(first) && fs.existsSync(first)) return first;
+    }
+  } catch {}
+  return null;
+}
+
+function trustedCortexIA(workspace?: string): string | null {
   const home = process.env.USERPROFILE || process.env.HOME || "";
   const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
   const candidates = [
-    "cortex-ia",
     path.join(home, "go", "bin", "cortex-ia"),
-    path.join(home, ".local", "bin", "cortex-ia"),
-    "/opt/homebrew/bin/cortex-ia",
     path.join(home, "go", "bin", "cortex-ia.exe"),
     path.join(local, "Programs", "cortex-ia", "bin", "cortex-ia.exe"),
+    path.join(home, ".local", "bin", "cortex-ia"),
+    "/opt/homebrew/bin/cortex-ia",
     "/usr/local/bin/cortex-ia",
-    "/usr/bin/cortex-ia"
+    "/usr/bin/cortex-ia",
   ];
-  for (const candidate of candidates) {
-    if (candidate !== name && fs.existsSync(candidate)) return remember(candidate);
-    if (candidate === name) {
-      try {
-        execFileSync(candidate, ["version"], { stdio: "ignore", windowsHide: true, timeout: 5000 });
-        return remember(candidate);
-      } catch {}
-    }
-  }
-  throw new Error(`${name} executable not found`);
+  const insideWorkspace = (candidate: string) => {
+    if (!workspace) return false;
+    const relative = path.relative(path.resolve(workspace), path.resolve(candidate));
+    return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
+  };
+  const trusted = (candidate: string) => fs.existsSync(candidate) && !insideWorkspace(candidate);
+  for (const candidate of candidates) if (trusted(candidate)) return candidate;
+  const resolved = resolveExecutable("cortex-ia");
+  return resolved && trusted(resolved) ? resolved : null;
+}
+
+let hostWorkspace = "";
+const executableCache = new Map<string, { path: string; until: number; environment: string }>();
+function firstExecutable(): string {
+  const environment = [process.env.PATH, process.env.HOME, process.env.USERPROFILE, process.env.LOCALAPPDATA, hostWorkspace].join("|");
+  const cached = executableCache.get("cortex-ia");
+  if (cached && cached.until > Date.now() && cached.environment === environment && fs.existsSync(cached.path)) return cached.path;
+  executableCache.delete("cortex-ia");
+  const found = trustedCortexIA(hostWorkspace);
+  if (!found) throw new Error("cortex-ia executable not found");
+  executableCache.set("cortex-ia", { path: found, until: Date.now() + 60000, environment });
+  return found;
 }
 
 function cortex(args: string[], cwd?: string): string {
   try {
-    return execFileSync(firstExecutable("cortex-ia"), args, {
+    return execFileSync(firstExecutable(), args, {
       encoding: "utf-8",
       cwd,
       windowsHide: true,
@@ -460,7 +494,7 @@ function cortex(args: string[], cwd?: string): string {
     if (msg.includes("uv_spawn") || msg.includes("EUNKNOWN")) {
       try {
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
-        return execFileSync(firstExecutable("cortex-ia"), args, {
+        return execFileSync(firstExecutable(), args, {
           encoding: "utf-8",
           cwd,
           windowsHide: true,
@@ -479,7 +513,7 @@ function cortexAuthorized(args: string[], token: string): string {
 
 function cortexInput(args: string[], input: string, timeout = 120000): string {
   try {
-  return execFileSync(firstExecutable("cortex-ia"), args, {
+  return execFileSync(firstExecutable(), args, {
     encoding: "utf-8",
     input,
     windowsHide: true,
@@ -573,166 +607,6 @@ function assertInReviewGotchaEvidence(taskID: string, evidenceRefs: unknown): vo
     `a FAIL verdict in the approval history requires evidence_refs to include "${gotchaEvidenceRef(taskID)}"`);
 }
 
-function parseTabCreateResult(output: string): { paneID: string; tabID: string } {
-  const parsed = parseJSON(output);
-  const paneID = parsed?.result?.root_pane?.pane_id || parsed?.result?.pane?.pane_id || parsed?.result?.pane_id || "";
-  const tabID = parsed?.result?.tab?.tab_id || parsed?.result?.root_pane?.tab_id || parsed?.tab_id || "";
-  return { paneID, tabID };
-}
-
-function sanitizeUnicode(str: string): string {
-  if (typeof str !== "string") return "";
-  if (typeof (str as any).toWellFormed === "function") {
-    return (str as any).toWellFormed();
-  }
-  return str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD");
-}
-
-function truncateUTF8Bytes(str: string, maxBytes: number): { text: string; truncated: boolean } {
-  if (!str) return { text: "", truncated: false };
-  const clean = sanitizeUnicode(str);
-  if (Buffer.byteLength(clean, "utf-8") <= maxBytes) {
-    return { text: clean, truncated: false };
-  }
-  let currentBytes = 0;
-  let result = "";
-  for (const char of clean) {
-    const charBytes = Buffer.byteLength(char, "utf-8");
-    if (currentBytes + charBytes > maxBytes) {
-      return { text: result, truncated: true };
-    }
-    result += char;
-    currentBytes += charBytes;
-  }
-  return { text: result, truncated: false };
-}
-
-function safeUnicodeSlice(str: string, maxChars: number): string {
-  if (!str) return "";
-  const clean = sanitizeUnicode(str);
-  const chars = Array.from(clean);
-  if (chars.length <= maxChars) return clean;
-  return chars.slice(0, maxChars).join("") + "...";
-}
-
-const PER_CHECK_VERDICTS = new Set(["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"]);
-
-// Per-spec verdicts ride additively into the compact projection. Malformed
-// entries are dropped instead of failing the whole receipt so a partially-bad
-// producer can never suppress an otherwise valid compaction.
-function normalizeVerdicts(raw: any): Array<{ check_id: string; verdict: string; evidence_ref: string }> | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const verdicts: Array<{ check_id: string; verdict: string; evidence_ref: string }> = [];
-  for (const entry of raw) {
-    if (!entry || typeof entry !== "object") continue;
-    // req_id is the pre-plan spelling; receipts from older prompts still use it.
-    const rawId = typeof entry.check_id === "string" ? entry.check_id : entry.req_id;
-    const checkId = typeof rawId === "string" ? rawId.trim() : "";
-    const verdict = typeof entry.verdict === "string" ? entry.verdict.trim() : "";
-    if (checkId.length === 0 || !PER_CHECK_VERDICTS.has(verdict)) continue;
-    if (typeof entry.evidence_ref !== "string") continue;
-    verdicts.push({ check_id: checkId, verdict, evidence_ref: entry.evidence_ref });
-  }
-  return verdicts;
-}
-
-function extractCompactReceipt(job: any, res: any, jobID: string): any {
-  const authoritativeStatus = job?.status || res?.status || "unknown";
-  const isSuccess = authoritativeStatus === "succeeded";
-  const exitCode = typeof job?.exit_code === "number" ? job.exit_code
-    : typeof res?.exit_code === "number" ? res.exit_code
-    : (isSuccess ? 0 : 1);
-
-  let rawOutput = res?.output;
-  if (typeof rawOutput === "string") {
-    try {
-      const parsed = JSON.parse(rawOutput);
-      if (parsed && typeof parsed === "object") rawOutput = parsed;
-    } catch {}
-  }
-
-  const candidate = (rawOutput?.structured_output && typeof rawOutput.structured_output === "object") ? rawOutput.structured_output
-    : (res?.structured_output && typeof res.structured_output === "object") ? res.structured_output
-    : (rawOutput && typeof rawOutput === "object" && (rawOutput.phase_status !== undefined || rawOutput.summary !== undefined || rawOutput.execution_status !== undefined || rawOutput.verification_verdict !== undefined || rawOutput.verdict !== undefined || rawOutput.checks !== undefined || rawOutput.changed_files !== undefined)) ? rawOutput
-    : (res && typeof res === "object" && (res.phase_status !== undefined || res.summary !== undefined || res.execution_status !== undefined || res.verification_verdict !== undefined || res.verdict !== undefined || res.checks !== undefined || res.changed_files !== undefined)) ? res
-    : null;
-
-  const validExecutionStatuses = new Set(["completed", "partial", "failed", "blocked", "unverified"]);
-  const rawExecutionStatus = typeof candidate?.execution_status === "string" ? candidate.execution_status.trim() : "";
-  const execution_status = validExecutionStatuses.has(rawExecutionStatus) ? rawExecutionStatus : undefined;
-
-  const rawPhaseStatus = typeof candidate?.phase_status === "string" ? candidate.phase_status.trim() : "";
-  const phase_status = rawPhaseStatus.length > 0 ? rawPhaseStatus : undefined;
-
-  const rawVerdict = candidate?.verification_verdict !== undefined ? candidate.verification_verdict : candidate?.verdict;
-  const verification_verdict = typeof rawVerdict === "string" && rawVerdict.trim().length > 0 ? rawVerdict.trim() : undefined;
-
-  let rawSummary = "";
-  if (typeof candidate?.summary === "string" && candidate.summary.trim().length > 0) {
-    rawSummary = candidate.summary.trim();
-  } else {
-    const rawFallback = rawOutput?.response
-      || rawOutput?.text
-      || res?.response
-      || res?.text
-      || res?.error
-      || (typeof rawOutput === "string" ? rawOutput : "")
-      || job?.error_message
-      || "";
-    rawSummary = typeof rawFallback === "string" ? rawFallback.trim() : (rawFallback ? String(rawFallback).trim() : "");
-  }
-
-  const { text: summary, truncated: summaryTruncated } = truncateUTF8Bytes(rawSummary, 2048);
-
-  const changed_files = Array.isArray(candidate?.changed_files) ? candidate.changed_files.map(String) : undefined;
-  const checks = Array.isArray(candidate?.checks) ? candidate.checks.map(String) : undefined;
-
-  const verdictSource = candidate
-    ?? (rawOutput && typeof rawOutput === "object" ? rawOutput : null)
-    ?? (res && typeof res === "object" ? res : null);
-  const verdicts = normalizeVerdicts(verdictSource?.verdicts);
-
-  const output: any = {
-    summary,
-    details_omitted: true
-  };
-  if (phase_status !== undefined) output.phase_status = phase_status;
-  if (execution_status !== undefined) output.execution_status = execution_status;
-  if (verification_verdict !== undefined) output.verification_verdict = verification_verdict;
-  if (changed_files !== undefined) output.changed_files = changed_files;
-  if (checks !== undefined) output.checks = checks;
-  if (verdicts !== undefined) output.verdicts = verdicts;
-  if (summaryTruncated) output.truncated = true;
-
-  const id = job?.job_id || res?.job_id || jobID;
-  const compactResult: any = {
-    job_id: id,
-    full_result_job_id: id,
-    status: authoritativeStatus,
-    exit_code: exitCode,
-    compact: true,
-    details_omitted: true,
-    summary,
-    output,
-    structured_output: output
-  };
-
-  if (phase_status !== undefined) compactResult.phase_status = phase_status;
-  if (execution_status !== undefined) compactResult.execution_status = execution_status;
-  if (verification_verdict !== undefined) compactResult.verification_verdict = verification_verdict;
-  if (changed_files !== undefined) compactResult.changed_files = changed_files;
-  if (checks !== undefined) compactResult.checks = checks;
-  if (summaryTruncated) compactResult.truncated = true;
-
-  if (res?.output_hash) compactResult.output_hash = res.output_hash;
-  if (res?.created_at || job?.created_at) compactResult.created_at = res?.created_at || job?.created_at;
-  if (job?.error_code) compactResult.error_code = job.error_code;
-  if (job?.error_message) compactResult.error_message = job.error_message;
-  if (!res && isSuccess) compactResult.receipt_missing = true;
-
-  return compactResult;
-}
-
 export type ErrorSeverity = "critical" | "error" | "warning";
 
 // Single canonical map of the operational error codes emitted by the bridge,
@@ -776,6 +650,7 @@ export const CortexWorkPlugin = Plugin.define({
   async setup(ctx) {
     const client = (ctx as any).client || {};
     const hostDirectory = (ctx as any).location?.directory || (ctx as any).directory || process.cwd();
+    hostWorkspace = hostDirectory;
   const startMaintenance = (taskID: string, authority: WorkAuthority, directory: string) => {
     const state: NonNullable<WorkAuthority["maintenance"]> = { active: true, lastProgress: Date.now(), progress: new Map() };
     authority.maintenance = state;
@@ -888,6 +763,7 @@ export const CortexWorkPlugin = Plugin.define({
       else sessionStatuses.delete(sessionID);
     } else if (type === "session.deleted" && sessionID) {
       sessionStatuses.delete(sessionID);
+      activeSubagents.delete(sessionID);
     }
     for (const authority of workAuthority.values()) {
       const state = authority.maintenance;
@@ -915,36 +791,17 @@ export const CortexWorkPlugin = Plugin.define({
       }
     }
 
-    // 1. Detectar inicio de subagente o subtask
-    if (type === "session.created") {
-      if (sessionID) knownHostSessions.add(sessionID);
-    }
+    if (type === "session.created" && sessionID) keepRecentKey(knownHostSessions, sessionID);
     if (type === "session.created" && event.properties?.info?.parentID) {
       const role = event.properties?.info?.role || event.properties?.info?.agent || "subagent";
-      subagentStartTimes.set(sessionID, Date.now());
-      activeSubagents.set(sessionID, { id: sessionID, role, startedAt: Date.now() });
-      logDelegation(`🚀 [CORTEX-IA] Subagente iniciado: '${role}' (Session: ${sessionID})`);
+      keepRecent(activeSubagents, sessionID, { id: sessionID, role, startedAt: Date.now() });
     } else if (type === "subtask.created") {
       const taskID = event.properties?.id || "subtask";
-      subagentStartTimes.set(taskID, Date.now());
-      activeSubagents.set(taskID, { id: taskID, role: event.properties?.agent || "subtask", startedAt: Date.now() });
-      logDelegation(`🚀 [CORTEX-IA] Tarea en background iniciada: '${taskID}'`);
+      keepRecent(activeSubagents, taskID, { id: taskID, role: event.properties?.agent || "subtask", startedAt: Date.now() });
     }
 
-    // 2. Detectar finalización de subagente o subtask
     if (type === "session.idle" || type === "subtask.completed" || type === "session.error") {
-      const trackingID = type === "subtask.completed" ? event.properties?.id || "subtask" : sessionID;
-      const tracked = activeSubagents.get(trackingID);
-      const startTime = subagentStartTimes.get(trackingID);
-      const durationSec = startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
-      const status = type === "session.error" ? "ERROR" : "COMPLETED";
-      const role = tracked?.role || event.properties?.info?.role || event.properties?.info?.agent || "subagent";
-
-      if (startTime) {
-        logDelegation(`✅ [CORTEX-IA] Subagente '${role}' finalizado en ${durationSec}s (Estado: ${status})`);
-        subagentStartTimes.delete(trackingID);
-        activeSubagents.delete(trackingID);
-      }
+      activeSubagents.delete(type === "subtask.completed" ? event.properties?.id || "subtask" : sessionID);
     }
   };
 
@@ -1337,7 +1194,6 @@ export const CortexWorkPlugin = Plugin.define({
         const result = cortex(["work", "recover", "--task", args.task_id, "--owner", controllerIdentity(context.sessionID)]);
         stopMaintenance(authority, "recovered");
         workAuthority.delete(args.task_id);
-        saveAuthorityState();
         return result;
       }
     }),
@@ -1393,7 +1249,6 @@ export const CortexWorkPlugin = Plugin.define({
           // or reassigned claim must never keep blocking a fresh claim (obs 176).
           stopMaintenance(retained, "durable_deference");
           workAuthority.delete(args.task_id);
-          saveAuthorityState();
         }
         if ([...workAuthority.values()].some((authority) => authority.sessionID === context.sessionID)) {
           throw new Error("this implement session already owns one work task; dispatch a separate controller for additional work");
@@ -1409,7 +1264,6 @@ export const CortexWorkPlugin = Plugin.define({
         const authority: WorkAuthority = { claimToken: claim.claim_token, leases, sessionID: context.sessionID };
         workAuthority.set(args.task_id, authority);
         startMaintenance(args.task_id, authority, context.directory);
-        saveAuthorityState();
         let reserved: any[];
         try {
           reserved = reservationReceipt(claim.reserved_files || [], targetPaths);
@@ -1472,7 +1326,6 @@ export const CortexWorkPlugin = Plugin.define({
         const reserved = reservationReceipt(response?.reserved || [response], targetPaths);
         for (const lease of reserved) authority.leases.set(lease.path, lease.lease_token);
         const results = reserved.map(lease => withoutToken(lease, "lease_token"));
-        saveAuthorityState();
         return JSON.stringify({ reserved: results, count: results.length });
       }
     }),
@@ -1489,7 +1342,6 @@ export const CortexWorkPlugin = Plugin.define({
         }
         stopMaintenance(authority, "release_all");
         authority.leases.clear();
-        saveAuthorityState();
         return JSON.stringify({ released, failures: [], ...receipt });
       }
     }),
@@ -1528,7 +1380,6 @@ export const CortexWorkPlugin = Plugin.define({
             failures.push({ path: leasePath, error: error?.message || "release failed" });
           }
         }
-        saveAuthorityState();
         return JSON.stringify({ released, failures });
       }
     }),
@@ -1571,7 +1422,6 @@ export const CortexWorkPlugin = Plugin.define({
         if (targetState === "blocked") {
           workAuthority.delete(args.task_id);
         }
-        saveAuthorityState();
         return result;
       }
     }),
@@ -1598,7 +1448,6 @@ export const CortexWorkPlugin = Plugin.define({
         command.push("--revision", String(args.revision));
         const result = cortex(command);
         workAuthority.delete(args.task_id);
-        saveAuthorityState();
         return result;
       }
     }),
@@ -1680,12 +1529,6 @@ export const CortexWorkPlugin = Plugin.define({
             input: inputSchema,
             execute: executeTool,
           });
-          editor.add({
-            name: `cortex_ia.${name}`,
-            description: def.description,
-            input: inputSchema,
-            execute: executeTool,
-          });
         }
       });
     }
@@ -1694,7 +1537,6 @@ export const CortexWorkPlugin = Plugin.define({
       abortController.abort();
       for (const authority of workAuthority.values()) stopMaintenance(authority, "disposed");
       workAuthority.clear();
-      saveAuthorityState();
     };
     (cleanup as any).dispose = cleanup;
     (cleanup as any).tool = bridgeTools;
@@ -1713,10 +1555,6 @@ Object.assign(CortexWorkPlugin, {
   getUnknownProjection,
   handleWorkStatusFailure,
   processWorkStatusResponse,
-  sanitizeUnicode,
-  truncateUTF8Bytes,
-  safeUnicodeSlice,
-  extractCompactReceipt,
 });
 
 export const CortexDelegationBridge = CortexWorkPlugin;
