@@ -98,6 +98,12 @@ All notable changes to this project are documented here. Versions follow
 
 ### CI and supply chain
 
+- `cortex_ia_diagram_render` and `cortex_ia_doc_convert` (with `output_path`) take `task_id` and
+  work on Claude Code; OpenCode registers each tool once (dotted aliases removed, halving tool
+  definition tokens: 26k to 13k characters).
+- Dead code removed in Go (21 functions, 8 files) and in the plugins; plugin caches are bounded,
+  the delegation log rotates, and every plugin searches for `cortex-ia` in the same order,
+  skipping binaries inside the workspace.
 - CI runs the plugin harness tests (`scripts/*.test.mjs`, except the live `qualify-mcp` test),
   the prompt budget gate, and a check that the committed web bundle matches `web/src`.
 - Release archives and `checksums.txt` carry build provenance attestations; verify a download
