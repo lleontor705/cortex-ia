@@ -1181,7 +1181,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_board_create: tool({
-      description: "Create one durable board for an initiative (planner or orchestrator). Use one stable board_id per initiative; list boards first to avoid duplicates.",
+      description: "Create one durable board for an initiative (planner only). Use one stable board_id per initiative; list boards first to avoid duplicates.",
       args: { board_id: tool.schema.string(), title: tool.schema.string(), description: tool.schema.string().optional() },
       async execute(args, context) {
         const command = ["board", "create", "--id", args.board_id, "--title", args.title];
@@ -1203,7 +1203,7 @@ export const CortexWorkPlugin = Plugin.define({
     }),
 
     cortex_ia_work_create: tool({
-      description: "Create one work item in a same-board DAG (planner or orchestrator). board_id defaults to \"default\" for ungrouped work. Every dependency must already exist on the same board; check with board_status first.",
+      description: "Create one work item in a same-board DAG (planner or orchestrator). board_id defaults to \"default\" for ungrouped work. Every dependency must already exist on the same board; check with board_status first. allowed_files must match the files the implementer will change: the transition refuses changes outside them.",
       args: {
         workflow: tool.schema.enum(["direct-change", "fast-tdd", "hotfix", "ops-task"]),
         board_id: tool.schema.string().optional(),
@@ -1214,6 +1214,7 @@ export const CortexWorkPlugin = Plugin.define({
         verification: tool.schema.string().optional(),
         allowed_files: tool.schema.array(tool.schema.string()).optional(),
         dependencies: tool.schema.array(tool.schema.string()).optional(),
+        workload_policy: tool.schema.enum(["strict", "flexible", "unbounded"]).optional(),
       },
       async execute(args, context) {
         const ownership = await conversationOwnership(context.sessionID, context.directory);
@@ -1225,6 +1226,7 @@ export const CortexWorkPlugin = Plugin.define({
         if (args.objective) command.push("--objective", args.objective);
         if (args.acceptance_criteria) command.push("--acceptance", args.acceptance_criteria);
         if (args.verification) command.push("--verify", args.verification);
+        if (args.workload_policy) command.push("--workload-policy", args.workload_policy);
         for (const file of args.allowed_files || []) command.push("--file", file);
         for (const dependency of args.dependencies || []) command.push("--depends", dependency);
         return cortex(command);
@@ -1615,7 +1617,7 @@ export const CortexWorkPlugin = Plugin.define({
   ]);
   const mutations: Record<string, string[]> = {
     discovery_write: ["discovery"],
-    board_create: ["planner", "orchestrator"], work_create: ["planner", "orchestrator"],
+    board_create: ["planner"], work_create: ["planner", "orchestrator"],
     work_recover: ["orchestrator"], work_recover_own: ["implement"], work_retry: ["orchestrator"], work_review_refresh: ["orchestrator"], work_decompose: ["planner"],
     work_reconcile: ["orchestrator"],
     work_claim: ["implement"], work_renew: ["implement"],

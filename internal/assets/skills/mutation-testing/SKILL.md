@@ -31,7 +31,7 @@ Pick one or two that fit the change:
 3. Rerun the covering test.
    - Test fails on an assertion: the mutation is **KILLED**. The test is doing its job.
    - Test still passes: the mutation **SURVIVED**. Strengthen the test and repeat.
-4. Revert with `git checkout -- <file>` and confirm the tree is clean for that file.
+4. Revert by applying the inverse edit with the edit tool, then run `git diff` and confirm that only the intended change remains. Never revert with `git checkout -- <file>`: it discards the implementer's uncommitted fix along with the mutation.
 
 If execution is impossible in the environment, record **STATIC-ANALYSIS** instead. Then name the assertions that cover the changed unit's error boundaries, return payloads, and failure branches. A bare claim does not meet that bar.
 

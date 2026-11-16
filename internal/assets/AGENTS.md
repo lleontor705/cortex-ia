@@ -25,7 +25,7 @@ Contracts are installed under `~/.cortex-ia/opencode/contracts/`. Read the one y
 
 - Tier 1, direct answer: answers and read-only lookups. No board, claim or plan.
 - Tier 2, one bounded task: one task on the `default` board, one implementer, approval under the review matrix.
-- Tier 3, planned initiative: the planner writes the plan file and a same-board DAG.
+- Tier 3, planned initiative: the orchestrator picks a board slug; the planner creates that board, its plan file, and its same-board DAG.
 
 ## Hard rules
 

@@ -1,6 +1,6 @@
 ---
 name: parallel-dispatch
-description: Detect and execute independent task groups concurrently in OpenCode background subagents when dependencies are satisfied and allowed_files are disjoint. Use when several ready tasks could run at the same time.
+description: Detect and execute independent task groups concurrently in the host's background subagents when dependencies are satisfied and allowed_files are disjoint. Use when several ready tasks could run at the same time.
 license: MIT
 metadata:
   author: lleontor705
@@ -23,6 +23,8 @@ Keep a wave to at most 4 implementers. Tasks that fail either check wait for a l
 ## 2. Workspace
 
 Use `current_workspace`; it is the only supported strategy. Each implementer holds its own live claim and reserves each writable file with `cortex_ia_file_reserve`, in sorted path order, before editing that file. It releases each file with `cortex_ia_file_release`. On a conflict it releases what it already holds and stops writing.
+
+Never lease the plan file `docs/plans/<board-id>.md`. Two slices writing it would collide and break review fingerprints. Implementers report decisions in receipts; the planner records them in phase `update`.
 
 ## 3. Dispatch
 

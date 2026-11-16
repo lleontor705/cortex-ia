@@ -10,7 +10,7 @@ var Roles = []string{"orchestrator", "discovery", "planner", "investigate", "imp
 // and open to every role.
 var toolRoles = map[string][]string{
 	"cortex_ia_discovery_write":     {"discovery"},
-	"cortex_ia_board_create":        {"planner", "orchestrator"},
+	"cortex_ia_board_create":        {"planner"},
 	"cortex_ia_work_create":         {"planner", "orchestrator"},
 	"cortex_ia_work_recover":        {"orchestrator"},
 	"cortex_ia_work_recover_own":    {"implement"},
@@ -26,7 +26,7 @@ var toolRoles = map[string][]string{
 	"cortex_ia_work_transition":     {"implement"},
 	"cortex_ia_work_approve":        {"reviewer", "orchestrator"},
 	"cortex_ia_diagram_render":      {"implement"},
-	"cortex_ia_workload_audit":      {"implement", "reviewer"},
+	"cortex_ia_workload_audit":      {"implement", "reviewer", "orchestrator"},
 }
 
 // unidentifiedRoleTools are the restricted tools a caller without a known role

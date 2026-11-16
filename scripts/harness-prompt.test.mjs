@@ -122,7 +122,7 @@ test('dispatchInfo enforces role alignment and boundaries', async () => {
 </minion-dispatch>`;
 
   const res = dispatchInfo({ subagent_type: 'implement' }, validPrompt);
-  assert.equal(res.limit, 70);
+  assert.equal(res.limit, 150);
   assert.equal(res.operational, false);
 
   const mismatchPrompt = `<minion-dispatch>
@@ -139,11 +139,11 @@ test('dispatchInfo enforces role alignment and boundaries', async () => {
   });
 });
 
-test('planner plan workflow passes plan and decompose phases through unchanged', async () => {
+test('planner plan workflow passes plan, decompose and update phases through unchanged', async () => {
   const mod = await loadPluginFile('internal/assets/plugins/cortex-subagent-transport.ts');
   const { dispatchInfo } = mod.exports;
 
-  for (const phase of ['plan', 'decompose']) {
+  for (const phase of ['plan', 'decompose', 'update']) {
     const prompt = `<minion-dispatch>
 {
   "contract_version": "1.0",
@@ -230,7 +230,7 @@ test('dispatchInfo normalizes investigate envelope with description fallback', a
 </minion-dispatch>`;
 
   const res = dispatchInfo({ agent: 'investigate', description: 'Mapear arquitectura inventario actual' }, prompt);
-  assert.equal(res.limit, 50);
+  assert.equal(res.limit, 60);
   assert.equal(res.operational, false);
   const normalized = JSON.parse(res.prompt.match(/<minion-dispatch>(.*)<\/minion-dispatch>/)[1]);
   assert.equal(normalized.contract_version, '2.0');

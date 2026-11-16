@@ -14,7 +14,7 @@ The routing and phase matrix for Cortex-IA. Authority and receipts are defined i
 | ops-task | Orchestrator creates one task on `default`; implement | Script exit 0, target verification, approval under the review matrix |
 | fast-tdd | Implement with fast-tdd; approval under the review matrix | Red test first, same oracle green, mutation evidence (`KILLED` or `STATIC-ANALYSIS`, see protocol §4), approval |
 | hotfix | Implement with hotfix-triage; approval under the review matrix | Containment, regression evidence, and an explicit structural follow-up |
-| plan | Planner writes the plan file and materializes the DAG; implement per slice; reviewer or auto-approval | Plan with runnable checks, same-board DAG, approvals, Outcome filled at close |
+| plan | Planner writes the plan file and materializes the DAG; implement per slice; reviewer or auto-approval; planner `update` at close | Plan with runnable checks, same-board DAG, approvals, Outcome filled by planner `update` |
 | review | Independent reviewer | Verdict against the plan's checks and the diff. Only an approved PASS produces `done` |
 | retrospective | Investigate with workflow-retrospective | Diagnosis and recommendations. No implementation or state mutation |
 
@@ -24,13 +24,14 @@ Use the smallest route that fits. Direct tasks need no plan. The planner skill (
 
 | Phase | Role | Artifact | Exit |
 |---|---|---|---|
-| plan / plan | planner | `docs/plans/<board-id>.md` and the same-board DAG | Checks are runnable, slices are valid, DAG is materialized |
-| plan / decompose | planner | Revised slices for one blocked task | 2-8 child tasks on the same board; parent superseded |
-| plan / apply | implement | Progress, Decisions and Surprises appended before `in_review` | Slice checks pass; change stays in scope |
-| plan / review | reviewer | Plan's acceptance checks, rerun on the current tree | Independent verdict per check |
-| plan / close | last implementer | Outcome section filled | All tasks approved; the file stays as history |
+| plan / plan | planner | `docs/plans/<board-id>.md`, the initiative board (planner creates it with the orchestrator's slug), and the same-board DAG | Checks are runnable, slices are valid, DAG is materialized |
+| plan / decompose | planner | Revised slices for one blocked task | 2-8 child tasks on the same board, chained in order; parent superseded |
+| plan / update | planner | Acceptance Checks changes (dispatched by the orchestrator with a reason), or at close Decisions and Surprises from the receipts plus Outcome | Plan rewritten in full; no commits |
+| slice / apply | implement | No plan-file writes. Surprises and decisions go in the receipt | Slice checks pass; change stays in scope |
+| plan / review | reviewer | The checks its task names, rerun on the current tree | Independent verdict per check |
+| plan / close | orchestrator dispatches planner `update` | Outcome filled once the last approval is recorded | All tasks approved; the file stays as history |
 
-The plan is the only spec artifact. Implementation and review read it, and repository tests are the living spec. Durable decisions go to `AGENTS.md` or an ADR, not into the plan.
+The plan is the only spec artifact. Implementation and review read it, and repository tests are the living spec. Plan files are never in a slice's `allowed_files`, so parallel slices do not collide on one file. Durable decisions go to `AGENTS.md` or an ADR, not into the plan.
 
 ## Task sizing: the resume test
 
@@ -50,7 +51,7 @@ Fingerprints of the task definition and the sorted writable-file contents bind a
 
 When later authorized tasks change files covered by an earlier approval, the orchestrator calls `cortex_ia_work_review_refresh({task_id, revision})` after active work is reconciled. That reopens review under current fingerprints, grants no write authority and never approves. An independent reviewer evaluates the final state and records a fresh verdict. Historical approvals stay unchanged.
 
-Plan closure has no archive step. When the last approval is recorded, the last implementer fills in the Outcome section.
+Plan closure has no archive step. When the last approval is recorded, the orchestrator dispatches planner phase `update` to fill in Outcome.
 
 ## Delegation and recovery
 

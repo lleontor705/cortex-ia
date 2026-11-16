@@ -26,20 +26,14 @@ Read `~/.cortex-ia/opencode/contracts/diagnosis-loop-contract.md` for bug fixes.
 
 ## Output
 
-Return the §8 receipt from `cortex-work-protocol.md` as Markdown `field: value` lines (not JSON), with `workflow: fast-tdd` and this evidence block:
+Return the §8 receipt from `cortex-work-protocol.md` as Markdown `field: value` lines (not JSON), with `workflow: fast-tdd`. Fields: `status`, `summary`, `changed_files`, `checks`, `verdicts` (one per acceptance-check ID), `evidence_refs`, `blockers` when any, and `next_route`. Record the TDD evidence as `checks` entries:
 
-- evidence:
-  - red: command, exit_code, oracle, seam, expected_source
-  - green: command, exit_code
-  - refactor: command, exit_code
-  - regression: command, exit_code
-  - mutation: outcome (KILLED | STATIC-ANALYSIS), description, command, reverted
-- files_changed: <list>
-- evidence_refs: <list>
-- cleanup: leases_released, notes
-- risks: <list>
-- next_route: per `cortex-work-protocol.md` §8
+- `<red command> -> exit <code>` (red: oracle, seam, expected_source)
+- `<green command> -> exit <code>` (green)
+- `<refactor command> -> exit <code>` (refactor)
+- `<regression command> -> exit <code>` (regression)
+- mutation: `KILLED` or `STATIC-ANALYSIS`, with the description, command, and whether it was reverted
 
-For a fast-TDD-eligible code task with a test delta, `mutation` is required: accepted final outcomes are `KILLED` and `STATIC-ANALYSIS`; `SURVIVED` never ships, and a missing or empty field on eligible work makes the evidence incomplete (`INCONCLUSIVE` or `BLOCKED`), never `PASS`. Exempt work kinds record the exemption reason instead.
+For a fast-TDD-eligible code task with a test delta, the mutation entry is required: accepted outcomes are `KILLED` and `STATIC-ANALYSIS`, and `SURVIVED` never ships. A missing mutation entry makes the evidence incomplete (`INCONCLUSIVE` or `BLOCKED`), never `PASS`. Exempt work kinds record the exemption reason instead.
 
 Never include claim or lease authority in the receipt.

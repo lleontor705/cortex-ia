@@ -44,10 +44,6 @@ Relevant background, constraints, and what this plan deliberately does not do.
 ## Slices
 1. Slice name: files, checks it satisfies, dependencies on earlier slices.
 
-## Progress
-- [ ] Slice 1
-- [ ] Slice 2
-
 ## Decisions and Surprises
 Dated notes on choices made and anything that differed from the plan.
 
@@ -55,8 +51,24 @@ Dated notes on choices made and anything that differed from the plan.
 Filled in when the work is done: what shipped, which checks passed, what remains.
 ````
 
+There is no Progress section. Task state in the board database is the progress.
+
 Acceptance checks are executable commands with an expected result, not prose. The first slice
-writes them as failing tests (red) before any implementation.
+writes them as failing tests (red) before any implementation. Each task carries its checks as
+`AC-<n>: <command>` strings, so the reviewer's verdict can name the check it covers.
+
+## Who writes what
+
+| Action | Who | Notes |
+|---|---|---|
+| Create the board | `planner`, once, with the orchestrator's slug | The orchestrator does not create boards |
+| Write the plan file | `planner` | Phases `plan`, `update` |
+| Change an acceptance check | `planner`, phase `update` | Dispatched by the orchestrator with the reason; recorded in Decisions and Surprises |
+| Record surprises and decisions | Implementers report them in receipts; `planner`, phase `update`, copies them into the plan | Implementers never lease or edit the plan file |
+| Fill Outcome | `planner`, phase `update`, at close | Dispatched by the orchestrator after the last approval |
+| Decompose a blocked task | `planner`, phase `decompose` | Children are chained in order |
+
+The plan file is never in a slice's allowed files, so parallel slices do not collide on it.
 
 ## Slices and tasks
 
@@ -80,8 +92,8 @@ board (see [CLI reference](../reference/cli.md)).
 
 ## Closure
 
-There is no archive step. When the work is done, the plan's Progress and Outcome sections are
-updated and the file stays in `docs/plans/`. Approved work produces `done` through
+There is no archive step. When the last approval is recorded, the orchestrator dispatches the planner
+in phase `update`, which fills in Outcome, and the file stays in `docs/plans/`. Approved work produces `done` through
 `cortex-ia work approve`; no separate spec closure is required.
 
 ## Task lifecycle

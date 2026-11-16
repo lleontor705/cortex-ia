@@ -11,6 +11,8 @@ metadata:
 
 A spike answers one named question with a throwaway experiment. Run it only in a scratch directory the user has granted. Keep prototypes out of production paths, so that nothing shipped changes and no prototype can be promoted by accident.
 
+Investigate is read-only. A spike that needs no files runs under `investigate`. A spike that writes files runs as an `implement` task whose scratch paths are leased, so the writes stay tracked.
+
 1. **Frame the question.** Write one falsifiable question, the success and failure thresholds, the time budget, the environment, and the cleanup plan. Pick one mode:
    - `technical`: a harness, benchmark, compatibility probe, or protocol experiment.
    - `logic`: a pure reducer, state machine, or function, tested with happy-path, edge, and illegal-action scenarios that show the full relevant state.
