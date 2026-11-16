@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"os/exec"
 	"regexp"
@@ -42,20 +43,27 @@ func workloadAudit(ctx context.Context, s *session, args map[string]any) (string
 	if strings.HasPrefix(baseRef, "-") {
 		return "", errors.New("baseRef must be a git revision, not an option")
 	}
-	files := s.numstat(ctx, baseRef)
+	files, err := s.numstat(ctx, baseRef)
+	if err != nil {
+		return "", err
+	}
 	return encodeJSON(auditResult(files, policy))
 }
 
-// numstat mirrors the plugin: a failed diff yields an empty file list.
-func (s *session) numstat(ctx context.Context, baseRef string) []diffFile {
+// numstat fails closed like the plugin: an empty list from a failed diff would
+// read as a passing budget.
+func (s *session) numstat(ctx context.Context, baseRef string) ([]diffFile, error) {
 	runCtx, cancel := context.WithTimeout(ctx, gitDiffTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(runCtx, "git", "diff", "--numstat", baseRef)
+	cmd := exec.CommandContext(runCtx, "git", "diff", "--numstat", baseRef, "--")
 	cmd.Dir = s.workspace
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil || stdout.Len() > maxGitDiffOutputB {
-		return nil
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("workload audit: git diff failed: %w", err)
+	}
+	if stdout.Len() > maxGitDiffOutputB {
+		return nil, errors.New("workload audit: git diff output exceeds the audit limit")
 	}
 	var files []diffFile
 	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
@@ -75,7 +83,7 @@ func (s *session) numstat(ctx context.Context, baseRef string) []diffFile {
 		}
 		files = append(files, diffFile{Path: name, Added: added, Deleted: deleted, Category: category})
 	}
-	return files
+	return files, nil
 }
 
 // auditResult applies the plugin's budget rules. Unbounded caps are reported
