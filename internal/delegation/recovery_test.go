@@ -33,7 +33,7 @@ func (f *recoveryFixture) advance(d time.Duration) {
 func (f *recoveryFixture) create(t *testing.T, id string) {
 	t.Helper()
 	if _, err := f.store.CreateWorkInBoardWithDefinition(context.Background(), DefaultBoardID, id, id, nil, WorkDefinition{
-		Project: t.TempDir(), Objective: "objective", Acceptance: "acceptance", Verification: "verification", AllowedFiles: []string{"src/a.go"},
+		Project: t.TempDir(), Objective: "objective", Acceptance: "acceptance", Verification: "verification", AllowedFiles: []string{"src/a.go", "src/b.go"},
 	}); err != nil {
 		t.Fatal(err)
 	}

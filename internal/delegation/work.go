@@ -800,6 +800,17 @@ func (s *Store) reserveWorkLease(ctx context.Context, conn *sql.Conn, id, claimT
 		if claimCount != 1 {
 			return fmt.Errorf("%w: active claim required to lease files", ErrWorkConflict)
 		}
+		var allowedJSON string
+		if err := conn.QueryRowContext(ctx, `SELECT allowed_files_json FROM work_definitions WHERE item_id=?`, id).Scan(&allowedJSON); err != nil {
+			return err
+		}
+		var allowed []string
+		if err := json.Unmarshal([]byte(allowedJSON), &allowed); err != nil {
+			return fmt.Errorf("decode allowed files: %w", err)
+		}
+		if err := checkLeaseWithinAllowedFiles(id, leasePath, allowed); err != nil {
+			return err
+		}
 		var workspace string
 		if err := conn.QueryRowContext(ctx, `SELECT COALESCE(workspace,'') FROM work_items WHERE id=?`, id).Scan(&workspace); err != nil {
 			return err

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -34,6 +35,33 @@ func reservationPaths(paths []string) ([]string, error) {
 	}
 	sort.Strings(result)
 	return result, nil
+}
+
+// checkLeaseWithinAllowedFiles confines a reservation to the task's declared scope. Coverage
+// mirrors the review binding: a literal entry covers itself and anything beneath it, and a
+// glob entry matches with the pathspec semantics the fingerprint uses. Both sides are
+// canonical, so case folding on macOS and Windows applies to them alike. An empty scope
+// covers nothing, since an implementer must declare the files it writes.
+func checkLeaseWithinAllowedFiles(id, leasePath string, allowed []string) error {
+	if len(allowed) == 0 {
+		return fmt.Errorf("task %s declares no allowed_files, so %s cannot be leased; ask the orchestrator to set allowed_files", id, leasePath)
+	}
+	for _, entry := range allowed {
+		if isGlobPattern(entry) {
+			matcher, err := walkedTreePattern(entry)
+			if err != nil {
+				return fmt.Errorf("compile allowed_files pattern %s: %w", entry, err)
+			}
+			if matcher.MatchString(leasePath) {
+				return nil
+			}
+			continue
+		}
+		if leasePath == entry || strings.HasPrefix(leasePath, entry+"/") {
+			return nil
+		}
+	}
+	return fmt.Errorf("lease path %s is outside allowed_files of task %s; ask the orchestrator to widen allowed_files to include it, then reserve it again", leasePath, id)
 }
 
 // ClaimWorkWithLeases rolls back claim, attempt, events and leases together.

@@ -16,8 +16,11 @@ func TestReservationTransactionRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
+	workspace := t.TempDir()
 	for _, id := range []string{"holder", "claimant", "batch"} {
-		if _, err := s.CreateWork(ctx, id, id, nil); err != nil {
+		if _, err := s.CreateWorkInBoardWithDefinition(ctx, DefaultBoardID, id, id, nil, WorkDefinition{
+			Project: workspace, AllowedFiles: []string{"a.go", "b.go", "c.go", "z.go"},
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}

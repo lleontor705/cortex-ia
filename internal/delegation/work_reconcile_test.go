@@ -35,7 +35,7 @@ func (f *reconcileFixture) advance(d time.Duration) { f.clock = f.clock.Add(d) }
 func (f *reconcileFixture) create(t *testing.T, id string) {
 	t.Helper()
 	if _, err := f.store.CreateWorkInBoardWithDefinition(context.Background(), DefaultBoardID, id, id, nil, WorkDefinition{
-		Project: t.TempDir(), Objective: "objective", Acceptance: "acceptance", Verification: "verification", AllowedFiles: []string{"src/a.go"},
+		Project: t.TempDir(), Objective: "objective", Acceptance: "acceptance", Verification: "verification", AllowedFiles: []string{"src/a.go", "src/b.go", "src/c.go"},
 	}); err != nil {
 		t.Fatalf("create %s: %v", id, err)
 	}
