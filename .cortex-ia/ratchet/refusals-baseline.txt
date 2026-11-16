@@ -484,7 +484,10 @@ internal/delegation/work_reconcile.go	reconcile: transition task: %w
 internal/delegation/work_reconcile.go	work reconcile refused
 internal/delegation/work_reservations.go	a reservation supports at most 128 paths
 internal/delegation/work_reservations.go	at least one reservation path is required
+internal/delegation/work_reservations.go	compile allowed_files pattern %s: %w
 internal/delegation/work_reservations.go	duplicate reservation path %q
+internal/delegation/work_reservations.go	lease path %s is outside allowed_files of task %s; ask the orchestrator to widen allowed_files to include it, then reserve it again
+internal/delegation/work_reservations.go	task %s declares no allowed_files, so %s cannot be leased; ask the orchestrator to set allowed_files
 internal/delegation/work_revise.go	%w: stale revision
 internal/delegation/work_revise.go	%w: task %s is %s, not revisable
 internal/delegation/work_revise.go	%w: task has active file leases

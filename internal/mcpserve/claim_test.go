@@ -115,15 +115,18 @@ func TestMaintenanceFailureIsReportedOnNextResult(t *testing.T) {
 	if _, isError := call(t, s, "cortex_ia_work_claim", map[string]any{"task_id": testTask, "paths": []any{"a.txt"}}); isError {
 		t.Fatal("claim setup failed")
 	}
-	for i := 0; i < 200; i++ {
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
 		text, _ := call(t, s, "cortex_ia_work_status", map[string]any{"task_id": testTask})
-		if strings.Contains(text, `"active": false`) {
-			assertNoSecrets(t, text)
-			if !strings.Contains(text, "renewal refused") {
-				t.Fatalf("failure reason missing: %s", text)
-			}
-			return
+		if !strings.Contains(text, `"active": false`) {
+			time.Sleep(5 * time.Millisecond)
+			continue
 		}
+		assertNoSecrets(t, text)
+		if !strings.Contains(text, "renewal refused") {
+			t.Fatalf("failure reason missing: %s", text)
+		}
+		return
 	}
 	t.Fatal("heartbeat failure never reported")
 }
