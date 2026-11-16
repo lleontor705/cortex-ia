@@ -28,4 +28,4 @@ The user decides. The repository answers factual questions such as APIs, schemas
 
 ## Stop condition
 
-Stop when the frontier is empty: every branch has been visited, edge cases have been weighed, and nothing is left assumed silently. Then summarize the agreed design and record it in the plan file (`docs/plans/<board-id>.md`) before implementation is delegated.
+Stop when the frontier is empty: every branch has been visited, edge cases have been weighed, and nothing is left assumed silently. Then summarize the agreed design. Grilling writes nothing: if a plan exists, the orchestrator dispatches `planner` with phase `update` to record the decisions; otherwise the answers go into the planner's request.

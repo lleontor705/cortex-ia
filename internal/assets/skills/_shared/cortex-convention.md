@@ -28,6 +28,7 @@ Accepted `type` values are the server allowlist enforced by `cortex_save`: `manu
 |---|---|---|
 | Architecture or ADR | `decision` or `architecture` | `architecture/<module>` |
 | Gotcha or quirk | `bugfix` | `gotchas/<issue>` |
+| Reason for a FAIL before retry | `bugfix` | `gotchas/<task_id>` |
 | Project stack or convention | `config` | `dna/<project>` |
 | Domain invariant | `architecture` | `domain/<entity>` |
 | Bug root cause and fix | `bugfix` | `bugfix/<issue>` |
@@ -46,7 +47,7 @@ RED and GREEN evidence appends follow the same pattern: one line per run with th
 
 ## Plan references
 
-Cortex stores the durable decisions in a plan as observations with the topic keys above, linked to the board ID. Cortex never holds the authoritative copy of a plan's checks or slices. The file in `docs/plans/` does.
+Cortex stores the durable decisions in a plan as observations with the topic keys above, linked to the board ID. Cortex never holds the authoritative copy of a plan's checks or slices. The file in `docs/plans/` does, and only the planner (phase `update`) writes it.
 
 ## Sessions, boards and recovery
 

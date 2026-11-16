@@ -4,12 +4,12 @@ description: Write a short plan file with executable acceptance checks and a sam
 license: MIT
 metadata:
   author: lleontor705
-  version: "3.0.0"
+  version: "3.1.0"
 ---
 
 # Planner
 
-A plan is one file, `docs/plans/<board-id>.md`, plus the task DAG on the board. Implementers read the file, run its checks, and update it as they go. Long specification bundles added overhead without helping bug fixes or refactors, so the plan stays short and its checks stay executable.
+A plan is one file, `docs/plans/<board-id>.md`, plus the task DAG on the board. The plan says what done means and which checks prove it. Task state lives in SQLite, so the plan has no progress list. Long specification bundles added overhead without helping bug fixes or refactors, so the plan stays short and its checks stay executable.
 
 ## 1. Do you need a plan?
 
@@ -21,7 +21,7 @@ No plan, one direct task on `default`:
 
 Plan when any of these hold:
 - feature work touching three or more files;
-- requirements are unclear (return `blocked` with focused questions in `open_questions`; the orchestrator interviews the user, then you write the plan);
+- requirements are unclear (return `blocked` with focused questions in `open_questions`; the orchestrator interviews the user, then dispatches you);
 - the work spans more than one session;
 - the work needs more than one task.
 
@@ -36,28 +36,27 @@ Path `docs/plans/<board-id>.md`, 40 to 120 lines, these sections in this order:
 ## Acceptance Checks
 | ID | Behaviour | Command | Expected |
 ## Slices
-## Progress
 ## Decisions and Surprises
 ## Outcome
 ```
 
 - **Goal and Done**: two to four sentences on the user-visible outcome and how it is judged done.
-- **Context and Non-goals**: key files, constraints, and what is explicitly out of scope. Non-goals keep downstream work from growing.
-- **Acceptance Checks**: raw executable commands with the expected result. The first slice, or the only task, writes them as failing tests; later slices turn them green. Implementers do not edit this table. Only the orchestrator changes it, and records a Decisions entry for the change.
-- **Slices**: per slice, the id, `allowed_files`, `depends_on`, and the check IDs it must make green.
-- **Progress**: dated checkboxes.
-- **Decisions and Surprises**: append-only entries of date, decision, and reason.
-- **Outcome**: commits, deviations from the plan, follow-ups. Filled when the work closes.
+- **Context and Non-goals**: key files, constraints, and what is out of scope. Non-goals keep downstream work from growing.
+- **Acceptance Checks**: raw executable commands with the expected result, IDs `AC-1`, `AC-2`, and so on. The first slice writes them as failing tests; later slices turn them green. Only phase `update` changes this table, with a Decisions entry.
+- **Slices**: per slice, its id, `allowed_files`, `depends_on`, and the check IDs it must make green. Never list the plan file in `allowed_files`.
+- **Decisions and Surprises**: dated entries of decision, reason, and what differed from the plan. Implementers report surprises in receipts; you record them here at update.
+- **Outcome**: what changed, deviations, follow-ups. Filled at close.
 
 ## 3. Slicing
 
 A slice becomes its own DAG task only when all three hold: its files do not overlap another slice's files, a fresh agent can resume it from the request text plus `git diff` alone, and it has its own check IDs. Otherwise the plan runs as one sequential task. Keep tightly coupled files in one slice, and allow at most about four parallel writers.
 
-## 4. Living plan
+## 4. Checks, updates and close
 
-- The implementer appends to Progress and Decisions and Surprises before moving its task to `in_review`. The plan file belongs in the `allowed_files` of plan tasks for that reason.
-- When the plan and the code disagree, the code and the checks win. Record the disagreement as a Decisions entry.
-- At close, the last implementer fills Outcome. The file stays as history. A durable decision moves to `AGENTS.md` or an ADR, and the repository tests remain the living spec. There is no archive step.
+- Each task carries its checks as `AC-<n>: <command>` strings, in `acceptance_checks` and in its verification. A reviewer verifies the checks its own task names. The whole plan's checks are verified at close.
+- When the plan and the code disagree, the code and the checks win. Record the disagreement as a Decisions entry in phase `update`.
+- Phase `update` has two uses: a check change the orchestrator names, and close. At close you append Decisions and Surprises from the receipts and fill Outcome. Make no commits.
+- A durable decision moves to `AGENTS.md` or an ADR. The repository tests remain the living spec. There is no archive step.
 
 ## 5. Tasks
 
