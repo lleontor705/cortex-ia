@@ -104,8 +104,12 @@ func Apply(req Request, plan *Plan) (*Receipt, error) {
 				return fail("read embedded source", readErr)
 			}
 			created := missingDirs(home, abs)
+			mode, modeErr := filemerge.ExistingMode(abs, defaultTargetMode)
+			if modeErr != nil {
+				return fail("inspect copy target mode", modeErr)
+			}
 			if err := runTarget(effect.Dest, created, func() error {
-				if _, err := filemerge.WriteFileAtomic(abs, content, 0o644); err != nil {
+				if _, err := filemerge.WriteFileAtomic(abs, content, mode); err != nil {
 					return fmt.Errorf("write %q: %w", effect.Dest, err)
 				}
 				return nil
@@ -126,8 +130,12 @@ func Apply(req Request, plan *Plan) (*Receipt, error) {
 			if mergeErr != nil {
 				return fail("merge settings template", mergeErr)
 			}
+			mode, modeErr := filemerge.ExistingMode(abs, defaultTargetMode)
+			if modeErr != nil {
+				return fail("inspect settings mode", modeErr)
+			}
 			if err := runTarget(effect.Dest, nil, func() error {
-				if _, err := filemerge.WriteFileAtomic(abs, merged, 0o644); err != nil {
+				if _, err := filemerge.WriteFileAtomic(abs, merged, mode); err != nil {
 					return fmt.Errorf("write merged settings %q: %w", effect.Dest, err)
 				}
 				return nil
@@ -493,6 +501,10 @@ func mcpRecord(preset mcpmanager.Preset, configAbs string, plan *Plan) (state.MC
 	}
 	return state.NewMCPV2(identity, filepath.ToSlash(rel), state.OwnershipManaged)
 }
+
+// defaultTargetMode is the mode for files cortex-ia creates. Rewrites keep
+// the mode already on disk, so a private config never becomes world-readable.
+const defaultTargetMode = 0o644
 
 func isFileEffect(kind EffectKind) bool {
 	switch kind {

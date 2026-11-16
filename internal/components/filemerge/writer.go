@@ -82,6 +82,20 @@ func WriteFileAtomic(path string, content []byte, perm fs.FileMode) (WriteResult
 	return WriteResult{Changed: true, Created: created}, nil
 }
 
+// ExistingMode returns the permission bits of the regular file at path so a
+// rewrite keeps the mode the user chose (a 0600 secrets file stays 0600). A
+// missing path yields fallback, the default for files cortex-ia creates.
+func ExistingMode(path string, fallback fs.FileMode) (fs.FileMode, error) {
+	info, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fallback, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("stat %q: %w", path, err)
+	}
+	return info.Mode().Perm(), nil
+}
+
 // rejectSymlinkParent walks every existing ancestor of dir from the volume
 // root and rejects a symlink or reparse point unless symlinkTrusted accepts
 // it. The walk must start at the root: relative components would be resolved

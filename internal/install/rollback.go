@@ -148,6 +148,7 @@ func (s *Service) restoredRollback(backupID string, manifest backup.Manifest, me
 	if err := pipeline.JournaledRestore(s.homeDir, backupID, manifest); err != nil {
 		return nil, err
 	}
+	pruneBackups(s.homeDir)
 	receipt := rollbackReceiptFromManifest(manifest)
 	receipt.Verified = true
 	return receipt, nil
@@ -551,6 +552,7 @@ func (s *Service) Recover(journalID string, opts RecoverOptions) (*RecoveryRecei
 		receipt.RestoreError = err.Error()
 		return receipt, fmt.Errorf("recover %q: restoration could not be verified; journal retained for safe retry: %w", journalID, err)
 	}
+	pruneBackups(s.homeDir)
 	receipt.BackupID = candidate.BackupID
 	receipt.Disposition = RecoveryRestored
 	receipt.Verified = true

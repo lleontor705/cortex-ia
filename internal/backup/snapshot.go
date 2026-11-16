@@ -25,7 +25,7 @@ func NewSnapshotter() Snapshotter {
 
 // Create snapshots the given file paths into snapshotDir and writes a manifest.
 func (s Snapshotter) Create(snapshotDir string, paths []string) (Manifest, error) {
-	if err := os.MkdirAll(snapshotDir, 0o755); err != nil {
+	if err := os.MkdirAll(snapshotDir, 0o700); err != nil {
 		return Manifest{}, fmt.Errorf("create snapshot directory %q: %w", snapshotDir, err)
 	}
 
@@ -160,7 +160,7 @@ func copyAndHashFile(source string, destination string, mode os.FileMode) (strin
 	}
 	defer func() { _ = input.Close() }()
 
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
 		return "", fmt.Errorf("create backup directory for %q: %w", destination, err)
 	}
 
