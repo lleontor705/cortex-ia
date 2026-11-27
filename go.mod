@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	golang.org/x/sys v0.50.0
-	modernc.org/sqlite v1.62.0
+	modernc.org/sqlite v1.63.0
 )
 
 require (
